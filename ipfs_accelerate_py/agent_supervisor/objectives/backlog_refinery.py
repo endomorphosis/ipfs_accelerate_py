@@ -5010,6 +5010,7 @@ def reconciliation_guardrail_task_block(
     profile_markdown = "\n".join(profile_lines)
     if profile_markdown:
         profile_markdown = f"\n{profile_markdown}"
+    predicted = ", ".join(outputs)
     return f"""## {task_id} {record.get("summary")}
 
 - Status: blocked
@@ -5024,6 +5025,10 @@ def reconciliation_guardrail_task_block(
 - Dedupe key: {record.get("dedupe_key") or ""}
 - Depends on:
 - Outputs: {", ".join(outputs)}{profile_markdown}
+- Predicted files: {predicted}
+- Conflict policy: Operator-only reconciliation of dirty worktrees; never auto-commit, stash, or discard unknown checkout content.
+- Symbolic first: true
+- LLM context budget bytes: 4096
 - Validation: test -f {shlex.quote(str(discovery_path))}
 - Acceptance: Reconciliation guardrail filed this because {record.get("candidate_count")} branch or worktree cleanup candidates are blocked by {record.get("reason")}. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in {discovery_path}, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
 """
@@ -6489,7 +6494,10 @@ def validation_retry_task_block(
         if launch_playwright_validation_gate
         else ""
     )
-    execution_metadata = retry_task_execution_metadata(source_task)
+    execution_metadata = retry_task_execution_metadata(
+        source_task,
+        outputs=outputs,
+    )
     provenance_metadata = retry_budget_repair_provenance_metadata(
         source_task_id=source_task.task_id,
         failure_kind="validation",
@@ -6522,27 +6530,60 @@ def retry_task_execution_metadata(
     source_task: Any,
     *,
     predicted_files: str | None = None,
+    outputs: Sequence[str] | None = None,
 ) -> str:
-    """Preserve reviewed execution and write-scope bounds on repair work."""
+    """Preserve reviewed execution bounds and strict board-required fields.
+
+    Voice-action plan preflight (and similar boards) require goal id, board
+    namespace, bundle, resource class, symbolic first, LLM budget, and predicted
+    files that exactly match outputs. Repair cards used to inherit only a
+    partial subset, which made supervisors fail preflight and refuse to start.
+    """
 
     raw_metadata = getattr(source_task, "metadata", {}) or {}
-    if not isinstance(raw_metadata, Mapping):
-        return ""
-    metadata = {
-        str(key).strip().lower().replace("_", " "): str(value).strip()
-        for key, value in raw_metadata.items()
-        if str(value).strip()
-    }
+    metadata: dict[str, str] = {}
+    if isinstance(raw_metadata, Mapping):
+        metadata = {
+            str(key).strip().lower().replace("_", " "): str(value).strip()
+            for key, value in raw_metadata.items()
+            if str(value).strip()
+        }
     if predicted_files is not None:
         metadata["predicted files"] = str(predicted_files).strip()
+    elif outputs is not None:
+        normalized_outputs = [
+            str(item).strip() for item in outputs if str(item).strip()
+        ]
+        if normalized_outputs:
+            metadata["predicted files"] = ", ".join(normalized_outputs)
+    # Strict defaults so generated repairs remain board-valid even when the
+    # source task omits a field the voice-action validator requires.
+    if not metadata.get("symbolic first"):
+        metadata["symbolic first"] = "true"
+    if not metadata.get("llm context budget bytes"):
+        inherited_budget = metadata.get("context budget tokens", "").strip()
+        if inherited_budget.isdigit():
+            # Convert rough token budgets into a byte ceiling when only the
+            # older token field is present.
+            metadata["llm context budget bytes"] = str(
+                min(32768, max(4096, int(inherited_budget) * 4))
+            )
+        else:
+            metadata["llm context budget bytes"] = "12288"
     lines: list[str] = []
     inherited_fields = (
+        ("goal id", "Goal id"),
+        ("board namespace", "Board namespace"),
+        ("bundle", "Bundle"),
         ("provider role", "Provider role"),
         ("context budget tokens", "Context budget tokens"),
         ("parallel lane", "Parallel lane"),
+        ("resource class", "Resource class"),
         ("predicted files", "Predicted files"),
         ("allow concurrent with", "Allow concurrent with"),
         ("conflict policy", "Conflict policy"),
+        ("symbolic first", "Symbolic first"),
+        ("llm context budget bytes", "LLM context budget bytes"),
     )
     for field, label in inherited_fields:
         value = metadata.get(field, "")
@@ -6645,7 +6686,10 @@ def implementation_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
-    execution_metadata = retry_task_execution_metadata(source_task)
+    execution_metadata = retry_task_execution_metadata(
+        source_task,
+        outputs=outputs,
+    )
     provenance_metadata = retry_budget_repair_provenance_metadata(
         source_task_id=source_task.task_id,
         failure_kind="implementation",
@@ -6684,17 +6728,16 @@ def merge_retry_task_block(
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
-    outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
-    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     # Merge repair work coordinates an already committed implementation. Its
-    # durable write scope is the discovery output; inheriting the source
+    # durable write scope is the discovery output only; inheriting the source
     # implementation paths makes strict parallel-board validation treat the
-    # strategy-blocked source and its repair as concurrent writers.
+    # strategy-blocked source and its repair as concurrent writers. Keep
+    # predicted files identical to outputs for plan preflight.
+    outputs = [discovery_output_path]
+    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     execution_metadata = retry_task_execution_metadata(
         source_task,
-        predicted_files=discovery_output_path,
+        outputs=outputs,
     )
     provenance_metadata = retry_budget_repair_provenance_metadata(
         source_task_id=source_task.task_id,

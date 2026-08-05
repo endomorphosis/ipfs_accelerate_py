@@ -8849,6 +8849,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         lowered = text.lower()
         return any(marker in lowered for marker in markers)
 
+    def _task_looks_like_protected_path_mutated_stall(self, task: Any) -> bool:
+        """True when a board repair card's discovery evidence is thrash-only."""
+
+        if not is_retry_budget_repair_task(task):
+            return False
+        metadata = getattr(task, "metadata", {}) or {}
+        if not isinstance(metadata, Mapping):
+            metadata = {}
+        discovery = str(
+            metadata.get("retry repair discovery")
+            or metadata.get("Retry repair discovery")
+            or metadata.get("discovery path")
+            or ""
+        ).strip()
+        finding = {
+            "failure_kind": str(
+                metadata.get("retry failure kind")
+                or metadata.get("Retry failure kind")
+                or "validation"
+            ),
+            "discovery_path": discovery,
+            "failed_command": "",
+            "validation_reason": "",
+            "error": "",
+            "reason": str(getattr(task, "acceptance", "") or "")[:2000],
+        }
+        return self._retry_budget_finding_is_protected_path_mutated_stall(finding)
+
+    def _protected_path_mutated_repair_task_ids(
+        self,
+        strategy: Mapping[str, Any],
+        tasks: Sequence[PortalTask],
+    ) -> set[str]:
+        """Repair task ids whose strategy finding or board evidence is thrash."""
+
+        ids: set[str] = set()
+        for finding in strategy.get("retry_budget_findings", []) or []:
+            if not isinstance(finding, Mapping):
+                continue
+            if not self._retry_budget_finding_is_protected_path_mutated_stall(
+                finding
+            ):
+                continue
+            repair_id = str(finding.get("follow_up_task_id") or "").strip()
+            if repair_id:
+                ids.add(repair_id)
+        for task in tasks:
+            if self._task_looks_like_protected_path_mutated_stall(task):
+                ids.add(task.task_id)
+        return ids
+
     def _apply_retry_budget_infra_release(
         self,
         strategy: dict[str, Any],
@@ -8876,6 +8927,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if str(item).strip()
         ]
         release_set = set(release_sources)
+        completed_repair_set = set(completed_ids)
         for task in tasks:
             if task.task_id in completed_ids:
                 source_task_id, _kind = retry_budget_repair_source(task)
@@ -8890,12 +8942,32 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         new_blocked = [task_id for task_id in blocked if task_id not in release_set]
         if new_blocked != blocked:
             strategy["blocked_tasks"] = new_blocked
+        # Drop resolved thrash/infra findings so a later pass cannot reselect
+        # the repair card or re-park the source after board races reopen it.
+        remaining_findings: list[Any] = []
+        cleared_finding_ids: list[str] = []
+        for item in strategy.get("retry_budget_findings", []) or []:
+            if not isinstance(item, Mapping):
+                remaining_findings.append(item)
+                continue
+            repair_id = str(item.get("follow_up_task_id") or "").strip()
+            source_id = str(item.get("source_task_id") or "").strip()
+            if repair_id in completed_repair_set or source_id in release_set:
+                if repair_id:
+                    cleared_finding_ids.append(repair_id)
+                continue
+            remaining_findings.append(item)
+        if cleared_finding_ids or remaining_findings != list(
+            strategy.get("retry_budget_findings", []) or []
+        ):
+            strategy["retry_budget_findings"] = remaining_findings
         strategy.setdefault("auto_unblock_receipts", [])
         receipt: dict[str, Any] = {
             "at": utc_now(),
             "reason": reason,
             "completed_repair_task_ids": completed_ids,
             "released_source_task_ids": sorted(release_set),
+            "cleared_finding_repair_ids": cleared_finding_ids[:20],
         }
         if extra_receipt:
             receipt.update(dict(extra_receipt))
@@ -8926,6 +8998,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "release_count": len(payload),
                 "released": payload,
                 "completed_repair_task_ids": completed_ids,
+                "cleared_finding_repair_ids": cleared_finding_ids[:20],
                 **dict(extra_receipt or {}),
             },
         )
@@ -8990,6 +9063,209 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             extra_receipt={"browsers_path": infra.get("browsers_path", "")},
             event_type="auto_unblock_playwright_infra",
         )
+
+    def _auto_normalize_generated_board_task_metadata(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, str]]:
+        """Heal generated repair/recon cards that break plan preflight.
+
+        Older generators omitted board-namespace / goal / symbolic-first fields
+        and left Predicted files out of sync with Outputs. That makes
+        ``start_supervisor.sh`` fail closed even when work is otherwise ready.
+        Align predicted files to outputs and fill missing strict defaults from
+        the source task (or board profile) without changing operator intent.
+        """
+
+        if not self.todo_path.exists():
+            return []
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+            locked_taskboard,
+            replace_locked_taskboard,
+        )
+
+        tasks_by_id = {task.task_id: task for task in tasks}
+        healed: list[dict[str, str]] = []
+        try:
+            with locked_taskboard(self.todo_path) as taskboard:
+                original = taskboard.read()
+                updated = original
+                for task in tasks:
+                    generated_by = ""
+                    metadata = getattr(task, "metadata", {}) or {}
+                    if isinstance(metadata, Mapping):
+                        generated_by = str(
+                            metadata.get("generated by")
+                            or metadata.get("Generated by")
+                            or ""
+                        ).strip()
+                    is_retry = is_retry_budget_repair_task(task)
+                    is_recon = (
+                        RECONCILIATION_GUARDRAIL_SCHEMA in generated_by
+                        or "reconciliation-guardrail" in generated_by
+                    )
+                    if not is_retry and not is_recon:
+                        continue
+                    source_id = ""
+                    if is_retry:
+                        source_id, _kind = retry_budget_repair_source(task)
+                    source = tasks_by_id.get(source_id) if source_id else None
+                    source_meta: dict[str, str] = {}
+                    if source is not None and isinstance(
+                        getattr(source, "metadata", None), Mapping
+                    ):
+                        source_meta = {
+                            str(k).strip().lower().replace("_", " "): str(v).strip()
+                            for k, v in (source.metadata or {}).items()
+                            if str(v).strip()
+                        }
+                    task_meta: dict[str, str] = {}
+                    if isinstance(metadata, Mapping):
+                        task_meta = {
+                            str(k).strip().lower().replace("_", " "): str(v).strip()
+                            for k, v in metadata.items()
+                            if str(v).strip()
+                        }
+                    outputs = list(getattr(task, "outputs", []) or [])
+                    predicted = [
+                        p.strip()
+                        for p in str(
+                            task_meta.get("predicted files") or ""
+                        ).split(",")
+                        if p.strip()
+                    ]
+                    needs: list[tuple[str, str]] = []
+                    if outputs and set(outputs) != set(predicted):
+                        needs.append(
+                            ("Predicted files", ", ".join(outputs))
+                        )
+                    field_defaults = (
+                        (
+                            "Goal id",
+                            task_meta.get("goal id")
+                            or source_meta.get("goal id")
+                            or "",
+                        ),
+                        (
+                            "Board namespace",
+                            task_meta.get("board namespace")
+                            or source_meta.get("board namespace")
+                            or (
+                                "voice-action-dag-abby-v1"
+                                if "voice_action" in str(self.todo_path).lower()
+                                or "voice-action" in str(self.todo_path).lower()
+                                else ""
+                            ),
+                        ),
+                        (
+                            "Bundle",
+                            task_meta.get("bundle")
+                            or source_meta.get("bundle")
+                            or "voice-action/ops",
+                        ),
+                        (
+                            "Resource class",
+                            task_meta.get("resource class")
+                            or source_meta.get("resource class")
+                            or "cpu-small",
+                        ),
+                        (
+                            "Symbolic first",
+                            task_meta.get("symbolic first") or "true",
+                        ),
+                        (
+                            "LLM context budget bytes",
+                            task_meta.get("llm context budget bytes")
+                            or source_meta.get("llm context budget bytes")
+                            or "12288",
+                        ),
+                    )
+                    for label, value in field_defaults:
+                        if not value:
+                            continue
+                        key = label.lower()
+                        current = task_meta.get(key, "")
+                        if not current or (
+                            label == "Board namespace"
+                            and current.endswith(".todo.md")
+                        ):
+                            needs.append((label, value))
+                    if not needs:
+                        continue
+                    section_re = re.compile(
+                        rf"(^## {re.escape(task.task_id)}\b.*?)(?=^## |\Z)",
+                        re.S | re.M,
+                    )
+                    match = section_re.search(updated)
+                    if match is None:
+                        continue
+                    section = match.group(1)
+                    new_section = section
+                    for label, value in needs:
+                        line_re = re.compile(
+                            rf"(?m)^- {re.escape(label)}:\s*.*$"
+                        )
+                        replacement = f"- {label}: {value}"
+                        if line_re.search(new_section):
+                            new_section = line_re.sub(replacement, new_section, count=1)
+                        else:
+                            # Insert after Outputs when present, else after Status.
+                            insert_re = re.compile(
+                                r"(?m)^- Outputs:\s*.*$"
+                            )
+                            if insert_re.search(new_section):
+                                new_section = insert_re.sub(
+                                    lambda m: m.group(0) + "\n" + replacement,
+                                    new_section,
+                                    count=1,
+                                )
+                            else:
+                                new_section = new_section.rstrip() + "\n" + replacement + "\n"
+                    if new_section != section:
+                        updated = (
+                            updated[: match.start()]
+                            + new_section
+                            + updated[match.end() :]
+                        )
+                        healed.append(
+                            {
+                                "task_id": task.task_id,
+                                "fields": ",".join(label for label, _ in needs),
+                                "reason": "generated_board_metadata_normalized",
+                            }
+                        )
+                if updated == original or not healed:
+                    return []
+                replace_locked_taskboard(taskboard, updated)
+        except Exception as exc:
+            self._record_event(
+                "auto_unblock_board_metadata_normalize_failed",
+                {"error": f"{type(exc).__name__}: {exc}"[-500:]},
+            )
+            return []
+        if self._todo_board_is_implementation_protected():
+            try:
+                self._commit_generated_file_update(
+                    self.todo_path,
+                    task_id=healed[0]["task_id"],
+                    subject=(
+                        f"{healed[0]['task_id']}: normalize generated "
+                        "board metadata"
+                    ),
+                )
+            except Exception as exc:
+                self._record_event(
+                    "auto_unblock_board_metadata_commit_failed",
+                    {
+                        "error": f"{type(exc).__name__}: {exc}"[-500:],
+                        "healed": healed[:20],
+                    },
+                )
+        self._record_event(
+            "auto_unblock_generated_board_metadata_normalized",
+            {"healed_count": len(healed), "healed": healed[:40]},
+        )
+        return healed
 
     def _auto_unblock_protected_path_mutated_repairs(
         self,
@@ -9345,6 +9621,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return cleaned
 
+    def _host_dirt_restore_excluded_paths(self) -> set[str]:
+        """Paths that must never be tip-restored by the auto-unblock host cleaner.
+
+        Auto-complete / metadata heal mutate the shared protected board in the
+        same pass. Restoring those paths from the merge tip undoes the heal and
+        reopens thrash repairs (observed VOICE-ACTION-036 loop). Submodule
+        roots and every configured implementation-protected path are also
+        excluded so pin moves and plan authority stay intentional.
+        """
+
+        excluded: set[str] = set(self.implementation_protected_paths or ())
+        for path in (
+            self.todo_path,
+            *self._task_source_markdown_checkout_paths(),
+        ):
+            try:
+                relative = (
+                    Path(path)
+                    .resolve()
+                    .relative_to(self.repo_root.resolve())
+                    .as_posix()
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative:
+                excluded.add(relative)
+        excluded.update(self._configured_submodule_root_names())
+        return excluded
+
     def _auto_restore_host_dirt_matching_target_tip(self) -> list[dict[str, str]]:
         """Restore host checkout paths that only diverge from the merge tip.
 
@@ -9352,12 +9657,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         deletes/modifications of paths already correct on the target tip. That
         dirt files operator reconciliation cards and blocks worktree cleanup
         even though detached merges no longer need a clean host.
+
+        Never restores the shared todo board, other implementation-protected
+        paths, or submodule roots — those are either authority surfaces or
+        intentional integration pins, and tip-restore races re-stall progress.
         """
 
         restored: list[dict[str, str]] = []
         target = self._main_branch_name()
         if not target:
             return restored
+        excluded = self._host_dirt_restore_excluded_paths()
         status = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=no"],
             cwd=self.repo_root,
@@ -9379,7 +9689,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # Never auto-touch configured submodule roots; pin moves are
             # intentional integration work.
             root = path_text.split("/", 1)[0]
-            if root in self._configured_submodule_root_names():
+            if root in excluded or path_text in excluded:
+                continue
+            # Also skip anything under a protected path prefix (nested docs).
+            if any(
+                path_text == protected
+                or path_text.startswith(f"{protected}/")
+                for protected in excluded
+                if protected
+            ):
                 continue
             dirty_paths.append(path_text)
         for relative in sorted(set(dirty_paths)):
@@ -9607,6 +9925,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if str(item).strip()
         }
         pending_repairs = pending_retry_budget_repair_sources(tasks)
+        thrash_repair_ids = self._protected_path_mutated_repair_task_ids(
+            strategy,
+            tasks,
+        )
         resets: list[dict[str, Any]] = []
         queue_changed = False
         max_attempts = (
@@ -9617,6 +9939,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if normalize_status(task.status) != "todo":
                 continue
             if task.task_id in blocked or task.task_id in pending_repairs:
+                continue
+            # Thrash-class retry repairs are auto-completed, never re-budgeted
+            # into another LLM implementation loop.
+            if task.task_id in thrash_repair_ids or (
+                is_retry_budget_repair_task(task)
+                and self._task_looks_like_protected_path_mutated_stall(task)
+            ):
                 continue
             attempt_count = self._task_attempt_count(state, task)
             # Next attempt would be attempt_count+1; repair_round = attempt-1.
@@ -9844,6 +10173,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         result: dict[str, Any] = {
             "playwright_infra_releases": [],
             "protected_path_mutated_releases": [],
+            "generated_board_metadata_normalized": [],
             "completed_repair_releases": [],
             "orphan_strategy_releases": [],
             "merge_quarantines_cleared": [],
@@ -9874,6 +10204,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 f"{type(exc).__name__}: {exc}"[-300:]
             )
         try:
+            # Restore non-protected host dirt BEFORE board mutations. Running
+            # after thrash auto-complete previously tip-restored the shared
+            # todo board and reopened just-completed repairs.
+            result["host_dirt_restored"] = (
+                self._auto_restore_host_dirt_matching_target_tip()
+            )
+        except Exception as exc:
+            result["host_dirt_error"] = f"{type(exc).__name__}: {exc}"[-300:]
+        try:
+            # Heal board metadata before infra releases so preflight/start can
+            # succeed after generated repair/recon cards land incomplete.
+            result["generated_board_metadata_normalized"] = (
+                self._auto_normalize_generated_board_task_metadata(tasks)
+            )
+            if result["generated_board_metadata_normalized"]:
+                tasks = self._load_tasks()
+        except Exception as exc:
+            result["board_metadata_error"] = (
+                f"{type(exc).__name__}: {exc}"[-300:]
+            )
+        try:
             result["playwright_infra_releases"] = (
                 self._auto_unblock_playwright_infra_repairs(strategy, tasks)
             )
@@ -9884,6 +10235,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["protected_path_mutated_releases"] = (
                 self._auto_unblock_protected_path_mutated_repairs(strategy, tasks)
             )
+            if result["protected_path_mutated_releases"]:
+                tasks = self._load_tasks()
+                strategy.update(self.load_strategy())
         except Exception as exc:
             result["protected_path_mutated_error"] = (
                 f"{type(exc).__name__}: {exc}"[-300:]
@@ -9918,12 +10272,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except Exception as exc:
             result["worktree_cleanup_error"] = f"{type(exc).__name__}: {exc}"[-300:]
-        try:
-            result["host_dirt_restored"] = (
-                self._auto_restore_host_dirt_matching_target_tip()
-            )
-        except Exception as exc:
-            result["host_dirt_error"] = f"{type(exc).__name__}: {exc}"[-300:]
         try:
             result["stale_reconciliation_retired"] = (
                 self._auto_retire_stale_reconciliation_guardrails(tasks)
@@ -9968,6 +10316,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for key in (
                 "playwright_infra_releases",
                 "protected_path_mutated_releases",
+                "generated_board_metadata_normalized",
                 "completed_repair_releases",
                 "orphan_strategy_releases",
                 "merge_quarantines_cleared",
@@ -10917,9 +11266,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             tasks,
             previous,
         )
-        # Board / strategy may have changed (repair auto-complete, block release).
-        if auto_unblock.get("playwright_infra_releases") or auto_unblock.get(
-            "completed_repair_releases"
+        # Board / strategy may have changed (repair auto-complete, block release,
+        # thrash repair finish, metadata heal). Reload so selection cannot
+        # re-pick a just-completed thrash repair or a pre-heal card.
+        if any(
+            auto_unblock.get(key)
+            for key in (
+                "playwright_infra_releases",
+                "protected_path_mutated_releases",
+                "completed_repair_releases",
+                "generated_board_metadata_normalized",
+                "stale_reconciliation_retired",
+                "orphan_strategy_releases",
+            )
         ):
             tasks = self._load_tasks()
             previous = PortalTaskState.load(self.state_path)
@@ -10954,6 +11313,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 source_id = str(item.get("source_task_id") or "").strip()
                 if source_id:
                     pending_retry_repair_source_ids.discard(source_id)
+        # Thrash-class retry repairs are auto-resolved infra; never hand them
+        # to the model for another implementation loop. Keep them out of
+        # ready selection even if a peer rewrote the board back to todo, and
+        # never fence their sources behind a still-open thrash card.
+        thrash_repair_task_ids = self._protected_path_mutated_repair_task_ids(
+            strategy,
+            tasks,
+        )
+        open_thrash_repairs = [
+            task
+            for task in tasks
+            if task.task_id in thrash_repair_task_ids
+            and normalize_status(task.status) != "completed"
+        ]
+        if open_thrash_repairs:
+            # Second-chance complete after host/board races in the same pass.
+            try:
+                self._auto_unblock_protected_path_mutated_repairs(
+                    strategy,
+                    tasks,
+                )
+                tasks = self._load_tasks()
+                strategy = self.load_strategy()
+                thrash_repair_task_ids = (
+                    self._protected_path_mutated_repair_task_ids(
+                        strategy,
+                        tasks,
+                    )
+                )
+            except Exception:
+                pass
+        for task in tasks:
+            if task.task_id not in thrash_repair_task_ids:
+                continue
+            source_id, _kind = retry_budget_repair_source(task)
+            if source_id:
+                pending_retry_repair_source_ids.discard(source_id)
         strategy_blocked_task_ids = {
             str(task_id) for task_id in strategy.get("blocked_tasks", [])
         } | pending_retry_repair_source_ids
@@ -11149,6 +11545,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and task.task_id not in dependency_reopened_task_ids
             ):
                 resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in thrash_repair_task_ids:
+                # Peer board thrash is admitted mid-attempt; the repair card
+                # is finished by auto-unblock. Park as waiting so selection
+                # cannot start another LLM pass while board CAS settles.
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in pending_acceptance_task_ids:
                 # Integration is implementation evidence, not board
