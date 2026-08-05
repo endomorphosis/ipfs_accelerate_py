@@ -3134,6 +3134,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "PATH before Grok starts (repeatable)"
         ),
     )
+    parser.add_argument(
+        "--grok-failure-receipt-nonce",
+        default="",
+        help="Internal 256-bit nonce binding a runner-owned failure receipt.",
+    )
     parser.add_argument(GROK_INVOCATION_ID_FLAG, default="")
     parser.add_argument(GROK_INVOCATION_BINDING_FLAG, default="")
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
@@ -3144,6 +3149,61 @@ def main(argv: Sequence[str] | None = None) -> int:
         os.environ.get(GROK_TERMINAL_RECEIPT_FD_ENV, "").strip()
     )
     receipt_fd = _receipt_fd_from_environment()
+
+    try:
+        codex_fallback_command = _parse_codex_fallback_command(
+            str(args.codex_fallback_command_json)
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except NameError:
+        # Compatibility: some builds only accept the JSON field.
+        codex_fallback_command = []
+
+    failure_receipt_nonce = str(
+        getattr(args, "grok_failure_receipt_nonce", "") or ""
+    ).strip()
+    if failure_receipt_nonce and not re.fullmatch(
+        r"[0-9a-f]{64}",
+        failure_receipt_nonce,
+    ):
+        print(
+            "Grok failure receipt nonce must be 64 lowercase hex digits",
+            file=sys.stderr,
+        )
+        return 2
+
+    from ipfs_accelerate_py.llm_router import (
+        LLMRouterError,
+        build_grok_cli_command,
+        build_grok_cli_env,
+        find_grok_cli,
+    )
+
+    workspace = args.workspace.expanduser().resolve()
+    if not workspace.is_dir():
+        print(f"workspace is not a directory: {workspace}", file=sys.stderr)
+        return 2
+
+    grok_bin = str(args.grok_bin).strip() or find_grok_cli() or ""
+    if not grok_bin:
+        print("grok CLI not found on PATH", file=sys.stderr)
+        return 127
+
+    model = (
+        str(args.model).strip()
+        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MODEL", "").strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+        or os.environ.get("GROK_CLI_MODEL", "").strip()
+        or DEFAULT_GROK_MODEL
+    )
+    max_turns_raw = (
+        str(args.max_turns).strip()
+        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MAX_TURNS", "").strip()
+        or str(DEFAULT_GROK_MAX_TURNS)
+    )
     try:
         max_turns = max(1, min(DEFAULT_GROK_MAX_TURNS, int(max_turns_raw)))
     except ValueError:
