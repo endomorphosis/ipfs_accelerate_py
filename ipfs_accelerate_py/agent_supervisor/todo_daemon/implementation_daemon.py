@@ -26560,10 +26560,30 @@ class PortalImplementationDaemon:
             for protected in self.implementation_protected_paths
         )
 
-    def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
+    def _is_allowed_shared_link_worktree(self, worktree_path: Path) -> bool:
+        """Return whether shared dependency links may target ``worktree_path``.
+
+        Managed worktrees under ``worktree_root`` are always allowed.  Sibling
+        worktrees next to ``repo_root`` (common pytest and ephemeral layouts
+        with ``tmp/repo`` + ``tmp/worktree``) are also allowed so validation
+        workspaces can reuse shared ``node_modules`` without disabling the
+        safety rail that blocks arbitrary system paths.
+        """
+
         try:
-            worktree_path.resolve().relative_to(self.worktree_root.resolve())
-        except (OSError, RuntimeError, ValueError):
+            worktree = worktree_path.resolve()
+            managed = self.worktree_root.resolve()
+            if worktree == managed or self._path_is_under(worktree, managed):
+                return True
+            repo = self.repo_root.resolve()
+            if worktree != repo and worktree.parent == repo.parent:
+                return True
+        except (OSError, RuntimeError, ValueError, AttributeError):
+            return False
+        return False
+
+    def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
+        if not self._is_allowed_shared_link_worktree(worktree_path):
             logger.warning(
                 "Refusing to link shared dependencies outside managed worktree root: %s",
                 worktree_path,
@@ -41705,6 +41725,21 @@ class PortalImplementationDaemon:
                     and reconcile_reason
                     == "stale_failed_merge_candidate"
                 ):
+                    abandoned_candidates.add(candidate_key)
+                elif (
+                    implementation_commit
+                    and candidate_key
+                    not in persistence_recovery_candidate_keys
+                    and merge_reason
+                    in {
+                        "main_checkout_dirty_conflict",
+                        "main_checkout_dirty",
+                        "dirty_worktree",
+                    }
+                ):
+                    # An attempted merge that failed because the main checkout
+                    # was dirty is not a useful reconciliation candidate; the
+                    # operator must clean the target before retrying.
                     abandoned_candidates.add(candidate_key)
                 continue
             if str(event.get("type") or "") != "implementation_finished":
