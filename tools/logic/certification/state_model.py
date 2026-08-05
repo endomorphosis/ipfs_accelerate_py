@@ -3552,12 +3552,34 @@ def write_live_certificate(
 ) -> Path:
     """Write a portable, audited state-model live semantic certificate.
 
-    A tool-less or failed rerun cannot demote a valid production certificate
-    unless ``force=True`` is explicitly supplied.
+    Durable production evidence is sealed and sticky:
+
+    * A tool-less or failed re-run cannot demote a valid production certificate.
+    * A successful re-run also must not rewrite a valid production certificate
+      unless ``force=True`` is supplied. TLC/Apalache process output digests are
+      wall-clock and temp-path sensitive; rewriting on every validation pass
+      dirty-churns the tree and fails candidate stabilization.
+
+    Pass ``force=True`` only for deliberate replacement of sealed evidence.
     """
 
     root = repo_root or repo_root_from()
     target = path or (root / DEFAULT_LIVE_CERTIFICATE_RELATIVE)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    # Prefer preserving sealed production evidence before building/projecting a
+    # fresh receipt. Successful live re-runs still produce new non-deterministic
+    # output digests; rewriting them breaks post-validation convergence.
+    if not force and target.is_file():
+        try:
+            existing = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            existing = None
+        if isinstance(
+            existing, dict
+        ) and _is_valid_production_live_certificate(existing, repo_root=root):
+            return target
+
     candidate = (
         dict(receipt)
         if receipt is not None
@@ -3590,19 +3612,6 @@ def write_live_certificate(
             if key != "receipt_digest_sha256"
         }
     )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if not force and target.is_file() and not _is_valid_production_live_certificate(
-        payload,
-        repo_root=root,
-    ):
-        try:
-            existing = json.loads(target.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            existing = None
-        if isinstance(
-            existing, dict
-        ) and _is_valid_production_live_certificate(existing, repo_root=root):
-            return target
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     target.write_text(text, encoding="utf-8")
     return target
