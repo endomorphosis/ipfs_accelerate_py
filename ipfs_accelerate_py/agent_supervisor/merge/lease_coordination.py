@@ -1538,7 +1538,10 @@ class LeaseCoordinator:
                            retry_not_before_ms=0
                        WHERE task_cid=?
                          AND state IN ('released','expired')
-                         AND release_reason LIKE 'receipt:%:blocked'""",
+                         AND (
+                               release_reason LIKE 'receipt:%:blocked'
+                            OR release_reason LIKE 'receipt:%:retryable'
+                         )""",
                     (canonical_task_cid,),
                 )
                 attempt_budget_reset = reset.rowcount > 0
@@ -1591,13 +1594,51 @@ class LeaseCoordinator:
                 for bundle in bundles
             ]
 
+    @staticmethod
+    def _release_reason_is_requeueable_exhausted(release_reason: str) -> bool:
+        """Return whether an exhausted terminal release may be requeued.
+
+        Wave-0 production repeatedly fenced residual lanes after a full attempt
+        budget of ``receipt:cancelled:retryable`` (and other ``*:retryable``)
+        cancellations.  Those receipts intentionally mean "try again" — not a
+        durable board block — so the coordinator must reset the budget when
+        the bundle supervisor still observes open authoritative work.
+
+        Also requeue abandoned mid-flight releases (``scheduler stopped`` /
+        worker drain) and prior ``requeued:*`` markers so supervisor restarts
+        cannot permanently burn residual FVT lanes.
+        """
+
+        reason = str(release_reason or "")
+        if not reason:
+            return False
+        if reason.startswith("receipt:") and reason.endswith(":blocked"):
+            return True
+        # cancelled:retryable / failed:retryable / etc. — never a permanent fence.
+        if reason.startswith("receipt:") and reason.endswith(":retryable"):
+            return True
+        if reason == "scheduler stopped":
+            return True
+        if reason.startswith("requeued:"):
+            return True
+        if reason.startswith("worker drained") or "drained or exited" in reason:
+            return True
+        return False
+
     @_coordinator_operation
     def requeue_exhausted_blocked(self, task_cid: str, *, reason: str) -> bool:
         """Reset a blocked attempt budget after authoritative work is reopened.
 
         This operation is deliberately narrow: it cannot disturb accepted or
-        completed leases, and only resets an exhausted lease whose last
-        terminal receipt classified the work as blocked.
+        completed leases. It resets an exhausted released/expired lease when:
+
+        * the last terminal receipt classified the work as blocked, or
+        * the last terminal receipt was retryable (``receipt:*:retryable``,
+          including cancelled workers), or
+        * the lease was abandoned mid-flight (``scheduler stopped`` / drain) or
+          previously requeued while the authoritative board still has open
+          work — otherwise a full attempt budget is burned by supervisor
+          restarts and residual FVT lanes never relaunch.
         """
 
         normalized_reason = str(reason or "authoritative_source_reopened").strip().replace(" ", "_")
@@ -1620,10 +1661,12 @@ class LeaseCoordinator:
                     connection.commit()
                     return False
                 exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
-                blocked_receipt = str(row["release_reason"] or "").startswith("receipt:") and str(
-                    row["release_reason"] or ""
-                ).endswith(":blocked")
-                if row["state"] not in {"released", "expired"} or not exhausted or not blocked_receipt:
+                release_reason = str(row["release_reason"] or "")
+                if (
+                    row["state"] not in {"released", "expired"}
+                    or not exhausted
+                    or not self._release_reason_is_requeueable_exhausted(release_reason)
+                ):
                     connection.commit()
                     return False
                 connection.execute(

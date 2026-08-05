@@ -612,6 +612,115 @@ def test_authoritative_board_can_requeue_completed_bundle(tmp_path: Path) -> Non
         assert replacement.fencing_token > first.fencing_token
 
 
+def test_requeue_exhausted_cancelled_retryable_resets_attempt_budget(
+    tmp_path: Path,
+) -> None:
+    """Wave-0 blocker: cancelled:retryable burned max_attempts and never relaunched.
+
+    Bundle supervisor reconcile calls ``requeue_exhausted_blocked`` once the
+    board still has open work.  Before this fix the predicate only accepted
+    ``receipt:*:blocked``, so residual ASE2 lanes stayed permanently blocked
+    after three short-lived cancelled workers.
+    """
+
+    bundle = {
+        **_bundle(),
+        "max_attempts": 3,
+        "tasks": [{"task_id": "ASE2-007", "status": "todo"}],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
+        registered = coordinator.register_bundle(bundle, created_at_ms=1)
+        task_cid = registered["task_cid"]
+
+        for attempt in range(3):
+            grant = coordinator.claim(task_cid, f"did:web:lane-{attempt}.example")
+            coordinator.receipt(
+                grant,
+                status="cancelled",
+                failure_class="retryable",
+            )
+
+        blocked = coordinator.task_state(task_cid)
+        assert blocked["state"] == "blocked"
+        assert blocked["attempt"] == 3
+        assert blocked["release_reason"] == "receipt:cancelled:retryable"
+        assert (
+            coordinator.claim_ready(
+                "did:web:lane-retry.example",
+                eligible_task_cids=(task_cid,),
+            )
+            is None
+        )
+
+        assert coordinator.requeue_exhausted_blocked(
+            task_cid,
+            reason="bundle_board_reopened",
+        )
+        requeued = coordinator.task_state(task_cid)
+        assert requeued["state"] == "ready"
+        assert requeued["attempt"] == 0
+        assert requeued["release_reason"] == "requeued:bundle_board_reopened"
+
+        replacement = coordinator.claim(task_cid, "did:web:lane-retry.example")
+        assert replacement.attempt == 1
+        assert replacement.fencing_token > blocked["fencing_token"]
+
+
+def test_requeue_exhausted_failed_retryable_resets_attempt_budget(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        **_bundle(),
+        "max_attempts": 1,
+        "tasks": [{"task_id": "ASE2-007", "status": "todo"}],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
+        registered = coordinator.register_bundle(bundle, created_at_ms=1)
+        grant = coordinator.claim(registered["task_cid"], "did:web:lane-a.example")
+        coordinator.receipt(grant, status="failed", failure_class="retryable")
+        assert coordinator.task_state(registered["task_cid"])["state"] == "blocked"
+
+        assert coordinator.requeue_exhausted_blocked(
+            registered["task_cid"],
+            reason="bundle_board_reopened",
+        )
+        requeued = coordinator.task_state(registered["task_cid"])
+        assert requeued["state"] == "ready"
+        assert requeued["attempt"] == 0
+        assert requeued["release_reason"] == "requeued:bundle_board_reopened"
+
+
+def test_requeue_exhausted_abandoned_scheduler_stop_resets_attempt_budget(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        **_bundle(),
+        "max_attempts": 1,
+        "tasks": [{"task_id": "ASE2-007", "status": "todo"}],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
+        registered = coordinator.register_bundle(bundle, created_at_ms=1)
+        grant = coordinator.claim(registered["task_cid"], "did:web:lane-a.example")
+        # Simulate an abandoned mid-flight release that still burns the attempt.
+        coordinator.release(grant, reason="scheduler stopped")
+        state = coordinator.task_state(registered["task_cid"])
+        assert state["state"] == "blocked"
+        assert state["attempt"] == 1
+        assert state["release_reason"] == "scheduler stopped"
+
+        assert coordinator.requeue_exhausted_blocked(
+            registered["task_cid"],
+            reason="bundle_board_reopened",
+        )
+        requeued = coordinator.task_state(registered["task_cid"])
+        assert requeued["state"] == "ready"
+        assert requeued["attempt"] == 0
+        assert requeued["release_reason"] == "requeued:bundle_board_reopened"
+
+
 def test_changed_bundle_revision_cannot_overlap_its_active_execution_scope(
     tmp_path: Path,
 ) -> None:
