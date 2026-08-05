@@ -5286,6 +5286,43 @@ class DynamicBundleScheduler:
             return False
         return True
 
+    def _drain_disposition_completed_running_lanes(
+        self,
+        lanes_by_task_cid: Mapping[str, BundleLaneSpec],
+    ) -> list[str]:
+        """Stop wrappers whose authoritative board has fully completed.
+
+        Wave-0 left capacity-fenced residual lanes (ASE2-005/007) for hours after
+        soft-complete products drained the board: ``reconcile_once`` skips
+        disposition handling for entries still in ``_running``, so wrappers that
+        never self-exit keep accepted leases forever.  When disposition is
+        ``completed``, ask the wrapper to stop; the next reap settles the grant.
+        """
+
+        drained: list[str] = []
+        for task_cid, running in list(self._running.items()):
+            lane = lanes_by_task_cid.get(task_cid) or running.spec
+            try:
+                disposition = self._disposition(lane)
+            except Exception:  # noqa: BLE001 — never block reconcile on projection
+                continue
+            if disposition != "completed":
+                continue
+            try:
+                alive = bool(self._process_alive(running.handle))
+            except (OSError, RuntimeError):
+                alive = False
+            if not alive:
+                continue
+            logger.info(
+                "Draining completed bundle lane %s (task_cid=%s): board disposition=completed",
+                getattr(lane, "bundle_key", None) or getattr(lane, "state_prefix", ""),
+                task_cid,
+            )
+            self._terminate_handle(running.handle, grace_seconds=5.0)
+            drained.append(task_cid)
+        return drained
+
     def _reap(self, coordinator: LeaseCoordinator) -> list[str]:
         """Reap wrappers only after their fenced execution boundary exits.
 
@@ -5318,9 +5355,33 @@ class DynamicBundleScheduler:
             # The leased-lane wrapper normally publishes a receipt first. A
             # crashed wrapper does not, so explicitly release its still-current
             # grant only after wrapper exit makes reuse safe.
+            # Prefer a successful settle when the authoritative board already
+            # shows the slice completed (soft-complete / drained products).
+            lane = running.spec
+            board_completed = False
+            try:
+                board_completed = self._disposition(lane) == "completed"
+            except Exception:  # noqa: BLE001
+                board_completed = False
             try:
                 if coordinator.active_lease(task_cid) is not None:
-                    coordinator.release(running.grant, reason="worker drained or exited")
+                    if board_completed and terminal_status not in {"succeeded", "failed"}:
+                        try:
+                            self._settle_grant(
+                                coordinator,
+                                running.grant,
+                                disposition="completed",
+                            )
+                            terminal_status = "succeeded"
+                        except LeaseError:
+                            coordinator.release(
+                                running.grant,
+                                reason="worker drained board completed",
+                            )
+                    else:
+                        coordinator.release(
+                            running.grant, reason="worker drained or exited"
+                        )
             except LeaseError:
                 pass
             if running.resource_lease is not None:
@@ -5669,7 +5730,22 @@ class DynamicBundleScheduler:
                 # mutable discovery metadata; doing it first could overwrite
                 # the accepted predecessor's execution-slice payload when the
                 # newly planned slice happens to have the same canonical CID.
+                discovered_by_task_cid = {
+                    str(item.task_cid): item
+                    for item in discovered
+                    if str(getattr(item, "task_cid", "") or "")
+                }
+                # Also index live runners by their recorded lane identity when
+                # discovery no longer lists a drained bundle.
+                for task_cid, running in list(self._running.items()):
+                    discovered_by_task_cid.setdefault(task_cid, running.spec)
+                drained_completed = self._drain_disposition_completed_running_lanes(
+                    discovered_by_task_cid,
+                )
                 reaped = self._reap(coordinator)
+                if drained_completed:
+                    # Second reap pass picks up wrappers terminated above.
+                    reaped = list(dict.fromkeys([*reaped, *self._reap(coordinator)]))
                 reconciled = self._reconcile_untracked_terminal_leases(
                     coordinator,
                     discovered,
