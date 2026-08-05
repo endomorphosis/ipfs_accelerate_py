@@ -1712,6 +1712,65 @@ class LeaseCoordinator:
                 connection.rollback()
                 raise
 
+    @_coordinator_operation
+    def settle_soft_completed_pending_acceptance(
+        self,
+        task_cid: str,
+        *,
+        reason: str = "board_soft_completed",
+    ) -> bool:
+        """Terminalize deferred provider-review leases after soft board complete.
+
+        ``defer_pending_acceptance`` intentionally leaves work resumable until
+        dual-review admits the merge.  Wave-0 residual ASE2-008 stayed forever
+        in ``deferred:pending_acceptance:provider_review`` even after products
+        landed and the operational board soft-completed every member — there was
+        no path to park coordination without inventing an authoritative review.
+
+        This settlement is deliberately non-authoritative: it marks the lease
+        completed so dependency/capacity projections stop thrashing, without
+        claiming dual-review acceptance.
+        """
+
+        normalized_reason = str(reason or "board_soft_completed").strip().replace(" ", "_")
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                resolved_task_cid = self._resolve_task_cid(connection, task_cid)
+                if resolved_task_cid is None:
+                    connection.commit()
+                    return False
+                row = connection.execute(
+                    """SELECT state, release_reason FROM leases WHERE task_cid=?""",
+                    (resolved_task_cid,),
+                ).fetchone()
+                if row is None:
+                    connection.commit()
+                    return False
+                release_reason = str(row["release_reason"] or "")
+                if (
+                    str(row["state"] or "") not in {"released", "expired"}
+                    or not release_reason.startswith("deferred:pending_acceptance:")
+                ):
+                    connection.commit()
+                    return False
+                connection.execute(
+                    """UPDATE leases
+                       SET state='completed', retry_not_before_ms=0,
+                           release_reason=?
+                       WHERE task_cid=?""",
+                    (
+                        f"settled:soft_complete_pending_review:{normalized_reason}"[:256],
+                        resolved_task_cid,
+                    ),
+                )
+                connection.commit()
+                return True
+            except Exception:
+                connection.rollback()
+                raise
+
     @staticmethod
     def _resolve_task_cid(connection: _DuckConnection, task_cid: str) -> str | None:
         row = connection.execute(

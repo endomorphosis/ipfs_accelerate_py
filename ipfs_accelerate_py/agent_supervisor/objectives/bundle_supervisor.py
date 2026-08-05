@@ -5085,6 +5085,72 @@ class DynamicBundleScheduler:
             for task in selected
         )
 
+    def _settle_pending_acceptance_for_completed_board(
+        self,
+        coordinator: LeaseCoordinator,
+        *,
+        registered: Sequence[BundleLaneSpec],
+    ) -> list[str]:
+        """Settle deferred dual-review leases once operational boards complete.
+
+        When discovery is empty (full soft-complete wave) residual
+        ``deferred:pending_acceptance:provider_review`` rows never pass through
+        the per-lane disposition path.  Scan coordination + completed board
+        members so ASE2-008-class residual fences clear without inventing
+        authoritative dual-review evidence.
+        """
+
+        settled: list[str] = []
+        completed_task_ids: set[str] = set()
+        # From live registered lanes' boards.
+        for lane in registered:
+            try:
+                if self._disposition(lane) == "completed":
+                    for task_id in lane.task_ids or ():
+                        completed_task_ids.add(str(task_id))
+            except Exception:  # noqa: BLE001
+                continue
+        # From eligible-index soft-complete snapshot when discovery is empty.
+        try:
+            index_path = Path(self.bundle_index_path)
+            if index_path.is_file():
+                payload = json.loads(index_path.read_text(encoding="utf-8"))
+                if isinstance(payload, Mapping):
+                    for task_id in payload.get("completed_task_ids") or ():
+                        completed_task_ids.add(str(task_id))
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+        if not completed_task_ids:
+            return settled
+        try:
+            projections = coordinator.list_tasks(include_claimability=False)
+        except Exception:  # noqa: BLE001
+            return settled
+        for item in projections:
+            if not isinstance(item, Mapping):
+                continue
+            release_reason = str(item.get("release_reason") or "")
+            if not release_reason.startswith("deferred:pending_acceptance:"):
+                continue
+            task_id = str(item.get("task_id") or "")
+            task_cid = str(item.get("task_cid") or "")
+            if not task_cid or task_id not in completed_task_ids:
+                continue
+            try:
+                if coordinator.settle_soft_completed_pending_acceptance(
+                    task_cid,
+                    reason="eligible_board_completed",
+                ):
+                    settled.append(task_cid)
+                    logger.info(
+                        "Settled soft-complete pending-acceptance lease for %s (%s)",
+                        task_id,
+                        task_cid,
+                    )
+            except Exception:  # noqa: BLE001
+                continue
+        return settled
+
     @staticmethod
     def _receipt_backed_attempt_limit_disposition(
         lane: BundleLaneSpec,
@@ -5813,6 +5879,18 @@ class DynamicBundleScheduler:
                         continue
                     disposition = self._disposition(lane)
                     if disposition:
+                        if disposition == "completed":
+                            # Soft-complete boards leave deferred dual-review
+                            # leases parked forever; settle them non-
+                            # authoritatively so residual capacity projections
+                            # and claim thrash stop (ASE2-008).
+                            try:
+                                coordinator.settle_soft_completed_pending_acceptance(
+                                    lane.task_cid,
+                                    reason="bundle_board_completed",
+                                )
+                            except Exception:  # noqa: BLE001 — never block reconcile
+                                pass
                         if (
                             disposition == "completed"
                             and lane.task_cid
@@ -5837,6 +5915,13 @@ class DynamicBundleScheduler:
                             lane.task_cid,
                             reason="bundle_board_reopened",
                         )
+                # Eligible-index may be empty after a full soft-complete wave,
+                # so also settle deferred pending-acceptance leases for any
+                # task whose board status is already completed.
+                self._settle_pending_acceptance_for_completed_board(
+                    coordinator,
+                    registered=registered,
+                )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),

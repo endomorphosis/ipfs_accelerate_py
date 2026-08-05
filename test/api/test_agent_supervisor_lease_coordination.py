@@ -721,6 +721,49 @@ def test_requeue_exhausted_abandoned_scheduler_stop_resets_attempt_budget(
         assert requeued["release_reason"] == "requeued:bundle_board_reopened"
 
 
+def test_settle_soft_completed_pending_acceptance_is_non_authoritative(
+    tmp_path: Path,
+) -> None:
+    """ASE2-008 residual fence: deferred dual-review after soft board complete."""
+
+    bundle = {
+        **_bundle(),
+        "tasks": [{"task_id": "ASE2-008", "status": "todo"}],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
+        registered = coordinator.register_bundle(bundle, created_at_ms=1)
+        grant = coordinator.claim(registered["task_cid"], "did:web:lane-a.example")
+        # Production residual shape after dual-review deferral.
+        coordinator.release(
+            grant,
+            reason="deferred:pending_acceptance:provider_review",
+        )
+        pending = coordinator.task_state(registered["task_cid"])
+        assert pending["state"] in {"ready", "blocked"} or pending["lease_state"] == "released"
+        assert str(pending.get("release_reason") or "").startswith(
+            "deferred:pending_acceptance:"
+        )
+
+        assert coordinator.settle_soft_completed_pending_acceptance(
+            registered["task_cid"],
+            reason="board_soft_completed",
+        )
+        settled = coordinator.task_state(registered["task_cid"])
+        assert settled["state"] == "completed"
+        assert str(settled["release_reason"]).startswith(
+            "settled:soft_complete_pending_review:"
+        )
+        # Idempotent: already settled.
+        assert (
+            coordinator.settle_soft_completed_pending_acceptance(
+                registered["task_cid"],
+                reason="again",
+            )
+            is False
+        )
+
+
 def test_changed_bundle_revision_cannot_overlap_its_active_execution_scope(
     tmp_path: Path,
 ) -> None:
