@@ -17,11 +17,12 @@ from typing import Any, Mapping
 
 from .catalog import ActionCatalog, ActionDescriptor
 from .contracts import RiskClass, SideEffectClass, content_digest
+from .surface_exposure import SURFACE_EXPOSURE_CLASS, VOICE_CLIENT_SURFACE_ACTIONS
 
 CATALOG_ID: str = "211ai-pilot-v1"
-CATALOG_VERSION: str = "1"
+CATALOG_VERSION: str = "1.1"
 CATALOG_SCHEMA: str = "voice-action/catalog@1"
-POLICY_REVISION: str = "pilot-v1"
+POLICY_REVISION: str = "pilot-v1.1-surface-coverage"
 
 # Stable pilot logical actions (board namespace voice-action-dag-abby-v1).
 PILOT_LOGICAL_ACTIONS: tuple[str, ...] = (
@@ -110,6 +111,9 @@ def pilot_descriptors() -> tuple[ActionDescriptor, ...]:
                 family="app_surface",
                 auth_required="false",
                 confirmation_mode="explicit",
+                # Authority plane enforces exposure classes; content never embeds allowlists.
+                surface_gate="voice_navigable_or_voice_actionable",
+                surface_arg="surface_id",
             ),
         ),
         ActionDescriptor(
@@ -125,6 +129,8 @@ def pilot_descriptors() -> tuple[ActionDescriptor, ...]:
                 family="wallet_documents",
                 auth_required="false",
                 confirmation_mode="explicit",
+                surface_gate="voice_actionable_uploads",
+                default_surface_id="uploads",
             ),
         ),
         ActionDescriptor(
@@ -341,6 +347,32 @@ def catalog_digest(descriptors: tuple[ActionDescriptor, ...] | None = None) -> s
     )
 
 
+def export_surface_action_matrix() -> dict[str, Any]:
+    """Export surface → exposure_class → logical actions (content-safe)."""
+
+    surfaces: list[dict[str, Any]] = []
+    for surface_id in sorted(SURFACE_EXPOSURE_CLASS):
+        klass = SURFACE_EXPOSURE_CLASS[surface_id]
+        actions = list(VOICE_CLIENT_SURFACE_ACTIONS.get(surface_id, ()))
+        surfaces.append(
+            {
+                "surface_id": surface_id,
+                "exposure_class": klass,
+                "logical_actions": actions,
+                "client_voice_open": klass in {"voice_navigable", "voice_actionable"},
+            }
+        )
+    payload = {
+        "schema": "voice-action/surface-action-matrix@1",
+        "catalog_id": CATALOG_ID,
+        "catalog_version": CATALOG_VERSION,
+        "policy_revision": POLICY_REVISION,
+        "surfaces": surfaces,
+    }
+    assert_no_executable_locators(payload)
+    return payload
+
+
 def export_pilot_catalog_dict(
     descriptors: tuple[ActionDescriptor, ...] | None = None,
     *,
@@ -359,6 +391,7 @@ def export_pilot_catalog_dict(
         "logical_actions": sorted(d.logical_action for d in rows),
         "policy_revision": POLICY_REVISION,
         "schema": CATALOG_SCHEMA,
+        "surface_action_matrix": export_surface_action_matrix(),
         "version": CATALOG_VERSION,
     }
     if include_digests:
@@ -474,6 +507,7 @@ def write_pilot_catalog_json(
 __all__ = [
     "CATALOG_ID",
     "CATALOG_SCHEMA",
+    "export_surface_action_matrix",
     "CATALOG_VERSION",
     "FORBIDDEN_LOCATOR_KEYS",
     "PILOT_LOGICAL_ACTIONS",
