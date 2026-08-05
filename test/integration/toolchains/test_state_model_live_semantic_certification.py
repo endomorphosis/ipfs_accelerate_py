@@ -812,6 +812,82 @@ def test_live_certificate_writer_does_not_demote_valid_production_evidence(
     assert target.read_bytes() == before
 
 
+def test_live_certificate_writer_preserves_production_on_successful_rerun(
+    state_model_cert,
+    tmp_path: Path,
+) -> None:
+    """Successful live re-runs must not churn sealed production digests.
+
+    TLC/Apalache stdout embeds wall-clock/temp paths, so output digests differ
+    across runs. Rewriting the durable certificate on every validation pass
+    leaves a dirty tree and fails candidate stabilization (returncode 78).
+    """
+
+    target = tmp_path / "state-model-sealed-certificate.json"
+    sealed = {
+        "interface": LIVE_INTERFACE,
+        "production_certified": True,
+        "live_execution": True,
+        "live_semantic_corpus_passed": True,
+        "tlc_usable": True,
+        "apalache_usable": True,
+        "java_usable": True,
+        "block_reasons": [],
+        "cases": [
+            {
+                "case_id": "tlc.invariant_holds",
+                "output_digest": "a" * 64,
+                "status": "passed",
+            }
+        ],
+    }
+    state_model_cert.write_live_certificate(
+        sealed,
+        repo_root=REPO_ROOT,
+        path=target,
+        force=True,
+    )
+    before = target.read_bytes()
+
+    # Fresh successful production receipt with different case digests.
+    rerun = {
+        "interface": LIVE_INTERFACE,
+        "production_certified": True,
+        "live_execution": True,
+        "live_semantic_corpus_passed": True,
+        "tlc_usable": True,
+        "apalache_usable": True,
+        "java_usable": True,
+        "block_reasons": [],
+        "cases": [
+            {
+                "case_id": "tlc.invariant_holds",
+                "output_digest": "b" * 64,
+                "status": "passed",
+            }
+        ],
+    }
+    preserved = state_model_cert.write_live_certificate(
+        rerun,
+        repo_root=REPO_ROOT,
+        path=target,
+        force=False,
+    )
+    assert preserved == target
+    assert target.read_bytes() == before
+
+    forced = state_model_cert.write_live_certificate(
+        rerun,
+        repo_root=REPO_ROOT,
+        path=target,
+        force=True,
+    )
+    assert forced == target
+    assert target.read_bytes() != before
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["cases"][0]["output_digest"] == "b" * 64
+
+
 def test_live_certificate_cases_bind_digests(
     live_certificate: dict[str, Any],
 ) -> None:
