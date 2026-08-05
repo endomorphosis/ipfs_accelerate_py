@@ -1,11 +1,14 @@
 # IPFS Accelerate documentation refresh and architecture guide plan
 
-**Status:** active execution plan
+**Status:** completed (sealed 28-task tranche closed)
 **Baseline:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` (2026-08-03)
+**Closeout tip revalidated:** `6c564578af0b0361741483e80ebcaf405efa1064` (2026-08-05)
 **Program:** `ipfs-accelerate-documentation-refresh-v1`
 **Task prefix:** `DOC-`
 **Objective heap:** [documentation_refresh.objectives.md](documentation_refresh.objectives.md)
 **Executable board:** [documentation_refresh.todo.md](documentation_refresh.todo.md)
+**Authoritative board status:** all `DOC-001`–`DOC-028` tasks marked completed
+**Integrated receipt:** [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](../development/DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md)
 
 ## Outcome
 
