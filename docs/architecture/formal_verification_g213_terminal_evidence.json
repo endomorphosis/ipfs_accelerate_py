@@ -1,72 +1,16 @@
 {
+  "task_id": "FVT-066",
+  "goal_id": "FVT-G213",
   "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
   "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
-  "event_chain": {
-    "errors": [],
-    "event_count": 1,
-    "last_event_id": "sha256:4cf413714d534a035dd4ba7a3400c17903f4f4c77951f27fcbd4c53744a44711",
-    "last_sequence": 1,
-    "valid": true
-  },
-  "events": [
-    {
-      "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
-      "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
-      "completion_receipts": [
-        {
-          "assumed_completed": false,
-          "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
-          "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
-          "completion_basis": "validated_and_merged",
-          "goal_id": "FVT-G213",
-          "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-          "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
-          "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
-          "status": "succeeded",
-          "task_id": "FVT-066"
-        }
-      ],
-      "event_id": "sha256:4cf413714d534a035dd4ba7a3400c17903f4f4c77951f27fcbd4c53744a44711",
-      "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-      "merge": {
-        "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-        "integration_commit_proof": {
-          "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-          "implementation_tree": "7ce69aa281e73a98659348a3f5de48afbd2f0575",
-          "integration_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
-          "merge_tree": "eea24be92d8565feb547c8609d0aa2e052871680",
-          "passed": true,
-          "target_branch": "origin/main"
-        },
-        "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
-        "merged": true,
-        "target_branch": "origin/main"
-      },
-      "previous_event_id": "",
-      "sequence": 1,
-      "snapshot_id": "event-log-snapshot:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "stream_id": "event-log:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "task_id": "FVT-066",
-      "timestamp": "2026-08-04T23:09:21Z",
-      "type": "implementation_finished",
-      "validation": {
-        "attempted": true,
-        "passed": true,
-        "returncode": 0,
-        "target_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683"
-      }
-    }
-  ],
-  "goal_id": "FVT-G213",
-  "source": {
-    "binding_mode": "content_addressed_terminal_snapshot_against_origin_main",
-    "execution_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/formal-verification-tactician-toolchain-release-candidate/executions/12c7cbd14b1209503e27de73f426f948b74dab24cf0b0bd724e865bebd473847",
-    "kind": "durable_supervisor_execution_plus_published_origin_main",
-    "live_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq"
-  },
-  "task_id": "FVT-066",
   "task_state": {
-    "assumed_completed_count": 10,
+    "canonical_identity": {
+      "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
+      "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41"
+    },
+    "completed_task_ids": [
+      "FVT-066"
+    ],
     "assumed_completed_task_ids": [
       "FVT-054",
       "FVT-055",
@@ -79,12 +23,72 @@
       "FVT-063",
       "FVT-065"
     ],
-    "canonical_identity": {
+    "assumed_completed_count": 10
+  },
+  "event_chain": {
+    "valid": true,
+    "event_count": 1,
+    "last_sequence": 1,
+    "last_event_id": "sha256:1429684bc714c5c4d4c0a382cdff60e7bc12150606930cc13403035005d4a935",
+    "errors": []
+  },
+  "events": [
+    {
+      "type": "implementation_finished",
+      "timestamp": "2026-08-05T00:15:14Z",
+      "task_id": "FVT-066",
       "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
-      "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41"
-    },
-    "completed_task_ids": [
-      "FVT-066"
-    ]
+      "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
+      "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+      "validation": {
+        "attempted": true,
+        "passed": true,
+        "returncode": 0,
+        "target_commit": "b812c86d49b006e6106111e5bba6e17396c65130"
+      },
+      "merge": {
+        "merged": true,
+        "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+        "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+        "target_branch": "origin/main",
+        "integration_commit_proof": {
+          "passed": true,
+          "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+          "implementation_tree": "2b7ffb7fb74b9e89c4bbeffe5c4e544cb9e0c775",
+          "integration_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+          "merge_tree": "2b7ffb7fb74b9e89c4bbeffe5c4e544cb9e0c775",
+          "target_branch": "origin/main"
+        }
+      },
+      "completion_receipts": [
+        {
+          "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+          "status": "succeeded",
+          "task_id": "FVT-066",
+          "goal_id": "FVT-G213",
+          "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
+          "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
+          "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+          "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+          "assumed_completed": false,
+          "completion_basis": "validated_and_merged"
+        }
+      ],
+      "stream_id": "event-log:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "snapshot_id": "event-log-snapshot:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sequence": 1,
+      "previous_event_id": "",
+      "event_id": "sha256:1429684bc714c5c4d4c0a382cdff60e7bc12150606930cc13403035005d4a935"
+    }
+  ],
+  "source": {
+    "kind": "durable_supervisor_execution_plus_published_origin_main",
+    "binding_mode": "content_addressed_terminal_snapshot_against_origin_main",
+    "live_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
+    "execution_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/formal-verification-tactician-toolchain-release-candidate/executions/12c7cbd14b1209503e27de73f426f948b74dab24cf0b0bd724e865bebd473847",
+    "rebase_note": "Rebased terminal merge binding to origin/main after PR #111 RC digest rebind so release_candidate merge blob matches published tree.",
+    "previous_merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+    "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+    "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b"
   }
 }

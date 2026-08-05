@@ -6,7 +6,7 @@
   "goal_id": "FVT-G214",
   "task_id": "FVT-067",
   "program": "formal-verification-tactician/toolchain-release-finalizer",
-  "observed_at": "2026-08-04T23:54:24Z",
+  "observed_at": "2026-08-05T00:15:14Z",
   "binding_mode": "post_merge_external_content_addressed_attestation",
   "publication_mode": "external_content_addressed",
   "status": "role_aware_deployment_blocked",
@@ -14,17 +14,18 @@
   "description": "Fail-closed post-merge deployment attestation (FVT-G214). Binds the FVT-G213 release candidate, its durable terminal supervisor completion receipt, and publishes either an external content-addressed attestation or a receipt commit with a strictly limited generated-artifact diff. Never attests the current task's future event and never claims deployment-ready without terminal evidence.",
   "source": {
     "model": "two_phase_source_then_attestation_publication/v1",
-    "certified_source_commit": "2851b137890fa5214998c65f9aa4e461dc864d81",
-    "certified_source_tree": "6c32bfe5d777509dc7b4d4601c8c61d1241296fc",
+    "certified_source_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+    "certified_source_tree": "2b7ffb7fb74b9e89c4bbeffe5c4e544cb9e0c775",
     "datasets_gitlink": "4d20019a7289aed53e85d7b1f5718afd092190bf",
     "datasets_embedded_head": "4d20019a7289aed53e85d7b1f5718afd092190bf",
     "source_commit_bound": true,
     "source_candidate_clean": false,
     "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_role_aware_release_candidate.json",
-      "docs/architecture/formal_verification_toolchain_certificate.json"
+      "docs/architecture/formal_verification_g213_terminal_evidence.json"
     ],
-    "non_attestation_dirty_paths": [],
+    "non_attestation_dirty_paths": [
+      "docs/architecture/formal_verification_g213_terminal_evidence.json"
+    ],
     "attestation_paths": [
       "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
       "docs/architecture/formal_verification_role_aware_release_candidate.json",
@@ -34,7 +35,7 @@
     "attestation_excluded_from_source_tree": true,
     "publication_verification_required": true,
     "publication_rule": "Publish the generated attestation in a descendant commit whose certified-source ancestor is this commit and whose attestation diff is restricted to declared generated receipt/certificate paths.",
-    "valid_for_attestation": true,
+    "valid_for_attestation": false,
     "tree_alignment": {
       "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
       "dimensions": [
@@ -47,9 +48,9 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "2851b137890fa5214998c65f9aa4e461dc864d81",
-        "tree": "6c32bfe5d777509dc7b4d4601c8c61d1241296fc",
-        "origin_main": "2851b137890fa5214998c65f9aa4e461dc864d81",
+        "commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+        "tree": "2b7ffb7fb74b9e89c4bbeffe5c4e544cb9e0c775",
+        "origin_main": "31fe0174065ad4adfde10d6120a049f580549c9b",
         "clean": false,
         "matches_origin_main": true
       },
@@ -86,7 +87,7 @@
     "task_id": "FVT-066",
     "schema_version": "formal-verification-role-aware-release-candidate/v1",
     "checked_candidate_identity": "sha256:a3d38f3e7028cc423aa48461be4d147f71104eb9bffc85340542d88b40129fd5",
-    "live_candidate_identity": "sha256:25dc96114d5598bed7811e462f60db9c6a0ea1be4f82dd8fd56d5139dddcd346",
+    "live_candidate_identity": "sha256:10fcadd03a2b2a54bec984700dd5eab168c3ffe8d25afaf995eb4896ff98ea11",
     "checked_identity_valid": true,
     "matches_live_recompute": false,
     "digest_material_verification": {
@@ -142,7 +143,7 @@
     },
     "file_sha256": "sha256:64b9943cef259bb497268c0e4d803e454c82c5e807f2aac5e946454c1e338610",
     "live": {
-      "candidate_identity": "sha256:25dc96114d5598bed7811e462f60db9c6a0ea1be4f82dd8fd56d5139dddcd346",
+      "candidate_identity": "sha256:10fcadd03a2b2a54bec984700dd5eab168c3ffe8d25afaf995eb4896ff98ea11",
       "status": "role_aware_release_candidate_blocked",
       "readiness_stage": "blocked",
       "blockers": [
@@ -390,14 +391,12 @@
       }
     },
     "terminal_merge_blob_binding": {
-      "bound": false,
+      "bound": true,
       "terminal_evidence_bound": true,
-      "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+      "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
       "current_blob": "a3d4536874883b2c47b9f00bc435ca6162ed5fb2",
-      "merged_blob": "a5528662ba214e220dba020fd7fae771b1343421",
-      "failures": [
-        "release_candidate_terminal_merge_blob_mismatch"
-      ],
+      "merged_blob": "a3d4536874883b2c47b9f00bc435ca6162ed5fb2",
+      "failures": [],
       "binding_rule": "The candidate file bytes must equal the blob published by the verified FVT-066 terminal merge commit."
     }
   },
@@ -415,7 +414,7 @@
         "valid": true,
         "event_count": 1,
         "last_sequence": 1,
-        "last_event_id": "sha256:4cf413714d534a035dd4ba7a3400c17903f4f4c77951f27fcbd4c53744a44711",
+        "last_event_id": "sha256:1429684bc714c5c4d4c0a382cdff60e7bc12150606930cc13403035005d4a935",
         "errors": []
       },
       "expected_outputs": {
@@ -433,21 +432,21 @@
         "attempted": true,
         "passed": true,
         "returncode": 0,
-        "target_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683"
+        "target_commit": "b812c86d49b006e6106111e5bba6e17396c65130"
       },
       "merge": {
         "bound": true,
         "merged": true,
-        "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-        "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+        "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+        "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
         "target_branch": "origin/main"
       },
       "commit_binding": {
         "valid": true,
-        "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-        "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
-        "implementation_tree": "7ce69aa281e73a98659348a3f5de48afbd2f0575",
-        "merge_tree": "eea24be92d8565feb547c8609d0aa2e052871680",
+        "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+        "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+        "implementation_tree": "2b7ffb7fb74b9e89c4bbeffe5c4e544cb9e0c775",
+        "merge_tree": "2b7ffb7fb74b9e89c4bbeffe5c4e544cb9e0c775",
         "implementation_commit_exists": true,
         "merge_commit_exists": true,
         "implementation_is_ancestor": true,
@@ -471,22 +470,22 @@
       "assumed_completion_rejected": false,
       "claims_current_task_future_event": false,
       "block_reasons": [],
-      "snapshot_digest_sha256": "sha256:359174b3670bb2278148cc0b7b6ba3ca94a2bd2ad1db7eaee3a2ac28d0b4cb60",
+      "snapshot_digest_sha256": "sha256:849b262cc93e5c452d662fa740276c42873ced81c450bdbd068a77d157cdd250",
       "assumed_completion_count": 10,
       "target_assumed_completion_references": [],
       "member_completion_receipt_count": 1,
       "member_completion_receipts": [
         {
-          "assumed_completed": false,
-          "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
-          "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
-          "completion_basis": "validated_and_merged",
-          "goal_id": "FVT-G213",
-          "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
-          "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
           "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
           "status": "succeeded",
-          "task_id": "FVT-066"
+          "task_id": "FVT-066",
+          "goal_id": "FVT-G213",
+          "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
+          "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
+          "implementation_commit": "b812c86d49b006e6106111e5bba6e17396c65130",
+          "merge_commit": "31fe0174065ad4adfde10d6120a049f580549c9b",
+          "assumed_completed": false,
+          "completion_basis": "validated_and_merged"
         }
       ]
     },
@@ -517,7 +516,7 @@
     "release_candidate_bound": true,
     "candidate_digest_bound": true,
     "candidate_digest_material_bound": true,
-    "release_candidate_merge_blob_bound": false,
+    "release_candidate_merge_blob_bound": true,
     "g213_terminal_receipt_bound": true,
     "event_chain_continuous": true,
     "g213_expected_outputs_bound": true,
@@ -547,7 +546,7 @@
     "release_candidate_bound": true,
     "candidate_digest_bound": true,
     "candidate_digest_material_bound": true,
-    "release_candidate_merge_blob_bound": false,
+    "release_candidate_merge_blob_bound": true,
     "g213_terminal_receipt_bound": true,
     "event_chain_continuous": true,
     "g213_expected_outputs_bound": true,
@@ -627,8 +626,6 @@
     "managed:vampire:semantic_evidence_below_authority_ceiling",
     "managed:vampire:semantic_receipt_not_bound",
     "managed:vampire:supported_managed_installation_missing_or_shim_only",
-    "release_candidate_merge_blob_bound",
-    "release_candidate_terminal_merge_blob_mismatch",
     "supported_capability_closure"
   ],
   "hard_zero_gates": {
@@ -1502,7 +1499,7 @@
     "post_merge_test": {
       "path": "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
       "present": true,
-      "content_identity": "sha256:0a5d64bcd362a54c2168b237c34d50d9d6155b5c6e43bdca631ae47373d23f6b"
+      "content_identity": "sha256:dfe85c99c2cedf00036fe77f211ea26c9004ca95c8022d98dbca5561ed3caa8c"
     },
     "release_candidate": {
       "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
@@ -1528,7 +1525,7 @@
     }
   },
   "claims": {
-    "merge": false,
+    "merge": true,
     "deployment": false,
     "post_merge_attestation": false,
     "self_referential_current_tree": false,
@@ -1812,5 +1809,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:510beb151a597687d3948b0fe71c80c885ada3d81963fdc6e53b35b67a3d9561"
+  "receipt_identity": "sha256:aef59b3ba08f59ac2b5d211d71a40ef6c800853a25392583b9a7029dcfe24769"
 }
