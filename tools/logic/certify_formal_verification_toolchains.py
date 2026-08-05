@@ -650,8 +650,48 @@ def repo_root_from(start: Path | None = None) -> Path:
     return Path.cwd().resolve()
 
 
+def managed_theorem_prover_root(
+    env: Mapping[str, str] | None = None,
+) -> Path | None:
+    """Resolve the user-local managed theorem-prover install root when present."""
+
+    source = env if env is not None else os.environ
+    for key in (
+        "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+        "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT",
+        "FORMAL_VERIFICATION_RUNTIME_MTL_INSTALL_ROOT",
+    ):
+        raw = str(source.get(key) or "").strip()
+        if raw:
+            candidate = Path(raw).expanduser()
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                continue
+            if resolved.is_dir():
+                return resolved
+    try:
+        from ipfs_datasets_py.logic.backends.installers.registry import (
+            DEFAULT_USER_LOCAL_INSTALL_ROOT,
+        )
+    except Exception:  # noqa: BLE001 — optional import for offline hosts
+        DEFAULT_USER_LOCAL_INSTALL_ROOT = (
+            "~/.local/share/ipfs_datasets_py/theorem-provers"
+        )
+    default = Path(DEFAULT_USER_LOCAL_INSTALL_ROOT).expanduser()
+    try:
+        resolved = default.resolve()
+    except OSError:
+        return None
+    return resolved if resolved.is_dir() else None
+
+
 def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Build an environment that blocks opportunistic installs and fetches."""
+    """Build an environment that blocks opportunistic installs and fetches.
+
+    Prepends the managed theorem-prover ``bin/`` directory when present so
+    package-local installs are visible without ambient host PATH pollution.
+    """
 
     env = dict(base if base is not None else os.environ)
     env["PYTHONNOUSERSITE"] = "1"
@@ -669,6 +709,57 @@ def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     env["FORMAL_VERIFICATION_CERTIFY_OFFLINE"] = "1"
     env["FORMAL_VERIFICATION_FORBID_INSTALL"] = "1"
     env["FORMAL_VERIFICATION_FORBID_NETWORK"] = "1"
+    managed_roots: list[Path] = []
+    primary = managed_theorem_prover_root(env)
+    if primary is not None:
+        managed_roots.append(primary)
+    # Also surface the default user-local root when certification runs against
+    # a sealed root that does not carry every support tool (e.g. Temurin).
+    try:
+        from ipfs_datasets_py.logic.backends.installers.registry import (
+            DEFAULT_USER_LOCAL_INSTALL_ROOT,
+        )
+    except Exception:  # noqa: BLE001
+        DEFAULT_USER_LOCAL_INSTALL_ROOT = (
+            "~/.local/share/ipfs_datasets_py/theorem-provers"
+        )
+    user_local = Path(DEFAULT_USER_LOCAL_INSTALL_ROOT).expanduser()
+    try:
+        user_local_resolved = user_local.resolve()
+    except OSError:
+        user_local_resolved = None
+    if (
+        user_local_resolved is not None
+        and user_local_resolved.is_dir()
+        and user_local_resolved not in managed_roots
+    ):
+        managed_roots.append(user_local_resolved)
+
+    prefixes: list[str] = []
+    for managed_root in managed_roots:
+        managed_bin = managed_root / "bin"
+        if managed_bin.is_dir():
+            prefixes.append(str(managed_bin))
+        # Prefer managed Temurin over ambient host java when present.
+        for temurin_java in sorted(
+            managed_root.glob("advisors/temurin-jdk/*/jdk/bin")
+        ):
+            if temurin_java.is_dir():
+                prefixes.append(str(temurin_java.resolve()))
+                break
+    if prefixes:
+        existing_path = str(env.get("PATH") or "")
+        path_parts = [
+            part
+            for part in existing_path.split(os.pathsep)
+            if part and part not in prefixes
+        ]
+        env["PATH"] = os.pathsep.join([*prefixes, *path_parts])
+    if primary is not None:
+        env.setdefault(
+            "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+            str(primary),
+        )
     return env
 
 
@@ -2560,6 +2651,8 @@ def tool_platform_support(
 
     globally_supported = host_platform in set(global_supported_platforms)
     contract = entry.get("deployment_contract") or {}
+    if not isinstance(contract, Mapping):
+        contract = {}
     contract_platforms = [
         str(item) for item in (contract.get("supported_platforms") or [])
     ]
@@ -2574,7 +2667,24 @@ def tool_platform_support(
     contract_platforms = [item for item in contract_platforms if item]
     pin_platforms = [item for item in pin_platforms if item]
     declared = sorted(set(contract_platforms) | set(pin_platforms))
-    if not managed:
+    # Explicit per-host platform exceptions (e.g. external SecPAL) override
+    # generic pin platforms such as ``any``.
+    platform_exceptions = contract.get("platform_exceptions") or {}
+    if not isinstance(platform_exceptions, Mapping):
+        platform_exceptions = {}
+    host_exception = platform_exceptions.get(host_platform)
+    if managed and isinstance(host_exception, Mapping):
+        status = str(
+            host_exception.get("classification") or "unsupported_here"
+        )
+        if status not in {
+            "supported_here",
+            "unsupported_here",
+            "ambiguous",
+        }:
+            status = "unsupported_here"
+        basis = "deployment_contract.platform_exceptions"
+    elif not managed:
         status = "supported_here" if globally_supported else "ambiguous"
         basis = "global_platform_policy"
     else:
@@ -3303,8 +3413,46 @@ def probe_tool_identity(
         result["installed"] = True
         return result
 
-    if completed.returncode != 0:
-        result["probe_error"] = f"identity_probe_nonzero:{completed.returncode}"
+    accepted_returncodes = {
+        int(value) for value in probe.get("accepted_returncodes") or (0,)
+    }
+    required_markers = tuple(
+        str(value) for value in probe.get("required_markers") or ()
+    )
+    cleaned_banner = _ANSI_ESCAPE_RE.sub("", combined)
+    markers_ok = (not required_markers) or all(
+        marker in cleaned_banner for marker in required_markers
+    )
+    if completed.returncode not in accepted_returncodes or not markers_ok:
+        result["probe_error"] = (
+            f"identity_probe_nonzero:{completed.returncode}"
+            if completed.returncode not in accepted_returncodes
+            else "identity_probe_required_markers_missing"
+        )
+        return result
+
+    locked_pin = _pin_version(entry)
+    # Git-commit pins (HyperLTL family) may only appear in the managed path
+    # while the product banner reports a different marketing version.
+    if (
+        locked_pin
+        and re.fullmatch(r"[0-9a-f]{7,40}", locked_pin)
+        and (
+            probe.get("identity_from_path_pin") is True
+            or locked_pin in str(executable)
+        )
+    ):
+        result["version_string"] = (
+            first_nonempty_line(completed.stdout)
+            or first_nonempty_line(completed.stderr)
+            or f"{tool_id} {locked_pin}"
+        )
+        if locked_pin not in (result["version_string"] or ""):
+            result["version_string"] = (
+                f"{result['version_string']} ({locked_pin})"
+            )
+        result["identity_probed"] = True
+        result["installed"] = True
         return result
 
     if tool_id == "apalache":

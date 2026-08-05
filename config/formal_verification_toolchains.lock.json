@@ -1469,12 +1469,20 @@
       ],
       "gap_id": null,
       "offline_probe": {
-        "method": "bounded_version_argv",
+        "method": "bounded_usage_identity",
         "argv": [
-          "--version"
+          "-h"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1,
+          2
+        ],
+        "required_markers": [
+          "formula"
+        ]
       },
       "network_during_verification": false,
       "install_during_verification": false,
@@ -1555,7 +1563,12 @@
           "--version"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1
+        ],
+        "identity_from_path_pin": true
       },
       "network_during_verification": false,
       "install_during_verification": false,
@@ -1640,12 +1653,19 @@
       ],
       "gap_id": null,
       "offline_probe": {
-        "method": "bounded_version_argv",
+        "method": "bounded_usage_identity",
         "argv": [
-          "--version"
+          "-h"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1
+        ],
+        "required_markers": [
+          "Usage"
+        ]
       },
       "network_during_verification": false,
       "install_during_verification": false,
