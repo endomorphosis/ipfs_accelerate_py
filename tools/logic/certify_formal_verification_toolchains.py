@@ -111,12 +111,20 @@ RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
 
 # Production-semantic elevation fan-in (FVT-G213 / FVT-081). The certificate
 # records the durable evidence hooks; the receipt builder performs the
-# independent reconstruction and release-candidate fan-in.
+# independent PNMR reconstruction and release-candidate fan-in. Path evidence
+# for the objective scan is the integration test plus the compact checked-in
+# receipt below — never a self-referential merge or deployment claim.
 PRODUCTION_ELEVATION_FANIN_INTERFACE: Final = (
     "ProductionSemanticElevationFanIn@1"
 )
 PRODUCTION_ELEVATION_FANIN_GOAL_ID: Final = "FVT-G213"
 PRODUCTION_ELEVATION_FANIN_TASK_ID: Final = "FVT-081"
+PRODUCTION_ELEVATION_FANIN_REQUIRED_CHECK_KINDS: Final = (
+    "positive",
+    "negative",
+    "mutation",
+    "replay",
+)
 DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
 )
@@ -9865,6 +9873,10 @@ def build_certificate(
                 "interface": PRODUCTION_ELEVATION_FANIN_INTERFACE,
                 "goal_id": PRODUCTION_ELEVATION_FANIN_GOAL_ID,
                 "task_id": PRODUCTION_ELEVATION_FANIN_TASK_ID,
+                "required_check_kinds": list(
+                    PRODUCTION_ELEVATION_FANIN_REQUIRED_CHECK_KINDS
+                ),
+                "independent_reconstruction_required_before_production_elevation": True,
                 "path": str(
                     DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
                 ).replace("\\", "/"),

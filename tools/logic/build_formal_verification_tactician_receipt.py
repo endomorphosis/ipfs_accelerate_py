@@ -6958,9 +6958,14 @@ def _audit_platform_support(
             str(item) for item in _safe_list(result.get("tool_ids"))
         ]
         result_tool_ids = set(raw_result_tool_ids)
+        # Exact non-production identity binding is independent of the lane's
+        # current elevation ``certified`` flag: a hermetic semantic executable
+        # remains accountable from the ran receipt even when elevation is
+        # withheld. Requiring certified here incorrectly treated redacted
+        # hermetic paths as live-identity failures after mere elevation
+        # demotion.
         if (
             result.get("status") != "ran"
-            or result.get("certified") is not True
             or result.get("production_elevation_allowed") is not False
             or result.get("evidence_class") != spec.get("evidence_class")
             or result.get("interface") != spec.get("interface")
@@ -7099,6 +7104,11 @@ def _audit_platform_support(
         *semantic_artifact_population_failures,
         *primary_executable_binding_failures,
     ]
+    # Exact non-production semantic bindings are accounted for by the lane
+    # receipt. Track them so reconstructed blocker metadata can preserve the
+    # disclosed hermetic class without requiring a live host path, and without
+    # reporting the bound artifact as an "omission" of managed authority.
+    bound_non_production_semantic_artifacts: list[dict[str, Any]] = []
     non_production_artifact_omissions: list[dict[str, Any]] = []
     tool_field_names = set(
         certifier.ToolCertification.__dataclass_fields__
@@ -7173,7 +7183,7 @@ def _audit_platform_support(
                         and tool.get("production_certified") is False
                         and semantic_binding is not None
                     ):
-                        non_production_artifact_omissions.append(
+                        bound_non_production_semantic_artifacts.append(
                             {
                                 "tool_id": tool_id,
                                 "lane_id": semantic_binding["lane_id"],
@@ -7234,14 +7244,18 @@ def _audit_platform_support(
             )
         ),
     )
-    # Deleted hermetic executables are intentionally omitted only after their
-    # exact non-production semantic binding is independently verified above.
+    # Exact non-production hermetic bindings are not live managed artifacts.
     # Preserve their disclosed artifact class in the reconstructed blocker
     # projection so comparison with the live certificate is lossless, without
-    # treating the missing shim as an installed or authority-bearing artifact.
-    omitted_classes_by_tool: dict[str, set[str]] = {}
+    # treating the hermetic as an installed or authority-bearing artifact.
+    bound_classes_by_tool: dict[str, set[str]] = {}
+    for bound in bound_non_production_semantic_artifacts:
+        bound_classes_by_tool.setdefault(
+            str(bound.get("tool_id") or ""),
+            set(),
+        ).add(str(bound.get("artifact_class") or ""))
     for omission in non_production_artifact_omissions:
-        omitted_classes_by_tool.setdefault(
+        bound_classes_by_tool.setdefault(
             str(omission.get("tool_id") or ""),
             set(),
         ).add(str(omission.get("artifact_class") or ""))
@@ -7255,10 +7269,10 @@ def _audit_platform_support(
         ):
             if not isinstance(blocker, dict):
                 continue
-            omitted_classes = omitted_classes_by_tool.get(
+            bound_classes = bound_classes_by_tool.get(
                 str(blocker.get("tool_id") or "")
             )
-            if omitted_classes:
+            if bound_classes:
                 blocker["artifact_classes"] = sorted(
                     {
                         str(item)
@@ -7267,19 +7281,22 @@ def _audit_platform_support(
                         )
                         if str(item)
                     }
-                    | {item for item in omitted_classes if item}
+                    | {item for item in bound_classes if item}
                 )
     reconstructed_managed = certifier.public_evidence_projection(
         reconstructed_managed,
         repo_root=repo_root,
     )
-    # A deleted hermetic shim cannot be passed to the managed-readiness
-    # validator as a live artifact. Preserve only its independently bound,
+    # A hermetic shim cannot be passed to the managed-readiness validator as a
+    # live managed artifact. Preserve only its independently bound,
     # non-authoritative class in the reconstructed blocker metadata so the
     # comparison remains exact without granting artifact validity.
-    for omission in non_production_artifact_omissions:
-        tool_id = omission["tool_id"]
-        artifact_class = omission["artifact_class"]
+    for bound in (
+        *bound_non_production_semantic_artifacts,
+        *non_production_artifact_omissions,
+    ):
+        tool_id = bound["tool_id"]
+        artifact_class = bound["artifact_class"]
         for blocker_key in (
             "capability_blockers",
             "dependency_blockers",
