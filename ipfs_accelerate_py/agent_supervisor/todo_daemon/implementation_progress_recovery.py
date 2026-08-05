@@ -8,6 +8,9 @@ conditions:
   repair-round budget
 * identical repair-round budget exhaustion after transient provider/context
   failures even after the repository tree advanced
+* open board work with missing products permanently fenced by
+  ``implementation_repair_round_budget_exhausted`` (ASE2-007) after transient
+  ProviderRoutingError / review-capacity failures
 * dead-owner worktree lifecycle claims that hold unexpired leases for hours
 * independent-review-pending thrash: landed guard fires, integration fails
   closed, recovery resets attempts, and the task is re-selected forever
@@ -69,8 +72,27 @@ LIFECYCLE_RECLAIM_MARKERS: Final[tuple[str, ...]] = (
     "lifecycle_race",
 )
 
+# Open-board work with missing products: these markers mean the implement
+# loop can no longer select the task until attempt/diagnostic state is reset.
+OPEN_WORK_BUDGET_EXHAUSTION_MARKERS: Final[tuple[str, ...]] = (
+    "implementation_repair_round_budget_exhausted",
+    "identical_implementation_failure_escalated",
+    "identical_implementation_failure_backoff",
+    "production source context is unavailable or insufficient",
+    "production_source_context",
+    "worktree_lifecycle_claim_exists",
+    "owner_dead_lease_unexpired",
+    "lifecycle_race",
+    "providerroutingerror",
+    "codex_quota_exhausted",
+)
+
 # Park review-pending landed work for an hour so lanes move to real backlog.
 DEFAULT_LANDED_REVIEW_DEFER_SECONDS: Final[int] = 3_600
+
+# Brief pause after open-work budget reset so a tight ProviderRoutingError
+# loop cannot burn the fresh budget in a single second.
+DEFAULT_OPEN_WORK_RESET_COOLDOWN_SECONDS: Final[int] = 60
 
 
 @dataclass(frozen=True)
@@ -175,14 +197,18 @@ def should_recover_stalled_task(
 ) -> ProgressRecoveryDecision | None:
     """Decide whether a stalled task should be auto-recovered.
 
-    Recovery is conservative: only when *all* declared outputs are already on
-    the merge-target tree, so re-implementation would thrash without adding
-    product value.
+    Two complementary policies:
 
-    When products are landed and the only remaining work is independent review
-    (or thrash after a non-integrated soft path), the decision parks the task
-    and soft-closes the board instead of resetting attempt budget — the prior
-    reset loop re-selected landed tasks forever.
+    * **Landed products** (all declared outputs on the merge-target tree): park
+      for independent review / soft-close the board. Never re-open attempt
+      budget — that re-selected landed tasks forever.
+
+    * **Open work with missing products**: when the implement loop has burned
+      its repair-round budget (or is deferred for that reason) while the board
+      still lists the task as open, reset attempt budget and clear diagnostics
+      so residual wave work can relaunch. Without this path ASE2-007 remained
+      permanently fenced after transient ProviderRoutingError / review-capacity
+      failures even though no product existed on tip.
     """
 
     if implementation_in_progress and str(active_task_id or "") == str(task_id):
@@ -193,9 +219,6 @@ def should_recover_stalled_task(
         outputs=outputs,
         repo_root=repo_root,
     )
-    if not presence.complete:
-        return None
-
     attempt_count = max(0, int(attempt_count or 0))
     max_repair_rounds = max(1, int(max_repair_rounds or 1))
     combined_text = f"{last_failure_text}\n{selection_idle_reason}"
@@ -205,15 +228,29 @@ def should_recover_stalled_task(
     failure_marker = _text_matches_recovery_markers(combined_text)
     review_pending_marker = _text_matches_markers(combined_text, LANDED_REVIEW_PENDING_MARKERS)
     lifecycle_marker = _text_matches_markers(combined_text, LIFECYCLE_RECLAIM_MARKERS)
+    open_work_budget_marker = _text_matches_markers(
+        combined_text, OPEN_WORK_BUDGET_EXHAUSTION_MARKERS
+    )
     failed_last = last_returncode not in (None, 0)
-    board_already_completed = str(board_status or "").strip().lower() in {
+    normalized_board = str(board_status or "").strip().lower()
+    board_already_completed = normalized_board in {
         "completed",
         "done",
         "complete",
     }
+    board_open = normalized_board not in {
+        "completed",
+        "done",
+        "complete",
+        "blocked",
+        "on_hold",
+        "cancelled",
+        "canceled",
+    }
 
     details: dict[str, Any] = {
         "present": list(presence.present),
+        "missing": list(presence.missing),
         "attempt_count": attempt_count,
         "max_repair_rounds": max_repair_rounds,
         "last_returncode": last_returncode,
@@ -221,8 +258,34 @@ def should_recover_stalled_task(
         "failure_marker": failure_marker,
         "review_pending_marker": review_pending_marker,
         "lifecycle_marker": lifecycle_marker,
+        "open_work_budget_marker": open_work_budget_marker,
         "board_status": str(board_status or ""),
     }
+
+    if not presence.complete:
+        # Products still missing: re-open a burned attempt budget so residual
+        # ready board work is not permanently fenced. Require an explicit
+        # exhaustion signal so ordinary in-flight tasks are untouched.
+        open_work_exhausted = repair_budget_exhausted or open_work_budget_marker
+        if open_work_exhausted and board_open and bool(presence.declared):
+            return ProgressRecoveryDecision(
+                task_id=str(task_id),
+                action="reset_open_work_attempt_budget",
+                reason="repair_budget_exhausted_with_missing_outputs",
+                reset_attempt_budget=True,
+                clear_diagnostics=True,
+                reclaim_dead_lifecycle=True,
+                treat_as_landed_outputs=False,
+                # Do not use defer_review_pending: the apply path floors that
+                # path at DEFAULT_LANDED_REVIEW_DEFER_SECONDS (1h) and would
+                # re-fence residual open work. Cooldown is applied separately
+                # via local retry-not-before when the daemon applies the reset.
+                defer_review_pending=False,
+                defer_seconds=DEFAULT_OPEN_WORK_RESET_COOLDOWN_SECONDS,
+                soft_complete_board=False,
+                details=details,
+            )
+        return None
 
     # Landed products + any thrash / failure / repair burn → park for review.
     # Do not re-open attempt budget: that re-selects implement forever.
@@ -310,8 +373,10 @@ def operator_landed_binding_payload(
 
 __all__ = [
     "DEFAULT_LANDED_REVIEW_DEFER_SECONDS",
+    "DEFAULT_OPEN_WORK_RESET_COOLDOWN_SECONDS",
     "LANDED_REVIEW_PENDING_MARKERS",
     "LIFECYCLE_RECLAIM_MARKERS",
+    "OPEN_WORK_BUDGET_EXHAUSTION_MARKERS",
     "PROGRESS_RECOVERY_FAILURE_MARKERS",
     "DeclaredOutputPresence",
     "ProgressRecoveryDecision",

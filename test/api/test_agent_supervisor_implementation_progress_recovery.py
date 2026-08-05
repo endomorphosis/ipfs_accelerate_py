@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_progress_recovery import (
     DEFAULT_LANDED_REVIEW_DEFER_SECONDS,
+    DEFAULT_OPEN_WORK_RESET_COOLDOWN_SECONDS,
     declared_output_presence,
     operator_landed_binding_payload,
     should_recover_stalled_task,
@@ -78,15 +79,52 @@ def test_should_recover_skips_active_task(tmp_path: Path) -> None:
     assert decision is None
 
 
-def test_should_not_recover_when_outputs_incomplete(tmp_path: Path) -> None:
+def test_should_reset_budget_when_outputs_missing_and_repair_exhausted(
+    tmp_path: Path,
+) -> None:
+    """Wave-0 ASE2-007 blocker: missing products + burned repair budget forever.
+
+    Landed-product recovery parks without reset. Open work must re-open the
+    attempt budget so residual ready board work can relaunch after transient
+    ProviderRoutingError / review-capacity failures.
+    """
+
     decision = should_recover_stalled_task(
-        task_id="ASE2-002",
+        task_id="ASE2-007",
         outputs=["missing.py"],
         repo_root=tmp_path,
         attempt_count=5,
         max_repair_rounds=3,
         last_returncode=1,
-        selection_idle_reason="implementation_repair_round_budget_exhausted",
+        selection_idle_reason=(
+            "implementation_retry_deferred:implementation_repair_round_budget_exhausted"
+        ),
+        board_status="ready",
+    )
+    assert decision is not None
+    assert decision.action == "reset_open_work_attempt_budget"
+    assert decision.reason == "repair_budget_exhausted_with_missing_outputs"
+    assert decision.reset_attempt_budget is True
+    assert decision.clear_diagnostics is True
+    assert decision.reclaim_dead_lifecycle is True
+    assert decision.treat_as_landed_outputs is False
+    assert decision.soft_complete_board is False
+    assert decision.defer_review_pending is False
+    assert decision.defer_seconds == DEFAULT_OPEN_WORK_RESET_COOLDOWN_SECONDS
+    assert decision.details is not None
+    assert decision.details.get("missing") == ["missing.py"]
+
+
+def test_should_not_reset_open_work_without_exhaustion_signal(tmp_path: Path) -> None:
+    decision = should_recover_stalled_task(
+        task_id="ASE2-007",
+        outputs=["missing.py"],
+        repo_root=tmp_path,
+        attempt_count=1,
+        max_repair_rounds=3,
+        last_returncode=1,
+        selection_idle_reason="",
+        board_status="ready",
     )
     assert decision is None
 

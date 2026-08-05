@@ -19687,6 +19687,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     pass
                 payload["previous_display_attempt_count"] = previous_display
                 payload["previous_canonical_attempt_count"] = previous_cid
+                # Open-work budget resets (missing products) may carry a short
+                # local cooldown without the hour-long landed-review defer.
+                open_work_cooldown = max(0, int(decision.defer_seconds or 0))
+                if (
+                    not decision.defer_review_pending
+                    and open_work_cooldown > 0
+                    and decision.action == "reset_open_work_attempt_budget"
+                ):
+                    self._implementation_retry_not_before[key] = (
+                        time.time() + float(open_work_cooldown)
+                    )
+                    payload["open_work_reset_cooldown_seconds"] = open_work_cooldown
                 changed = True
             if decision.defer_review_pending:
                 defer_seconds = max(
