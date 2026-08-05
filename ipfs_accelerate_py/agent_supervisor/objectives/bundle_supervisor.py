@@ -4803,6 +4803,12 @@ class DynamicBundleScheduler:
     def _reopen_portal_task_state_for_board(lane: BundleLaneSpec) -> bool:
         """Reset stale portal completion so a reopened board can relaunch.
 
+        Also clears repair-budget deferrals and burned attempt counters for
+        residual open members. Infrastructure failures (broken Grok runner
+        import, etc.) can exhaust ``implementation_max_repair_rounds`` without
+        landing a fix; without this reset the leased lane idles forever while
+        holding bundle capacity.
+
         Returns True when the portal projection was rewritten.
         """
 
@@ -4817,20 +4823,51 @@ class DynamicBundleScheduler:
             return False
         statuses = state.get("task_statuses")
         if not isinstance(statuses, dict):
-            return False
+            statuses = {}
         changed = False
         completed_ids = {
             str(item)
             for item in (state.get("completed_task_ids") or [])
             if str(item).strip()
         }
+        open_ids: list[str] = []
         for task_id in lane.task_ids:
             key = str(task_id)
             current = str(statuses.get(key) or "").strip().lower()
             if current in {"complete", "completed"}:
                 statuses[key] = "ready"
                 completed_ids.discard(key)
+                open_ids.append(key)
                 changed = True
+            elif current in {"ready", "todo", "pending", "open", ""}:
+                open_ids.append(key)
+                if key not in statuses or current in {"", "todo", "pending", "open"}:
+                    statuses[key] = "ready"
+                    changed = True
+        idle_reason = str(state.get("selection_idle_reason") or "")
+        deferred_repair = idle_reason.startswith("implementation_retry_deferred:")
+        if deferred_repair and open_ids:
+            state["selection_idle_reason"] = ""
+            changed = True
+        attempts = state.get("implementation_attempts")
+        if not isinstance(attempts, dict):
+            attempts = {}
+        attempts_by_cid = state.get("implementation_attempts_by_cid")
+        if not isinstance(attempts_by_cid, dict):
+            attempts_by_cid = {}
+        if open_ids and (
+            deferred_repair
+            or any(int(attempts.get(tid, 0) or 0) > 0 for tid in open_ids)
+        ):
+            for tid in open_ids:
+                if tid in attempts:
+                    attempts.pop(tid, None)
+                    changed = True
+            if deferred_repair:
+                attempts_by_cid = {}
+                changed = True
+            state["implementation_attempts"] = attempts
+            state["implementation_attempts_by_cid"] = attempts_by_cid
         if not changed:
             return False
         state["task_statuses"] = statuses
@@ -4841,9 +4878,13 @@ class DynamicBundleScheduler:
             for task_id, status in statuses.items()
             if str(status).strip().lower() in {"ready", "todo", "pending", "open"}
         ]
+        if open_ids:
+            ready_ids = list(dict.fromkeys([*open_ids, *ready_ids]))
         state["ready_count"] = len(ready_ids)
         state["eligible_ready_count"] = len(ready_ids)
         state["eligible_ready_task_ids"] = ready_ids
+        state["selectable_ready_count"] = len(ready_ids)
+        state["selectable_ready_task_ids"] = list(ready_ids)
         state["selection_idle_reason"] = ""
         state["implementation_in_progress"] = False
         state["active_task_id"] = ""
@@ -5551,7 +5592,18 @@ class DynamicBundleScheduler:
                         )
 
                 for lane in registered:
+                    # Live workers can still idle after a repair-budget burn
+                    # (for example a broken provider runner). Reset their
+                    # portal attempt budget while they hold the lease so the
+                    # daemon can redispatch without waiting for process exit.
                     if lane.task_cid in self._running:
+                        if self._authoritative_lane_has_open_work(lane):
+                            if self._reopen_portal_task_state_for_board(lane):
+                                logger.info(
+                                    "Reset deferred repair budget for active lane %s",
+                                    lane.bundle_key,
+                                )
+                            self._reopen_runtime_todo_statuses(lane)
                         continue
                     # Board reopen must run *before* disposition. Runtime
                     # portal todos often still say completed after residual
