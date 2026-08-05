@@ -16,7 +16,7 @@ do not exist.
 [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md);
 [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md);
 `docs/README.md`; `docs/INDEX.md`; `pyproject.toml`; live package layout.
-**Last verified:** 2026-08-05 against `3d20671f5ce1806afe74b7d79f4ab459b5c2a61b`
+**Last verified:** 2026-08-05 against `6c564578af0b0361741483e80ebcaf405efa1064`
 (`origin/main`); offline documentation gates revalidated (supervisor vocabulary,
 allowlisted relative links, packaging version pin `0.0.45`, closeout navigation
 markers). Earlier 2026-08-04 revalidation covered AI Service Catalog and HF

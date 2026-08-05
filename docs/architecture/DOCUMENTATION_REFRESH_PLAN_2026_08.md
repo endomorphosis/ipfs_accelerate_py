@@ -2,7 +2,7 @@
 
 **Status:** completed (sealed 28-task tranche closed)
 **Baseline:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` (2026-08-03)
-**Closeout tip revalidated:** `3d20671f5ce1806afe74b7d79f4ab459b5c2a61b` (2026-08-05)
+**Closeout tip revalidated:** `6c564578af0b0361741483e80ebcaf405efa1064` (2026-08-05)
 **Program:** `ipfs-accelerate-documentation-refresh-v1`
 **Task prefix:** `DOC-`
 **Objective heap:** [documentation_refresh.objectives.md](documentation_refresh.objectives.md)
