@@ -50,7 +50,7 @@ Normative:
 
 ## CBP-000 Seal codebase-proof plan artifacts
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: docs
@@ -74,7 +74,7 @@ Normative:
 
 ## CBP-010 Doctrine inventory and fail-closed policy tests
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: docs
@@ -98,7 +98,7 @@ Normative:
 
 ## CBP-015 Productize trust-aware proof cache as default prove path
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: proof-cache
@@ -122,7 +122,7 @@ Normative:
 
 ## CBP-020 Reviewed property catalog
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: property-catalog
@@ -146,7 +146,7 @@ Normative:
 
 ## CBP-025 Typed claim/evidence semantics and lifecycle
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: evidence-contract
@@ -170,7 +170,7 @@ Normative:
 
 ## CBP-030 Obligation compiler with cache-key binding
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: obligations
@@ -194,7 +194,7 @@ Normative:
 
 ## CBP-040 Query API (open / satisfied / refuted / impact / proof_delta)
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: queries
@@ -218,7 +218,7 @@ Normative:
 
 ## CBP-050 Cache-aware re-proof and invalidation
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: reproof
@@ -242,7 +242,7 @@ Normative:
 
 ## CBP-060 Obligation-first context capsules
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: context
@@ -266,7 +266,7 @@ Normative:
 
 ## CBP-070 Delta retry via proof_delta and cache hits
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P1
 - Track: context-delta
@@ -290,7 +290,7 @@ Normative:
 
 ## CBP-080 CodeEditPacket and supervisor materializer
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P0
 - Track: materialize
@@ -314,7 +314,7 @@ Normative:
 
 ## CBP-090 Formal-plan require_proof preconditions
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P1
 - Track: formal-plan
@@ -338,7 +338,7 @@ Normative:
 
 ## CBP-100 Bundle optimizer locality for obligations and cache
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P2
 - Track: bundles
@@ -362,7 +362,7 @@ Normative:
 
 ## CBP-110 Semantic-roundtrip residual/structural bridge
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P1
 - Track: srt-vertical
@@ -386,7 +386,7 @@ Normative:
 
 ## CBP-120 Supervisor self-properties (lease, merge, DAG, freshness)
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P1
 - Track: self-properties
@@ -410,7 +410,7 @@ Normative:
 
 ## CBP-130 Closed-loop quality, coverage, token, and proof-cost gates
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P1
 - Track: metrics
@@ -434,7 +434,7 @@ Normative:
 
 ## CBP-200 Attestation and real ZK policy (deferred)
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Priority: P2
 - Track: attestation-zk
