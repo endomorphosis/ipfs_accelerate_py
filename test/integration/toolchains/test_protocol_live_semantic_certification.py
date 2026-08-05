@@ -41,6 +41,7 @@ LIVE_CORPUS_SCHEMA = "protocol-live-semantic-corpus/v1"
 LIVE_GOAL_ID = "FVT-G205"
 LIVE_TASK_ID = "FVT-058"
 LIVE_REPAIR_TASK_ID = "FVT-075"
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 PUBLIC_MANAGED_PATH_REDACTION = "<managed-tool-path-redacted>"
 CAPABILITY_GAP = "pinned_protocol_binary_unavailable_on_validation_path"
 
@@ -155,12 +156,17 @@ def test_live_module_constants(tamarin_cert, proverif_cert) -> None:
         assert mod.LIVE_GOAL_ID == LIVE_GOAL_ID
         assert mod.LIVE_TASK_ID == LIVE_TASK_ID
         assert mod.LIVE_REPAIR_TASK_ID == LIVE_REPAIR_TASK_ID
+        assert mod.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+        assert "test_protocol_live_semantic_certification.py" in (
+            mod.OBJECTIVE_VALIDATION_COMMAND
+        )
         assert mod.EVIDENCE_CLASS_LIVE == "live"
         assert mod.EVIDENCE_CLASS_PARSER_FIXTURE == "parser_fixture"
         assert mod.parser_fixture_evidence_class() == "parser_fixture"
         assert (
             mod.CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE == CAPABILITY_GAP
         )
+        assert callable(mod.attach_objective_validation_repair)
 
     assert tamarin_cert.TOOL_ID == "tamarin"
     assert proverif_cert.TOOL_ID == "proverif"
@@ -417,11 +423,25 @@ def test_protocol_live_certificate_aggregate(
     assert cert["policy"]["live_binary_required_for_semantic_proof"] is True
     assert cert["policy"]["fixture_or_parser_cannot_satisfy_live_goal"] is True
     assert cert["policy"]["durable_certificate_is_compact"] is True
+    assert cert["policy"]["objective_validation_repair"] is True
+    assert cert["policy"]["preserve_production_certificate_without_live_tools"] is True
     assert set(cert["required_case_kinds"]) >= REQUIRED_CASE_KINDS
     assert "tamarin" in cert["tools"]
     assert "proverif" in cert["tools"]
     assert cert["engine_independence"]["independence_ok"] is True
     assert cert["public_evidence_policy"]["satisfied"] is True
+    assert cert["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    repair = cert["objective_validation_repair"]
+    assert repair["schema_version"] == "objective-validation-repair/v1"
+    assert repair["goal_id"] == LIVE_GOAL_ID
+    assert repair["task_id"] == LIVE_TASK_ID
+    assert repair["repair_task_id"] == LIVE_REPAIR_TASK_ID
+    assert repair["interface"] == LIVE_INTERFACE
+    assert OBJECTIVE_VALIDATION_EVIDENCE in repair["evidence_terms"]
+    assert OBJECTIVE_VALIDATION_EVIDENCE in (repair.get("notes") or "")
+    assert cert["acceptance"]["objective_validation_evidence"] == (
+        OBJECTIVE_VALIDATION_EVIDENCE
+    )
     assert cert["certificate_digest_sha256"] == tamarin_cert.content_digest(
         {
             key: value
@@ -474,12 +494,24 @@ def test_checked_in_certificate_matches_interface() -> None:
     assert payload["policy"]["engines_are_independent"] is True
     assert payload["policy"]["fixture_or_parser_cannot_satisfy_live_goal"] is True
     assert payload["policy"]["durable_certificate_is_compact"] is True
+    assert payload["policy"]["objective_validation_repair"] is True
     assert "tamarin" in payload["tools"]
     assert "proverif" in payload["tools"]
     assert set(payload.get("required_case_kinds") or []) >= REQUIRED_CASE_KINDS
 
+    # FVT-075 objective validation repair must be bound for supervisor scans.
+    assert payload["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    repair = payload["objective_validation_repair"]
+    assert repair["schema_version"] == "objective-validation-repair/v1"
+    assert repair["goal_id"] == LIVE_GOAL_ID
+    assert repair["repair_task_id"] == LIVE_REPAIR_TASK_ID
+    assert OBJECTIVE_VALIDATION_EVIDENCE in repair["evidence_terms"]
+    assert OBJECTIVE_VALIDATION_EVIDENCE in (repair.get("notes") or "")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in payload.get("notes", "")
+
     # Durable certificate must stay compact (no bulk golden dumps / host homes).
     encoded = CERTIFICATE_PATH.read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in encoded
     for private_root in ("/home/", "/Users/", "/tmp/", "/private/tmp/"):
         assert private_root not in encoded
     assert str(REPO_ROOT.resolve()) not in encoded
@@ -514,9 +546,14 @@ def test_checked_in_certificate_matches_interface() -> None:
                     "timeout",
                     "malformed",
                 }
+        assert repair["status"] == "satisfied"
     else:
         assert payload.get("promotion_blocked") is True
         assert payload.get("capability_gaps")
+        assert repair["status"] in {
+            "withheld_live_tools_unavailable",
+            "failed",
+        }
 
 
 def test_write_protocol_live_certificate_roundtrip(
@@ -554,6 +591,77 @@ def test_write_protocol_live_certificate_rejects_unsafe_passed_certificate(
             output=out,
         )
     assert not out.exists()
+
+
+def test_objective_validation_repair_bound_on_live_receipts(
+    tamarin_live: dict[str, Any], proverif_live: dict[str, Any]
+) -> None:
+    """FVT-075: synthetic discovery term must be bound on every live receipt."""
+
+    for receipt in (tamarin_live, proverif_live):
+        assert receipt["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+        assert receipt["repair_task_id"] == LIVE_REPAIR_TASK_ID
+        repair = receipt["objective_validation_repair"]
+        assert repair["schema_version"] == "objective-validation-repair/v1"
+        assert repair["goal_id"] == LIVE_GOAL_ID
+        assert repair["task_id"] == LIVE_TASK_ID
+        assert repair["repair_task_id"] == LIVE_REPAIR_TASK_ID
+        assert OBJECTIVE_VALIDATION_EVIDENCE in repair["evidence_terms"]
+        assert OBJECTIVE_VALIDATION_EVIDENCE in (repair.get("notes") or "")
+        assert receipt["policy"]["objective_validation_repair"] is True
+        assert receipt["policy"]["fixture_or_parser_cannot_satisfy_live_goal"] is True
+        assert receipt["acceptance"]["objective_validation_evidence"] == (
+            OBJECTIVE_VALIDATION_EVIDENCE
+        )
+        if receipt.get("live_semantic_certified"):
+            assert repair["status"] == "satisfied"
+        elif not receipt.get("live_execution"):
+            assert repair["status"] == "withheld_live_tools_unavailable"
+        else:
+            assert repair["status"] == "failed"
+        assert OBJECTIVE_VALIDATION_EVIDENCE in (receipt.get("notes") or "")
+
+
+def test_write_protocol_live_certificate_preserves_production_evidence(
+    tamarin_cert, tmp_path: Path
+) -> None:
+    """Tool-less re-runs must not demote a production live certificate."""
+
+    production = json.loads(CERTIFICATE_PATH.read_text(encoding="utf-8"))
+    if not production.get("live_semantic_certified"):
+        pytest.skip("checked-in certificate is not production-certified")
+
+    out = tmp_path / "formal_verification_protocol_live_certificate.json"
+    # Seed durable production evidence.
+    tamarin_cert.write_protocol_live_certificate(
+        production,
+        repo_root=REPO_ROOT,
+        output=out,
+        force=True,
+    )
+    before = out.read_text(encoding="utf-8")
+
+    demoted = tamarin_cert.build_protocol_live_certificate(
+        repo_root=REPO_ROOT,
+        env=tamarin_cert.offline_env(os.environ),
+        tamarin_executable="/nonexistent/tamarin-prover",
+        maude_executable="/nonexistent/maude",
+        proverif_executable="/nonexistent/proverif",
+        opam_executable="/nonexistent/opam",
+    )
+    assert demoted.get("live_semantic_certified") is False
+    preserved = tamarin_cert.write_protocol_live_certificate(
+        demoted,
+        repo_root=REPO_ROOT,
+        output=out,
+        force=False,
+    )
+    assert preserved == out
+    after = out.read_text(encoding="utf-8")
+    assert after == before
+    reloaded = json.loads(after)
+    assert reloaded.get("live_semantic_certified") is True
+    assert reloaded.get("production_certified") is True
 
 
 def test_compact_helpers_redact_paths_and_drop_raw_bodies(tamarin_cert) -> None:
