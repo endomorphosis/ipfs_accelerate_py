@@ -9697,7 +9697,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         Stale rescue worktrees for already-landed tasks keep preflight merge
         conflict guardrails alive forever even though there is no remaining
         board work to integrate.  Only paths under this daemon's worktree root
-        are eligible, and only when the branch name embeds a completed task id.
+        are eligible. Also removes stuck ``post-merge-validation-*`` sandboxes
+        for completed tasks (often left ``locked initializing`` with mass
+        deletes, which refiles dirty-worktree recon cards forever).
         """
 
         completed_ids = {
@@ -9722,27 +9724,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return []
         current_path = ""
         current_branch = ""
-        entries: list[tuple[str, str]] = []
+        current_locked = False
+        entries: list[tuple[str, str, bool]] = []
         for line in listed.stdout.splitlines():
             if line.startswith("worktree "):
                 if current_path:
-                    entries.append((current_path, current_branch))
+                    entries.append(
+                        (current_path, current_branch, current_locked)
+                    )
                 current_path = line[len("worktree ") :].strip()
                 current_branch = ""
+                current_locked = False
             elif line.startswith("branch "):
                 ref = line[len("branch ") :].strip()
                 current_branch = ref.removeprefix("refs/heads/")
+            elif line.startswith("locked"):
+                current_locked = True
             elif line == "":
                 if current_path:
-                    entries.append((current_path, current_branch))
+                    entries.append(
+                        (current_path, current_branch, current_locked)
+                    )
                 current_path = ""
                 current_branch = ""
+                current_locked = False
         if current_path:
-            entries.append((current_path, current_branch))
+            entries.append((current_path, current_branch, current_locked))
 
         worktree_root = self.worktree_root.resolve()
-        for raw_path, branch in entries:
-            if not raw_path or not branch:
+        for raw_path, branch, locked in entries:
+            if not raw_path:
                 continue
             try:
                 path = Path(raw_path).resolve()
@@ -9754,22 +9765,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             if path == self.repo_root.resolve():
                 continue
+            path_name = path.name.lower().replace("_", "-")
             branch_task_ids = self._task_ids_referenced_in_text(
-                branch.replace("_", "-")
+                (branch or path_name).replace("_", "-")
             )
             # implementation/voice-action-021-... embeds voice-action-021
-            lowered = branch.lower()
+            # post-merge-validation-voice-action-015-... embeds task slug.
+            haystack = f"{branch} {path_name}".lower()
             for task_id in list(completed_ids):
                 slug = task_id.lower().replace("_", "-")
-                if slug in lowered or task_id in branch_task_ids:
+                if slug in haystack or task_id in branch_task_ids:
                     branch_task_ids.add(task_id)
-            if not branch_task_ids.intersection(completed_ids):
-                continue
-            if not (
+            matched = branch_task_ids.intersection(completed_ids)
+            is_post_merge_validation = path_name.startswith(
+                "post-merge-validation-"
+            )
+            is_managed_branch = bool(branch) and (
                 branch.startswith("implementation/")
                 or branch.startswith("rescue/")
+            )
+            # Detached clean workspaces left after completed attempts: path
+            # must still embed a completed task id.
+            is_detached_completed = (not branch) and bool(matched)
+            if not matched:
+                continue
+            if not (
+                is_managed_branch
+                or is_post_merge_validation
+                or is_detached_completed
             ):
                 continue
+            if locked:
+                subprocess.run(
+                    ["git", "worktree", "unlock", str(path)],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
             remove = subprocess.run(
                 ["git", "worktree", "remove", "--force", str(path)],
                 cwd=self.repo_root,
@@ -9781,12 +9814,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 {
                     "path": str(path),
                     "branch": branch,
-                    "task_ids": ",".join(sorted(branch_task_ids.intersection(completed_ids))),
+                    "task_ids": ",".join(sorted(matched)),
+                    "locked": str(locked).lower(),
                     "removed": str(remove.returncode == 0).lower(),
                     "error": (remove.stderr or remove.stdout or "")[-300:],
                 }
             )
         if cleaned:
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
             self._record_event(
                 "auto_unblock_completed_task_worktrees_cleaned",
                 {
@@ -10200,6 +10241,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "task_id": task.task_id,
                             "reason": "submodule_only_dirty_worktree_noise",
                             "referenced_completed": "",
+                        }
+                    )
+                    continue
+                # Sampled worktree path gone (cleaned after product finish) —
+                # the recon card no longer protects any checkout.
+                sampled_paths = re.findall(
+                    r"`([^`]+/worktrees/[^`]+)`",
+                    evidence,
+                )
+                if sampled_paths and all(
+                    not Path(sample).exists() for sample in sampled_paths
+                ):
+                    retire.append(task.task_id)
+                    details.append(
+                        {
+                            "task_id": task.task_id,
+                            "reason": "sampled_dirty_worktree_already_removed",
+                            "referenced_completed": "",
+                        }
+                    )
+                    continue
+                # Post-merge validation sandboxes for completed tasks are
+                # disposable once the source product task is completed.
+                if (
+                    "post-merge-validation-" in lowered_ev
+                    and referenced
+                    and referenced.issubset(completed_ids)
+                ):
+                    retire.append(task.task_id)
+                    details.append(
+                        {
+                            "task_id": task.task_id,
+                            "reason": "post_merge_validation_for_completed_tasks",
+                            "referenced_completed": ",".join(
+                                sorted(referenced)
+                            ),
                         }
                     )
                     continue
