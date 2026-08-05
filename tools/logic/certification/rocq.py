@@ -86,6 +86,19 @@ CHECK_TIMEOUT_SECONDS: Final = 30.0
 MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 ISOLATED_OPAM_ROOT_MARKER: Final = "<isolated-opam-root-redacted>"
 
+# Sealed validation PATH excludes operator toolchains; bind digest-approved
+# deployments via these roots (same contract as ATP/state-model lanes).
+MANAGED_PROVER_ROOT_ENV: Final = "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT"
+MANAGED_INSTALL_ROOT_ENV_VARS: Final[tuple[str, ...]] = (
+    "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+    "FORMAL_VERIFICATION_ROCQ_INSTALL_ROOT",
+)
+DEFAULT_MANAGED_INSTALL_ROOT: Final = (
+    "~/.local/share/ipfs_datasets_py/theorem-provers"
+)
+
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
 _ADMIT = re.compile(r"(?i)\b(?:admit\s*\.|Admitted\s*\.|Abort\s*\.)")
@@ -412,32 +425,117 @@ def bounded_run(
         return None
 
 
-def resolve_coq_executable(candidates: Sequence[str] | None = None) -> str | None:
+def managed_install_roots(
+    env: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """Ordered managed theorem-prover roots (env override, then defaults)."""
+
+    mapping = env if env is not None else os.environ
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            resolved = path.expanduser()
+        key = str(resolved)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(resolved)
+
+    for variable in MANAGED_INSTALL_ROOT_ENV_VARS:
+        raw = str(mapping.get(variable) or "").strip()
+        if raw:
+            _add(Path(raw))
+
+    xdg_data = str(mapping.get("XDG_DATA_HOME") or "").strip()
+    if xdg_data:
+        _add(Path(xdg_data) / "ipfs_datasets_py" / "theorem-provers")
+
+    _add(Path(DEFAULT_MANAGED_INSTALL_ROOT))
+    return roots
+
+
+def resolve_coq_executable(
+    candidates: Sequence[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Locate coqc/rocq preferring absolute paths and managed install bins."""
+
     names = list(candidates) if candidates else list(LOCKED_EXECUTABLES)
+    search_path = None if env is None else str(env.get("PATH") or "")
     for name in names:
         if not name:
             continue
         path = Path(name)
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())
-        found = shutil.which(name)
+        if os.path.isabs(name) or os.sep in name:
+            continue
+        for root in managed_install_roots(env):
+            for managed in (
+                root / "bin" / name,
+                root / "provers" / "bin" / name,
+            ):
+                if managed.is_file() and os.access(managed, os.X_OK):
+                    return str(managed.resolve())
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
 
 
-def resolve_opam_executable(candidates: Sequence[str] | None = None) -> str | None:
+def resolve_opam_executable(
+    candidates: Sequence[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Locate opam preferring absolute paths and managed install bins."""
+
     names = list(candidates) if candidates else [SUPPORT_TOOL_ID]
+    search_path = None if env is None else str(env.get("PATH") or "")
     for name in names:
         if not name:
             continue
         path = Path(name)
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())
-        found = shutil.which(name)
+        if os.path.isabs(name) or os.sep in name:
+            continue
+        for root in managed_install_roots(env):
+            for managed in (
+                root / "bin" / name,
+                root / "provers" / "bin" / name,
+                root / "opam-2.5.2" / "opam",
+                root / "provers" / "opam-2.5.2" / "opam",
+            ):
+                if managed.is_file() and os.access(managed, os.X_OK):
+                    return str(managed.resolve())
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
+
+
+def _invoke_resolve_executable(
+    resolver,
+    *,
+    env: Mapping[str, str] | None = None,
+    candidates: Sequence[str] | None = None,
+) -> str | None:
+    """Call a resolve_* helper; tolerate test stubs without env kwargs."""
+
+    try:
+        if candidates is None:
+            return resolver(env=env)
+        return resolver(candidates, env=env)
+    except TypeError:
+        if candidates is None:
+            return resolver()
+        return resolver(candidates)
 
 
 def first_nonempty_line(text: str) -> str:
@@ -738,7 +836,9 @@ def probe_rocq_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_coq_executable()
+    binary = executable or _invoke_resolve_executable(
+        resolve_coq_executable, env=probe_env
+    )
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -796,7 +896,9 @@ def probe_opam_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_opam_executable()
+    binary = executable or _invoke_resolve_executable(
+        resolve_opam_executable, env=probe_env
+    )
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -1995,6 +2097,7 @@ __all__ = [
     "content_digest",
     "offline_env",
     "bounded_run",
+    "managed_install_roots",
     "resolve_coq_executable",
     "resolve_opam_executable",
     "extract_rocq_imports",
