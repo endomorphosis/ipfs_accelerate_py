@@ -13829,7 +13829,14 @@ class PortalImplementationDaemon:
                             effective_returncode = int(
                                 validation_result.get("returncode") or 1
                             )
-                elif validation_result.get("passed", False):
+                # Never leave live ProposalValidationResult objects on the
+                # validation dict — finish/events/diagnostics JSON-encode it.
+                validation_result = (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
+                    )
+                )
+                if validation_result.get("passed", False) and deterministic_only:
                     # The typed local plan may materialize a proposal-authorized
                     # output.  In the direct checkout that candidate must cross
                     # the same durable commit gate used by the isolated path
@@ -22621,6 +22628,13 @@ class PortalImplementationDaemon:
                                     allow_candidate_stabilization=True,
                                 )
                             )
+                        # Drop live ProposalValidationResult before commit/
+                        # board/events JSON persistence (FVT-092 TypeError).
+                        validation_result = (
+                            self._detach_in_process_proposal_validation(
+                                validation_result
+                            )
+                        )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -22989,6 +23003,11 @@ class PortalImplementationDaemon:
                                 allow_candidate_stabilization=True,
                             )
                         )
+                    validation_result = (
+                        self._detach_in_process_proposal_validation(
+                            validation_result
+                        )
+                    )
                     if not protected_path_violation:
                         protected_path_violation = (
                             self._finalize_implementation_protected_path_fence(
@@ -29785,6 +29804,45 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Project a proposal result without source, patch, prompt, or secrets."""
 
+        if isinstance(proposal_validation, Mapping):
+            compact = {
+                key: value
+                for key, value in proposal_validation.items()
+                if key
+                in {
+                    "attempted",
+                    "accepted",
+                    "reason_codes",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                    "changed_paths",
+                    "proof_authoritative",
+                    "completion_authoritative",
+                    "reason",
+                    "error_code",
+                }
+            }
+            if error_code and "reason_codes" in compact:
+                codes = {
+                    str(code).strip()
+                    for code in (compact.get("reason_codes") or [])
+                    if str(code).strip()
+                }
+                codes.add(str(error_code).strip())
+                codes.discard("")
+                compact["reason_codes"] = sorted(codes)[
+                    :MAX_PERSISTED_PROPOSAL_REASON_CODES
+                ]
+            elif error_code:
+                compact["reason_codes"] = [str(error_code).strip()]
+            compact.setdefault("attempted", True)
+            compact.setdefault("accepted", bool(compact.get("accepted")))
+            compact.setdefault("proof_authoritative", False)
+            compact.setdefault("completion_authoritative", False)
+            return compact
+
         receipt = getattr(proposal_validation, "receipt", None)
         proposal = getattr(proposal_validation, "proposal", None)
         policy = getattr(proposal_validation, "policy", None)
@@ -29813,6 +29871,32 @@ class PortalImplementationDaemon:
             "proof_authoritative": False,
             "completion_authoritative": False,
         }
+
+    def _detach_in_process_proposal_validation(
+        self,
+        validation_result: Mapping[str, Any] | dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Drop live proposal objects before validation results are persisted.
+
+        ``_run_validation_with_candidate_binding`` may temporarily attach a
+        ``ProposalValidationResult`` for post-validation re-stabilize. Event
+        logs and diagnostic receipts must only keep the compact gate projection.
+        """
+
+        result = dict(validation_result or {})
+        proposal_validation = result.pop("proposal_validation", None)
+        if proposal_validation is None:
+            return result
+        if isinstance(proposal_validation, Mapping):
+            # Already JSON-safe; keep only under proposal_gate if missing.
+            if "proposal_gate" not in result:
+                result["proposal_gate"] = dict(proposal_validation)
+            return result
+        compact = self._compact_proposal_validation(proposal_validation)
+        existing_gate = result.get("proposal_gate")
+        if not isinstance(existing_gate, Mapping):
+            result["proposal_gate"] = compact
+        return result
 
     @staticmethod
     def _secret_change_scope_examination(
@@ -31779,6 +31863,8 @@ class PortalImplementationDaemon:
                 state=state,
                 proposal_validation=proposal_validation,
             )
+            # Keep the live proposal object only for in-process re-stabilize.
+            # Event/log JSON cannot serialize ProposalValidationResult.
             result["proposal_validation"] = proposal_validation
             result = self._verify_post_validation_candidate_binding(
                 workspace_path,
@@ -31787,6 +31873,9 @@ class PortalImplementationDaemon:
                 proposal_validation=proposal_validation,
                 validation_result=result,
             )
+            # Re-attach after binding verify (it may rebuild the result dict).
+            if "proposal_validation" not in result:
+                result["proposal_validation"] = proposal_validation
         if result.get("reason") != "candidate_changed_during_validation":
             return result
 
