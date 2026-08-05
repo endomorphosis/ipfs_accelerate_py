@@ -3280,11 +3280,7 @@ class ResourceScheduler:
                 active_requirements=active,
             )
             if decision.admitted:
-                pool_limit = {
-                    "cpu-proof": lease_budget.max_cpu_proof_concurrency,
-                    "model": lease_budget.max_model_concurrency,
-                    "artifact": lease_budget.max_artifact_concurrency,
-                }[req.resource_pool]
+                pool_limit = self._pool_limit(req.resource_pool)
                 pool_used = sum(
                     item.process_slots
                     for item in active
