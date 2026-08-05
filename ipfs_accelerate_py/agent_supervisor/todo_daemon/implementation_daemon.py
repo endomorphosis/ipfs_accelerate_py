@@ -82,6 +82,7 @@ from ..merge.checkout_lock import (
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
     durable_input_generation,
+    generated_protected_board_commit_subject,
     generations_match,
     merge_target_queue_dir,
     read_checkout_mutation_lease,
@@ -40323,6 +40324,58 @@ class PortalImplementationDaemon:
                     return False
         return True
 
+    def _candidate_merge_changed_paths(
+        self,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> set[str] | None:
+        """Union of paths each candidate would introduce relative to target.
+
+        Returns ``None`` when any candidate ref is unresolvable so callers
+        remain fail-closed rather than treating unknown work as nonblocking.
+        """
+
+        changed: set[str] = set()
+        if not candidates:
+            return changed
+        if not target_branch or not self._git_ref_exists(target_branch):
+            return None
+        for event in candidates:
+            branch = str(event.get("branch") or "").strip()
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            ).strip()
+            candidate_ref = (
+                branch
+                if branch and self._git_ref_exists(branch)
+                else implementation_commit
+            )
+            if not candidate_ref or not self._git_ref_exists(candidate_ref):
+                return None
+            paths = self._branch_changed_paths_in_repo(
+                self.repo_root,
+                candidate_ref,
+                base_ref=target_branch,
+            )
+            if paths is None:
+                return None
+            changed.update(paths)
+        return changed
+
+    def _dirty_path_nonoverlapping_candidate_changes(
+        self,
+        relative: str,
+        candidate_changed_paths: set[str] | None,
+    ) -> bool:
+        """True when dirt cannot collide with any candidate merge path set."""
+
+        if candidate_changed_paths is None:
+            return False
+        if not self._repo_relative_path_safe(relative):
+            return False
+        return not self._overlapping_paths([relative], candidate_changed_paths)
+
     def _reconciliation_blocking_dirty_paths(
         self,
         candidates: Sequence[dict[str, Any]],
@@ -40331,6 +40384,10 @@ class PortalImplementationDaemon:
     ) -> tuple[list[str], list[str]]:
         blocking: list[str] = []
         nonblocking: list[str] = []
+        candidate_changed_paths = self._candidate_merge_changed_paths(
+            candidates,
+            target_branch=target_branch,
+        )
         for relative in sorted(self._dirty_worktree_paths(self.repo_root)):
             state_relative = ""
             try:
@@ -40354,6 +40411,15 @@ class PortalImplementationDaemon:
             ):
                 nonblocking.append(relative)
                 continue
+            # Tracked or untracked dirt that no candidate touches must not stall
+            # the entire merge reconciliation batch (e.g. residual board index
+            # edits while independent residual install branches are ready).
+            if self._dirty_path_nonoverlapping_candidate_changes(
+                relative,
+                candidate_changed_paths,
+            ):
+                nonblocking.append(relative)
+                continue
             if self._dirty_gitlink_is_unchanged_for_candidates(
                 relative,
                 candidates,
@@ -40367,6 +40433,81 @@ class PortalImplementationDaemon:
             else:
                 blocking.append(relative)
         return blocking, nonblocking
+
+    def _attempt_auto_clear_reconciliation_dirt(
+        self,
+        dirty_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        """Commit safe residual/board dirt so merge reconciliation can proceed.
+
+        Residual install lanes and board registration frequently leave
+        ``data/agent_supervisor/**`` and readiness board artifacts dirty on the
+        integration checkout. Those outputs are supervisor-owned and must not
+        permanently stall validated candidate merges.
+        """
+
+        safe_prefixes = (
+            "data/agent_supervisor/",
+            "docs/architecture/",
+        )
+        safe_paths = [
+            path
+            for path in dirty_paths
+            if any(
+                path == prefix.rstrip("/") or path.startswith(prefix)
+                for prefix in safe_prefixes
+            )
+            and self._repo_relative_path_safe(path)
+        ]
+        if not safe_paths:
+            return {
+                "attempted": False,
+                "reason": "no_safe_reconciliation_dirt",
+                "dirty_paths": list(dirty_paths),
+            }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+                commit_generated_dirty_outputs,
+            )
+        except Exception as exc:  # pragma: no cover - import surface
+            return {
+                "attempted": False,
+                "reason": "auto_clear_import_failed",
+                "error": str(exc),
+            }
+        subject = generated_protected_board_commit_subject(
+            "Agent: auto-commit residual board dirt for merge reconciliation"
+        )
+        # Prefer prefix commits so untracked residual receipts and bundle
+        # shards under data/agent_supervisor are included.
+        prefixes = sorted(
+            {
+                "data/agent_supervisor",
+                "docs/architecture",
+            }
+        )
+        try:
+            result = commit_generated_dirty_outputs(
+                repo_root=self.repo_root,
+                generated_paths=[],
+                generated_prefixes=prefixes,
+                protected_paths=tuple(self.implementation_protected_paths or ()),
+                subject=subject,
+                max_paths=max(50, len(safe_paths) + 20),
+            )
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "reason": "auto_clear_failed",
+                "error": str(exc),
+                "safe_paths": safe_paths,
+            }
+        payload = dict(result) if isinstance(result, Mapping) else {"result": result}
+        payload.setdefault("attempted", True)
+        payload["safe_paths"] = safe_paths
+        if payload.get("committed_count") or payload.get("selected_path_count"):
+            self._record_event("reconciliation_dirt_auto_cleared", payload)
+        return payload
 
     def _revalidated_landed_completion_recovery(
         self,
@@ -40516,6 +40657,25 @@ class PortalImplementationDaemon:
                 candidates,
                 target_branch=target_branch,
             )
+            dirt_auto_clear: dict[str, Any] | None = None
+            if main_checkout_dirty_paths:
+                # Residual board registration / managed residual receipts often
+                # leave the integration checkout dirty. Commit that
+                # supervisor-owned dirt automatically, then re-evaluate so
+                # validated candidates are not stuck forever.
+                dirt_auto_clear = self._attempt_auto_clear_reconciliation_dirt(
+                    main_checkout_dirty_paths
+                )
+                if dirt_auto_clear.get("committed_count") or dirt_auto_clear.get(
+                    "selected_path_count"
+                ):
+                    (
+                        main_checkout_dirty_paths,
+                        nonblocking_dirty_paths,
+                    ) = self._reconciliation_blocking_dirty_paths(
+                        candidates,
+                        target_branch=target_branch,
+                    )
             if main_checkout_dirty_paths:
                 result = {
                     "resolved": False,
@@ -40528,17 +40688,22 @@ class PortalImplementationDaemon:
                     result["nested_artifact_preservation"] = nested_artifact_preservation
                 if nonblocking_dirty_paths:
                     result["nonblocking_dirty_paths"] = nonblocking_dirty_paths
+                if dirt_auto_clear:
+                    result["dirt_auto_clear"] = dirt_auto_clear
                 self._record_event("merge_reconciliation_deferred", result)
                 results.append(result)
                 return results
-            if nonblocking_dirty_paths or nested_artifact_preservation:
+            if nonblocking_dirty_paths or nested_artifact_preservation or dirt_auto_clear:
+                event_payload: dict[str, Any] = {
+                    "nonblocking_dirty_paths": nonblocking_dirty_paths,
+                    "nested_artifact_preservation": nested_artifact_preservation,
+                    "candidate_count": len(candidates),
+                }
+                if dirt_auto_clear:
+                    event_payload["dirt_auto_clear"] = dirt_auto_clear
                 self._record_event(
                     "merge_reconciliation_nonblocking_checkout_state",
-                    {
-                        "nonblocking_dirty_paths": nonblocking_dirty_paths,
-                        "nested_artifact_preservation": nested_artifact_preservation,
-                        "candidate_count": len(candidates),
-                    },
+                    event_payload,
                 )
         now_monotonic = time.monotonic()
         active_commits = {
