@@ -27912,7 +27912,10 @@ class PortalImplementationDaemon:
         attempt: int,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        for relative in self.worktree_submodule_paths:
+        # Honor task ``Submodules:`` declarations (CIG boards) in addition to
+        # daemon-global worktree_submodule_paths so intentional child edits are
+        # committed instead of left as opaque parent gitlink dirt.
+        for relative in self._effective_worktree_submodule_paths(task):
             target = worktree_path / relative
             if not self._is_git_worktree(target):
                 continue
@@ -29171,27 +29174,51 @@ class PortalImplementationDaemon:
     def _proposal_scope_submodule_paths(
         self,
         scope_paths: Sequence[str],
+        *,
+        task: PortalTask | None = None,
+        workspace_path: Path | None = None,
     ) -> tuple[str, ...]:
-        """Return configured submodules explicitly owned by the task scope.
+        """Return submodules explicitly owned by the task scope.
 
-        A task may own either the configured submodule root or one of its
-        descendants. In both cases the proposal gate must materialize the
-        child-repository diff instead of validating an opaque gitlink.
+        A task may own either the submodule root or one of its descendants.
+        The proposal gate must materialize the child-repository diff instead
+        of validating an opaque gitlink.
+
+        Sources of submodule roots (unioned):
+        - daemon ``worktree_submodule_paths``
+        - task ``Submodules:`` metadata (CIG boards declare these per task)
+        - tracked gitlinks in the workspace that match scope paths
+
+        Without the task-declared and discovered sets, monorepo boards that
+        only list ``swissknife/contracts/...`` in Outputs leave an opaque
+        ``swissknife`` gitlink in the candidate and fail closed with
+        ``submodule_boundary_forbidden`` even when the implementer never
+        intended a pin change.
         """
 
+        candidates: set[str] = {
+            relative.strip("/")
+            for relative in self._effective_worktree_submodule_paths(task)
+            if relative.strip("/")
+        }
+        if workspace_path is not None:
+            try:
+                _symlinks, tracked_gitlinks = self._proposal_boundary_paths(
+                    workspace_path
+                )
+            except (OSError, RuntimeError, ValueError):
+                tracked_gitlinks = ()
+            for relative in tracked_gitlinks:
+                normalized = str(relative or "").strip().replace("\\", "/").strip("/")
+                if normalized:
+                    candidates.add(normalized)
         return tuple(
             sorted(
                 {
-                    relative.strip("/")
-                    for relative in self.worktree_submodule_paths
-                    if relative.strip("/")
-                    and any(
-                        self._path_matches_prefix(
-                            path,
-                            relative.strip("/"),
-                        )
-                        for path in scope_paths
-                    )
+                    relative
+                    for relative in candidates
+                    if relative
+                    and self._path_in_proposal_scope(relative, scope_paths)
                 }
             )
         )
@@ -29267,20 +29294,37 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         scope_paths: Sequence[str],
+        task: PortalTask | None = None,
     ) -> tuple[tuple[Any, ...], tuple[dict[str, Any], ...]]:
         """Collect root and task-owned submodule changes as full source entries.
 
         A superproject diff exposes a submodule update only as an opaque
         gitlink.  Strict proposal validation must never authorize that opaque
-        boundary.  For configured submodules with explicitly declared child
-        outputs, replace the gitlink entry with source-bound entries collected
-        from the child repository.  Every other gitlink remains untouched and
-        is rejected by the ordinary proposal boundary policy.
+        boundary.  For submodules with explicitly declared child outputs,
+        replace the gitlink entry with source-bound entries collected from the
+        child repository.  Dirty scoped gitlinks with no materializable child
+        file changes are restored to the baseline (incidental pin/worktree
+        dirt).  Every other gitlink remains untouched and is rejected by the
+        ordinary proposal boundary policy.
         """
 
         from ..proof.code_proof_obligations import collect_git_candidate_diff
 
         effective_baseline = baseline_ref or "HEAD"
+        scoped_submodules = self._proposal_scope_submodule_paths(
+            scope_paths,
+            task=task,
+            workspace_path=workspace_path,
+        )
+        # Drop incidental gitlink dirt for scoped submodules that have no
+        # in-scope child file edits before collecting the root candidate.
+        self._restore_empty_scoped_submodule_gitlinks(
+            workspace_path,
+            baseline_ref=effective_baseline,
+            scoped_submodules=scoped_submodules,
+            scope_paths=scope_paths,
+            task=task,
+        )
         root_entries = list(
             collect_git_candidate_diff(
                 workspace_path,
@@ -29289,12 +29333,12 @@ class PortalImplementationDaemon:
             )
         )
         expansions: list[dict[str, Any]] = []
-        for relative in self._proposal_scope_submodule_paths(scope_paths):
+        for relative in scoped_submodules:
             target = workspace_path / relative
             if target.is_symlink() or not self._is_git_worktree(target):
-                raise RuntimeError(
-                    f"task-owned proposal submodule is not an initialized worktree: {relative}"
-                )
+                # Scoped submodule not initialized: leave any opaque gitlink
+                # for ordinary rejection rather than crashing proposal collect.
+                continue
             base_result = subprocess.run(
                 ["git", "rev-parse", f"{effective_baseline}:{relative}"],
                 cwd=workspace_path,
@@ -29347,7 +29391,25 @@ class PortalImplementationDaemon:
                     include_untracked=True,
                 )
             )
-            if not local_entries:
+            owns_whole_submodule = any(
+                str(p).strip("/").replace("\\", "/") == relative
+                for p in scope_paths
+            )
+            if owns_whole_submodule:
+                scoped_local = local_entries
+            else:
+                scoped_local = tuple(
+                    entry
+                    for entry in local_entries
+                    if self._path_in_proposal_scope(
+                        (
+                            f"{relative}/"
+                            f"{entry.new_path or entry.old_path or entry.path}"
+                        ).replace("//", "/"),
+                        scope_paths,
+                    )
+                )
+            if not scoped_local:
                 continue
             expansions.append(
                 {
@@ -29355,7 +29417,7 @@ class PortalImplementationDaemon:
                     "repo_root": target,
                     "base_revision": base_revision,
                     "candidate_head": candidate_head,
-                    "entries": local_entries,
+                    "entries": scoped_local,
                 }
             )
 
@@ -29378,12 +29440,16 @@ class PortalImplementationDaemon:
                 raise RuntimeError(
                     f"proposal submodule boundary changed shape: {relative}"
                 )
+        # Drop opaque gitlinks for every scoped submodule (expanded or empty).
+        # Empty ones were restored above; expanded ones are replaced by child
+        # source entries. Leaving either as a gitlink fails proposal closed.
+        drop_gitlinks = set(expanded_paths) | set(scoped_submodules)
         entries = [
             entry
             for entry in root_entries
             if not any(
                 entry.old_path == relative or entry.new_path == relative
-                for relative in expanded_paths
+                for relative in drop_gitlinks
             )
         ]
         for expansion in expansions:
@@ -29408,6 +29474,114 @@ class PortalImplementationDaemon:
             ),
             tuple(expansions),
         )
+
+    def _restore_empty_scoped_submodule_gitlinks(
+        self,
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+        scoped_submodules: Sequence[str],
+        scope_paths: Sequence[str],
+        task: PortalTask | None = None,
+    ) -> list[str]:
+        """Restore scoped submodule gitlinks with no in-scope child edits.
+
+        Implement worktrees often leave a dirty ``swissknife`` / pin gitlink
+        after submodule init even when the only real edits are monorepo tests
+        and Makefile lines. Proposal admission treats that opaque gitlink as
+        ``submodule_boundary_forbidden``. Restore the pin when the child has
+        no materializable in-scope file changes so the real task outputs can
+        proceed.
+        """
+
+        from ..proof.code_proof_obligations import collect_git_candidate_diff
+
+        restored: list[str] = []
+        baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        for relative in scoped_submodules:
+            relative = str(relative or "").strip().replace("\\", "/").strip("/")
+            if not relative or not self._repo_relative_path_safe(relative):
+                continue
+            target = workspace_path / relative
+            if target.is_symlink() or not self._is_git_worktree(target):
+                # Uninitialized: still try parent restore of the gitlink path.
+                has_scoped_child_edits = False
+            else:
+                base_result = subprocess.run(
+                    ["git", "rev-parse", f"{baseline}:{relative}"],
+                    cwd=workspace_path,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                if base_result.returncode != 0:
+                    continue
+                base_revision = base_result.stdout.strip()
+                try:
+                    local_entries = tuple(
+                        collect_git_candidate_diff(
+                            target,
+                            base_revision=base_revision,
+                            include_untracked=True,
+                        )
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    local_entries = ()
+                owns_whole_submodule = any(
+                    str(p).strip("/").replace("\\", "/") == relative
+                    for p in scope_paths
+                )
+                if owns_whole_submodule:
+                    has_scoped_child_edits = bool(local_entries)
+                else:
+                    has_scoped_child_edits = any(
+                        self._path_in_proposal_scope(
+                            f"{relative}/{(entry.new_path or entry.old_path or entry.path)}".replace(
+                                "//", "/"
+                            ),
+                            scope_paths,
+                        )
+                        for entry in local_entries
+                    )
+            if has_scoped_child_edits:
+                continue
+            result = subprocess.run(
+                [
+                    "git",
+                    "restore",
+                    "--source",
+                    baseline,
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    relative,
+                ],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                result = subprocess.run(
+                    ["git", "checkout", baseline, "--", relative],
+                    cwd=workspace_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            if result.returncode == 0:
+                restored.append(relative)
+        if restored:
+            self._record_event(
+                "implementation_empty_scoped_submodule_gitlink_restored",
+                {
+                    "task_id": getattr(task, "task_id", "") or "",
+                    "baseline_ref": baseline,
+                    "restored_paths": restored,
+                },
+            )
+        return restored
 
     @staticmethod
     def _prefix_proposal_patch_extended_paths(
@@ -31293,12 +31467,22 @@ class PortalImplementationDaemon:
         collection_error = ""
         submodule_expansions: tuple[dict[str, Any], ...] = ()
         try:
+            # Strip incidental monorepo pin dirt (e.g. external/ipfs_accelerate)
+            # before proposal admission — the same restore post-validation uses
+            # for candidate binding. Without this, CIG interop tasks fail
+            # proposal with path_outside_scope + submodule_boundary_forbidden.
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=scope_paths,
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
@@ -32638,6 +32822,32 @@ class PortalImplementationDaemon:
                 )
             if result.returncode == 0:
                 restored.append(relative)
+                continue
+            # Untracked out-of-scope paths cannot be restored from baseline;
+            # remove them so proposal admission does not see path_outside_scope
+            # from incidental pin/cache files left in the worktree.
+            target = workspace_path / relative
+            try:
+                if target.is_symlink() or target.is_file():
+                    target.unlink(missing_ok=True)
+                    restored.append(relative)
+                elif target.is_dir():
+                    # Only remove empty dirs or dirs with no in-scope content —
+                    # fail closed by skipping non-empty trees that look large.
+                    import shutil
+
+                    # Bound: only delete if tree has <= 64 entries when walked.
+                    entry_count = 0
+                    for _root, _dirs, files in os.walk(target):
+                        entry_count += len(files)
+                        if entry_count > 64:
+                            break
+                    if entry_count <= 64:
+                        shutil.rmtree(target, ignore_errors=True)
+                        if not target.exists():
+                            restored.append(relative)
+            except OSError:
+                continue
         if restored:
             self._record_event(
                 "implementation_out_of_scope_dirt_restored",
@@ -32681,6 +32891,7 @@ class PortalImplementationDaemon:
                 workspace_path,
                 baseline_ref=baseline_ref,
                 scope_paths=self._proposal_scope_paths(task),
+                task=task,
             )
             current_fingerprint = self._proposal_candidate_fingerprint(
                 current_entries
@@ -32748,12 +32959,18 @@ class PortalImplementationDaemon:
         if not task.validation:
             return None
         try:
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=self._proposal_scope_paths(task),
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError):
@@ -32789,12 +33006,18 @@ class PortalImplementationDaemon:
         collection_error = ""
         current_expansions: tuple[dict[str, Any], ...] = ()
         try:
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             current_entries, current_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=self._proposal_scope_paths(task),
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
@@ -32991,12 +33214,18 @@ class PortalImplementationDaemon:
         if not result.get("passed", False):
             return result
         try:
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, _submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=self._proposal_scope_paths(task),
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
