@@ -282,6 +282,77 @@ def test_select_auto_includes_claude_gemini_observations() -> None:
     assert by_id["codex"].capacity_latched is True
 
 
+def test_grok_hard_quota_opens_copilot_when_higher_secondaries_unavailable() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(PREFERRED_PROVIDER, ready=False, hard_quota_exhausted=True),
+            _obs(FALLBACK_PROVIDER, ready=False),
+            _obs("claude", ready=False),
+            _obs("gemini", ready=False),
+            _obs("copilot"),
+            _obs("meta_spark"),
+            _obs("mistral"),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.COPILOT
+    assert selection.selected_provider == "copilot"
+
+
+def test_grok_hard_quota_opens_meta_spark_after_copilot_latched() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(PREFERRED_PROVIDER, ready=False, hard_quota_exhausted=True),
+            _obs(FALLBACK_PROVIDER, ready=False),
+            _obs("claude", ready=False),
+            _obs("gemini", ready=False),
+            _obs("copilot", ready=False, capacity_latched=True),
+            _obs("meta_spark"),
+            _obs("mistral"),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.META_SPARK
+    assert selection.selected_provider == "meta_spark"
+
+
+def test_grok_hard_quota_opens_mistral_as_last_secondary() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(PREFERRED_PROVIDER, ready=False, hard_quota_exhausted=True),
+            _obs(FALLBACK_PROVIDER, ready=False),
+            _obs("claude", ready=False),
+            _obs("gemini", ready=False),
+            _obs("copilot", ready=False),
+            _obs("meta_spark", ready=False, hard_quota_exhausted=True),
+            _obs("mistral"),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.MISTRAL
+    assert selection.selected_provider == "mistral"
+
+
+def test_select_auto_includes_meta_mistral_copilot_observations() -> None:
+    selection = select_auto_implementation_provider(
+        grok_binary=True,
+        grok_authenticated=True,
+        codex_binary=True,
+        claude_binary=True,
+        claude_authenticated=True,
+        gemini_binary=True,
+        gemini_authenticated=True,
+        copilot_binary=True,
+        copilot_authenticated=True,
+        meta_spark_binary=True,
+        meta_spark_authenticated=True,
+        mistral_binary=True,
+        mistral_authenticated=True,
+    )
+    assert selection.decision is AutoProviderDecision.GROK
+    by_id = {item.provider_id: item for item in selection.observations}
+    assert by_id["copilot"].eligible is True
+    assert by_id["meta_spark"].eligible is True
+    assert by_id["mistral"].eligible is True
+
+
 def test_claude_usage_observation_overlay_restricts_eligibility() -> None:
     selection = select_auto_implementation_provider(
         grok_binary=True,

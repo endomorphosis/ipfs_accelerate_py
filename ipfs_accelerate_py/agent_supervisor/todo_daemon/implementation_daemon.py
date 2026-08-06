@@ -465,6 +465,18 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
     (
+        "mistral",
+        re.compile(
+            r"(?:"
+            r"mistral.*(?:rate[_ ]?limit|quota|usage[_ ]?limit|credit)|"
+            r"vibe.*(?:rate[_ ]?limit|quota|usage[_ ]?limit)|"
+            r"insufficient[_ ](?:credits?|quota)|"
+            r"plan\s+limit\s+reached"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "provider",
         re.compile(
             r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded|"
@@ -493,6 +505,12 @@ PROVIDER_CAPACITY_FAMILY_ALIASES = {
     "gemini_cli": "gemini",
     "google_gemini": "gemini",
     "google": "gemini",
+    "mistral": "mistral",
+    "mistral_vibe": "mistral",
+    "vibe": "mistral",
+    "muse": "goose",
+    "muse_spark": "goose",
+    "spark": "goose",
     "provider": "provider",
     "infrastructure": "infrastructure",
 }
@@ -1892,6 +1910,32 @@ def _gemini_implementation_command(
     return command
 
 
+def _mistral_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Mistral Vibe implementation argv (stdin prompt)."""
+
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get("IPFS_ACCELERATE_AGENT_MISTRAL_MODEL", "").strip()
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "mistral",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
 def _copilot_fallback_command(
     *,
     codex: str | None,
@@ -2492,6 +2536,11 @@ def _provider_labels_from_implementation_command(
             "@google/gemini-cli" in str(item or "").lower() for item in items
         ):
             provider_labels = ("gemini",)
+        elif normalized in {"vibe", "mistral", "mistral-vibe", "mistral_vibe"}:
+            provider_labels = ("mistral",)
+        elif normalized in {"copilot", "github-copilot"}:
+            # also matched above; keep for explicit secondary token scans
+            provider_labels = ("copilot",)
         for provider in provider_labels:
             if provider not in labels:
                 labels.append(provider)
@@ -45984,20 +46033,40 @@ class PortalImplementationDaemon:
             claude_authenticated = False
             gemini_binary = False
             gemini_authenticated = False
+            copilot_binary = False
+            copilot_authenticated = False
+            meta_spark_binary = False
+            meta_spark_authenticated = False
+            mistral_binary = False
+            mistral_authenticated = False
             try:
-                from .cli_provider_balance import (
-                    probe_claude_cli_readiness,
-                    probe_gemini_cli_readiness,
-                )
+                from .cli_provider_balance import probe_all_cli_provider_readiness
 
-                claude_probe = probe_claude_cli_readiness()
-                gemini_probe = probe_gemini_cli_readiness()
+                cli_readiness = probe_all_cli_provider_readiness()
+                claude_probe = cli_readiness.get("claude") or {}
+                gemini_probe = cli_readiness.get("gemini") or {}
+                copilot_probe = cli_readiness.get("copilot") or {}
+                meta_probe = cli_readiness.get("meta_spark") or {}
+                mistral_probe = cli_readiness.get("mistral") or {}
                 claude_binary = bool(claude_probe.get("binary_available"))
                 claude_authenticated = bool(claude_probe.get("authenticated"))
                 gemini_binary = bool(gemini_probe.get("binary_available"))
                 gemini_authenticated = bool(gemini_probe.get("authenticated"))
+                copilot_binary = bool(copilot_probe.get("binary_available"))
+                copilot_authenticated = bool(copilot_probe.get("authenticated"))
+                meta_spark_binary = bool(meta_probe.get("binary_available"))
+                meta_spark_authenticated = bool(meta_probe.get("authenticated"))
+                mistral_binary = bool(mistral_probe.get("binary_available"))
+                mistral_authenticated = bool(mistral_probe.get("authenticated"))
             except Exception:
-                pass
+                # Fall back to daemon-local readiness helpers.
+                copilot_binary = bool(shutil.which("copilot"))
+                copilot_authenticated = bool(_copilot_has_auth())
+                meta_spark_binary = bool(_goose_binary())
+                meta_spark_authenticated = bool(
+                    _resolve_meta_spark_api_key()
+                    or os.environ.get("OPENAI_API_KEY", "").strip()
+                )
             auto_selection = select_auto_implementation_provider(
                 grok_binary=bool(_grok_binary()),
                 grok_authenticated=bool(grok_auth or grok_ready),
@@ -46010,6 +46079,12 @@ class PortalImplementationDaemon:
                 claude_authenticated=claude_authenticated,
                 gemini_binary=gemini_binary,
                 gemini_authenticated=gemini_authenticated,
+                copilot_binary=copilot_binary,
+                copilot_authenticated=copilot_authenticated,
+                meta_spark_binary=meta_spark_binary,
+                meta_spark_authenticated=meta_spark_authenticated,
+                mistral_binary=mistral_binary,
+                mistral_authenticated=mistral_authenticated,
                 latches=automatic_latches,
                 global_capacity_latched=global_capacity_latched,
             )
@@ -46041,6 +46116,45 @@ class PortalImplementationDaemon:
                         "Grok quota is exhausted and Gemini is in capacity cooldown"
                     )
                 return _gemini_implementation_command(
+                    workspace_path=workspace_path,
+                )
+            if auto_selection.decision is AutoProviderDecision.COPILOT:
+                if not automatic_family_allowed("copilot"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Copilot is in capacity cooldown"
+                    )
+                copilot = shutil.which("copilot")
+                if not copilot or not _copilot_has_auth():
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but authenticated Copilot CLI "
+                        "is unavailable"
+                    )
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(
+                        task
+                    )[0]
+                    if task is not None
+                    else None
+                )
+                return _copilot_fallback_command(
+                    codex=None,
+                    copilot=str(copilot),
+                    workspace_path=workspace_path,
+                    codex_context_window=codex_context_window,
+                )
+            if auto_selection.decision is AutoProviderDecision.META_SPARK:
+                if not automatic_family_allowed("goose"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Meta Spark/Goose is in "
+                        "capacity cooldown"
+                    )
+                return _goose_meta_spark_command(workspace_path=workspace_path)
+            if auto_selection.decision is AutoProviderDecision.MISTRAL:
+                if not automatic_family_allowed("mistral"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Mistral is in capacity cooldown"
+                    )
+                return _mistral_implementation_command(
                     workspace_path=workspace_path,
                 )
             if auto_selection.decision is AutoProviderDecision.CODEX:

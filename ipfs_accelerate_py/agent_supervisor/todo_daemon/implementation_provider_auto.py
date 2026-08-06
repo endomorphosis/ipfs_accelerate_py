@@ -8,8 +8,8 @@ implementation routing.  It reuses:
   are healthy);
 * :mod:`ipfs_accelerate_py.llm_router` readiness probes that do **not**
   charge usage (binary + auth, no generation);
-* :mod:`cli_provider_balance` for Anthropic Claude CLI and Google Gemini CLI
-  readiness plus quota/balance classification;
+* :mod:`cli_provider_balance` for Claude, Gemini, Meta Spark, Mistral, and
+  Copilot readiness plus quota/balance classification;
 * durable capacity / hard-quota latches already maintained by the
   implementation daemon from classified provider failures;
 * optional :mod:`endpoint_usage.adapters` observations when a caller has
@@ -21,10 +21,10 @@ Selection rules (fail-closed):
    exhaustion remove a candidate before ranking.
 2. Soft ranking prefers more headroom / higher preference rank; identical soft
    scores are broken by the preferred provider (Grok).
-3. Secondary backends (Codex, Claude, Gemini) are authorized for
-   *implementation* only when Grok has a durable hard-quota exhaustion latch
-   (or an operator escape hatch).  Transient Grok capacity cooldowns never
-   open a secondary implementer.
+3. Secondary backends (Codex, Claude, Gemini, Copilot, Meta Spark, Mistral)
+   are authorized for *implementation* only when Grok has a durable hard-quota
+   exhaustion latch (or an operator escape hatch).  Transient Grok capacity
+   cooldowns never open a secondary implementer.
 4. Explicit non-``auto`` pins bypass this selector entirely.
 """
 
@@ -41,7 +41,10 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.capability_resolver import 
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.cli_provider_balance import (
     CLAUDE_PROVIDER_ID,
+    COPILOT_PROVIDER_ID,
     GEMINI_PROVIDER_ID,
+    META_SPARK_PROVIDER_ID,
+    MISTRAL_PROVIDER_ID,
     SECONDARY_IMPLEMENTATION_PREFERENCE,
 )
 
@@ -57,6 +60,9 @@ AUTO_OBSERVED_PROVIDERS: tuple[str, ...] = (
     PREFERRED_PROVIDER,
     CLAUDE_PROVIDER_ID,
     GEMINI_PROVIDER_ID,
+    COPILOT_PROVIDER_ID,
+    META_SPARK_PROVIDER_ID,
+    MISTRAL_PROVIDER_ID,
     FALLBACK_PROVIDER,
 )
 
@@ -77,6 +83,9 @@ class AutoProviderDecision(str, Enum):
     CODEX = "codex"
     CLAUDE = "claude"
     GEMINI = "gemini"
+    COPILOT = "copilot"
+    META_SPARK = "meta_spark"
+    MISTRAL = "mistral"
     UNAVAILABLE = "unavailable"
     BACKOFF = "backoff"
 
@@ -187,6 +196,9 @@ def _decision_for_provider(provider_id: str) -> AutoProviderDecision:
         FALLBACK_PROVIDER: AutoProviderDecision.CODEX,
         CLAUDE_PROVIDER_ID: AutoProviderDecision.CLAUDE,
         GEMINI_PROVIDER_ID: AutoProviderDecision.GEMINI,
+        COPILOT_PROVIDER_ID: AutoProviderDecision.COPILOT,
+        META_SPARK_PROVIDER_ID: AutoProviderDecision.META_SPARK,
+        MISTRAL_PROVIDER_ID: AutoProviderDecision.MISTRAL,
     }
     return mapping.get(provider_id, AutoProviderDecision.UNAVAILABLE)
 
@@ -484,6 +496,15 @@ def _apply_usage_overlay(
     )
 
 
+_LATCH_ALIASES: dict[str, tuple[str, ...]] = {
+    CLAUDE_PROVIDER_ID: ("claude_code", "anthropic"),
+    GEMINI_PROVIDER_ID: ("gemini_cli",),
+    META_SPARK_PROVIDER_ID: ("goose", "meta", "muse", "muse_spark", "spark"),
+    MISTRAL_PROVIDER_ID: ("mistral_vibe", "vibe"),
+    COPILOT_PROVIDER_ID: ("github_copilot",),
+}
+
+
 def probe_llm_router_backends(
     *,
     grok_binary: bool,
@@ -495,6 +516,12 @@ def probe_llm_router_backends(
     claude_authenticated: bool = False,
     gemini_binary: bool = False,
     gemini_authenticated: bool = False,
+    copilot_binary: bool = False,
+    copilot_authenticated: bool = False,
+    meta_spark_binary: bool = False,
+    meta_spark_authenticated: bool = False,
+    mistral_binary: bool = False,
+    mistral_authenticated: bool = False,
     latches: Mapping[str, Any] | None = None,
     usage_observations: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[BackendObservation, ...]:
@@ -527,6 +554,27 @@ def probe_llm_router_backends(
             "cli_probe",
         ),
         (
+            COPILOT_PROVIDER_ID,
+            copilot_binary,
+            copilot_authenticated,
+            copilot_binary and copilot_authenticated,
+            "cli_probe",
+        ),
+        (
+            META_SPARK_PROVIDER_ID,
+            meta_spark_binary,
+            meta_spark_authenticated,
+            meta_spark_binary and meta_spark_authenticated,
+            "cli_probe",
+        ),
+        (
+            MISTRAL_PROVIDER_ID,
+            mistral_binary,
+            mistral_authenticated,
+            mistral_binary and mistral_authenticated,
+            "cli_probe",
+        ),
+        (
             FALLBACK_PROVIDER,
             codex_binary,
             codex_authenticated,
@@ -545,19 +593,11 @@ def probe_llm_router_backends(
             source=source,
         )
         base = merge_capacity_latch(base, _latch_entry(latches, provider_id))
-        # Also accept family aliases for claude/gemini latches.
-        if provider_id == CLAUDE_PROVIDER_ID:
-            base = merge_capacity_latch(
-                base, _latch_entry(latches, "claude_code")
-            )
-            base = merge_capacity_latch(
-                base, _latch_entry(latches, "anthropic")
-            )
-        if provider_id == GEMINI_PROVIDER_ID:
-            base = merge_capacity_latch(
-                base, _latch_entry(latches, "gemini_cli")
-            )
+        for alias in _LATCH_ALIASES.get(provider_id, ()):
+            base = merge_capacity_latch(base, _latch_entry(latches, alias))
         base = _apply_usage_overlay(base, usage, provider_id)
+        for alias in _LATCH_ALIASES.get(provider_id, ()):
+            base = _apply_usage_overlay(base, usage, alias)
         observations.append(base)
     return tuple(observations)
 
@@ -573,6 +613,12 @@ def select_auto_implementation_provider(
     claude_authenticated: bool = False,
     gemini_binary: bool = False,
     gemini_authenticated: bool = False,
+    copilot_binary: bool = False,
+    copilot_authenticated: bool = False,
+    meta_spark_binary: bool = False,
+    meta_spark_authenticated: bool = False,
+    mistral_binary: bool = False,
+    mistral_authenticated: bool = False,
     latches: Mapping[str, Any] | None = None,
     usage_observations: Mapping[str, Mapping[str, Any]] | None = None,
     global_capacity_latched: bool = False,
@@ -591,6 +637,12 @@ def select_auto_implementation_provider(
         claude_authenticated=claude_authenticated,
         gemini_binary=gemini_binary,
         gemini_authenticated=gemini_authenticated,
+        copilot_binary=copilot_binary,
+        copilot_authenticated=copilot_authenticated,
+        meta_spark_binary=meta_spark_binary,
+        meta_spark_authenticated=meta_spark_authenticated,
+        mistral_binary=mistral_binary,
+        mistral_authenticated=mistral_authenticated,
         latches=latches,
         usage_observations=usage_observations,
     )

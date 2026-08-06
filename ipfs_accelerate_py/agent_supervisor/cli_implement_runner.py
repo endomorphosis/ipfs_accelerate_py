@@ -121,12 +121,59 @@ def _run_gemini(*, workspace: Path, model: str, prompt: str) -> int:
     return int(completed.returncode)
 
 
+def _resolve_mistral() -> str:
+    for env in (
+        "IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD",
+        "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
+        "MISTRAL_VIBE_BIN",
+        "VIBE_BIN",
+    ):
+        configured = str(os.environ.get(env) or "").strip()
+        if configured:
+            token = configured.split()[0]
+            path = Path(token).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+            found = shutil.which(token)
+            if found:
+                return found
+    for candidate in ("vibe", "mistral-vibe"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    raise SystemExit("mistral vibe CLI not found on PATH")
+
+
+def _run_mistral(*, workspace: Path, model: str, prompt: str) -> int:
+    vibe = _resolve_mistral()
+    # Non-interactive prompt run; flags vary by vibe version.
+    command = [
+        vibe,
+        "--prompt",
+        prompt,
+        "--output",
+        "text",
+        "--max-turns",
+        "100",
+    ]
+    if model:
+        command.extend(["--model", model])
+    env = os.environ.copy()
+    completed = subprocess.run(
+        command,
+        cwd=str(workspace),
+        env=env,
+        check=False,
+    )
+    return int(completed.returncode)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--provider",
         required=True,
-        choices=("claude", "gemini"),
+        choices=("claude", "gemini", "mistral"),
         help="CLI implement provider",
     )
     parser.add_argument(
@@ -152,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
     model = str(args.model or "").strip()
     if args.provider == "claude":
         return _run_claude(workspace=workspace, model=model, prompt=prompt)
+    if args.provider == "mistral":
+        return _run_mistral(workspace=workspace, model=model, prompt=prompt)
     return _run_gemini(workspace=workspace, model=model, prompt=prompt)
 
 

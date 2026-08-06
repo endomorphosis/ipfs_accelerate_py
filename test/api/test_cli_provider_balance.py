@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.cli_provider_balance import (
     CLAUDE_PROVIDER_ID,
+    COPILOT_PROVIDER_ID,
     GEMINI_PROVIDER_ID,
+    META_SPARK_PROVIDER_ID,
+    MISTRAL_PROVIDER_ID,
     classify_claude_cli_text,
+    classify_copilot_cli_text,
     classify_gemini_cli_text,
+    classify_meta_spark_cli_text,
+    classify_mistral_cli_text,
     parse_cli_balance_observation,
+    probe_all_cli_provider_readiness,
     probe_claude_cli_readiness,
     probe_gemini_cli_readiness,
 )
@@ -100,3 +107,70 @@ def test_readiness_probes_are_side_effect_free_dicts() -> None:
     assert "binary_available" in claude and "authenticated" in claude
     assert "binary_available" in gemini and "authenticated" in gemini
     assert "ready" in claude and "ready" in gemini
+
+
+def test_meta_spark_rate_limit_classification() -> None:
+    classified = classify_meta_spark_cli_text(
+        "Meta AI HTTP 429: rate limit exceeded; model is currently overloaded"
+    )
+    assert classified.provider_id == META_SPARK_PROVIDER_ID
+    assert classified.hard_quota_exhausted is False
+    assert classified.capacity_restricted is True
+    assert classified.failure_class == "rate_limited"
+
+
+def test_meta_spark_hard_quota_classification() -> None:
+    classified = classify_meta_spark_cli_text(
+        "Error: insufficient_quota — payment required for Meta AI"
+    )
+    assert classified.hard_quota_exhausted is True
+    assert classified.failure_class == "hard_quota_exhausted"
+
+
+def test_mistral_usage_limit_classification() -> None:
+    classified = classify_mistral_cli_text(
+        "vibe error: rate_limit_exceeded; retry after 30s"
+    )
+    assert classified.provider_id == MISTRAL_PROVIDER_ID
+    assert classified.capacity_restricted is True
+    assert classified.retry_after_seconds == 30
+
+
+def test_mistral_billing_hard_quota() -> None:
+    classified = classify_mistral_cli_text(
+        "Mistral API: credit balance exhausted; out of credits"
+    )
+    assert classified.hard_quota_exhausted is True
+
+
+def test_copilot_additional_usage_limit() -> None:
+    classified = classify_copilot_cli_text(
+        "Error: You've reached your additional usage limit. Try again later."
+    )
+    assert classified.provider_id == COPILOT_PROVIDER_ID
+    assert classified.capacity_restricted is True
+    assert classified.hard_quota_exhausted is False
+    assert classified.failure_class == "rate_limited"
+
+
+def test_copilot_subscription_hard_quota() -> None:
+    classified = classify_copilot_cli_text(
+        "GitHub Copilot is not available; upgrade your plan / subscription required"
+    )
+    assert classified.hard_quota_exhausted is True
+
+
+def test_probe_all_includes_meta_mistral_copilot() -> None:
+    readiness = probe_all_cli_provider_readiness()
+    assert set(readiness) >= {
+        CLAUDE_PROVIDER_ID,
+        GEMINI_PROVIDER_ID,
+        META_SPARK_PROVIDER_ID,
+        MISTRAL_PROVIDER_ID,
+        COPILOT_PROVIDER_ID,
+    }
+    for provider_id, snapshot in readiness.items():
+        assert snapshot["provider_id"] == provider_id
+        assert "binary_available" in snapshot
+        assert "authenticated" in snapshot
+        assert "ready" in snapshot
