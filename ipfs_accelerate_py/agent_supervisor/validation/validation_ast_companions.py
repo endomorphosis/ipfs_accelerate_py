@@ -233,9 +233,21 @@ def validation_ast_companion_paths(
             if len(resolved) >= max_paths:
                 break
         # Existing first-party path constants referenced by the test suite.
+        # Include monorepo evidence/docs paths when tests assert on them
+        # (e.g. objective heap strings for CIG interop suites).
         if depth == 0 and len(resolved) < max_paths:
             for literal in _string_path_literals(tree):
-                if not literal.startswith(("src/", "swissknife/", "mobile/")):
+                if not literal.startswith(
+                    (
+                        "src/",
+                        "swissknife/",
+                        "mobile/",
+                        "docs/",
+                        "implementation_plan/",
+                        "data/",
+                        "hallucinate_app/",
+                    )
+                ):
                     continue
                 if not (root / literal).is_file():
                     continue
