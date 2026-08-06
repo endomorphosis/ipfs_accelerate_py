@@ -542,6 +542,39 @@ def expand_cd_parent_return_validation_commands(command: str) -> list[str]:
     return [left_command, right_command]
 
 
+# Shell form used by monorepo CI re-enable boards to assert an ignore line is gone.
+# Rewrite to a pure-argv helper so proposal validation does not reject `$()` tokens.
+_MAKEFILE_IGNORE_ABSENT_RE = re.compile(
+    r"""^\s*test\s+-z\s+["']\$\(\s*rg\s+-n\s+["'](?P<pattern>[^"']+)["']\s+"""
+    r"""(?P<makefile>[^\s)"']+)\s*\|\|\s*true\s*\)["']\s*$""",
+    re.IGNORECASE,
+)
+_MAKEFILE_IGNORE_CHECK_MODULE = (
+    "ipfs_accelerate_py.agent_supervisor.validation.makefile_ignore_check"
+)
+
+
+def rewrite_shell_makefile_ignore_check(command: str) -> str:
+    """Rewrite ``test -z "$(rg ... || true)"`` ignore-absent checks to pure argv.
+
+    Proposal validation forbids shell expansion tokens even on task-declared
+    allowlists. CI re-enable boards use this reviewed shell form to prove a
+    Makefile ignore line was removed; map it to a dedicated helper module.
+    """
+
+    text = normalize_validation_command_text(command)
+    match = _MAKEFILE_IGNORE_ABSENT_RE.match(text)
+    if match is None:
+        return text
+    pattern = match.group("pattern")
+    makefile = match.group("makefile") or "Makefile"
+    return (
+        f"python3 -m {_MAKEFILE_IGNORE_CHECK_MODULE} "
+        f"--makefile {shlex.quote(makefile)} "
+        f"--absent {shlex.quote(pattern)}"
+    )
+
+
 def split_validation_commands(value: str) -> list[str]:
     """Split semicolon-separated shell commands without splitting quoted code.
 
@@ -590,7 +623,9 @@ def split_validation_commands(value: str) -> list[str]:
     expanded: list[str] = []
     for command in commands:
         expanded.extend(expand_cd_parent_return_validation_commands(command))
-    return expanded
+    return [
+        rewrite_shell_makefile_ignore_check(command) for command in expanded
+    ]
 
 
 def _shell_tokens(command: str) -> list[str]:

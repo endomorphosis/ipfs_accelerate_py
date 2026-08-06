@@ -184,6 +184,7 @@ from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
     normalize_validation_command_text,
+    rewrite_shell_makefile_ignore_check,
     split_validation_commands,
 )
 from ..validation.validation_runtime import (
@@ -31006,7 +31007,7 @@ class PortalImplementationDaemon:
         validation_steps_list: list[ProposalValidationStep] = []
         malformed_validation_command = False
         for raw_command in task.validation:
-            command = str(raw_command)
+            command = rewrite_shell_makefile_ignore_check(str(raw_command))
             if self._task_uses_typed_local_execution(task):
                 command, _notes = self._normalize_validation_command(command)
             try:
@@ -31278,6 +31279,29 @@ class PortalImplementationDaemon:
                 for proposal_id in current_consumed_proposal_ids
                 if proposal_id not in replayable_proposal_ids
             )
+        # Tasks that declare test modules as Outputs/Predicted files are
+        # expected to rewrite those tests (fixture refresh, re-enable paths).
+        # Default fail-closed test-weakening still applies outside task-owned
+        # scope via task_owned_paths enforcement on the write set.
+        from ..validation.proposal_validation import _is_test_path as _proposal_is_test_path
+
+        task_owned_test_outputs = any(
+            _proposal_is_test_path(str(path).strip())
+            for path in (
+                *(task.outputs or ()),
+                *(
+                    str(part).strip()
+                    for part in str(
+                        (task.metadata or {}).get("predicted files")
+                        or (task.metadata or {}).get("predicted_files")
+                        or ""
+                    ).split(",")
+                    if str(part).strip()
+                ),
+                *allowed_paths,
+            )
+            if str(path).strip()
+        )
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -31294,6 +31318,7 @@ class PortalImplementationDaemon:
             submodule_paths=submodule_paths,
             protected_paths=tuple(self.implementation_protected_paths),
             allowed_validation_commands=allowed_validation_commands,
+            allow_test_weakening=task_owned_test_outputs,
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
@@ -32617,7 +32642,9 @@ class PortalImplementationDaemon:
 
         commands: list[str] = []
         for raw_command in task.validation:
-            command, _notes = self._normalize_validation_command(raw_command)
+            command, _notes = self._normalize_validation_command(
+                rewrite_shell_makefile_ignore_check(str(raw_command))
+            )
             command, _pythonpath_note = self._with_worktree_validation_pythonpath(
                 command,
                 workspace_path,

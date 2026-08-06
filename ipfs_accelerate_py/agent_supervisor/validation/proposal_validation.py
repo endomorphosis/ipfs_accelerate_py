@@ -3264,6 +3264,12 @@ def _command_is_allowed(
         clauses.append(command_t[start:])
         return all(compound_clause_is_safe(clause) for clause in clauses)
 
+    # Exact task-board allowlist hit: trust the reviewed command when the
+    # executable itself is not a shell interpreter. This admits env-assignment
+    # prefixes (PYTHONPATH=...) that are already on the task validation plan.
+    if command_t in prefixes_t and clause_executable_is_safe(command_t):
+        return True
+
     if not clause_is_safe(command_t):
         return False
     return any(
