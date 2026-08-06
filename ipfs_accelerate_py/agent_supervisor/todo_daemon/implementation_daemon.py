@@ -25412,13 +25412,14 @@ class PortalImplementationDaemon:
                     candidate,
                     branch_name=branch_name,
                     offline_local_only=offline_local_only,
+                    task=task,
                 )
 
             lease = self.worktree_pool.acquire(
                 cache_key=cache_key,
                 base_ref=base_ref,
                 branch_name=branch_name,
-                dependency_paths=self.worktree_submodule_paths,
+                dependency_paths=self._effective_worktree_submodule_paths(task),
                 activate=activate,
                 authorize_reuse=self._authorize_pooled_worktree_reuse,
             )
@@ -25485,6 +25486,7 @@ class PortalImplementationDaemon:
             worktree_path,
             branch_name=branch_name,
             offline_local_only=offline_local_only,
+            task=task,
         )
         if seed_context:
             self._link_shared_worktree_paths(worktree_path)
@@ -25665,12 +25667,71 @@ class PortalImplementationDaemon:
             "pool_enabled": self.worktree_pool is not None,
         }
 
+    def _task_declared_submodule_paths(
+        self,
+        task: PortalTask | None,
+    ) -> tuple[str, ...]:
+        """Return task-owned submodule paths from board metadata.
+
+        CIG and other monorepo boards declare ``Submodules:`` per task. Those
+        paths must be initialized in the implement worktree even when the
+        daemon was not started with a global ``worktree_submodule_paths`` list.
+        """
+
+        if task is None:
+            return ()
+        raw = str(
+            (task.metadata or {}).get("submodules")
+            or (task.metadata or {}).get("submodule")
+            or ""
+        )
+        paths: set[str] = set()
+        for part in split_csv(raw):
+            relative = str(part).strip().replace("\\", "/").strip("/")
+            while relative.startswith("./"):
+                relative = relative[2:]
+            if not relative or not self._repo_relative_path_safe(relative):
+                continue
+            paths.add(relative)
+        return tuple(sorted(paths))
+
+    def _effective_worktree_submodule_paths(
+        self,
+        task: PortalTask | None = None,
+        *,
+        submodule_paths: Sequence[str] | None = None,
+    ) -> tuple[str, ...]:
+        """Union daemon-configured and task-declared submodule paths."""
+
+        if submodule_paths is not None:
+            base = {
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in submodule_paths
+                if str(path).strip()
+            }
+        else:
+            base = {
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in self.worktree_submodule_paths
+                if str(path).strip()
+            }
+            base.update(self._task_declared_submodule_paths(task))
+        return tuple(
+            sorted(
+                path
+                for path in base
+                if path and self._repo_relative_path_safe(path)
+            )
+        )
+
     def _initialize_worktree_submodules(
         self,
         worktree_path: Path,
         *,
         branch_name: str = "",
         offline_local_only: bool = False,
+        task: PortalTask | None = None,
+        submodule_paths: Sequence[str] | None = None,
     ) -> None:
         init_failures: list[dict[str, Any]] = []
         # A removed task worktree can leave a shared submodule gitdir's
@@ -25679,7 +25740,11 @@ class PortalImplementationDaemon:
         # unavailable and falling back to a network-backed submodule update.
         if not offline_local_only:
             self._repair_stale_submodule_worktree_configs(self.repo_root)
-        for relative in self.worktree_submodule_paths:
+        effective_paths = self._effective_worktree_submodule_paths(
+            task,
+            submodule_paths=submodule_paths,
+        )
+        for relative in effective_paths:
             if self._create_local_submodule_worktree(
                 worktree_path,
                 relative,
@@ -26937,7 +27002,11 @@ class PortalImplementationDaemon:
         task: PortalTask | None = None,
         branch_name: str = "",
     ) -> None:
-        self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
+        self._initialize_worktree_submodules(
+            worktree_path,
+            branch_name=branch_name,
+            task=task,
+        )
         # Provider-side validation may have already populated known generated
         # evidence paths. Remove those deterministic side effects before the
         # proposal is collected so they cannot consume task mutation scope.

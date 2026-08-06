@@ -1089,6 +1089,19 @@ def review_implementation_failure(
         addendum_lines.append(
             "Re-run and fix: " + " | ".join(failed_commands[:4]) + "."
         )
+    failed_tests = _as_str_tuple(validation.get("failed_tests") or ())
+    if failed_tests:
+        addendum_lines.append(
+            "Failed tests: " + ", ".join(failed_tests[:8]) + "."
+        )
+    failure_head = " ".join(
+        str(validation.get("failure_head") or "").split()
+    ).strip()
+    if failure_head:
+        # Keep compact: next-attempt prompt budgets are tight.
+        addendum_lines.append(
+            "Failure evidence: " + failure_head[:1200] + "."
+        )
     if environment_guidance:
         addendum_lines.append(
             "Authoritative validation environment: "
