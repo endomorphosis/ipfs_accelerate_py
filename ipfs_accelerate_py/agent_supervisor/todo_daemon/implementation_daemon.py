@@ -36204,6 +36204,13 @@ class PortalImplementationDaemon:
 
             merge_workspace = Path(str(workspace_result["path"]))
             merge_workspace_ephemeral = bool(workspace_result.get("ephemeral", False))
+            # Shared main checkouts accumulate detached submodule HEADs from
+            # prior implement worktrees (e.g. swissknife left on an attempt
+            # branch). That dirt blocks merges that also touch the submodule
+            # even when the parent only has a gitlink pointer mismatch.
+            restored_incidental_gitlinks = (
+                self._restore_incidental_main_gitlink_checkouts(merge_workspace)
+            )
             resolved_add_add_conflicts = self._resolve_generated_add_add_conflicts(cwd=merge_workspace)
             identical_untracked_paths = self._identical_untracked_merge_paths(branch_name, cwd=merge_workspace)
             restored_generated_dirty_overlap = self._restore_generated_dirty_merge_overlap(
@@ -36276,6 +36283,7 @@ class PortalImplementationDaemon:
                     "identical_untracked_paths": identical_untracked_paths,
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
                     "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
+                    "restored_incidental_gitlinks": restored_incidental_gitlinks,
                     "generated_submodule_reconciliation": generated_submodule_reconciliation,
                     "submodule_merge_results": [],
                 }
@@ -40693,6 +40701,98 @@ class PortalImplementationDaemon:
         if dirty_submodules or preservation:
             self._record_event("dirty_submodule_reset_deferred", result)
         return result
+
+    def _restore_incidental_main_gitlink_checkouts(
+        self,
+        workspace: Path,
+    ) -> list[str]:
+        """Restore dirty submodule checkouts to the HEAD-recorded gitlink.
+
+        Implement worktrees share the monorepo object store and often leave
+        submodule working copies on attempt branches. Parent status then shows
+        `` M swissknife`` (or similar) even though no intentional main-branch
+        edit exists. Restoring the gitlink + checkout unblocks merges that
+        would otherwise fail with ``main_checkout_dirty_conflict``.
+        """
+
+        restored: list[str] = []
+        dirty_paths = sorted(self._dirty_worktree_paths(workspace))
+        if not dirty_paths:
+            return restored
+        try:
+            _symlinks, tracked_gitlinks = self._proposal_boundary_paths(workspace)
+        except (OSError, RuntimeError, ValueError):
+            tracked_gitlinks = ()
+        gitlink_set = {
+            str(path).strip().replace("\\", "/").strip("/")
+            for path in tracked_gitlinks
+            if str(path).strip()
+        }
+        for relative in dirty_paths:
+            normalized = str(relative or "").strip().replace("\\", "/").strip("/")
+            if not normalized or normalized not in gitlink_set:
+                continue
+            if not self._repo_relative_path_safe(normalized):
+                continue
+            # Resolve the commit recorded on HEAD for this gitlink.
+            head_result = subprocess.run(
+                ["git", "rev-parse", f"HEAD:{normalized}"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if head_result.returncode != 0:
+                continue
+            expected = head_result.stdout.strip()
+            if not expected:
+                continue
+            # Reset parent index/worktree gitlink pointer.
+            restore = subprocess.run(
+                ["git", "checkout", "HEAD", "--", normalized],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if restore.returncode != 0:
+                continue
+            target = workspace / normalized
+            if self._is_git_worktree(target):
+                checkout = subprocess.run(
+                    ["git", "checkout", "-f", expected],
+                    cwd=target,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if checkout.returncode != 0:
+                    # Fall back to submodule update for this path only.
+                    subprocess.run(
+                        [
+                            "git",
+                            "submodule",
+                            "update",
+                            "--init",
+                            "--checkout",
+                            "--",
+                            normalized,
+                        ],
+                        cwd=workspace,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+            restored.append(normalized)
+        if restored:
+            self._record_event(
+                "implementation_incidental_main_gitlink_restored",
+                {
+                    "restored_paths": restored,
+                    "workspace_path": str(workspace),
+                },
+            )
+        return restored
 
     def _dirty_merge_conflict_paths(
         self,
