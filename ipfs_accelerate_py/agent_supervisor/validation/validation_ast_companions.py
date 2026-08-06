@@ -176,14 +176,17 @@ def validation_ast_companion_paths(
     task: Any,
     *,
     repo_root: Path,
-    max_depth: int = 2,
-    max_paths: int = 32,
+    max_depth: int = 3,
+    max_paths: int = 48,
 ) -> tuple[str, ...]:
     """Return repository files imported (via AST) by validation test modules.
 
     Walks up to ``max_depth`` import hops starting from validation test files so
     thin test wrappers that import ``handsfree.*_interop`` modules expand edit
-    authority to the production owner of broken contracts.
+    authority to the production owner of broken contracts. Also admits existing
+    first-party path constants referenced in those tests (for example
+    ``src/runtime_router.py``) so re-enable boards can lawfully edit them when
+    the suite asserts on monorepo-relative production modules.
     """
 
     root = Path(repo_root)
@@ -229,6 +232,18 @@ def validation_ast_companion_paths(
                 queue.append((companion, depth + 1))
             if len(resolved) >= max_paths:
                 break
+        # Existing first-party path constants referenced by the test suite.
+        if depth == 0 and len(resolved) < max_paths:
+            for literal in _string_path_literals(tree):
+                if not literal.startswith(("src/", "swissknife/", "mobile/")):
+                    continue
+                if not (root / literal).is_file():
+                    continue
+                if literal in resolved or literal in seeds:
+                    continue
+                resolved.append(literal)
+                if len(resolved) >= max_paths:
+                    break
 
     return tuple(sorted(resolved))
 

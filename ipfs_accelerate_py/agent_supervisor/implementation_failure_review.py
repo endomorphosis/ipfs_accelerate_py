@@ -1132,11 +1132,19 @@ def review_implementation_failure(
             "Authoritative validation environment: "
             + " ".join(environment_guidance.split())
         )
-    addendum_lines.append(
-        "Stay inside declared Outputs/Predicted files (files or directory "
-        "trees); finish all expected outputs; avoid renames, submodule edits, "
-        "and undeclared new modules."
-    )
+    if ast_companions:
+        addendum_lines.append(
+            "Stay inside declared Outputs/Predicted files plus AST import "
+            "companions listed above; finish every expected output; avoid "
+            "renames and opaque submodule gitlink pin changes; do not weaken "
+            "tests to pass the gate."
+        )
+    else:
+        addendum_lines.append(
+            "Stay inside declared Outputs/Predicted files (files or directory "
+            "trees); finish all expected outputs; avoid renames, submodule edits, "
+            "and undeclared new modules."
+        )
 
     return ImplementationFailureReviewReceipt(
         task_id=task_id,

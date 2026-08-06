@@ -25842,13 +25842,82 @@ class PortalImplementationDaemon:
             paths.add(relative)
         return tuple(sorted(paths))
 
+    def _validation_implied_submodule_paths(
+        self,
+        task: PortalTask | None = None,
+    ) -> tuple[str, ...]:
+        """Return monorepo pins implied by validation PYTHONPATH / commands.
+
+        CIG re-enable boards often list only the suite under test in
+        ``Submodules:`` (for example ``swissknife, external/ipfs_datasets``)
+        while the validation command still needs sibling pins such as
+        ``external/ipfs_kit`` on ``PYTHONPATH`` or as relocated descriptor
+        roots. Without initializing those pins the implementer wastes attempts
+        inventing checkout helpers for empty submodule checkouts.
+        """
+
+        if task is None:
+            return ()
+        known_pins = (
+            "external/ipfs_accelerate",
+            "external/ipfs_datasets",
+            "external/ipfs_kit",
+            "external/meta-wearables-dat-android",
+            "external/meta-wearables-dat-ios",
+            "swissknife",
+            "hallucinate_app",
+            "Mcp-Plus-Plus",
+        )
+        found: set[str] = set()
+        blobs: list[str] = []
+        for raw in getattr(task, "validation", ()) or ():
+            blobs.append(str(raw or ""))
+        for raw in getattr(task, "outputs", ()) or ():
+            blobs.append(str(raw or ""))
+        metadata = getattr(task, "metadata", None) or {}
+        if isinstance(metadata, Mapping):
+            for key in (
+                "preconditions",
+                "effects",
+                "acceptance",
+                "predicted files",
+                "submodules",
+            ):
+                if metadata.get(key):
+                    blobs.append(str(metadata.get(key)))
+        haystack = "\n".join(blobs)
+        for pin in known_pins:
+            if pin in haystack:
+                found.add(pin)
+        # PYTHONPATH=src:external/ipfs_accelerate:external/ipfs_kit:…
+        for match in re.finditer(
+            r"(?:^|[\s:=])((?:external|swissknife|hallucinate_app|Mcp-Plus-Plus)"
+            r"(?:/[A-Za-z0-9_.\-]+)+)",
+            haystack,
+        ):
+            relative = match.group(1).strip("/").replace("\\", "/")
+            # Keep only first two path segments for submodule roots.
+            parts = relative.split("/")
+            if parts[0] in {"external", "swissknife", "hallucinate_app", "Mcp-Plus-Plus"}:
+                if parts[0] == "external" and len(parts) >= 2:
+                    found.add(f"external/{parts[1]}")
+                elif parts[0] != "external":
+                    found.add(parts[0])
+        return tuple(
+            sorted(
+                path
+                for path in found
+                if path and self._repo_relative_path_safe(path)
+            )
+        )
+
     def _effective_worktree_submodule_paths(
         self,
         task: PortalTask | None = None,
         *,
         submodule_paths: Sequence[str] | None = None,
     ) -> tuple[str, ...]:
-        """Union daemon-configured and task-declared submodule paths."""
+        """Union daemon-configured, task-declared, and validation-implied pins."""
 
         if submodule_paths is not None:
             base = {
@@ -25863,6 +25932,7 @@ class PortalImplementationDaemon:
                 if str(path).strip()
             }
             base.update(self._task_declared_submodule_paths(task))
+            base.update(self._validation_implied_submodule_paths(task))
         return tuple(
             sorted(
                 path
