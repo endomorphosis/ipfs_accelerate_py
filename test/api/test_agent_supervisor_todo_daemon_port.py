@@ -21225,6 +21225,52 @@ def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(
     assert daemon._implementation_process_active(event) is True
 
 
+def test_implementation_daemon_recognizes_grok_cli_runner_as_inflight(
+    tmp_path, monkeypatch
+):
+    """Docker-isolated Grok wrappers must not look dead mid-attempt."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    worktree_path = repo / "worktrees" / "cig-014-attempt-3"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "worktree_path": str(worktree_path),
+        "command": [
+            "/usr/bin/python3",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            "--workspace",
+            str(worktree_path),
+            "--model",
+            "grok-4.5",
+        ],
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_list_process_commands",
+        lambda: [
+            (
+                f"/usr/bin/python3 -m ipfs_accelerate_py.agent_supervisor."
+                f"grok_cli_runner --workspace {worktree_path} --model grok-4.5"
+            ),
+            # Truncated docker child may lose the worktree path.
+            (
+                "docker run --name ipfs-accelerate-grok-123 "
+                "/opt/ipfs-accelerate/grok --model grok-4.5"
+            ),
+        ],
+    )
+
+    assert daemon._implementation_process_active(event) is True
+
+
 def test_implementation_daemon_recognizes_shared_checkout_runner_without_worktree_path(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()

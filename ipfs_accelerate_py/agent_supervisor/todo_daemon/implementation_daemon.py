@@ -405,8 +405,17 @@ AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS = 900
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
+# Match bare CLI names and supervisor wrappers. Docker-isolated Grok runs as
+# ``python -m ...grok_cli_runner`` plus an optional ``/opt/.../grok`` child;
+# the bare ``grok(?:\s|$)`` form alone misses the wrapper and falsely reports
+# inflight_process_missing mid-attempt (burning max_task_attempts).
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
+    r"(?:"
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
+    r"|grok_cli_runner"
+    r"|cli_implement_runner"
+    r"|ipfs-accelerate-grok"
+    r")"
 )
 GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
     r"\.git-sync-recovery-\d{8}-\d{6}(?:-\d+)?\.md"
@@ -8275,6 +8284,15 @@ class PortalImplementationDaemon:
         if self.max_task_attempts <= 0:
             return list(tasks), []
         exempt = {str(task_id) for task_id in exempt_task_ids}
+        # Never attempt-limit a task whose attempt is still live. Recording the
+        # Nth attempt sets count==max while the process is still running; treating
+        # that as limited mid-flight aborts the only remaining attempt.
+        active_id = str(getattr(state, "active_task_id", "") or "").strip()
+        if (
+            active_id
+            and bool(getattr(state, "implementation_in_progress", False))
+        ):
+            exempt.add(active_id)
         selectable: list[PortalTask] = []
         limited: list[dict[str, Any]] = []
         for task in tasks:
@@ -45781,13 +45799,40 @@ class PortalImplementationDaemon:
         worktree_path = str(event.get("worktree_path") or "")
         command = event.get("command") or []
         process_lines = self._list_process_commands()
+        command_text = (
+            " ".join(str(item) for item in command if item)
+            if isinstance(command, list)
+            else str(command or "")
+        )
+        command_is_runner = bool(
+            IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(command_text)
+            or "grok_cli_runner" in command_text
+            or "cli_implement_runner" in command_text
+        )
         if worktree_path:
             # Task validation can leave MCP bridge servers in its worktree. Only
-            # the configured Codex/Copilot runner proves implementation is live.
-            return any(
-                worktree_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+            # the configured Codex/Copilot/Grok runner proves implementation is live.
+            if any(
+                worktree_path in line
+                and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
-            )
+            ):
+                return True
+            # Docker ARG truncation can drop the worktree from the grok child
+            # line while the wrapper still holds ``--workspace <worktree>``.
+            # Require the worktree on the same process line as a runner token so
+            # co-located MCP bridges never look like an implementer.
+            if any(
+                worktree_path in line
+                and (
+                    "grok_cli_runner" in line
+                    or "cli_implement_runner" in line
+                    or "ipfs-accelerate-grok" in line
+                )
+                for line in process_lines
+            ):
+                return True
+            return False
         # Shared-checkout implementations deliberately do not have a task
         # worktree path.  Their serialized wrapper command contains a
         # heredoc, so matching the complete command line is not reliable.
@@ -45799,13 +45844,11 @@ class PortalImplementationDaemon:
                 repo_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
             )
-        if isinstance(command, list):
-            command_text = " ".join(str(item) for item in command if item)
-            if command_text:
-                return any(
-                    command_text in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
-                    for line in process_lines
-                )
+        if command_text:
+            return any(
+                command_text in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                for line in process_lines
+            )
         return False
 
     def _list_process_commands(self) -> list[str]:
