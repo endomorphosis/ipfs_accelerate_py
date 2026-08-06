@@ -3573,6 +3573,9 @@ class PortalImplementationDaemon:
                 cancellation=implementation_cancelled,
             )
         self.decision_runtime = decision_runtime
+        # Optional injectable PreImplementationKernel for WPD-021 tests / composition.
+        # Production default builds a hermetic kernel at gate evaluation time.
+        self.pre_implementation_kernel = None
         self._last_runtime_decision: Any = None
         self._last_runtime_effect_observation: Any = None
         # A completion decision is emitted before its protected checkout
@@ -8232,14 +8235,17 @@ class PortalImplementationDaemon:
         return {task.task_id for task in representative.values()}
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
-        """Return whether this daemon lane should implement ``task_id``."""
+        """Return whether this daemon lane should implement ``task_id``.
+
+        Uses a stable full-ID hash rather than ``trailing_digits % N``. Sequential
+        boards (WPD-023, WPD-032, WPD-041, WPD-050, …) otherwise all land on the
+        same lane under strict sharding and leave sibling lanes idle forever.
+        """
 
         if self.task_shard_count <= 1:
             return True
-        match = re.search(r"(\d+)$", task_id)
-        if match is None:
-            return self.task_shard_index == 0
-        return int(match.group(1)) % self.task_shard_count == self.task_shard_index
+        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % self.task_shard_count == self.task_shard_index
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -11634,14 +11640,16 @@ class PortalImplementationDaemon:
         active_resource_claims = (
             self._active_implementation_resource_claims(tasks)
         )
+        active_claim_paths = tuple(active_resource_claims)
         resource_reserved_task_ids = {
             task.task_id
             for task in execution_tasks
             if any(
-                resource_path in active_resource_claims
+                self._resource_paths_overlap(resource_path, claimed_path)
                 for resource_path in self._task_implementation_resource_paths(
                     task
                 )
+                for claimed_path in active_claim_paths
             )
         }
         external_task_reservations = self._external_task_reservations(tasks)
@@ -13106,6 +13114,102 @@ class PortalImplementationDaemon:
             )
         self._record_event("implementation_provider_exhausted", result)
         return result
+
+    def _evaluate_pre_implementation_provider_gate(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        worktree_path: Path,
+    ) -> dict[str, Any]:
+        """WPD-021: seal a pre-implementation kernel disposition before provider use.
+
+        Provider dispatch is authorized only for ``residual_llm_authorized``
+        with a residual packet CID.  Returns a plain dict so the massive
+        implementation path stays free of hard import failures at module load.
+        """
+
+        try:
+            from .pre_implementation_provider_gate import (
+                evaluate_provider_gate,
+                build_forest_roots_from_identity,
+            )
+            from .implementation_disposition import implementation_disposition_cid
+        except Exception as exc:  # pragma: no cover - import hygiene fallback
+            return {
+                "skip_provider": True,
+                "provider_authorized": False,
+                "disposition": "defer_capability",
+                "reason_code": "pre_implementation_gate_import_failed",
+                "receipt_cid": "",
+                "event": {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "error": f"{type(exc).__name__}: {exc}"[-500:],
+                },
+            }
+
+        task_cid = self._canonical_ref(task) or task.task_id
+        repo_id = implementation_disposition_cid(
+            {"repo_root": str(self.repo_root), "kind": "repository"}
+        )
+        try:
+            head = (
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                ).stdout
+                or ""
+            ).strip() or "HEAD"
+            tree = (
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                ).stdout
+                or ""
+            ).strip() or head
+        except OSError:
+            head = "HEAD"
+            tree = "HEAD"
+        forest = build_forest_roots_from_identity(
+            repository_id=f"repository:{repo_id}",
+            repository_forest_cid=implementation_disposition_cid(
+                {"head": head, "tree": tree}
+            ),
+            git_tree_id=tree if " " not in tree else implementation_disposition_cid(
+                {"tree": tree}
+            ),
+            policy_root=implementation_disposition_cid(
+                {"policy": "wpd-pre-implementation@1"}
+            ),
+        )
+        kernel = getattr(self, "pre_implementation_kernel", None)
+        decision = evaluate_provider_gate(
+            task_cid=task_cid,
+            forest_roots=forest,
+            attempt=int(attempt),
+            kernel=kernel,
+            allow_legacy_residual=True,
+        )
+        return {
+            "skip_provider": decision.skip_provider,
+            "provider_authorized": decision.provider_authorized,
+            "disposition": decision.disposition.value,
+            "reason_code": decision.reason_code,
+            "receipt_cid": decision.receipt_cid,
+            "residual_packet_cid": decision.residual_packet_cid,
+            "provider_hook_count": decision.provider_hook_count,
+            "event": decision.to_event_payload(
+                task_id=task.task_id,
+                attempt=int(attempt),
+            ),
+        }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         authority_revalidation_only = (
@@ -22413,52 +22517,104 @@ class PortalImplementationDaemon:
                         returncode=0,
                     )
                 else:
-                    def invoke_provider() -> subprocess.CompletedProcess[str]:
-                        nonlocal provider_dispatched
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            )
-                        )
-                        progress_observer = (
-                            self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            )
-                        )
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=worktree_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=provider_environment,
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=progress_observer,
-                        )
-
-                    completed = self._decision_runtime_mutation(
-                        "command_invocation",
-                        {
-                            "operation": "implementation_provider",
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "command": tuple(command),
-                            "workspace_path": str(worktree_path),
-                            "branch": branch_name,
-                        },
-                        invoke_provider,
+                    # WPD-021: PreImplementationKernel gate — provider path is
+                    # unreachable unless disposition is residual_llm_authorized
+                    # with a residual packet CID.
+                    provider_gate = self._evaluate_pre_implementation_provider_gate(
+                        task=task,
+                        attempt=attempt,
+                        worktree_path=worktree_path,
                     )
+                    self._record_event(
+                        "pre_implementation_kernel_evaluated",
+                        dict(provider_gate.get("event") or {}),
+                    )
+                    if provider_gate.get("skip_provider"):
+                        disposition = str(provider_gate.get("disposition") or "")
+                        log_fh.write(
+                            "PreImplementationKernel: "
+                            f"disposition={disposition} "
+                            f"reason={provider_gate.get('reason_code')} "
+                            f"receipt_cid={provider_gate.get('receipt_cid')}\n"
+                        )
+                        log_fh.flush()
+                        if disposition == "closed_deterministic":
+                            # Analytical / doctor path closed the claim —
+                            # do not invoke the model provider.
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=0,
+                            )
+                        else:
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=1,
+                            )
+                            provider_failure = {
+                                "reason": "pre_implementation_kernel_blocked_provider",
+                                "disposition": disposition,
+                                "reason_code": str(
+                                    provider_gate.get("reason_code") or ""
+                                ),
+                                "receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            }
+                    else:
+                        def invoke_provider() -> subprocess.CompletedProcess[str]:
+                            nonlocal provider_dispatched
+                            # Fail closed if gate identity drifted.
+                            if not provider_gate.get("provider_authorized"):
+                                raise RuntimeError(
+                                    "provider dispatch blocked by pre-implementation kernel"
+                                )
+                            provider_environment = (
+                                self._implementation_process_environment(
+                                    task,
+                                    attempt=attempt,
+                                    checkpoint_dir=checkpoint_dir,
+                                )
+                            )
+                            progress_observer = (
+                                self._implementation_progress_observer(
+                                    state,
+                                    task,
+                                    attempt=attempt,
+                                )
+                            )
+                            provider_dispatched = True
+                            return run_process_group_stream(
+                                command,
+                                cwd=worktree_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=progress_observer,
+                            )
+
+                        completed = self._decision_runtime_mutation(
+                            "command_invocation",
+                            {
+                                "operation": "implementation_provider",
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "command": tuple(command),
+                                "workspace_path": str(worktree_path),
+                                "branch": branch_name,
+                                "pre_implementation_receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            },
+                            invoke_provider,
+                        )
             returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -42442,32 +42598,71 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask,
     ) -> tuple[str, ...]:
-        """Return configured submodule roots affected by one task's outputs."""
+        """Return shared resource paths claimed for one task's outputs.
+
+        Prefer **declared output paths** under configured submodule roots so
+        multi-lane boards (e.g. WPD) can run disjoint file claims in parallel.
+        Falling back to whole submodule roots would serialize every task that
+        touches ``external/ipfs_accelerate`` and permanently under-utilize
+        strict multi-lane supervisors.
+
+        When a task declares no outputs under configured submodules, return
+        empty (no shared resource claim). Whole-submodule fallback is retained
+        only when an output equals a configured submodule root exactly.
+        """
 
         outputs = normalize_relative_path_list(task_declared_output_paths(task))
-        matched = [
-            resource
-            for resource in self.worktree_submodule_paths
-            if any(
-                output == resource or output.startswith(f"{resource}/")
-                for output in outputs
+        if not outputs:
+            return ()
+        submodule_roots = tuple(
+            str(path).strip().rstrip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip()
+        )
+        precise: list[str] = []
+        whole_roots: list[str] = []
+        for output in outputs:
+            matched_root = next(
+                (
+                    root
+                    for root in submodule_roots
+                    if output == root or output.startswith(f"{root}/")
+                ),
+                "",
             )
-        ]
-        # A claim for an outer submodule also protects every nested gitlink.
-        # Retain only the broadest matched roots so acquisition stays ordered
-        # and does not manufacture self-conflicts for nested configurations.
-        selected: list[str] = []
+            if not matched_root:
+                continue
+            if output == matched_root:
+                whole_roots.append(matched_root)
+            else:
+                precise.append(output)
+        # Prefer precise file claims; only expand to whole roots when the
+        # task literally targets the submodule root as an output.
+        selected = precise if precise else whole_roots
+        # Drop children of broader selected paths so one task does not
+        # self-deadlock on parent+child claims.
+        collapsed: list[str] = []
         for resource in sorted(
-            matched,
+            set(selected),
             key=lambda item: (len(PurePosixPath(item).parts), item),
         ):
             if any(
                 resource == parent or resource.startswith(f"{parent}/")
-                for parent in selected
+                for parent in collapsed
             ):
                 continue
-            selected.append(resource)
-        return tuple(selected)
+            collapsed.append(resource)
+        return tuple(collapsed)
+
+    @staticmethod
+    def _resource_paths_overlap(left: str, right: str) -> bool:
+        """True when two resource claims protect overlapping checkout paths."""
+
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        return left.startswith(f"{right}/") or right.startswith(f"{left}/")
 
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         identity = self._identity_for_task(task)
@@ -42719,7 +42914,12 @@ class PortalImplementationDaemon:
         self,
         tasks: Sequence[PortalTask],
     ) -> dict[str, dict[str, Any]]:
-        """Return live shared-resource claims without mutating their leases."""
+        """Return live shared-resource claims without mutating their leases.
+
+        Scans the shared claim directory for all live locks (not only paths
+        currently declared by the board) so file-granular claims still see
+        legacy whole-submodule claims held by in-flight attempts.
+        """
 
         active_claims: dict[str, dict[str, Any]] = {}
         resource_paths = {
@@ -42729,19 +42929,44 @@ class PortalImplementationDaemon:
                 task
             )
         }
+        claim_dir = checkout_mutation_lock_path(
+            self.repo_root,
+            lock_name=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME,
+        )
+        lock_paths: list[Path] = []
+        if claim_dir.is_dir():
+            lock_paths.extend(sorted(claim_dir.glob("submodule-*.lock")))
         for resource_path in sorted(resource_paths):
-            claim_path = self._implementation_resource_claim_path(
-                resource_path
+            lock_paths.append(
+                self._implementation_resource_claim_path(resource_path)
             )
-            if not claim_path.exists():
+        seen_locks: set[Path] = set()
+        for claim_path in lock_paths:
+            try:
+                resolved = claim_path.resolve()
+            except OSError:
+                resolved = claim_path
+            if resolved in seen_locks or not claim_path.exists():
                 continue
+            seen_locks.add(resolved)
             metadata = load_json_dict(claim_path)
-            if (
-                metadata is not None
-                and self._implementation_resource_claim_owner_is_active(
-                    metadata
-                )
+            if metadata is None:
+                continue
+            if not self._implementation_resource_claim_owner_is_active(
+                metadata
             ):
+                continue
+            resource_path = str(metadata.get("resource_path") or "").strip()
+            if not resource_path:
+                # Fall back to matching known board paths for this lock file.
+                for candidate in resource_paths:
+                    if (
+                        self._implementation_resource_claim_path(candidate)
+                        == claim_path
+                    ):
+                        resource_path = candidate
+                        break
+            if resource_path:
                 active_claims[resource_path] = metadata
         return active_claims
 

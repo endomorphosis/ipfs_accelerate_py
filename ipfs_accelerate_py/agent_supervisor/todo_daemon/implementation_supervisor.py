@@ -131,6 +131,59 @@ SCHEDULER_CONFIG_SCHEMA_PATTERN = re.compile(
     r"[a-z0-9_.-]+\.scheduler_config@1$"
 )
 
+# ---------------------------------------------------------------------------
+# WPD-040 / SelectionDispositionProjection@1
+# ---------------------------------------------------------------------------
+# Minimal projection of planner/doctor implementation dispositions into
+# supervisor selection status.  Closed disposition classes appear as typed
+# selection_idle_reason codes; provider capacity backoff remains a distinct
+# non-disposition idle class so operators never confuse model quota with
+# doctor/planner outcomes.
+SELECTION_DISPOSITION_PROJECTION_INTERFACE = "SelectionDispositionProjection@1"
+SELECTION_DISPOSITION_PROJECTION_VERSION = 1
+SELECTION_DISPOSITION_PROJECTION_EVIDENCE = "wpd/selection-disposition@1"
+SELECTION_DISPOSITION_IDLE_REASON_PREFIX = "disposition_idle:"
+PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
+IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX = "implementation_retry_deferred:"
+
+# Lower ranks are preferred when ranking ready work under policy.  Doctor /
+# planner closed_deterministic readiness always outranks residual LLM work.
+_DISPOSITION_SELECTION_PRIORITY: dict[str, int] = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+
+# Dispositions that leave ready work idle (no autonomous start without further
+# authority).  residual_llm_authorized is runnable when capacity admits it;
+# closed_deterministic is preferred runnable work, not an idle class.
+_DISPOSITION_IDLE_CLASSES: frozenset[str] = frozenset(
+    {
+        "abstain_review",
+        "defer_capability",
+    }
+)
+
+# Heartbeat-fallback idle reasons that prove the content-addressed projection
+# is intentionally idle (no active claim) without masking real work.
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS: frozenset[str] = frozenset(
+    {
+        "no_shard_selectable_ready_tasks",
+        "no_tasks_found",
+    }
+)
+_QUIESCENT_POLICY_IDLE_REASONS: frozenset[str] = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
+
+
 # Atomic checkout leases describe complete, bounded mutation transactions
 # rather than projected task ownership.  A live owner of one of these
 # recognized operations remains authoritative even when the supervisor's task
@@ -879,6 +932,338 @@ def _managed_daemon_child_environment() -> dict[str, str]:
     return {"PYTHONPATH": pythonpath} if pythonpath else {}
 
 
+def _normalize_disposition_token(value: Any) -> str:
+    """Return a closed disposition wire value or raise ValueError."""
+
+    from .implementation_disposition import (
+        ImplementationDisposition,
+        parse_implementation_disposition,
+    )
+
+    if isinstance(value, ImplementationDisposition):
+        return value.value
+    if isinstance(value, Mapping):
+        raw = value.get("disposition")
+        if raw is None:
+            raise ValueError("disposition mapping requires a disposition field")
+        return parse_implementation_disposition(raw).value
+    return parse_implementation_disposition(value).value
+
+
+def disposition_selection_idle_reason(disposition: Any) -> str:
+    """Return the selection_idle_reason code for a doctor/planner disposition.
+
+    Disposition idle classes are distinct from
+    :data:`PROVIDER_CAPACITY_BACKOFF_IDLE_REASON`.  Every closed disposition
+    value has a stable idle-reason code so status consumers can attribute
+    idle loops to planner/doctor outcomes rather than model capacity.
+    """
+
+    token = _normalize_disposition_token(disposition)
+    return f"{SELECTION_DISPOSITION_IDLE_REASON_PREFIX}{token}"
+
+
+def closed_disposition_selection_idle_reasons() -> frozenset[str]:
+    """Return the closed set of disposition-class selection_idle_reason codes."""
+
+    from .implementation_disposition import closed_disposition_values
+
+    return frozenset(
+        disposition_selection_idle_reason(value)
+        for value in closed_disposition_values()
+    )
+
+
+def is_disposition_selection_idle_reason(reason: Any) -> bool:
+    """Return whether ``reason`` is a typed doctor/planner disposition idle code."""
+
+    if not isinstance(reason, str) or not reason:
+        return False
+    if not reason.startswith(SELECTION_DISPOSITION_IDLE_REASON_PREFIX):
+        return False
+    token = reason[len(SELECTION_DISPOSITION_IDLE_REASON_PREFIX) :]
+    if not token or ":" in token or any(char.isspace() for char in token):
+        return False
+    try:
+        _normalize_disposition_token(token)
+    except Exception:
+        return False
+    return True
+
+
+def is_provider_capacity_backoff_idle_reason(reason: Any) -> bool:
+    """Return whether ``reason`` is provider capacity backoff (not a disposition).
+
+    Capacity backoff remains a first-class idle class so residual LLM work
+    deferred for quota is never re-labeled as a planner/doctor disposition.
+    """
+
+    if not isinstance(reason, str) or not reason:
+        return False
+    if reason == PROVIDER_CAPACITY_BACKOFF_IDLE_REASON:
+        return True
+    if reason == (
+        f"{IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX}"
+        f"{PROVIDER_CAPACITY_BACKOFF_IDLE_REASON}"
+    ):
+        return True
+    return False
+
+
+def disposition_selection_priority_hint(
+    disposition: Any,
+    *,
+    prefer_closed_deterministic: bool = True,
+) -> int:
+    """Return a lower-is-better selection rank for a disposition class.
+
+    Under the default policy, ``closed_deterministic`` readiness ranks ahead
+    of residual LLM work so the scheduler prefers doctor/planner closes over
+    model-heavy residuals when both are ready.
+    """
+
+    token = _normalize_disposition_token(disposition)
+    rank = _DISPOSITION_SELECTION_PRIORITY.get(token)
+    if rank is None:
+        raise ValueError(f"unknown disposition for selection priority: {token!r}")
+    if not prefer_closed_deterministic and token == "closed_deterministic":
+        # Policy may opt out of the deterministic preference; residual then
+        # shares the primary rank without inventing a new disposition class.
+        return _DISPOSITION_SELECTION_PRIORITY["residual_llm_authorized"]
+    return rank
+
+
+def compare_disposition_selection_priority(
+    left: Any,
+    right: Any,
+    *,
+    prefer_closed_deterministic: bool = True,
+) -> int:
+    """Compare two dispositions for selection preference.
+
+    Returns ``-1`` when ``left`` should run first, ``1`` when ``right`` should
+    run first, and ``0`` when ranks tie.
+    """
+
+    left_rank = disposition_selection_priority_hint(
+        left, prefer_closed_deterministic=prefer_closed_deterministic
+    )
+    right_rank = disposition_selection_priority_hint(
+        right, prefer_closed_deterministic=prefer_closed_deterministic
+    )
+    if left_rank < right_rank:
+        return -1
+    if left_rank > right_rank:
+        return 1
+    return 0
+
+
+def rank_tasks_by_disposition_priority(
+    task_dispositions: Mapping[str, Any],
+    *,
+    prefer_closed_deterministic: bool = True,
+) -> list[str]:
+    """Order task ids so closed_deterministic readiness precedes residual LLM.
+
+    Unknown or missing dispositions fail closed by sorting after every known
+    class.  Tie-breaks are stable by task id.
+    """
+
+    ranked: list[tuple[int, str]] = []
+    for task_id, disposition in task_dispositions.items():
+        key = str(task_id)
+        if not key:
+            continue
+        try:
+            rank = disposition_selection_priority_hint(
+                disposition,
+                prefer_closed_deterministic=prefer_closed_deterministic,
+            )
+        except Exception:
+            rank = max(_DISPOSITION_SELECTION_PRIORITY.values()) + 1
+        ranked.append((rank, key))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [task_id for _, task_id in ranked]
+
+
+def project_selection_disposition(
+    status: Mapping[str, Any] | None = None,
+    *,
+    ready_task_dispositions: Mapping[str, Any] | None = None,
+    prefer_closed_deterministic: bool = True,
+    provider_capacity_backoff: bool = False,
+    selected_task_id: str = "",
+) -> dict[str, Any]:
+    """Project disposition classes into status / selection_idle_reason.
+
+    Interface: :data:`SELECTION_DISPOSITION_PROJECTION_INTERFACE`.
+
+    Rules (fail-closed, minimal projection):
+
+    1. When provider capacity backoff is active, ``selection_idle_reason`` is
+       exactly :data:`PROVIDER_CAPACITY_BACKOFF_IDLE_REASON` — never a
+       disposition class.
+    2. When no task is selected and every ready disposition is an idle class
+       (``abstain_review`` / ``defer_capability``), project the dominant
+       disposition idle reason.
+    3. Always attach ordered ``selection_disposition_priority_hints`` so
+       schedulers can prefer ``closed_deterministic`` over residual LLM work.
+    4. Existing non-disposition idle reasons on the input status are preserved
+       unless disposition projection replaces them under rules 1–2.
+    """
+
+    base = dict(status or {})
+    dispositions = {
+        str(task_id): _normalize_disposition_token(value)
+        for task_id, value in dict(ready_task_dispositions or {}).items()
+        if str(task_id)
+    }
+    ordered_ids = rank_tasks_by_disposition_priority(
+        dispositions,
+        prefer_closed_deterministic=prefer_closed_deterministic,
+    )
+    priority_hints = [
+        {
+            "task_id": task_id,
+            "disposition": dispositions[task_id],
+            "priority_hint": disposition_selection_priority_hint(
+                dispositions[task_id],
+                prefer_closed_deterministic=prefer_closed_deterministic,
+            ),
+            "prefer_closed_deterministic": bool(prefer_closed_deterministic),
+        }
+        for task_id in ordered_ids
+    ]
+
+    selected = str(
+        selected_task_id
+        or base.get("active_task_id")
+        or base.get("recommended_task_id")
+        or ""
+    ).strip()
+    existing_idle = str(base.get("selection_idle_reason") or "")
+    has_closed_deterministic = any(
+        token == "closed_deterministic" for token in dispositions.values()
+    )
+    residual_ready_count = sum(
+        1
+        for value in dispositions.values()
+        if value == "residual_llm_authorized"
+    )
+    # Capacity backoff only idles residual LLM work.  Prefer closed_deterministic
+    # readiness over residual when both are present under policy.
+    residual_blocked_by_capacity = bool(
+        provider_capacity_backoff
+        and not selected
+        and residual_ready_count > 0
+        and not (prefer_closed_deterministic and has_closed_deterministic)
+    )
+
+    if selected:
+        idle_reason = ""
+    elif residual_blocked_by_capacity:
+        idle_reason = PROVIDER_CAPACITY_BACKOFF_IDLE_REASON
+    elif dispositions and all(
+        token in _DISPOSITION_IDLE_CLASSES for token in dispositions.values()
+    ):
+        # Dominant idle disposition: lowest priority_hint among present classes
+        # (stable, closed vocabulary).
+        dominant = min(
+            dispositions.values(),
+            key=lambda token: (
+                disposition_selection_priority_hint(
+                    token,
+                    prefer_closed_deterministic=prefer_closed_deterministic,
+                ),
+                token,
+            ),
+        )
+        idle_reason = disposition_selection_idle_reason(dominant)
+    elif existing_idle and (
+        is_provider_capacity_backoff_idle_reason(existing_idle)
+        or is_disposition_selection_idle_reason(existing_idle)
+        or existing_idle in _QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS
+        or existing_idle in _QUIESCENT_POLICY_IDLE_REASONS
+        or existing_idle.startswith("resource_claim_deferred:")
+    ):
+        idle_reason = existing_idle
+    else:
+        idle_reason = existing_idle
+
+    # When residual is capacity-blocked but closed work remains, prefer that
+    # closed task id for selection hints without clearing residual visibility.
+    if (
+        provider_capacity_backoff
+        and prefer_closed_deterministic
+        and has_closed_deterministic
+        and not selected
+    ):
+        preferred_task_id = next(
+            (
+                task_id
+                for task_id in ordered_ids
+                if dispositions.get(task_id) == "closed_deterministic"
+            ),
+            ordered_ids[0] if ordered_ids else "",
+        )
+        idle_reason = ""
+    elif ordered_ids and not selected:
+        preferred_task_id = ordered_ids[0]
+    else:
+        preferred_task_id = selected
+    preferred_disposition = (
+        dispositions.get(preferred_task_id, "") if preferred_task_id else ""
+    )
+
+    projected = dict(base)
+    projected["selection_disposition_projection"] = {
+        "interface": SELECTION_DISPOSITION_PROJECTION_INTERFACE,
+        "contract_version": SELECTION_DISPOSITION_PROJECTION_VERSION,
+        "evidence": SELECTION_DISPOSITION_PROJECTION_EVIDENCE,
+        "prefer_closed_deterministic": bool(prefer_closed_deterministic),
+        "provider_capacity_backoff": bool(provider_capacity_backoff),
+        "ready_disposition_counts": {
+            token: sum(1 for value in dispositions.values() if value == token)
+            for token in sorted(_DISPOSITION_SELECTION_PRIORITY)
+        },
+        "preferred_task_id": preferred_task_id,
+        "preferred_disposition": preferred_disposition,
+        "residual_deferred_by_provider_capacity": (
+            residual_ready_count if provider_capacity_backoff else 0
+        ),
+    }
+    projected["selection_disposition_priority_hints"] = priority_hints
+    projected["selection_idle_reason"] = idle_reason
+    return projected
+
+
+def _selection_idle_reason_is_quiescent(reason: Any) -> bool:
+    """Return whether an idle reason is a known intentional idle class."""
+
+    if not isinstance(reason, str) or not reason:
+        return False
+    if reason in _QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS:
+        return True
+    if reason in _QUIESCENT_POLICY_IDLE_REASONS:
+        return True
+    if is_provider_capacity_backoff_idle_reason(reason):
+        return True
+    if is_disposition_selection_idle_reason(reason):
+        return True
+    if reason.startswith("resource_claim_deferred:") and len(reason) > len(
+        "resource_claim_deferred:"
+    ):
+        return True
+    if reason.startswith(IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX):
+        suffix = reason[len(IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX) :]
+        return bool(suffix) and (
+            is_provider_capacity_backoff_idle_reason(suffix)
+            or is_disposition_selection_idle_reason(suffix)
+            or suffix in _QUIESCENT_POLICY_IDLE_REASONS
+        )
+    return False
+
+
 def _projection_is_quiescent_for_heartbeat_fallback(
     status: Mapping[str, Any],
 ) -> bool:
@@ -900,25 +1285,27 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         return False
     if status["implementation_in_progress"] is not False:
         return False
-    if status["selection_idle_reason"] != (
-        "no_shard_selectable_ready_tasks"
-    ):
+    idle_reason = status["selection_idle_reason"]
+    if not _selection_idle_reason_is_quiescent(idle_reason):
         return False
     for field_name in (
         "ready_count",
         "selectable_ready_count",
         "eligible_ready_count",
+        "blocked_count",
     ):
         value = status[field_name]
-        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             return False
-    blocked_count = status["blocked_count"]
-    if (
-        isinstance(blocked_count, bool)
-        or not isinstance(blocked_count, int)
-        or blocked_count < 0
-    ):
-        return False
+    # Empty-backlog idle reasons must not report phantom ready work.
+    if idle_reason in _QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS:
+        for field_name in (
+            "ready_count",
+            "selectable_ready_count",
+            "eligible_ready_count",
+        ):
+            if status[field_name] != 0:
+                return False
     return True
 
 
@@ -8644,6 +9031,20 @@ class PortalImplementationSupervisor:
                 "finished_at": utc_now(),
             }
 
+        # Nested submodule dirt (untracked/modified content inside configured
+        # gitlinks) is invisible to monorepo ``git add -A`` and to
+        # ``--ignore-submodules=dirty`` stageability proofs.  Materialize it
+        # into nested commits + parent gitlink updates so rescue can finish
+        # instead of looping forever on
+        # existing_rescue_branch_nested_state_requires_reconciliation.
+        nested_materialization = self._materialize_nested_configured_submodule_dirt(
+            worktree_path,
+            status_lines=status_lines,
+            reason=reason,
+        )
+        if nested_materialization.get("committed_count"):
+            status_lines = self._git_status_short(worktree_path)
+
         stageability = self._existing_rescue_branch_stageability(
             worktree_path,
             branch=branch,
@@ -8664,6 +9065,7 @@ class PortalImplementationSupervisor:
                 "rescue_commit": rescue_commit,
                 "status_short": status_lines[:20],
                 "stageability_proof": stageability,
+                "nested_materialization": nested_materialization,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -8739,6 +9141,7 @@ class PortalImplementationSupervisor:
                 "returncode": add.returncode,
                 "stdout": add.stdout[-4000:],
                 "stderr": add.stderr[-4000:],
+                "nested_materialization": nested_materialization,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -8753,23 +9156,52 @@ class PortalImplementationSupervisor:
             check=False,
         )
         if staged.returncode == 0:
-            rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
-            result = {
-                "attempted": True,
-                "preserved": False,
-                "reason": "no_staged_rescue_delta_requires_reconciliation",
-                "path": str(worktree_path),
-                "branch": branch,
-                "head": head,
-                "target_ref": target_ref,
-                "rescue_branch": rescue_branch,
-                "rescue_commit": rescue_commit,
-                "status_short": status_lines[:20],
-                "started_at": started_at,
-                "finished_at": utc_now(),
-            }
-            self._record_event("dirty_worktree_rescue_deferred", result)
-            return result
+            # Parent index may still look empty when only nested dirt remained
+            # and the first materialization pass found nothing (race) or new
+            # nested dirt appeared after checkout.  Retry once.
+            retry_materialization = self._materialize_nested_configured_submodule_dirt(
+                worktree_path,
+                status_lines=self._git_status_short(worktree_path),
+                reason=f"{reason}:retry_after_empty_stage",
+            )
+            if retry_materialization.get("committed_count"):
+                nested_materialization = {
+                    **nested_materialization,
+                    "retry": retry_materialization,
+                }
+                add = subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                staged = subprocess.run(
+                    ["git", "diff", "--cached", "--quiet"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            if staged.returncode == 0:
+                rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+                result = {
+                    "attempted": True,
+                    "preserved": False,
+                    "reason": "no_staged_rescue_delta_requires_reconciliation",
+                    "path": str(worktree_path),
+                    "branch": branch,
+                    "head": head,
+                    "target_ref": target_ref,
+                    "rescue_branch": rescue_branch,
+                    "rescue_commit": rescue_commit,
+                    "status_short": status_lines[:20],
+                    "nested_materialization": nested_materialization,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                }
+                self._record_event("dirty_worktree_rescue_deferred", result)
+                return result
 
         commit = subprocess.run(
             [
@@ -8806,6 +9238,7 @@ class PortalImplementationSupervisor:
                 "returncode": commit.returncode,
                 "stdout": commit.stdout[-4000:],
                 "stderr": commit.stderr[-4000:],
+                "nested_materialization": nested_materialization,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -8827,11 +9260,164 @@ class PortalImplementationSupervisor:
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
+            "nested_materialization": nested_materialization,
             "started_at": started_at,
             "finished_at": utc_now(),
         }
         self._record_event("dirty_worktree_rescued", result)
         return result
+
+    def _materialize_nested_configured_submodule_dirt(
+        self,
+        worktree_path: Path,
+        *,
+        status_lines: list[str],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Commit nested dirt inside configured submodules so parent gitlinks stage.
+
+        Monorepo ``git add -A`` never captures untracked/modified files that live
+        only inside a submodule worktree.  Without a nested commit the parent
+        status stays `` ? path`` / `` m path`` forever, rescue defers forever,
+        and multi-lane supervisors burn cycles on the same worktree.
+        """
+
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for line in status_lines:
+            code = line[:2]
+            relative = self._status_line_path(line)
+            if not relative:
+                continue
+            normalized = relative.rstrip("/")
+            if normalized in seen:
+                continue
+            if not self._is_configured_worktree_submodule_path(normalized):
+                continue
+            # Nested dirt codes plus ordinary gitlink modifications.
+            if code in {" m", " ?", "? ", "M ", "MM", "AM", "A ", "??"} or (
+                "M" in code or "?" in code or "A" in code
+            ):
+                seen.add(normalized)
+                candidates.append(normalized)
+
+        if not candidates:
+            return {
+                "attempted": False,
+                "reason": "no_configured_submodule_dirt",
+                "committed_count": 0,
+                "paths": [],
+            }
+
+        nested_results: list[dict[str, Any]] = []
+        committed_count = 0
+        for relative in candidates:
+            nested_root = worktree_path / relative
+            entry: dict[str, Any] = {"path": relative, "nested_root": str(nested_root)}
+            if not nested_root.exists():
+                entry["reason"] = "nested_path_missing"
+                nested_results.append(entry)
+                continue
+            if not (nested_root / ".git").exists() and not (nested_root / ".git").is_file():
+                # Submodule checkouts use a .git file; bare dirs are not repos.
+                git_dir_probe = subprocess.run(
+                    ["git", "rev-parse", "--is-inside-work-tree"],
+                    cwd=nested_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if git_dir_probe.returncode != 0:
+                    entry["reason"] = "not_a_git_worktree"
+                    nested_results.append(entry)
+                    continue
+
+            nested_status = self._git_status_short(nested_root)
+            entry["nested_status_short"] = nested_status[:20]
+            if not nested_status:
+                entry["reason"] = "nested_already_clean"
+                nested_results.append(entry)
+                continue
+
+            add = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=nested_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                entry["reason"] = "nested_stage_failed"
+                entry["returncode"] = add.returncode
+                entry["stderr"] = add.stderr[-2000:]
+                nested_results.append(entry)
+                continue
+
+            staged = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=nested_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if staged.returncode == 0:
+                entry["reason"] = "nested_no_stageable_delta"
+                nested_results.append(entry)
+                continue
+
+            nested_head_before = self._git_ref_commit(nested_root, "HEAD")
+            commit = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Supervisor",
+                    "-c",
+                    "user.email=implementation-supervisor@example.invalid",
+                    "commit",
+                    "-m",
+                    f"Rescue nested submodule dirt in {relative}",
+                    "-m",
+                    f"Parent cleanup reason: {reason}",
+                ],
+                cwd=nested_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if commit.returncode != 0:
+                entry["reason"] = "nested_commit_failed"
+                entry["returncode"] = commit.returncode
+                entry["stderr"] = commit.stderr[-2000:]
+                nested_results.append(entry)
+                continue
+
+            nested_head_after = self._git_ref_commit(nested_root, "HEAD")
+            entry["reason"] = "nested_dirt_committed"
+            entry["nested_head_before"] = nested_head_before
+            entry["nested_head_after"] = nested_head_after
+            entry["committed"] = True
+            committed_count += 1
+            nested_results.append(entry)
+
+            # Stage the updated gitlink on the parent so rescue can commit it.
+            stage_link = subprocess.run(
+                ["git", "add", "--", relative],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            entry["parent_gitlink_stage_returncode"] = stage_link.returncode
+            if stage_link.returncode != 0:
+                entry["parent_gitlink_stage_stderr"] = stage_link.stderr[-2000:]
+
+        return {
+            "attempted": True,
+            "reason": "nested_configured_submodule_materialization",
+            "committed_count": committed_count,
+            "paths": candidates,
+            "nested_results": nested_results,
+        }
 
     def _existing_rescue_branch_stageability(
         self,
@@ -9430,35 +10016,68 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True, "configured_submodule_deletion": True})
                 configured_submodule_deletion = True
                 continue
-            if code == " m" and self._is_configured_worktree_submodule_path(relative):
-                verdict = self._configured_submodule_unstaged_deletion_proof(
-                    worktree_path,
-                    relative=relative,
-                    target_ref=target_ref,
-                )
+            # Submodule dirt: " m" (modified content), " ?" / "? " (untracked
+            # content inside submodule).  These are common residual states after
+            # nested work and must not permanently stall cleanup as
+            # unsupported_status (WPD-071 unblock).
+            if code in {" m", " ?", "? "} and self._is_configured_worktree_submodule_path(
+                relative
+            ):
+                if code == " m":
+                    verdict = self._configured_submodule_unstaged_deletion_proof(
+                        worktree_path,
+                        relative=relative,
+                        target_ref=target_ref,
+                    )
+                    checked.append(
+                        {
+                            **detail,
+                            "configured_submodule_unstaged_deletion": bool(
+                                verdict.get("redundant")
+                            ),
+                            "proof_reason": str(verdict.get("reason") or ""),
+                            "proof": dict(verdict.get("proof") or {}),
+                        }
+                    )
+                    if not verdict.get("redundant"):
+                        # Nested content differs but is still a known submodule
+                        # dirt class — not an exotic index state.  Report as
+                        # content_not_in_target so operators/automation treat it
+                        # as ordinary dirty content rather than unsupported_status.
+                        return {
+                            "redundant": False,
+                            "reason": "content_not_in_target",
+                            "checked": checked,
+                        }
+                    configured_submodule_unstaged_deletion = True
+                    continue
+                # Untracked content inside a configured submodule: treat as
+                # ordinary non-matching dirty content, not unsupported_status.
                 checked.append(
                     {
                         **detail,
-                        "configured_submodule_unstaged_deletion": bool(
-                            verdict.get("redundant")
-                        ),
-                        "proof_reason": str(verdict.get("reason") or ""),
-                        "proof": dict(verdict.get("proof") or {}),
+                        "configured_submodule_untracked_content": True,
+                        "matches_target": False,
                     }
                 )
-                if not verdict.get("redundant"):
+                return {
+                    "redundant": False,
+                    "reason": "content_not_in_target",
+                    "checked": checked,
+                }
+            if "D" in code or ("?" in code and code not in {"??", " ?", "? "}):
+                return {
+                    "redundant": False,
+                    "reason": "unsupported_status",
+                    "checked": [*checked, detail],
+                }
+            if code == "??" or "M" in code or "A" in code or code in {" ?", "? "}:
+                if not self._worktree_file_matches_ref(worktree_path, relative, target_ref):
                     return {
                         "redundant": False,
-                        "reason": "unsupported_status",
-                        "checked": checked,
+                        "reason": "content_not_in_target",
+                        "checked": [*checked, detail],
                     }
-                configured_submodule_unstaged_deletion = True
-                continue
-            if "D" in code or "?" in code.strip(" ?"):
-                return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
-            if code == "??" or "M" in code or "A" in code:
-                if not self._worktree_file_matches_ref(worktree_path, relative, target_ref):
-                    return {"redundant": False, "reason": "content_not_in_target", "checked": [*checked, detail]}
                 checked.append({**detail, "matches_target": True})
                 continue
             return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}

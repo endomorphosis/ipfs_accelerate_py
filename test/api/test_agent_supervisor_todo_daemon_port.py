@@ -37124,6 +37124,15 @@ def test_implementation_supervisor_keeps_configured_submodule_when_nested_head_d
 def test_implementation_supervisor_does_not_recursively_rename_existing_rescue_branch_without_stageable_delta(
     tmp_path: Path,
 ):
+    """Existing rescue branches must not be renamed when materializing nested dirt.
+
+    Nested-only submodule dirt used to defer forever
+    (``existing_rescue_branch_nested_state_requires_reconciliation``), which
+    stalled multi-lane supervisors.  Materialize nested commits onto the same
+    rescue ref so the parent gitlink becomes stageable without inventing a new
+    rescue/worktree/* branch name.
+    """
+
     branch = "rescue/worktree/already-preserved"
     repo, worktree_path, nested, supervisor = (
         _merged_cleanup_configured_submodule_fixture(
@@ -37149,17 +37158,60 @@ def test_implementation_supervisor_does_not_recursively_rename_existing_rescue_b
     refs_after = set(
         _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/rescue/worktree").splitlines()
     )
-    assert result["preserved"] is False
-    assert result["reason"] == (
-        "existing_rescue_branch_nested_state_requires_reconciliation"
-    )
+    assert result["preserved"] is True
+    assert result["reason"] == "dirty_worktree_committed_to_rescue_branch"
     assert result["rescue_branch"] == branch
-    assert result["rescue_commit"] == head
-    assert result["stageability_proof"]["no_stageable_delta"] is True
+    assert result["rescue_commit"] != head
+    assert result["nested_materialization"]["committed_count"] >= 1
     assert _git(worktree_path, "branch", "--show-current") == branch
-    assert _git(worktree_path, "rev-parse", "HEAD") == head
+    assert _git(worktree_path, "rev-parse", "HEAD") == result["rescue_commit"]
     assert refs_after == refs_before
     assert not (nested / "child.txt").exists()
+    # Parent worktree is clean after nested materialization + rescue commit.
+    assert supervisor._git_status_short(worktree_path) == []
+
+
+def test_implementation_supervisor_materializes_nested_untracked_submodule_dirt_on_rescue_branch(
+    tmp_path: Path,
+):
+    """Untracked files inside configured submodules must become rescue commits.
+
+    Production stall: `` ? external/ipfs_accelerate`` on an existing
+    rescue/worktree/* branch looped every supervisor cycle because monorepo
+    stageability ignored submodule dirt.
+    """
+
+    branch = "rescue/worktree/nested-untracked"
+    repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(
+            tmp_path,
+            branch_name=branch,
+        )
+    )
+    (nested / "orphan.txt").write_text("nested untracked rescue payload\n", encoding="utf-8")
+    head = _git(worktree_path, "rev-parse", "HEAD")
+    status = supervisor._git_status_short(worktree_path)
+    assert status == [" ? libs/child"] or status == ["?  libs/child"] or any(
+        "libs/child" in line for line in status
+    )
+
+    result = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=branch,
+        head=head,
+        target_ref="main",
+        status_lines=status,
+        reason="test_nested_untracked_dirt",
+    )
+
+    assert result["preserved"] is True
+    assert result["rescue_branch"] == branch
+    assert result["rescue_commit"] != head
+    assert result["nested_materialization"]["committed_count"] >= 1
+    assert _git(nested, "show", "HEAD:orphan.txt") == (
+        "nested untracked rescue payload\n"
+    )
+    assert supervisor._git_status_short(worktree_path) == []
 
 def test_implementation_supervisor_existing_rescue_branch_with_stageable_delta_reuses_same_ref(
     tmp_path: Path,

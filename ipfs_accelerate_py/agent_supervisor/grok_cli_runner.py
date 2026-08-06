@@ -37,6 +37,19 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.provider_command_binding import (
+    ensure_provider_command_bindings,
+    recover_provider_command_name_error,
+    scan_source_for_provider_command_names,
+)
+from ipfs_accelerate_py.agent_supervisor.provider_command_environment import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
+    PROVIDER_COMMAND_ENV_DIGEST_ENV,
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
+    PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV,
+    ProviderCommandEnvironmentError,
+    sealed_provider_command_environment,
+)
 from ipfs_accelerate_py.agent_supervisor.provider_failure_policy import (
     GROK_FAILURE_RECEIPT_PREFIX,
     GROK_QUOTA_PROBE_PROMPT,
@@ -44,6 +57,31 @@ from ipfs_accelerate_py.agent_supervisor.provider_failure_policy import (
     MAX_GROK_FAILURE_EVIDENCE_BYTES,
     build_grok_failure_receipt,
     render_grok_failure_receipt,
+)
+
+# Self-heal: if a static import is incomplete on an older pin or partial merge,
+# bind every provider-command symbol this module loads by name.
+try:
+    _SOURCE = Path(__file__).read_text(encoding="utf-8")
+    _REQUIRED_PROVIDER_COMMAND_SYMBOLS = scan_source_for_provider_command_names(
+        _SOURCE
+    )
+except OSError:
+    _REQUIRED_PROVIDER_COMMAND_SYMBOLS = frozenset(
+        {
+            "FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV",
+            "PROVIDER_COMMAND_ENV_DIGEST_ENV",
+            "PROVIDER_COMMAND_ENV_WRAPPER_ENV",
+            "PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV",
+            "ProviderCommandEnvironmentError",
+            "sealed_provider_command_environment",
+        }
+    )
+ensure_provider_command_bindings(
+    globals(),
+    required=_REQUIRED_PROVIDER_COMMAND_SYMBOLS,
+    namespace_name=__name__,
+    strict=False,
 )
 
 DEFAULT_GROK_MODEL = "grok-4.5"
@@ -3242,7 +3280,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Delegate to the full isolation/fallback implementation. Terra/medium is
     # only dispatched after terminal quota correlation + independent verify.
     try:
-        return _run(args, receipt_fd)
+        try:
+            return _run(args, receipt_fd)
+        except NameError as exc:
+            # Infer and bind missing provider-command symbols, then retry once.
+            healed = recover_provider_command_name_error(exc, globals())
+            if healed is None or not healed.bound_now:
+                raise
+            ensure_provider_command_bindings(
+                globals(),
+                required=_REQUIRED_PROVIDER_COMMAND_SYMBOLS,
+                namespace_name=__name__,
+                strict=False,
+            )
+            return _run(args, receipt_fd)
     finally:
         if receipt_fd >= 3:
             try:
