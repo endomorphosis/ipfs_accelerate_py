@@ -23,7 +23,7 @@ from .contract_repair_contracts import (
     SourceSpan,
     TraceDisposition,
 )
-from ..program_ast_adapters import ProgramEvidenceFact
+from .program_ast_adapters import ProgramEvidenceFact
 
 
 TRACE_ANALYSIS_SCHEMA: Final[str] = (

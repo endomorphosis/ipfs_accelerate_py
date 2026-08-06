@@ -35,7 +35,7 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
-from ..multiformats_identity import cid_for_bytes, cid_for_dag_json
+from ..core.multiformats_identity import cid_for_bytes, cid_for_dag_json
 
 
 DOCTOR_WORKTREE_ADAPTER_INTERFACE: Final[str] = "DoctorWorktreeAdapter@1"

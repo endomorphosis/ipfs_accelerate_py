@@ -25,7 +25,7 @@ from enum import Enum
 from typing import Any, Final, Optional, Tuple
 
 from ipfs_accelerate_py import ipfs_backend_router
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     ALLOWED_CODECS,
     CID_BASE,
     CID_VERSION,

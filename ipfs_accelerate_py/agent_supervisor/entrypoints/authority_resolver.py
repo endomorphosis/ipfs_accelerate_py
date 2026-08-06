@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Final
 
-from ..multiformats_identity import cid_for_dag_json
+from ..core.multiformats_identity import cid_for_dag_json
 from .contracts import (
     AUTHORITY_DECISION_FIELDS,
     TRUSTED_AUTHORITY_SOURCES,

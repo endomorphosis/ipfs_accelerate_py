@@ -67,7 +67,7 @@ def llm_merge_resolver_fallback_command(
 ) -> str:
     """Return the canonical shell-safe Grok/quota-only resolver command."""
 
-    from ..grok_cli_runner import build_grok_quota_routed_agent_command
+    from ..runtime.grok_cli_runner import build_grok_quota_routed_agent_command
 
     return shlex.join(
         build_grok_quota_routed_agent_command(

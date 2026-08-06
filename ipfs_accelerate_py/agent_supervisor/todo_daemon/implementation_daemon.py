@@ -49,7 +49,7 @@ from ..context.context_contracts import (
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
-from ..release_evidence import (
+from ..runtime.release_evidence import (
     EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL,
     EXPECTED_OUTPUT_FORCE_ADD_FAILED,
     EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN,
@@ -57,12 +57,12 @@ from ..release_evidence import (
     EXPECTED_OUTPUT_MISSING,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
 )
-from ..implementation_timeout import (
+from .implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
     implementation_timeout_metadata_value,
 )
-from ..provider_failure_policy import (
+from ..runtime.provider_failure_policy import (
     extract_grok_failure_receipts,
     valid_grok_failure_receipt,
     valid_grok_hard_quota_receipt,
@@ -92,7 +92,7 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
-from ..worktree_lifecycle import (
+from ..merge.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     DEFAULT_STARTUP_GRACE_SECONDS,
     CleanupDisposition,
@@ -120,7 +120,7 @@ from ..runtime.event_log import (
     unique_backup_path,
 )
 from ..control.control_contracts import CursorReplayError
-from ..evidence_output_scope import (
+from ..validation.evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
     normalize_evidence_output_path,
@@ -1642,7 +1642,7 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
-    from ..grok_cli_runner import build_grok_quota_routed_agent_command
+    from ..runtime.grok_cli_runner import build_grok_quota_routed_agent_command
 
     command = build_grok_quota_routed_agent_command(
         workspace=workspace_path.resolve(),
@@ -33371,7 +33371,7 @@ class PortalImplementationDaemon:
             # No-command success paths already return passed=True.
             return result
 
-        from ..implementation_failure_review import (
+        from ..validation.implementation_failure_review import (
             FailureReviewDecision,
             compact_failure_review,
             review_implementation_failure,
@@ -33409,7 +33409,7 @@ class PortalImplementationDaemon:
             adjudication = self._implementation_scope_adjudications.get(proposal_id)
             if adjudication is not None:
                 try:
-                    from ..scope_adjudication import compact_scope_adjudication
+                    from ..validation.scope_adjudication import compact_scope_adjudication
 
                     scope_payload = compact_scope_adjudication(adjudication)
                     result["scope_adjudication"] = scope_payload

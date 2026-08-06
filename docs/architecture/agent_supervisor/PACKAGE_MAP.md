@@ -174,6 +174,18 @@ Domain-layout program evidence tables (ASREF-G0xx package goals) live in
 
 ---
 
+
+---
+
+## Flat-module residual land (2026-08-06)
+
+Package root no longer hosts production modules other than `__init__.py`.
+Previously flat stems (program graph/forest, code/CVE contracts, provider
+execution, worktree lifecycle, finding task sources, etc.) live under their
+domain packages. The authoritative stem → package map is
+`AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` in the package root `__init__.py`.
+Historical flat import paths resolve via package-root aliasing only.
+
 ## Related
 
 - [Developer guide](DEVELOPER_GUIDE.md)

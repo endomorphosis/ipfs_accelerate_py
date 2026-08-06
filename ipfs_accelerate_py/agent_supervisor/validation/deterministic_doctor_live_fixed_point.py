@@ -36,7 +36,7 @@ from ..planning.deterministic_doctor_transaction import (
     DoctorTransactionReport,
 )
 from ..proof.formal_verification_contracts import content_identity
-from ..security_contract_analysis import (
+from ..proof.security_contract_analysis import (
     FixedPointSecurityReceipt,
     FlowEdge,
     FlowNode,

@@ -35,10 +35,10 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, ClassVar, Dict, Final, TypeVar
 
-from ..program_analysis_zkp import (
+from .program_analysis_zkp import (
     ProgramZkpBackendMode as ProgramAnalysisZkpBackendMode,
 )
-from ..program_analysis_zkp import (
+from .program_analysis_zkp import (
     ProgramZkpVerificationReceipt,
 )
 from .formal_verification_contracts import (
