@@ -28,8 +28,13 @@ from .contracts import (
     ActionProposal,
     RiskClass,
 )
+from .surface_exposure import (
+    SURFACE_TARGETING_ACTIONS,
+    resolve_target_surface_id,
+    surface_exposure_deny_reason,
+)
 
-POLICY_REVISION: str = "pilot-policy-matrix-v1"
+POLICY_REVISION: str = "pilot-policy-matrix-v2"
 SAFETY_LOGICAL_ACTION: str = "escalate_safety"
 HANDOFF_LOGICAL_ACTION: str = "handoff_live_agent"
 
@@ -168,6 +173,33 @@ class PilotPolicy:
                 reason="tenant_not_allowed",
                 descriptor=descriptor,
             )
+
+        # Surface exposure gate (client voice/phone): when a target surface is
+        # known, never_voice / staff_only / voice_read_only cannot open.
+        # Missing surface_id is left to binding/clarify (not policy DENY here).
+        if descriptor.logical_action in SURFACE_TARGETING_ACTIONS:
+            target = resolve_target_surface_id(
+                descriptor.logical_action,
+                proposal.arguments,
+            )
+            if target is not None:
+                role = str(
+                    (proposal.metadata or {}).get("role")
+                    or (proposal.arguments or {}).get("role")
+                    or "client"
+                )
+                surface_deny = surface_exposure_deny_reason(
+                    target,
+                    channel=proposal.channel or "voice",
+                    role=role,
+                )
+                if surface_deny is not None:
+                    return self._decision(
+                        proposal,
+                        kind=ActionDecisionKind.DENY,
+                        reason=surface_deny,
+                        descriptor=descriptor,
+                    )
 
         # Safety overlay: force escalate path only for the safety descriptor.
         # Never widen to open_app_surface, writes, or other arbitrary tools.
