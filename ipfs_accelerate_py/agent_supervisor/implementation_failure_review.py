@@ -1102,6 +1102,31 @@ def review_implementation_failure(
         addendum_lines.append(
             "Failure evidence: " + failure_head[:1200] + "."
         )
+    # Prefer AST-derived companions / relocation hints when the caller embeds
+    # them on the validation result (implementation daemon does this).
+    ast_companions = _as_str_tuple(
+        validation.get("ast_import_companion_paths") or ()
+    )
+    if ast_companions:
+        addendum_lines.append(
+            "AST import companions (preferred fix locations): "
+            + ", ".join(ast_companions[:12])
+            + "."
+        )
+    relocation_bits: list[str] = []
+    for raw_hint in validation.get("descriptor_relocation_hints") or ():
+        if not isinstance(raw_hint, Mapping):
+            continue
+        missing = str(raw_hint.get("missing") or "").strip()
+        candidate = str(raw_hint.get("candidate") or "").strip()
+        if missing and candidate:
+            relocation_bits.append(f"{missing}→{candidate}")
+    if relocation_bits:
+        addendum_lines.append(
+            "Descriptor relocations: "
+            + "; ".join(relocation_bits[:8])
+            + "."
+        )
     if environment_guidance:
         addendum_lines.append(
             "Authoritative validation environment: "

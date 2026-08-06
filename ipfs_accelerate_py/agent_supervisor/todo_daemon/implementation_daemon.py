@@ -180,6 +180,11 @@ from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..validation.validation_ast_companions import (
+    format_relocation_hints_for_prompt,
+    validation_ast_companion_paths,
+    validation_ast_relocation_hints,
+)
 from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
@@ -28630,13 +28635,50 @@ class PortalImplementationDaemon:
             ),
         }
 
+    def _proposal_scope_paths(
+        self,
+        task: PortalTask,
+        *,
+        include_ast_companions: bool = True,
+    ) -> tuple[str, ...]:
+        """Return repository paths owned by a task's output declaration."""
+
+        return self._proposal_scope_paths_for(
+            task,
+            repo_root=self.repo_root if include_ast_companions else None,
+            include_ast_companions=include_ast_companions,
+        )
+
     @staticmethod
-    def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
-        """Return exact repository paths owned by a task's output declaration."""
+    def _proposal_scope_paths_for(
+        task: PortalTask,
+        *,
+        repo_root: Path | None = None,
+        include_ast_companions: bool = True,
+    ) -> tuple[str, ...]:
+        """Return task-owned paths, optionally expanded via AST import analysis.
+
+        When ``include_ast_companions`` is true and ``repo_root`` is provided,
+        AST import analysis of validation test modules expands the scope to
+        first-party modules those tests import (for example
+        ``src/handsfree/*_interop.py``). Re-enable boards can then lawfully
+        edit the production owners of broken contracts without listing every
+        companion on the todo Outputs line.
+        """
 
         raw_paths: list[str] = list(task_declared_output_paths(task))
         for metadata_name in ("predicted files", "allowed paths"):
             raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
+        if include_ast_companions and repo_root is not None:
+            try:
+                raw_paths.extend(
+                    validation_ast_companion_paths(
+                        task,
+                        repo_root=Path(repo_root),
+                    )
+                )
+            except (OSError, TypeError, ValueError):
+                pass
         normalized: set[str] = set()
         for raw_path in raw_paths:
             path = str(raw_path).strip().replace("\\", "/")
@@ -29734,7 +29776,12 @@ class PortalImplementationDaemon:
                 getattr(proposal, "changed_paths", ()) or ()
             )
         )
-        task_scope_paths = cls._proposal_scope_paths(task)
+        # Envelope admission uses declared Outputs only; AST companions are
+        # for implement/proposal write authority, not artifact-envelope claims.
+        task_scope_paths = cls._proposal_scope_paths_for(
+            task,
+            include_ast_companions=False,
+        )
         if (
             set(changed_paths) != set(artifact_paths)
             or len(changed_paths) != len(artifact_paths)
@@ -33744,6 +33791,25 @@ class PortalImplementationDaemon:
             if completion_scope is not None
             else task_declared_output_paths(task)
         )
+        # Surface AST companions/relocation hints into the rescue addendum so
+        # the next attempt can lawfully edit production modules the tests import.
+        try:
+            companions = validation_ast_companion_paths(
+                task,
+                repo_root=self.repo_root,
+            )
+            if companions and not result.get("ast_import_companion_paths"):
+                result["ast_import_companion_paths"] = list(companions)
+            hints = validation_ast_relocation_hints(
+                task,
+                repo_root=self.repo_root,
+            )
+            if hints and not result.get("descriptor_relocation_hints"):
+                result["descriptor_relocation_hints"] = [
+                    dict(hint) for hint in hints
+                ]
+        except (OSError, TypeError, ValueError):
+            pass
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
@@ -49651,6 +49717,31 @@ class PortalImplementationDaemon:
                 repo_root=self.repo_root,
             )
         )
+        try:
+            ast_companion_paths = (
+                ()
+                if retry_repair_source_id
+                else validation_ast_companion_paths(
+                    task,
+                    repo_root=self.repo_root,
+                )
+            )
+        except (OSError, TypeError, ValueError):
+            ast_companion_paths = ()
+        try:
+            relocation_hints = (
+                ()
+                if retry_repair_source_id
+                else validation_ast_relocation_hints(
+                    task,
+                    repo_root=self.repo_root,
+                )
+            )
+        except (OSError, TypeError, ValueError):
+            relocation_hints = ()
+        relocation_hint_text = format_relocation_hints_for_prompt(
+            relocation_hints
+        )
         checkpoint_dir = self._implementation_checkpoint_dir(task)
         checkpoint_manifest = self._implementation_checkpoint_manifest(task)
         timeout_policy = self._implementation_timeout_policy(task)
@@ -49692,6 +49783,17 @@ class PortalImplementationDaemon:
                 *rules,
                 "An explicit validation test target absent from the baseline is an implied task output. Add substantive regression coverage there; placeholders or weakened assertions will fail scope adjudication.",
             )
+        if ast_companion_paths:
+            rules = (
+                *rules,
+                "AST import analysis of the validation tests expanded write "
+                "authority to the first-party modules those tests import. "
+                "Prefer fixing production path/contract owners there when "
+                "descriptors moved between pins; do not weaken tests solely "
+                "to pass the gate.",
+            )
+        if relocation_hint_text:
+            rules = (*rules, relocation_hint_text)
         if (
             completion_scope is None
             and len(declared_output_paths) > 3
@@ -49713,6 +49815,11 @@ class PortalImplementationDaemon:
                     *base_allowed_edit_paths,
                     *(
                         implied_validation_paths
+                        if completion_scope is None
+                        else ()
+                    ),
+                    *(
+                        ast_companion_paths
                         if completion_scope is None
                         else ()
                     ),
@@ -49744,6 +49851,8 @@ class PortalImplementationDaemon:
                 if completion_scope is not None
                 else "retry_repair_output_exact"
                 if retry_repair_source_id
+                else "task_outputs_with_ast_import_companions"
+                if ast_companion_paths
                 else "task_outputs_with_implied_validation_tests"
                 if implied_validation_paths
                 else "task_output_and_evidence_exact"
@@ -49751,6 +49860,10 @@ class PortalImplementationDaemon:
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
+            "ast_import_companion_paths": list(ast_companion_paths),
+            "descriptor_relocation_hints": [
+                dict(hint) for hint in relocation_hints
+            ],
             "diagnostic_read_only_paths": retry_validation_paths,
             "protected_paths": protected_edit_paths,
             "read_only_outputs": read_only_outputs,
