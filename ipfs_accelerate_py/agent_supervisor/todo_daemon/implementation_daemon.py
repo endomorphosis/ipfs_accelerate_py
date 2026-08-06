@@ -39325,7 +39325,37 @@ class PortalImplementationDaemon:
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         stale_config_repair = self._repair_stale_submodule_worktree_configs(repo_path)
-        relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
+        if parent_relative:
+            relatives = tuple(self._declared_submodule_paths(repo_path))
+        else:
+            # CIG and other monorepo boards often run without a global
+            # ``worktree_submodule_paths`` list. Still reconcile every gitlink
+            # the task actually changed (plus task/validation-declared pins)
+            # or parent merges that update swissknife/external/* roll back as
+            # ``changed_submodule_merge_unverified`` with empty results.
+            base: set[str] = {
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in self.worktree_submodule_paths
+                if str(path).strip()
+            }
+            base.update(self._task_declared_submodule_paths(task))
+            base.update(self._validation_implied_submodule_paths(task))
+            for path in changed_submodule_paths or ():
+                normalized = str(path or "").strip().replace("\\", "/").strip("/")
+                if not normalized:
+                    continue
+                parts = normalized.split("/")
+                if parts[0] == "external" and len(parts) >= 2:
+                    base.add(f"external/{parts[1]}")
+                else:
+                    base.add(parts[0])
+            relatives = tuple(
+                sorted(
+                    path
+                    for path in base
+                    if path and self._repo_relative_path_safe(path)
+                )
+            )
         # Sort submodules by dependency order: leaf submodules merge first
         relatives = self._topological_sort_submodules(relatives, repo_path)
         # Resume from checkpoint if one exists (crash recovery)
@@ -39422,22 +39452,87 @@ class PortalImplementationDaemon:
                 checkpoint.record_submodule(full_relative, result)
                 continue
             if not self._git_ref_exists_in_repo(source, submodule_branch):
+                # Parent merge often applies the gitlink pointer alone when the
+                # child already committed on a non-daemon branch name (or the
+                # branch was cleaned). Treat an already-correct post-merge
+                # gitlink as verified instead of returning no result (which
+                # fails closed as changed_submodule_merge_unverified).
+                parent_for_gitlink = repo_path
+                desired_proc = subprocess.run(
+                    ["git", "rev-parse", f"{branch_name}:{relative}"],
+                    cwd=parent_for_gitlink,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                current_proc = subprocess.run(
+                    ["git", "rev-parse", f"HEAD:{relative}"],
+                    cwd=parent_for_gitlink,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                desired_gitlink = (
+                    desired_proc.stdout.strip()
+                    if desired_proc.returncode == 0
+                    else ""
+                )
+                current_gitlink = (
+                    current_proc.stdout.strip()
+                    if current_proc.returncode == 0
+                    else ""
+                )
+                if (
+                    desired_gitlink
+                    and current_gitlink
+                    and desired_gitlink == current_gitlink
+                ):
+                    if self._is_git_worktree(source):
+                        subprocess.run(
+                            ["git", "checkout", "-f", desired_gitlink],
+                            cwd=source,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                    result = {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "default_branch": self._submodule_default_branch(
+                            relative, source
+                        ),
+                        "merged": True,
+                        "reason": "parent_gitlink_already_merged",
+                        "gitlink_commit": desired_gitlink,
+                    }
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
+                    continue
                 # A parent branch may be unchanged or already cleaned while a
                 # deeper daemon-owned branch still needs reconciliation.
-                results.extend(
-                    self._merge_submodule_branches_to_main_in_repo(
-                        repo_path=source,
-                        branch_name=branch_name,
-                        parent_relative=full_relative,
-                        task=task,
-                        attempt=attempt,
-                        baseline_ref=baseline_ref,
-                        changed_submodule_paths=changed_submodule_paths,
-                        checkpoint=checkpoint,
-                        target_parent_ref=target_parent_ref,
-                        target_scope=target_scope,
-                    )
+                nested = self._merge_submodule_branches_to_main_in_repo(
+                    repo_path=source,
+                    branch_name=branch_name,
+                    parent_relative=full_relative,
+                    task=task,
+                    attempt=attempt,
+                    baseline_ref=baseline_ref,
+                    changed_submodule_paths=changed_submodule_paths,
+                    checkpoint=checkpoint,
+                    target_parent_ref=target_parent_ref,
+                    target_scope=target_scope,
                 )
+                if nested:
+                    results.extend(nested)
+                else:
+                    result = {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "merged": False,
+                        "reason": "submodule_task_branch_missing",
+                    }
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
                 continue
             if target_parent_ref:
                 target_checkout_status = subprocess.run(
