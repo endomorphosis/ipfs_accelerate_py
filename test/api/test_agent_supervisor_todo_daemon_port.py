@@ -5560,6 +5560,93 @@ def test_implementation_proposal_keeps_unconfigured_gitlink_fail_closed(tmp_path
     assert result.proposal.changed_paths == ("libs/child",)
 
 
+def test_out_of_scope_restore_force_checkouts_drifted_submodule(
+    tmp_path: Path,
+):
+    """CIG-018: parent git restore alone leaves `` M swissknife``; force child.
+
+    Post-validation candidate binding restored OOS pins with ``git restore``
+    only, recorded success, then still fingerprinted the drifted gitlink and
+    rebind-failed with ``submodule_boundary_forbidden`` after green pytest.
+    """
+
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    pinned = _git(repo, "rev-parse", "HEAD:libs/child")
+    # Advance the child one commit so parent status shows submodule dirt.
+    (submodule / "child.txt").write_text("drifted\n", encoding="utf-8")
+    _git(submodule, "add", "child.txt")
+    _git(submodule, "commit", "-m", "drift child")
+    drifted = _git(submodule, "rev-parse", "HEAD")
+    assert drifted != pinned
+    assert "libs/child" in _git(repo, "status", "--porcelain")
+
+    (repo / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
+    _git(repo, "add", "Makefile")
+    _git(repo, "commit", "-m", "makefile base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    # In-scope edit for the task; submodule remains drifted.
+    (repo / "Makefile").write_text(
+        "all:\n\t@echo reenabled\n",
+        encoding="utf-8",
+    )
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = PortalTask(
+        task_id="CIG-018",
+        title="Re-enable suite despite OOS pin dirt",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ci/interop",
+        outputs=["Makefile"],
+        validation=["true"],
+        acceptance="Ignore line removed.",
+    )
+
+    restored = daemon._restore_out_of_scope_workspace_paths(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    assert "libs/child" in restored
+    assert _git(submodule, "rev-parse", "HEAD") == pinned
+    # Submodule dirt cleared; only the in-scope Makefile edit remains.
+    porcelain = _git(repo, "status", "--porcelain")
+    assert "libs/child" not in porcelain
+    assert "Makefile" in porcelain
+
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    assert proposal_validation.accepted is True
+    assert list(proposal_validation.proposal.changed_paths) == ["Makefile"]
+
+    binding = daemon._verify_post_validation_candidate_binding(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
+    assert binding["passed"] is True
+    assert binding["candidate_binding"]["verified"] is True
+
+
 def test_post_validation_candidate_binding_rejects_late_source_change(
     tmp_path: Path,
 ):
@@ -15417,6 +15504,9 @@ def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
         "implementation_repair_round_budget_exhausted"
     )
     assert result["implementation_result"]["attempt"] == 5
+    # Multi-task boards need a real cooldown; backoff 0 re-selects the same
+    # exhausted task every pass (observed on CIG-030 vs Wave A peers).
+    assert result["implementation_result"]["backoff_seconds"] >= 900
     assert result["implementation_result"]["active_task_cleared"] is True
     assert observed_claim["canonical_task_cid"] == canonical_task_cid
     assert observed_claim["attempt"] == 5
@@ -15468,6 +15558,128 @@ def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
 
     assert decision.action == "continue"
     assert maintenance_calls == ["maintenance"]
+
+
+def test_repair_budget_exhaustion_pins_max_attempts_on_multi_task_boards(
+    tmp_path,
+    monkeypatch,
+):
+    """CIG Wave A regression: exhausted repair budgets must free peers.
+
+    Without latching attempts at max_task_attempts and without a queue
+    cooldown, a single repair-budget-exhausted task is reselected every pass
+    and starves the rest of the ready set.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Exhausted repair task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: feature.py
+- Validation: test -f feature.py
+- Acceptance: Exhausted repair budget should not monopolize selection.
+
+## ACCEL-002 Peer ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: peer.py
+- Validation: test -f peer.py
+- Acceptance: Peer must remain selectable while ACCEL-001 is parked.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        max_task_attempts=5,
+        implementation_timeout=7200,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    exhausted, peer = tasks[0], tasks[1]
+    exhausted_cid = daemon._canonical_ref(exhausted)
+    peer_cid = daemon._canonical_ref(peer)
+    TodoTaskState(
+        implementation_attempts={exhausted.task_id: 4},
+        implementation_attempts_by_cid={exhausted_cid: 4},
+    ).save(state_path)
+
+    result = daemon.run_once()
+    persisted = TodoTaskState.load(state_path)
+    impl = result["implementation_result"]
+
+    assert impl["reason"] == "implementation_repair_round_budget_exhausted"
+    assert impl["attempt"] == 5
+    assert impl["backoff_seconds"] >= 900
+    assert impl.get("attempt_limited") is True
+    assert impl.get("max_task_attempts") == 5
+    assert persisted.implementation_attempts[exhausted.task_id] == 5
+    assert persisted.implementation_attempts_by_cid[exhausted_cid] == 5
+    assert daemon.task_queue.is_cooled_down(exhausted_cid)
+    assert not daemon.task_queue.is_cooled_down(peer_cid)
+    assert exhausted.task_id not in (persisted.selectable_ready_task_ids or [])
+    # Durable pin is the multi-task selection gate for the exhausted task.
+    assert (
+        persisted.implementation_attempts[exhausted.task_id]
+        >= daemon.max_task_attempts
+    )
+
+
+def test_release_unfinished_active_attempt_rolls_back_process_missing_counter(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        max_task_attempts=5,
+    )
+    state = TodoTaskState(
+        implementation_attempts={"ACCEL-001": 4},
+        implementation_attempts_by_cid={"cid-1": 4},
+        active_task_cid="cid-1",
+    )
+    released = daemon._release_unfinished_active_attempt(
+        state,
+        task_id="ACCEL-001",
+        attempt=4,
+    )
+    assert released["released"] is True
+    assert released["released_to"] == 3
+    assert state.implementation_attempts["ACCEL-001"] == 3
+    assert state.implementation_attempts_by_cid["cid-1"] == 3
+    assert daemon._repair_budget_exhausted_backoff_seconds() >= 900
+    assert daemon._task_attempt_has_implementation_finish("ACCEL-001", 1) is False
+    daemon._record_event(
+        "implementation_finished",
+        {"task_id": "ACCEL-001", "attempt": 1},
+    )
+    assert daemon._task_attempt_has_implementation_finish("ACCEL-001", 1) is True
 
 
 def test_retry_deferral_does_not_overwrite_newer_active_projection(
@@ -21220,6 +21432,52 @@ def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(
         daemon,
         "_list_process_commands",
         lambda: [f"node /usr/local/bin/codex exec -C {worktree_path} -"],
+    )
+
+    assert daemon._implementation_process_active(event) is True
+
+
+def test_implementation_daemon_recognizes_grok_cli_runner_as_inflight(
+    tmp_path, monkeypatch
+):
+    """Docker-isolated Grok wrappers must not look dead mid-attempt."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    worktree_path = repo / "worktrees" / "cig-014-attempt-3"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "worktree_path": str(worktree_path),
+        "command": [
+            "/usr/bin/python3",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            "--workspace",
+            str(worktree_path),
+            "--model",
+            "grok-4.5",
+        ],
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_list_process_commands",
+        lambda: [
+            (
+                f"/usr/bin/python3 -m ipfs_accelerate_py.agent_supervisor."
+                f"grok_cli_runner --workspace {worktree_path} --model grok-4.5"
+            ),
+            # Truncated docker child may lose the worktree path.
+            (
+                "docker run --name ipfs-accelerate-grok-123 "
+                "/opt/ipfs-accelerate/grok --model grok-4.5"
+            ),
+        ],
     )
 
     assert daemon._implementation_process_active(event) is True

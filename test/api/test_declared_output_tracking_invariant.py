@@ -689,3 +689,161 @@ def test_formal_verification_json_deliverables_are_not_ignored() -> None:
             check=False,
         )
         assert result.returncode == 1, f"{deliverable} is still ignored"
+
+
+def test_expected_output_soft_skips_optional_declared_outside_predicted_files(
+    tmp_path: Path,
+) -> None:
+    """Broader Outputs beyond Predicted files must not hard-fail preflight.
+
+    CIG re-enable tasks often declare submodule/probe paths as Outputs while
+    Predicted files only list the test/Makefile write set. Missing optional
+    outputs must soft-skip instead of expected_output_absent_from_proposal.
+    """
+
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_suite.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    (repo / "Makefile").write_text("test:\n\tpytest\n", encoding="utf-8")
+    _git(repo, "add", "tests/test_suite.py", "Makefile")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "tests" / "test_suite.py").write_text(
+        "def test_ok():\n    assert True\n# re-enabled\n",
+        encoding="utf-8",
+    )
+    daemon = _daemon(repo)
+    task = PortalTask(
+        task_id="OUT-010-OPTIONAL",
+        title="Re-enable suite",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ci",
+        outputs=[
+            "tests/test_suite.py",
+            "Makefile",
+            "swissknife/src/services/missing-bridge.ts",
+        ],
+        validation=["python -m pytest"],
+        metadata={
+            "predicted files": "tests/test_suite.py",
+        },
+    )
+
+    preflight = daemon._prepare_proposal_expected_outputs(
+        repo,
+        task,
+        baseline_ref=baseline,
+        scope_paths=tuple(task.outputs),
+    )
+    checks = {item["path"]: item for item in preflight["checks"]}
+    assert checks["swissknife/src/services/missing-bridge.ts"]["exists"] is False
+    assert checks["swissknife/src/services/missing-bridge.ts"][
+        "optional_declared_output"
+    ] is True
+    assert checks["swissknife/src/services/missing-bridge.ts"][
+        "needs_candidate"
+    ] is False
+    assert checks["swissknife/src/services/missing-bridge.ts"]["issue"] == ""
+    assert checks["tests/test_suite.py"]["optional_declared_output"] is False
+    assert checks["tests/test_suite.py"]["exists"] is True
+
+    issues = daemon._proposal_expected_output_issues(
+        preflight,
+        changed_paths=["tests/test_suite.py"],
+    )
+    assert issues == ()
+
+
+def test_expected_output_soft_skips_unpopulated_submodule_paths(
+    tmp_path: Path,
+) -> None:
+    """Unpopulated submodule Outputs must soft-skip when not materialized."""
+
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_suite.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    (repo / ".gitmodules").write_text(
+        '[submodule "swissknife"]\n\tpath = swissknife\n\turl = ./swissknife.git\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tests/test_suite.py", ".gitmodules")
+    _git(repo, "commit", "-m", "base with submodule declaration")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "tests" / "test_suite.py").write_text(
+        "def test_ok():\n    assert True\n# touch\n",
+        encoding="utf-8",
+    )
+    # swissknife/ is declared but never checked out → unpopulated.
+    daemon = _daemon(repo)
+    task = _proposal_task(
+        "OUT-011-SUBMODULE",
+        "tests/test_suite.py",
+        "swissknife/src/services/missing-bridge.ts",
+    )
+
+    preflight = daemon._prepare_proposal_expected_outputs(
+        repo,
+        task,
+        baseline_ref=baseline,
+        scope_paths=tuple(task.outputs),
+    )
+    checks = {item["path"]: item for item in preflight["checks"]}
+    bridge = checks["swissknife/src/services/missing-bridge.ts"]
+    assert bridge["exists"] is False
+    assert bridge["submodule_root"] == "swissknife"
+    assert bridge["submodule_unpopulated"] is True
+    assert bridge["needs_candidate"] is False
+    assert bridge["issue"] == ""
+
+    issues = daemon._proposal_expected_output_issues(
+        preflight,
+        changed_paths=["tests/test_suite.py"],
+    )
+    assert issues == ()
+
+
+def test_expected_output_still_requires_hard_predicted_missing_output(
+    tmp_path: Path,
+) -> None:
+    """Predicted-file Outputs that are missing still hard-fail preflight."""
+
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "present.py").write_text("X = 0\n", encoding="utf-8")
+    _git(repo, "add", "present.py")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "present.py").write_text("X = 1\n", encoding="utf-8")
+    daemon = _daemon(repo)
+    task = PortalTask(
+        task_id="OUT-012-HARD",
+        title="Must write predicted path",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ci",
+        outputs=["present.py", "missing_predicted.py"],
+        validation=["python -m pytest"],
+        metadata={"predicted files": "present.py, missing_predicted.py"},
+    )
+
+    preflight = daemon._prepare_proposal_expected_outputs(
+        repo,
+        task,
+        baseline_ref=baseline,
+        scope_paths=tuple(task.outputs),
+    )
+    checks = {item["path"]: item for item in preflight["checks"]}
+    assert checks["missing_predicted.py"]["optional_declared_output"] is False
+    assert checks["missing_predicted.py"]["issue"] == "expected_output_missing"
+
+    issues = daemon._proposal_expected_output_issues(
+        preflight,
+        changed_paths=["present.py"],
+    )
+    assert any(
+        issue["path"] == "missing_predicted.py"
+        and issue["reason"] == "expected_output_missing"
+        for issue in issues
+    )

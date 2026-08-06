@@ -900,15 +900,23 @@ def review_implementation_failure(
         (*changed_paths, *_changed_paths_from_validation(validation))
     )
     expected = _normalized_paths(expected_outputs)
+    # AST companions / justified scope are lawful edit authority for CIG-style
+    # re-enables even when the todo Outputs line only lists the test file.
+    # Treating them as out-of-scope after a green proposal gate confuses the
+    # next attempt into abandoning the real production fix locations.
+    ast_companions = _normalized_paths(
+        validation.get("ast_import_companion_paths") or ()
+    )
     workspace = Path(workspace_path) if workspace_path else None
+    scope = dict(scope_adjudication or {}) or _scope_projection(validation)
+    justified = _normalized_paths(scope.get("justified_paths") or ())
+    denied = _normalized_paths(scope.get("denied_paths") or ())
+    owned_paths = _normalized_paths((*expected, *justified, *ast_companions))
     missing = _missing_expected_outputs(
         expected_outputs=expected,
         changed_paths=changed,
         workspace_path=workspace,
     )
-    scope = dict(scope_adjudication or {}) or _scope_projection(validation)
-    justified = _normalized_paths(scope.get("justified_paths") or ())
-    denied = _normalized_paths(scope.get("denied_paths") or ())
     contract_gap_paths = _normalized_paths(
         (
             *_scope_contract_gap_paths(
@@ -924,11 +932,16 @@ def review_implementation_failure(
         )
     )
     scope_accepted = scope.get("accepted") is True
-    out_of_scope = tuple(
-        path
-        for path in changed
-        if expected and not _path_owned_by_expected(path, expected)
-    )
+    if proposal_accepted is True:
+        # Proposal admission already vetted candidate paths; do not re-brand
+        # those paths as out-of-scope in the rescue addendum.
+        out_of_scope = ()
+    else:
+        out_of_scope = tuple(
+            path
+            for path in changed
+            if owned_paths and not _path_owned_by_expected(path, owned_paths)
+        )
     failed_commands = _failed_commands_from_validation(validation)
     reason = str(validation.get("reason") or "").strip()
     error = str(validation.get("error") or "").strip()
@@ -1089,16 +1102,62 @@ def review_implementation_failure(
         addendum_lines.append(
             "Re-run and fix: " + " | ".join(failed_commands[:4]) + "."
         )
+    failed_tests = _as_str_tuple(validation.get("failed_tests") or ())
+    if failed_tests:
+        addendum_lines.append(
+            "Failed tests: " + ", ".join(failed_tests[:8]) + "."
+        )
+    failure_head = " ".join(
+        str(validation.get("failure_head") or "").split()
+    ).strip()
+    if failure_head:
+        # Keep compact: next-attempt prompt budgets are tight.
+        addendum_lines.append(
+            "Failure evidence: " + failure_head[:1200] + "."
+        )
+    # Prefer AST-derived companions / relocation hints when the caller embeds
+    # them on the validation result (implementation daemon does this).
+    ast_companions = _as_str_tuple(
+        validation.get("ast_import_companion_paths") or ()
+    )
+    if ast_companions:
+        addendum_lines.append(
+            "AST import companions (preferred fix locations): "
+            + ", ".join(ast_companions[:12])
+            + "."
+        )
+    relocation_bits: list[str] = []
+    for raw_hint in validation.get("descriptor_relocation_hints") or ():
+        if not isinstance(raw_hint, Mapping):
+            continue
+        missing = str(raw_hint.get("missing") or "").strip()
+        candidate = str(raw_hint.get("candidate") or "").strip()
+        if missing and candidate:
+            relocation_bits.append(f"{missing}→{candidate}")
+    if relocation_bits:
+        addendum_lines.append(
+            "Descriptor relocations: "
+            + "; ".join(relocation_bits[:8])
+            + "."
+        )
     if environment_guidance:
         addendum_lines.append(
             "Authoritative validation environment: "
             + " ".join(environment_guidance.split())
         )
-    addendum_lines.append(
-        "Stay inside declared Outputs/Predicted files (files or directory "
-        "trees); finish all expected outputs; avoid renames, submodule edits, "
-        "and undeclared new modules."
-    )
+    if ast_companions:
+        addendum_lines.append(
+            "Stay inside declared Outputs/Predicted files plus AST import "
+            "companions listed above; finish every expected output; avoid "
+            "renames and opaque submodule gitlink pin changes; do not weaken "
+            "tests to pass the gate."
+        )
+    else:
+        addendum_lines.append(
+            "Stay inside declared Outputs/Predicted files (files or directory "
+            "trees); finish all expected outputs; avoid renames, submodule edits, "
+            "and undeclared new modules."
+        )
 
     return ImplementationFailureReviewReceipt(
         task_id=task_id,

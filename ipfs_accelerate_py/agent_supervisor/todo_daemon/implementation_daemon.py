@@ -181,10 +181,17 @@ from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..validation.validation_ast_companions import (
+    format_relocation_hints_for_prompt,
+    validation_ast_companion_paths,
+    validation_ast_relocation_hints,
+)
 from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
     normalize_validation_command_text,
+    rewrite_shell_makefile_ignore_check,
+    rewrite_validation_command,
     split_validation_commands,
 )
 from ..validation.validation_runtime import (
@@ -405,9 +412,21 @@ AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS = 900
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
+# Match bare CLI names and supervisor wrappers. Docker-isolated Grok runs as
+# ``python -m ...grok_cli_runner`` plus an optional ``/opt/.../grok`` child;
+# the bare ``grok(?:\s|$)`` form alone misses the wrapper and falsely reports
+# inflight_process_missing mid-attempt (burning max_task_attempts).
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
+    r"(?:"
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
+    r"|grok_cli_runner"
+    r"|cli_implement_runner"
+    r"|ipfs-accelerate-grok"
+    r")"
 )
+# How long a recently written implement log keeps a missing process from
+# being recovered as dead (docker restarts briefly drop process visibility).
+INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS = 180.0
 GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
     r"\.git-sync-recovery-\d{8}-\d{6}(?:-\d+)?\.md"
 )
@@ -438,6 +457,46 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
     (
+        "claude",
+        re.compile(
+            r"(?:"
+            r"claude.*(?:rate[_ ]?limit|usage[_ ]?limit|quota|credit\s+balance)|"
+            r"anthropic.*(?:rate[_ ]?limit|429|overloaded|credit)|"
+            r"credit\s+balance\s+is\s+too\s+low|"
+            r"you(?:'|\u2019)?ve\s+hit\s+your\s+(?:usage\s+)?limit|"
+            r"rate_limit_error|"
+            r"overloaded_error"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "gemini",
+        re.compile(
+            r"(?:"
+            r"gemini.*(?:rate[_ ]?limit|quota|resource[_ ]?exhausted)|"
+            r"generativelanguage\.googleapis\.com.*quota|"
+            r"resource[_ ]?exhausted|"
+            r"free[_ ]tier\s+quota\s+exhausted|"
+            r"exceeded\s+your\s+current\s+quota|"
+            r"google.*(?:429|rate[_ ]?limit|quota)"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "mistral",
+        re.compile(
+            r"(?:"
+            r"mistral.*(?:rate[_ ]?limit|quota|usage[_ ]?limit|credit)|"
+            r"vibe.*(?:rate[_ ]?limit|quota|usage[_ ]?limit)|"
+            r"insufficient[_ ](?:credits?|quota)|"
+            r"plan\s+limit\s+reached"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "provider",
         re.compile(
             r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded|"
@@ -458,6 +517,20 @@ PROVIDER_CAPACITY_FAMILY_ALIASES = {
     "goose": "goose",
     "meta": "goose",
     "meta_spark": "goose",
+    "claude": "claude",
+    "claude_code": "claude",
+    "claude_cli": "claude",
+    "anthropic": "claude",
+    "gemini": "gemini",
+    "gemini_cli": "gemini",
+    "google_gemini": "gemini",
+    "google": "gemini",
+    "mistral": "mistral",
+    "mistral_vibe": "mistral",
+    "vibe": "mistral",
+    "muse": "goose",
+    "muse_spark": "goose",
+    "spark": "goose",
     "provider": "provider",
     "infrastructure": "infrastructure",
 }
@@ -1711,12 +1784,37 @@ GOOSE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     }
 )
 CODEX_IMPLEMENTATION_PROVIDER_NAMES = frozenset({"codex", "openai"})
+CLAUDE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "claude",
+        "claude_code",
+        "claude-code",
+        "claude_cli",
+        "claude-cli",
+        "anthropic",
+    }
+)
+GEMINI_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "gemini",
+        "gemini_cli",
+        "gemini-cli",
+        "google_gemini",
+        "google-gemini",
+    }
+)
 SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {"auto", "copilot"}
     | set(GROK_IMPLEMENTATION_PROVIDER_NAMES)
     | set(GOOSE_IMPLEMENTATION_PROVIDER_NAMES)
     | set(CODEX_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(CLAUDE_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(GEMINI_IMPLEMENTATION_PROVIDER_NAMES)
 )
+_CLAUDE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CLAUDE_MODEL"
+_GEMINI_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GEMINI_MODEL"
+DEFAULT_CLAUDE_MODEL = ""
+DEFAULT_GEMINI_MODEL = ""
 _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
@@ -1777,6 +1875,84 @@ def _codex_implementation_command(
     if codex_max_depth:
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
     command.append("-")
+    return command
+
+
+def _claude_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Claude Code implementation argv (stdin prompt)."""
+
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get(_CLAUDE_MODEL_ENV, "").strip() or DEFAULT_CLAUDE_MODEL
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "claude",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
+def _gemini_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Gemini CLI implementation argv (stdin prompt)."""
+
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get(_GEMINI_MODEL_ENV, "").strip() or DEFAULT_GEMINI_MODEL
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "gemini",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
+def _mistral_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Mistral Vibe implementation argv (stdin prompt)."""
+
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get("IPFS_ACCELERATE_AGENT_MISTRAL_MODEL", "").strip()
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "mistral",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
     return command
 
 
@@ -2362,6 +2538,29 @@ def _provider_labels_from_implementation_command(
             or lowered.endswith(".meta_spark_goose_runner")
         ):
             provider_labels = ("goose", "meta_spark")
+        elif normalized in {
+            "claude",
+            "claude-code",
+            "claude_code",
+            "anthropic",
+        }:
+            provider_labels = ("claude",)
+        elif normalized in {
+            "gemini",
+            "gemini-cli",
+            "gemini_cli",
+            "google-gemini",
+        }:
+            provider_labels = ("gemini",)
+        elif normalized == "npx" and any(
+            "@google/gemini-cli" in str(item or "").lower() for item in items
+        ):
+            provider_labels = ("gemini",)
+        elif normalized in {"vibe", "mistral", "mistral-vibe", "mistral_vibe"}:
+            provider_labels = ("mistral",)
+        elif normalized in {"copilot", "github-copilot"}:
+            # also matched above; keep for explicit secondary token scans
+            provider_labels = ("copilot",)
         for provider in provider_labels:
             if provider not in labels:
                 labels.append(provider)
@@ -8098,6 +8297,15 @@ class PortalImplementationDaemon:
         if self.max_task_attempts <= 0:
             return list(tasks), []
         exempt = {str(task_id) for task_id in exempt_task_ids}
+        # Never attempt-limit a task whose attempt is still live. Recording the
+        # Nth attempt sets count==max while the process is still running; treating
+        # that as limited mid-flight aborts the only remaining attempt.
+        active_id = str(getattr(state, "active_task_id", "") or "").strip()
+        if (
+            active_id
+            and bool(getattr(state, "implementation_in_progress", False))
+        ):
+            exempt.add(active_id)
         selectable: list[PortalTask] = []
         limited: list[dict[str, Any]] = []
         for task in tasks:
@@ -8127,6 +8335,97 @@ class PortalImplementationDaemon:
         state.last_implementation_task_id = task.task_id
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
+
+    def _repair_budget_exhausted_backoff_seconds(self) -> int:
+        """Cooldown other ready tasks can run after a task exhausts repair rounds."""
+
+        configured = int(getattr(self, "implementation_timeout", 0) or 0)
+        # Prefer at least 15 minutes so multi-task boards (CIG Wave A) can
+        # progress peers; cap at two hours to avoid indefinite parking.
+        return max(900, min(7200, configured or 3600))
+
+    def _task_attempt_has_implementation_finish(
+        self,
+        task_id: str,
+        attempt: int,
+    ) -> bool:
+        """Return whether a durable finish event exists for task/attempt."""
+
+        task_id = str(task_id or "").strip()
+        attempt_number = int(attempt or 0)
+        if not task_id or attempt_number <= 0:
+            return False
+        for event in self._iter_events():
+            if str(event.get("type") or "") != "implementation_finished":
+                continue
+            if str(event.get("task_id") or "") != task_id:
+                continue
+            if int(event.get("attempt") or 0) != attempt_number:
+                continue
+            return True
+        return False
+
+    def _release_unfinished_active_attempt(
+        self,
+        state: PortalTaskState,
+        *,
+        task_id: str,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Roll durable attempt counters back when a process dies mid-flight.
+
+        Attempt counters are latched when implementation starts. If the worker
+        disappears without ``implementation_finished``, leaving the counter at
+        the unfinished attempt forces the next dispatch to a higher attempt and
+        can exhaust ``implementation_max_repair_rounds`` without ever running
+        validation. Prefer re-dispatching the unfinished attempt number.
+        """
+
+        task_id = str(task_id or "").strip()
+        attempt_number = max(0, int(attempt or 0))
+        if not task_id or attempt_number <= 0:
+            return {
+                "consumed": False,
+                "released": False,
+                "attempt": attempt_number,
+                "task_id": task_id,
+            }
+        released_to = max(0, attempt_number - 1)
+        previous_display = int(
+            state.implementation_attempts.get(task_id, 0) or 0
+        )
+        identity = state.task_identities.get(task_id, {}) if isinstance(
+            state.task_identities, Mapping
+        ) else {}
+        task_cid = str(
+            state.active_task_cid
+            or state.last_implementation_task_cid
+            or identity.get("canonical_task_cid")
+            or ""
+        )
+        previous_cid = int(
+            state.implementation_attempts_by_cid.get(task_cid, 0) or 0
+        ) if task_cid else 0
+        if previous_display >= attempt_number:
+            if released_to > 0:
+                state.implementation_attempts[task_id] = released_to
+            else:
+                state.implementation_attempts.pop(task_id, None)
+        if task_cid and previous_cid >= attempt_number:
+            if released_to > 0:
+                state.implementation_attempts_by_cid[task_cid] = released_to
+            else:
+                state.implementation_attempts_by_cid.pop(task_cid, None)
+        return {
+            "consumed": False,
+            "released": True,
+            "attempt": attempt_number,
+            "released_to": released_to,
+            "task_id": task_id,
+            "canonical_task_cid": task_cid,
+            "previous_display_count": previous_display,
+            "previous_cid_count": previous_cid,
+        }
 
     def _restore_task_attempt(
         self,
@@ -11360,18 +11659,46 @@ class PortalImplementationDaemon:
                     "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
                 }
             recovered_state = PortalTaskState.load(self.state_path)
-            recovered_attempt = consume_stale_active_attempt(recovered_state)
+            recovered_task_id = str(
+                previous.active_task_id
+                or previous.last_implementation_task_id
+                or ""
+            )
+            recovered_attempt_number = int(previous.active_attempt or 0)
+            finished_attempt = bool(
+                recovered_task_id
+                and recovered_attempt_number > 0
+                and self._task_attempt_has_implementation_finish(
+                    recovered_task_id,
+                    recovered_attempt_number,
+                )
+            )
+            if finished_attempt:
+                recovered_attempt = consume_stale_active_attempt(
+                    recovered_state
+                )
+            else:
+                # Process vanished without a finish receipt (often false
+                # liveness / docker restart). Do not leave the durable attempt
+                # counter latched at the unfinished attempt or multi-task
+                # boards exhaust repair budget without ever validating work.
+                recovered_attempt = self._release_unfinished_active_attempt(
+                    recovered_state,
+                    task_id=recovered_task_id,
+                    attempt=recovered_attempt_number,
+                )
             self._clear_active_execution_state(recovered_state)
             recovered_state.save(self.state_path)
             self._record_event(
                 "implementation_state_recovered",
                 {
-                    "task_id": previous.active_task_id or previous.last_implementation_task_id,
-                    "attempt": previous.active_attempt,
+                    "task_id": recovered_task_id,
+                    "attempt": recovered_attempt_number,
                     "reason": "inflight_process_missing",
                     "worktree_path": previous.active_worktree_path,
                     "branch": previous.active_branch,
                     "attempt_recovery": recovered_attempt,
+                    "finished_attempt": finished_attempt,
                 },
             )
             previous = recovered_state
@@ -12389,6 +12716,10 @@ class PortalImplementationDaemon:
             return {"grok", "xai", "provider"}
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
+        if provider in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES:
+            return {"claude", "anthropic", "provider"}
+        if provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES:
+            return {"gemini", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
@@ -12396,6 +12727,18 @@ class PortalImplementationDaemon:
             labels.update({"grok", "xai", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
+        try:
+            from .cli_provider_balance import (
+                resolve_claude_cli_binary,
+                resolve_gemini_cli_binary,
+            )
+
+            if resolve_claude_cli_binary():
+                labels.update({"claude", "anthropic", "provider"})
+            if resolve_gemini_cli_binary():
+                labels.update({"gemini", "provider"})
+        except Exception:
+            pass
         return labels or {"provider"}
 
     @staticmethod
@@ -13498,6 +13841,7 @@ class PortalImplementationDaemon:
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
+            reason_key = exc.reason.replace(" ", "_")
             if exc.backoff_seconds > 0:
                 self.task_queue.defer(
                     canonical_task_cid,
@@ -13507,7 +13851,7 @@ class PortalImplementationDaemon:
                 self.task_queue.save()
             result = {
                 "skipped": True,
-                "reason": exc.reason.replace(" ", "_"),
+                "reason": reason_key,
                 "task_id": task.task_id,
                 "attempt": attempt,
                 "backoff_seconds": exc.backoff_seconds,
@@ -13534,6 +13878,27 @@ class PortalImplementationDaemon:
                     and current.active_task_cid == canonical_task_cid
                     and not current.implementation_in_progress
                 )
+                # When a configured attempt ceiling exists, latch exhausted
+                # repair budgets at that ceiling so partition selection
+                # advances to other ready tasks on multi-task boards. Do this
+                # even when projection ownership was lost — queue cooldown
+                # alone is not enough if a concurrent writer re-emits ready.
+                pin_exhausted_attempts = (
+                    reason_key
+                    in {
+                        "implementation_repair_round_budget_exhausted",
+                        "identical_implementation_failure_escalated",
+                    }
+                    and self.max_task_attempts > 0
+                )
+                if pin_exhausted_attempts:
+                    self._record_task_attempt(
+                        current,
+                        task,
+                        self.max_task_attempts,
+                    )
+                    result["attempt_limited"] = True
+                    result["max_task_attempts"] = self.max_task_attempts
                 if owns_idle_projection:
                     self._clear_active_execution_state(current, clear_task=True)
                     current.selectable_ready_task_ids = [
@@ -13556,6 +13921,7 @@ class PortalImplementationDaemon:
                         current.selection_idle_reason = (
                             f"implementation_retry_deferred:{result['reason']}"
                         )
+                if owns_idle_projection or pin_exhausted_attempts:
                     current.save(self.state_path)
                     state.__dict__.update(asdict(current))
                 result["active_task_cleared"] = owns_idle_projection
@@ -13709,6 +14075,18 @@ class PortalImplementationDaemon:
                     context_receipt_path
                 )
                 return ephemeral_result
+            # Non-ephemeral implement against the merge-target checkout is
+            # forbidden when a worktree root is configured (CIG boards). Force
+            # the ephemeral path rather than dirtying main mid-run.
+            if (
+                Path(self.worktree_root).resolve()
+                != Path(self.repo_root).resolve()
+            ):
+                raise RuntimeError(
+                    "non-ephemeral implementation path refused while "
+                    f"worktree_root={self.worktree_root} is configured; "
+                    "enable ephemeral worktrees for provider dispatch"
+                )
             # Some administrative and provider-capacity paths intentionally
             # operate against a not-yet-initialized checkout.  Baseline
             # discovery must not pre-empt the implementation command in those
@@ -25350,13 +25728,14 @@ class PortalImplementationDaemon:
                     candidate,
                     branch_name=branch_name,
                     offline_local_only=offline_local_only,
+                    task=task,
                 )
 
             lease = self.worktree_pool.acquire(
                 cache_key=cache_key,
                 base_ref=base_ref,
                 branch_name=branch_name,
-                dependency_paths=self.worktree_submodule_paths,
+                dependency_paths=self._effective_worktree_submodule_paths(task),
                 activate=activate,
                 authorize_reuse=self._authorize_pooled_worktree_reuse,
             )
@@ -25423,6 +25802,7 @@ class PortalImplementationDaemon:
             worktree_path,
             branch_name=branch_name,
             offline_local_only=offline_local_only,
+            task=task,
         )
         if seed_context:
             self._link_shared_worktree_paths(worktree_path)
@@ -25603,12 +25983,141 @@ class PortalImplementationDaemon:
             "pool_enabled": self.worktree_pool is not None,
         }
 
+    def _task_declared_submodule_paths(
+        self,
+        task: PortalTask | None,
+    ) -> tuple[str, ...]:
+        """Return task-owned submodule paths from board metadata.
+
+        CIG and other monorepo boards declare ``Submodules:`` per task. Those
+        paths must be initialized in the implement worktree even when the
+        daemon was not started with a global ``worktree_submodule_paths`` list.
+        """
+
+        if task is None:
+            return ()
+        raw = str(
+            (task.metadata or {}).get("submodules")
+            or (task.metadata or {}).get("submodule")
+            or ""
+        )
+        paths: set[str] = set()
+        for part in split_csv(raw):
+            relative = str(part).strip().replace("\\", "/").strip("/")
+            while relative.startswith("./"):
+                relative = relative[2:]
+            if not relative or not self._repo_relative_path_safe(relative):
+                continue
+            paths.add(relative)
+        return tuple(sorted(paths))
+
+    def _validation_implied_submodule_paths(
+        self,
+        task: PortalTask | None = None,
+    ) -> tuple[str, ...]:
+        """Return monorepo pins implied by validation PYTHONPATH / commands.
+
+        CIG re-enable boards often list only the suite under test in
+        ``Submodules:`` (for example ``swissknife, external/ipfs_datasets``)
+        while the validation command still needs sibling pins such as
+        ``external/ipfs_kit`` on ``PYTHONPATH`` or as relocated descriptor
+        roots. Without initializing those pins the implementer wastes attempts
+        inventing checkout helpers for empty submodule checkouts.
+        """
+
+        if task is None:
+            return ()
+        known_pins = (
+            "external/ipfs_accelerate",
+            "external/ipfs_datasets",
+            "external/ipfs_kit",
+            "external/meta-wearables-dat-android",
+            "external/meta-wearables-dat-ios",
+            "swissknife",
+            "hallucinate_app",
+            "Mcp-Plus-Plus",
+        )
+        found: set[str] = set()
+        blobs: list[str] = []
+        for raw in getattr(task, "validation", ()) or ():
+            blobs.append(str(raw or ""))
+        for raw in getattr(task, "outputs", ()) or ():
+            blobs.append(str(raw or ""))
+        metadata = getattr(task, "metadata", None) or {}
+        if isinstance(metadata, Mapping):
+            for key in (
+                "preconditions",
+                "effects",
+                "acceptance",
+                "predicted files",
+                "submodules",
+            ):
+                if metadata.get(key):
+                    blobs.append(str(metadata.get(key)))
+        haystack = "\n".join(blobs)
+        for pin in known_pins:
+            if pin in haystack:
+                found.add(pin)
+        # PYTHONPATH=src:external/ipfs_accelerate:external/ipfs_kit:…
+        for match in re.finditer(
+            r"(?:^|[\s:=])((?:external|swissknife|hallucinate_app|Mcp-Plus-Plus)"
+            r"(?:/[A-Za-z0-9_.\-]+)+)",
+            haystack,
+        ):
+            relative = match.group(1).strip("/").replace("\\", "/")
+            # Keep only first two path segments for submodule roots.
+            parts = relative.split("/")
+            if parts[0] in {"external", "swissknife", "hallucinate_app", "Mcp-Plus-Plus"}:
+                if parts[0] == "external" and len(parts) >= 2:
+                    found.add(f"external/{parts[1]}")
+                elif parts[0] != "external":
+                    found.add(parts[0])
+        return tuple(
+            sorted(
+                path
+                for path in found
+                if path and self._repo_relative_path_safe(path)
+            )
+        )
+
+    def _effective_worktree_submodule_paths(
+        self,
+        task: PortalTask | None = None,
+        *,
+        submodule_paths: Sequence[str] | None = None,
+    ) -> tuple[str, ...]:
+        """Union daemon-configured, task-declared, and validation-implied pins."""
+
+        if submodule_paths is not None:
+            base = {
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in submodule_paths
+                if str(path).strip()
+            }
+        else:
+            base = {
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in self.worktree_submodule_paths
+                if str(path).strip()
+            }
+            base.update(self._task_declared_submodule_paths(task))
+            base.update(self._validation_implied_submodule_paths(task))
+        return tuple(
+            sorted(
+                path
+                for path in base
+                if path and self._repo_relative_path_safe(path)
+            )
+        )
+
     def _initialize_worktree_submodules(
         self,
         worktree_path: Path,
         *,
         branch_name: str = "",
         offline_local_only: bool = False,
+        task: PortalTask | None = None,
+        submodule_paths: Sequence[str] | None = None,
     ) -> None:
         init_failures: list[dict[str, Any]] = []
         # A removed task worktree can leave a shared submodule gitdir's
@@ -25617,7 +26126,11 @@ class PortalImplementationDaemon:
         # unavailable and falling back to a network-backed submodule update.
         if not offline_local_only:
             self._repair_stale_submodule_worktree_configs(self.repo_root)
-        for relative in self.worktree_submodule_paths:
+        effective_paths = self._effective_worktree_submodule_paths(
+            task,
+            submodule_paths=submodule_paths,
+        )
+        for relative in effective_paths:
             if self._create_local_submodule_worktree(
                 worktree_path,
                 relative,
@@ -26771,6 +27284,15 @@ class PortalImplementationDaemon:
                 paths.append(path)
         return paths
 
+    def _discover_submodule_roots(self, worktree_path: Path) -> tuple[str, ...]:
+        """Return submodule roots declared by ``.gitmodules`` for a worktree.
+
+        Used by expected-output preflight so undeclared worktree_submodule_paths
+        (e.g. swissknife/) still soft-skip when the submodule is unpopulated.
+        """
+
+        return tuple(self._declared_submodule_paths(worktree_path))
+
     def _overlaps_implementation_protected_path(
         self,
         relative: str,
@@ -26866,7 +27388,11 @@ class PortalImplementationDaemon:
         task: PortalTask | None = None,
         branch_name: str = "",
     ) -> None:
-        self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
+        self._initialize_worktree_submodules(
+            worktree_path,
+            branch_name=branch_name,
+            task=task,
+        )
         # Provider-side validation may have already populated known generated
         # evidence paths. Remove those deterministic side effects before the
         # proposal is collected so they cannot consume task mutation scope.
@@ -27625,7 +28151,10 @@ class PortalImplementationDaemon:
         attempt: int,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        for relative in self.worktree_submodule_paths:
+        # Honor task ``Submodules:`` declarations (CIG boards) in addition to
+        # daemon-global worktree_submodule_paths so intentional child edits are
+        # committed instead of left as opaque parent gitlink dirt.
+        for relative in self._effective_worktree_submodule_paths(task):
             target = worktree_path / relative
             if not self._is_git_worktree(target):
                 continue
@@ -28490,13 +29019,50 @@ class PortalImplementationDaemon:
             ),
         }
 
+    def _proposal_scope_paths(
+        self,
+        task: PortalTask,
+        *,
+        include_ast_companions: bool = True,
+    ) -> tuple[str, ...]:
+        """Return repository paths owned by a task's output declaration."""
+
+        return self._proposal_scope_paths_for(
+            task,
+            repo_root=self.repo_root if include_ast_companions else None,
+            include_ast_companions=include_ast_companions,
+        )
+
     @staticmethod
-    def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
-        """Return exact repository paths owned by a task's output declaration."""
+    def _proposal_scope_paths_for(
+        task: PortalTask,
+        *,
+        repo_root: Path | None = None,
+        include_ast_companions: bool = True,
+    ) -> tuple[str, ...]:
+        """Return task-owned paths, optionally expanded via AST import analysis.
+
+        When ``include_ast_companions`` is true and ``repo_root`` is provided,
+        AST import analysis of validation test modules expands the scope to
+        first-party modules those tests import (for example
+        ``src/handsfree/*_interop.py``). Re-enable boards can then lawfully
+        edit the production owners of broken contracts without listing every
+        companion on the todo Outputs line.
+        """
 
         raw_paths: list[str] = list(task_declared_output_paths(task))
         for metadata_name in ("predicted files", "allowed paths"):
             raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
+        if include_ast_companions and repo_root is not None:
+            try:
+                raw_paths.extend(
+                    validation_ast_companion_paths(
+                        task,
+                        repo_root=Path(repo_root),
+                    )
+                )
+            except (OSError, TypeError, ValueError):
+                pass
         normalized: set[str] = set()
         for raw_path in raw_paths:
             path = str(raw_path).strip().replace("\\", "/")
@@ -28847,27 +29413,51 @@ class PortalImplementationDaemon:
     def _proposal_scope_submodule_paths(
         self,
         scope_paths: Sequence[str],
+        *,
+        task: PortalTask | None = None,
+        workspace_path: Path | None = None,
     ) -> tuple[str, ...]:
-        """Return configured submodules explicitly owned by the task scope.
+        """Return submodules explicitly owned by the task scope.
 
-        A task may own either the configured submodule root or one of its
-        descendants. In both cases the proposal gate must materialize the
-        child-repository diff instead of validating an opaque gitlink.
+        A task may own either the submodule root or one of its descendants.
+        The proposal gate must materialize the child-repository diff instead
+        of validating an opaque gitlink.
+
+        Sources of submodule roots (unioned):
+        - daemon ``worktree_submodule_paths``
+        - task ``Submodules:`` metadata (CIG boards declare these per task)
+        - tracked gitlinks in the workspace that match scope paths
+
+        Without the task-declared and discovered sets, monorepo boards that
+        only list ``swissknife/contracts/...`` in Outputs leave an opaque
+        ``swissknife`` gitlink in the candidate and fail closed with
+        ``submodule_boundary_forbidden`` even when the implementer never
+        intended a pin change.
         """
 
+        candidates: set[str] = {
+            relative.strip("/")
+            for relative in self._effective_worktree_submodule_paths(task)
+            if relative.strip("/")
+        }
+        if workspace_path is not None:
+            try:
+                _symlinks, tracked_gitlinks = self._proposal_boundary_paths(
+                    workspace_path
+                )
+            except (OSError, RuntimeError, ValueError):
+                tracked_gitlinks = ()
+            for relative in tracked_gitlinks:
+                normalized = str(relative or "").strip().replace("\\", "/").strip("/")
+                if normalized:
+                    candidates.add(normalized)
         return tuple(
             sorted(
                 {
-                    relative.strip("/")
-                    for relative in self.worktree_submodule_paths
-                    if relative.strip("/")
-                    and any(
-                        self._path_matches_prefix(
-                            path,
-                            relative.strip("/"),
-                        )
-                        for path in scope_paths
-                    )
+                    relative
+                    for relative in candidates
+                    if relative
+                    and self._path_in_proposal_scope(relative, scope_paths)
                 }
             )
         )
@@ -28943,20 +29533,37 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         scope_paths: Sequence[str],
+        task: PortalTask | None = None,
     ) -> tuple[tuple[Any, ...], tuple[dict[str, Any], ...]]:
         """Collect root and task-owned submodule changes as full source entries.
 
         A superproject diff exposes a submodule update only as an opaque
         gitlink.  Strict proposal validation must never authorize that opaque
-        boundary.  For configured submodules with explicitly declared child
-        outputs, replace the gitlink entry with source-bound entries collected
-        from the child repository.  Every other gitlink remains untouched and
-        is rejected by the ordinary proposal boundary policy.
+        boundary.  For submodules with explicitly declared child outputs,
+        replace the gitlink entry with source-bound entries collected from the
+        child repository.  Dirty scoped gitlinks with no materializable child
+        file changes are restored to the baseline (incidental pin/worktree
+        dirt).  Every other gitlink remains untouched and is rejected by the
+        ordinary proposal boundary policy.
         """
 
         from ..proof.code_proof_obligations import collect_git_candidate_diff
 
         effective_baseline = baseline_ref or "HEAD"
+        scoped_submodules = self._proposal_scope_submodule_paths(
+            scope_paths,
+            task=task,
+            workspace_path=workspace_path,
+        )
+        # Drop incidental gitlink dirt for scoped submodules that have no
+        # in-scope child file edits before collecting the root candidate.
+        self._restore_empty_scoped_submodule_gitlinks(
+            workspace_path,
+            baseline_ref=effective_baseline,
+            scoped_submodules=scoped_submodules,
+            scope_paths=scope_paths,
+            task=task,
+        )
         root_entries = list(
             collect_git_candidate_diff(
                 workspace_path,
@@ -28965,12 +29572,12 @@ class PortalImplementationDaemon:
             )
         )
         expansions: list[dict[str, Any]] = []
-        for relative in self._proposal_scope_submodule_paths(scope_paths):
+        for relative in scoped_submodules:
             target = workspace_path / relative
             if target.is_symlink() or not self._is_git_worktree(target):
-                raise RuntimeError(
-                    f"task-owned proposal submodule is not an initialized worktree: {relative}"
-                )
+                # Scoped submodule not initialized: leave any opaque gitlink
+                # for ordinary rejection rather than crashing proposal collect.
+                continue
             base_result = subprocess.run(
                 ["git", "rev-parse", f"{effective_baseline}:{relative}"],
                 cwd=workspace_path,
@@ -29023,7 +29630,25 @@ class PortalImplementationDaemon:
                     include_untracked=True,
                 )
             )
-            if not local_entries:
+            owns_whole_submodule = any(
+                str(p).strip("/").replace("\\", "/") == relative
+                for p in scope_paths
+            )
+            if owns_whole_submodule:
+                scoped_local = local_entries
+            else:
+                scoped_local = tuple(
+                    entry
+                    for entry in local_entries
+                    if self._path_in_proposal_scope(
+                        (
+                            f"{relative}/"
+                            f"{entry.new_path or entry.old_path or entry.path}"
+                        ).replace("//", "/"),
+                        scope_paths,
+                    )
+                )
+            if not scoped_local:
                 continue
             expansions.append(
                 {
@@ -29031,7 +29656,7 @@ class PortalImplementationDaemon:
                     "repo_root": target,
                     "base_revision": base_revision,
                     "candidate_head": candidate_head,
-                    "entries": local_entries,
+                    "entries": scoped_local,
                 }
             )
 
@@ -29054,12 +29679,16 @@ class PortalImplementationDaemon:
                 raise RuntimeError(
                     f"proposal submodule boundary changed shape: {relative}"
                 )
+        # Drop opaque gitlinks for every scoped submodule (expanded or empty).
+        # Empty ones were restored above; expanded ones are replaced by child
+        # source entries. Leaving either as a gitlink fails proposal closed.
+        drop_gitlinks = set(expanded_paths) | set(scoped_submodules)
         entries = [
             entry
             for entry in root_entries
             if not any(
                 entry.old_path == relative or entry.new_path == relative
-                for relative in expanded_paths
+                for relative in drop_gitlinks
             )
         ]
         for expansion in expansions:
@@ -29084,6 +29713,97 @@ class PortalImplementationDaemon:
             ),
             tuple(expansions),
         )
+
+    def _restore_empty_scoped_submodule_gitlinks(
+        self,
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+        scoped_submodules: Sequence[str],
+        scope_paths: Sequence[str],
+        task: PortalTask | None = None,
+    ) -> list[str]:
+        """Restore scoped submodule gitlinks with no in-scope child edits.
+
+        Implement worktrees often leave a dirty ``swissknife`` / pin gitlink
+        after submodule init even when the only real edits are monorepo tests
+        and Makefile lines. Proposal admission treats that opaque gitlink as
+        ``submodule_boundary_forbidden``. Restore the pin when the child has
+        no materializable in-scope file changes so the real task outputs can
+        proceed.
+        """
+
+        from ..proof.code_proof_obligations import collect_git_candidate_diff
+
+        restored: list[str] = []
+        baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        for relative in scoped_submodules:
+            relative = str(relative or "").strip().replace("\\", "/").strip("/")
+            if not relative or not self._repo_relative_path_safe(relative):
+                continue
+            target = workspace_path / relative
+            if target.is_symlink() or not self._is_git_worktree(target):
+                # Uninitialized: still try parent restore of the gitlink path.
+                has_scoped_child_edits = False
+            else:
+                base_result = subprocess.run(
+                    ["git", "rev-parse", f"{baseline}:{relative}"],
+                    cwd=workspace_path,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                if base_result.returncode != 0:
+                    continue
+                base_revision = base_result.stdout.strip()
+                try:
+                    local_entries = tuple(
+                        collect_git_candidate_diff(
+                            target,
+                            base_revision=base_revision,
+                            include_untracked=True,
+                        )
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    local_entries = ()
+                owns_whole_submodule = any(
+                    str(p).strip("/").replace("\\", "/") == relative
+                    for p in scope_paths
+                )
+                if owns_whole_submodule:
+                    has_scoped_child_edits = bool(local_entries)
+                else:
+                    has_scoped_child_edits = any(
+                        self._path_in_proposal_scope(
+                            f"{relative}/{(entry.new_path or entry.old_path or entry.path)}".replace(
+                                "//", "/"
+                            ),
+                            scope_paths,
+                        )
+                        for entry in local_entries
+                    )
+            if has_scoped_child_edits:
+                continue
+            # Force parent pointer + child checkout. Plain ``git restore``
+            # leaves `` M relative`` when the submodule HEAD drifted, and the
+            # opaque gitlink then fails proposal with submodule_boundary_forbidden.
+            if self._force_checkout_gitlink_at_baseline(
+                workspace_path,
+                relative,
+                baseline_ref=baseline,
+            ):
+                restored.append(relative)
+        if restored:
+            self._record_event(
+                "implementation_empty_scoped_submodule_gitlink_restored",
+                {
+                    "task_id": getattr(task, "task_id", "") or "",
+                    "baseline_ref": baseline,
+                    "restored_paths": restored,
+                },
+            )
+        return restored
 
     @staticmethod
     def _prefix_proposal_patch_extended_paths(
@@ -29594,7 +30314,12 @@ class PortalImplementationDaemon:
                 getattr(proposal, "changed_paths", ()) or ()
             )
         )
-        task_scope_paths = cls._proposal_scope_paths(task)
+        # Envelope admission uses declared Outputs only; AST companions are
+        # for implement/proposal write authority, not artifact-envelope claims.
+        task_scope_paths = cls._proposal_scope_paths_for(
+            task,
+            include_ast_companions=False,
+        )
         if (
             set(changed_paths) != set(artifact_paths)
             or len(changed_paths) != len(artifact_paths)
@@ -30536,6 +31261,15 @@ class PortalImplementationDaemon:
         """Stage only exact ignored outputs and capture fail-closed evidence."""
 
         expected_paths = self._exact_proposal_expected_output_paths(task)
+        predicted_paths = {
+            str(part).strip().replace("\\", "/").strip("/")
+            for part in str(
+                (task.metadata or {}).get("predicted files")
+                or (task.metadata or {}).get("predicted_files")
+                or ""
+            ).split(",")
+            if str(part).strip()
+        }
         protected_paths = tuple(
             str(path).strip("/")
             for path in self.implementation_protected_paths
@@ -30545,6 +31279,15 @@ class PortalImplementationDaemon:
             str(path).strip("/")
             for path in self.worktree_submodule_paths
             if str(path).strip("/")
+        )
+        # Also discover submodule roots from the superproject so undeclared
+        # submodule outputs (e.g. swissknife/...) do not hard-fail re-enable
+        # boards when the worktree did not populate that submodule.
+        discovered_submodule_paths = self._discover_submodule_roots(
+            workspace_path
+        )
+        all_submodule_paths = tuple(
+            sorted({*submodule_paths, *discovered_submodule_paths})
         )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
@@ -30590,7 +31333,22 @@ class PortalImplementationDaemon:
             )
             submodule_bound = any(
                 self._path_matches_prefix(relative, path)
-                for path in submodule_paths
+                for path in all_submodule_paths
+            )
+            submodule_root = next(
+                (
+                    path
+                    for path in sorted(
+                        all_submodule_paths,
+                        key=lambda value: (-len(value.split("/")), value),
+                    )
+                    if relative == path or relative.startswith(f"{path}/")
+                ),
+                "",
+            )
+            submodule_unpopulated = bool(
+                submodule_root
+                and not self._is_git_worktree(workspace_path / submodule_root)
             )
             symlink_bound = self._path_crosses_live_symlink(
                 workspace_path,
@@ -30603,7 +31361,20 @@ class PortalImplementationDaemon:
             regular_file = bool(
                 exists and target.is_file() and not target.is_symlink()
             )
-            needs_candidate = not baseline_present
+            # Predicted files are the hard write set. Broader Outputs that live
+            # in an unpopulated submodule, or that are optional declarations
+            # outside predicted files, must not block proposal admission.
+            optional_declared_output = bool(
+                predicted_paths
+                and relative not in predicted_paths
+                and not any(
+                    relative == path or relative.startswith(f"{path.rstrip('/')}/")
+                    for path in predicted_paths
+                )
+            )
+            needs_candidate = not baseline_present and not (
+                optional_declared_output or submodule_unpopulated
+            )
             force_stage_required = bool(
                 needs_candidate and ignored and not indexed
             )
@@ -30612,7 +31383,13 @@ class PortalImplementationDaemon:
             issue = ""
 
             if not exists:
-                issue = EXPECTED_OUTPUT_MISSING
+                if submodule_unpopulated or optional_declared_output:
+                    # Soft skip: re-enable boards often declare submodule paths
+                    # that are not materialized in shallow implement worktrees.
+                    issue = ""
+                    needs_candidate = False
+                else:
+                    issue = EXPECTED_OUTPUT_MISSING
             elif force_stage_required:
                 if (
                     protected
@@ -30660,6 +31437,9 @@ class PortalImplementationDaemon:
                     "protected": protected,
                     "forbidden": forbidden,
                     "submodule_bound": submodule_bound,
+                    "submodule_root": submodule_root,
+                    "submodule_unpopulated": submodule_unpopulated,
+                    "optional_declared_output": optional_declared_output,
                     "symlink_bound": symlink_bound,
                     "regular_file": regular_file,
                     "needs_candidate": needs_candidate,
@@ -30909,12 +31689,22 @@ class PortalImplementationDaemon:
         collection_error = ""
         submodule_expansions: tuple[dict[str, Any], ...] = ()
         try:
+            # Strip incidental monorepo pin dirt (e.g. external/ipfs_accelerate)
+            # before proposal admission — the same restore post-validation uses
+            # for candidate binding. Without this, CIG interop tasks fail
+            # proposal with path_outside_scope + submodule_boundary_forbidden.
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=scope_paths,
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
@@ -30967,7 +31757,7 @@ class PortalImplementationDaemon:
         validation_steps_list: list[ProposalValidationStep] = []
         malformed_validation_command = False
         for raw_command in task.validation:
-            command = str(raw_command)
+            command = rewrite_validation_command(str(raw_command))
             if self._task_uses_typed_local_execution(task):
                 command, _notes = self._normalize_validation_command(command)
             try:
@@ -31239,6 +32029,29 @@ class PortalImplementationDaemon:
                 for proposal_id in current_consumed_proposal_ids
                 if proposal_id not in replayable_proposal_ids
             )
+        # Tasks that declare test modules as Outputs/Predicted files are
+        # expected to rewrite those tests (fixture refresh, re-enable paths).
+        # Default fail-closed test-weakening still applies outside task-owned
+        # scope via task_owned_paths enforcement on the write set.
+        from ..validation.proposal_validation import _is_test_path as _proposal_is_test_path
+
+        task_owned_test_outputs = any(
+            _proposal_is_test_path(str(path).strip())
+            for path in (
+                *(task.outputs or ()),
+                *(
+                    str(part).strip()
+                    for part in str(
+                        (task.metadata or {}).get("predicted files")
+                        or (task.metadata or {}).get("predicted_files")
+                        or ""
+                    ).split(",")
+                    if str(part).strip()
+                ),
+                *allowed_paths,
+            )
+            if str(path).strip()
+        )
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -31255,6 +32068,7 @@ class PortalImplementationDaemon:
             submodule_paths=submodule_paths,
             protected_paths=tuple(self.implementation_protected_paths),
             allowed_validation_commands=allowed_validation_commands,
+            allow_test_weakening=task_owned_test_outputs,
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
@@ -32150,6 +32964,238 @@ class PortalImplementationDaemon:
             )
         )
 
+    def _path_in_proposal_scope(
+        self,
+        relative: str,
+        scope_paths: Sequence[str],
+    ) -> bool:
+        """Return whether ``relative`` is covered by task-owned scope paths."""
+
+        path = str(relative or "").strip().replace("\\", "/").strip("/")
+        if not path:
+            return False
+        for scope in scope_paths:
+            scope_path = str(scope or "").strip().replace("\\", "/").strip("/")
+            if not scope_path:
+                continue
+            if (
+                path == scope_path
+                or path.startswith(f"{scope_path}/")
+                or scope_path.startswith(f"{path}/")
+            ):
+                return True
+        return False
+
+    def _force_checkout_gitlink_at_baseline(
+        self,
+        workspace_path: Path,
+        relative: str,
+        *,
+        baseline_ref: str,
+    ) -> bool:
+        """Force a submodule checkout to the baseline-recorded gitlink SHA.
+
+        ``git restore --worktree -- <gitlink>`` rewrites only the parent index /
+        gitlink pointer.  It does **not** move the child HEAD, so status stays
+        `` M path`` (or ``MM``) and proposal collection still sees an opaque
+        submodule boundary.  CIG-018/014 failed post-validation candidate
+        binding this way after green pytest when incidental ``swissknife`` /
+        pin checkouts drifted.  Match the merge-path incidental restore:
+        resolve ``baseline:path`` and ``git checkout -f`` inside the child.
+        """
+
+        normalized = str(relative or "").strip().replace("\\", "/").strip("/")
+        if not normalized or not self._repo_relative_path_safe(normalized):
+            return False
+        baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        head_result = subprocess.run(
+            ["git", "rev-parse", f"{baseline}:{normalized}"],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head_result.returncode != 0:
+            return False
+        expected = head_result.stdout.strip()
+        if not expected:
+            return False
+        # Parent index/worktree gitlink pointer first.
+        parent = subprocess.run(
+            [
+                "git",
+                "restore",
+                "--source",
+                baseline,
+                "--staged",
+                "--worktree",
+                "--",
+                normalized,
+            ],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if parent.returncode != 0:
+            parent = subprocess.run(
+                ["git", "checkout", baseline, "--", normalized],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        if parent.returncode != 0:
+            return False
+        target = workspace_path / normalized
+        if not self._is_git_worktree(target):
+            # Parent pointer restored; child not initialized — treat as clean.
+            return True
+        checkout = subprocess.run(
+            ["git", "checkout", "-f", expected],
+            cwd=target,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if checkout.returncode == 0:
+            return True
+        # Fall back to submodule update for this path only (local objects).
+        fallback = subprocess.run(
+            [
+                "git",
+                "submodule",
+                "update",
+                "--force",
+                "--checkout",
+                "--",
+                normalized,
+            ],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return fallback.returncode == 0
+
+    def _restore_out_of_scope_workspace_paths(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+    ) -> list[str]:
+        """Restore dirty paths outside the task write scope to the baseline.
+
+        Validation commands (for example ``git submodule update`` on monorepo
+        pins) can dirt paths the implementer never owned. That dirt then fails
+        post-validation candidate binding with ``submodule_boundary_forbidden``
+        even when the declared test suite already passed. Restoring only
+        out-of-scope dirt keeps the binding fail-closed for real task edits.
+        """
+
+        scope_paths = self._proposal_scope_paths(task)
+        dirty_paths = sorted(self._dirty_worktree_paths(workspace_path))
+        restored: list[str] = []
+        baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        # Discover tracked gitlinks so OOS submodule checkouts get a full
+        # child force-checkout, not only a parent pointer rewrite.
+        try:
+            _symlinks, tracked_gitlinks = self._proposal_boundary_paths(
+                workspace_path
+            )
+        except (OSError, RuntimeError, ValueError):
+            tracked_gitlinks = ()
+        gitlink_set = {
+            str(path).strip().replace("\\", "/").strip("/")
+            for path in tracked_gitlinks
+            if str(path).strip()
+        }
+        for relative in dirty_paths:
+            if self._path_in_proposal_scope(relative, scope_paths):
+                continue
+            if not self._repo_relative_path_safe(relative):
+                continue
+            normalized = str(relative).strip().replace("\\", "/").strip("/")
+            target = workspace_path / normalized
+            # Gitlink / initialized submodule: force child checkout to baseline.
+            if normalized in gitlink_set or self._is_git_worktree(target):
+                if self._force_checkout_gitlink_at_baseline(
+                    workspace_path,
+                    normalized,
+                    baseline_ref=baseline,
+                ):
+                    restored.append(normalized)
+                continue
+            result = subprocess.run(
+                [
+                    "git",
+                    "restore",
+                    "--source",
+                    baseline,
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    relative,
+                ],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                # Fall back to checkout for older git / gitlink-only paths.
+                result = subprocess.run(
+                    [
+                        "git",
+                        "checkout",
+                        baseline,
+                        "--",
+                        relative,
+                    ],
+                    cwd=workspace_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            if result.returncode == 0:
+                restored.append(relative)
+                continue
+            # Untracked out-of-scope paths cannot be restored from baseline;
+            # remove them so proposal admission does not see path_outside_scope
+            # from incidental pin/cache files left in the worktree.
+            try:
+                if target.is_symlink() or target.is_file():
+                    target.unlink(missing_ok=True)
+                    restored.append(relative)
+                elif target.is_dir():
+                    # Only remove empty dirs or dirs with no in-scope content —
+                    # fail closed by skipping non-empty trees that look large.
+                    import shutil
+
+                    # Bound: only delete if tree has <= 64 entries when walked.
+                    entry_count = 0
+                    for _root, _dirs, files in os.walk(target):
+                        entry_count += len(files)
+                        if entry_count > 64:
+                            break
+                    if entry_count <= 64:
+                        shutil.rmtree(target, ignore_errors=True)
+                        if not target.exists():
+                            restored.append(relative)
+            except OSError:
+                continue
+        if restored:
+            self._record_event(
+                "implementation_out_of_scope_dirt_restored",
+                {
+                    "task_id": task.task_id,
+                    "baseline_ref": baseline,
+                    "restored_paths": restored,
+                },
+            )
+        return restored
+
     def _inspect_post_validation_candidate_binding(
         self,
         workspace_path: Path,
@@ -32170,11 +33216,19 @@ class PortalImplementationDaemon:
         collection_error = ""
         current_entries: tuple[Any, ...] = ()
         try:
+            # Drop validation side-effects on monorepo pins / unrelated paths
+            # before fingerprinting so binding stays focused on task outputs.
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             current_entries, _ = self._collect_proposal_candidate_diff(
                 workspace_path,
                 baseline_ref=baseline_ref,
                 scope_paths=self._proposal_scope_paths(task),
+                task=task,
             )
             current_fingerprint = self._proposal_candidate_fingerprint(
                 current_entries
@@ -32242,12 +33296,18 @@ class PortalImplementationDaemon:
         if not task.validation:
             return None
         try:
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=self._proposal_scope_paths(task),
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError):
@@ -32283,12 +33343,18 @@ class PortalImplementationDaemon:
         collection_error = ""
         current_expansions: tuple[dict[str, Any], ...] = ()
         try:
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             current_entries, current_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=self._proposal_scope_paths(task),
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
@@ -32485,12 +33551,18 @@ class PortalImplementationDaemon:
         if not result.get("passed", False):
             return result
         try:
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, _submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
                     scope_paths=self._proposal_scope_paths(task),
+                    task=task,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
@@ -32578,7 +33650,9 @@ class PortalImplementationDaemon:
 
         commands: list[str] = []
         for raw_command in task.validation:
-            command, _notes = self._normalize_validation_command(raw_command)
+            command, _notes = self._normalize_validation_command(
+                rewrite_validation_command(str(raw_command))
+            )
             command, _pythonpath_note = self._with_worktree_validation_pythonpath(
                 command,
                 workspace_path,
@@ -33425,6 +34499,25 @@ class PortalImplementationDaemon:
             if completion_scope is not None
             else task_declared_output_paths(task)
         )
+        # Surface AST companions/relocation hints into the rescue addendum so
+        # the next attempt can lawfully edit production modules the tests import.
+        try:
+            companions = validation_ast_companion_paths(
+                task,
+                repo_root=self.repo_root,
+            )
+            if companions and not result.get("ast_import_companion_paths"):
+                result["ast_import_companion_paths"] = list(companions)
+            hints = validation_ast_relocation_hints(
+                task,
+                repo_root=self.repo_root,
+            )
+            if hints and not result.get("descriptor_relocation_hints"):
+                result["descriptor_relocation_hints"] = [
+                    dict(hint) for hint in hints
+                ]
+        except (OSError, TypeError, ValueError):
+            pass
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
@@ -33609,7 +34702,9 @@ class PortalImplementationDaemon:
         commands: list[str] = []
         normalization_notes: list[str] = []
         for raw_command in task.validation:
-            command, notes = self._normalize_validation_command(raw_command)
+            command, notes = self._normalize_validation_command(
+                rewrite_validation_command(str(raw_command))
+            )
             command, pythonpath_note = (
                 self._with_worktree_validation_pythonpath(
                     command,
@@ -35376,6 +36471,13 @@ class PortalImplementationDaemon:
 
             merge_workspace = Path(str(workspace_result["path"]))
             merge_workspace_ephemeral = bool(workspace_result.get("ephemeral", False))
+            # Shared main checkouts accumulate detached submodule HEADs from
+            # prior implement worktrees (e.g. swissknife left on an attempt
+            # branch). That dirt blocks merges that also touch the submodule
+            # even when the parent only has a gitlink pointer mismatch.
+            restored_incidental_gitlinks = (
+                self._restore_incidental_main_gitlink_checkouts(merge_workspace)
+            )
             resolved_add_add_conflicts = self._resolve_generated_add_add_conflicts(cwd=merge_workspace)
             identical_untracked_paths = self._identical_untracked_merge_paths(branch_name, cwd=merge_workspace)
             restored_generated_dirty_overlap = self._restore_generated_dirty_merge_overlap(
@@ -35448,6 +36550,7 @@ class PortalImplementationDaemon:
                     "identical_untracked_paths": identical_untracked_paths,
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
                     "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
+                    "restored_incidental_gitlinks": restored_incidental_gitlinks,
                     "generated_submodule_reconciliation": generated_submodule_reconciliation,
                     "submodule_merge_results": [],
                 }
@@ -35787,6 +36890,21 @@ class PortalImplementationDaemon:
             for path in self.worktree_submodule_paths
             if path.strip().strip("/")
         }
+        # CIG boards often omit global worktree_submodule_paths. Still publish
+        # isolated merges that succeeded for task/validation-declared pins
+        # (e.g. swissknife) so parent merges are not marked failed after ort
+        # already recorded the correct gitlink.
+        managed_roots.update(self._task_declared_submodule_paths(task))
+        managed_roots.update(self._validation_implied_submodule_paths(task))
+        for item in submodule_merge_results:
+            if (
+                item.get("isolated_target", False)
+                and item.get("merged", False)
+                and str(item.get("path") or "").strip()
+            ):
+                managed_roots.add(
+                    str(item.get("path") or "").strip().strip("/")
+                )
         selected: dict[str, str] = {}
         failures: list[dict[str, Any]] = []
         for item in submodule_merge_results:
@@ -35819,6 +36937,15 @@ class PortalImplementationDaemon:
             current_gitlink = self._submodule_gitlink_ref(workspace, relative)
             if current_gitlink == commit:
                 selected[relative] = commit
+                # Align worktree HEAD when it drifted (shared checkouts).
+                if self._is_git_worktree(checkout):
+                    subprocess.run(
+                        ["git", "checkout", "-f", commit],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
                 continue
             if not self._is_git_worktree(checkout):
                 failures.append(
@@ -35845,6 +36972,30 @@ class PortalImplementationDaemon:
                 capture_output=True,
                 check=False,
             )
+            if status.returncode != 0 or status.stdout.strip():
+                # Soft-clean detached attempt dirt so a successful isolated
+                # merge can still publish the parent gitlink (CIG shared trees).
+                subprocess.run(
+                    ["git", "reset", "--hard", "HEAD"],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                subprocess.run(
+                    ["git", "clean", "-fd"],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
             if status.returncode != 0 or status.stdout.strip():
                 failures.append(
                     {
@@ -38489,7 +39640,37 @@ class PortalImplementationDaemon:
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         stale_config_repair = self._repair_stale_submodule_worktree_configs(repo_path)
-        relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
+        if parent_relative:
+            relatives = tuple(self._declared_submodule_paths(repo_path))
+        else:
+            # CIG and other monorepo boards often run without a global
+            # ``worktree_submodule_paths`` list. Still reconcile every gitlink
+            # the task actually changed (plus task/validation-declared pins)
+            # or parent merges that update swissknife/external/* roll back as
+            # ``changed_submodule_merge_unverified`` with empty results.
+            base: set[str] = {
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in self.worktree_submodule_paths
+                if str(path).strip()
+            }
+            base.update(self._task_declared_submodule_paths(task))
+            base.update(self._validation_implied_submodule_paths(task))
+            for path in changed_submodule_paths or ():
+                normalized = str(path or "").strip().replace("\\", "/").strip("/")
+                if not normalized:
+                    continue
+                parts = normalized.split("/")
+                if parts[0] == "external" and len(parts) >= 2:
+                    base.add(f"external/{parts[1]}")
+                else:
+                    base.add(parts[0])
+            relatives = tuple(
+                sorted(
+                    path
+                    for path in base
+                    if path and self._repo_relative_path_safe(path)
+                )
+            )
         # Sort submodules by dependency order: leaf submodules merge first
         relatives = self._topological_sort_submodules(relatives, repo_path)
         # Resume from checkpoint if one exists (crash recovery)
@@ -38586,22 +39767,87 @@ class PortalImplementationDaemon:
                 checkpoint.record_submodule(full_relative, result)
                 continue
             if not self._git_ref_exists_in_repo(source, submodule_branch):
+                # Parent merge often applies the gitlink pointer alone when the
+                # child already committed on a non-daemon branch name (or the
+                # branch was cleaned). Treat an already-correct post-merge
+                # gitlink as verified instead of returning no result (which
+                # fails closed as changed_submodule_merge_unverified).
+                parent_for_gitlink = repo_path
+                desired_proc = subprocess.run(
+                    ["git", "rev-parse", f"{branch_name}:{relative}"],
+                    cwd=parent_for_gitlink,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                current_proc = subprocess.run(
+                    ["git", "rev-parse", f"HEAD:{relative}"],
+                    cwd=parent_for_gitlink,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                desired_gitlink = (
+                    desired_proc.stdout.strip()
+                    if desired_proc.returncode == 0
+                    else ""
+                )
+                current_gitlink = (
+                    current_proc.stdout.strip()
+                    if current_proc.returncode == 0
+                    else ""
+                )
+                if (
+                    desired_gitlink
+                    and current_gitlink
+                    and desired_gitlink == current_gitlink
+                ):
+                    if self._is_git_worktree(source):
+                        subprocess.run(
+                            ["git", "checkout", "-f", desired_gitlink],
+                            cwd=source,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                    result = {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "default_branch": self._submodule_default_branch(
+                            relative, source
+                        ),
+                        "merged": True,
+                        "reason": "parent_gitlink_already_merged",
+                        "gitlink_commit": desired_gitlink,
+                    }
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
+                    continue
                 # A parent branch may be unchanged or already cleaned while a
                 # deeper daemon-owned branch still needs reconciliation.
-                results.extend(
-                    self._merge_submodule_branches_to_main_in_repo(
-                        repo_path=source,
-                        branch_name=branch_name,
-                        parent_relative=full_relative,
-                        task=task,
-                        attempt=attempt,
-                        baseline_ref=baseline_ref,
-                        changed_submodule_paths=changed_submodule_paths,
-                        checkpoint=checkpoint,
-                        target_parent_ref=target_parent_ref,
-                        target_scope=target_scope,
-                    )
+                nested = self._merge_submodule_branches_to_main_in_repo(
+                    repo_path=source,
+                    branch_name=branch_name,
+                    parent_relative=full_relative,
+                    task=task,
+                    attempt=attempt,
+                    baseline_ref=baseline_ref,
+                    changed_submodule_paths=changed_submodule_paths,
+                    checkpoint=checkpoint,
+                    target_parent_ref=target_parent_ref,
+                    target_scope=target_scope,
                 )
+                if nested:
+                    results.extend(nested)
+                else:
+                    result = {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "merged": False,
+                        "reason": "submodule_task_branch_missing",
+                    }
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
                 continue
             if target_parent_ref:
                 target_checkout_status = subprocess.run(
@@ -39865,6 +41111,98 @@ class PortalImplementationDaemon:
         if dirty_submodules or preservation:
             self._record_event("dirty_submodule_reset_deferred", result)
         return result
+
+    def _restore_incidental_main_gitlink_checkouts(
+        self,
+        workspace: Path,
+    ) -> list[str]:
+        """Restore dirty submodule checkouts to the HEAD-recorded gitlink.
+
+        Implement worktrees share the monorepo object store and often leave
+        submodule working copies on attempt branches. Parent status then shows
+        `` M swissknife`` (or similar) even though no intentional main-branch
+        edit exists. Restoring the gitlink + checkout unblocks merges that
+        would otherwise fail with ``main_checkout_dirty_conflict``.
+        """
+
+        restored: list[str] = []
+        dirty_paths = sorted(self._dirty_worktree_paths(workspace))
+        if not dirty_paths:
+            return restored
+        try:
+            _symlinks, tracked_gitlinks = self._proposal_boundary_paths(workspace)
+        except (OSError, RuntimeError, ValueError):
+            tracked_gitlinks = ()
+        gitlink_set = {
+            str(path).strip().replace("\\", "/").strip("/")
+            for path in tracked_gitlinks
+            if str(path).strip()
+        }
+        for relative in dirty_paths:
+            normalized = str(relative or "").strip().replace("\\", "/").strip("/")
+            if not normalized or normalized not in gitlink_set:
+                continue
+            if not self._repo_relative_path_safe(normalized):
+                continue
+            # Resolve the commit recorded on HEAD for this gitlink.
+            head_result = subprocess.run(
+                ["git", "rev-parse", f"HEAD:{normalized}"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if head_result.returncode != 0:
+                continue
+            expected = head_result.stdout.strip()
+            if not expected:
+                continue
+            # Reset parent index/worktree gitlink pointer.
+            restore = subprocess.run(
+                ["git", "checkout", "HEAD", "--", normalized],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if restore.returncode != 0:
+                continue
+            target = workspace / normalized
+            if self._is_git_worktree(target):
+                checkout = subprocess.run(
+                    ["git", "checkout", "-f", expected],
+                    cwd=target,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if checkout.returncode != 0:
+                    # Fall back to submodule update for this path only.
+                    subprocess.run(
+                        [
+                            "git",
+                            "submodule",
+                            "update",
+                            "--init",
+                            "--checkout",
+                            "--",
+                            normalized,
+                        ],
+                        cwd=workspace,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+            restored.append(normalized)
+        if restored:
+            self._record_event(
+                "implementation_incidental_main_gitlink_restored",
+                {
+                    "restored_paths": restored,
+                    "workspace_path": str(workspace),
+                },
+            )
+        return restored
 
     def _dirty_merge_conflict_paths(
         self,
@@ -45884,13 +47222,43 @@ class PortalImplementationDaemon:
         worktree_path = str(event.get("worktree_path") or "")
         command = event.get("command") or []
         process_lines = self._list_process_commands()
+        command_text = (
+            " ".join(str(item) for item in command if item)
+            if isinstance(command, list)
+            else str(command or "")
+        )
         if worktree_path:
             # Task validation can leave MCP bridge servers in its worktree. Only
-            # the configured Codex/Copilot runner proves implementation is live.
-            return any(
-                worktree_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+            # the configured Codex/Copilot/Grok runner proves implementation is live.
+            if any(
+                worktree_path in line
+                and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
-            )
+            ):
+                return True
+            # Docker ARG truncation can drop the worktree from the grok child
+            # line while the wrapper still holds ``--workspace <worktree>``.
+            # Require the worktree on the same process line as a runner token so
+            # co-located MCP bridges never look like an implementer.
+            if any(
+                worktree_path in line
+                and (
+                    "grok_cli_runner" in line
+                    or "cli_implement_runner" in line
+                    or "ipfs-accelerate-grok" in line
+                )
+                for line in process_lines
+            ):
+                return True
+            # Docker isolation containers may not list the full worktree path
+            # in ``ps`` output; inspect labeled containers for the mount.
+            if self._docker_isolation_active_for_worktree(worktree_path):
+                return True
+            # Brief docker restarts drop process visibility while the agent is
+            # still writing the attempt log. Treat recent log activity as live.
+            if self._implementation_log_recently_active(event):
+                return True
+            return False
         # Shared-checkout implementations deliberately do not have a task
         # worktree path.  Their serialized wrapper command contains a
         # heredoc, so matching the complete command line is not reliable.
@@ -45902,16 +47270,118 @@ class PortalImplementationDaemon:
                 repo_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
             )
-        if isinstance(command, list):
-            command_text = " ".join(str(item) for item in command if item)
-            if command_text:
-                return any(
-                    command_text in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
-                    for line in process_lines
+        if command_text:
+            return any(
+                command_text in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                for line in process_lines
+            )
+        return False
+
+    def _implementation_log_recently_active(
+        self,
+        event: Mapping[str, Any],
+        *,
+        grace_seconds: float = INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS,
+    ) -> bool:
+        """Return whether the attempt log was written within the grace window."""
+
+        candidates = [str(event.get("log_path") or "").strip()]
+        now = time.time()
+        for raw in candidates:
+            if not raw:
+                continue
+            path = Path(raw)
+            if not path.is_file():
+                alt = self.repo_root / raw
+                path = alt if alt.is_file() else path
+            if not path.is_file():
+                continue
+            try:
+                age = now - path.stat().st_mtime
+            except OSError:
+                continue
+            if 0 <= age <= float(grace_seconds):
+                return True
+        return False
+
+    def _docker_isolation_active_for_worktree(self, worktree_path: str) -> bool:
+        """Return whether a labeled Grok isolation container mounts worktree."""
+
+        worktree_path = str(worktree_path or "").strip()
+        if not worktree_path:
+            return False
+        try:
+            listed = subprocess.run(
+                [
+                    "docker",
+                    "ps",
+                    "--filter",
+                    "label=ipfs_accelerate.grok_isolation=true",
+                    "--format",
+                    "{{.ID}}",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if listed.returncode != 0 or not listed.stdout.strip():
+            return False
+        for container_id in listed.stdout.splitlines():
+            container_id = container_id.strip()
+            if not container_id:
+                continue
+            try:
+                inspected = subprocess.run(
+                    [
+                        "docker",
+                        "inspect",
+                        "--format",
+                        "{{json .Mounts}}",
+                        container_id,
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
                 )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if inspected.returncode != 0:
+                continue
+            if worktree_path in (inspected.stdout or ""):
+                return True
         return False
 
     def _list_process_commands(self) -> list[str]:
+        # Prefer /proc cmdlines: ``ps -eo args=`` truncates long docker lines
+        # and can drop the worktree path that liveness matching requires.
+        lines: list[str] = []
+        proc_root = Path("/proc")
+        if proc_root.is_dir():
+            try:
+                for entry in proc_root.iterdir():
+                    if not entry.name.isdigit():
+                        continue
+                    cmdline_path = entry / "cmdline"
+                    try:
+                        raw = cmdline_path.read_bytes()
+                    except OSError:
+                        continue
+                    if not raw:
+                        continue
+                    text = raw.replace(b"\0", b" ").decode(
+                        "utf-8",
+                        errors="replace",
+                    ).strip()
+                    if text:
+                        lines.append(text)
+            except OSError:
+                lines = []
+        if lines:
+            return lines
         result = subprocess.run(
             ["ps", "-eo", "args="],
             text=True,
@@ -46096,6 +47566,43 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
 
+    def _require_implement_workspace_not_merge_target(
+        self,
+        workspace_path: Path,
+        *,
+        task: PortalTask | None = None,
+    ) -> Path:
+        """Fail closed when implement would mutate the merge-target checkout.
+
+        CIG and other multi-task boards share a main checkout that merge uses.
+        Provider dispatch against that tree dirties gitlinks and product files,
+        then blocks every subsequent merge with ``main_checkout_dirty_conflict``.
+        When a worktree root is configured, implement must only run under it.
+        """
+
+        workspace = Path(workspace_path).expanduser().resolve()
+        repo_root = Path(self.repo_root).expanduser().resolve()
+        worktree_root = Path(self.worktree_root).expanduser().resolve()
+        if workspace == repo_root and worktree_root != repo_root:
+            task_id = getattr(task, "task_id", "") or ""
+            raise RuntimeError(
+                "implementation provider dispatch refused on merge-target "
+                f"checkout {repo_root}; require an ephemeral worktree under "
+                f"{worktree_root}"
+                + (f" for {task_id}" if task_id else "")
+            )
+        if worktree_root != repo_root and not self._path_is_under(
+            workspace, worktree_root
+        ):
+            # Also refuse arbitrary paths outside the configured worktree root
+            # (for example a stale absolute path that resolved to main).
+            if workspace == repo_root or repo_root in workspace.parents:
+                raise RuntimeError(
+                    "implementation workspace is not under configured "
+                    f"worktree_root={worktree_root}: {workspace}"
+                )
+        return workspace
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
@@ -46107,7 +47614,10 @@ class PortalImplementationDaemon:
                 "model dispatch is forbidden in manual completion authority "
                 "revalidation-only mode"
             )
-        workspace_path = workspace_path.resolve()
+        workspace_path = self._require_implement_workspace_not_merge_target(
+            workspace_path,
+            task=task,
+        )
         declared_provider = self._task_declared_implementation_provider(task)
         if self._task_uses_typed_local_execution(task):
             raise RuntimeError(
@@ -46177,6 +47687,8 @@ class PortalImplementationDaemon:
             "spark",
         }
         force_codex = provider in {"codex", "openai"}
+        force_claude = provider in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES
+        force_gemini = provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES
         force_copilot = provider == "copilot"
         automatic_latches = (
             self._provider_capacity_latch_states()
@@ -46193,26 +47705,163 @@ class PortalImplementationDaemon:
             )
 
         if provider == "auto":
+            # Usage-aware auto route: llm_router readiness probes + durable
+            # capacity/quota latches + capability_resolver preference policy.
+            # Grok is the default tie-breaker when both backends are ready.
+            from .implementation_provider_auto import (
+                AutoProviderDecision,
+                select_auto_implementation_provider,
+            )
+
             global_capacity_latched = any(
                 automatic_latches.get(family, {}).get("active", False)
                 for family in GLOBAL_PROVIDER_CAPACITY_FAMILIES
             )
-            grok_capacity_latched = bool(
-                automatic_latches.get("grok", {}).get("active", False)
-            )
-            grok_quota_latched = bool(
-                grok_capacity_latched
-                and automatic_latches.get("grok", {}).get(
-                    "hard_quota_exhausted",
-                    False,
+            grok_auth = False
+            grok_constructible = False
+            if _grok_binary():
+                try:
+                    from ...llm_router import (
+                        _grok_cli_auth_available,
+                        get_llm_provider,
+                    )
+
+                    grok_auth = bool(_grok_cli_auth_available())
+                    grok_constructible = (
+                        grok_auth and get_llm_provider("grok_cli") is not None
+                    )
+                except Exception:
+                    grok_auth = bool(grok_ready)
+                    grok_constructible = bool(grok_ready)
+            claude_binary = False
+            claude_authenticated = False
+            gemini_binary = False
+            gemini_authenticated = False
+            copilot_binary = False
+            copilot_authenticated = False
+            meta_spark_binary = False
+            meta_spark_authenticated = False
+            mistral_binary = False
+            mistral_authenticated = False
+            try:
+                from .cli_provider_balance import probe_all_cli_provider_readiness
+
+                cli_readiness = probe_all_cli_provider_readiness()
+                claude_probe = cli_readiness.get("claude") or {}
+                gemini_probe = cli_readiness.get("gemini") or {}
+                copilot_probe = cli_readiness.get("copilot") or {}
+                meta_probe = cli_readiness.get("meta_spark") or {}
+                mistral_probe = cli_readiness.get("mistral") or {}
+                claude_binary = bool(claude_probe.get("binary_available"))
+                claude_authenticated = bool(claude_probe.get("authenticated"))
+                gemini_binary = bool(gemini_probe.get("binary_available"))
+                gemini_authenticated = bool(gemini_probe.get("authenticated"))
+                copilot_binary = bool(copilot_probe.get("binary_available"))
+                copilot_authenticated = bool(copilot_probe.get("authenticated"))
+                meta_spark_binary = bool(meta_probe.get("binary_available"))
+                meta_spark_authenticated = bool(meta_probe.get("authenticated"))
+                mistral_binary = bool(mistral_probe.get("binary_available"))
+                mistral_authenticated = bool(mistral_probe.get("authenticated"))
+            except Exception:
+                # Fall back to daemon-local readiness helpers.
+                copilot_binary = bool(shutil.which("copilot"))
+                copilot_authenticated = bool(_copilot_has_auth())
+                meta_spark_binary = bool(_goose_binary())
+                meta_spark_authenticated = bool(
+                    _resolve_meta_spark_api_key()
+                    or os.environ.get("OPENAI_API_KEY", "").strip()
                 )
+            auto_selection = select_auto_implementation_provider(
+                grok_binary=bool(_grok_binary()),
+                grok_authenticated=bool(grok_auth or grok_ready),
+                grok_constructible=bool(
+                    grok_constructible or (grok_ready and _grok_binary())
+                ),
+                codex_binary=bool(shutil.which("codex")),
+                codex_authenticated=True,
+                claude_binary=claude_binary,
+                claude_authenticated=claude_authenticated,
+                gemini_binary=gemini_binary,
+                gemini_authenticated=gemini_authenticated,
+                copilot_binary=copilot_binary,
+                copilot_authenticated=copilot_authenticated,
+                meta_spark_binary=meta_spark_binary,
+                meta_spark_authenticated=meta_spark_authenticated,
+                mistral_binary=mistral_binary,
+                mistral_authenticated=mistral_authenticated,
+                latches=automatic_latches,
+                global_capacity_latched=global_capacity_latched,
             )
-            if global_capacity_latched:
-                raise RuntimeError(
-                    "Automatic implementation providers are in a global "
-                    "capacity cooldown"
+            # Persist a compact receipt on the daemon event stream when possible.
+            try:
+                self._record_event(
+                    "implementation_provider_auto_selected",
+                    auto_selection.to_dict(),
                 )
-            if grok_quota_latched:
+            except Exception:
+                pass
+            if auto_selection.decision is AutoProviderDecision.GROK:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    failure_receipt_nonce=secrets.token_hex(32),
+                )
+            if auto_selection.decision is AutoProviderDecision.CLAUDE:
+                if not automatic_family_allowed("claude"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Claude is in capacity cooldown"
+                    )
+                return _claude_implementation_command(
+                    workspace_path=workspace_path,
+                )
+            if auto_selection.decision is AutoProviderDecision.GEMINI:
+                if not automatic_family_allowed("gemini"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Gemini is in capacity cooldown"
+                    )
+                return _gemini_implementation_command(
+                    workspace_path=workspace_path,
+                )
+            if auto_selection.decision is AutoProviderDecision.COPILOT:
+                if not automatic_family_allowed("copilot"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Copilot is in capacity cooldown"
+                    )
+                copilot = shutil.which("copilot")
+                if not copilot or not _copilot_has_auth():
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but authenticated Copilot CLI "
+                        "is unavailable"
+                    )
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(
+                        task
+                    )[0]
+                    if task is not None
+                    else None
+                )
+                return _copilot_fallback_command(
+                    codex=None,
+                    copilot=str(copilot),
+                    workspace_path=workspace_path,
+                    codex_context_window=codex_context_window,
+                )
+            if auto_selection.decision is AutoProviderDecision.META_SPARK:
+                if not automatic_family_allowed("goose"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Meta Spark/Goose is in "
+                        "capacity cooldown"
+                    )
+                return _goose_meta_spark_command(workspace_path=workspace_path)
+            if auto_selection.decision is AutoProviderDecision.MISTRAL:
+                if not automatic_family_allowed("mistral"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Mistral is in capacity cooldown"
+                    )
+                return _mistral_implementation_command(
+                    workspace_path=workspace_path,
+                )
+            if auto_selection.decision is AutoProviderDecision.CODEX:
                 if self._task_declares_independent_codex_review(task):
                     raise RuntimeError(
                         "Grok quota is exhausted, but Codex fallback cannot "
@@ -46246,21 +47895,22 @@ class PortalImplementationDaemon:
                         DEFAULT_CODEX_REASONING_EFFORT
                     ),
                 )
-            if grok_capacity_latched:
+            if auto_selection.decision is AutoProviderDecision.BACKOFF:
+                reasons = ", ".join(auto_selection.reason_codes) or "backoff"
                 raise RuntimeError(
-                    "Grok is in transient capacity cooldown; Codex fallback "
-                    "requires typed hard-quota exhaustion authority"
-                )
-            if grok_ready and _grok_binary():
-                return _grok_cli_command(
-                    workspace_path=workspace_path,
-                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
-                    failure_receipt_nonce=secrets.token_hex(32),
+                    "Automatic implementation providers are in capacity "
+                    f"cooldown ({reasons})"
+                    + (
+                        f"; retry_at={auto_selection.retry_at}"
+                        if auto_selection.retry_at
+                        else ""
+                    )
                 )
             raise RuntimeError(
                 "Automatic implementation requires authenticated Grok 4.5; "
                 "Codex fallback is authorized only after a durable Grok "
-                "quota-exhaustion latch"
+                "quota-exhaustion latch "
+                f"({', '.join(auto_selection.reason_codes) or 'unavailable'})"
             )
 
         # Prefer only when the binary is actually resolvable so an auth-only
@@ -46316,6 +47966,36 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
             )
+        if force_claude:
+            try:
+                from .cli_provider_balance import resolve_claude_cli_binary
+
+                if not resolve_claude_cli_binary():
+                    raise RuntimeError(
+                        f"Implementation provider {provider!r} requires Claude Code CLI"
+                    )
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires Claude Code CLI"
+                ) from exc
+            return _claude_implementation_command(workspace_path=workspace_path)
+        if force_gemini:
+            try:
+                from .cli_provider_balance import resolve_gemini_cli_binary
+
+                if not resolve_gemini_cli_binary():
+                    raise RuntimeError(
+                        f"Implementation provider {provider!r} requires Gemini CLI"
+                    )
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires Gemini CLI"
+                ) from exc
+            return _gemini_implementation_command(workspace_path=workspace_path)
         if force_copilot:
             if not copilot_allowed:
                 raise RuntimeError(
@@ -46352,8 +48032,8 @@ class PortalImplementationDaemon:
             )
         raise RuntimeError(
             "No implementation command configured. Install the Grok Build CLI "
-            "(`grok` with auth), goose (with Meta Spark credentials), codex, or "
-            "copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
+            "(`grok` with auth), goose (with Meta Spark credentials), codex, "
+            "claude, gemini, or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
@@ -49261,6 +50941,31 @@ class PortalImplementationDaemon:
                 repo_root=self.repo_root,
             )
         )
+        try:
+            ast_companion_paths = (
+                ()
+                if retry_repair_source_id
+                else validation_ast_companion_paths(
+                    task,
+                    repo_root=self.repo_root,
+                )
+            )
+        except (OSError, TypeError, ValueError):
+            ast_companion_paths = ()
+        try:
+            relocation_hints = (
+                ()
+                if retry_repair_source_id
+                else validation_ast_relocation_hints(
+                    task,
+                    repo_root=self.repo_root,
+                )
+            )
+        except (OSError, TypeError, ValueError):
+            relocation_hints = ()
+        relocation_hint_text = format_relocation_hints_for_prompt(
+            relocation_hints
+        )
         checkpoint_dir = self._implementation_checkpoint_dir(task)
         checkpoint_manifest = self._implementation_checkpoint_manifest(task)
         timeout_policy = self._implementation_timeout_policy(task)
@@ -49302,6 +51007,17 @@ class PortalImplementationDaemon:
                 *rules,
                 "An explicit validation test target absent from the baseline is an implied task output. Add substantive regression coverage there; placeholders or weakened assertions will fail scope adjudication.",
             )
+        if ast_companion_paths:
+            rules = (
+                *rules,
+                "AST import analysis of the validation tests expanded write "
+                "authority to the first-party modules those tests import. "
+                "Prefer fixing production path/contract owners there when "
+                "descriptors moved between pins; do not weaken tests solely "
+                "to pass the gate.",
+            )
+        if relocation_hint_text:
+            rules = (*rules, relocation_hint_text)
         if (
             completion_scope is None
             and len(declared_output_paths) > 3
@@ -49323,6 +51039,11 @@ class PortalImplementationDaemon:
                     *base_allowed_edit_paths,
                     *(
                         implied_validation_paths
+                        if completion_scope is None
+                        else ()
+                    ),
+                    *(
+                        ast_companion_paths
                         if completion_scope is None
                         else ()
                     ),
@@ -49354,6 +51075,8 @@ class PortalImplementationDaemon:
                 if completion_scope is not None
                 else "retry_repair_output_exact"
                 if retry_repair_source_id
+                else "task_outputs_with_ast_import_companions"
+                if ast_companion_paths
                 else "task_outputs_with_implied_validation_tests"
                 if implied_validation_paths
                 else "task_output_and_evidence_exact"
@@ -49361,6 +51084,10 @@ class PortalImplementationDaemon:
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
+            "ast_import_companion_paths": list(ast_companion_paths),
+            "descriptor_relocation_hints": [
+                dict(hint) for hint in relocation_hints
+            ],
             "diagnostic_read_only_paths": retry_validation_paths,
             "protected_paths": protected_edit_paths,
             "read_only_outputs": read_only_outputs,
@@ -49543,6 +51270,14 @@ class PortalImplementationDaemon:
                 raise
             raise ImplementationRetryDeferred(
                 "implementation context byte budget exhausted"
+            ) from exc
+        except ContextBoundsError as exc:
+            # CIG-031 and large-companion tasks can overflow authority item
+            # bounds when generic_prompt_policy + edit_policy grow. Park the
+            # task instead of crashing the managed daemon process.
+            raise ImplementationRetryDeferred(
+                f"implementation context bounds exceeded: {exc}",
+                backoff_seconds=600,
             ) from exc
         self._last_implementation_context = result
         self._last_implementation_retry = None
@@ -49741,8 +51476,12 @@ class PortalImplementationDaemon:
         fresh_retry_context = False
         if attempt > 1:
             if attempt - 1 > self.implementation_max_repair_rounds:
+                # Multi-task boards must not re-select this task every pass.
+                # Without a queue cooldown the same exhausted task starves
+                # other ready work (observed on CIG-030 vs the rest of Wave A).
                 raise ImplementationRetryDeferred(
-                    "implementation repair round budget exhausted"
+                    "implementation repair round budget exhausted",
+                    backoff_seconds=self._repair_budget_exhausted_backoff_seconds(),
                 )
             key = self._canonical_ref(task)
             self._load_implementation_retry_state(task)
@@ -49805,7 +51544,10 @@ class PortalImplementationDaemon:
                         )
                         if repeats >= self.implementation_max_repair_rounds:
                             raise ImplementationRetryDeferred(
-                                "identical implementation failure escalated"
+                                "identical implementation failure escalated",
+                                backoff_seconds=(
+                                    self._repair_budget_exhausted_backoff_seconds()
+                                ),
                             )
                         not_before = self._implementation_retry_not_before.get(
                             key,

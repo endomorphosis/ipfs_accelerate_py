@@ -58,6 +58,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
     build_grok_failure_receipt,
     render_grok_failure_receipt,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
+    ValidationRuntimeError,
+)
 
 # Self-heal: if a static import is incomplete on an older pin or partial merge,
 # bind every provider-command symbol this module loads by name.

@@ -542,6 +542,87 @@ def expand_cd_parent_return_validation_commands(command: str) -> list[str]:
     return [left_command, right_command]
 
 
+# Shell form used by monorepo CI re-enable boards to assert an ignore line is gone.
+# Rewrite to a pure-argv helper so proposal validation does not reject `$()` tokens.
+_MAKEFILE_IGNORE_ABSENT_RE = re.compile(
+    r"""^\s*test\s+-z\s+["']\$\(\s*rg\s+-n\s+["'](?P<pattern>[^"']+)["']\s+"""
+    r"""(?P<makefile>[^\s)"']+)\s*\|\|\s*true\s*\)["']\s*$""",
+    re.IGNORECASE,
+)
+# Prefer monorepo-relative script paths over ``python -m`` so sealed
+# validation environments (restricted PATH / no ambient package install) can
+# still execute helpers without ``ipfs_accelerate_py`` on ``sys.path``.
+_MAKEFILE_IGNORE_CHECK_SCRIPT = (
+    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/"
+    "validation/makefile_ignore_check.py"
+)
+_SUBMODULE_INIT_SCRIPT = (
+    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/"
+    "validation/submodule_init.py"
+)
+# ``git submodule update --init [--depth N] path [path ...]``
+_GIT_SUBMODULE_UPDATE_INIT_RE = re.compile(
+    r"""^\s*git\s+submodule\s+update\s+--init"""
+    r"""(?:\s+--depth(?:=|\s+)(?P<depth>\d+))?"""
+    r"""(?P<paths>(?:\s+[^\s;|&]+)+)\s*$""",
+    re.IGNORECASE,
+)
+
+
+def rewrite_shell_makefile_ignore_check(command: str) -> str:
+    """Rewrite ``test -z "$(rg ... || true)"`` ignore-absent checks to pure argv.
+
+    Proposal validation forbids shell expansion tokens even on task-declared
+    allowlists. CI re-enable boards use this reviewed shell form to prove a
+    Makefile ignore line was removed; map it to a dedicated helper script.
+    """
+
+    text = normalize_validation_command_text(command)
+    match = _MAKEFILE_IGNORE_ABSENT_RE.match(text)
+    if match is None:
+        return text
+    pattern = match.group("pattern")
+    makefile = match.group("makefile") or "Makefile"
+    return (
+        f"python3 {shlex.quote(_MAKEFILE_IGNORE_CHECK_SCRIPT)} "
+        f"--makefile {shlex.quote(makefile)} "
+        f"--absent {shlex.quote(pattern)}"
+    )
+
+
+def rewrite_shell_git_submodule_update(command: str) -> str:
+    """Rewrite ``git submodule update --init …`` to a resilient helper.
+
+    Fresh ``--depth 1`` fetches fail (rc 128) when a monorepo pin is already
+    checked out to a local-only commit. The helper treats initialized
+    worktrees as success so validation can proceed to the real tests.
+    """
+
+    text = normalize_validation_command_text(command)
+    match = _GIT_SUBMODULE_UPDATE_INIT_RE.match(text)
+    if match is None:
+        return text
+    raw_paths = match.group("paths") or ""
+    paths = [part for part in raw_paths.split() if part and not part.startswith("-")]
+    if not paths:
+        return text
+    depth = match.group("depth") or "1"
+    quoted = " ".join(shlex.quote(path) for path in paths)
+    return (
+        f"python3 {shlex.quote(_SUBMODULE_INIT_SCRIPT)} "
+        f"--depth {shlex.quote(str(depth))} {quoted}"
+    )
+
+
+def rewrite_validation_command(command: str) -> str:
+    """Apply all pure-argv rewrites used by proposal + sealed validation."""
+
+    text = normalize_validation_command_text(command)
+    text = rewrite_shell_makefile_ignore_check(text)
+    text = rewrite_shell_git_submodule_update(text)
+    return text
+
+
 def split_validation_commands(value: str) -> list[str]:
     """Split semicolon-separated shell commands without splitting quoted code.
 
@@ -590,7 +671,7 @@ def split_validation_commands(value: str) -> list[str]:
     expanded: list[str] = []
     for command in commands:
         expanded.extend(expand_cd_parent_return_validation_commands(command))
-    return expanded
+    return [rewrite_validation_command(command) for command in expanded]
 
 
 def _shell_tokens(command: str) -> list[str]:
