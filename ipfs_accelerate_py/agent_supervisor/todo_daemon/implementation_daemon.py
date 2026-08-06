@@ -13970,6 +13970,18 @@ class PortalImplementationDaemon:
                     context_receipt_path
                 )
                 return ephemeral_result
+            # Non-ephemeral implement against the merge-target checkout is
+            # forbidden when a worktree root is configured (CIG boards). Force
+            # the ephemeral path rather than dirtying main mid-run.
+            if (
+                Path(self.worktree_root).resolve()
+                != Path(self.repo_root).resolve()
+            ):
+                raise RuntimeError(
+                    "non-ephemeral implementation path refused while "
+                    f"worktree_root={self.worktree_root} is configured; "
+                    "enable ephemeral worktrees for provider dispatch"
+                )
             # Some administrative and provider-capacity paths intentionally
             # operate against a not-yet-initialized checkout.  Baseline
             # discovery must not pre-empt the implementation command in those
@@ -47018,6 +47030,43 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
 
+    def _require_implement_workspace_not_merge_target(
+        self,
+        workspace_path: Path,
+        *,
+        task: PortalTask | None = None,
+    ) -> Path:
+        """Fail closed when implement would mutate the merge-target checkout.
+
+        CIG and other multi-task boards share a main checkout that merge uses.
+        Provider dispatch against that tree dirties gitlinks and product files,
+        then blocks every subsequent merge with ``main_checkout_dirty_conflict``.
+        When a worktree root is configured, implement must only run under it.
+        """
+
+        workspace = Path(workspace_path).expanduser().resolve()
+        repo_root = Path(self.repo_root).expanduser().resolve()
+        worktree_root = Path(self.worktree_root).expanduser().resolve()
+        if workspace == repo_root and worktree_root != repo_root:
+            task_id = getattr(task, "task_id", "") or ""
+            raise RuntimeError(
+                "implementation provider dispatch refused on merge-target "
+                f"checkout {repo_root}; require an ephemeral worktree under "
+                f"{worktree_root}"
+                + (f" for {task_id}" if task_id else "")
+            )
+        if worktree_root != repo_root and not self._path_is_under(
+            workspace, worktree_root
+        ):
+            # Also refuse arbitrary paths outside the configured worktree root
+            # (for example a stale absolute path that resolved to main).
+            if workspace == repo_root or repo_root in workspace.parents:
+                raise RuntimeError(
+                    "implementation workspace is not under configured "
+                    f"worktree_root={worktree_root}: {workspace}"
+                )
+        return workspace
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
@@ -47029,7 +47078,10 @@ class PortalImplementationDaemon:
                 "model dispatch is forbidden in manual completion authority "
                 "revalidation-only mode"
             )
-        workspace_path = workspace_path.resolve()
+        workspace_path = self._require_implement_workspace_not_merge_target(
+            workspace_path,
+            task=task,
+        )
         declared_provider = self._task_declared_implementation_provider(task)
         if self._task_uses_typed_local_execution(task):
             raise RuntimeError(
