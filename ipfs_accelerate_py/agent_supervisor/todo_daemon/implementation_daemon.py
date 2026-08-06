@@ -36635,6 +36635,21 @@ class PortalImplementationDaemon:
             for path in self.worktree_submodule_paths
             if path.strip().strip("/")
         }
+        # CIG boards often omit global worktree_submodule_paths. Still publish
+        # isolated merges that succeeded for task/validation-declared pins
+        # (e.g. swissknife) so parent merges are not marked failed after ort
+        # already recorded the correct gitlink.
+        managed_roots.update(self._task_declared_submodule_paths(task))
+        managed_roots.update(self._validation_implied_submodule_paths(task))
+        for item in submodule_merge_results:
+            if (
+                item.get("isolated_target", False)
+                and item.get("merged", False)
+                and str(item.get("path") or "").strip()
+            ):
+                managed_roots.add(
+                    str(item.get("path") or "").strip().strip("/")
+                )
         selected: dict[str, str] = {}
         failures: list[dict[str, Any]] = []
         for item in submodule_merge_results:
@@ -36667,6 +36682,15 @@ class PortalImplementationDaemon:
             current_gitlink = self._submodule_gitlink_ref(workspace, relative)
             if current_gitlink == commit:
                 selected[relative] = commit
+                # Align worktree HEAD when it drifted (shared checkouts).
+                if self._is_git_worktree(checkout):
+                    subprocess.run(
+                        ["git", "checkout", "-f", commit],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
                 continue
             if not self._is_git_worktree(checkout):
                 failures.append(
@@ -36693,6 +36717,30 @@ class PortalImplementationDaemon:
                 capture_output=True,
                 check=False,
             )
+            if status.returncode != 0 or status.stdout.strip():
+                # Soft-clean detached attempt dirt so a successful isolated
+                # merge can still publish the parent gitlink (CIG shared trees).
+                subprocess.run(
+                    ["git", "reset", "--hard", "HEAD"],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                subprocess.run(
+                    ["git", "clean", "-fd"],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
             if status.returncode != 0 or status.stdout.strip():
                 failures.append(
                     {
