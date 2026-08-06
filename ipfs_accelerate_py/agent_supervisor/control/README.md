@@ -22,6 +22,7 @@ Transport-neutral control plane. Python, CLI, and MCP build the same OperationRe
 | `control_contracts` | `control/control_contracts.py` |
 | `control_plane` | `control/control_plane.py` |
 | `execution_permit` | `control/execution_permit.py` |
+| `launch_profile_housekeeping` | `control/launch_profile_housekeeping.py` |
 | `lifecycle_orchestrator` | `control/lifecycle_orchestrator.py` |
 
 ## Preferred imports
