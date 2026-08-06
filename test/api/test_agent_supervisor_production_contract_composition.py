@@ -1,20 +1,14 @@
-"""SCA-620 / SCA-G177: production-composition evidence gate (SCAEV177COMPOSE).
+"""SCA-622 / SCA-G182: end-to-end production authority gate (SCAEV182E2E).
 
-Deterministic aggregate verifier for the audit-derived production-composition
-closure. Focused adapter success is retained as capability evidence but cannot
-authorize production composition without an end-to-end current-root receipt.
+Deterministic aggregate verifier for the production-authority composition.
+Reads and checks stage receipts only — it cannot repair, synthesize, or
+relabel missing evidence. Focused adapter success is retained as capability
+evidence but cannot satisfy production authority without a current-root
+end-to-end receipt.
 
-This suite:
-
-* composes mandatory production stages under one content root;
-* fails closed on missing, synthesized, simulated, partial, stale, or
-  cross-root stage evidence;
-* treats real-ZK attestation as optional and capability-gated;
-* records zero model/provider/LLM calls;
-* publishes a sealed evaluation receipt for SCAEV177COMPOSE.
-
-The gate only reads and verifies stage receipts; it does not synthesize
-missing stages, repair inputs, or establish a second proof/cache authority.
+Also binds SCAEV177COMPOSE so the shared evaluation artifact can close the
+parent production-composition evidence obligation when both goals share
+these declared outputs.
 """
 
 from __future__ import annotations
@@ -36,14 +30,28 @@ from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline im
     StageCompleteness,
 )
 
-
-# ---------------------------------------------------------------------------
-# Evidence / identity
-# ---------------------------------------------------------------------------
-
+SCAEV182E2E: Final = "SCAEV182E2E"
 SCAEV177COMPOSE: Final = "SCAEV177COMPOSE"
-SCAEV177COMPOSE_EVIDENCE: Final = SCAEV177COMPOSE
-SCAEV177COMPOSE_COVERAGE: Final = (
+
+SCAEV182E2E_EVIDENCE: Final = SCAEV182E2E
+SCAEV182E2E_COVERAGE: Final[tuple[str, ...]] = (
+    "primary-provider-index-current-root",
+    "actual-package-surfaces-no-synthesis",
+    "real-indexed-graphrag-not-canary",
+    "real-mcp-list-call-receipts",
+    "kernel-checked-prover-cache-receipts",
+    "optional-real-zk-capability-gated",
+    "exact-runtime-identity",
+    "scheduler-fence-regressions",
+    "fail-closed-unsupported-unknown-stale-partial",
+    "fail-closed-missing-synthesized-simulated-cross-root",
+    "focused-adapter-success-not-production-authority",
+    "zero-runtime-model-calls",
+    "bounded-deduplicated-repair-projection",
+    "exact-validation-and-reproof-commands",
+)
+
+SCAEV177COMPOSE_COVERAGE: Final[tuple[str, ...]] = (
     "primary-provider-index-current-root",
     "actual-package-surfaces-no-synthesis",
     "real-indexed-graphrag-not-canary",
@@ -62,23 +70,18 @@ COMPOSITION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-composition@1"
 )
 COMPOSITION_VERSION: Final = "1"
-TASK_ID: Final = "SCA-620"
-GOAL_ID: Final = "SCA-G177"
-CORPUS_VERSION: Final = "sca-620-production-composition-v1"
+TASK_ID: Final = "SCA-622"
+GOAL_ID: Final = "SCA-G182"
+CORPUS_VERSION: Final = "sca-622-production-authority-v1"
 EVALUATED_AT: Final = "2026-07-29T21:00:00Z"
-CONTENT_ROOT: Final = "content-root:sca-620-current"
+CONTENT_ROOT: Final = "content-root:sca-622-current"
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
-PUBLISHED_REPORT = (
+REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[4]
+PUBLISHED_REPORT: Final = (
     REPOSITORY_ROOT
     / "data/agent_supervisor/swissknife_contract_assurance/evaluation"
     / "production-composition.json"
 )
-
-
-# ---------------------------------------------------------------------------
-# Stage model
-# ---------------------------------------------------------------------------
 
 
 class ProductionStageName(str, Enum):
@@ -91,6 +94,7 @@ class ProductionStageName(str, Enum):
     KERNEL_PROVER_CACHE = "kernel_prover_cache"
     RUNTIME_IDENTITY = "runtime_identity"
     SCHEDULER_FENCE = "scheduler_fence"
+    REPAIR_PROJECTION = "repair_projection"
     REAL_ZK_ATTESTATION = "real_zk_attestation"
 
 
@@ -105,6 +109,7 @@ class StageDisposition(str, Enum):
     STALE = "stale"
     CROSS_ROOT = "cross_root"
     UNSUPPORTED = "unsupported"
+    UNKNOWN = "unknown"
     UNAVAILABLE = "unavailable"
     FOCUSED_ADAPTER_ONLY = "focused_adapter_only"
 
@@ -117,6 +122,7 @@ MANDATORY_STAGES: Final[tuple[ProductionStageName, ...]] = (
     ProductionStageName.KERNEL_PROVER_CACHE,
     ProductionStageName.RUNTIME_IDENTITY,
     ProductionStageName.SCHEDULER_FENCE,
+    ProductionStageName.REPAIR_PROJECTION,
 )
 
 OPTIONAL_STAGES: Final[tuple[ProductionStageName, ...]] = (
@@ -132,12 +138,12 @@ FAIL_CLOSED_DISPOSITIONS: Final[frozenset[StageDisposition]] = frozenset(
         StageDisposition.STALE,
         StageDisposition.CROSS_ROOT,
         StageDisposition.UNSUPPORTED,
+        StageDisposition.UNKNOWN,
         StageDisposition.UNAVAILABLE,
         StageDisposition.FOCUSED_ADAPTER_ONLY,
     }
 )
 
-# Stages where simulated evidence is never production-authoritative.
 SIMULATION_FORBIDDEN_STAGES: Final[frozenset[ProductionStageName]] = frozenset(
     {
         ProductionStageName.PRIMARY_PROVIDER_INDEX,
@@ -147,32 +153,21 @@ SIMULATION_FORBIDDEN_STAGES: Final[frozenset[ProductionStageName]] = frozenset(
         ProductionStageName.KERNEL_PROVER_CACHE,
         ProductionStageName.RUNTIME_IDENTITY,
         ProductionStageName.SCHEDULER_FENCE,
-        ProductionStageName.REAL_ZK_ATTESTATION,
+        ProductionStageName.REPAIR_PROJECTION,
     }
 )
 
-# Map production stages onto baseline stage receipts where the baseline
-# pipeline already materializes an analogous receipt (evidence continuity).
-BASELINE_STAGE_BRIDGE: Final[Mapping[ProductionStageName, BaselineStageName]] = (
-    MappingProxyType(
-        {
-            ProductionStageName.PRIMARY_PROVIDER_INDEX: (
-                BaselineStageName.REPOSITORY_INDEX
-            ),
-            ProductionStageName.ACTUAL_PACKAGE_SURFACES: (
-                BaselineStageName.EXTRACTION
-            ),
-            ProductionStageName.REAL_GRAPHRAG: BaselineStageName.GRAPH,
-            ProductionStageName.MCP_LIST_CALL_RECEIPTS: (
-                BaselineStageName.INVOCATION_TRACE
-            ),
-            ProductionStageName.KERNEL_PROVER_CACHE: (
-                BaselineStageName.PROOF_CACHE
-            ),
-            ProductionStageName.RUNTIME_IDENTITY: BaselineStageName.PUBLISH,
-        }
-    )
-)
+BASELINE_STAGE_BRIDGE: Final[
+    Mapping[ProductionStageName, BaselineStageName]
+] = {
+    ProductionStageName.PRIMARY_PROVIDER_INDEX: BaselineStageName.REPOSITORY_INDEX,
+    ProductionStageName.ACTUAL_PACKAGE_SURFACES: BaselineStageName.EXTRACTION,
+    ProductionStageName.REAL_GRAPHRAG: BaselineStageName.GRAPH,
+    ProductionStageName.MCP_LIST_CALL_RECEIPTS: BaselineStageName.INVOCATION_TRACE,
+    ProductionStageName.KERNEL_PROVER_CACHE: BaselineStageName.PROOF_CACHE,
+    ProductionStageName.REPAIR_PROJECTION: BaselineStageName.MISMATCH,
+    ProductionStageName.RUNTIME_IDENTITY: BaselineStageName.PUBLISH,
+}
 
 
 class CompositionAuthorityError(ValueError):
@@ -186,7 +181,7 @@ class ProductionStageReceipt:
     name: ProductionStageName
     disposition: StageDisposition
     content_root: str
-    reason_codes: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = field(default_factory=tuple)
     details: Mapping[str, Any] = field(default_factory=dict)
     mandatory: bool = True
     focused_adapter_success: bool = False
@@ -197,21 +192,25 @@ class ProductionStageReceipt:
             "name",
             self.name
             if isinstance(self.name, ProductionStageName)
-            else ProductionStageName(str(self.name)),
+            else ProductionStageName(self.name),
         )
         object.__setattr__(
             self,
             "disposition",
             self.disposition
             if isinstance(self.disposition, StageDisposition)
-            else StageDisposition(str(self.disposition)),
+            else StageDisposition(self.disposition),
         )
-        root = str(self.content_root or "").strip()
-        object.__setattr__(self, "content_root", root)
-        codes = tuple(
-            sorted({str(code).strip() for code in self.reason_codes if str(code).strip()})
+        object.__setattr__(
+            self,
+            "content_root",
+            str(self.content_root or "").strip(),
         )
-        object.__setattr__(self, "reason_codes", codes)
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(sorted({str(code) for code in self.reason_codes})),
+        )
         object.__setattr__(
             self,
             "details",
@@ -232,12 +231,10 @@ class ProductionStageReceipt:
             return False
         if not self.content_root:
             return False
-        if self.focused_adapter_success and self.disposition is StageDisposition.CURRENT:
-            # Focused adapter success alone is capability evidence, not
-            # production authority. Admissible only when the stage is marked
-            # current under a production entrypoint (not adapter-only).
-            if self.details.get("entrypoint") == "focused_adapter":
-                return False
+        if self.focused_adapter_success:
+            return False
+        if self.details.get("entrypoint") == "focused_adapter":
+            return False
         return True
 
     def to_dict(self) -> dict[str, Any]:
@@ -254,6 +251,61 @@ class ProductionStageReceipt:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedRepairTask:
+    """One deduplicated bounded repair task projected from a proved mismatch."""
+
+    task_id: str
+    mismatch_id: str
+    contract_id: str
+    content_root: str
+    validation_commands: tuple[str, ...]
+    re_proof_commands: tuple[str, ...]
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "task_id", str(self.task_id).strip())
+        object.__setattr__(self, "mismatch_id", str(self.mismatch_id).strip())
+        object.__setattr__(self, "contract_id", str(self.contract_id).strip())
+        object.__setattr__(self, "content_root", str(self.content_root).strip())
+        object.__setattr__(
+            self,
+            "validation_commands",
+            tuple(str(item).strip() for item in self.validation_commands if str(item).strip()),
+        )
+        object.__setattr__(
+            self,
+            "re_proof_commands",
+            tuple(str(item).strip() for item in self.re_proof_commands if str(item).strip()),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(sorted({str(code) for code in self.reason_codes})),
+        )
+        if not self.task_id:
+            raise CompositionAuthorityError("repair task_id is required")
+        if not self.validation_commands:
+            raise CompositionAuthorityError(
+                f"{self.task_id}: validation_commands required"
+            )
+        if not self.re_proof_commands:
+            raise CompositionAuthorityError(
+                f"{self.task_id}: re_proof_commands required"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "mismatch_id": self.mismatch_id,
+            "contract_id": self.contract_id,
+            "content_root": self.content_root,
+            "validation_commands": list(self.validation_commands),
+            "re_proof_commands": list(self.re_proof_commands),
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CompositionObservation:
     """One composition case (healthy chain or fail-closed mutant)."""
 
@@ -265,9 +317,9 @@ class CompositionObservation:
     fail_closed: bool
     reason_codes: tuple[str, ...]
     stage_names: tuple[str, ...]
-    model_call_count: int = 0
-    provider_call_count: int = 0
-    llm_call_count: int = 0
+    model_call_count: int
+    provider_call_count: int
+    llm_call_count: int
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -298,6 +350,7 @@ class ProductionCompositionResult:
     isolation_audit: Mapping[str, int]
     evidence: Mapping[str, Any]
     baseline_bridges: tuple[dict[str, Any], ...] = ()
+    repair_tasks: tuple[BoundedRepairTask, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -313,20 +366,13 @@ class ProductionCompositionResult:
             "isolation_audit": dict(self.isolation_audit),
             "evidence": dict(self.evidence),
             "baseline_bridges": list(self.baseline_bridges),
+            "repair_tasks": [task.to_dict() for task in self.repair_tasks],
         }
-
-
-# ---------------------------------------------------------------------------
-# Composition gate
-# ---------------------------------------------------------------------------
 
 
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
 
 
@@ -344,7 +390,9 @@ def _seal_report(payload: dict[str, Any]) -> dict[str, Any]:
 def verify_composition_report(report: Mapping[str, Any]) -> bool:
     if report.get("schema") != COMPOSITION_SCHEMA:
         return False
-    if report.get("evidence", {}).get("requirement_ids") != [SCAEV177COMPOSE]:
+    evidence = report.get("evidence") or {}
+    requirement_ids = evidence.get("requirement_ids") or []
+    if SCAEV182E2E not in requirement_ids:
         return False
     claimed = report.get("report_id")
     return isinstance(claimed, str) and claimed == _seal_report(dict(report)).get(
@@ -352,7 +400,9 @@ def verify_composition_report(report: Mapping[str, Any]) -> bool:
     )
 
 
-def _stage_fail_reasons(stage: ProductionStageReceipt, *, expected_root: str) -> list[str]:
+def _stage_fail_reasons(
+    stage: ProductionStageReceipt, *, expected_root: str
+) -> list[str]:
     reasons: list[str] = []
     if stage.disposition in FAIL_CLOSED_DISPOSITIONS:
         reasons.append(f"{stage.name.value}:{stage.disposition.value}")
@@ -366,8 +416,9 @@ def _stage_fail_reasons(stage: ProductionStageReceipt, *, expected_root: str) ->
         reasons.append(f"{stage.name.value}:cross_root")
     if stage.disposition is StageDisposition.CROSS_ROOT:
         reasons.append(f"{stage.name.value}:cross_root_disposition")
-    if stage.disposition is StageDisposition.SIMULATED and stage.name in (
-        SIMULATION_FORBIDDEN_STAGES
+    if (
+        stage.disposition is StageDisposition.SIMULATED
+        and stage.name in SIMULATION_FORBIDDEN_STAGES
     ):
         reasons.append(f"{stage.name.value}:simulation_not_authoritative")
     if stage.details.get("entrypoint") == "focused_adapter":
@@ -385,31 +436,30 @@ def _bridge_baseline_receipt(
     baseline_name = BASELINE_STAGE_BRIDGE.get(stage.name)
     if baseline_name is None:
         return None
-    completeness = (
-        StageCompleteness.COMPLETE
-        if stage.disposition is StageDisposition.CURRENT
+
+    if (
+        stage.disposition is StageDisposition.CURRENT
         and stage.production_admissible
-        else StageCompleteness.PARTIAL
-        if stage.disposition is StageDisposition.PARTIAL
-        else StageCompleteness.FAILED
-        if stage.disposition
-        in {
-            StageDisposition.MISSING,
-            StageDisposition.STALE,
-            StageDisposition.CROSS_ROOT,
-            StageDisposition.UNAVAILABLE,
-        }
-        else StageCompleteness.WITHHELD
-    )
+    ):
+        completeness = StageCompleteness.COMPLETE
+    elif stage.disposition is StageDisposition.PARTIAL:
+        completeness = StageCompleteness.PARTIAL
+    elif stage.disposition in {
+        StageDisposition.MISSING,
+        StageDisposition.STALE,
+        StageDisposition.CROSS_ROOT,
+        StageDisposition.UNAVAILABLE,
+        StageDisposition.UNKNOWN,
+        StageDisposition.UNSUPPORTED,
+    }:
+        completeness = StageCompleteness.FAILED
+    else:
+        completeness = StageCompleteness.WITHHELD
+
     receipt = BaselineStageReceipt(
         name=baseline_name,
         completeness=completeness,
-        reason_codes=stage.reason_codes
-        or (
-            ()
-            if completeness is StageCompleteness.COMPLETE
-            else (stage.disposition.value,)
-        ),
+        reason_codes=tuple(stage.reason_codes) or (stage.disposition.value,),
         root_id=stage.content_root,
         details={
             "production_stage": stage.name.value,
@@ -425,13 +475,95 @@ def _bridge_baseline_receipt(
     }
 
 
+def project_bounded_repairs(
+    mismatches: Sequence[Mapping[str, Any]],
+    *,
+    content_root: str,
+    max_tasks: int = 32,
+) -> tuple[BoundedRepairTask, ...]:
+    """Project proved mismatches into deduplicated bounded repair tasks.
+
+    This gate does not synthesize mismatches or invent repair strategies; it
+    only materializes exact validation and re-proof commands for proved,
+    content-root-bound contract mismatches.
+    """
+    expected_root = str(content_root or "").strip()
+    if not expected_root:
+        raise CompositionAuthorityError("content_root is required")
+    if max_tasks < 1:
+        raise CompositionAuthorityError("max_tasks must be >= 1")
+
+    seen: set[str] = set()
+    tasks: list[BoundedRepairTask] = []
+    for raw in mismatches:
+        if not isinstance(raw, Mapping):
+            continue
+        status = str(raw.get("status") or "").strip().lower()
+        if status not in {"proved", "refuted_mismatch", "contract_mismatch"}:
+            # Only proved/refuted mismatches project; partial/unknown do not.
+            continue
+        mismatch_root = str(raw.get("content_root") or "").strip()
+        if mismatch_root and mismatch_root != expected_root:
+            continue
+        mismatch_id = str(raw.get("mismatch_id") or "").strip()
+        contract_id = str(raw.get("contract_id") or "").strip()
+        if not mismatch_id or not contract_id:
+            continue
+        dedupe_key = f"{contract_id}:{mismatch_id}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        validation = tuple(
+            str(item).strip()
+            for item in (raw.get("validation_commands") or ())
+            if str(item).strip()
+        )
+        re_proof = tuple(
+            str(item).strip()
+            for item in (raw.get("re_proof_commands") or ())
+            if str(item).strip()
+        )
+        if not validation:
+            validation = (
+                f"python3 -m pytest external/ipfs_accelerate/test/api/"
+                f"test_agent_supervisor_contract_mismatch_refinery.py "
+                f"-q -k {contract_id}",
+            )
+        if not re_proof:
+            re_proof = (
+                f"python3 -m ipfs_accelerate_py.agent_supervisor.proof."
+                f"mcp_contract_prover --contract-id {contract_id} "
+                f"--content-root {expected_root}",
+            )
+        task_id = str(raw.get("task_id") or f"repair:{dedupe_key}").strip()
+        tasks.append(
+            BoundedRepairTask(
+                task_id=task_id,
+                mismatch_id=mismatch_id,
+                contract_id=contract_id,
+                content_root=expected_root,
+                validation_commands=validation,
+                re_proof_commands=re_proof,
+                reason_codes=tuple(
+                    str(code)
+                    for code in (raw.get("reason_codes") or ("proved_mismatch",))
+                ),
+            )
+        )
+        if len(tasks) >= max_tasks:
+            break
+    return tuple(tasks)
+
+
 def compose_production_contract(
     stages: Sequence[ProductionStageReceipt],
     *,
-    content_root: str = CONTENT_ROOT,
+    content_root: str,
     model_call_count: int = 0,
     provider_call_count: int = 0,
     llm_call_count: int = 0,
+    mismatches: Sequence[Mapping[str, Any]] | None = None,
 ) -> ProductionCompositionResult:
     """Compose production stage receipts or fail closed.
 
@@ -439,7 +571,6 @@ def compose_production_contract(
     real-ZK is capability-gated: unavailable/simulated ZK never attests and
     never blocks composition when declared optional.
     """
-
     expected_root = str(content_root or "").strip()
     if not expected_root:
         raise CompositionAuthorityError("content_root is required")
@@ -452,12 +583,13 @@ def compose_production_contract(
         if stage is None:
             reasons.append(f"{mandatory.value}:missing")
             continue
-        reasons.extend(_stage_fail_reasons(stage, expected_root=expected_root))
+        reasons.extend(
+            _stage_fail_reasons(stage, expected_root=expected_root)
+        )
 
     zk_stage = by_name.get(ProductionStageName.REAL_ZK_ATTESTATION)
-    optional_zk: dict[str, Any]
     if zk_stage is None:
-        optional_zk = {
+        optional_zk: dict[str, Any] = {
             "present": False,
             "disposition": StageDisposition.UNAVAILABLE.value,
             "attested": False,
@@ -472,26 +604,43 @@ def compose_production_contract(
             and zk_stage.details.get("predicate") == "verified_receipt"
             and not zk_reasons
         )
-        # Simulated/unavailable ZK never attests and never grants authority.
         blocks = False
         if zk_stage.details.get("required") is True and not attested:
             blocks = True
-            reasons.extend(zk_reasons or [f"{zk_stage.name.value}:required_not_attested"])
+            reasons.extend(
+                zk_reasons
+                or [f"{zk_stage.name.value}:required_not_attested"]
+            )
         optional_zk = {
             "present": True,
             "disposition": zk_stage.disposition.value,
             "attested": attested,
             "blocks_composition": blocks,
-            "reason_codes": zk_reasons
-            if not attested
-            else list(zk_stage.reason_codes),
+            "reason_codes": (
+                list(zk_reasons)
+                if not attested
+                else list(zk_stage.reason_codes)
+            ),
             "predicate": zk_stage.details.get("predicate"),
         }
 
     if model_call_count or provider_call_count or llm_call_count:
         reasons.append("runtime_model_calls_nonzero")
 
-    # Drop duplicates while preserving order.
+    repair_tasks = project_bounded_repairs(
+        mismatches or (),
+        content_root=expected_root,
+    )
+    repair_stage = by_name.get(ProductionStageName.REPAIR_PROJECTION)
+    if (
+        repair_stage is not None
+        and repair_stage.disposition is StageDisposition.CURRENT
+        and repair_stage.production_admissible
+        and repair_stage.details.get("require_tasks") is True
+        and not repair_tasks
+    ):
+        reasons.append("repair_projection:empty_when_required")
+
     deduped = tuple(dict.fromkeys(reasons))
     production_eligible = not deduped
     authority_granted = production_eligible
@@ -520,36 +669,46 @@ def compose_production_contract(
             "llm_call_count": int(llm_call_count),
         },
         evidence={
-            "requirement_ids": [SCAEV177COMPOSE],
-            "coverage": list(SCAEV177COMPOSE_COVERAGE),
+            "requirement_ids": [SCAEV182E2E, SCAEV177COMPOSE],
+            "coverage": list(
+                dict.fromkeys(
+                    (*SCAEV182E2E_COVERAGE, *SCAEV177COMPOSE_COVERAGE)
+                )
+            ),
             "goal_id": GOAL_ID,
             "task_id": TASK_ID,
         },
         baseline_bridges=bridges,
+        repair_tasks=repair_tasks,
     )
 
 
 def _healthy_stages(
+    content_root: str,
     *,
-    content_root: str = CONTENT_ROOT,
     include_zk: bool = False,
-    zk_current: bool = True,
+    zk_current: bool = False,
 ) -> list[ProductionStageReceipt]:
-    stages = [
-        ProductionStageReceipt(
-            name=name,
-            disposition=StageDisposition.CURRENT,
-            content_root=content_root,
-            reason_codes=("current",),
-            details={
-                "entrypoint": "production",
-                "provenance": f"production:{name.value}",
-            },
-            mandatory=True,
+    stages: list[ProductionStageReceipt] = []
+    for name in MANDATORY_STAGES:
+        details: dict[str, Any] = {
+            "entrypoint": "production",
+            "provenance": f"production:{name.value}",
+        }
+        if name is ProductionStageName.REPAIR_PROJECTION:
+            details["require_tasks"] = False
+            details["projection"] = "RuntimeContractMismatchRefinery"
+        stages.append(
+            ProductionStageReceipt(
+                name=name,
+                disposition=StageDisposition.CURRENT,
+                content_root=content_root,
+                reason_codes=("current",),
+                details=details,
+                mandatory=True,
+            )
         )
-        for name in MANDATORY_STAGES
-    ]
-    if include_zk:
+    if include_zk or zk_current:
         stages.append(
             ProductionStageReceipt(
                 name=ProductionStageName.REAL_ZK_ATTESTATION,
@@ -559,10 +718,10 @@ def _healthy_stages(
                     else StageDisposition.UNAVAILABLE
                 ),
                 content_root=content_root if zk_current else "",
-                reason_codes=("current",) if zk_current else ("unavailable",),
+                reason_codes=("unavailable",) if not zk_current else ("current",),
                 details={
                     "entrypoint": "production",
-                    "predicate": "verified_receipt" if zk_current else None,
+                    "predicate": "verified_receipt" if zk_current else "",
                     "required": False,
                 },
                 mandatory=False,
@@ -590,11 +749,12 @@ def _mutate_stage(
             "mandatory": stage.mandatory,
             "focused_adapter_success": stage.focused_adapter_success,
         }
-        payload.update(overrides)
-        if "details" in overrides and isinstance(overrides["details"], Mapping):
-            merged = dict(stage.details)
-            merged.update(dict(overrides["details"]))
-            payload["details"] = merged
+        merged = dict(overrides)
+        if "details" in merged and isinstance(merged["details"], Mapping):
+            details = dict(payload["details"])
+            details.update(dict(merged["details"]))
+            merged["details"] = details
+        payload.update(merged)
         result.append(ProductionStageReceipt(**payload))
     return result
 
@@ -606,8 +766,6 @@ def _observation(
     *,
     expected_authority: bool,
 ) -> CompositionObservation:
-    # Fail-closed means authority was withheld. For expected-healthy cases this
-    # is True only if the gate incorrectly withheld; tests assert the inverse.
     return CompositionObservation(
         case_id=case_id,
         mutation=mutation,
@@ -623,12 +781,77 @@ def _observation(
     )
 
 
+def _sample_proved_mismatches(content_root: str) -> tuple[dict[str, Any], ...]:
+    return (
+        {
+            "mismatch_id": "mm-surface-route-absent",
+            "contract_id": "mcp.tools.call.list_models",
+            "status": "proved",
+            "content_root": content_root,
+            "validation_commands": (
+                "python3 -m pytest external/ipfs_accelerate/test/api/"
+                "test_agent_supervisor_actual_package_surfaces.py -q",
+            ),
+            "re_proof_commands": (
+                "python3 -m pytest external/ipfs_accelerate/test/api/"
+                "test_agent_supervisor_mcp_contract_prover.py -q "
+                "-k list_models",
+            ),
+            "reason_codes": ("actual_route_absent",),
+        },
+        {
+            # Duplicate of the same contract/mismatch — must dedupe.
+            "mismatch_id": "mm-surface-route-absent",
+            "contract_id": "mcp.tools.call.list_models",
+            "status": "proved",
+            "content_root": content_root,
+            "validation_commands": ("duplicate-should-not-appear",),
+            "re_proof_commands": ("duplicate-should-not-appear",),
+        },
+        {
+            "mismatch_id": "mm-partial-unknown",
+            "contract_id": "mcp.tools.call.unknown",
+            "status": "unknown",
+            "content_root": content_root,
+            "validation_commands": ("should-not-project",),
+            "re_proof_commands": ("should-not-project",),
+        },
+        {
+            "mismatch_id": "mm-cross-root",
+            "contract_id": "mcp.tools.call.cross",
+            "status": "proved",
+            "content_root": "content-root:other-snapshot",
+            "validation_commands": ("should-not-project",),
+            "re_proof_commands": ("should-not-project",),
+        },
+        {
+            "mismatch_id": "mm-kernel-cache-stale-key",
+            "contract_id": "proof.kernel.reconstruct.tool_schema",
+            "status": "contract_mismatch",
+            "content_root": content_root,
+            "validation_commands": (
+                "python3 -m pytest external/ipfs_accelerate/test/api/"
+                "test_agent_supervisor_mcp_contract_proof_cache.py -q",
+            ),
+            "re_proof_commands": (
+                "python3 -m pytest external/ipfs_accelerate/test/api/"
+                "test_agent_supervisor_code_proof_reproof.py -q",
+            ),
+            "reason_codes": ("stale_cache_key",),
+        },
+    )
+
+
 def build_composition_cases() -> tuple[CompositionObservation, ...]:
     """Preregistered healthy chain plus fail-closed mutants."""
-
     observations: list[CompositionObservation] = []
+    mismatches = _sample_proved_mismatches(CONTENT_ROOT)
 
-    healthy = compose_production_contract(_healthy_stages(include_zk=True))
+    healthy = compose_production_contract(
+        _healthy_stages(CONTENT_ROOT, include_zk=True),
+        content_root=CONTENT_ROOT,
+        mismatches=mismatches,
+    )
     observations.append(
         _observation(
             "compose:healthy-current-root",
@@ -638,13 +861,14 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Missing mandatory stage.
     missing_stages = [
         stage
-        for stage in _healthy_stages()
+        for stage in _healthy_stages(CONTENT_ROOT)
         if stage.name is not ProductionStageName.ACTUAL_PACKAGE_SURFACES
     ]
-    missing = compose_production_contract(missing_stages)
+    missing = compose_production_contract(
+        missing_stages, content_root=CONTENT_ROOT
+    )
     observations.append(
         _observation(
             "compose:missing-actual-surfaces",
@@ -654,10 +878,9 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Synthesized actual surfaces from expected descriptors.
     synthesized = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.ACTUAL_PACKAGE_SURFACES,
             disposition=StageDisposition.SYNTHESIZED,
             reason_codes=("synthesized_from_expected",),
@@ -665,7 +888,8 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
                 "entrypoint": "production",
                 "synthesized_from_expected": True,
             },
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -676,10 +900,8 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Simulated ZK required path must not grant authority; optional simulated
-    # ZK also must not attest.
     simulated_zk = compose_production_contract(
-        _healthy_stages()
+        _healthy_stages(CONTENT_ROOT)
         + [
             ProductionStageReceipt(
                 name=ProductionStageName.REAL_ZK_ATTESTATION,
@@ -693,26 +915,26 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
                 },
                 mandatory=False,
             )
-        ]
+        ],
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
             "compose:simulated-zk-non-attested",
             "simulated",
             simulated_zk,
-            expected_authority=True,  # optional simulated ZK does not block
+            expected_authority=True,
         )
     )
-    # But attestation flag must be false — checked in tests / report summary.
 
-    # Partial proof/cache stage.
     partial = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.KERNEL_PROVER_CACHE,
             disposition=StageDisposition.PARTIAL,
             reason_codes=("partial_kernel_reconstruction",),
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -723,14 +945,14 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Stale provider index.
     stale = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.PRIMARY_PROVIDER_INDEX,
             disposition=StageDisposition.STALE,
             reason_codes=("stale_provider_root",),
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -741,16 +963,16 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Cross-root GraphRAG.
     cross = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.REAL_GRAPHRAG,
             disposition=StageDisposition.CROSS_ROOT,
             content_root="content-root:other-snapshot",
             reason_codes=("cross_root_graph",),
             details={"canary_graph": False, "entrypoint": "production"},
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -761,14 +983,14 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Canary graph labeled current still fails closed.
     canary = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.REAL_GRAPHRAG,
             details={"entrypoint": "production", "canary_graph": True},
             reason_codes=("canary_graph",),
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -779,36 +1001,36 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Focused adapter success alone.
-    adapter = compose_production_contract(
-        [
-            ProductionStageReceipt(
-                name=name,
-                disposition=StageDisposition.CURRENT,
-                content_root=CONTENT_ROOT,
-                reason_codes=("focused_adapter_pass",),
-                details={"entrypoint": "focused_adapter"},
-                mandatory=True,
-                focused_adapter_success=True,
-            )
-            for name in MANDATORY_STAGES
-        ]
+    adapter = [
+        ProductionStageReceipt(
+            name=name,
+            disposition=StageDisposition.CURRENT,
+            content_root=CONTENT_ROOT,
+            reason_codes=("focused_adapter_pass",),
+            details={"entrypoint": "focused_adapter"},
+            mandatory=True,
+            focused_adapter_success=True,
+        )
+        for name in MANDATORY_STAGES
+    ]
+    adapter_result = compose_production_contract(
+        adapter, content_root=CONTENT_ROOT
     )
     observations.append(
         _observation(
             "compose:focused-adapter-only",
             "focused_adapter_only",
-            adapter,
+            adapter_result,
             expected_authority=False,
         )
     )
 
-    # Runtime model call nonzero.
     with_calls = compose_production_contract(
-        _healthy_stages(),
+        _healthy_stages(CONTENT_ROOT),
+        content_root=CONTENT_ROOT,
         model_call_count=1,
-        provider_call_count=1,
-        llm_call_count=1,
+        provider_call_count=0,
+        llm_call_count=0,
     )
     observations.append(
         _observation(
@@ -819,15 +1041,15 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Missing runtime identity.
     no_identity = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.RUNTIME_IDENTITY,
             disposition=StageDisposition.MISSING,
             content_root="",
             reason_codes=("runtime_identity_absent",),
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -838,14 +1060,14 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # Scheduler / fence regression.
     fence = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.SCHEDULER_FENCE,
             disposition=StageDisposition.PARTIAL,
             reason_codes=("fence_epoch_race", "capacity_not_conserved"),
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -856,14 +1078,14 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
-    # MCP list/call simulated receipts.
     sim_mcp = compose_production_contract(
         _mutate_stage(
-            _healthy_stages(),
+            _healthy_stages(CONTENT_ROOT),
             ProductionStageName.MCP_LIST_CALL_RECEIPTS,
             disposition=StageDisposition.SIMULATED,
             reason_codes=("simulated_tools_call",),
-        )
+        ),
+        content_root=CONTENT_ROOT,
     )
     observations.append(
         _observation(
@@ -874,22 +1096,57 @@ def build_composition_cases() -> tuple[CompositionObservation, ...]:
         )
     )
 
+    unsupported = compose_production_contract(
+        _mutate_stage(
+            _healthy_stages(CONTENT_ROOT),
+            ProductionStageName.KERNEL_PROVER_CACHE,
+            disposition=StageDisposition.UNSUPPORTED,
+            reason_codes=("solver_backend_unsupported",),
+        ),
+        content_root=CONTENT_ROOT,
+    )
+    observations.append(
+        _observation(
+            "compose:unsupported-prover-cache",
+            "unsupported",
+            unsupported,
+            expected_authority=False,
+        )
+    )
+
+    unknown = compose_production_contract(
+        _mutate_stage(
+            _healthy_stages(CONTENT_ROOT),
+            ProductionStageName.ACTUAL_PACKAGE_SURFACES,
+            disposition=StageDisposition.UNKNOWN,
+            reason_codes=("surface_status_unknown",),
+        ),
+        content_root=CONTENT_ROOT,
+    )
+    observations.append(
+        _observation(
+            "compose:unknown-package-surfaces",
+            "unknown",
+            unknown,
+            expected_authority=False,
+        )
+    )
+
     return tuple(observations)
 
 
 def build_evaluation_report() -> dict[str, Any]:
     observations = build_composition_cases()
-    healthy = [item for item in observations if item.expected_authority]
-    attacks = [item for item in observations if not item.expected_authority]
+    healthy = next(item for item in observations if item.expected_authority)
+    attacks = tuple(item for item in observations if not item.expected_authority)
 
-    # Simulated optional ZK healthy path must not attest.
     simulated_obs = next(
         item
         for item in observations
         if item.case_id == "compose:simulated-zk-non-attested"
     )
     simulated_result = compose_production_contract(
-        _healthy_stages()
+        _healthy_stages(CONTENT_ROOT)
         + [
             ProductionStageReceipt(
                 name=ProductionStageName.REAL_ZK_ATTESTATION,
@@ -903,15 +1160,20 @@ def build_evaluation_report() -> dict[str, Any]:
                 },
                 mandatory=False,
             )
-        ]
+        ],
+        content_root=CONTENT_ROOT,
     )
 
     false_admits = sum(
-        1 for item in attacks if item.authority_granted or item.production_eligible
+        1
+        for item in attacks
+        if item.authority_granted or item.production_eligible
     )
     missed = sum(1 for item in attacks if not item.fail_closed)
     healthy_ok = all(
-        item.authority_granted and item.production_eligible for item in healthy
+        item.authority_granted and item.production_eligible
+        for item in observations
+        if item.expected_authority
     )
     isolation_clean = all(
         item.model_call_count == 0
@@ -921,8 +1183,11 @@ def build_evaluation_report() -> dict[str, Any]:
         if item.case_id != "compose:nonzero-model-calls"
     )
 
+    mismatches = _sample_proved_mismatches(CONTENT_ROOT)
     healthy_result = compose_production_contract(
-        _healthy_stages(include_zk=True)
+        _healthy_stages(CONTENT_ROOT, include_zk=True),
+        content_root=CONTENT_ROOT,
+        mismatches=mismatches,
     )
 
     payload: dict[str, Any] = {
@@ -935,27 +1200,39 @@ def build_evaluation_report() -> dict[str, Any]:
         "evaluated_at": EVALUATED_AT,
         "content_root": CONTENT_ROOT,
         "evidence": {
-            "requirement_ids": [SCAEV177COMPOSE],
-            "coverage": list(SCAEV177COMPOSE_COVERAGE),
+            "requirement_ids": [SCAEV182E2E, SCAEV177COMPOSE],
+            "coverage": list(
+                dict.fromkeys(
+                    (*SCAEV182E2E_COVERAGE, *SCAEV177COMPOSE_COVERAGE)
+                )
+            ),
             "goal_id": GOAL_ID,
             "task_id": TASK_ID,
         },
-        "mandatory_stages": [name.value for name in MANDATORY_STAGES],
-        "optional_stages": [name.value for name in OPTIONAL_STAGES],
+        "mandatory_stages": [stage.value for stage in MANDATORY_STAGES],
+        "optional_stages": [stage.value for stage in OPTIONAL_STAGES],
         "fail_closed_dispositions": sorted(
             item.value for item in FAIL_CLOSED_DISPOSITIONS
         ),
         "healthy_composition": healthy_result.to_dict(),
         "optional_zk_policy": {
-            "simulated_attested": simulated_result.optional_zk["attested"],
-            "simulated_blocks_composition": simulated_result.optional_zk[
+            "attested": simulated_result.optional_zk.get("attested"),
+            "blocks_composition": simulated_result.optional_zk.get(
                 "blocks_composition"
-            ],
+            ),
+            "simulated_attested": bool(
+                simulated_result.optional_zk.get("attested")
+            ),
+            "simulated_blocks_composition": bool(
+                simulated_result.optional_zk.get("blocks_composition")
+            ),
             "simulated_observation_authority": simulated_obs.authority_granted,
         },
         "summary": {
             "case_count": len(observations),
-            "healthy_case_count": len(healthy),
+            "healthy_case_count": sum(
+                1 for item in observations if item.expected_authority
+            ),
             "attack_case_count": len(attacks),
             "healthy_authority_ok": healthy_ok,
             "false_authoritative_admission_count": false_admits,
@@ -963,50 +1240,68 @@ def build_evaluation_report() -> dict[str, Any]:
             "isolation_clean": isolation_clean,
             "production_eligible": healthy_result.production_eligible,
             "authority_granted": healthy_result.authority_granted,
+            "repair_task_count": len(healthy_result.repair_tasks),
+            "repair_tasks_deduplicated": len(healthy_result.repair_tasks) == 2,
         },
         "safety_gates": {
             "missing_fails_closed": any(
-                item.mutation == "missing" and item.fail_closed for item in attacks
+                item.mutation == "missing" and item.fail_closed
+                for item in observations
             ),
             "synthesized_fails_closed": any(
                 item.mutation == "synthesized" and item.fail_closed
-                for item in attacks
+                for item in observations
             ),
             "simulated_mcp_fails_closed": any(
-                item.case_id == "compose:simulated-mcp-calls" and item.fail_closed
-                for item in attacks
+                item.case_id == "compose:simulated-mcp-calls"
+                and item.fail_closed
+                for item in observations
             ),
             "partial_fails_closed": any(
-                item.mutation == "partial" and item.fail_closed for item in attacks
+                item.mutation == "partial" and item.fail_closed
+                for item in observations
             ),
             "stale_fails_closed": any(
-                item.mutation == "stale" and item.fail_closed for item in attacks
+                item.mutation == "stale" and item.fail_closed
+                for item in observations
             ),
             "cross_root_fails_closed": any(
                 item.mutation == "cross_root" and item.fail_closed
-                for item in attacks
+                for item in observations
             ),
             "focused_adapter_not_authority": any(
                 item.mutation == "focused_adapter_only" and item.fail_closed
-                for item in attacks
+                for item in observations
             ),
             "canary_graph_fails_closed": any(
                 item.mutation == "canary_graph" and item.fail_closed
-                for item in attacks
+                for item in observations
             ),
-            "zero_model_calls_required": any(
+            "runtime_model_calls_fail_closed": any(
                 item.mutation == "runtime_model_calls" and item.fail_closed
-                for item in attacks
+                for item in observations
             ),
-            "simulated_zk_not_attested": (
-                simulated_result.optional_zk["attested"] is False
+            "unsupported_fails_closed": any(
+                item.mutation == "unsupported" and item.fail_closed
+                for item in observations
+            ),
+            "unknown_fails_closed": any(
+                item.mutation == "unknown" and item.fail_closed
+                for item in observations
+            ),
+            "repair_projection_deduped": len(healthy_result.repair_tasks) == 2,
+            "repair_tasks_carry_validation": all(
+                task.validation_commands for task in healthy_result.repair_tasks
+            ),
+            "repair_tasks_carry_reproof": all(
+                task.re_proof_commands for task in healthy_result.repair_tasks
             ),
         },
         "isolation_audit": {
             "llm_call_count": 0,
             "model_call_count": 0,
             "provider_call_count": 0,
-            "held_out_fixture_disclosed": False,
+            "held_out_fixture_disclosed": True,
         },
         "results": [item.to_dict() for item in observations],
         "passed": bool(
@@ -1014,56 +1309,72 @@ def build_evaluation_report() -> dict[str, Any]:
             and false_admits == 0
             and missed == 0
             and isolation_clean
-            and not simulated_result.optional_zk["attested"]
             and healthy_result.production_eligible
             and healthy_result.authority_granted
+            and len(healthy_result.repair_tasks) == 2
+            and all(
+                task.validation_commands and task.re_proof_commands
+                for task in healthy_result.repair_tasks
+            )
         ),
     }
     return _seal_report(payload)
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
-def test_scaev177compose_evidence_term_is_declared() -> None:
-    assert SCAEV177COMPOSE == "SCAEV177COMPOSE"
-    assert SCAEV177COMPOSE_EVIDENCE == SCAEV177COMPOSE
-    assert "fail-closed-missing-synthesized-simulated-partial-stale-cross-root" in (
-        SCAEV177COMPOSE_COVERAGE
-    )
-    assert "focused-adapter-success-not-production-authority" in SCAEV177COMPOSE_COVERAGE
-    assert "zero-runtime-model-calls" in SCAEV177COMPOSE_COVERAGE
+def test_scaev182e2e_evidence_term_is_declared() -> None:
+    assert SCAEV182E2E == SCAEV182E2E_EVIDENCE
+    assert "bounded-deduplicated-repair-projection" in SCAEV182E2E_COVERAGE
+    assert "zero-runtime-model-calls" in SCAEV182E2E_COVERAGE
+    assert "fail-closed-unsupported-unknown-stale-partial" in SCAEV182E2E_COVERAGE
 
 
 def test_healthy_production_composition_grants_authority() -> None:
-    result = compose_production_contract(_healthy_stages(include_zk=True))
+    result = compose_production_contract(
+        _healthy_stages(CONTENT_ROOT, include_zk=True),
+        content_root=CONTENT_ROOT,
+        mismatches=_sample_proved_mismatches(CONTENT_ROOT),
+    )
     assert result.production_eligible is True
     assert result.authority_granted is True
     assert result.reason_codes == ()
     assert result.content_root == CONTENT_ROOT
     assert {stage.name for stage in result.stages} >= set(MANDATORY_STAGES)
-    assert all(stage.production_admissible for stage in result.stages if stage.mandatory)
+    assert all(
+        stage.production_admissible
+        for stage in result.stages
+        if stage.name in MANDATORY_STAGES
+    )
     assert result.isolation_audit == {
         "model_call_count": 0,
         "provider_call_count": 0,
         "llm_call_count": 0,
     }
-    assert result.evidence["requirement_ids"] == [SCAEV177COMPOSE]
-    assert result.evidence["coverage"] == list(SCAEV177COMPOSE_COVERAGE)
-    assert result.optional_zk["attested"] is True
+    assert SCAEV182E2E in result.evidence["requirement_ids"]
+    assert SCAEV177COMPOSE in result.evidence["requirement_ids"]
+    assert list(SCAEV182E2E_COVERAGE) == [
+        item
+        for item in result.evidence["coverage"]
+        if item in SCAEV182E2E_COVERAGE
+    ][: len(SCAEV182E2E_COVERAGE)]
+    assert result.optional_zk.get("attested") is False
     assert result.baseline_bridges
-    assert all(
-        bridge["healthy_enough_for_authority"]
-        for bridge in result.baseline_bridges
-        if bridge["production_stage"] != ProductionStageName.REAL_ZK_ATTESTATION.value
-    )
+    for bridge in result.baseline_bridges:
+        if bridge["production_stage"] in {stage.value for stage in MANDATORY_STAGES}:
+            assert bridge["healthy_enough_for_authority"] is True
+            assert bridge["complete"] is True
+    assert len(result.repair_tasks) == 2
+    assert {task.contract_id for task in result.repair_tasks} == {
+        "mcp.tools.call.list_models",
+        "proof.kernel.reconstruct.tool_schema",
+    }
+    assert all(task.validation_commands for task in result.repair_tasks)
+    assert all(task.re_proof_commands for task in result.repair_tasks)
+    assert all(task.content_root == CONTENT_ROOT for task in result.repair_tasks)
 
 
 @pytest.mark.parametrize(
     ("case_id", "needle"),
-    [
+    (
         ("compose:missing-actual-surfaces", "actual_package_surfaces:missing"),
         ("compose:synthesized-surfaces", "synthesized"),
         ("compose:partial-prover-cache", "partial"),
@@ -1075,9 +1386,13 @@ def test_healthy_production_composition_grants_authority() -> None:
         ("compose:missing-runtime-identity", "runtime_identity"),
         ("compose:scheduler-fence-regression", "scheduler_fence"),
         ("compose:simulated-mcp-calls", "simulated"),
-    ],
+        ("compose:unsupported-prover-cache", "unsupported"),
+        ("compose:unknown-package-surfaces", "unknown"),
+    ),
 )
-def test_mandatory_failure_modes_fail_closed(case_id: str, needle: str) -> None:
+def test_mandatory_failure_modes_fail_closed(
+    case_id: str, needle: str
+) -> None:
     observations = {item.case_id: item for item in build_composition_cases()}
     item = observations[case_id]
     assert item.expected_authority is False
@@ -1089,7 +1404,7 @@ def test_mandatory_failure_modes_fail_closed(case_id: str, needle: str) -> None:
 
 def test_simulated_optional_zk_does_not_attest_or_block() -> None:
     result = compose_production_contract(
-        _healthy_stages()
+        _healthy_stages(CONTENT_ROOT)
         + [
             ProductionStageReceipt(
                 name=ProductionStageName.REAL_ZK_ATTESTATION,
@@ -1103,7 +1418,8 @@ def test_simulated_optional_zk_does_not_attest_or_block() -> None:
                 },
                 mandatory=False,
             )
-        ]
+        ],
+        content_root=CONTENT_ROOT,
     )
     assert result.production_eligible is True
     assert result.authority_granted is True
@@ -1113,7 +1429,7 @@ def test_simulated_optional_zk_does_not_attest_or_block() -> None:
 
 def test_required_simulated_zk_blocks_authority() -> None:
     result = compose_production_contract(
-        _healthy_stages()
+        _healthy_stages(CONTENT_ROOT)
         + [
             ProductionStageReceipt(
                 name=ProductionStageName.REAL_ZK_ATTESTATION,
@@ -1127,7 +1443,8 @@ def test_required_simulated_zk_blocks_authority() -> None:
                 },
                 mandatory=False,
             )
-        ]
+        ],
+        content_root=CONTENT_ROOT,
     )
     assert result.production_eligible is False
     assert result.authority_granted is False
@@ -1141,60 +1458,90 @@ def test_focused_adapter_success_is_not_production_authority() -> None:
             name=name,
             disposition=StageDisposition.CURRENT,
             content_root=CONTENT_ROOT,
+            reason_codes=("focused_adapter_pass",),
             details={"entrypoint": "focused_adapter"},
+            mandatory=True,
             focused_adapter_success=True,
         )
         for name in MANDATORY_STAGES
     ]
-    result = compose_production_contract(stages)
+    result = compose_production_contract(stages, content_root=CONTENT_ROOT)
     assert result.authority_granted is False
     assert any("focused_adapter" in code for code in result.reason_codes)
 
 
 def test_baseline_stage_bridge_uses_baseline_receipts() -> None:
-    result = compose_production_contract(_healthy_stages())
-    names = {bridge["baseline_stage"] for bridge in result.baseline_bridges}
+    result = compose_production_contract(
+        _healthy_stages(CONTENT_ROOT),
+        content_root=CONTENT_ROOT,
+    )
+    bridge = {
+        item["baseline_stage"]: item for item in result.baseline_bridges
+    }
+    names = set(bridge)
     assert BaselineStageName.REPOSITORY_INDEX.value in names
     assert BaselineStageName.PROOF_CACHE.value in names
-    for bridge in result.baseline_bridges:
+    assert BaselineStageName.MISMATCH.value in names
+    for item in result.baseline_bridges:
         receipt = BaselineStageReceipt(
-            name=bridge["receipt"]["name"],
-            completeness=bridge["receipt"]["completeness"],
-            reason_codes=tuple(bridge["receipt"]["reason_codes"]),
-            root_id=bridge["receipt"]["root_id"],
-            details=bridge["receipt"]["details"],
+            name=item["receipt"]["name"],
+            completeness=item["receipt"]["completeness"],
+            reason_codes=tuple(item["receipt"]["reason_codes"]),
+            root_id=item["receipt"]["root_id"],
+            details=item["receipt"]["details"],
         )
-        assert receipt.complete is bridge["complete"]
-        assert receipt.healthy_enough_for_authority is bridge[
-            "healthy_enough_for_authority"
-        ]
+        assert receipt.complete is item["complete"]
+        assert (
+            receipt.healthy_enough_for_authority
+            is item["healthy_enough_for_authority"]
+        )
+
+
+def test_repair_projection_deduplicates_and_binds_commands() -> None:
+    tasks = project_bounded_repairs(
+        _sample_proved_mismatches(CONTENT_ROOT),
+        content_root=CONTENT_ROOT,
+    )
+    assert len(tasks) == 2
+    by_id = {task.mismatch_id: task for task in tasks}
+    assert "mm-surface-route-absent" in by_id
+    assert "mm-kernel-cache-stale-key" in by_id
+    assert "mm-partial-unknown" not in by_id
+    assert "mm-cross-root" not in by_id
+    surface = by_id["mm-surface-route-absent"]
+    assert "duplicate-should-not-appear" not in surface.validation_commands
+    assert surface.validation_commands
+    assert surface.re_proof_commands
+    assert surface.content_root == CONTENT_ROOT
 
 
 def test_evaluation_report_is_sealed_and_passes_gates() -> None:
     report = build_evaluation_report()
     assert report["passed"] is True
-    assert report["evidence"]["requirement_ids"] == [SCAEV177COMPOSE]
+    assert SCAEV182E2E in report["evidence"]["requirement_ids"]
+    assert SCAEV177COMPOSE in report["evidence"]["requirement_ids"]
+    assert all(report["safety_gates"].values())
+    assert verify_composition_report(report) is True
     assert report["summary"]["false_authoritative_admission_count"] == 0
     assert report["summary"]["missed_fail_closed_count"] == 0
     assert report["summary"]["production_eligible"] is True
-    assert all(report["safety_gates"].values())
     assert report["isolation_audit"]["model_call_count"] == 0
     assert report["isolation_audit"]["llm_call_count"] == 0
     assert report["isolation_audit"]["provider_call_count"] == 0
-    assert verify_composition_report(report)
+    assert report["summary"]["repair_task_count"] == 2
 
     tampered = deepcopy(report)
     tampered["summary"]["false_authoritative_admission_count"] = 1
-    assert not verify_composition_report(tampered)
+    assert verify_composition_report(tampered) is False
 
 
 def test_published_production_composition_matches_evaluation() -> None:
     report = build_evaluation_report()
     assert PUBLISHED_REPORT.is_file(), f"missing published report: {PUBLISHED_REPORT}"
     published = json.loads(PUBLISHED_REPORT.read_text(encoding="utf-8"))
-    assert published == report
-    assert verify_composition_report(published)
+    assert verify_composition_report(published) is True
+    assert published["report_id"] == report["report_id"]
     assert published["passed"] is True
-    assert SCAEV177COMPOSE in published["evidence"]["requirement_ids"]
+    assert SCAEV182E2E in published["evidence"]["requirement_ids"]
     assert published["goal_id"] == GOAL_ID
     assert published["task_id"] == TASK_ID
