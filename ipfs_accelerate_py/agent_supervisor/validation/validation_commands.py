@@ -549,12 +549,23 @@ _MAKEFILE_IGNORE_ABSENT_RE = re.compile(
     r"""(?P<makefile>[^\s)"']+)\s*\|\|\s*true\s*\)["']\s*$""",
     re.IGNORECASE,
 )
-# Prefer a monorepo-relative script path over ``python -m`` so sealed
+# Prefer monorepo-relative script paths over ``python -m`` so sealed
 # validation environments (restricted PATH / no ambient package install) can
-# still execute the helper without ``ipfs_accelerate_py`` on ``sys.path``.
+# still execute helpers without ``ipfs_accelerate_py`` on ``sys.path``.
 _MAKEFILE_IGNORE_CHECK_SCRIPT = (
     "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/"
     "validation/makefile_ignore_check.py"
+)
+_SUBMODULE_INIT_SCRIPT = (
+    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/"
+    "validation/submodule_init.py"
+)
+# ``git submodule update --init [--depth N] path [path ...]``
+_GIT_SUBMODULE_UPDATE_INIT_RE = re.compile(
+    r"""^\s*git\s+submodule\s+update\s+--init"""
+    r"""(?:\s+--depth(?:=|\s+)(?P<depth>\d+))?"""
+    r"""(?P<paths>(?:\s+[^\s;|&]+)+)\s*$""",
+    re.IGNORECASE,
 )
 
 
@@ -577,6 +588,39 @@ def rewrite_shell_makefile_ignore_check(command: str) -> str:
         f"--makefile {shlex.quote(makefile)} "
         f"--absent {shlex.quote(pattern)}"
     )
+
+
+def rewrite_shell_git_submodule_update(command: str) -> str:
+    """Rewrite ``git submodule update --init …`` to a resilient helper.
+
+    Fresh ``--depth 1`` fetches fail (rc 128) when a monorepo pin is already
+    checked out to a local-only commit. The helper treats initialized
+    worktrees as success so validation can proceed to the real tests.
+    """
+
+    text = normalize_validation_command_text(command)
+    match = _GIT_SUBMODULE_UPDATE_INIT_RE.match(text)
+    if match is None:
+        return text
+    raw_paths = match.group("paths") or ""
+    paths = [part for part in raw_paths.split() if part and not part.startswith("-")]
+    if not paths:
+        return text
+    depth = match.group("depth") or "1"
+    quoted = " ".join(shlex.quote(path) for path in paths)
+    return (
+        f"python3 {shlex.quote(_SUBMODULE_INIT_SCRIPT)} "
+        f"--depth {shlex.quote(str(depth))} {quoted}"
+    )
+
+
+def rewrite_validation_command(command: str) -> str:
+    """Apply all pure-argv rewrites used by proposal + sealed validation."""
+
+    text = normalize_validation_command_text(command)
+    text = rewrite_shell_makefile_ignore_check(text)
+    text = rewrite_shell_git_submodule_update(text)
+    return text
 
 
 def split_validation_commands(value: str) -> list[str]:
@@ -627,9 +671,7 @@ def split_validation_commands(value: str) -> list[str]:
     expanded: list[str] = []
     for command in commands:
         expanded.extend(expand_cd_parent_return_validation_commands(command))
-    return [
-        rewrite_shell_makefile_ignore_check(command) for command in expanded
-    ]
+    return [rewrite_validation_command(command) for command in expanded]
 
 
 def _shell_tokens(command: str) -> list[str]:

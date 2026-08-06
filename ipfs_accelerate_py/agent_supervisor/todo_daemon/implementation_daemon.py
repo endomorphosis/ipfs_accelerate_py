@@ -185,6 +185,7 @@ from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     rewrite_shell_makefile_ignore_check,
+    rewrite_validation_command,
     split_validation_commands,
 )
 from ..validation.validation_runtime import (
@@ -417,6 +418,9 @@ IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
     r"|ipfs-accelerate-grok"
     r")"
 )
+# How long a recently written implement log keeps a missing process from
+# being recovered as dead (docker restarts briefly drop process visibility).
+INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS = 180.0
 GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
     r"\.git-sync-recovery-\d{8}-\d{6}(?:-\d+)?\.md"
 )
@@ -31089,7 +31093,7 @@ class PortalImplementationDaemon:
         validation_steps_list: list[ProposalValidationStep] = []
         malformed_validation_command = False
         for raw_command in task.validation:
-            command = rewrite_shell_makefile_ignore_check(str(raw_command))
+            command = rewrite_validation_command(str(raw_command))
             if self._task_uses_typed_local_execution(task):
                 command, _notes = self._normalize_validation_command(command)
             try:
@@ -32296,6 +32300,97 @@ class PortalImplementationDaemon:
             )
         )
 
+    def _path_in_proposal_scope(
+        self,
+        relative: str,
+        scope_paths: Sequence[str],
+    ) -> bool:
+        """Return whether ``relative`` is covered by task-owned scope paths."""
+
+        path = str(relative or "").strip().replace("\\", "/").strip("/")
+        if not path:
+            return False
+        for scope in scope_paths:
+            scope_path = str(scope or "").strip().replace("\\", "/").strip("/")
+            if not scope_path:
+                continue
+            if (
+                path == scope_path
+                or path.startswith(f"{scope_path}/")
+                or scope_path.startswith(f"{path}/")
+            ):
+                return True
+        return False
+
+    def _restore_out_of_scope_workspace_paths(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+    ) -> list[str]:
+        """Restore dirty paths outside the task write scope to the baseline.
+
+        Validation commands (for example ``git submodule update`` on monorepo
+        pins) can dirt paths the implementer never owned. That dirt then fails
+        post-validation candidate binding with ``submodule_boundary_forbidden``
+        even when the declared test suite already passed. Restoring only
+        out-of-scope dirt keeps the binding fail-closed for real task edits.
+        """
+
+        scope_paths = self._proposal_scope_paths(task)
+        dirty_paths = sorted(self._dirty_worktree_paths(workspace_path))
+        restored: list[str] = []
+        baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        for relative in dirty_paths:
+            if self._path_in_proposal_scope(relative, scope_paths):
+                continue
+            if not self._repo_relative_path_safe(relative):
+                continue
+            result = subprocess.run(
+                [
+                    "git",
+                    "restore",
+                    "--source",
+                    baseline,
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    relative,
+                ],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                # Fall back to checkout for older git / gitlink-only paths.
+                result = subprocess.run(
+                    [
+                        "git",
+                        "checkout",
+                        baseline,
+                        "--",
+                        relative,
+                    ],
+                    cwd=workspace_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            if result.returncode == 0:
+                restored.append(relative)
+        if restored:
+            self._record_event(
+                "implementation_out_of_scope_dirt_restored",
+                {
+                    "task_id": task.task_id,
+                    "baseline_ref": baseline,
+                    "restored_paths": restored,
+                },
+            )
+        return restored
+
     def _inspect_post_validation_candidate_binding(
         self,
         workspace_path: Path,
@@ -32316,6 +32411,13 @@ class PortalImplementationDaemon:
         collection_error = ""
         current_entries: tuple[Any, ...] = ()
         try:
+            # Drop validation side-effects on monorepo pins / unrelated paths
+            # before fingerprinting so binding stays focused on task outputs.
+            self._restore_out_of_scope_workspace_paths(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             current_entries, _ = self._collect_proposal_candidate_diff(
                 workspace_path,
@@ -32725,7 +32827,7 @@ class PortalImplementationDaemon:
         commands: list[str] = []
         for raw_command in task.validation:
             command, _notes = self._normalize_validation_command(
-                rewrite_shell_makefile_ignore_check(str(raw_command))
+                rewrite_validation_command(str(raw_command))
             )
             command, _pythonpath_note = self._with_worktree_validation_pythonpath(
                 command,
@@ -33757,7 +33859,9 @@ class PortalImplementationDaemon:
         commands: list[str] = []
         normalization_notes: list[str] = []
         for raw_command in task.validation:
-            command, notes = self._normalize_validation_command(raw_command)
+            command, notes = self._normalize_validation_command(
+                rewrite_validation_command(str(raw_command))
+            )
             command, pythonpath_note = (
                 self._with_worktree_validation_pythonpath(
                     command,
@@ -45804,11 +45908,6 @@ class PortalImplementationDaemon:
             if isinstance(command, list)
             else str(command or "")
         )
-        command_is_runner = bool(
-            IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(command_text)
-            or "grok_cli_runner" in command_text
-            or "cli_implement_runner" in command_text
-        )
         if worktree_path:
             # Task validation can leave MCP bridge servers in its worktree. Only
             # the configured Codex/Copilot/Grok runner proves implementation is live.
@@ -45832,6 +45931,14 @@ class PortalImplementationDaemon:
                 for line in process_lines
             ):
                 return True
+            # Docker isolation containers may not list the full worktree path
+            # in ``ps`` output; inspect labeled containers for the mount.
+            if self._docker_isolation_active_for_worktree(worktree_path):
+                return True
+            # Brief docker restarts drop process visibility while the agent is
+            # still writing the attempt log. Treat recent log activity as live.
+            if self._implementation_log_recently_active(event):
+                return True
             return False
         # Shared-checkout implementations deliberately do not have a task
         # worktree path.  Their serialized wrapper command contains a
@@ -45851,7 +45958,111 @@ class PortalImplementationDaemon:
             )
         return False
 
+    def _implementation_log_recently_active(
+        self,
+        event: Mapping[str, Any],
+        *,
+        grace_seconds: float = INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS,
+    ) -> bool:
+        """Return whether the attempt log was written within the grace window."""
+
+        candidates = [str(event.get("log_path") or "").strip()]
+        now = time.time()
+        for raw in candidates:
+            if not raw:
+                continue
+            path = Path(raw)
+            if not path.is_file():
+                alt = self.repo_root / raw
+                path = alt if alt.is_file() else path
+            if not path.is_file():
+                continue
+            try:
+                age = now - path.stat().st_mtime
+            except OSError:
+                continue
+            if 0 <= age <= float(grace_seconds):
+                return True
+        return False
+
+    def _docker_isolation_active_for_worktree(self, worktree_path: str) -> bool:
+        """Return whether a labeled Grok isolation container mounts worktree."""
+
+        worktree_path = str(worktree_path or "").strip()
+        if not worktree_path:
+            return False
+        try:
+            listed = subprocess.run(
+                [
+                    "docker",
+                    "ps",
+                    "--filter",
+                    "label=ipfs_accelerate.grok_isolation=true",
+                    "--format",
+                    "{{.ID}}",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if listed.returncode != 0 or not listed.stdout.strip():
+            return False
+        for container_id in listed.stdout.splitlines():
+            container_id = container_id.strip()
+            if not container_id:
+                continue
+            try:
+                inspected = subprocess.run(
+                    [
+                        "docker",
+                        "inspect",
+                        "--format",
+                        "{{json .Mounts}}",
+                        container_id,
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if inspected.returncode != 0:
+                continue
+            if worktree_path in (inspected.stdout or ""):
+                return True
+        return False
+
     def _list_process_commands(self) -> list[str]:
+        # Prefer /proc cmdlines: ``ps -eo args=`` truncates long docker lines
+        # and can drop the worktree path that liveness matching requires.
+        lines: list[str] = []
+        proc_root = Path("/proc")
+        if proc_root.is_dir():
+            try:
+                for entry in proc_root.iterdir():
+                    if not entry.name.isdigit():
+                        continue
+                    cmdline_path = entry / "cmdline"
+                    try:
+                        raw = cmdline_path.read_bytes()
+                    except OSError:
+                        continue
+                    if not raw:
+                        continue
+                    text = raw.replace(b"\0", b" ").decode(
+                        "utf-8",
+                        errors="replace",
+                    ).strip()
+                    if text:
+                        lines.append(text)
+            except OSError:
+                lines = []
+        if lines:
+            return lines
         result = subprocess.run(
             ["ps", "-eo", "args="],
             text=True,
