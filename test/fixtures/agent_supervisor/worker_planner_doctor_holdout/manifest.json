@@ -1,0 +1,39 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/worker-planner-doctor-holdout-manifest@1",
+  "contract_version": 1,
+  "interface": "WorkerPlannerDoctorBenchmark@1",
+  "evidence": "wpd/llm-avoidance-benchmark@1",
+  "description": "Fixed analytical holdout corpus for WPD-051 paired LLM-avoidance benchmark.",
+  "fixtures": [
+    {
+      "fixture_id": "analytical-unique-1",
+      "analytical_unique": true,
+      "quality_score": 1.0,
+      "baseline_provider_calls": 2,
+      "challenger_provider_calls": 0,
+      "baseline_disposition": "residual_llm_authorized",
+      "challenger_disposition": "closed_deterministic",
+      "safety_floor_violations": 0
+    },
+    {
+      "fixture_id": "analytical-unique-2",
+      "analytical_unique": true,
+      "quality_score": 0.95,
+      "baseline_provider_calls": 1,
+      "challenger_provider_calls": 0,
+      "baseline_disposition": "residual_llm_authorized",
+      "challenger_disposition": "closed_deterministic",
+      "safety_floor_violations": 0
+    },
+    {
+      "fixture_id": "analytical-unique-3",
+      "analytical_unique": true,
+      "quality_score": 1.0,
+      "baseline_provider_calls": 3,
+      "challenger_provider_calls": 0,
+      "baseline_disposition": "residual_llm_authorized",
+      "challenger_disposition": "closed_deterministic",
+      "safety_floor_violations": 0
+    }
+  ]
+}
