@@ -3573,6 +3573,9 @@ class PortalImplementationDaemon:
                 cancellation=implementation_cancelled,
             )
         self.decision_runtime = decision_runtime
+        # Optional injectable PreImplementationKernel for WPD-021 tests / composition.
+        # Production default builds a hermetic kernel at gate evaluation time.
+        self.pre_implementation_kernel = None
         self._last_runtime_decision: Any = None
         self._last_runtime_effect_observation: Any = None
         # A completion decision is emitted before its protected checkout
@@ -13107,6 +13110,102 @@ class PortalImplementationDaemon:
         self._record_event("implementation_provider_exhausted", result)
         return result
 
+    def _evaluate_pre_implementation_provider_gate(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        worktree_path: Path,
+    ) -> dict[str, Any]:
+        """WPD-021: seal a pre-implementation kernel disposition before provider use.
+
+        Provider dispatch is authorized only for ``residual_llm_authorized``
+        with a residual packet CID.  Returns a plain dict so the massive
+        implementation path stays free of hard import failures at module load.
+        """
+
+        try:
+            from .pre_implementation_provider_gate import (
+                evaluate_provider_gate,
+                build_forest_roots_from_identity,
+            )
+            from .implementation_disposition import implementation_disposition_cid
+        except Exception as exc:  # pragma: no cover - import hygiene fallback
+            return {
+                "skip_provider": True,
+                "provider_authorized": False,
+                "disposition": "defer_capability",
+                "reason_code": "pre_implementation_gate_import_failed",
+                "receipt_cid": "",
+                "event": {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "error": f"{type(exc).__name__}: {exc}"[-500:],
+                },
+            }
+
+        task_cid = self._canonical_ref(task) or task.task_id
+        repo_id = implementation_disposition_cid(
+            {"repo_root": str(self.repo_root), "kind": "repository"}
+        )
+        try:
+            head = (
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                ).stdout
+                or ""
+            ).strip() or "HEAD"
+            tree = (
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                ).stdout
+                or ""
+            ).strip() or head
+        except OSError:
+            head = "HEAD"
+            tree = "HEAD"
+        forest = build_forest_roots_from_identity(
+            repository_id=f"repository:{repo_id}",
+            repository_forest_cid=implementation_disposition_cid(
+                {"head": head, "tree": tree}
+            ),
+            git_tree_id=tree if " " not in tree else implementation_disposition_cid(
+                {"tree": tree}
+            ),
+            policy_root=implementation_disposition_cid(
+                {"policy": "wpd-pre-implementation@1"}
+            ),
+        )
+        kernel = getattr(self, "pre_implementation_kernel", None)
+        decision = evaluate_provider_gate(
+            task_cid=task_cid,
+            forest_roots=forest,
+            attempt=int(attempt),
+            kernel=kernel,
+            allow_legacy_residual=True,
+        )
+        return {
+            "skip_provider": decision.skip_provider,
+            "provider_authorized": decision.provider_authorized,
+            "disposition": decision.disposition.value,
+            "reason_code": decision.reason_code,
+            "receipt_cid": decision.receipt_cid,
+            "residual_packet_cid": decision.residual_packet_cid,
+            "provider_hook_count": decision.provider_hook_count,
+            "event": decision.to_event_payload(
+                task_id=task.task_id,
+                attempt=int(attempt),
+            ),
+        }
+
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         authority_revalidation_only = (
             self._manual_completion_authority_revalidation_only_task(task)
@@ -22413,52 +22512,104 @@ class PortalImplementationDaemon:
                         returncode=0,
                     )
                 else:
-                    def invoke_provider() -> subprocess.CompletedProcess[str]:
-                        nonlocal provider_dispatched
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            )
-                        )
-                        progress_observer = (
-                            self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            )
-                        )
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=worktree_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=provider_environment,
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=progress_observer,
-                        )
-
-                    completed = self._decision_runtime_mutation(
-                        "command_invocation",
-                        {
-                            "operation": "implementation_provider",
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "command": tuple(command),
-                            "workspace_path": str(worktree_path),
-                            "branch": branch_name,
-                        },
-                        invoke_provider,
+                    # WPD-021: PreImplementationKernel gate — provider path is
+                    # unreachable unless disposition is residual_llm_authorized
+                    # with a residual packet CID.
+                    provider_gate = self._evaluate_pre_implementation_provider_gate(
+                        task=task,
+                        attempt=attempt,
+                        worktree_path=worktree_path,
                     )
+                    self._record_event(
+                        "pre_implementation_kernel_evaluated",
+                        dict(provider_gate.get("event") or {}),
+                    )
+                    if provider_gate.get("skip_provider"):
+                        disposition = str(provider_gate.get("disposition") or "")
+                        log_fh.write(
+                            "PreImplementationKernel: "
+                            f"disposition={disposition} "
+                            f"reason={provider_gate.get('reason_code')} "
+                            f"receipt_cid={provider_gate.get('receipt_cid')}\n"
+                        )
+                        log_fh.flush()
+                        if disposition == "closed_deterministic":
+                            # Analytical / doctor path closed the claim —
+                            # do not invoke the model provider.
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=0,
+                            )
+                        else:
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=1,
+                            )
+                            provider_failure = {
+                                "reason": "pre_implementation_kernel_blocked_provider",
+                                "disposition": disposition,
+                                "reason_code": str(
+                                    provider_gate.get("reason_code") or ""
+                                ),
+                                "receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            }
+                    else:
+                        def invoke_provider() -> subprocess.CompletedProcess[str]:
+                            nonlocal provider_dispatched
+                            # Fail closed if gate identity drifted.
+                            if not provider_gate.get("provider_authorized"):
+                                raise RuntimeError(
+                                    "provider dispatch blocked by pre-implementation kernel"
+                                )
+                            provider_environment = (
+                                self._implementation_process_environment(
+                                    task,
+                                    attempt=attempt,
+                                    checkpoint_dir=checkpoint_dir,
+                                )
+                            )
+                            progress_observer = (
+                                self._implementation_progress_observer(
+                                    state,
+                                    task,
+                                    attempt=attempt,
+                                )
+                            )
+                            provider_dispatched = True
+                            return run_process_group_stream(
+                                command,
+                                cwd=worktree_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=progress_observer,
+                            )
+
+                        completed = self._decision_runtime_mutation(
+                            "command_invocation",
+                            {
+                                "operation": "implementation_provider",
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "command": tuple(command),
+                                "workspace_path": str(worktree_path),
+                                "branch": branch_name,
+                                "pre_implementation_receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            },
+                            invoke_provider,
+                        )
             returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
