@@ -25,7 +25,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping, Sequence
 
-from ipfs_accelerate_py.agent_supervisor.program_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.program_contracts import (
     SOURCE_PRECEDENCE,
     ContractSourceKind,
 )

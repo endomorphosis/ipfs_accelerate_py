@@ -32,7 +32,7 @@ from ..integrations.contract_repair_capabilities import (
     ContractRepairCapabilityReport,
     ContractRepairCapabilityStatus,
 )
-from ..program_contracts import SemanticAspect
+from .program_contracts import SemanticAspect
 from .formal_verification_contracts import (
     AssuranceLevel,
     CanonicalContract,

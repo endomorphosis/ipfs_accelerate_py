@@ -54,21 +54,21 @@ from ..planning.analytical_change_transforms import (
     TransformRenderReceipt,
     TransformSite,
 )
-from ..proof.change_propagation_edit_packet import (
+from .change_propagation_edit_packet import (
     CHANGE_PROPAGATION_EDIT_PACKET_INTERFACE,
     ChangePropagationEditPacket,
     PropagationEditStep,
     PropagationEditStepKind,
 )
-from ..proof.contract_repair_edit_packet import (
+from .contract_repair_edit_packet import (
     CONTRACT_REPAIR_EDIT_PACKET_INTERFACE,
     ContractRepairEditPacket,
 )
-from ..proof.formal_verification_contracts import (
+from .formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
 )
-from ..proof.missing_input_synthesis import (
+from .missing_input_synthesis import (
     ValueMappingProof,
 )
 from ..todo_daemon.change_propagation_provider_router import (

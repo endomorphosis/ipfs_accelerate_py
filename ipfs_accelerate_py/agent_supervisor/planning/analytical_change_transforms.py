@@ -46,7 +46,7 @@ from ..analysis.contract_repair_contracts import (
     DecisionDisposition,
     RepairTargetDecision,
 )
-from ..program_ast_adapters import adapt_python_source
+from ..analysis.program_ast_adapters import adapt_python_source
 from ..proof.formal_verification_contracts import (
     CanonicalContract,
     content_identity,

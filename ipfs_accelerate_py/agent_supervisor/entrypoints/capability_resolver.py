@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar, Final, Iterable
 
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_dag_json,
 )
 

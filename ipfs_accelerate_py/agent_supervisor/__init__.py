@@ -177,6 +177,8 @@ AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS = AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES
 AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "adaptive_goal_refiner": "objectives",
     "adaptive_planner": "planning",
+    "admissibility_bridge": "proof",
+    "admissibility_enforcement": "proof",
     "analysis_ast_index": "analysis",
     "analysis_cache": "analysis",
     "analysis_consensus": "analysis",
@@ -187,22 +189,34 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "analysis_transport": "analysis",
     "analyzer_health": "analysis",
     "artifact_store": "runtime",
+    "asref_layout_evidence": "core",
     "audit_scanner": "analysis",
     "authorization_logic": "control",
     "backlog_refinery": "objectives",
     "bundle_optimizer": "objectives",
     "bundle_supervisor": "objectives",
     "cache_coordinator": "analysis",
+    "canonical_logic_adapter": "proof",
     "checkout_lock": "merge",
+    "code_contract_logic": "proof",
+    "code_contract_proof_context": "proof",
+    "code_contract_prover": "proof",
     "code_evidence_graph": "analysis",
     "code_proof_obligations": "proof",
+    "code_security_facts": "proof",
     "codex_failure_policy": "rescue",
     "conflict_graph": "core",
     "context_compiler": "context",
     "context_contracts": "context",
+    "contract_checker": "proof",
+    "contract_extractor": "proof",
+    "contract_findings": "proof",
+    "contract_repair_packet": "proof",
     "control_cli": "control",
     "control_contracts": "control",
     "control_plane": "control",
+    "cve_security_gate": "proof",
+    "cve_security_receipts": "proof",
     "dataset_store": "task_sources",
     "decision_context": "context",
     "decision_contracts": "context",
@@ -211,9 +225,13 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "decision_runtime_rollout": "context",
     "duckdb_state": "task_sources",
     "duckdb_task_source": "task_sources",
+    "durable_process": "runtime",
     "event_log": "runtime",
+    "evidence_output_scope": "validation",
     "execution_permit": "control",
     "external_completion": "core",
+    "finding_sarif": "proof",
+    "finding_task_source": "task_sources",
     "formal_counterexamples": "proof",
     "formal_logic_vocabulary": "proof",
     "formal_plan_compiler": "planning",
@@ -236,13 +254,18 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "goal_development_contracts": "objectives",
     "goal_quality": "objectives",
     "goal_refinement_verification": "objectives",
+    "grok_cli_runner": "runtime",
     "hyperproperty_verification": "proof",
     "implementation_daemon_runner": "todo_daemon",
+    "implementation_failure_review": "validation",
     "implementation_supervisor_runner": "todo_daemon",
+    "implementation_timeout": "todo_daemon",
     "intent_constraint_adapter": "proof",
     "interface_contract_codegen": "proof",
     "ipfs_datasets_analysis_provider": "integrations",
     "ipfs_datasets_logic_provider": "integrations",
+    "ipfs_datasets_program_analysis_provider": "integrations",
+    "ipfs_datasets_program_graph_provider": "integrations",
     "ir_adapters": "proof",
     "ir_constraint_compiler": "proof",
     "ir_registry": "proof",
@@ -256,8 +279,11 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "legal_constraint_adapter": "proof",
     "lifecycle_orchestrator": "control",
     "llm_merge_resolver_fallback": "integrations",
+    "logic_provider_contract": "proof",
     "logic_translation_validation": "proof",
     "markdown_task_source": "task_sources",
+    "mcplusplus_contract_resolver": "proof",
+    "mcplusplus_runtime_witness": "proof",
     "merge_checkpoint": "merge",
     "merge_conflict_repair": "merge",
     "merge_queue": "merge",
@@ -267,6 +293,7 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "multi_prover_resources": "proof",
     "multi_prover_router": "proof",
     "multi_supervisor_runner": "runtime",
+    "multiformats_identity": "core",
     "objective_daemon": "objectives",
     "objective_graph": "objectives",
     "objective_task_janitor": "objectives",
@@ -274,11 +301,21 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "persistent_task_queue": "task_sources",
     "plan_evaluator": "planning",
     "plan_failure_memory": "planning",
+    "program_analysis_cache": "analysis",
+    "program_analysis_zkp": "proof",
+    "program_assurance_contracts": "proof",
+    "program_ast_adapters": "analysis",
     "program_behavior": "core",
+    "program_call_resolver": "analysis",
+    "program_contracts": "proof",
+    "program_graph": "analysis",
+    "program_graph_queries": "analysis",
     "prompt_directory_scanner": "prompt",
     "prompt_goal_planner": "prompt",
     "prompt_plan_admission": "prompt",
     "prompt_workflow": "prompt",
+    "prompt_workflow_benchmark": "prompt",
+    "prompt_workflow_rollout": "prompt",
     "proof_attestation": "proof",
     "proof_carrying_planner": "planning",
     "proof_context": "proof",
@@ -294,7 +331,17 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "prover_evidence_store": "proof",
     "prover_matrix_registry": "proof",
     "provider_batch_scheduler": "runtime",
+    "provider_command_binding": "runtime",
+    "provider_command_environment": "runtime",
+    "provider_execution": "runtime",
+    "provider_failure_policy": "runtime",
+    "provider_usage": "runtime",
+    "provider_usage_migration": "runtime",
     "recovery_diagnostics": "rescue",
+    "release_evidence": "runtime",
+    "repository_corpus_index": "analysis",
+    "repository_forest": "analysis",
+    "repository_forest_manifest": "analysis",
     "rescue_orchestrator": "rescue",
     "rescue_planner": "rescue",
     "resource_scheduler": "runtime",
@@ -304,6 +351,7 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "scheduler_metrics": "runtime",
     "scope_adjudication": "validation",
     "security_constraint_adapter": "proof",
+    "security_contract_analysis": "proof",
     "self_improvement_completion": "self_improvement",
     "self_improvement_rollout": "self_improvement",
     "self_improvement_v2": "self_improvement",
@@ -314,9 +362,11 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "supervisor_recovery": "rescue",
     "supervisor_state_model": "self_improvement",
     "supervisor_token_ledger": "self_improvement",
+    "supervisor_usage_rollout": "runtime",
     "supervisor_v2_benchmark": "self_improvement",
     "supervisor_v2_contracts": "self_improvement",
     "supervisor_watchdog": "rescue",
+    "symbolic_finding_refill": "task_sources",
     "task_identity": "task_sources",
     "task_proposal_router": "planning",
     "task_quality": "planning",
@@ -326,7 +376,9 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "validation_commands": "validation",
     "validation_runtime": "validation",
     "validation_scheduler": "validation",
+    "worktree_lifecycle": "merge",
     "wrapper_utils": "core",
+
 }
 
 # Flat package-root modules still awaiting domain-package moves. Sourced from
@@ -650,7 +702,31 @@ class _LandedModuleAliasFinder:
                     module_.__dict__[name] = value
                 module_.__dict__["__canonical_module__"] = canonical_module
 
-        return _importlib.util.spec_from_loader(fullname, _AliasLoader())
+            def get_filename(self, fullname):  # type: ignore[no-untyped-def]
+                # runpy / python -m need a real path for historical flat stems.
+                return getattr(canonical_module, "__file__", None) or fullname
+
+            def get_source(self, fullname):  # type: ignore[no-untyped-def]
+                path = self.get_filename(fullname)
+                if not path:
+                    return None
+                return Path(path).read_text(encoding="utf-8")
+
+            def get_code(self, fullname):  # type: ignore[no-untyped-def]
+                source = self.get_source(fullname)
+                if source is None:
+                    return None
+                return compile(source, self.get_filename(fullname), "exec", dont_inherit=True)
+
+            def is_package(self, fullname):  # type: ignore[no-untyped-def]
+                return False
+
+        return _importlib.util.spec_from_loader(
+            fullname,
+            _AliasLoader(),
+            origin=getattr(canonical_module, "__file__", None),
+            is_package=False,
+        )
 
 
 if not any(isinstance(f, _LandedModuleAliasFinder) for f in _sys.meta_path):

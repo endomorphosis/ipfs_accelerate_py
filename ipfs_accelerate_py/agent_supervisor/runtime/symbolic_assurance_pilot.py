@@ -34,8 +34,8 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Protocol
 
-from ipfs_accelerate_py.agent_supervisor.program_ast_adapters import adapt_program_source
-from ipfs_accelerate_py.agent_supervisor.program_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.program_ast_adapters import adapt_program_source
+from ipfs_accelerate_py.agent_supervisor.analysis.program_graph import (
     ProgramGraph,
     ProgramGraphRoots,
     ProgramGraphSnapshot,
@@ -47,13 +47,13 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     canonical_json_bytes,
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.repository_corpus_index import (
+from ipfs_accelerate_py.agent_supervisor.analysis.repository_corpus_index import (
     InclusionDecision,
     InventoryLimits,
     RepositoryCorpusIndex,
     build_repository_corpus_index,
 )
-from ipfs_accelerate_py.agent_supervisor.repository_forest import (
+from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
     AuthorityMode,
     ForestPolicy,
     ForestRootSpec,

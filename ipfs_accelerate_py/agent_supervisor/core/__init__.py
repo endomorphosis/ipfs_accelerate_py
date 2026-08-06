@@ -13,15 +13,17 @@ Modules owned by bundle ``asref/core`` (see
 * ``program_behavior``
 * ``submodule_degradation``
 * ``wrapper_utils``
+* ``multiformats_identity``
+* ``asref_layout_evidence``
 
 Import them via::
 
     from ipfs_accelerate_py.agent_supervisor.core.<module> import ...
 
-During the ASREF layout cutover, temporary flat copies may still exist at the
-former root paths until a follow-on import-rewrite pass (outside the narrow
-``core/`` edit scope) removes them. Prefer ``core.<module>`` for all new code.
-Do not introduce long-lived re-export stubs at the old flat paths.
+Flat package-root copies of these modules have been removed. Prefer
+``core.<module>`` for all new code. Historical flat import paths resolve only
+through package-root ``AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`` aliasing.
+Do not reintroduce long-lived re-export stubs at the old flat paths.
 
 Package metadata and the public module list are intentional surface area so
 importers and tooling can discover the core contract without loading optional
@@ -43,8 +45,10 @@ CORE_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.core"
 
 # Stems owned by asref/core in docs/architecture/asref/move_map.json.
 CORE_OWNED_MODULES: Final[tuple[str, ...]] = (
+    "asref_layout_evidence",
     "conflict_graph",
     "external_completion",
+    "multiformats_identity",
     "program_behavior",
     "submodule_degradation",
     "wrapper_utils",

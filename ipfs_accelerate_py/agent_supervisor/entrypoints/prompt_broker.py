@@ -52,7 +52,7 @@ def _load_cid_bridge() -> tuple[type[Exception], Callable[..., str], Callable[..
     """
 
     try:
-        from ..multiformats_identity import (  # type: ignore[attr-defined]
+        from ..core.multiformats_identity import (  # type: ignore[attr-defined]
             MultiformatsIdentityError as identity_error,
             cid_for_bytes as identity_cid_for_bytes,
             validate_cid as identity_validate_cid,

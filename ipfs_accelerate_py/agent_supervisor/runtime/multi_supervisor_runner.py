@@ -1772,7 +1772,7 @@ def main(argv: list[str] | None = None) -> int:
         # Fail closed before leasing worktrees when the Grok/Codex entry module
         # is missing provider-command symbols; heal known gaps automatically.
         try:
-            from ..provider_command_binding import (
+            from .provider_command_binding import (
                 ProviderCommandBindingError,
                 preflight_provider_entry_module,
             )

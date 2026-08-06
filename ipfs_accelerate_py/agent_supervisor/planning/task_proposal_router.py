@@ -1438,7 +1438,7 @@ def _call_text_provider(
     if (not usage_migrate) or mode_raw in {"", "off"}:
         return _legacy_dispatch()
 
-    from ..provider_usage_migration import (
+    from ..runtime.provider_usage_migration import (
         ConsumerId,
         build_consumer_call_context,
         dispatch_migrated_provider_call,

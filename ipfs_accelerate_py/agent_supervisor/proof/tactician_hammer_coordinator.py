@@ -52,12 +52,12 @@ from ..integrations.ipfs_datasets_logic_provider import (
     IsolatedHammerLoader,
     get_isolated_hammer_loader,
 )
-from ..proof.formal_verification_contracts import (
+from .formal_verification_contracts import (
     CodeProofObligation,
     ResourceBudget,
     canonical_json,
 )
-from ..proof.formal_verification_provider import (
+from .formal_verification_provider import (
     ProviderFailureCode,
     ProviderRequest,
     ProviderResponse,
