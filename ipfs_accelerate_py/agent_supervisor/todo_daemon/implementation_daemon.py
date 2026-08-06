@@ -8235,14 +8235,17 @@ class PortalImplementationDaemon:
         return {task.task_id for task in representative.values()}
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
-        """Return whether this daemon lane should implement ``task_id``."""
+        """Return whether this daemon lane should implement ``task_id``.
+
+        Uses a stable full-ID hash rather than ``trailing_digits % N``. Sequential
+        boards (WPD-023, WPD-032, WPD-041, WPD-050, …) otherwise all land on the
+        same lane under strict sharding and leave sibling lanes idle forever.
+        """
 
         if self.task_shard_count <= 1:
             return True
-        match = re.search(r"(\d+)$", task_id)
-        if match is None:
-            return self.task_shard_index == 0
-        return int(match.group(1)) % self.task_shard_count == self.task_shard_index
+        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % self.task_shard_count == self.task_shard_index
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
