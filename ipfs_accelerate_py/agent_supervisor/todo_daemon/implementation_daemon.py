@@ -29628,31 +29628,14 @@ class PortalImplementationDaemon:
                     )
             if has_scoped_child_edits:
                 continue
-            result = subprocess.run(
-                [
-                    "git",
-                    "restore",
-                    "--source",
-                    baseline,
-                    "--staged",
-                    "--worktree",
-                    "--",
-                    relative,
-                ],
-                cwd=workspace_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if result.returncode != 0:
-                result = subprocess.run(
-                    ["git", "checkout", baseline, "--", relative],
-                    cwd=workspace_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-            if result.returncode == 0:
+            # Force parent pointer + child checkout. Plain ``git restore``
+            # leaves `` M relative`` when the submodule HEAD drifted, and the
+            # opaque gitlink then fails proposal with submodule_boundary_forbidden.
+            if self._force_checkout_gitlink_at_baseline(
+                workspace_path,
+                relative,
+                baseline_ref=baseline,
+            ):
                 restored.append(relative)
         if restored:
             self._record_event(
@@ -32846,6 +32829,98 @@ class PortalImplementationDaemon:
                 return True
         return False
 
+    def _force_checkout_gitlink_at_baseline(
+        self,
+        workspace_path: Path,
+        relative: str,
+        *,
+        baseline_ref: str,
+    ) -> bool:
+        """Force a submodule checkout to the baseline-recorded gitlink SHA.
+
+        ``git restore --worktree -- <gitlink>`` rewrites only the parent index /
+        gitlink pointer.  It does **not** move the child HEAD, so status stays
+        `` M path`` (or ``MM``) and proposal collection still sees an opaque
+        submodule boundary.  CIG-018/014 failed post-validation candidate
+        binding this way after green pytest when incidental ``swissknife`` /
+        pin checkouts drifted.  Match the merge-path incidental restore:
+        resolve ``baseline:path`` and ``git checkout -f`` inside the child.
+        """
+
+        normalized = str(relative or "").strip().replace("\\", "/").strip("/")
+        if not normalized or not self._repo_relative_path_safe(normalized):
+            return False
+        baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        head_result = subprocess.run(
+            ["git", "rev-parse", f"{baseline}:{normalized}"],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head_result.returncode != 0:
+            return False
+        expected = head_result.stdout.strip()
+        if not expected:
+            return False
+        # Parent index/worktree gitlink pointer first.
+        parent = subprocess.run(
+            [
+                "git",
+                "restore",
+                "--source",
+                baseline,
+                "--staged",
+                "--worktree",
+                "--",
+                normalized,
+            ],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if parent.returncode != 0:
+            parent = subprocess.run(
+                ["git", "checkout", baseline, "--", normalized],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        if parent.returncode != 0:
+            return False
+        target = workspace_path / normalized
+        if not self._is_git_worktree(target):
+            # Parent pointer restored; child not initialized — treat as clean.
+            return True
+        checkout = subprocess.run(
+            ["git", "checkout", "-f", expected],
+            cwd=target,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if checkout.returncode == 0:
+            return True
+        # Fall back to submodule update for this path only (local objects).
+        fallback = subprocess.run(
+            [
+                "git",
+                "submodule",
+                "update",
+                "--force",
+                "--checkout",
+                "--",
+                normalized,
+            ],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return fallback.returncode == 0
+
     def _restore_out_of_scope_workspace_paths(
         self,
         workspace_path: Path,
@@ -32866,10 +32941,34 @@ class PortalImplementationDaemon:
         dirty_paths = sorted(self._dirty_worktree_paths(workspace_path))
         restored: list[str] = []
         baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
+        # Discover tracked gitlinks so OOS submodule checkouts get a full
+        # child force-checkout, not only a parent pointer rewrite.
+        try:
+            _symlinks, tracked_gitlinks = self._proposal_boundary_paths(
+                workspace_path
+            )
+        except (OSError, RuntimeError, ValueError):
+            tracked_gitlinks = ()
+        gitlink_set = {
+            str(path).strip().replace("\\", "/").strip("/")
+            for path in tracked_gitlinks
+            if str(path).strip()
+        }
         for relative in dirty_paths:
             if self._path_in_proposal_scope(relative, scope_paths):
                 continue
             if not self._repo_relative_path_safe(relative):
+                continue
+            normalized = str(relative).strip().replace("\\", "/").strip("/")
+            target = workspace_path / normalized
+            # Gitlink / initialized submodule: force child checkout to baseline.
+            if normalized in gitlink_set or self._is_git_worktree(target):
+                if self._force_checkout_gitlink_at_baseline(
+                    workspace_path,
+                    normalized,
+                    baseline_ref=baseline,
+                ):
+                    restored.append(normalized)
                 continue
             result = subprocess.run(
                 [
@@ -32908,7 +33007,6 @@ class PortalImplementationDaemon:
             # Untracked out-of-scope paths cannot be restored from baseline;
             # remove them so proposal admission does not see path_outside_scope
             # from incidental pin/cache files left in the worktree.
-            target = workspace_path / relative
             try:
                 if target.is_symlink() or target.is_file():
                     target.unlink(missing_ok=True)

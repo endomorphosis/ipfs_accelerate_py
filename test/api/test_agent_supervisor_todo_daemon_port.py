@@ -5560,6 +5560,93 @@ def test_implementation_proposal_keeps_unconfigured_gitlink_fail_closed(tmp_path
     assert result.proposal.changed_paths == ("libs/child",)
 
 
+def test_out_of_scope_restore_force_checkouts_drifted_submodule(
+    tmp_path: Path,
+):
+    """CIG-018: parent git restore alone leaves `` M swissknife``; force child.
+
+    Post-validation candidate binding restored OOS pins with ``git restore``
+    only, recorded success, then still fingerprinted the drifted gitlink and
+    rebind-failed with ``submodule_boundary_forbidden`` after green pytest.
+    """
+
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    pinned = _git(repo, "rev-parse", "HEAD:libs/child")
+    # Advance the child one commit so parent status shows submodule dirt.
+    (submodule / "child.txt").write_text("drifted\n", encoding="utf-8")
+    _git(submodule, "add", "child.txt")
+    _git(submodule, "commit", "-m", "drift child")
+    drifted = _git(submodule, "rev-parse", "HEAD")
+    assert drifted != pinned
+    assert "libs/child" in _git(repo, "status", "--porcelain")
+
+    (repo / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
+    _git(repo, "add", "Makefile")
+    _git(repo, "commit", "-m", "makefile base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    # In-scope edit for the task; submodule remains drifted.
+    (repo / "Makefile").write_text(
+        "all:\n\t@echo reenabled\n",
+        encoding="utf-8",
+    )
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = PortalTask(
+        task_id="CIG-018",
+        title="Re-enable suite despite OOS pin dirt",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ci/interop",
+        outputs=["Makefile"],
+        validation=["true"],
+        acceptance="Ignore line removed.",
+    )
+
+    restored = daemon._restore_out_of_scope_workspace_paths(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    assert "libs/child" in restored
+    assert _git(submodule, "rev-parse", "HEAD") == pinned
+    # Submodule dirt cleared; only the in-scope Makefile edit remains.
+    porcelain = _git(repo, "status", "--porcelain")
+    assert "libs/child" not in porcelain
+    assert "Makefile" in porcelain
+
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    assert proposal_validation.accepted is True
+    assert list(proposal_validation.proposal.changed_paths) == ["Makefile"]
+
+    binding = daemon._verify_post_validation_candidate_binding(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
+    assert binding["passed"] is True
+    assert binding["candidate_binding"]["verified"] is True
+
+
 def test_post_validation_candidate_binding_rejects_late_source_change(
     tmp_path: Path,
 ):
