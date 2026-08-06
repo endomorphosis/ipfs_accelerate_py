@@ -549,8 +549,12 @@ _MAKEFILE_IGNORE_ABSENT_RE = re.compile(
     r"""(?P<makefile>[^\s)"']+)\s*\|\|\s*true\s*\)["']\s*$""",
     re.IGNORECASE,
 )
-_MAKEFILE_IGNORE_CHECK_MODULE = (
-    "ipfs_accelerate_py.agent_supervisor.validation.makefile_ignore_check"
+# Prefer a monorepo-relative script path over ``python -m`` so sealed
+# validation environments (restricted PATH / no ambient package install) can
+# still execute the helper without ``ipfs_accelerate_py`` on ``sys.path``.
+_MAKEFILE_IGNORE_CHECK_SCRIPT = (
+    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/"
+    "validation/makefile_ignore_check.py"
 )
 
 
@@ -559,7 +563,7 @@ def rewrite_shell_makefile_ignore_check(command: str) -> str:
 
     Proposal validation forbids shell expansion tokens even on task-declared
     allowlists. CI re-enable boards use this reviewed shell form to prove a
-    Makefile ignore line was removed; map it to a dedicated helper module.
+    Makefile ignore line was removed; map it to a dedicated helper script.
     """
 
     text = normalize_validation_command_text(command)
@@ -569,7 +573,7 @@ def rewrite_shell_makefile_ignore_check(command: str) -> str:
     pattern = match.group("pattern")
     makefile = match.group("makefile") or "Makefile"
     return (
-        f"python3 -m {_MAKEFILE_IGNORE_CHECK_MODULE} "
+        f"python3 {shlex.quote(_MAKEFILE_IGNORE_CHECK_SCRIPT)} "
         f"--makefile {shlex.quote(makefile)} "
         f"--absent {shlex.quote(pattern)}"
     )
