@@ -442,6 +442,7 @@ def test_huggingface_503_overloaded_retains_cooldown():
         ("copilot", "usage_limit"),
         ("grok", "usage_limit"),
         ("gemini", "rate_limit"),
+        ("claude_code", "usage_limit"),
         ("goose", "capacity"),
         ("mistral", "usage_limit"),
     ],

@@ -437,6 +437,34 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
     (
+        "claude",
+        re.compile(
+            r"(?:"
+            r"claude.*(?:rate[_ ]?limit|usage[_ ]?limit|quota|credit\s+balance)|"
+            r"anthropic.*(?:rate[_ ]?limit|429|overloaded|credit)|"
+            r"credit\s+balance\s+is\s+too\s+low|"
+            r"you(?:'|\u2019)?ve\s+hit\s+your\s+(?:usage\s+)?limit|"
+            r"rate_limit_error|"
+            r"overloaded_error"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "gemini",
+        re.compile(
+            r"(?:"
+            r"gemini.*(?:rate[_ ]?limit|quota|resource[_ ]?exhausted)|"
+            r"generativelanguage\.googleapis\.com.*quota|"
+            r"resource[_ ]?exhausted|"
+            r"free[_ ]tier\s+quota\s+exhausted|"
+            r"exceeded\s+your\s+current\s+quota|"
+            r"google.*(?:429|rate[_ ]?limit|quota)"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "provider",
         re.compile(
             r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded|"
@@ -457,6 +485,14 @@ PROVIDER_CAPACITY_FAMILY_ALIASES = {
     "goose": "goose",
     "meta": "goose",
     "meta_spark": "goose",
+    "claude": "claude",
+    "claude_code": "claude",
+    "claude_cli": "claude",
+    "anthropic": "claude",
+    "gemini": "gemini",
+    "gemini_cli": "gemini",
+    "google_gemini": "gemini",
+    "google": "gemini",
     "provider": "provider",
     "infrastructure": "infrastructure",
 }
@@ -2361,6 +2397,24 @@ def _provider_labels_from_implementation_command(
             or lowered.endswith(".meta_spark_goose_runner")
         ):
             provider_labels = ("goose", "meta_spark")
+        elif normalized in {
+            "claude",
+            "claude-code",
+            "claude_code",
+            "anthropic",
+        }:
+            provider_labels = ("claude",)
+        elif normalized in {
+            "gemini",
+            "gemini-cli",
+            "gemini_cli",
+            "google-gemini",
+        }:
+            provider_labels = ("gemini",)
+        elif normalized == "npx" and any(
+            "@google/gemini-cli" in str(item or "").lower() for item in items
+        ):
+            provider_labels = ("gemini",)
         for provider in provider_labels:
             if provider not in labels:
                 labels.append(provider)
@@ -45831,6 +45885,24 @@ class PortalImplementationDaemon:
                 except Exception:
                     grok_auth = bool(grok_ready)
                     grok_constructible = bool(grok_ready)
+            claude_binary = False
+            claude_authenticated = False
+            gemini_binary = False
+            gemini_authenticated = False
+            try:
+                from .cli_provider_balance import (
+                    probe_claude_cli_readiness,
+                    probe_gemini_cli_readiness,
+                )
+
+                claude_probe = probe_claude_cli_readiness()
+                gemini_probe = probe_gemini_cli_readiness()
+                claude_binary = bool(claude_probe.get("binary_available"))
+                claude_authenticated = bool(claude_probe.get("authenticated"))
+                gemini_binary = bool(gemini_probe.get("binary_available"))
+                gemini_authenticated = bool(gemini_probe.get("authenticated"))
+            except Exception:
+                pass
             auto_selection = select_auto_implementation_provider(
                 grok_binary=bool(_grok_binary()),
                 grok_authenticated=bool(grok_auth or grok_ready),
@@ -45839,6 +45911,10 @@ class PortalImplementationDaemon:
                 ),
                 codex_binary=bool(shutil.which("codex")),
                 codex_authenticated=True,
+                claude_binary=claude_binary,
+                claude_authenticated=claude_authenticated,
+                gemini_binary=gemini_binary,
+                gemini_authenticated=gemini_authenticated,
                 latches=automatic_latches,
                 global_capacity_latched=global_capacity_latched,
             )
@@ -45855,6 +45931,41 @@ class PortalImplementationDaemon:
                     workspace_path=workspace_path,
                     model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
                     failure_receipt_nonce=secrets.token_hex(32),
+                )
+            if auto_selection.decision in {
+                AutoProviderDecision.CLAUDE,
+                AutoProviderDecision.GEMINI,
+            }:
+                # Quota/balance observation selected a CLI that is healthy but
+                # not yet wired as an agent implementer. Prefer Codex when that
+                # secondary is eligible; otherwise fail closed with the receipt.
+                if (
+                    shutil.which("codex")
+                    and automatic_family_allowed("codex")
+                    and not automatic_latches.get("codex", {}).get("active", False)
+                ):
+                    codex = str(shutil.which("codex"))
+                    codex_context_window = (
+                        self._implementation_provider_context_window_for_task(
+                            task
+                        )[0]
+                        if task is not None
+                        else None
+                    )
+                    return _codex_implementation_command(
+                        codex=codex,
+                        workspace_path=workspace_path,
+                        codex_context_window=codex_context_window,
+                        model_override=DEFAULT_CODEX_MODEL,
+                        reasoning_effort_override=(
+                            DEFAULT_CODEX_REASONING_EFFORT
+                        ),
+                    )
+                raise RuntimeError(
+                    "Grok quota is exhausted and "
+                    f"{auto_selection.selected_provider} is healthy, but agent "
+                    "implement routing for that CLI is not enabled "
+                    f"({', '.join(auto_selection.reason_codes)})"
                 )
             if auto_selection.decision is AutoProviderDecision.CODEX:
                 if self._task_declares_independent_codex_review(task):

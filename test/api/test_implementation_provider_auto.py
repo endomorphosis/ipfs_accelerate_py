@@ -186,3 +186,129 @@ def test_codex_usage_limit_does_not_override_ready_grok() -> None:
         },
     )
     assert selection.decision is AutoProviderDecision.GROK
+
+
+def test_all_secondaries_ready_still_tie_breaks_to_grok() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(PREFERRED_PROVIDER, request_headroom=1),
+            _obs("claude", request_headroom=1000),
+            _obs("gemini", request_headroom=1000),
+            _obs(FALLBACK_PROVIDER, request_headroom=1000),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.GROK
+    assert AutoProviderReason.TIE_BREAK_PREFERRED.value in selection.reason_codes
+    assert {item.provider_id for item in selection.observations} >= {
+        "grok",
+        "claude",
+        "gemini",
+        "codex",
+    }
+
+
+def test_grok_hard_quota_prefers_codex_over_claude_when_both_ready() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(
+                PREFERRED_PROVIDER,
+                ready=False,
+                hard_quota_exhausted=True,
+            ),
+            _obs("claude", request_headroom=50),
+            _obs(FALLBACK_PROVIDER, request_headroom=10),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.CODEX
+    assert selection.selected_provider == "codex"
+
+
+def test_grok_hard_quota_opens_claude_when_codex_latched() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(
+                PREFERRED_PROVIDER,
+                ready=False,
+                hard_quota_exhausted=True,
+            ),
+            _obs(
+                FALLBACK_PROVIDER,
+                ready=False,
+                capacity_latched=True,
+            ),
+            _obs("claude"),
+            _obs("gemini", ready=False),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.CLAUDE
+    assert selection.selected_provider == "claude"
+    assert AutoProviderReason.SECONDARY_AFTER_QUOTA.value in selection.reason_codes
+
+
+def test_grok_hard_quota_opens_gemini_when_higher_secondaries_unavailable() -> None:
+    selection = select_implementation_provider(
+        (
+            _obs(
+                PREFERRED_PROVIDER,
+                ready=False,
+                hard_quota_exhausted=True,
+            ),
+            _obs(FALLBACK_PROVIDER, ready=False, binary_available=False),
+            _obs("claude", ready=False, capacity_latched=True),
+            _obs("gemini"),
+        )
+    )
+    assert selection.decision is AutoProviderDecision.GEMINI
+    assert selection.selected_provider == "gemini"
+
+
+def test_select_auto_includes_claude_gemini_observations() -> None:
+    selection = select_auto_implementation_provider(
+        grok_binary=True,
+        grok_authenticated=True,
+        codex_binary=True,
+        claude_binary=True,
+        claude_authenticated=True,
+        gemini_binary=True,
+        gemini_authenticated=True,
+        latches={
+            "codex": {"active": True, "hard_quota_exhausted": False},
+        },
+    )
+    assert selection.decision is AutoProviderDecision.GROK
+    by_id = {item.provider_id: item for item in selection.observations}
+    assert by_id["claude"].eligible is True
+    assert by_id["gemini"].eligible is True
+    assert by_id["codex"].capacity_latched is True
+
+
+def test_claude_usage_observation_overlay_restricts_eligibility() -> None:
+    selection = select_auto_implementation_provider(
+        grok_binary=True,
+        grok_authenticated=True,
+        grok_constructible=True,
+        codex_binary=False,
+        claude_binary=True,
+        claude_authenticated=True,
+        latches={
+            "grok": {
+                "active": True,
+                "hard_quota_exhausted": True,
+            }
+        },
+        usage_observations={
+            "claude": {
+                "capacity_restricted": True,
+                "reason_codes": ["subscription.usage_limit", "cli.claude"],
+            }
+        },
+    )
+    # Claude restricted; no other secondary → unavailable
+    assert selection.decision is AutoProviderDecision.UNAVAILABLE
+    claude = next(
+        item
+        for item in selection.observations
+        if item.provider_id == "claude"
+    )
+    assert claude.eligible is False
+    assert claude.capacity_latched is True
