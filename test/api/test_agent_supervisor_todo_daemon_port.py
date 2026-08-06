@@ -15417,6 +15417,9 @@ def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
         "implementation_repair_round_budget_exhausted"
     )
     assert result["implementation_result"]["attempt"] == 5
+    # Multi-task boards need a real cooldown; backoff 0 re-selects the same
+    # exhausted task every pass (observed on CIG-030 vs Wave A peers).
+    assert result["implementation_result"]["backoff_seconds"] >= 900
     assert result["implementation_result"]["active_task_cleared"] is True
     assert observed_claim["canonical_task_cid"] == canonical_task_cid
     assert observed_claim["attempt"] == 5
@@ -15468,6 +15471,128 @@ def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
 
     assert decision.action == "continue"
     assert maintenance_calls == ["maintenance"]
+
+
+def test_repair_budget_exhaustion_pins_max_attempts_on_multi_task_boards(
+    tmp_path,
+    monkeypatch,
+):
+    """CIG Wave A regression: exhausted repair budgets must free peers.
+
+    Without latching attempts at max_task_attempts and without a queue
+    cooldown, a single repair-budget-exhausted task is reselected every pass
+    and starves the rest of the ready set.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Exhausted repair task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: feature.py
+- Validation: test -f feature.py
+- Acceptance: Exhausted repair budget should not monopolize selection.
+
+## ACCEL-002 Peer ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: peer.py
+- Validation: test -f peer.py
+- Acceptance: Peer must remain selectable while ACCEL-001 is parked.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        max_task_attempts=5,
+        implementation_timeout=7200,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    exhausted, peer = tasks[0], tasks[1]
+    exhausted_cid = daemon._canonical_ref(exhausted)
+    peer_cid = daemon._canonical_ref(peer)
+    TodoTaskState(
+        implementation_attempts={exhausted.task_id: 4},
+        implementation_attempts_by_cid={exhausted_cid: 4},
+    ).save(state_path)
+
+    result = daemon.run_once()
+    persisted = TodoTaskState.load(state_path)
+    impl = result["implementation_result"]
+
+    assert impl["reason"] == "implementation_repair_round_budget_exhausted"
+    assert impl["attempt"] == 5
+    assert impl["backoff_seconds"] >= 900
+    assert impl.get("attempt_limited") is True
+    assert impl.get("max_task_attempts") == 5
+    assert persisted.implementation_attempts[exhausted.task_id] == 5
+    assert persisted.implementation_attempts_by_cid[exhausted_cid] == 5
+    assert daemon.task_queue.is_cooled_down(exhausted_cid)
+    assert not daemon.task_queue.is_cooled_down(peer_cid)
+    assert exhausted.task_id not in (persisted.selectable_ready_task_ids or [])
+    # Durable pin is the multi-task selection gate for the exhausted task.
+    assert (
+        persisted.implementation_attempts[exhausted.task_id]
+        >= daemon.max_task_attempts
+    )
+
+
+def test_release_unfinished_active_attempt_rolls_back_process_missing_counter(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        max_task_attempts=5,
+    )
+    state = TodoTaskState(
+        implementation_attempts={"ACCEL-001": 4},
+        implementation_attempts_by_cid={"cid-1": 4},
+        active_task_cid="cid-1",
+    )
+    released = daemon._release_unfinished_active_attempt(
+        state,
+        task_id="ACCEL-001",
+        attempt=4,
+    )
+    assert released["released"] is True
+    assert released["released_to"] == 3
+    assert state.implementation_attempts["ACCEL-001"] == 3
+    assert state.implementation_attempts_by_cid["cid-1"] == 3
+    assert daemon._repair_budget_exhausted_backoff_seconds() >= 900
+    assert daemon._task_attempt_has_implementation_finish("ACCEL-001", 1) is False
+    daemon._record_event(
+        "implementation_finished",
+        {"task_id": "ACCEL-001", "attempt": 1},
+    )
+    assert daemon._task_attempt_has_implementation_finish("ACCEL-001", 1) is True
 
 
 def test_retry_deferral_does_not_overwrite_newer_active_projection(

@@ -8332,6 +8332,97 @@ class PortalImplementationDaemon:
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
 
+    def _repair_budget_exhausted_backoff_seconds(self) -> int:
+        """Cooldown other ready tasks can run after a task exhausts repair rounds."""
+
+        configured = int(getattr(self, "implementation_timeout", 0) or 0)
+        # Prefer at least 15 minutes so multi-task boards (CIG Wave A) can
+        # progress peers; cap at two hours to avoid indefinite parking.
+        return max(900, min(7200, configured or 3600))
+
+    def _task_attempt_has_implementation_finish(
+        self,
+        task_id: str,
+        attempt: int,
+    ) -> bool:
+        """Return whether a durable finish event exists for task/attempt."""
+
+        task_id = str(task_id or "").strip()
+        attempt_number = int(attempt or 0)
+        if not task_id or attempt_number <= 0:
+            return False
+        for event in self._iter_events():
+            if str(event.get("type") or "") != "implementation_finished":
+                continue
+            if str(event.get("task_id") or "") != task_id:
+                continue
+            if int(event.get("attempt") or 0) != attempt_number:
+                continue
+            return True
+        return False
+
+    def _release_unfinished_active_attempt(
+        self,
+        state: PortalTaskState,
+        *,
+        task_id: str,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Roll durable attempt counters back when a process dies mid-flight.
+
+        Attempt counters are latched when implementation starts. If the worker
+        disappears without ``implementation_finished``, leaving the counter at
+        the unfinished attempt forces the next dispatch to a higher attempt and
+        can exhaust ``implementation_max_repair_rounds`` without ever running
+        validation. Prefer re-dispatching the unfinished attempt number.
+        """
+
+        task_id = str(task_id or "").strip()
+        attempt_number = max(0, int(attempt or 0))
+        if not task_id or attempt_number <= 0:
+            return {
+                "consumed": False,
+                "released": False,
+                "attempt": attempt_number,
+                "task_id": task_id,
+            }
+        released_to = max(0, attempt_number - 1)
+        previous_display = int(
+            state.implementation_attempts.get(task_id, 0) or 0
+        )
+        identity = state.task_identities.get(task_id, {}) if isinstance(
+            state.task_identities, Mapping
+        ) else {}
+        task_cid = str(
+            state.active_task_cid
+            or state.last_implementation_task_cid
+            or identity.get("canonical_task_cid")
+            or ""
+        )
+        previous_cid = int(
+            state.implementation_attempts_by_cid.get(task_cid, 0) or 0
+        ) if task_cid else 0
+        if previous_display >= attempt_number:
+            if released_to > 0:
+                state.implementation_attempts[task_id] = released_to
+            else:
+                state.implementation_attempts.pop(task_id, None)
+        if task_cid and previous_cid >= attempt_number:
+            if released_to > 0:
+                state.implementation_attempts_by_cid[task_cid] = released_to
+            else:
+                state.implementation_attempts_by_cid.pop(task_cid, None)
+        return {
+            "consumed": False,
+            "released": True,
+            "attempt": attempt_number,
+            "released_to": released_to,
+            "task_id": task_id,
+            "canonical_task_cid": task_cid,
+            "previous_display_count": previous_display,
+            "previous_cid_count": previous_cid,
+        }
+
     def _restore_task_attempt(
         self,
         state: PortalTaskState,
@@ -11561,18 +11652,46 @@ class PortalImplementationDaemon:
                     "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
                 }
             recovered_state = PortalTaskState.load(self.state_path)
-            recovered_attempt = consume_stale_active_attempt(recovered_state)
+            recovered_task_id = str(
+                previous.active_task_id
+                or previous.last_implementation_task_id
+                or ""
+            )
+            recovered_attempt_number = int(previous.active_attempt or 0)
+            finished_attempt = bool(
+                recovered_task_id
+                and recovered_attempt_number > 0
+                and self._task_attempt_has_implementation_finish(
+                    recovered_task_id,
+                    recovered_attempt_number,
+                )
+            )
+            if finished_attempt:
+                recovered_attempt = consume_stale_active_attempt(
+                    recovered_state
+                )
+            else:
+                # Process vanished without a finish receipt (often false
+                # liveness / docker restart). Do not leave the durable attempt
+                # counter latched at the unfinished attempt or multi-task
+                # boards exhaust repair budget without ever validating work.
+                recovered_attempt = self._release_unfinished_active_attempt(
+                    recovered_state,
+                    task_id=recovered_task_id,
+                    attempt=recovered_attempt_number,
+                )
             self._clear_active_execution_state(recovered_state)
             recovered_state.save(self.state_path)
             self._record_event(
                 "implementation_state_recovered",
                 {
-                    "task_id": previous.active_task_id or previous.last_implementation_task_id,
-                    "attempt": previous.active_attempt,
+                    "task_id": recovered_task_id,
+                    "attempt": recovered_attempt_number,
                     "reason": "inflight_process_missing",
                     "worktree_path": previous.active_worktree_path,
                     "branch": previous.active_branch,
                     "attempt_recovery": recovered_attempt,
+                    "finished_attempt": finished_attempt,
                 },
             )
             previous = recovered_state
@@ -13617,6 +13736,7 @@ class PortalImplementationDaemon:
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
+            reason_key = exc.reason.replace(" ", "_")
             if exc.backoff_seconds > 0:
                 self.task_queue.defer(
                     canonical_task_cid,
@@ -13626,7 +13746,7 @@ class PortalImplementationDaemon:
                 self.task_queue.save()
             result = {
                 "skipped": True,
-                "reason": exc.reason.replace(" ", "_"),
+                "reason": reason_key,
                 "task_id": task.task_id,
                 "attempt": attempt,
                 "backoff_seconds": exc.backoff_seconds,
@@ -13653,6 +13773,27 @@ class PortalImplementationDaemon:
                     and current.active_task_cid == canonical_task_cid
                     and not current.implementation_in_progress
                 )
+                # When a configured attempt ceiling exists, latch exhausted
+                # repair budgets at that ceiling so partition selection
+                # advances to other ready tasks on multi-task boards. Do this
+                # even when projection ownership was lost — queue cooldown
+                # alone is not enough if a concurrent writer re-emits ready.
+                pin_exhausted_attempts = (
+                    reason_key
+                    in {
+                        "implementation_repair_round_budget_exhausted",
+                        "identical_implementation_failure_escalated",
+                    }
+                    and self.max_task_attempts > 0
+                )
+                if pin_exhausted_attempts:
+                    self._record_task_attempt(
+                        current,
+                        task,
+                        self.max_task_attempts,
+                    )
+                    result["attempt_limited"] = True
+                    result["max_task_attempts"] = self.max_task_attempts
                 if owns_idle_projection:
                     self._clear_active_execution_state(current, clear_task=True)
                     current.selectable_ready_task_ids = [
@@ -13675,6 +13816,7 @@ class PortalImplementationDaemon:
                         current.selection_idle_reason = (
                             f"implementation_retry_deferred:{result['reason']}"
                         )
+                if owns_idle_projection or pin_exhausted_attempts:
                     current.save(self.state_path)
                     state.__dict__.update(asdict(current))
                 result["active_task_cleared"] = owns_idle_projection
@@ -50244,8 +50386,12 @@ class PortalImplementationDaemon:
         fresh_retry_context = False
         if attempt > 1:
             if attempt - 1 > self.implementation_max_repair_rounds:
+                # Multi-task boards must not re-select this task every pass.
+                # Without a queue cooldown the same exhausted task starves
+                # other ready work (observed on CIG-030 vs the rest of Wave A).
                 raise ImplementationRetryDeferred(
-                    "implementation repair round budget exhausted"
+                    "implementation repair round budget exhausted",
+                    backoff_seconds=self._repair_budget_exhausted_backoff_seconds(),
                 )
             key = self._canonical_ref(task)
             self._load_implementation_retry_state(task)
@@ -50308,7 +50454,10 @@ class PortalImplementationDaemon:
                         )
                         if repeats >= self.implementation_max_repair_rounds:
                             raise ImplementationRetryDeferred(
-                                "identical implementation failure escalated"
+                                "identical implementation failure escalated",
+                                backoff_seconds=(
+                                    self._repair_budget_exhausted_backoff_seconds()
+                                ),
                             )
                         not_before = self._implementation_retry_not_before.get(
                             key,
