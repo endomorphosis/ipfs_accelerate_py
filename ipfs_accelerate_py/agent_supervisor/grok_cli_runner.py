@@ -37,6 +37,13 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.provider_command_environment import (
+    PROVIDER_COMMAND_ENV_DIGEST_ENV,
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
+    PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV,
+    ProviderCommandEnvironmentError,
+    sealed_provider_command_environment,
+)
 from ipfs_accelerate_py.agent_supervisor.provider_failure_policy import (
     GROK_FAILURE_RECEIPT_PREFIX,
     GROK_QUOTA_PROBE_PROMPT,
@@ -44,6 +51,10 @@ from ipfs_accelerate_py.agent_supervisor.provider_failure_policy import (
     MAX_GROK_FAILURE_EVIDENCE_BYTES,
     build_grok_failure_receipt,
     render_grok_failure_receipt,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
+    ValidationRuntimeError,
 )
 
 DEFAULT_GROK_MODEL = "grok-4.5"

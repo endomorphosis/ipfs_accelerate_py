@@ -45803,26 +45803,60 @@ class PortalImplementationDaemon:
             )
 
         if provider == "auto":
+            # Usage-aware auto route: llm_router readiness probes + durable
+            # capacity/quota latches + capability_resolver preference policy.
+            # Grok is the default tie-breaker when both backends are ready.
+            from .implementation_provider_auto import (
+                AutoProviderDecision,
+                select_auto_implementation_provider,
+            )
+
             global_capacity_latched = any(
                 automatic_latches.get(family, {}).get("active", False)
                 for family in GLOBAL_PROVIDER_CAPACITY_FAMILIES
             )
-            grok_capacity_latched = bool(
-                automatic_latches.get("grok", {}).get("active", False)
+            grok_auth = False
+            grok_constructible = False
+            if _grok_binary():
+                try:
+                    from ...llm_router import (
+                        _grok_cli_auth_available,
+                        get_llm_provider,
+                    )
+
+                    grok_auth = bool(_grok_cli_auth_available())
+                    grok_constructible = (
+                        grok_auth and get_llm_provider("grok_cli") is not None
+                    )
+                except Exception:
+                    grok_auth = bool(grok_ready)
+                    grok_constructible = bool(grok_ready)
+            auto_selection = select_auto_implementation_provider(
+                grok_binary=bool(_grok_binary()),
+                grok_authenticated=bool(grok_auth or grok_ready),
+                grok_constructible=bool(
+                    grok_constructible or (grok_ready and _grok_binary())
+                ),
+                codex_binary=bool(shutil.which("codex")),
+                codex_authenticated=True,
+                latches=automatic_latches,
+                global_capacity_latched=global_capacity_latched,
             )
-            grok_quota_latched = bool(
-                grok_capacity_latched
-                and automatic_latches.get("grok", {}).get(
-                    "hard_quota_exhausted",
-                    False,
+            # Persist a compact receipt on the daemon event stream when possible.
+            try:
+                self._record_event(
+                    "implementation_provider_auto_selected",
+                    auto_selection.to_dict(),
                 )
-            )
-            if global_capacity_latched:
-                raise RuntimeError(
-                    "Automatic implementation providers are in a global "
-                    "capacity cooldown"
+            except Exception:
+                pass
+            if auto_selection.decision is AutoProviderDecision.GROK:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    failure_receipt_nonce=secrets.token_hex(32),
                 )
-            if grok_quota_latched:
+            if auto_selection.decision is AutoProviderDecision.CODEX:
                 if self._task_declares_independent_codex_review(task):
                     raise RuntimeError(
                         "Grok quota is exhausted, but Codex fallback cannot "
@@ -45856,21 +45890,22 @@ class PortalImplementationDaemon:
                         DEFAULT_CODEX_REASONING_EFFORT
                     ),
                 )
-            if grok_capacity_latched:
+            if auto_selection.decision is AutoProviderDecision.BACKOFF:
+                reasons = ", ".join(auto_selection.reason_codes) or "backoff"
                 raise RuntimeError(
-                    "Grok is in transient capacity cooldown; Codex fallback "
-                    "requires typed hard-quota exhaustion authority"
-                )
-            if grok_ready and _grok_binary():
-                return _grok_cli_command(
-                    workspace_path=workspace_path,
-                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
-                    failure_receipt_nonce=secrets.token_hex(32),
+                    "Automatic implementation providers are in capacity "
+                    f"cooldown ({reasons})"
+                    + (
+                        f"; retry_at={auto_selection.retry_at}"
+                        if auto_selection.retry_at
+                        else ""
+                    )
                 )
             raise RuntimeError(
                 "Automatic implementation requires authenticated Grok 4.5; "
                 "Codex fallback is authorized only after a durable Grok "
-                "quota-exhaustion latch"
+                "quota-exhaustion latch "
+                f"({', '.join(auto_selection.reason_codes) or 'unavailable'})"
             )
 
         # Prefer only when the binary is actually resolvable so an auth-only
