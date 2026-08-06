@@ -1746,12 +1746,37 @@ GOOSE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     }
 )
 CODEX_IMPLEMENTATION_PROVIDER_NAMES = frozenset({"codex", "openai"})
+CLAUDE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "claude",
+        "claude_code",
+        "claude-code",
+        "claude_cli",
+        "claude-cli",
+        "anthropic",
+    }
+)
+GEMINI_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "gemini",
+        "gemini_cli",
+        "gemini-cli",
+        "google_gemini",
+        "google-gemini",
+    }
+)
 SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {"auto", "copilot"}
     | set(GROK_IMPLEMENTATION_PROVIDER_NAMES)
     | set(GOOSE_IMPLEMENTATION_PROVIDER_NAMES)
     | set(CODEX_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(CLAUDE_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(GEMINI_IMPLEMENTATION_PROVIDER_NAMES)
 )
+_CLAUDE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CLAUDE_MODEL"
+_GEMINI_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GEMINI_MODEL"
+DEFAULT_CLAUDE_MODEL = ""
+DEFAULT_GEMINI_MODEL = ""
 _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
@@ -1812,6 +1837,58 @@ def _codex_implementation_command(
     if codex_max_depth:
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
     command.append("-")
+    return command
+
+
+def _claude_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Claude Code implementation argv (stdin prompt)."""
+
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get(_CLAUDE_MODEL_ENV, "").strip() or DEFAULT_CLAUDE_MODEL
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "claude",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
+def _gemini_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Gemini CLI implementation argv (stdin prompt)."""
+
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get(_GEMINI_MODEL_ENV, "").strip() or DEFAULT_GEMINI_MODEL
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "gemini",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
     return command
 
 
@@ -12434,6 +12511,10 @@ class PortalImplementationDaemon:
             return {"grok", "xai", "provider"}
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
+        if provider in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES:
+            return {"claude", "anthropic", "provider"}
+        if provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES:
+            return {"gemini", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
@@ -12441,6 +12522,18 @@ class PortalImplementationDaemon:
             labels.update({"grok", "xai", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
+        try:
+            from .cli_provider_balance import (
+                resolve_claude_cli_binary,
+                resolve_gemini_cli_binary,
+            )
+
+            if resolve_claude_cli_binary():
+                labels.update({"claude", "anthropic", "provider"})
+            if resolve_gemini_cli_binary():
+                labels.update({"gemini", "provider"})
+        except Exception:
+            pass
         return labels or {"provider"}
 
     @staticmethod
@@ -45841,6 +45934,8 @@ class PortalImplementationDaemon:
             "spark",
         }
         force_codex = provider in {"codex", "openai"}
+        force_claude = provider in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES
+        force_gemini = provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES
         force_copilot = provider == "copilot"
         automatic_latches = (
             self._provider_capacity_latch_states()
@@ -45932,40 +46027,21 @@ class PortalImplementationDaemon:
                     model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
                     failure_receipt_nonce=secrets.token_hex(32),
                 )
-            if auto_selection.decision in {
-                AutoProviderDecision.CLAUDE,
-                AutoProviderDecision.GEMINI,
-            }:
-                # Quota/balance observation selected a CLI that is healthy but
-                # not yet wired as an agent implementer. Prefer Codex when that
-                # secondary is eligible; otherwise fail closed with the receipt.
-                if (
-                    shutil.which("codex")
-                    and automatic_family_allowed("codex")
-                    and not automatic_latches.get("codex", {}).get("active", False)
-                ):
-                    codex = str(shutil.which("codex"))
-                    codex_context_window = (
-                        self._implementation_provider_context_window_for_task(
-                            task
-                        )[0]
-                        if task is not None
-                        else None
+            if auto_selection.decision is AutoProviderDecision.CLAUDE:
+                if not automatic_family_allowed("claude"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Claude is in capacity cooldown"
                     )
-                    return _codex_implementation_command(
-                        codex=codex,
-                        workspace_path=workspace_path,
-                        codex_context_window=codex_context_window,
-                        model_override=DEFAULT_CODEX_MODEL,
-                        reasoning_effort_override=(
-                            DEFAULT_CODEX_REASONING_EFFORT
-                        ),
+                return _claude_implementation_command(
+                    workspace_path=workspace_path,
+                )
+            if auto_selection.decision is AutoProviderDecision.GEMINI:
+                if not automatic_family_allowed("gemini"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and Gemini is in capacity cooldown"
                     )
-                raise RuntimeError(
-                    "Grok quota is exhausted and "
-                    f"{auto_selection.selected_provider} is healthy, but agent "
-                    "implement routing for that CLI is not enabled "
-                    f"({', '.join(auto_selection.reason_codes)})"
+                return _gemini_implementation_command(
+                    workspace_path=workspace_path,
                 )
             if auto_selection.decision is AutoProviderDecision.CODEX:
                 if self._task_declares_independent_codex_review(task):
@@ -46072,6 +46148,36 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
             )
+        if force_claude:
+            try:
+                from .cli_provider_balance import resolve_claude_cli_binary
+
+                if not resolve_claude_cli_binary():
+                    raise RuntimeError(
+                        f"Implementation provider {provider!r} requires Claude Code CLI"
+                    )
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires Claude Code CLI"
+                ) from exc
+            return _claude_implementation_command(workspace_path=workspace_path)
+        if force_gemini:
+            try:
+                from .cli_provider_balance import resolve_gemini_cli_binary
+
+                if not resolve_gemini_cli_binary():
+                    raise RuntimeError(
+                        f"Implementation provider {provider!r} requires Gemini CLI"
+                    )
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires Gemini CLI"
+                ) from exc
+            return _gemini_implementation_command(workspace_path=workspace_path)
         if force_copilot:
             if not copilot_allowed:
                 raise RuntimeError(
@@ -46108,8 +46214,8 @@ class PortalImplementationDaemon:
             )
         raise RuntimeError(
             "No implementation command configured. Install the Grok Build CLI "
-            "(`grok` with auth), goose (with Meta Spark credentials), codex, or "
-            "copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
+            "(`grok` with auth), goose (with Meta Spark credentials), codex, "
+            "claude, gemini, or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
