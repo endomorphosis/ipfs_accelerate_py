@@ -49,7 +49,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, ClassVar, Final
 
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     MultiformatsIdentityError,
     canonical_dag_json_bytes,
     cid_for_dag_json,

@@ -49,7 +49,7 @@ from ..context.context_contracts import (
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
-from ..release_evidence import (
+from ..runtime.release_evidence import (
     EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL,
     EXPECTED_OUTPUT_FORCE_ADD_FAILED,
     EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN,
@@ -57,12 +57,12 @@ from ..release_evidence import (
     EXPECTED_OUTPUT_MISSING,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
 )
-from ..implementation_timeout import (
+from .implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
     implementation_timeout_metadata_value,
 )
-from ..provider_failure_policy import (
+from ..runtime.provider_failure_policy import (
     extract_grok_failure_receipts,
     valid_grok_failure_receipt,
     valid_grok_hard_quota_receipt,
@@ -84,6 +84,7 @@ from ..merge.checkout_lock import (
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
     durable_input_generation,
+    generated_protected_board_commit_subject,
     generations_match,
     merge_target_queue_dir,
     read_checkout_mutation_lease,
@@ -91,7 +92,7 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
-from ..worktree_lifecycle import (
+from ..merge.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     DEFAULT_STARTUP_GRACE_SECONDS,
     CleanupDisposition,
@@ -119,7 +120,7 @@ from ..runtime.event_log import (
     unique_backup_path,
 )
 from ..control.control_contracts import CursorReplayError
-from ..evidence_output_scope import (
+from ..validation.evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
     normalize_evidence_output_path,
@@ -1714,7 +1715,7 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
-    from ..grok_cli_runner import build_grok_quota_routed_agent_command
+    from ..runtime.grok_cli_runner import build_grok_quota_routed_agent_command
 
     command = build_grok_quota_routed_agent_command(
         workspace=workspace_path.resolve(),
@@ -3771,6 +3772,9 @@ class PortalImplementationDaemon:
                 cancellation=implementation_cancelled,
             )
         self.decision_runtime = decision_runtime
+        # Optional injectable PreImplementationKernel for WPD-021 tests / composition.
+        # Production default builds a hermetic kernel at gate evaluation time.
+        self.pre_implementation_kernel = None
         self._last_runtime_decision: Any = None
         self._last_runtime_effect_observation: Any = None
         # A completion decision is emitted before its protected checkout
@@ -8530,14 +8534,17 @@ class PortalImplementationDaemon:
         return {task.task_id for task in representative.values()}
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
-        """Return whether this daemon lane should implement ``task_id``."""
+        """Return whether this daemon lane should implement ``task_id``.
+
+        Uses a stable full-ID hash rather than ``trailing_digits % N``. Sequential
+        boards (WPD-023, WPD-032, WPD-041, WPD-050, …) otherwise all land on the
+        same lane under strict sharding and leave sibling lanes idle forever.
+        """
 
         if self.task_shard_count <= 1:
             return True
-        match = re.search(r"(\d+)$", task_id)
-        if match is None:
-            return self.task_shard_index == 0
-        return int(match.group(1)) % self.task_shard_count == self.task_shard_index
+        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % self.task_shard_count == self.task_shard_index
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -11960,14 +11967,16 @@ class PortalImplementationDaemon:
         active_resource_claims = (
             self._active_implementation_resource_claims(tasks)
         )
+        active_claim_paths = tuple(active_resource_claims)
         resource_reserved_task_ids = {
             task.task_id
             for task in execution_tasks
             if any(
-                resource_path in active_resource_claims
+                self._resource_paths_overlap(resource_path, claimed_path)
                 for resource_path in self._task_implementation_resource_paths(
                     task
                 )
+                for claimed_path in active_claim_paths
             )
         }
         external_task_reservations = self._external_task_reservations(tasks)
@@ -13448,6 +13457,102 @@ class PortalImplementationDaemon:
             )
         self._record_event("implementation_provider_exhausted", result)
         return result
+
+    def _evaluate_pre_implementation_provider_gate(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        worktree_path: Path,
+    ) -> dict[str, Any]:
+        """WPD-021: seal a pre-implementation kernel disposition before provider use.
+
+        Provider dispatch is authorized only for ``residual_llm_authorized``
+        with a residual packet CID.  Returns a plain dict so the massive
+        implementation path stays free of hard import failures at module load.
+        """
+
+        try:
+            from .pre_implementation_provider_gate import (
+                evaluate_provider_gate,
+                build_forest_roots_from_identity,
+            )
+            from .implementation_disposition import implementation_disposition_cid
+        except Exception as exc:  # pragma: no cover - import hygiene fallback
+            return {
+                "skip_provider": True,
+                "provider_authorized": False,
+                "disposition": "defer_capability",
+                "reason_code": "pre_implementation_gate_import_failed",
+                "receipt_cid": "",
+                "event": {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "error": f"{type(exc).__name__}: {exc}"[-500:],
+                },
+            }
+
+        task_cid = self._canonical_ref(task) or task.task_id
+        repo_id = implementation_disposition_cid(
+            {"repo_root": str(self.repo_root), "kind": "repository"}
+        )
+        try:
+            head = (
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                ).stdout
+                or ""
+            ).strip() or "HEAD"
+            tree = (
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                ).stdout
+                or ""
+            ).strip() or head
+        except OSError:
+            head = "HEAD"
+            tree = "HEAD"
+        forest = build_forest_roots_from_identity(
+            repository_id=f"repository:{repo_id}",
+            repository_forest_cid=implementation_disposition_cid(
+                {"head": head, "tree": tree}
+            ),
+            git_tree_id=tree if " " not in tree else implementation_disposition_cid(
+                {"tree": tree}
+            ),
+            policy_root=implementation_disposition_cid(
+                {"policy": "wpd-pre-implementation@1"}
+            ),
+        )
+        kernel = getattr(self, "pre_implementation_kernel", None)
+        decision = evaluate_provider_gate(
+            task_cid=task_cid,
+            forest_roots=forest,
+            attempt=int(attempt),
+            kernel=kernel,
+            allow_legacy_residual=True,
+        )
+        return {
+            "skip_provider": decision.skip_provider,
+            "provider_authorized": decision.provider_authorized,
+            "disposition": decision.disposition.value,
+            "reason_code": decision.reason_code,
+            "receipt_cid": decision.receipt_cid,
+            "residual_packet_cid": decision.residual_packet_cid,
+            "provider_hook_count": decision.provider_hook_count,
+            "event": decision.to_event_payload(
+                task_id=task.task_id,
+                attempt=int(attempt),
+            ),
+        }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         authority_revalidation_only = (
@@ -22790,52 +22895,104 @@ class PortalImplementationDaemon:
                         returncode=0,
                     )
                 else:
-                    def invoke_provider() -> subprocess.CompletedProcess[str]:
-                        nonlocal provider_dispatched
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            )
-                        )
-                        progress_observer = (
-                            self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            )
-                        )
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=worktree_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=provider_environment,
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=progress_observer,
-                        )
-
-                    completed = self._decision_runtime_mutation(
-                        "command_invocation",
-                        {
-                            "operation": "implementation_provider",
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "command": tuple(command),
-                            "workspace_path": str(worktree_path),
-                            "branch": branch_name,
-                        },
-                        invoke_provider,
+                    # WPD-021: PreImplementationKernel gate — provider path is
+                    # unreachable unless disposition is residual_llm_authorized
+                    # with a residual packet CID.
+                    provider_gate = self._evaluate_pre_implementation_provider_gate(
+                        task=task,
+                        attempt=attempt,
+                        worktree_path=worktree_path,
                     )
+                    self._record_event(
+                        "pre_implementation_kernel_evaluated",
+                        dict(provider_gate.get("event") or {}),
+                    )
+                    if provider_gate.get("skip_provider"):
+                        disposition = str(provider_gate.get("disposition") or "")
+                        log_fh.write(
+                            "PreImplementationKernel: "
+                            f"disposition={disposition} "
+                            f"reason={provider_gate.get('reason_code')} "
+                            f"receipt_cid={provider_gate.get('receipt_cid')}\n"
+                        )
+                        log_fh.flush()
+                        if disposition == "closed_deterministic":
+                            # Analytical / doctor path closed the claim —
+                            # do not invoke the model provider.
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=0,
+                            )
+                        else:
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=1,
+                            )
+                            provider_failure = {
+                                "reason": "pre_implementation_kernel_blocked_provider",
+                                "disposition": disposition,
+                                "reason_code": str(
+                                    provider_gate.get("reason_code") or ""
+                                ),
+                                "receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            }
+                    else:
+                        def invoke_provider() -> subprocess.CompletedProcess[str]:
+                            nonlocal provider_dispatched
+                            # Fail closed if gate identity drifted.
+                            if not provider_gate.get("provider_authorized"):
+                                raise RuntimeError(
+                                    "provider dispatch blocked by pre-implementation kernel"
+                                )
+                            provider_environment = (
+                                self._implementation_process_environment(
+                                    task,
+                                    attempt=attempt,
+                                    checkpoint_dir=checkpoint_dir,
+                                )
+                            )
+                            progress_observer = (
+                                self._implementation_progress_observer(
+                                    state,
+                                    task,
+                                    attempt=attempt,
+                                )
+                            )
+                            provider_dispatched = True
+                            return run_process_group_stream(
+                                command,
+                                cwd=worktree_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=progress_observer,
+                            )
+
+                        completed = self._decision_runtime_mutation(
+                            "command_invocation",
+                            {
+                                "operation": "implementation_provider",
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "command": tuple(command),
+                                "workspace_path": str(worktree_path),
+                                "branch": branch_name,
+                                "pre_implementation_receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            },
+                            invoke_provider,
+                        )
             returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -34288,7 +34445,7 @@ class PortalImplementationDaemon:
             # No-command success paths already return passed=True.
             return result
 
-        from ..implementation_failure_review import (
+        from ..validation.implementation_failure_review import (
             FailureReviewDecision,
             compact_failure_review,
             review_implementation_failure,
@@ -34326,7 +34483,7 @@ class PortalImplementationDaemon:
             adjudication = self._implementation_scope_adjudications.get(proposal_id)
             if adjudication is not None:
                 try:
-                    from ..scope_adjudication import compact_scope_adjudication
+                    from ..validation.scope_adjudication import compact_scope_adjudication
 
                     scope_payload = compact_scope_adjudication(adjudication)
                     result["scope_adjudication"] = scope_payload
@@ -42055,6 +42212,58 @@ class PortalImplementationDaemon:
                     return False
         return True
 
+    def _candidate_merge_changed_paths(
+        self,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> set[str] | None:
+        """Union of paths each candidate would introduce relative to target.
+
+        Returns ``None`` when any candidate ref is unresolvable so callers
+        remain fail-closed rather than treating unknown work as nonblocking.
+        """
+
+        changed: set[str] = set()
+        if not candidates:
+            return changed
+        if not target_branch or not self._git_ref_exists(target_branch):
+            return None
+        for event in candidates:
+            branch = str(event.get("branch") or "").strip()
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            ).strip()
+            candidate_ref = (
+                branch
+                if branch and self._git_ref_exists(branch)
+                else implementation_commit
+            )
+            if not candidate_ref or not self._git_ref_exists(candidate_ref):
+                return None
+            paths = self._branch_changed_paths_in_repo(
+                self.repo_root,
+                candidate_ref,
+                base_ref=target_branch,
+            )
+            if paths is None:
+                return None
+            changed.update(paths)
+        return changed
+
+    def _dirty_path_nonoverlapping_candidate_changes(
+        self,
+        relative: str,
+        candidate_changed_paths: set[str] | None,
+    ) -> bool:
+        """True when dirt cannot collide with any candidate merge path set."""
+
+        if candidate_changed_paths is None:
+            return False
+        if not self._repo_relative_path_safe(relative):
+            return False
+        return not self._overlapping_paths([relative], candidate_changed_paths)
+
     def _reconciliation_blocking_dirty_paths(
         self,
         candidates: Sequence[dict[str, Any]],
@@ -42063,6 +42272,10 @@ class PortalImplementationDaemon:
     ) -> tuple[list[str], list[str]]:
         blocking: list[str] = []
         nonblocking: list[str] = []
+        candidate_changed_paths = self._candidate_merge_changed_paths(
+            candidates,
+            target_branch=target_branch,
+        )
         for relative in sorted(self._dirty_worktree_paths(self.repo_root)):
             state_relative = ""
             try:
@@ -42086,6 +42299,15 @@ class PortalImplementationDaemon:
             ):
                 nonblocking.append(relative)
                 continue
+            # Tracked or untracked dirt that no candidate touches must not stall
+            # the entire merge reconciliation batch (e.g. residual board index
+            # edits while independent residual install branches are ready).
+            if self._dirty_path_nonoverlapping_candidate_changes(
+                relative,
+                candidate_changed_paths,
+            ):
+                nonblocking.append(relative)
+                continue
             if self._dirty_gitlink_is_unchanged_for_candidates(
                 relative,
                 candidates,
@@ -42099,6 +42321,81 @@ class PortalImplementationDaemon:
             else:
                 blocking.append(relative)
         return blocking, nonblocking
+
+    def _attempt_auto_clear_reconciliation_dirt(
+        self,
+        dirty_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        """Commit safe residual/board dirt so merge reconciliation can proceed.
+
+        Residual install lanes and board registration frequently leave
+        ``data/agent_supervisor/**`` and readiness board artifacts dirty on the
+        integration checkout. Those outputs are supervisor-owned and must not
+        permanently stall validated candidate merges.
+        """
+
+        safe_prefixes = (
+            "data/agent_supervisor/",
+            "docs/architecture/",
+        )
+        safe_paths = [
+            path
+            for path in dirty_paths
+            if any(
+                path == prefix.rstrip("/") or path.startswith(prefix)
+                for prefix in safe_prefixes
+            )
+            and self._repo_relative_path_safe(path)
+        ]
+        if not safe_paths:
+            return {
+                "attempted": False,
+                "reason": "no_safe_reconciliation_dirt",
+                "dirty_paths": list(dirty_paths),
+            }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+                commit_generated_dirty_outputs,
+            )
+        except Exception as exc:  # pragma: no cover - import surface
+            return {
+                "attempted": False,
+                "reason": "auto_clear_import_failed",
+                "error": str(exc),
+            }
+        subject = generated_protected_board_commit_subject(
+            "Agent: auto-commit residual board dirt for merge reconciliation"
+        )
+        # Prefer prefix commits so untracked residual receipts and bundle
+        # shards under data/agent_supervisor are included.
+        prefixes = sorted(
+            {
+                "data/agent_supervisor",
+                "docs/architecture",
+            }
+        )
+        try:
+            result = commit_generated_dirty_outputs(
+                repo_root=self.repo_root,
+                generated_paths=[],
+                generated_prefixes=prefixes,
+                protected_paths=tuple(self.implementation_protected_paths or ()),
+                subject=subject,
+                max_paths=max(50, len(safe_paths) + 20),
+            )
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "reason": "auto_clear_failed",
+                "error": str(exc),
+                "safe_paths": safe_paths,
+            }
+        payload = dict(result) if isinstance(result, Mapping) else {"result": result}
+        payload.setdefault("attempted", True)
+        payload["safe_paths"] = safe_paths
+        if payload.get("committed_count") or payload.get("selected_path_count"):
+            self._record_event("reconciliation_dirt_auto_cleared", payload)
+        return payload
 
     def _revalidated_landed_completion_recovery(
         self,
@@ -42248,6 +42545,25 @@ class PortalImplementationDaemon:
                 candidates,
                 target_branch=target_branch,
             )
+            dirt_auto_clear: dict[str, Any] | None = None
+            if main_checkout_dirty_paths:
+                # Residual board registration / managed residual receipts often
+                # leave the integration checkout dirty. Commit that
+                # supervisor-owned dirt automatically, then re-evaluate so
+                # validated candidates are not stuck forever.
+                dirt_auto_clear = self._attempt_auto_clear_reconciliation_dirt(
+                    main_checkout_dirty_paths
+                )
+                if dirt_auto_clear.get("committed_count") or dirt_auto_clear.get(
+                    "selected_path_count"
+                ):
+                    (
+                        main_checkout_dirty_paths,
+                        nonblocking_dirty_paths,
+                    ) = self._reconciliation_blocking_dirty_paths(
+                        candidates,
+                        target_branch=target_branch,
+                    )
             if main_checkout_dirty_paths:
                 result = {
                     "resolved": False,
@@ -42260,17 +42576,22 @@ class PortalImplementationDaemon:
                     result["nested_artifact_preservation"] = nested_artifact_preservation
                 if nonblocking_dirty_paths:
                     result["nonblocking_dirty_paths"] = nonblocking_dirty_paths
+                if dirt_auto_clear:
+                    result["dirt_auto_clear"] = dirt_auto_clear
                 self._record_event("merge_reconciliation_deferred", result)
                 results.append(result)
                 return results
-            if nonblocking_dirty_paths or nested_artifact_preservation:
+            if nonblocking_dirty_paths or nested_artifact_preservation or dirt_auto_clear:
+                event_payload: dict[str, Any] = {
+                    "nonblocking_dirty_paths": nonblocking_dirty_paths,
+                    "nested_artifact_preservation": nested_artifact_preservation,
+                    "candidate_count": len(candidates),
+                }
+                if dirt_auto_clear:
+                    event_payload["dirt_auto_clear"] = dirt_auto_clear
                 self._record_event(
                     "merge_reconciliation_nonblocking_checkout_state",
-                    {
-                        "nonblocking_dirty_paths": nonblocking_dirty_paths,
-                        "nested_artifact_preservation": nested_artifact_preservation,
-                        "candidate_count": len(candidates),
-                    },
+                    event_payload,
                 )
         now_monotonic = time.monotonic()
         active_commits = {
@@ -43615,32 +43936,71 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask,
     ) -> tuple[str, ...]:
-        """Return configured submodule roots affected by one task's outputs."""
+        """Return shared resource paths claimed for one task's outputs.
+
+        Prefer **declared output paths** under configured submodule roots so
+        multi-lane boards (e.g. WPD) can run disjoint file claims in parallel.
+        Falling back to whole submodule roots would serialize every task that
+        touches ``external/ipfs_accelerate`` and permanently under-utilize
+        strict multi-lane supervisors.
+
+        When a task declares no outputs under configured submodules, return
+        empty (no shared resource claim). Whole-submodule fallback is retained
+        only when an output equals a configured submodule root exactly.
+        """
 
         outputs = normalize_relative_path_list(task_declared_output_paths(task))
-        matched = [
-            resource
-            for resource in self.worktree_submodule_paths
-            if any(
-                output == resource or output.startswith(f"{resource}/")
-                for output in outputs
+        if not outputs:
+            return ()
+        submodule_roots = tuple(
+            str(path).strip().rstrip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip()
+        )
+        precise: list[str] = []
+        whole_roots: list[str] = []
+        for output in outputs:
+            matched_root = next(
+                (
+                    root
+                    for root in submodule_roots
+                    if output == root or output.startswith(f"{root}/")
+                ),
+                "",
             )
-        ]
-        # A claim for an outer submodule also protects every nested gitlink.
-        # Retain only the broadest matched roots so acquisition stays ordered
-        # and does not manufacture self-conflicts for nested configurations.
-        selected: list[str] = []
+            if not matched_root:
+                continue
+            if output == matched_root:
+                whole_roots.append(matched_root)
+            else:
+                precise.append(output)
+        # Prefer precise file claims; only expand to whole roots when the
+        # task literally targets the submodule root as an output.
+        selected = precise if precise else whole_roots
+        # Drop children of broader selected paths so one task does not
+        # self-deadlock on parent+child claims.
+        collapsed: list[str] = []
         for resource in sorted(
-            matched,
+            set(selected),
             key=lambda item: (len(PurePosixPath(item).parts), item),
         ):
             if any(
                 resource == parent or resource.startswith(f"{parent}/")
-                for parent in selected
+                for parent in collapsed
             ):
                 continue
-            selected.append(resource)
-        return tuple(selected)
+            collapsed.append(resource)
+        return tuple(collapsed)
+
+    @staticmethod
+    def _resource_paths_overlap(left: str, right: str) -> bool:
+        """True when two resource claims protect overlapping checkout paths."""
+
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        return left.startswith(f"{right}/") or right.startswith(f"{left}/")
 
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         identity = self._identity_for_task(task)
@@ -43892,7 +44252,12 @@ class PortalImplementationDaemon:
         self,
         tasks: Sequence[PortalTask],
     ) -> dict[str, dict[str, Any]]:
-        """Return live shared-resource claims without mutating their leases."""
+        """Return live shared-resource claims without mutating their leases.
+
+        Scans the shared claim directory for all live locks (not only paths
+        currently declared by the board) so file-granular claims still see
+        legacy whole-submodule claims held by in-flight attempts.
+        """
 
         active_claims: dict[str, dict[str, Any]] = {}
         resource_paths = {
@@ -43902,19 +44267,44 @@ class PortalImplementationDaemon:
                 task
             )
         }
+        claim_dir = checkout_mutation_lock_path(
+            self.repo_root,
+            lock_name=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME,
+        )
+        lock_paths: list[Path] = []
+        if claim_dir.is_dir():
+            lock_paths.extend(sorted(claim_dir.glob("submodule-*.lock")))
         for resource_path in sorted(resource_paths):
-            claim_path = self._implementation_resource_claim_path(
-                resource_path
+            lock_paths.append(
+                self._implementation_resource_claim_path(resource_path)
             )
-            if not claim_path.exists():
+        seen_locks: set[Path] = set()
+        for claim_path in lock_paths:
+            try:
+                resolved = claim_path.resolve()
+            except OSError:
+                resolved = claim_path
+            if resolved in seen_locks or not claim_path.exists():
                 continue
+            seen_locks.add(resolved)
             metadata = load_json_dict(claim_path)
-            if (
-                metadata is not None
-                and self._implementation_resource_claim_owner_is_active(
-                    metadata
-                )
+            if metadata is None:
+                continue
+            if not self._implementation_resource_claim_owner_is_active(
+                metadata
             ):
+                continue
+            resource_path = str(metadata.get("resource_path") or "").strip()
+            if not resource_path:
+                # Fall back to matching known board paths for this lock file.
+                for candidate in resource_paths:
+                    if (
+                        self._implementation_resource_claim_path(candidate)
+                        == claim_path
+                    ):
+                        resource_path = candidate
+                        break
+            if resource_path:
                 active_claims[resource_path] = metadata
         return active_claims
 

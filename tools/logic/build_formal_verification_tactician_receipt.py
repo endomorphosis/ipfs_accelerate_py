@@ -362,6 +362,10 @@ RELEASE_CANDIDATE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
         DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
         "docs/architecture/formal_verification_toolchain_certificate.json",
         DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix(),
+        # Checked vendor install receipts that the elevation fan-in joins.
+        "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+        "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json",
+        "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
     }
 )
 
@@ -4533,6 +4537,38 @@ def _approved_redacted_executable_candidates(
         (root / "bin").resolve()
         for root in roots
     ]
+    # Versioned plugin install trees under the approved managed root.
+    # Hermetic Runtime MTL parity engines are intentionally never
+    # PATH-published as the managed vendor launcher (bin/runtime-mtl), but
+    # their digest-bound versioned bin must still rebind for non-production
+    # semantic platform audit so exact hermetic bindings are live-managed
+    # authority rather than omissions.
+    plugin_name = str(lock_entry.get("installer_plugin") or "").strip()
+    tool_id = str(lock_entry.get("tool_id") or "").strip()
+    if plugin_name == "runtime_mtl" or tool_id in {
+        "runtime-mtl-external",
+        "runtime-mtl",
+    }:
+        for root in roots:
+            for lane in ("runtime-mtl-external", "runtime-mtl-vendor"):
+                lane_root = (root / lane).resolve()
+                if not lane_root.is_dir():
+                    continue
+                try:
+                    tool_dirs = list(lane_root.iterdir())
+                except OSError:
+                    continue
+                for tool_dir in tool_dirs:
+                    if not tool_dir.is_dir():
+                        continue
+                    try:
+                        version_dirs = list(tool_dir.iterdir())
+                    except OSError:
+                        continue
+                    for version_dir in version_dirs:
+                        bin_dir = (version_dir / "bin").resolve()
+                        if bin_dir.is_dir() and bin_dir not in managed_bins:
+                            managed_bins.append(bin_dir)
     managed_path = os.pathsep.join(str(path) for path in managed_bins)
     candidates: list[Path] = []
     seen: set[str] = set()

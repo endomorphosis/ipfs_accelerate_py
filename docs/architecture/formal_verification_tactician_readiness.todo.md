@@ -6798,13 +6798,13 @@ disable objective refill and use only the generated FVT bundle index.
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-capability-fanin
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-fanin.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-capability-fanin
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {apalache,tlc,coq,isabelle,vampire,eprover,tamarin,maude,stack,proverif,opam,secpal,souffle,ergoai,temurin-jdk,runtime-mtl-external}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G234
@@ -6830,19 +6830,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-tlc-apalache
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-tlc-apalache.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-tlc-apalache
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {tlc,apalache}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G235
@@ -6868,19 +6868,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-vampire-eprover
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-vampire-eprover.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-vampire-eprover
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {vampire,eprover}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G236
@@ -6906,19 +6906,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-tamarin-maude-stack
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-tamarin-maude-stack.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-tamarin-maude-stack
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {tamarin,maude,stack}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G237
@@ -6944,19 +6944,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-proverif-opam
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-proverif-opam.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-proverif-opam
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {proverif,opam}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G238
@@ -6982,19 +6982,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-rocq-coq
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-rocq-coq.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-rocq-coq
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {coq}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G239
@@ -7020,19 +7020,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-isabelle
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-isabelle.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-isabelle
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {isabelle}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G240
@@ -7058,19 +7058,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-souffle-secpal
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-souffle-secpal.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-souffle-secpal
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {souffle,secpal}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G241
@@ -7096,19 +7096,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-ergoai-temurin
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-ergoai-temurin.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-ergoai-temurin
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {ergoai,temurin-jdk}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G242
@@ -7134,19 +7134,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-runtime-mtl-external
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-runtime-mtl-external.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-runtime-mtl-external
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {runtime-mtl-external}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G243
@@ -7172,19 +7172,19 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: managed-capability-residual
-- Depends on: FVT-102
+- Depends on: FVT-094
 - Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
 - Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-elevation-datalog-secpal
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-elevation-datalog-secpal.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-elevation-datalog-secpal
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {datalog-authorization,secpal-authorization}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G244
@@ -7216,13 +7216,13 @@ disable objective refill and use only the generated FVT bundle index.
 - Board namespace: formal_verification_tactician_readiness.todo.md
 - Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
 - Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
-- Bundle: formal-verification-tactician/managed-capability-closure
-- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-closure.todo.md
+- Bundle: formal-verification-tactician/managed-capability-reseal
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-reseal.todo.md
 - Bundle strategy: explicit
 - Graph parents: FVT-G000
 - Graph depth: 1
 - Objective heap index: 0
-- Parallel lane: formal-verification-tactician/managed-capability-closure
+- Parallel lane: formal-verification-tactician/managed-capability-reseal
 - Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {deployment-receipt,matrix}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
 - Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
 - Goal id: FVT-G245

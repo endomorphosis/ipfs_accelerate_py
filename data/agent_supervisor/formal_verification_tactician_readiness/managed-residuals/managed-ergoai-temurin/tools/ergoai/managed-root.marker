@@ -1,0 +1,37 @@
+{
+  "authority_ceiling": "advisory",
+  "certification_status": "vendor_certified",
+  "deployment_ready_claimed": false,
+  "goal_id": "FVT-G242",
+  "grants_proof_authority": false,
+  "grants_theorem_authority": false,
+  "identities": {
+    "identity_manifest_sha256": "5a05de96f0652f18cfd8233a4a251afe2749d20ffc2e7da997f90e5c9d2b39f7",
+    "launcher_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190",
+    "lock_pin_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_tag": "v3.0_release"
+  },
+  "install_status": "available",
+  "interface": "ManagedRootMarker@1",
+  "is_hermetic_advisor_shim": false,
+  "lane_id": "managed-ergoai-temurin",
+  "live_vendor": true,
+  "locked_version": "3.0",
+  "managed_root_kind": "user_local",
+  "notes": "Marker binds the user-local live ErgoAI 3.0 managed vendor tree. Sealed /opt advisors/ergoai remains a hermetic shim and is not claimed ready.",
+  "observed_at": "2026-08-05T16:18:08Z",
+  "program": "formal-verification-tactician/managed-ergoai-temurin",
+  "relative_paths": {
+    "identity_manifest": "advisors/ergoai/3.0/identity.json",
+    "launcher": "bin/ergoai",
+    "runtime_toolchain_bin": "advisors/ergoai/3.0/runtime-toolchain-bin",
+    "vendor_tree": "advisors/ergoai/3.0/vendor-46f9747db118567a-relocatable-v3"
+  },
+  "role": "advisor",
+  "schema_version": "formal-verification-managed-root-marker/v1",
+  "sealed_root_is_hermetic_shim": true,
+  "task_id": "FVT-110",
+  "tool_id": "ergoai",
+  "marker_digest_sha256": "sha256:bfd73a33b003b2ddf5b5eb9387485ca972bd9d07a1768ca350e3f218cfe335e0"
+}

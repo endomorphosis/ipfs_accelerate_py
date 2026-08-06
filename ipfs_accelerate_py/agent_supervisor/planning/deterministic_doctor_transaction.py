@@ -53,7 +53,7 @@ from ..analysis.deterministic_doctor_impact import (
     doctor_roots_to_propagation_roots,
     path_is_forbidden,
 )
-from ..planning.change_propagation_transaction import (
+from .change_propagation_transaction import (
     CHANGE_PROPAGATION_TRANSACTION_INTERFACE,
     GroupExecutionDisposition,
     PropagationCheckpoint,

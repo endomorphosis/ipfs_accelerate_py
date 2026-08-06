@@ -310,7 +310,7 @@ def classify_property_kind(
 def to_canonical_property_kind(value: PropertyKind | str) -> str:
     """Project a supervisor property kind onto the datasets property vocabulary."""
 
-    from ..canonical_logic_adapter import map_property_kind_to_canonical
+    from .canonical_logic_adapter import map_property_kind_to_canonical
 
     try:
         return map_property_kind_to_canonical(value)

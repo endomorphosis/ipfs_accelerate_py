@@ -1,0 +1,271 @@
+{
+  "acceptance": {
+    "fvt113_reseal_required_for_deployment_receipt": true,
+    "goal_id": "FVT-G242",
+    "live_positive_negative_mutation_replay_for_capability_tools": true,
+    "never_grants_theorem_authority": true,
+    "never_greenwashes_sealed_shim": true,
+    "never_marks_deployment_ready": true,
+    "task_id": "FVT-110"
+  },
+  "advisor_lane_certification": {
+    "advisors_never_promote_alone": true,
+    "block_reasons": [],
+    "goal_id": "FVT-G160",
+    "install_identity_passed": true,
+    "interface": "AdvisorRoleCertification@1",
+    "production_certified": true,
+    "promotion_blocked": true,
+    "role_matrix_passed": true,
+    "schema_version": "advisor-role-certification/v1",
+    "semantic_corpus_passed": true,
+    "task_id": "FVT-050"
+  },
+  "binding_mode": "user_local_managed_live_residual",
+  "deployment_blockers_addressed": {
+    "managed:ergoai:launcher_target_artifact_unbound": {
+      "sealed_root": "still_unbound_or_shim",
+      "user_local": "cleared_via_live_vendor_launcher"
+    },
+    "managed:ergoai:supported_managed_installation_missing_or_shim_only": {
+      "sealed_root": "still_shim_only",
+      "user_local": "cleared"
+    },
+    "managed:temurin-jdk": {
+      "note": "Temurin was not listed as a residual capability blocker in the checked-in deployment receipt; residual still publishes lock-matching support evidence for FVT-113.",
+      "sealed_root": "missing_lock_matching_tree",
+      "user_local": "lock_matching_install_certified"
+    }
+  },
+  "goal_id": "FVT-G242",
+  "host_platform": "linux-aarch64",
+  "install_receipt_digest_sha256": "sha256:4bd69d47c19d71702493610a2e473f9fbfc20494f0dac08d12fa94cab887fa8f",
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "lane_id": "managed-ergoai-temurin",
+  "observed_at": "2026-08-05T16:18:08Z",
+  "policy": {
+    "advisor_output_is_not_proof": true,
+    "ambient_java_home_never_satisfies_managed_capability": true,
+    "fixture_cannot_substitute_live_vendor_execution": true,
+    "path_presence_is_not_usability": true
+  },
+  "program": "formal-verification-tactician/managed-ergoai-temurin",
+  "schema_version": "formal-verification-managed-capability-residual-certification-receipt/v1",
+  "summary": {
+    "all_lane_tools_certified_user_local": true,
+    "deployment_ready_claimed": false,
+    "ergoai_certified": true,
+    "honest_residual_only": true,
+    "production_elevation_claimed": false,
+    "sealed_root_declared_ready": false,
+    "temurin_certified": true,
+    "theorem_authority_claimed": false
+  },
+  "task_id": "FVT-110",
+  "tool_ids": [
+    "ergoai",
+    "temurin-jdk"
+  ],
+  "tools": {
+    "ergoai": {
+      "authoritative_live_evidence": false,
+      "authority_ceiling": "advisory",
+      "block_reasons": [],
+      "check_kinds_observed": [
+        "authority",
+        "install",
+        "mutation",
+        "negative",
+        "policy",
+        "positive",
+        "replay"
+      ],
+      "checks": [
+        {
+          "check_id": "advisors.ergoai_live.identity",
+          "kind": "install",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.provenance",
+          "kind": "policy",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.positive",
+          "kind": "positive",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.negative",
+          "kind": "negative",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.mutation",
+          "kind": "mutation",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.replay",
+          "kind": "replay",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.authority_boundary",
+          "kind": "authority",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        },
+        {
+          "check_id": "advisors.ergoai_live.replay_invariant",
+          "kind": "replay",
+          "reason_codes": [],
+          "status": "passed",
+          "tool_id": "ergoai"
+        }
+      ],
+      "download_attempted": false,
+      "evidence_class": "checksummed_managed_vendor_execution_advisory_only",
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "identity_manifest_digest_sha256": "5a05de96f0652f18cfd8233a4a251afe2749d20ffc2e7da997f90e5c9d2b39f7",
+      "install_attempted": false,
+      "locked_version": "3.0",
+      "managed_vendor_live_evidence": true,
+      "network_used": false,
+      "notes": "Live managed-vendor certification against the user-local managed root. Does not rewrite sealed /opt hermetic shim; FVT-113 reseals certificates.",
+      "production_certified": true,
+      "promotion_blocked": true,
+      "residual_clears_user_local_managed_gates": true,
+      "role": "advisor",
+      "selected_platform": "linux-aarch64",
+      "semantic_evidence_digest_sha256": "b7dd8eb19ee40659f8ea10eea5d0841ab07bd28f45ad972b8acee304c9c6e1ac",
+      "source_interfaces": [
+        "LiveErgoAIAdvisorCertification@1",
+        "ErgoAILiveToolchainContract@1"
+      ],
+      "tool_id": "ergoai",
+      "vendor_certified": true
+    },
+    "temurin-jdk": {
+      "ambient_java_home_trusted": false,
+      "authority_ceiling": "advisory",
+      "authority_tool": false,
+      "block_reasons": [],
+      "case_kinds": [
+        "live_install",
+        "publisher_evidence",
+        "vendor_java_consumer",
+        "hello_world_rejected",
+        "timeout_process_tree",
+        "workspace_cleanup",
+        "home_relocation_replay",
+        "dependency_mutation_reject",
+        "single_flight",
+        "force_rollback",
+        "home_path_boundary",
+        "core_ergoai_independent",
+        "authority_ceiling"
+      ],
+      "cases": [
+        {
+          "kind": "live_install",
+          "satisfied": true,
+          "status": "passed"
+        },
+        {
+          "kind": "publisher_evidence",
+          "satisfied": true,
+          "status": "passed"
+        },
+        {
+          "kind": "vendor_java_consumer",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "hello_world_rejected",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "timeout_process_tree",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "workspace_cleanup",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "home_relocation_replay",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "dependency_mutation_reject",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "single_flight",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "force_rollback",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "home_path_boundary",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "core_ergoai_independent",
+          "satisfied": null,
+          "status": "passed"
+        },
+        {
+          "kind": "authority_ceiling",
+          "satisfied": null,
+          "status": "passed"
+        }
+      ],
+      "certified": true,
+      "core_ergoai_independent": true,
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "locked_version": "17.0.20+8",
+      "notes": "Temurin is support-only for ErgoAI Java API; never theorem authority. Lock pin 17.0.20+8 bound under user-local managed root.",
+      "optional_capability": "ergoai-java-api",
+      "platform": "linux-aarch64",
+      "receipt_digest_sha256": "e359d07d8f19be70ff0b709f73cd134ecb4774dbfa274c927e59229c2716513b",
+      "residual_clears_user_local_managed_gates": true,
+      "role": "advisor",
+      "source_interfaces": [
+        "ErgoAIJavaAPILiveCertification@1",
+        "ErgoAIJavaAPILiveCertification@1"
+      ],
+      "support_only": true,
+      "tool_id": "temurin-jdk"
+    }
+  },
+  "receipt_digest_sha256": "sha256:53ec6b3cc86a689ef5d569df800e23f79b0d99a459d0a5aea3a789cf3503dc63"
+}

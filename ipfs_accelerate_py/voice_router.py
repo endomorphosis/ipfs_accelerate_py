@@ -4026,6 +4026,140 @@ def _synthesis_identity_from_request(request: VoiceTurnRequest) -> SynthesisIden
     )
 
 
+def _text_metadata_field(value: object) -> Optional[str]:
+    """Return a stripped non-empty string, or None."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _route_from_template_metadata(
+    plan: Optional[VoiceResponsePlan],
+) -> Optional[str]:
+    """Extract a slotted-DAG route from plan metadata when present.
+
+    Only template/plan metadata is authoritative for this attach path. Request
+    context may carry routing hints for other layers, but process_voice_turn
+    attaches action candidates only when the retrieved plan names a route.
+    """
+
+    if plan is None:
+        return None
+    metadata = plan.metadata if isinstance(plan.metadata, Mapping) else {}
+    for key in ("route", "response_route"):
+        route = _text_metadata_field(metadata.get(key))
+        if route is not None:
+            return route
+    return None
+
+
+def _evidence_refs_for_action(
+    plan: Optional[VoiceResponsePlan],
+) -> Tuple[str, ...]:
+    """Stable evidence digests/cids for authority-free proposal provenance."""
+
+    if plan is None:
+        return ()
+    refs: list[str] = []
+    for item in plan.evidence or ():
+        ref = _text_metadata_field(getattr(item, "cid", None)) or _text_metadata_field(
+            getattr(item, "source_id", None)
+        )
+        if ref is not None:
+            refs.append(ref)
+    return tuple(dict.fromkeys(refs))
+
+
+def _action_candidates_from_plan(
+    plan: Optional[VoiceResponsePlan],
+    *,
+    transcript: str,
+    request: VoiceTurnRequest,
+) -> Tuple[Optional[str], Tuple[Dict[str, object], ...]]:
+    """Build authority-free action candidates from a plan route.
+
+    Uses the content-plane voice_bridge proposal factory only. Never loads or
+    runs adapters, policy engines, or executors inside the voice turn path.
+    """
+
+    route = _route_from_template_metadata(plan)
+    if route is None:
+        return None, ()
+
+    try:
+        # Lazy import keeps voice_router free of action_runtime side effects at
+        # module load; proposal factory is pure (no process spawn, no network).
+        from .action_runtime.voice_bridge import (
+            NO_ACTION,
+            classify_route,
+            propose_from_voice_route,
+        )
+    except Exception as error:  # pragma: no cover - optional surface
+        logger.debug(
+            "action candidate attach unavailable: %s",
+            type(error).__name__,
+            exc_info=True,
+        )
+        return route, ()
+
+    context = request.context if isinstance(request.context, Mapping) else {}
+    channel = (
+        _text_metadata_field(context.get("channel"))
+        or _text_metadata_field(context.get("surface"))
+        or "voice"
+    )
+    tenant_id = _text_metadata_field(context.get("tenant_id")) or _text_metadata_field(
+        context.get("tenantId")
+    )
+    session_id = _text_metadata_field(context.get("session_id")) or _text_metadata_field(
+        context.get("sessionId")
+    )
+    evidence = _evidence_refs_for_action(plan)
+    confidence = float(plan.confidence) if plan is not None else 0.0
+    template_id = plan.template_id if plan is not None else None
+
+    proposal = propose_from_voice_route(
+        route=route,
+        transcript=transcript or "",
+        template_id=template_id,
+        tenant_id=tenant_id,
+        session_id=session_id,
+        channel=channel,
+        confidence=confidence,
+        evidence=evidence,
+    )
+    if proposal is not None:
+        # JSON-safe proposal dict only — no adapter identity or executable args.
+        return route, (dict(proposal.to_dict()),)
+
+    # Content-only / unmapped / fail-closed routes still surface an explicit
+    # no_action candidate so receipts remain auditable without inventing work.
+    classification = classify_route(route) or ""
+    no_action: Dict[str, object] = {
+        "proposal_id": None,
+        "descriptor_id": None,
+        "logical_action": NO_ACTION,
+        "arguments": {},
+        "arguments_digest": None,
+        "route": route,
+        "source": "slotted_response_dag_route",
+        "confidence": confidence,
+        "tenant_id": tenant_id,
+        "session_id": session_id,
+        "channel": channel,
+        "evidence": list(evidence),
+        "outcome": "no_action",
+        "classification": classification,
+        "metadata": {
+            "template_id": template_id or "",
+            "route_classification": classification,
+        },
+    }
+    return route, (no_action,)
+
+
 def process_voice_turn(
     request: VoiceTurnRequest,
     *,
@@ -4046,6 +4180,11 @@ def process_voice_turn(
     serve a near or stale match. Runtime failures are returned as structured
     degraded receipts. Invalid request contracts still raise immediately,
     keeping programmer errors separate from provider availability.
+
+    When a retrieved plan's metadata includes a slotted-DAG ``route``, this
+    function attaches authority-free ``action_candidates`` on
+    ``result.provenance.metadata`` via the voice_bridge proposal factory. No
+    adapter, policy grant, or executor runs on this path.
 
     Runtime caller audio and transcripts are neither cached into the public
     release nor written into ordinary receipts.
@@ -4545,6 +4684,48 @@ def process_voice_turn(
     else:
         status = "completed"
 
+    # Content-plane action attach (VOICE-ACTION-010): when the retrieved plan
+    # metadata names a slotted-DAG route, expose logical action candidates on
+    # provenance. Never run adapters / policy / executors here.
+    action_route, action_candidates = _action_candidates_from_plan(
+        plan,
+        transcript=transcript,
+        request=request,
+    )
+    provenance_metadata: Dict[str, object] = {
+        "intent": plan.intent if plan is not None else None,
+        "response_template": plan.template if plan is not None else None,
+        "surface": (
+            {
+                "web": "website",
+                "website": "website",
+                "sip": "telephone",
+                "telephone": "telephone",
+                "telephony": "telephone",
+                "twilio": "telephone",
+            }.get(
+                str(request.context.get("surface") or "")
+                .strip()
+                .casefold()
+            )
+        ),
+        "template_confidence": plan.confidence if plan is not None else None,
+        "fallback_reasons": fallback_tuple,
+        "precomputed_audio": (
+            precomputed_resolution.to_dict()
+            if precomputed_resolution is not None
+            else None
+        ),
+    }
+    if plan is not None and isinstance(plan.metadata, Mapping) and plan.metadata:
+        # Mirror template metadata for downstream route extractors without
+        # letting content-plane fields overwrite router-owned keys above.
+        provenance_metadata["template_metadata"] = dict(plan.metadata)
+    if action_route is not None:
+        provenance_metadata["route"] = action_route
+        provenance_metadata["response_route"] = action_route
+        provenance_metadata["action_candidates"] = list(action_candidates)
+
     provenance = VoiceTurnProvenance(
         stt_provider=used_stt_provider,
         template_provider=active_template_name,
@@ -4558,31 +4739,7 @@ def process_voice_turn(
         output_audio_sha256=_sha256_bytes(output_audio)
         if output_audio is not None
         else None,
-        metadata={
-            "intent": plan.intent if plan is not None else None,
-            "response_template": plan.template if plan is not None else None,
-            "surface": (
-                {
-                    "web": "website",
-                    "website": "website",
-                    "sip": "telephone",
-                    "telephone": "telephone",
-                    "telephony": "telephone",
-                    "twilio": "telephone",
-                }.get(
-                    str(request.context.get("surface") or "")
-                    .strip()
-                    .casefold()
-                )
-            ),
-            "template_confidence": plan.confidence if plan is not None else None,
-            "fallback_reasons": fallback_tuple,
-            "precomputed_audio": (
-                precomputed_resolution.to_dict()
-                if precomputed_resolution is not None
-                else None
-            ),
-        },
+        metadata=provenance_metadata,
     )
     return VoiceTurnResult(
         request_id=request_id,

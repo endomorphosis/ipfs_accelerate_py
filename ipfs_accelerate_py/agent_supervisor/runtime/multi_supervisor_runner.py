@@ -1769,6 +1769,24 @@ def main(argv: list[str] | None = None) -> int:
             seal_ordered_implementation_provider_route()
         except ValueError as exc:
             parser.error(str(exc))
+        # Fail closed before leasing worktrees when the Grok/Codex entry module
+        # is missing provider-command symbols; heal known gaps automatically.
+        try:
+            from .provider_command_binding import (
+                ProviderCommandBindingError,
+                preflight_provider_entry_module,
+            )
+
+            preflight_provider_entry_module(
+                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+            )
+        except ProviderCommandBindingError as exc:
+            parser.error(f"provider command binding preflight failed: {exc}")
+        except Exception as exc:  # noqa: BLE001 — surface import failures as preflight
+            parser.error(
+                "provider entry module preflight failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
     if args.detach:
         payload = launch_detached(args, args_list)
         for key in ("stamp", "master_pid", "master_log", "master_pid_file"):

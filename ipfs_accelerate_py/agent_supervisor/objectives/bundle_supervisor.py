@@ -3737,9 +3737,70 @@ def launch_bundle_lanes(
     return results
 
 
+def _allow_concurrent_peer_ids(lane: BundleLaneSpec) -> set[str]:
+    """Return bundle keys / task ids this lane explicitly allows concurrent with."""
+
+    peers: set[str] = set()
+    payload = lane.queue_payload if isinstance(lane.queue_payload, dict) else {}
+    raw_values: list[Any] = []
+    for key in ("allow_concurrent_with", "concurrency_overrides"):
+        value = payload.get(key)
+        if isinstance(value, (list, tuple, set, frozenset)):
+            raw_values.extend(value)
+        elif isinstance(value, str) and value.strip():
+            raw_values.append(value)
+    for task in payload.get("tasks") or ():
+        if not isinstance(task, Mapping):
+            continue
+        for key in ("allow_concurrent_with", "concurrency_overrides"):
+            value = task.get(key)
+            if isinstance(value, (list, tuple, set, frozenset)):
+                raw_values.extend(value)
+            elif isinstance(value, str) and value.strip():
+                raw_values.append(value)
+    surface = lane.conflict_surface if isinstance(lane.conflict_surface, Mapping) else {}
+    surface_allowed = surface.get("allow_concurrent_with")
+    if isinstance(surface_allowed, (list, tuple, set, frozenset)):
+        raw_values.extend(surface_allowed)
+    for item in raw_values:
+        if isinstance(item, Mapping):
+            for key in (
+                "bundle_key",
+                "task_id",
+                "right",
+                "left",
+                "with",
+                "peer",
+            ):
+                text = str(item.get(key) or "").strip()
+                if text:
+                    peers.add(text)
+            continue
+        text = str(item or "").strip()
+        if text:
+            peers.add(text)
+    return peers
+
+
+def _lanes_allow_concurrent(left: BundleLaneSpec, right: BundleLaneSpec) -> bool:
+    """Return whether either lane declares the other safe to co-schedule."""
+
+    left_peers = _allow_concurrent_peer_ids(left)
+    right_peers = _allow_concurrent_peer_ids(right)
+    if right.bundle_key in left_peers or left.bundle_key in right_peers:
+        return True
+    if any(task_id in left_peers for task_id in right.task_ids):
+        return True
+    if any(task_id in right_peers for task_id in left.task_ids):
+        return True
+    return False
+
+
 def _lanes_conflict(left: BundleLaneSpec, right: BundleLaneSpec) -> bool:
     """Return whether graph edges prohibit two currently active lanes."""
 
+    if _lanes_allow_concurrent(left, right):
+        return False
     return (
         right.bundle_key in left.conflicting_task_ids
         or left.bundle_key in right.conflicting_task_ids

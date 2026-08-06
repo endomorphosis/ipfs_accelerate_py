@@ -341,14 +341,41 @@ def normalize_resource_class(value: Any, *, stage: Any = "") -> str:
 
 
 def resource_pool(resource_class: Any) -> str:
-    """Classify a resource class into independently accounted capacity."""
+    """Classify a resource class into independently accounted capacity.
+
+    Tight proof-solver/kernel/type-check classes share the
+    ``cpu-proof`` pool (bounded by ``max_cpu_proof_concurrency``).
+    Validation and ordinary bundle/legacy CPU classes use the general
+    lane pool so residual install/cert work can scale with ``max_lanes``
+    without being thrifted by proof-solver concurrency.
+    """
 
     normalized = normalize_resource_class(resource_class)
     if normalized == ProofResourceClass.MODEL_DRAFT.value:
         return "model"
     if normalized == ProofResourceClass.ARTIFACT.value:
         return "artifact"
-    return "cpu-proof"
+    if normalized in {
+        ProofResourceClass.TRANSLATION.value,
+        ProofResourceClass.SOLVER.value,
+        ProofResourceClass.KERNEL.value,
+        ProofResourceClass.TYPE_CHECK.value,
+    } or str(normalized).startswith("cpu-proof"):
+        return "cpu-proof"
+    # Explicit validation class used by residual install/cert lanes.
+    if normalized == ProofResourceClass.VALIDATION.value:
+        return "cpu-general"
+    # Legacy/generic labels historically share the proof pool for fairness
+    # projection tests and mixed analysis/validation schedules.
+    if (
+        normalized in LEGACY_RESOURCE_CLASSES
+        or normalized in GENERIC_BUNDLE_RESOURCE_CLASSES
+        or not normalized
+    ):
+        return "cpu-proof"
+    # Unregistered workload labels still execute on general CPU capacity
+    # (see ``_host_reasons`` unregistered_cpu_workload_compatible).
+    return "cpu-general"
 
 
 def _integer(value: Any, default: int = 0, *, minimum: int | None = None) -> int:
@@ -2722,6 +2749,9 @@ class ResourceScheduler:
             return self.policy.max_model_concurrency or self.policy.max_lanes
         if pool == "artifact":
             return self.policy.max_artifact_concurrency or self.policy.max_lanes
+        if pool == "cpu-general":
+            # Residual/validation/bundle work should fill available lanes.
+            return self.policy.max_lanes or self.policy.max_cpu_proof_concurrency or 1
         return self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
 
     def _host_reasons(self, host: HostResourceSnapshot, requirement: LaneResourceRequirements) -> list[str]:
@@ -2794,7 +2824,8 @@ class ResourceScheduler:
             # not silently admit without matching host resources.
             unregistered_cpu_workload_compatible = (
                 "cpu" in host.capabilities
-                and resource_pool(requirement.resource_class) == "cpu-proof"
+                and resource_pool(requirement.resource_class)
+                in {"cpu-proof", "cpu-general"}
                 and not str(requirement.resource_class).startswith("gpu")
             )
             if not (
@@ -3249,11 +3280,7 @@ class ResourceScheduler:
                 active_requirements=active,
             )
             if decision.admitted:
-                pool_limit = {
-                    "cpu-proof": lease_budget.max_cpu_proof_concurrency,
-                    "model": lease_budget.max_model_concurrency,
-                    "artifact": lease_budget.max_artifact_concurrency,
-                }[req.resource_pool]
+                pool_limit = self._pool_limit(req.resource_pool)
                 pool_used = sum(
                     item.process_slots
                     for item in active

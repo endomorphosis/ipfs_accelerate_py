@@ -9,16 +9,15 @@ Modules owned by bundle ``asref/runtime`` (see
 ``docs/architecture/asref/move_map.json``) move into this package via
 ``git mv`` without long-lived re-export stubs at the former flat paths.
 
-First-batch modules are dual-copied under this package (flat originals
-remain until ASREF-G090 cutover). Prefer package imports for landed
-modules; remaining owned stems still live at flat paths until child
-batches land. Import landed modules via::
+All owned runtime stems live under this package (no flat package-root
+copies). Prefer package imports::
 
     from ipfs_accelerate_py.agent_supervisor.runtime.<module> import ...
 
-Post-move console entry point (pyproject / setup) retargets to::
+Console entry points (pyproject / setup) target domain paths, for example::
 
     ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main
+    ipfs_accelerate_py.agent_supervisor.runtime.durable_process:main
 """
 
 from __future__ import annotations
@@ -38,13 +37,23 @@ RUNTIME_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.runtime"
 # Stems owned by asref/runtime in docs/architecture/asref/move_map.json.
 RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "artifact_store",
+    "durable_process",
     "event_log",
+    "grok_cli_runner",
     "multi_supervisor_runner",
     "provider_batch_scheduler",
+    "provider_command_binding",
+    "provider_command_environment",
+    "provider_execution",
+    "provider_failure_policy",
+    "provider_usage",
+    "provider_usage_migration",
+    "release_evidence",
     "resource_scheduler",
     "runtime_cas",
     "runtime_temporal_monitor",
     "scheduler_metrics",
+    "supervisor_usage_rollout",
 )
 
 # Dual-copied under this package in the current ASREF-011 batch.

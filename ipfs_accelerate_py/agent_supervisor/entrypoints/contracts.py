@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar, Final, TypeVar
 
-from ..multiformats_identity import (
+from ..core.multiformats_identity import (
     MultiformatsIdentityError,
     canonical_dag_json_bytes,
     cid_for_bytes,

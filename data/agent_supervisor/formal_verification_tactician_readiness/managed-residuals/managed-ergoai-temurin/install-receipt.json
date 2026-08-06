@@ -1,0 +1,226 @@
+{
+  "acceptance": {
+    "fvt113_owns_certificate_and_deployment_reseal": true,
+    "goal_id": "FVT-G242",
+    "lock_matching_user_local_installs": true,
+    "never_claims_sealed_root_fixed_when_shim_only": true,
+    "never_grants_theorem_authority": true,
+    "never_trusts_ambient_java_home": true,
+    "residual_does_not_reseal_deployment_receipt": true,
+    "task_id": "FVT-110",
+    "tools": [
+      "ergoai",
+      "temurin-jdk"
+    ]
+  },
+  "goal_id": "FVT-G242",
+  "host_platform": "linux-aarch64",
+  "interface": "ManagedCapabilityResidualInstall@1",
+  "lane_id": "managed-ergoai-temurin",
+  "managed_root": {
+    "approved": true,
+    "kind": "user_local",
+    "present": true,
+    "redacted_path": "<user-local-managed-prover-root-redacted>",
+    "relative_layout": {
+      "ergoai_identity": "advisors/ergoai/3.0/identity.json",
+      "ergoai_launcher": "bin/ergoai",
+      "temurin_identity": "advisors/temurin-jdk/17.0.20+8/identity.json",
+      "temurin_java_home": "advisors/temurin-jdk/17.0.20+8/jdk"
+    }
+  },
+  "managed_root_policy": {
+    "approved_immutable_roots": [
+      "/opt"
+    ],
+    "default_user_local_root": "~/.local/share/ipfs_datasets_py/theorem-provers",
+    "env_override": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "hermetic_shim_is_not_live_vendor": true,
+    "install_scope": "user_local",
+    "never_trust_ambient_java_home": true,
+    "path_presence_is_not_usability": true,
+    "user_local_root_allowed": true
+  },
+  "markers": {
+    "ergoai": "tools/ergoai/managed-root.marker",
+    "temurin-jdk": "tools/temurin-jdk/managed-root.marker"
+  },
+  "observed_at": "2026-08-05T16:18:08Z",
+  "policy": {
+    "advisor_output_is_not_proof": true,
+    "ergoai_authority_ceiling": "advisory",
+    "no_network_during_residual_certification": true,
+    "support_dependency_is_non_authoritative": true,
+    "temurin_is_support_only": true
+  },
+  "program": "formal-verification-tactician/managed-ergoai-temurin",
+  "residual_of": {
+    "depends_on": [
+      "FVT-094"
+    ],
+    "discovery": "data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md",
+    "prior_tasks": [
+      "FVT-085",
+      "FVT-090",
+      "FVT-091",
+      "FVT-094"
+    ],
+    "reseal_task": "FVT-113"
+  },
+  "schema_version": "formal-verification-managed-capability-residual-install-receipt/v1",
+  "sealed_root_observation": {
+    "env_example": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=<sealed-managed-prover-root-redacted>",
+    "ergoai": {
+      "is_hermetic_advisor_shim": true,
+      "live_vendor": false,
+      "notes": "Sealed advisors/ergoai/3.0 remains a hermetic advisor identity shim; it cannot clear managed:ergoai launcher/live-vendor blockers until an operator publishes a lock-matching live vendor tree into the sealed root.",
+      "present": true
+    },
+    "kind": "sealed_immutable",
+    "redacted_path": "<sealed-managed-prover-root-redacted>",
+    "temurin_jdk": {
+      "lock_matching_temurin_17_0_20_8": false,
+      "notes": "Sealed root lacks advisors/temurin-jdk/17.0.20+8; managed-environment replay previously resolved java via Isabelle bundled jdk-21 which is not the locked Temurin 17.0.20+8 pin.",
+      "present_under_advisors_temurin_jdk": false
+    },
+    "writable_by_residual_lane": false
+  },
+  "summary": {
+    "all_tools_available": true,
+    "deployment_ready_claimed": false,
+    "greenwash_forbidden": true,
+    "sealed_root_lock_matching": false,
+    "user_local_lock_matching": true
+  },
+  "task_id": "FVT-110",
+  "tool_ids": [
+    "ergoai",
+    "temurin-jdk"
+  ],
+  "tools": {
+    "ergoai": {
+      "already_present": true,
+      "authority_ceiling": "advisory",
+      "checksum_verified": true,
+      "executable_basename": "ergoai",
+      "executable_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190",
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "identity_digest_sha256": "5f793a97419b0514936113853862b45f1007cfca94d2c268d61ef40107f88796",
+      "identity_manifest_sha256": "5a05de96f0652f18cfd8233a4a251afe2749d20ffc2e7da997f90e5c9d2b39f7",
+      "install_attempted": false,
+      "installed": true,
+      "is_hermetic_advisor_shim": false,
+      "is_live_vendor": true,
+      "managed_vendor_provenance_verified": true,
+      "phase": "available",
+      "pin": {
+        "artifact_size_bytes": 53064767,
+        "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+        "identity_kind": "immutable_release_tag",
+        "is_checksummed": true,
+        "license": "Apache-2.0",
+        "platform": "linux-aarch64",
+        "release_tag": "v3.0_release",
+        "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+        "source": "https://github.com/ErgoAI/ErgoEngine",
+        "tool_id": "ergoai",
+        "version": "3.0"
+      },
+      "probe_satisfied": null,
+      "reason_codes": [],
+      "release_artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+      "release_tag": "v3.0_release",
+      "requested_version": "3.0",
+      "role": "advisor",
+      "selected_platform": "linux-aarch64",
+      "selected_version": "3.0",
+      "status": "available",
+      "tool_id": "ergoai",
+      "user_local": true
+    },
+    "temurin-jdk": {
+      "already_present": true,
+      "ambient_java_home_trusted": false,
+      "authority_ceiling": "advisory",
+      "checksum_verified": true,
+      "executable_basename": "java",
+      "executable_sha256": "0cd543f9949605b5eccb1d2b98c2b8637bb0953f0b5087208393b4b7ded73c1a",
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "identity_manifest_sha256": "d83d83cb40f4260a899968b418985e6b153b9f65aca1c9364808f7ffd0e3d1b2",
+      "install_attempted": false,
+      "installed": true,
+      "is_hermetic_advisor_shim": null,
+      "java_home_relative": "advisors/temurin-jdk/17.0.20+8/jdk",
+      "managed_vendor_provenance_verified": null,
+      "phase": "available",
+      "pin": {
+        "artifact_size_bytes": 191960283,
+        "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+        "identity_kind": "immutable_release_archive",
+        "is_checksummed": true,
+        "license": "GPL-2.0-with-classpath-exception",
+        "platform": "linux-aarch64",
+        "release_tag": "jdk-17.0.20+8",
+        "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+        "source": "https://adoptium.net/",
+        "tool_id": "temurin-jdk",
+        "version": "17.0.20+8"
+      },
+      "probe_satisfied": true,
+      "publisher": "Eclipse Adoptium",
+      "reason_codes": [],
+      "requested_version": "17.0.20+8",
+      "required_tool_identities": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "role": "advisor",
+      "selected_platform": "linux-aarch64",
+      "selected_version": "17.0.20+8",
+      "status": "available",
+      "tool_id": "temurin-jdk",
+      "tool_identities": {
+        "jar": {
+          "basename": "jar",
+          "executable_sha256": "9f177b34c4c997a01eef55faf57721c8d74d5a26e7a1e5ba150182cf49794f4c",
+          "present": true
+        },
+        "java": {
+          "basename": "java",
+          "executable_sha256": "0cd543f9949605b5eccb1d2b98c2b8637bb0953f0b5087208393b4b7ded73c1a",
+          "present": true
+        },
+        "javac": {
+          "basename": "javac",
+          "executable_sha256": "ce9c03b06d4ab7ad92fd426087b0309c8b33d1e99a810c8dcb31d8ecde3754a3",
+          "present": true
+        }
+      },
+      "tools": {
+        "jar": {
+          "banner_digest_sha256": "01e1f0a051175860da1e511b15a2888787d114f679bb8a736bba5d48c3681747",
+          "executable_sha256": "9f177b34c4c997a01eef55faf57721c8d74d5a26e7a1e5ba150182cf49794f4c",
+          "path": "<user-local-managed-prover-root-redacted>/advisors/temurin-jdk/17.0.20+8/jdk/bin/jar",
+          "version_satisfied": true
+        },
+        "java": {
+          "banner_digest_sha256": "910f45f78e37f2d8aa0fd18b673c94df8009855846d392a2dfa9c588e1e300b4",
+          "executable_sha256": "0cd543f9949605b5eccb1d2b98c2b8637bb0953f0b5087208393b4b7ded73c1a",
+          "path": "<user-local-managed-prover-root-redacted>/advisors/temurin-jdk/17.0.20+8/jdk/bin/java",
+          "version_satisfied": true
+        },
+        "javac": {
+          "banner_digest_sha256": "72d0dd22cae7d8322d11ddc6616ef41085b81cea643fd49fb31ec205b92d4010",
+          "executable_sha256": "ce9c03b06d4ab7ad92fd426087b0309c8b33d1e99a810c8dcb31d8ecde3754a3",
+          "path": "<user-local-managed-prover-root-redacted>/advisors/temurin-jdk/17.0.20+8/jdk/bin/javac",
+          "version_satisfied": true
+        }
+      },
+      "user_local": true
+    }
+  },
+  "receipt_digest_sha256": "sha256:4bd69d47c19d71702493610a2e473f9fbfc20494f0dac08d12fa94cab887fa8f"
+}

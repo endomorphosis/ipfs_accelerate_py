@@ -22,7 +22,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..cve_security_gate import (
+from .cve_security_gate import (
     CVESecurityGateResult,
     correlate_security_requests,
 )

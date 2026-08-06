@@ -21,7 +21,7 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Final
 
-from ..program_contracts import (
+from ..proof.program_contracts import (
     CapabilityMode,
     ContractSourceKind,
     EffectKind,

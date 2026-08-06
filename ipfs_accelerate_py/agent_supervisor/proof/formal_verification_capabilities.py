@@ -2519,7 +2519,7 @@ def project_capability_report_to_canonical(
 ) -> dict[str, Any]:
     """Project a capability probe report onto the canonical provider vocabulary."""
 
-    from ..canonical_logic_adapter import get_canonical_logic_adapter
+    from .canonical_logic_adapter import get_canonical_logic_adapter
 
     return get_canonical_logic_adapter().project_capability_report(report)
 
@@ -2529,7 +2529,7 @@ def project_provider_capability_to_canonical(
 ) -> dict[str, Any]:
     """Project one provider capability probe onto the canonical descriptor shape."""
 
-    from ..canonical_logic_adapter import get_canonical_logic_adapter
+    from .canonical_logic_adapter import get_canonical_logic_adapter
 
     return get_canonical_logic_adapter().project_provider_capability(capability)
 

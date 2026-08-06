@@ -31,13 +31,13 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..program_call_resolver import (
+from .program_call_resolver import (
     CallResolution,
     CallResolutionStatus,
     CallSite,
     ProgramCallResolver,
 )
-from ..program_graph import (
+from .program_graph import (
     ProgramEdgeKind,
     ProgramGraph,
     ProgramGraphSnapshot,

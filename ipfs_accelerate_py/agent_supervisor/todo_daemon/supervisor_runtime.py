@@ -21,7 +21,7 @@ from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 from ..core.wrapper_utils import with_exclusive_flag_default
 from ..merge.checkout_lock import serialized_lock_update
 from ..runtime.event_log import unique_backup_path
-from ..worktree_lifecycle import (
+from ..merge.worktree_lifecycle import (
     OwnerLiveness,
     ProcessBirthIdentity,
     owner_liveness,
