@@ -26811,6 +26811,15 @@ class PortalImplementationDaemon:
                 paths.append(path)
         return paths
 
+    def _discover_submodule_roots(self, worktree_path: Path) -> tuple[str, ...]:
+        """Return submodule roots declared by ``.gitmodules`` for a worktree.
+
+        Used by expected-output preflight so undeclared worktree_submodule_paths
+        (e.g. swissknife/) still soft-skip when the submodule is unpopulated.
+        """
+
+        return tuple(self._declared_submodule_paths(worktree_path))
+
     def _overlaps_implementation_protected_path(
         self,
         relative: str,
@@ -30576,6 +30585,15 @@ class PortalImplementationDaemon:
         """Stage only exact ignored outputs and capture fail-closed evidence."""
 
         expected_paths = self._exact_proposal_expected_output_paths(task)
+        predicted_paths = {
+            str(part).strip().replace("\\", "/").strip("/")
+            for part in str(
+                (task.metadata or {}).get("predicted files")
+                or (task.metadata or {}).get("predicted_files")
+                or ""
+            ).split(",")
+            if str(part).strip()
+        }
         protected_paths = tuple(
             str(path).strip("/")
             for path in self.implementation_protected_paths
@@ -30585,6 +30603,15 @@ class PortalImplementationDaemon:
             str(path).strip("/")
             for path in self.worktree_submodule_paths
             if str(path).strip("/")
+        )
+        # Also discover submodule roots from the superproject so undeclared
+        # submodule outputs (e.g. swissknife/...) do not hard-fail re-enable
+        # boards when the worktree did not populate that submodule.
+        discovered_submodule_paths = self._discover_submodule_roots(
+            workspace_path
+        )
+        all_submodule_paths = tuple(
+            sorted({*submodule_paths, *discovered_submodule_paths})
         )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
@@ -30630,7 +30657,22 @@ class PortalImplementationDaemon:
             )
             submodule_bound = any(
                 self._path_matches_prefix(relative, path)
-                for path in submodule_paths
+                for path in all_submodule_paths
+            )
+            submodule_root = next(
+                (
+                    path
+                    for path in sorted(
+                        all_submodule_paths,
+                        key=lambda value: (-len(value.split("/")), value),
+                    )
+                    if relative == path or relative.startswith(f"{path}/")
+                ),
+                "",
+            )
+            submodule_unpopulated = bool(
+                submodule_root
+                and not self._is_git_worktree(workspace_path / submodule_root)
             )
             symlink_bound = self._path_crosses_live_symlink(
                 workspace_path,
@@ -30643,7 +30685,20 @@ class PortalImplementationDaemon:
             regular_file = bool(
                 exists and target.is_file() and not target.is_symlink()
             )
-            needs_candidate = not baseline_present
+            # Predicted files are the hard write set. Broader Outputs that live
+            # in an unpopulated submodule, or that are optional declarations
+            # outside predicted files, must not block proposal admission.
+            optional_declared_output = bool(
+                predicted_paths
+                and relative not in predicted_paths
+                and not any(
+                    relative == path or relative.startswith(f"{path.rstrip('/')}/")
+                    for path in predicted_paths
+                )
+            )
+            needs_candidate = not baseline_present and not (
+                optional_declared_output or submodule_unpopulated
+            )
             force_stage_required = bool(
                 needs_candidate and ignored and not indexed
             )
@@ -30652,7 +30707,13 @@ class PortalImplementationDaemon:
             issue = ""
 
             if not exists:
-                issue = EXPECTED_OUTPUT_MISSING
+                if submodule_unpopulated or optional_declared_output:
+                    # Soft skip: re-enable boards often declare submodule paths
+                    # that are not materialized in shallow implement worktrees.
+                    issue = ""
+                    needs_candidate = False
+                else:
+                    issue = EXPECTED_OUTPUT_MISSING
             elif force_stage_required:
                 if (
                     protected
@@ -30700,6 +30761,9 @@ class PortalImplementationDaemon:
                     "protected": protected,
                     "forbidden": forbidden,
                     "submodule_bound": submodule_bound,
+                    "submodule_root": submodule_root,
+                    "submodule_unpopulated": submodule_unpopulated,
+                    "optional_declared_output": optional_declared_output,
                     "symlink_bound": symlink_bound,
                     "regular_file": regular_file,
                     "needs_candidate": needs_candidate,
