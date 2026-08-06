@@ -11637,14 +11637,16 @@ class PortalImplementationDaemon:
         active_resource_claims = (
             self._active_implementation_resource_claims(tasks)
         )
+        active_claim_paths = tuple(active_resource_claims)
         resource_reserved_task_ids = {
             task.task_id
             for task in execution_tasks
             if any(
-                resource_path in active_resource_claims
+                self._resource_paths_overlap(resource_path, claimed_path)
                 for resource_path in self._task_implementation_resource_paths(
                     task
                 )
+                for claimed_path in active_claim_paths
             )
         }
         external_task_reservations = self._external_task_reservations(tasks)
@@ -42593,32 +42595,71 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask,
     ) -> tuple[str, ...]:
-        """Return configured submodule roots affected by one task's outputs."""
+        """Return shared resource paths claimed for one task's outputs.
+
+        Prefer **declared output paths** under configured submodule roots so
+        multi-lane boards (e.g. WPD) can run disjoint file claims in parallel.
+        Falling back to whole submodule roots would serialize every task that
+        touches ``external/ipfs_accelerate`` and permanently under-utilize
+        strict multi-lane supervisors.
+
+        When a task declares no outputs under configured submodules, return
+        empty (no shared resource claim). Whole-submodule fallback is retained
+        only when an output equals a configured submodule root exactly.
+        """
 
         outputs = normalize_relative_path_list(task_declared_output_paths(task))
-        matched = [
-            resource
-            for resource in self.worktree_submodule_paths
-            if any(
-                output == resource or output.startswith(f"{resource}/")
-                for output in outputs
+        if not outputs:
+            return ()
+        submodule_roots = tuple(
+            str(path).strip().rstrip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip()
+        )
+        precise: list[str] = []
+        whole_roots: list[str] = []
+        for output in outputs:
+            matched_root = next(
+                (
+                    root
+                    for root in submodule_roots
+                    if output == root or output.startswith(f"{root}/")
+                ),
+                "",
             )
-        ]
-        # A claim for an outer submodule also protects every nested gitlink.
-        # Retain only the broadest matched roots so acquisition stays ordered
-        # and does not manufacture self-conflicts for nested configurations.
-        selected: list[str] = []
+            if not matched_root:
+                continue
+            if output == matched_root:
+                whole_roots.append(matched_root)
+            else:
+                precise.append(output)
+        # Prefer precise file claims; only expand to whole roots when the
+        # task literally targets the submodule root as an output.
+        selected = precise if precise else whole_roots
+        # Drop children of broader selected paths so one task does not
+        # self-deadlock on parent+child claims.
+        collapsed: list[str] = []
         for resource in sorted(
-            matched,
+            set(selected),
             key=lambda item: (len(PurePosixPath(item).parts), item),
         ):
             if any(
                 resource == parent or resource.startswith(f"{parent}/")
-                for parent in selected
+                for parent in collapsed
             ):
                 continue
-            selected.append(resource)
-        return tuple(selected)
+            collapsed.append(resource)
+        return tuple(collapsed)
+
+    @staticmethod
+    def _resource_paths_overlap(left: str, right: str) -> bool:
+        """True when two resource claims protect overlapping checkout paths."""
+
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        return left.startswith(f"{right}/") or right.startswith(f"{left}/")
 
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         identity = self._identity_for_task(task)
@@ -42870,7 +42911,12 @@ class PortalImplementationDaemon:
         self,
         tasks: Sequence[PortalTask],
     ) -> dict[str, dict[str, Any]]:
-        """Return live shared-resource claims without mutating their leases."""
+        """Return live shared-resource claims without mutating their leases.
+
+        Scans the shared claim directory for all live locks (not only paths
+        currently declared by the board) so file-granular claims still see
+        legacy whole-submodule claims held by in-flight attempts.
+        """
 
         active_claims: dict[str, dict[str, Any]] = {}
         resource_paths = {
@@ -42880,19 +42926,44 @@ class PortalImplementationDaemon:
                 task
             )
         }
+        claim_dir = checkout_mutation_lock_path(
+            self.repo_root,
+            lock_name=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME,
+        )
+        lock_paths: list[Path] = []
+        if claim_dir.is_dir():
+            lock_paths.extend(sorted(claim_dir.glob("submodule-*.lock")))
         for resource_path in sorted(resource_paths):
-            claim_path = self._implementation_resource_claim_path(
-                resource_path
+            lock_paths.append(
+                self._implementation_resource_claim_path(resource_path)
             )
-            if not claim_path.exists():
+        seen_locks: set[Path] = set()
+        for claim_path in lock_paths:
+            try:
+                resolved = claim_path.resolve()
+            except OSError:
+                resolved = claim_path
+            if resolved in seen_locks or not claim_path.exists():
                 continue
+            seen_locks.add(resolved)
             metadata = load_json_dict(claim_path)
-            if (
-                metadata is not None
-                and self._implementation_resource_claim_owner_is_active(
-                    metadata
-                )
+            if metadata is None:
+                continue
+            if not self._implementation_resource_claim_owner_is_active(
+                metadata
             ):
+                continue
+            resource_path = str(metadata.get("resource_path") or "").strip()
+            if not resource_path:
+                # Fall back to matching known board paths for this lock file.
+                for candidate in resource_paths:
+                    if (
+                        self._implementation_resource_claim_path(candidate)
+                        == claim_path
+                    ):
+                        resource_path = candidate
+                        break
+            if resource_path:
                 active_claims[resource_path] = metadata
         return active_claims
 
