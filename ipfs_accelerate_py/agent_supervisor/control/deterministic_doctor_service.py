@@ -386,22 +386,69 @@ def optional_providers_loaded() -> tuple[str, ...]:
     return tuple(sorted(set(found)))
 
 
-def assert_no_llm_surface_loaded() -> None:
-    """Fail closed if an LLM / model-provider module is already imported."""
+# True remote / generative LLM client roots.  These must not be present when
+# constructing a deterministic Doctor service.
+_LLM_CLIENT_ROOTS = frozenset(
+    {
+        "openai",
+        "anthropic",
+        "llm_router",
+    }
+)
+# Local ML frameworks that often load transitively via accelerate/pytest
+# plugins.  They are not generative LLM clients; rejecting ambient presence
+# permanently stalls factory construction in monorepo supervisors.
+_ML_FRAMEWORK_ROOTS = frozenset(
+    {
+        "torch",
+        "transformers",
+    }
+)
+
+
+def assert_no_llm_surface_loaded(
+    *,
+    include_ml_frameworks: bool = False,
+    baseline_modules: frozenset[str] | None = None,
+) -> None:
+    """Fail closed if a generative LLM client surface is loaded.
+
+    By default only true LLM/remote-client roots (``openai``, ``anthropic``,
+    ``llm_router``) are rejected.  Ambient ``torch`` / ``transformers``
+    presence from the host process is allowed so production factory builds and
+    sealed pytest runs do not permanently stall when those packages were
+    imported by unrelated plugins.
+
+    Pass ``include_ml_frameworks=True`` for hermetic cold-import suites that
+    require a process free of local ML frameworks as well.
+
+    When ``baseline_modules`` is supplied, only **new** module roots loaded
+    since that snapshot are considered (delta check during factory build).
+    """
+
+    import sys
 
     loaded = optional_providers_loaded()
-    forbidden = {
-        name
-        for name in loaded
-        if name
-        in {
-            "openai",
-            "anthropic",
-            "llm_router",
-            "torch",
-            "transformers",
-        }
-    }
+    if baseline_modules is not None:
+        current = frozenset(sys.modules)
+        new_names = current - baseline_modules
+        loaded = tuple(
+            sorted(
+                {
+                    root
+                    for root in loaded
+                    if root in new_names
+                    or any(
+                        name == root or name.startswith(root + ".")
+                        for name in new_names
+                    )
+                }
+            )
+        )
+    forbidden_roots = set(_LLM_CLIENT_ROOTS)
+    if include_ml_frameworks:
+        forbidden_roots |= set(_ML_FRAMEWORK_ROOTS)
+    forbidden = {name for name in loaded if name in forbidden_roots}
     if forbidden:
         raise DoctorServiceSafetyError(
             f"optional model/provider surface already loaded: {sorted(forbidden)}"

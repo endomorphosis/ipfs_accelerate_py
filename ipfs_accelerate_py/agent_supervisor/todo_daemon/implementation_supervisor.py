@@ -9430,35 +9430,68 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True, "configured_submodule_deletion": True})
                 configured_submodule_deletion = True
                 continue
-            if code == " m" and self._is_configured_worktree_submodule_path(relative):
-                verdict = self._configured_submodule_unstaged_deletion_proof(
-                    worktree_path,
-                    relative=relative,
-                    target_ref=target_ref,
-                )
+            # Submodule dirt: " m" (modified content), " ?" / "? " (untracked
+            # content inside submodule).  These are common residual states after
+            # nested work and must not permanently stall cleanup as
+            # unsupported_status (WPD-071 unblock).
+            if code in {" m", " ?", "? "} and self._is_configured_worktree_submodule_path(
+                relative
+            ):
+                if code == " m":
+                    verdict = self._configured_submodule_unstaged_deletion_proof(
+                        worktree_path,
+                        relative=relative,
+                        target_ref=target_ref,
+                    )
+                    checked.append(
+                        {
+                            **detail,
+                            "configured_submodule_unstaged_deletion": bool(
+                                verdict.get("redundant")
+                            ),
+                            "proof_reason": str(verdict.get("reason") or ""),
+                            "proof": dict(verdict.get("proof") or {}),
+                        }
+                    )
+                    if not verdict.get("redundant"):
+                        # Nested content differs but is still a known submodule
+                        # dirt class — not an exotic index state.  Report as
+                        # content_not_in_target so operators/automation treat it
+                        # as ordinary dirty content rather than unsupported_status.
+                        return {
+                            "redundant": False,
+                            "reason": "content_not_in_target",
+                            "checked": checked,
+                        }
+                    configured_submodule_unstaged_deletion = True
+                    continue
+                # Untracked content inside a configured submodule: treat as
+                # ordinary non-matching dirty content, not unsupported_status.
                 checked.append(
                     {
                         **detail,
-                        "configured_submodule_unstaged_deletion": bool(
-                            verdict.get("redundant")
-                        ),
-                        "proof_reason": str(verdict.get("reason") or ""),
-                        "proof": dict(verdict.get("proof") or {}),
+                        "configured_submodule_untracked_content": True,
+                        "matches_target": False,
                     }
                 )
-                if not verdict.get("redundant"):
+                return {
+                    "redundant": False,
+                    "reason": "content_not_in_target",
+                    "checked": checked,
+                }
+            if "D" in code or ("?" in code and code not in {"??", " ?", "? "}):
+                return {
+                    "redundant": False,
+                    "reason": "unsupported_status",
+                    "checked": [*checked, detail],
+                }
+            if code == "??" or "M" in code or "A" in code or code in {" ?", "? "}:
+                if not self._worktree_file_matches_ref(worktree_path, relative, target_ref):
                     return {
                         "redundant": False,
-                        "reason": "unsupported_status",
-                        "checked": checked,
+                        "reason": "content_not_in_target",
+                        "checked": [*checked, detail],
                     }
-                configured_submodule_unstaged_deletion = True
-                continue
-            if "D" in code or "?" in code.strip(" ?"):
-                return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
-            if code == "??" or "M" in code or "A" in code:
-                if not self._worktree_file_matches_ref(worktree_path, relative, target_ref):
-                    return {"redundant": False, "reason": "content_not_in_target", "checked": [*checked, detail]}
                 checked.append({**detail, "matches_target": True})
                 continue
             return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
