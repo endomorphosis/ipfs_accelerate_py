@@ -8644,6 +8644,20 @@ class PortalImplementationSupervisor:
                 "finished_at": utc_now(),
             }
 
+        # Nested submodule dirt (untracked/modified content inside configured
+        # gitlinks) is invisible to monorepo ``git add -A`` and to
+        # ``--ignore-submodules=dirty`` stageability proofs.  Materialize it
+        # into nested commits + parent gitlink updates so rescue can finish
+        # instead of looping forever on
+        # existing_rescue_branch_nested_state_requires_reconciliation.
+        nested_materialization = self._materialize_nested_configured_submodule_dirt(
+            worktree_path,
+            status_lines=status_lines,
+            reason=reason,
+        )
+        if nested_materialization.get("committed_count"):
+            status_lines = self._git_status_short(worktree_path)
+
         stageability = self._existing_rescue_branch_stageability(
             worktree_path,
             branch=branch,
@@ -8664,6 +8678,7 @@ class PortalImplementationSupervisor:
                 "rescue_commit": rescue_commit,
                 "status_short": status_lines[:20],
                 "stageability_proof": stageability,
+                "nested_materialization": nested_materialization,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -8739,6 +8754,7 @@ class PortalImplementationSupervisor:
                 "returncode": add.returncode,
                 "stdout": add.stdout[-4000:],
                 "stderr": add.stderr[-4000:],
+                "nested_materialization": nested_materialization,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -8753,23 +8769,52 @@ class PortalImplementationSupervisor:
             check=False,
         )
         if staged.returncode == 0:
-            rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
-            result = {
-                "attempted": True,
-                "preserved": False,
-                "reason": "no_staged_rescue_delta_requires_reconciliation",
-                "path": str(worktree_path),
-                "branch": branch,
-                "head": head,
-                "target_ref": target_ref,
-                "rescue_branch": rescue_branch,
-                "rescue_commit": rescue_commit,
-                "status_short": status_lines[:20],
-                "started_at": started_at,
-                "finished_at": utc_now(),
-            }
-            self._record_event("dirty_worktree_rescue_deferred", result)
-            return result
+            # Parent index may still look empty when only nested dirt remained
+            # and the first materialization pass found nothing (race) or new
+            # nested dirt appeared after checkout.  Retry once.
+            retry_materialization = self._materialize_nested_configured_submodule_dirt(
+                worktree_path,
+                status_lines=self._git_status_short(worktree_path),
+                reason=f"{reason}:retry_after_empty_stage",
+            )
+            if retry_materialization.get("committed_count"):
+                nested_materialization = {
+                    **nested_materialization,
+                    "retry": retry_materialization,
+                }
+                add = subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                staged = subprocess.run(
+                    ["git", "diff", "--cached", "--quiet"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            if staged.returncode == 0:
+                rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+                result = {
+                    "attempted": True,
+                    "preserved": False,
+                    "reason": "no_staged_rescue_delta_requires_reconciliation",
+                    "path": str(worktree_path),
+                    "branch": branch,
+                    "head": head,
+                    "target_ref": target_ref,
+                    "rescue_branch": rescue_branch,
+                    "rescue_commit": rescue_commit,
+                    "status_short": status_lines[:20],
+                    "nested_materialization": nested_materialization,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                }
+                self._record_event("dirty_worktree_rescue_deferred", result)
+                return result
 
         commit = subprocess.run(
             [
@@ -8806,6 +8851,7 @@ class PortalImplementationSupervisor:
                 "returncode": commit.returncode,
                 "stdout": commit.stdout[-4000:],
                 "stderr": commit.stderr[-4000:],
+                "nested_materialization": nested_materialization,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -8827,11 +8873,164 @@ class PortalImplementationSupervisor:
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
+            "nested_materialization": nested_materialization,
             "started_at": started_at,
             "finished_at": utc_now(),
         }
         self._record_event("dirty_worktree_rescued", result)
         return result
+
+    def _materialize_nested_configured_submodule_dirt(
+        self,
+        worktree_path: Path,
+        *,
+        status_lines: list[str],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Commit nested dirt inside configured submodules so parent gitlinks stage.
+
+        Monorepo ``git add -A`` never captures untracked/modified files that live
+        only inside a submodule worktree.  Without a nested commit the parent
+        status stays `` ? path`` / `` m path`` forever, rescue defers forever,
+        and multi-lane supervisors burn cycles on the same worktree.
+        """
+
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for line in status_lines:
+            code = line[:2]
+            relative = self._status_line_path(line)
+            if not relative:
+                continue
+            normalized = relative.rstrip("/")
+            if normalized in seen:
+                continue
+            if not self._is_configured_worktree_submodule_path(normalized):
+                continue
+            # Nested dirt codes plus ordinary gitlink modifications.
+            if code in {" m", " ?", "? ", "M ", "MM", "AM", "A ", "??"} or (
+                "M" in code or "?" in code or "A" in code
+            ):
+                seen.add(normalized)
+                candidates.append(normalized)
+
+        if not candidates:
+            return {
+                "attempted": False,
+                "reason": "no_configured_submodule_dirt",
+                "committed_count": 0,
+                "paths": [],
+            }
+
+        nested_results: list[dict[str, Any]] = []
+        committed_count = 0
+        for relative in candidates:
+            nested_root = worktree_path / relative
+            entry: dict[str, Any] = {"path": relative, "nested_root": str(nested_root)}
+            if not nested_root.exists():
+                entry["reason"] = "nested_path_missing"
+                nested_results.append(entry)
+                continue
+            if not (nested_root / ".git").exists() and not (nested_root / ".git").is_file():
+                # Submodule checkouts use a .git file; bare dirs are not repos.
+                git_dir_probe = subprocess.run(
+                    ["git", "rev-parse", "--is-inside-work-tree"],
+                    cwd=nested_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if git_dir_probe.returncode != 0:
+                    entry["reason"] = "not_a_git_worktree"
+                    nested_results.append(entry)
+                    continue
+
+            nested_status = self._git_status_short(nested_root)
+            entry["nested_status_short"] = nested_status[:20]
+            if not nested_status:
+                entry["reason"] = "nested_already_clean"
+                nested_results.append(entry)
+                continue
+
+            add = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=nested_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                entry["reason"] = "nested_stage_failed"
+                entry["returncode"] = add.returncode
+                entry["stderr"] = add.stderr[-2000:]
+                nested_results.append(entry)
+                continue
+
+            staged = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=nested_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if staged.returncode == 0:
+                entry["reason"] = "nested_no_stageable_delta"
+                nested_results.append(entry)
+                continue
+
+            nested_head_before = self._git_ref_commit(nested_root, "HEAD")
+            commit = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Supervisor",
+                    "-c",
+                    "user.email=implementation-supervisor@example.invalid",
+                    "commit",
+                    "-m",
+                    f"Rescue nested submodule dirt in {relative}",
+                    "-m",
+                    f"Parent cleanup reason: {reason}",
+                ],
+                cwd=nested_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if commit.returncode != 0:
+                entry["reason"] = "nested_commit_failed"
+                entry["returncode"] = commit.returncode
+                entry["stderr"] = commit.stderr[-2000:]
+                nested_results.append(entry)
+                continue
+
+            nested_head_after = self._git_ref_commit(nested_root, "HEAD")
+            entry["reason"] = "nested_dirt_committed"
+            entry["nested_head_before"] = nested_head_before
+            entry["nested_head_after"] = nested_head_after
+            entry["committed"] = True
+            committed_count += 1
+            nested_results.append(entry)
+
+            # Stage the updated gitlink on the parent so rescue can commit it.
+            stage_link = subprocess.run(
+                ["git", "add", "--", relative],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            entry["parent_gitlink_stage_returncode"] = stage_link.returncode
+            if stage_link.returncode != 0:
+                entry["parent_gitlink_stage_stderr"] = stage_link.stderr[-2000:]
+
+        return {
+            "attempted": True,
+            "reason": "nested_configured_submodule_materialization",
+            "committed_count": committed_count,
+            "paths": candidates,
+            "nested_results": nested_results,
+        }
 
     def _existing_rescue_branch_stageability(
         self,
