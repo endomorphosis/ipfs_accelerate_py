@@ -291,7 +291,9 @@ def test_receipt_is_body_free_and_content_addressed(
     for forbidden in ("source", "prompt", "body", "transcript", "code", "source_body"):
         assert forbidden not in payload
     assert "reason_code" in payload  # identifier field is allowed
-    assert payload["content_id"] == result.receipt.content_id
+    assert result.receipt.content_id  # content-addressed property
+    verified = verify_pre_implementation_kernel_receipt(payload)
+    assert verified.content_id == result.receipt.content_id
     # Manual seal of the same dual-view identity must verify.
     sealed = seal_pre_implementation_kernel_receipt(
         task_cid=result.receipt.task_cid,
@@ -307,6 +309,7 @@ def test_receipt_is_body_free_and_content_addressed(
         producer_id=result.receipt.producer_id,
     )
     assert sealed.disposition is ImplementationDisposition.CLOSED_DETERMINISTIC
+    assert sealed.content_id == result.receipt.content_id
 
 
 def test_llm_client_modules_not_required_for_import() -> None:
