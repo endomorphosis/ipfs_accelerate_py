@@ -38,9 +38,11 @@ if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
 from ipfs_accelerate_py.agent_supervisor.provider_command_environment import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     PROVIDER_COMMAND_ENV_DIGEST_ENV,
     PROVIDER_COMMAND_ENV_WRAPPER_ENV,
     PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV,
+    ProviderCommandEnvironmentError,
     sealed_provider_command_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.provider_failure_policy import (
