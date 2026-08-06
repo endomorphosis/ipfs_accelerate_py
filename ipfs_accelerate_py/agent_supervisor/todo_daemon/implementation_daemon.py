@@ -50881,6 +50881,14 @@ class PortalImplementationDaemon:
             raise ImplementationRetryDeferred(
                 "implementation context byte budget exhausted"
             ) from exc
+        except ContextBoundsError as exc:
+            # CIG-031 and large-companion tasks can overflow authority item
+            # bounds when generic_prompt_policy + edit_policy grow. Park the
+            # task instead of crashing the managed daemon process.
+            raise ImplementationRetryDeferred(
+                f"implementation context bounds exceeded: {exc}",
+                backoff_seconds=600,
+            ) from exc
         self._last_implementation_context = result
         self._last_implementation_retry = None
         self._implementation_base_contexts[self._canonical_ref(task)] = result
