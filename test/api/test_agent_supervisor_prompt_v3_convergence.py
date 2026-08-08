@@ -9,17 +9,25 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     load_configured_board,
+)
+from ipfs_accelerate_py.agent_supervisor.validation import (
+    prompt_v3_convergence as convergence_module,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import (
     ARTIFACT_FILENAMES,
     BOARD_NAMESPACE,
     DEFAULT_ARTIFACT_ROOT,
+    FAILED_VALIDATION_EVENT_019_FILENAME,
+    FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
+    FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
+    FALSE_COMPLETION_RECOVERY_FILENAME,
     MANIFEST_FILENAME,
+    MAX_EVIDENCE_SNAPSHOT_BYTES,
     POST_WAVE3_RESIDUAL_FILENAME,
     PROMPT_V3_TASKBOARD_RELATIVE_PATH,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME,
@@ -67,6 +75,69 @@ def _rebind_component_digest(root: Path, filename: str) -> None:
     _write(manifest_path, manifest)
 
 
+def _portable_recovery_repository(
+    tmp_path: Path,
+    *,
+    include_failed_candidate_parent: bool = False,
+) -> tuple[Path, Path, Path]:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    portable = tmp_path / "portable-repository"
+    subprocess.run(
+        ["git", "clone", "--shared", "--no-checkout", str(REPO_ROOT), str(portable)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    taskboard = portable / PROMPT_V3_TASKBOARD_RELATIVE_PATH
+    taskboard.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(TASKBOARD_PATH, taskboard)
+    recovery = _load(root / FALSE_COMPLETION_RECOVERY_FILENAME)
+    source = recovery["source"]
+    failed = recovery["failed_attempt"]
+    baseline = _load(root / "current_main_baseline.json")
+    seed = baseline["integration_seed"]
+    assert isinstance(source, dict)
+    assert isinstance(failed, dict)
+    assert isinstance(seed, dict)
+    command = [
+        "git",
+        "-c",
+        "user.name=Portable Validation",
+        "-c",
+        "user.email=portable@example.invalid",
+        "commit-tree",
+        str(seed["tree"]),
+        "-p",
+        str(source["recovery_parent_head"]),
+    ]
+    if include_failed_candidate_parent:
+        command.extend(("-p", str(failed["implementation_commit"])))
+    command.extend(("-m", "portable recovery descendant"))
+    descendant = subprocess.run(
+        command,
+        cwd=portable,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "symbolic-ref", "HEAD", "refs/heads/portable-descendant"],
+        cwd=portable,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "update-ref", "HEAD", descendant],
+        cwd=portable,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return root, portable, taskboard
+
+
 def test_checked_in_convergence_packet_is_valid_on_integration_checkout() -> None:
     report = validate_convergence_artifacts(
         DEFAULT_ARTIFACT_ROOT,
@@ -101,6 +172,258 @@ def test_rescue_population_is_complete_and_every_item_has_a_disposition() -> Non
         for item in (*report.commits, *report.files)
         if item.disposition in {"port", "rewrite"}
     )
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement", "error_fragment"),
+    (
+        (
+            "false_completions.ASE3-006",
+            "repair_task",
+            "ASE3-027",
+            "false_completions.ASE3-006",
+        ),
+        (
+            "false_completions.ASE3-018",
+            "repair_strict_shard",
+            2,
+            "false_completions.ASE3-018",
+        ),
+        (
+            "failed_attempt",
+            "merge_dispatched",
+            True,
+            "failed_attempt.merge_dispatched",
+        ),
+        (
+            "disposition",
+            "attempt_counter_mutation_authorized",
+            True,
+            "disposition.attempt_counter_mutation_authorized",
+        ),
+    ),
+)
+def test_false_completion_recovery_tampering_fails_closed(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    replacement: object,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FALSE_COMPLETION_RECOVERY_FILENAME
+    payload = _load(path)
+    target: object = payload
+    for component in section.split("."):
+        assert isinstance(target, dict)
+        target = target[component]
+    assert isinstance(target, dict)
+    target[field] = replacement
+    _write(path, payload)
+    _rebind_component_digest(root, FALSE_COMPLETION_RECOVERY_FILENAME)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
+@pytest.mark.parametrize(
+    ("filename", "section", "field", "replacement", "error_fragment"),
+    (
+        (
+            FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
+            "",
+            "task_id",
+            "ASE3-018",
+            "false_completion_merge_receipt.ASE3-006.task_id",
+        ),
+        (
+            FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
+            "merge_result.integration_commit_proof",
+            "passed",
+            False,
+            "false_completion_merge_receipt.ASE3-018.integration_commit_proof.passed",
+        ),
+        (
+            FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
+            "merge_result",
+            "returncode",
+            False,
+            "false_completion_merge_receipt.ASE3-006.merge_result.returncode",
+        ),
+        (
+            FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
+            "merge_result.todo_update_result.protected_board_postcondition",
+            "trusted",
+            False,
+            "false_completion_merge_receipt.ASE3-018."
+            "protected_board_postcondition.trusted",
+        ),
+        (
+            FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
+            "merge_result.todo_update_result.protected_board_postcondition."
+            "release_proof",
+            "clean",
+            False,
+            "false_completion_merge_receipt.ASE3-006."
+            "protected_board_postcondition.release_proof.clean",
+        ),
+        (
+            FAILED_VALIDATION_EVENT_019_FILENAME,
+            "",
+            "rescue_branch",
+            "rescue/forged",
+            "failed_validation_event.ASE3-019.event_id",
+        ),
+        (
+            FAILED_VALIDATION_EVENT_019_FILENAME,
+            "",
+            "merge_dispatched",
+            True,
+            "failed_validation_event.ASE3-019.merge_dispatched",
+        ),
+    ),
+)
+def test_recovery_snapshot_tampering_fails_after_manifest_rebind(
+    tmp_path: Path,
+    filename: str,
+    section: str,
+    field: str,
+    replacement: object,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / filename
+    payload = _load(path)
+    target: object = payload
+    for component in filter(None, section.split(".")):
+        assert isinstance(target, dict)
+        target = target[component]
+    assert isinstance(target, dict)
+    target[field] = replacement
+    _write(path, payload)
+    _rebind_component_digest(root, filename)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
+def test_recovery_snapshot_symlink_is_rejected_before_parsing(tmp_path: Path) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME
+    path.unlink()
+    path.symlink_to(
+        DEFAULT_ARTIFACT_ROOT / FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME
+    )
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(path.name in error for error in report.errors)
+
+
+def test_evidence_snapshot_hardlink_is_rejected_before_parsing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME
+    backing = root / "hardlink-backing.json"
+    shutil.copy2(path, backing)
+    path.unlink()
+    os.link(backing, path)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any("single-link evidence file" in error for error in report.errors)
+
+
+def test_evidence_snapshot_size_bound_fails_before_parsing(tmp_path: Path) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME
+    path.write_bytes(b" " * (MAX_EVIDENCE_SNAPSHOT_BYTES + 1))
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any("evidence snapshot bound" in error for error in report.errors)
+
+
+def test_evidence_snapshot_descriptor_instability_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    real_fstat = os.fstat
+    fstat_calls = 0
+
+    def unstable_fstat(descriptor: int) -> os.stat_result | SimpleNamespace:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        observed = real_fstat(descriptor)
+        if fstat_calls != 2:
+            return observed
+        return SimpleNamespace(
+            st_dev=observed.st_dev,
+            st_ino=observed.st_ino,
+            st_mode=observed.st_mode,
+            st_nlink=observed.st_nlink,
+            st_size=observed.st_size + 1,
+            st_mtime_ns=observed.st_mtime_ns,
+            st_ctime_ns=observed.st_ctime_ns,
+        )
+
+    monkeypatch.setattr(convergence_module.os, "fstat", unstable_fstat)
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any("changed during bounded read" in error for error in report.errors)
+
+
+def test_recovery_shard_fields_name_the_repair_and_retry_tasks() -> None:
+    recovery = _load(DEFAULT_ARTIFACT_ROOT / FALSE_COMPLETION_RECOVERY_FILENAME)
+    completions = recovery["false_completions"]
+    failed = recovery["failed_attempt"]
+    assert isinstance(completions, dict)
+    assert isinstance(failed, dict)
+    assert completions["ASE3-006"]["repair_strict_shard"] == 2
+    assert completions["ASE3-018"]["repair_strict_shard"] == 0
+    assert failed["retry_strict_shard"] == 1
+    assert all("strict_shard" not in item for item in completions.values())
+    assert "strict_shard" not in failed
 
 
 def test_component_tampering_fails_closed_before_repository_checks(tmp_path: Path) -> None:
@@ -628,6 +951,72 @@ def test_ase3_019_must_name_llm_router_and_its_dedicated_route_test(
     ) in report.errors
 
 
+@pytest.mark.parametrize(
+    ("needle", "replacement", "error_fragment"),
+    (
+        (
+            "- Repairs task: ASE3-006\n",
+            "- Repairs task: ASE3-018\n",
+            "ASE3-023.repairs_task",
+        ),
+        (
+            "- Is schedulable: true\n- Review only: false\n- Priority: P0\n"
+            "- Track: ambient-inference-production-repair\n",
+            "- Is schedulable: false\n- Review only: false\n- Priority: P0\n"
+            "- Track: ambient-inference-production-repair\n",
+            "ASE3-027.is_schedulable",
+        ),
+        (
+            "- Depends on: ASE3-006, ASE3-018, ASE3-019, ASE3-023, ASE3-027\n",
+            "- Depends on: ASE3-006, ASE3-018, ASE3-019\n",
+            "ASE3-022.depends_on",
+        ),
+        (
+            "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
+            "and once-only fallback\n",
+            "## ASE3-019 Changed identity\n",
+            "provider_fallback_task_contract.ASE3-019.title",
+        ),
+        (
+            "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
+            "and once-only fallback\n\n- Status: todo\n",
+            "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
+            "and once-only fallback\n\n- Status: completed\n",
+            "provider_fallback_task_contract.ASE3-019.contract_sha256",
+        ),
+        (
+            "Configured-board production launch consumes the compiled active plan",
+            "Configured-board production launch may ignore the compiled active plan",
+            "false_completion_repair_tasks.ASE3-023.contract_sha256",
+        ),
+        (
+            "call the existing canonical target, state/run, profile, objective/task-source",
+            "optionally bypass the canonical target, state/run, profile, objective/task-source",
+            "false_completion_repair_tasks.ASE3-027.contract_sha256",
+        ),
+    ),
+)
+def test_false_completion_repair_task_contract_fails_closed(
+    tmp_path: Path,
+    needle: str,
+    replacement: str,
+    error_fragment: str,
+) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
 def test_reload_gate_rejects_a_removed_blocked_reason(tmp_path: Path) -> None:
     taskboard_path = tmp_path / "prompt-v3.todo.md"
     text = TASKBOARD_PATH.read_text(encoding="utf-8")
@@ -1145,10 +1534,10 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
     portable_taskboard_path = portable / PROMPT_V3_TASKBOARD_RELATIVE_PATH
     portable_taskboard_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(TASKBOARD_PATH, portable_taskboard_path)
-    authorization = _load(root / PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME)
-    authorization_source = authorization["authorization_source"]
-    assert isinstance(authorization_source, dict)
-    authorization_head = str(authorization_source["source_head"])
+    recovery = _load(root / FALSE_COMPLETION_RECOVERY_FILENAME)
+    recovery_source = recovery["source"]
+    assert isinstance(recovery_source, dict)
+    recovery_parent_head = str(recovery_source["recovery_parent_head"])
     seed_tree = str(seed["tree"])
     descendant = subprocess.run(
         [
@@ -1160,7 +1549,7 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
             "commit-tree",
             seed_tree,
             "-p",
-            authorization_head,
+            recovery_parent_head,
             "-m",
             "portable descendant",
         ],
@@ -1203,6 +1592,103 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
 
     assert report.valid is True, report.errors
     assert report.errors == ()
+
+
+def test_recovery_requires_the_failed_candidate_rescue_ref(tmp_path: Path) -> None:
+    root, portable, taskboard = _portable_recovery_repository(tmp_path)
+    recovery = _load(root / FALSE_COMPLETION_RECOVERY_FILENAME)
+    failed = recovery["failed_attempt"]
+    assert isinstance(failed, dict)
+    rescue_branch = str(failed["rescue_branch"])
+    for reference in (
+        f"refs/heads/{rescue_branch}",
+        f"refs/remotes/origin/{rescue_branch}",
+    ):
+        subprocess.run(
+            ["git", "update-ref", "-d", reference],
+            cwd=portable,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    report = validate_convergence_artifacts(
+        root,
+        repo_root=portable,
+        check_repository=True,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any("ASE3-019.rescue_branch" in error for error in report.errors)
+
+
+def test_recovery_rejects_conflicting_exact_named_rescue_refs(
+    tmp_path: Path,
+) -> None:
+    root, portable, taskboard = _portable_recovery_repository(tmp_path)
+    recovery = _load(root / FALSE_COMPLETION_RECOVERY_FILENAME)
+    source = recovery["source"]
+    failed = recovery["failed_attempt"]
+    assert isinstance(source, dict)
+    assert isinstance(failed, dict)
+    rescue_branch = str(failed["rescue_branch"])
+    subprocess.run(
+        [
+            "git",
+            "update-ref",
+            f"refs/remotes/origin/{rescue_branch}",
+            str(failed["implementation_commit"]),
+        ],
+        cwd=portable,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "update-ref",
+            f"refs/heads/{rescue_branch}",
+            str(source["recovery_parent_head"]),
+        ],
+        cwd=portable,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    report = validate_convergence_artifacts(
+        root,
+        repo_root=portable,
+        check_repository=True,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any("exact named refs disagree" in error for error in report.errors)
+
+
+def test_recovery_rejects_a_head_containing_the_failed_candidate(
+    tmp_path: Path,
+) -> None:
+    root, portable, taskboard = _portable_recovery_repository(
+        tmp_path,
+        include_failed_candidate_parent=True,
+    )
+
+    report = validate_convergence_artifacts(
+        root,
+        repo_root=portable,
+        check_repository=True,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-019.merge_dispatched: candidate is an ancestor of HEAD" in error
+        for error in report.errors
+    )
 
 
 def test_scheduler_config_loads_and_binds_the_v3_board_structurally() -> None:

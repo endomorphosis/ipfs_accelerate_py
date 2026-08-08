@@ -40,7 +40,7 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Parallel lane: program
 - Resource class: coordinator
 - Goal: Deliver one safe prompt-only product facade that creates a canonical goal/subgoal/task program, runs independent work in parallel, refills objective residuals, and remains truthfully monitored until current-tree evidence authorizes completion.
-- Producing tasks: ASE3-000, ASE3-001, ASE3-002, ASE3-003, ASE3-004, ASE3-005, ASE3-006, ASE3-007, ASE3-008, ASE3-009, ASE3-010, ASE3-011, ASE3-012, ASE3-013, ASE3-014, ASE3-018, ASE3-019, ASE3-020, ASE3-021
+- Producing tasks: ASE3-000, ASE3-001, ASE3-002, ASE3-003, ASE3-004, ASE3-005, ASE3-006, ASE3-007, ASE3-008, ASE3-009, ASE3-010, ASE3-011, ASE3-012, ASE3-013, ASE3-014, ASE3-018, ASE3-019, ASE3-020, ASE3-021, ASE3-023, ASE3-027
 - Evidence: prompt_self_improvement_v3.PROMPT_SELF_IMPROVEMENT_V3_REQUIREMENT_ID
 - Evidence requirements JSON: ["current-main convergence receipt", "prompt resolution receipt", "canonical objective and task roots", "real lifecycle launch receipt", "parallel overlap and conflict-serialization receipt", "bounded refill receipt", "watchdog recovery receipt", "cross-transport conformance receipt", "self-hosted current-tree rollout decision"]
 - Evidence criteria: One prompt plus trusted ambient context produces or adopts a durable run without expert daemon flags; prompt content never grants authority; goals, subgoals, and tasks have canonical lineage; independent work overlaps; drained-open objectives refill; false-running, stalls, and soft completion recover or fail closed; and completion is proven on the exact promoted tree.
@@ -92,10 +92,10 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Parallel lane: inference-policy
 - Resource class: security-small
 - Goal: Resolve every normal operational argument from one frozen trusted context while keeping intent, authority, provider policy, resource ceilings, and transport authentication separate.
-- Producing tasks: ASE3-001, ASE3-002, ASE3-018, ASE3-019
+- Producing tasks: ASE3-001, ASE3-002, ASE3-018, ASE3-019, ASE3-027
 - Evidence: prompt_v3_resolution.PROMPT_ONLY_RESOLUTION_REQUIREMENT_ID
 - Evidence requirements JSON: ["frozen invocation-context CID", "field-level inference provenance", "signed local profile receipt", "transport target-binding matrix", "provider policy and attempt receipts", "prompt non-influence matrix"]
-- Evidence criteria: Local CLI, Python, MCP, and MCP++ resolve deterministic target, state, profile, run, objective, task-source, provider, resources, validation, and topology values from allowed evidence; material ambiguity yields one typed continuation; inference never grants effects.
+- Evidence criteria: Local CLI, Python, MCP, and MCP++ resolve deterministic target, state, profile, run, objective, task-source, provider, resources, validation, and topology values from allowed evidence; every launch-capable default executes all nine verified leaf resolvers rather than trusting populated context; material ambiguity yields one typed continuation; historical completed status and self-contained tests are not evidence; inference never grants effects.
 - Evidence source policy: Prompt text, repository instructions, arbitrary client paths, environment-only identity, generic provider failures, and credential presence are not authority; accept verified local profiles, server policy, UCAN, bounded repository observation, fresh provider evidence, and explicit authorized overrides.
 - Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py, ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py
 - Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py"]
@@ -144,10 +144,10 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Parallel lane: runtime-parallelism
 - Resource class: process-control
 - Goal: Replace simulation and no-op defaults with a resumable real lifecycle and dispatch the largest deterministic conflict-free task set under shared leases, fences, resources, and merge serialization.
-- Producing tasks: ASE3-003, ASE3-005, ASE3-006
+- Producing tasks: ASE3-003, ASE3-005, ASE3-006, ASE3-023
 - Evidence: prompt_v3_runtime.REAL_PARALLEL_RUNTIME_REQUIREMENT_ID
 - Evidence requirements JSON: ["DuckDB run revision CAS", "complete launch-plan and pre-effect snapshots", "real process start or adoption receipt", "parallel overlap trace", "conflict serialization trace", "post-merge current-tree receipt"]
-- Evidence criteria: Missing backend/effect handlers fail typed and closed; launch/adopt is idempotent across crashes; mutable run truth lives in DuckDB; effects revalidate tree, authority, policy, lease, and fence; admitted lane budgets propagate without a hard-coded width; empty recovered slices deny work; independent tasks overlap while conflicts serialize; only accepted work satisfies dependencies and is reachable from the integration head.
+- Evidence criteria: Missing backend/effect handlers fail typed and closed; launch/adopt is idempotent across crashes; mutable run truth lives in DuckDB; effects revalidate tree, authority, policy, lease, and fence; configured production launch consumes one durable active-plan revision and its exact per-lane slices, with canonical lane budgets and no duplicate claim ledger; empty recovered slices deny work; wrapper-only compiler tests and historical completed status are not evidence; independent tasks overlap while conflicts serialize; only accepted work satisfies dependencies and is reachable from the integration head.
 - Evidence source policy: In-memory records, no-op callbacks, JSON status, PID liveness, runtime Markdown status, worker self-report, and branch-local commits are non-authoritative without joined registry, effect, validation, merge, and current-tree receipts.
 - Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py, ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py, ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py, ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py, ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py
 - Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py"]

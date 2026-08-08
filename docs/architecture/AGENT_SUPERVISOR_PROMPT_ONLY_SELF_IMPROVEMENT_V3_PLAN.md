@@ -323,9 +323,9 @@ Wave 2:            ASE3-004 prompt-to-goal/task materializer
 Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
                    ASE3-006 conflict-aware parallel scheduler
                    ASE3-007 bounded objective/task refill
-Wave 3b (parallel): ASE3-006 adaptive scheduler continuation
-                    ASE3-018 canonical context/resolver hardening
-                    ASE3-019 signed authority/provider-attempt hardening
+Wave 3b repair (parallel): ASE3-023 production adaptive-scheduler wiring
+                           ASE3-027 production resolver composition
+                           ASE3-019 attempt-2 signed authority/provider repair
 Wave 3c:           ASE3-022 operator-owned daemon reload boundary
                    ASE3-021 durable production refill wiring
 Wave 3d:           ASE3-020 transactional run truth and crash-safe saga
@@ -381,14 +381,29 @@ through provider-capacity restoration. The
 historical post-wave-3 residual report remains immutable evidence and is not
 reclassified by this prospective policy.
 
-The ready set is deliberately three-way sharded: ASE3-006 to lane 0, ASE3-019
-to lane 1, and ASE3-018 to lane 2. Once ASE3-006, ASE3-018, and ASE3-019 are all
-accepted, the bootstrap process tree must be fenced. ASE3-022 keeps ASE3-021
-machine-blocked while the old generation is stopped, receipted, and committed;
-the same namespace is then relaunched from that completion commit so the
-hardened provider-attempt daemon code is loaded. The legacy objective and
-codebase refill flags remain disabled; ASE3-021 owns the later scoped-v3
-adoption and refill transition.
+The first Wave 3b run exposed two false-positive completions and one legitimate
+failed validation. ASE3-006's standalone compiler and SQLite ledger were not
+consumed by the production scheduler, while ASE3-018's default resolver still
+accepted repository-only, caller-shaped profile, and caller-constructed UCAN
+evidence. Their green tests and completed projections remain immutable evidence,
+but they do not satisfy product acceptance. The manifest-bound
+`false_completion_recovery_20260808.json` maps those residuals to ASE3-023 and
+ASE3-027 without rewriting counters or runtime history. ASE3-019 retains its
+exact task identity, charged attempt 1, and preserved failed candidate so the
+next dispatch is attempt 2 with the authorized prior-attempt seed.
+
+The repair ready set is deliberately three-way sharded: ASE3-027 to lane 0,
+ASE3-019 to lane 1, and ASE3-023 to lane 2. Their edit scopes are disjoint:
+ASE3-023 is forbidden from touching `implementation_daemon.py` or provider
+authority files, and ASE3-027 is forbidden from touching ASE3-019 profile,
+router, or daemon surfaces. Once ASE3-019, ASE3-023, and ASE3-027 are all
+accepted and jointly revalidated, the process tree must be fenced. ASE3-022
+keeps ASE3-021 machine-blocked while the exact old generation is stopped,
+receipted, and committed; its receipt must bind the false-completion artifact
+and all three accepted repair chains. The same namespace is then relaunched
+once from that completion commit so both provider-attempt and scheduler changes
+are loaded. The legacy objective and codebase refill flags remain disabled;
+ASE3-021 owns the later scoped-v3 adoption and refill transition.
 
 ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and

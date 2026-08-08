@@ -18,7 +18,7 @@
     "historical_ase_or_ase2_completion_is_authority": false
   },
   "initial_projection": {
-    "task_count": 19,
+    "task_count": 21,
     "goal_count": 10,
     "root_goal_id": "ASE3-G000",
     "bootstrap_task_id": "ASE3-000",
@@ -62,6 +62,10 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/clean_integration_worktree_receipt.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_recovery_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_merge_receipt_ase3_006_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_merge_receipt_ase3_018_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_validation_event_ase3_019_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json"
   ],
   "runtime_paths": {
@@ -91,9 +95,9 @@
   ],
   "task_groups": {
     "ASE3-G010": ["ASE3-000"],
-    "ASE3-G020": ["ASE3-001", "ASE3-002", "ASE3-018", "ASE3-019"],
+    "ASE3-G020": ["ASE3-001", "ASE3-002", "ASE3-018", "ASE3-019", "ASE3-027"],
     "ASE3-G030": ["ASE3-004"],
-    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006"],
+    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006", "ASE3-023"],
     "ASE3-G050": ["ASE3-007", "ASE3-021"],
     "ASE3-G055": ["ASE3-020"],
     "ASE3-G060": ["ASE3-008"],

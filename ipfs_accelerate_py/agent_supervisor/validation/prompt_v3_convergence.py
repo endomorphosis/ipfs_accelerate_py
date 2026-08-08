@@ -14,9 +14,12 @@ command always prints one JSON object containing at least ``valid`` and
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
+import os
 import re
+import stat
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -41,8 +44,12 @@ CONVERGENCE_MANIFEST_SCHEMA: Final = (
 CONVERGENCE_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-report@1"
 )
+CONVERGENCE_MANIFEST_CREATED_AT: Final = "2026-08-08T17:14:30Z"
 POST_WAVE3_RESIDUAL_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.post-wave3-residual-report@1"
+)
+FALSE_COMPLETION_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.false-completion-recovery@1"
 )
 PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@1"
@@ -50,6 +57,18 @@ PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA: Final = (
 
 BOARD_NAMESPACE: Final = "agent-supervisor-prompt-only-self-improvement-v3"
 POST_WAVE3_RESIDUAL_FILENAME: Final = "post_wave3_residuals_20260808.json"
+FALSE_COMPLETION_RECOVERY_FILENAME: Final = (
+    "false_completion_recovery_20260808.json"
+)
+FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME: Final = (
+    "false_completion_merge_receipt_ase3_006_20260808.json"
+)
+FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME: Final = (
+    "false_completion_merge_receipt_ase3_018_20260808.json"
+)
+FAILED_VALIDATION_EVENT_019_FILENAME: Final = (
+    "failed_validation_event_ase3_019_20260808.json"
+)
 PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME: Final = (
     "provider_fallback_policy_authorization_20260808.json"
 )
@@ -59,6 +78,10 @@ ARTIFACT_FILENAMES: Final = (
     "rescue_artifact_dispositions.json",
     "clean_integration_worktree_receipt.json",
     POST_WAVE3_RESIDUAL_FILENAME,
+    FALSE_COMPLETION_RECOVERY_FILENAME,
+    FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
+    FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
+    FAILED_VALIDATION_EVENT_019_FILENAME,
     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
 )
 MANIFEST_FILENAME: Final = "convergence_manifest.json"
@@ -79,6 +102,12 @@ DEFAULT_ARTIFACT_ROOT: Final = (
     / "agent_supervisor"
     / "prompt_only_self_improvement_v3"
     / "convergence"
+)
+MAX_EVIDENCE_SNAPSHOT_BYTES: Final[int] = 1_048_576
+_EVIDENCE_READ_CHUNK_BYTES: Final[int] = 64 * 1024
+_TASK_TITLE_KEY: Final = "__task_title__"
+_TASK_IDENTITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-identity@1"
 )
 
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -156,14 +185,226 @@ _POST_WAVE3_DISPOSITION: Final = {
     "provider_policy_broadening_authorized": False,
     "attempt_counter_mutation_authorized": False,
 }
+_FALSE_COMPLETION_RECOVERY_CREATED_AT: Final = "2026-08-08T16:35:00Z"
+_FALSE_COMPLETION_RECOVERY_SOURCE: Final = {
+    "branch": "agent/prompt-self-improvement-v3",
+    "launch_stamp": "20260808T162057Z",
+    "launch_base_head": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+    "launch_base_tree": "917a307ed4f4854a8f9cfb74290e8a475e831d08",
+    "recovery_parent_head": "733e63333f992477d091449319869e23912d4f9c",
+    "recovery_parent_tree": "641c15fd65d64953b3fbf5971454fcc56143c4c6",
+    "protected_parent_blobs": {
+        "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json": (
+            "867dbb193029f28ac5d9face7c99f7c9cbeb63b0"
+        ),
+        "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md": (
+            "7dd1310ab239b6da56be704d4e475d4784809a0e"
+        ),
+        "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md": (
+            "7b9b1e86a9d5aeb4887dd53094f542b5624684d4"
+        ),
+        "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md": (
+            "3765d05d04cde1866eedf1f6c7f5d22732a68ca9"
+        ),
+    },
+}
+_FALSE_COMPLETION_RECORDS: Final = {
+    "ASE3-006": {
+        "canonical_task_cid": (
+            "baguqeeraz5pve2rmjuvo6qivduhrvf4o6nrclgu2jtdjo3kll7aqpnyipzkq"
+        ),
+        "attempt": 1,
+        "implementation_commit": "159b298910a11ba4adbafa3c0192a9585639c53a",
+        "implementation_tree": "f91558d857ca640066fd33637ebf126dbf442250",
+        "merge_commit": "9d8f1062583f4e7b717ac535878716e04f2d7577",
+        "status_commit": "78eeaad86de70b61d5cc03940aa043c84fd441d8",
+        "source_merge_receipt_path": (
+            "data/agent_supervisor/prompt_only_self_improvement_v3/live/"
+            "merge-queue/train/receipts/"
+            "90732ac34f5c00e9dfeeeee018d137ae9d057084caa64e55a32c64e9adf2c797.json"
+        ),
+        "merge_receipt_snapshot": FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
+        "merge_receipt_sha256": (
+            "sha256:838237cd8c8c5fbc47e4ca989d5e2e9f0a27aa7a8b1f9a3ba2552b67048acf0d"
+        ),
+        "acceptance_authoritative": False,
+        "findings": [
+            "adaptive scheduler and compiler have no production scheduler or runtime consumer",
+            "execution_plan defines a duplicate InvocationBudget instead of consuming entrypoints.contracts.InvocationBudget",
+            "standalone SQLite ledger duplicates production task-source and claim authority",
+            "whole-plan and exact-slice restart adoption are not integrated or proven",
+        ],
+        "repair_task": "ASE3-023",
+        "repair_goal": "ASE3-G040",
+        "repair_strict_shard": 2,
+    },
+    "ASE3-018": {
+        "canonical_task_cid": (
+            "baguqeeraifrriecjdwkl2yz266asjxkgkeleqgq2uonuc5mxugyuuojeeehq"
+        ),
+        "attempt": 1,
+        "implementation_commit": "23bf69ff8517de100f5cd4918e479af3667ec70a",
+        "implementation_tree": "5a8be38132e792684dc6ab7de203998238bc9bd5",
+        "merge_commit": "518830810013fde1b13599591146356001aa774a",
+        "status_commit": "733e63333f992477d091449319869e23912d4f9c",
+        "source_merge_receipt_path": (
+            "data/agent_supervisor/prompt_only_self_improvement_v3/live/"
+            "merge-queue/train/receipts/"
+            "27843f980b7b5687fba68692b159f05b2cbdbc981a972e1ae0b957b6ad69d3ec.json"
+        ),
+        "merge_receipt_snapshot": FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
+        "merge_receipt_sha256": (
+            "sha256:aee69ba91156b9a6ec9ed75a191ec579d6389a4b4298a2a93af777840612f85b"
+        ),
+        "acceptance_authoritative": False,
+        "findings": [
+            "production defaults still resolve only repository instead of all nine required launch fields",
+            "prefilled context values bypass real leaf-resolver composition",
+            "profile authorization trusts signature shape and a caller profile_signed boolean",
+            "caller-constructible UCAN evidence is treated as verified without cryptographic attenuation",
+            "mixed mapping keys still raise TypeError in production receipt identity",
+        ],
+        "repair_task": "ASE3-027",
+        "repair_goal": "ASE3-G020",
+        "repair_strict_shard": 0,
+    },
+}
+_FALSE_COMPLETION_FAILED_ATTEMPT: Final = {
+    "task_id": "ASE3-019",
+    "canonical_task_cid": (
+        "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a"
+    ),
+    "attempt": 1,
+    "implementation_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+    "implementation_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+    "failed_event_id": (
+        "sha256:6b6482b68fef226ab3bc631cb722de49ccfb863cc5350fdf91a79ac1e34cfce4"
+    ),
+    "failed_event_snapshot": FAILED_VALIDATION_EVENT_019_FILENAME,
+    "failed_event_snapshot_sha256": (
+        "sha256:df2cb757d0330996c3a586acfd649fdfcf7d76758bddd3c35689ea4998a1115e"
+    ),
+    "rescue_branch": (
+        "rescue/ase3-019-b75326e8a50d-attempt-1-1786206062-failed-validation"
+    ),
+    "validation_returncode": 1,
+    "merge_dispatched": False,
+    "attempt_counter_mutation_authorized": False,
+    "continuation": "same_identity_attempt_2_with_prior_attempt_seed",
+    "retry_strict_shard": 1,
+}
+_FALSE_COMPLETION_FENCE: Final = {
+    "master_pid": 1009686,
+    "supervisor_pids": [1009840, 1009841, 1009842],
+    "daemon_pids": [1012621, 1010240, 1010193],
+    "shutdown_signal": "SIGTERM",
+    "lane_statuses": ["stopped", "stopped", "stopped"],
+    "lane_restart_counts": [0, 0, 0],
+    "zero_owned_processes": True,
+    "zero_scoped_provider_containers": True,
+    "active_attempts_cleared": True,
+}
+_FALSE_COMPLETION_DISPOSITION: Final = {
+    "completion_authority": False,
+    "old_completion_satisfies_repair": False,
+    "runtime_state_mutation_authorized": False,
+    "attempt_counter_mutation_authorized": False,
+    "queue_history_mutation_authorized": False,
+    "legacy_refill_enablement_authorized": False,
+    "repair_tasks": ["ASE3-023", "ASE3-027"],
+    "retry_task": "ASE3-019",
+    "reload_gate": "ASE3-022",
+    "reload_gate_must_remain_blocked": True,
+}
 _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID: Final = "ASE3-022"
 _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES: Final = (
     "ASE3-006",
     "ASE3-018",
     "ASE3-019",
+    "ASE3-023",
+    "ASE3-027",
 )
 _PROVIDER_ATTEMPT_RELOAD_GATE_BLOCKED_REASON: Final = (
     "provider-attempt daemon reload boundary not yet accepted"
+)
+_FALSE_COMPLETION_REPAIR_TASKS: Final = {
+    "ASE3-023": {
+        "title": "Repair production plan-bound adaptive parallel dispatch",
+        "contract_sha256": (
+            "sha256:c13240a72521f3f7f71b39e5d404daa5825581b1606e707a5dad8e693af73f25"
+        ),
+        "goal id": "ASE3-G040",
+        "depends on": ("ASE3-003", "ASE3-004", "ASE3-005", "ASE3-006"),
+        "outputs": (
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+            "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+            "test/api/test_agent_supervisor_configured_board_scheduler.py",
+            "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+        ),
+        "validation": (
+            "python -m pytest test/api/test_agent_supervisor_prompt_v3_parallelism.py "
+            "test/api/test_agent_supervisor_configured_board_scheduler.py "
+            "test/api/test_agent_supervisor_implementation_supervisor_runner.py -q"
+        ),
+        "repairs task": "ASE3-006",
+        "strict_shard": 2,
+        "evidence_anchor": (
+            "false_completion_recovery_20260808.json#false_completions/ASE3-006"
+        ),
+    },
+    "ASE3-027": {
+        "title": (
+            "Repair production canonical resolver composition and verified trust evidence"
+        ),
+        "contract_sha256": (
+            "sha256:69853f7f6174a9bd118b4fca13d5ba8e897e962def801d7fb012d9e4969f7d8c"
+        ),
+        "goal id": "ASE3-G020",
+        "depends on": ("ASE3-001", "ASE3-018"),
+        "outputs": (
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+            "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+        ),
+        "validation": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py "
+            "test/api/test_agent_supervisor_prompt_v3_resolution.py "
+            "test/api/test_agent_supervisor_inference_runtime.py "
+            "test/api/test_agent_supervisor_target_resolver.py "
+            "test/api/test_agent_supervisor_state_resolver.py "
+            "test/api/test_agent_supervisor_profile_resolver.py "
+            "test/api/test_agent_supervisor_objective_resolver.py "
+            "test/api/test_agent_supervisor_capability_resolver.py "
+            "test/api/test_agent_supervisor_authority_resolver.py -q"
+        ),
+        "repairs task": "ASE3-018",
+        "strict_shard": 0,
+        "evidence_anchor": (
+            "false_completion_recovery_20260808.json#false_completions/ASE3-018"
+        ),
+    },
+}
+_ASE3_019_TITLE: Final = (
+    "Seal signed provider authority, authentication lifecycle, and once-only fallback"
+)
+_ASE3_019_CONTRACT_SHA256: Final = (
+    "sha256:0b03746b83ab9a7316d6e8f5145fe092043819bf8ac2012ee8596277c44602a8"
+)
+_ASE3_023_FORBIDDEN_OUTPUTS: Final = frozenset(
+    {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+    }
 )
 _PROVIDER_FALLBACK_AUTHORIZATION_CREATED_AT: Final = "2026-08-08T13:59:09Z"
 _PROVIDER_FALLBACK_AUTHORIZATION_SOURCE: Final = {
@@ -375,18 +616,119 @@ def _reject_duplicate_keys(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
     return payload
 
 
-def _load_json(path: Path) -> Mapping[str, Any]:
+def _file_snapshot(status: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(status.st_dev),
+        int(status.st_ino),
+        int(stat.S_IFMT(status.st_mode)),
+        int(status.st_nlink),
+        int(status.st_size),
+        int(status.st_mtime_ns),
+        int(status.st_ctime_ns),
+    )
+
+
+def _read_regular_bytes(
+    path: Path,
+    *,
+    maximum_bytes: int = MAX_EVIDENCE_SNAPSHOT_BYTES,
+) -> bytes:
+    """Read one bounded, single-link, stable evidence-file snapshot."""
+
+    if maximum_bytes < 0:
+        raise ValueError(f"{path.name}: invalid evidence snapshot byte bound")
+    initial = path.lstat()
+    if not stat.S_ISREG(initial.st_mode):
+        raise ValueError(f"{path.name}: expected a regular nonsymlink file")
+    if initial.st_nlink != 1:
+        raise ValueError(f"{path.name}: expected a single-link evidence file")
+    if initial.st_size > maximum_bytes:
+        raise ValueError(
+            f"{path.name}: exceeds {maximum_bytes}-byte evidence snapshot bound"
+        )
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or _file_snapshot(opened) != _file_snapshot(initial)
+        ):
+            raise ValueError(
+                f"{path.name}: evidence file changed before bounded read"
+            )
+        if opened.st_size > maximum_bytes:
+            raise ValueError(
+                f"{path.name}: exceeds {maximum_bytes}-byte evidence snapshot bound"
+            )
+
+        chunks: list[bytes] = []
+        observed_bytes = 0
+        while True:
+            remaining = maximum_bytes + 1 - observed_bytes
+            if remaining <= 0:
+                raise ValueError(
+                    f"{path.name}: exceeds {maximum_bytes}-byte evidence snapshot bound"
+                )
+            chunk = os.read(
+                descriptor,
+                min(_EVIDENCE_READ_CHUNK_BYTES, remaining),
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed_bytes += len(chunk)
+            if observed_bytes > maximum_bytes:
+                raise ValueError(
+                    f"{path.name}: exceeds {maximum_bytes}-byte evidence snapshot bound"
+                )
+
+        final_descriptor = os.fstat(descriptor)
+        final_path = path.lstat()
+        payload = b"".join(chunks)
+        if (
+            len(payload) != opened.st_size
+            or _file_snapshot(final_descriptor) != _file_snapshot(opened)
+            or _file_snapshot(final_path) != _file_snapshot(opened)
+        ):
+            raise ValueError(
+                f"{path.name}: evidence file changed during bounded read"
+            )
+        return payload
+    finally:
+        os.close(descriptor)
+
+
+def _load_json_bytes(raw: bytes, *, name: str) -> Mapping[str, Any]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{name}: expected UTF-8 JSON") from exc
     payload = json.loads(
-        path.read_text(encoding="utf-8"),
+        text,
         object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            ValueError(f"{name}: non-finite JSON constant {value!r}")
+        ),
     )
     if not isinstance(payload, Mapping):
-        raise ValueError(f"{path.name}: root must be a JSON object")
+        raise ValueError(f"{name}: root must be a JSON object")
     return payload
 
 
+def _load_json(path: Path) -> Mapping[str, Any]:
+    return _load_json_bytes(_read_regular_bytes(path), name=path.name)
+
+
 def _sha256_file(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    return "sha256:" + hashlib.sha256(_read_regular_bytes(path)).hexdigest()
 
 
 def _is_safe_relative_path(value: str) -> bool:
@@ -1180,6 +1522,177 @@ def _validate_exact_policy_object(
 
 
 @dataclass(frozen=True)
+class FalseCompletionRecoveryReport:
+    """Immutable evidence that green projections failed product acceptance."""
+
+    payload: Mapping[str, Any]
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> FalseCompletionRecoveryReport:
+        return cls(dict(payload))
+
+    @property
+    def recovery_parent_head(self) -> str:
+        source = self.payload.get("source", {})
+        return (
+            str(source.get("recovery_parent_head", ""))
+            if isinstance(source, Mapping)
+            else ""
+        )
+
+    @property
+    def recovery_parent_tree(self) -> str:
+        source = self.payload.get("source", {})
+        return (
+            str(source.get("recovery_parent_tree", ""))
+            if isinstance(source, Mapping)
+            else ""
+        )
+
+    def validate(self) -> tuple[str, ...]:
+        errors: list[str] = []
+        prefix = "false_completion_recovery"
+        expected_fields = {
+            "schema",
+            "created_at",
+            "board_namespace",
+            "source",
+            "false_completions",
+            "failed_attempt",
+            "fence",
+            "disposition",
+        }
+        if set(self.payload) != expected_fields:
+            errors.append(f"{prefix}: field population mismatch")
+        if self.payload.get("schema") != FALSE_COMPLETION_RECOVERY_SCHEMA:
+            errors.append(f"{prefix}.schema: unsupported schema")
+        if self.payload.get("created_at") != _FALSE_COMPLETION_RECOVERY_CREATED_AT:
+            errors.append(
+                f"{prefix}.created_at: expected immutable UTC timestamp "
+                f"{_FALSE_COMPLETION_RECOVERY_CREATED_AT}"
+            )
+        if self.payload.get("board_namespace") != BOARD_NAMESPACE:
+            errors.append(f"{prefix}.board_namespace: mismatch")
+        _validate_exact_policy_object(
+            errors,
+            prefix=f"{prefix}.source",
+            actual=self.payload.get("source"),
+            expected=_FALSE_COMPLETION_RECOVERY_SOURCE,
+        )
+        _validate_exact_policy_object(
+            errors,
+            prefix=f"{prefix}.false_completions",
+            actual=self.payload.get("false_completions"),
+            expected=_FALSE_COMPLETION_RECORDS,
+        )
+        _validate_exact_policy_object(
+            errors,
+            prefix=f"{prefix}.failed_attempt",
+            actual=self.payload.get("failed_attempt"),
+            expected=_FALSE_COMPLETION_FAILED_ATTEMPT,
+        )
+        _validate_exact_policy_object(
+            errors,
+            prefix=f"{prefix}.fence",
+            actual=self.payload.get("fence"),
+            expected=_FALSE_COMPLETION_FENCE,
+        )
+        _validate_exact_policy_object(
+            errors,
+            prefix=f"{prefix}.disposition",
+            actual=self.payload.get("disposition"),
+            expected=_FALSE_COMPLETION_DISPOSITION,
+        )
+        for field in (
+            "launch_base_head",
+            "launch_base_tree",
+            "recovery_parent_head",
+            "recovery_parent_tree",
+        ):
+            source = self.payload.get("source", {})
+            value = source.get(field) if isinstance(source, Mapping) else None
+            _require_hex40(errors, f"{prefix}.source.{field}", value)
+        for task_id, expected in _FALSE_COMPLETION_RECORDS.items():
+            for field in (
+                "implementation_commit",
+                "implementation_tree",
+                "merge_commit",
+                "status_commit",
+            ):
+                _require_hex40(
+                    errors,
+                    f"{prefix}.false_completions.{task_id}.{field}",
+                    expected[field],
+                )
+            _require_sha256(
+                errors,
+                f"{prefix}.false_completions.{task_id}.merge_receipt_sha256",
+                expected["merge_receipt_sha256"],
+            )
+            snapshot = str(expected["merge_receipt_snapshot"])
+            if (
+                snapshot not in ARTIFACT_FILENAMES
+                or not _is_safe_relative_path(snapshot)
+            ):
+                errors.append(
+                    f"{prefix}.false_completions.{task_id}."
+                    "merge_receipt_snapshot: unsafe or unprotected"
+                )
+            repair_task = str(expected["repair_task"])
+            repair_shard = (
+                int(hashlib.sha256(repair_task.encode()).hexdigest()[:8], 16) % 3
+            )
+            if expected["repair_strict_shard"] != repair_shard:
+                errors.append(
+                    f"{prefix}.false_completions.{task_id}."
+                    "repair_strict_shard: repair-task hash mismatch"
+                )
+        _require_hex40(
+            errors,
+            f"{prefix}.failed_attempt.implementation_commit",
+            _FALSE_COMPLETION_FAILED_ATTEMPT["implementation_commit"],
+        )
+        _require_hex40(
+            errors,
+            f"{prefix}.failed_attempt.implementation_tree",
+            _FALSE_COMPLETION_FAILED_ATTEMPT["implementation_tree"],
+        )
+        _require_sha256(
+            errors,
+            f"{prefix}.failed_attempt.failed_event_id",
+            _FALSE_COMPLETION_FAILED_ATTEMPT["failed_event_id"],
+        )
+        _require_sha256(
+            errors,
+            f"{prefix}.failed_attempt.failed_event_snapshot_sha256",
+            _FALSE_COMPLETION_FAILED_ATTEMPT["failed_event_snapshot_sha256"],
+        )
+        failed_snapshot = str(
+            _FALSE_COMPLETION_FAILED_ATTEMPT["failed_event_snapshot"]
+        )
+        if (
+            failed_snapshot not in ARTIFACT_FILENAMES
+            or not _is_safe_relative_path(failed_snapshot)
+        ):
+            errors.append(
+                f"{prefix}.failed_attempt.failed_event_snapshot: "
+                "unsafe or unprotected"
+            )
+        retry_task = str(_FALSE_COMPLETION_FAILED_ATTEMPT["task_id"])
+        retry_shard = (
+            int(hashlib.sha256(retry_task.encode()).hexdigest()[:8], 16) % 3
+        )
+        if _FALSE_COMPLETION_FAILED_ATTEMPT["retry_strict_shard"] != retry_shard:
+            errors.append(
+                f"{prefix}.failed_attempt.retry_strict_shard: task hash mismatch"
+            )
+        return tuple(errors)
+
+
+@dataclass(frozen=True)
 class ProviderFallbackPolicyAuthorization:
     """Prospective, source-bound authority for the narrow automatic fallback."""
 
@@ -1297,8 +1810,15 @@ class ConvergenceManifest:
         if self.payload.get("goal_id") != "ASE3-G010":
             errors.append("convergence_manifest.goal_id: expected ASE3-G010")
         created_at = self.payload.get("created_at")
-        if not isinstance(created_at, str) or _UTC_TIMESTAMP.fullmatch(created_at) is None:
-            errors.append("convergence_manifest.created_at: expected UTC timestamp")
+        if (
+            not isinstance(created_at, str)
+            or _UTC_TIMESTAMP.fullmatch(created_at) is None
+            or created_at != CONVERGENCE_MANIFEST_CREATED_AT
+        ):
+            errors.append(
+                "convergence_manifest.created_at: expected UTC timestamp "
+                f"{CONVERGENCE_MANIFEST_CREATED_AT} for packet assembly"
+            )
         if self.payload.get("integration_seed_commit") != baseline.integration_seed_commit:
             errors.append(
                 "convergence_manifest.integration_seed_commit: baseline mismatch"
@@ -1406,8 +1926,8 @@ class ConvergenceValidationReport:
         }
 
 
-def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
-    """Read only the bounded Markdown metadata needed by the bootstrap gate.
+def _parse_taskboard_metadata(text: str) -> dict[str, dict[str, str]]:
+    """Parse the bounded Markdown metadata used by the bootstrap gate.
 
     The convergence validator is also executed directly by file path, where
     package-relative imports are unavailable.  Keep this parser deliberately
@@ -1415,7 +1935,6 @@ def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
     the runtime parser's last-value-wins behavior.
     """
 
-    text = taskboard_path.read_text(encoding="utf-8")
     tasks: dict[str, dict[str, str]] = {}
     current_id = ""
     current_metadata: dict[str, str] = {}
@@ -1434,9 +1953,13 @@ def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
         if line.startswith("## "):
             flush()
             header = line[3:].strip()
-            task_id = header.split(" ", 1)[0]
+            header_parts = header.split(" ", 1)
+            task_id = header_parts[0]
             if task_id.startswith("ASE3-"):
                 current_id = task_id
+                current_metadata[_TASK_TITLE_KEY] = (
+                    header_parts[1].strip() if len(header_parts) == 2 else ""
+                )
             continue
         if not current_id:
             continue
@@ -1454,6 +1977,17 @@ def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
     return tasks
 
 
+def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
+    """Read one regular nonsymlink board snapshot and reject malformed UTF-8."""
+
+    raw = _read_regular_bytes(taskboard_path)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{taskboard_path.name}: expected UTF-8 Markdown") from exc
+    return _parse_taskboard_metadata(text)
+
+
 def _taskboard_csv(metadata: Mapping[str, str], field: str) -> tuple[str, ...]:
     return tuple(
         item.strip()
@@ -1462,9 +1996,118 @@ def _taskboard_csv(metadata: Mapping[str, str], field: str) -> tuple[str, ...]:
     )
 
 
+def _task_contract_sha256(metadata: Mapping[str, str]) -> str:
+    title = str(metadata.get(_TASK_TITLE_KEY, ""))
+    fields = {
+        str(key): str(value)
+        for key, value in metadata.items()
+        if key != _TASK_TITLE_KEY
+    }
+    encoded = json.dumps(
+        {"title": title, "metadata": fields},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _normalize_identity_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+
+def _normalize_identity_path(value: Any) -> str:
+    text = str(value or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return re.sub(r"/+", "/", text).rstrip("/")
+
+
+def _identity_sequence(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        return [str(item) for item in value if item not in (None, "")]
+    return [str(value)]
+
+
+def _canonical_task_cid_from_metadata(metadata: Mapping[str, str]) -> str:
+    """Recompute the runtime task CID without importing package-relative code."""
+
+    title = _normalize_identity_text(metadata.get(_TASK_TITLE_KEY, ""))
+    outputs = sorted(
+        {
+            normalized
+            for item in _identity_sequence(metadata.get("outputs", ""))
+            if (normalized := _normalize_identity_path(item))
+        }
+    )
+    acceptance = [
+        normalized
+        for item in _identity_sequence(metadata.get("acceptance", ""))
+        if (normalized := _normalize_identity_text(item))
+    ]
+    evidence = sorted(
+        {
+            normalized
+            for item in _identity_sequence(
+                metadata.get("missing evidence") or metadata.get("evidence") or ""
+            )
+            if (normalized := _normalize_identity_text(item))
+        }
+    )
+    evidence_outputs = sorted(
+        {
+            normalized
+            for item in _identity_sequence(metadata.get("evidence outputs", ""))
+            if (normalized := _normalize_identity_path(item))
+        }
+    )
+    goal = _normalize_identity_text(
+        metadata.get("goal id")
+        or metadata.get("goal packet key")
+        or metadata.get("goal")
+        or ""
+    )
+    semantic_hint = _normalize_identity_text(
+        metadata.get("semantic key")
+        or metadata.get("bundle key")
+        or metadata.get("work scope")
+        or metadata.get("fingerprint")
+        or ""
+    )
+    semantic = {
+        key: value
+        for key, value in {
+            "title": title,
+            "outputs": outputs,
+            "acceptance": acceptance,
+            "evidence": evidence,
+            "evidence_outputs": evidence_outputs,
+            "goal": goal,
+            "semantic_hint": semantic_hint,
+        }.items()
+        if value
+    }
+    if not semantic:
+        raise ValueError("task identity requires semantic work metadata")
+    material = {"schema": _TASK_IDENTITY_SCHEMA, "semantic": semantic}
+    encoded = json.dumps(
+        material,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    digest = hashlib.sha256(encoded).digest()
+    raw_cid = b"\x01\xa9\x02\x12\x20" + digest
+    return "b" + base64.b32encode(raw_cid).decode("ascii").rstrip("=").lower()
+
+
 def _validate_provider_attempt_reload_gate(
     *,
-    taskboard_path: Path,
+    tasks: Mapping[str, Mapping[str, str]],
     artifact_root: Path,
 ) -> list[str]:
     """Validate the initial noncanonical reload gate.
@@ -1490,12 +2133,6 @@ def _validate_provider_attempt_reload_gate(
             f"{prefix}.receipt: present without a strict validator and "
             "convergence-manifest binding"
         )
-
-    try:
-        tasks = _load_taskboard_metadata(taskboard_path)
-    except (OSError, UnicodeDecodeError, ValueError) as exc:
-        errors.append(f"{prefix}.taskboard: {exc}")
-        return errors
 
     gate = tasks.get(_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID)
     if gate is None:
@@ -1571,20 +2208,34 @@ def _validate_provider_attempt_reload_gate(
     return errors
 
 
-def _validate_provider_fallback_task_contract(*, taskboard_path: Path) -> list[str]:
+def _validate_provider_fallback_task_contract(
+    *,
+    tasks: Mapping[str, Mapping[str, str]],
+) -> list[str]:
     """Keep ASE3-019 aligned with the prospective fallback authorization."""
 
     errors: list[str] = []
     prefix = "provider_fallback_task_contract"
-    try:
-        tasks = _load_taskboard_metadata(taskboard_path)
-    except (OSError, UnicodeDecodeError, ValueError) as exc:
-        errors.append(f"{prefix}.taskboard: {exc}")
-        return errors
     task = tasks.get("ASE3-019")
     if task is None:
         errors.append(f"{prefix}.ASE3-019: expected exactly one task")
         return errors
+    if task.get(_TASK_TITLE_KEY) != _ASE3_019_TITLE:
+        errors.append(f"{prefix}.ASE3-019.title: exact title required")
+    if _task_contract_sha256(task) != _ASE3_019_CONTRACT_SHA256:
+        errors.append(
+            f"{prefix}.ASE3-019.contract_sha256: exact metadata/prose required"
+        )
+    try:
+        current_cid = _canonical_task_cid_from_metadata(task)
+    except ValueError as exc:
+        errors.append(f"{prefix}.ASE3-019.canonical_task_cid: {exc}")
+    else:
+        expected_cid = str(_FALSE_COMPLETION_FAILED_ATTEMPT["canonical_task_cid"])
+        if current_cid != expected_cid:
+            errors.append(
+                f"{prefix}.ASE3-019.canonical_task_cid: expected {expected_cid}"
+            )
     outputs = _taskboard_csv(task, "outputs")
     if outputs != _ASE3_019_REQUIRED_OUTPUTS:
         errors.append(
@@ -1619,12 +2270,342 @@ def _validate_provider_fallback_task_contract(*, taskboard_path: Path) -> list[s
     return errors
 
 
+def _validate_false_completion_repair_tasks(
+    *,
+    tasks: Mapping[str, Mapping[str, str]],
+) -> list[str]:
+    """Pin the two replacement tasks without rewriting historical receipts."""
+
+    errors: list[str] = []
+    prefix = "false_completion_repair_tasks"
+    observed_outputs: dict[str, frozenset[str]] = {}
+    for task_id, expected in _FALSE_COMPLETION_REPAIR_TASKS.items():
+        task = tasks.get(task_id)
+        if task is None:
+            errors.append(f"{prefix}.{task_id}: expected exactly one task")
+            continue
+        if task.get(_TASK_TITLE_KEY) != expected["title"]:
+            errors.append(f"{prefix}.{task_id}.title: exact title required")
+        if _task_contract_sha256(task) != expected["contract_sha256"]:
+            errors.append(
+                f"{prefix}.{task_id}.contract_sha256: "
+                "exact metadata/prose required"
+            )
+        for field, expected_value in {
+            "status": "todo",
+            "completion": "manual",
+            "is schedulable": "true",
+            "review only": "false",
+            "priority": "P0",
+            "canonical board task": "true",
+            "goal id": expected["goal id"],
+            "repairs task": expected["repairs task"],
+        }.items():
+            if task.get(field) != expected_value:
+                errors.append(
+                    f"{prefix}.{task_id}.{field.replace(' ', '_')}: "
+                    f"expected {expected_value!r}"
+                )
+        for field in ("depends on", "outputs", "predicted files"):
+            expected_items = (
+                expected["outputs"] if field == "predicted files" else expected[field]
+            )
+            if _taskboard_csv(task, field) != expected_items:
+                errors.append(
+                    f"{prefix}.{task_id}.{field.replace(' ', '_')}: "
+                    "exact population required"
+                )
+        if task.get("validation") != expected["validation"]:
+            errors.append(f"{prefix}.{task_id}.validation: exact command required")
+        evidence = task.get("evidence subset", "")
+        if str(expected["evidence_anchor"]) not in evidence:
+            errors.append(
+                f"{prefix}.{task_id}.evidence_subset: recovery anchor required"
+            )
+        actual_shard = int(hashlib.sha256(task_id.encode()).hexdigest()[:8], 16) % 3
+        if actual_shard != expected["strict_shard"]:
+            errors.append(
+                f"{prefix}.{task_id}.strict_shard: expected "
+                f"{expected['strict_shard']}"
+            )
+        observed_outputs[task_id] = frozenset(_taskboard_csv(task, "outputs"))
+
+    scheduler_outputs = observed_outputs.get("ASE3-023", frozenset())
+    if scheduler_outputs & _ASE3_023_FORBIDDEN_OUTPUTS:
+        errors.append(
+            f"{prefix}.ASE3-023.outputs: provider/resolver conflict surface forbidden"
+        )
+    resolver_outputs = observed_outputs.get("ASE3-027", frozenset())
+    provider_outputs = frozenset(_ASE3_019_REQUIRED_OUTPUTS)
+    if resolver_outputs & provider_outputs or scheduler_outputs & provider_outputs:
+        errors.append(f"{prefix}: repair/provider output overlap forbidden")
+    if resolver_outputs & scheduler_outputs:
+        errors.append(f"{prefix}: repair output overlap forbidden")
+    return errors
+
+
+def _validate_merge_receipt_snapshot(
+    *,
+    task_id: str,
+    record: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    digest: str,
+) -> list[str]:
+    errors: list[str] = []
+    prefix = f"false_completion_merge_receipt.{task_id}"
+    expected_scalar = {
+        "task_id": task_id,
+        "commit_sha": record["implementation_commit"],
+        "accepted": True,
+        "acceptance_pending": False,
+        "integrated": True,
+        "merged": True,
+        "status": "merged",
+        "target_branch": _FALSE_COMPLETION_RECOVERY_SOURCE["branch"],
+        "merge_commit": record["status_commit"],
+        "target_commit": record["status_commit"],
+    }
+    for field, expected in expected_scalar.items():
+        actual = payload.get(field)
+        matches = actual is expected if isinstance(expected, bool) else actual == expected
+        if not matches:
+            errors.append(f"{prefix}.{field}: expected {expected!r}")
+    if digest != record["merge_receipt_sha256"]:
+        errors.append(f"{prefix}.sha256: recovery digest mismatch")
+
+    merge_result = payload.get("merge_result")
+    if not isinstance(merge_result, Mapping):
+        errors.append(f"{prefix}.merge_result: expected object")
+        return errors
+    if merge_result.get("merged") is not True:
+        errors.append(f"{prefix}.merge_result.merged: expected true")
+    returncode = merge_result.get("returncode")
+    if type(returncode) is not int or returncode != 0:
+        errors.append(f"{prefix}.merge_result.returncode: expected integer zero")
+    if merge_result.get("merge_commit") != record["merge_commit"]:
+        errors.append(f"{prefix}.merge_result.merge_commit: mismatch")
+    if merge_result.get("target_branch") != _FALSE_COMPLETION_RECOVERY_SOURCE["branch"]:
+        errors.append(f"{prefix}.merge_result.target_branch: mismatch")
+
+    proof = merge_result.get("integration_commit_proof")
+    if not isinstance(proof, Mapping):
+        errors.append(f"{prefix}.integration_commit_proof: expected object")
+    else:
+        expected_proof = {
+            "implementation_commit": record["implementation_commit"],
+            "integration_commit": record["merge_commit"],
+            "integration_ref": record["merge_commit"],
+            "target_branch": _FALSE_COMPLETION_RECOVERY_SOURCE["branch"],
+            "passed": True,
+            "reasons": [],
+        }
+        for field, expected in expected_proof.items():
+            actual = proof.get(field)
+            matches = (
+                actual is expected
+                if isinstance(expected, bool)
+                else isinstance(actual, list) and actual == expected
+                if isinstance(expected, list)
+                else actual == expected
+            )
+            if not matches:
+                errors.append(f"{prefix}.integration_commit_proof.{field}: mismatch")
+
+    todo_result = merge_result.get("todo_update_result")
+    if not isinstance(todo_result, Mapping):
+        errors.append(f"{prefix}.todo_update_result: expected object")
+        return errors
+    for field, expected in {
+        "task_id": task_id,
+        "updated": True,
+        "durable": True,
+    }.items():
+        actual = todo_result.get(field)
+        matches = actual is expected if isinstance(expected, bool) else actual == expected
+        if not matches:
+            errors.append(f"{prefix}.todo_update_result.{field}: mismatch")
+    commit_result = todo_result.get("commit_result")
+    if not isinstance(commit_result, Mapping):
+        errors.append(f"{prefix}.todo_update_result.commit_result: expected object")
+    elif (
+        commit_result.get("committed") is not True
+        or commit_result.get("commit") != record["status_commit"]
+        or commit_result.get("path") != PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix()
+    ):
+        errors.append(f"{prefix}.todo_update_result.commit_result: mismatch")
+    completion_receipts = todo_result.get("completion_receipts")
+    if not isinstance(completion_receipts, list) or len(completion_receipts) != 1:
+        errors.append(f"{prefix}.completion_receipts: expected exactly one")
+    else:
+        member = completion_receipts[0]
+        if not isinstance(member, Mapping):
+            errors.append(f"{prefix}.completion_receipts[0]: expected object")
+        else:
+            expected_member = {
+                "board_namespace": BOARD_NAMESPACE,
+                "canonical_task_cid": record["canonical_task_cid"],
+                "task_id": task_id,
+                "status": "succeeded",
+            }
+            for field, expected in expected_member.items():
+                if member.get(field) != expected:
+                    errors.append(
+                        f"{prefix}.completion_receipts[0].{field}: mismatch"
+                    )
+    postcondition = todo_result.get("protected_board_postcondition")
+    if not isinstance(postcondition, Mapping):
+        errors.append(f"{prefix}.protected_board_postcondition: expected object")
+    else:
+        for field in ("checked", "clean", "trusted"):
+            if postcondition.get(field) is not True:
+                errors.append(
+                    f"{prefix}.protected_board_postcondition.{field}: expected true"
+                )
+        release_proof = postcondition.get("release_proof")
+        if not isinstance(release_proof, Mapping):
+            errors.append(
+                f"{prefix}.protected_board_postcondition.release_proof: "
+                "expected object"
+            )
+        else:
+            for field in ("clean", "trusted"):
+                if release_proof.get(field) is not True:
+                    errors.append(
+                        f"{prefix}.protected_board_postcondition.release_proof."
+                        f"{field}: expected true"
+                    )
+    return errors
+
+
+def _validate_failed_event_snapshot(
+    *,
+    payload: Mapping[str, Any],
+    digest: str,
+) -> list[str]:
+    errors: list[str] = []
+    prefix = "failed_validation_event.ASE3-019"
+    expected = _FALSE_COMPLETION_FAILED_ATTEMPT
+    if digest != expected["failed_event_snapshot_sha256"]:
+        errors.append(f"{prefix}.sha256: recovery digest mismatch")
+    body = dict(payload)
+    claimed_event_id = str(body.pop("event_id", ""))
+    try:
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        errors.append(f"{prefix}.event_id: noncanonical event: {exc}")
+    else:
+        computed_event_id = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        if claimed_event_id != computed_event_id:
+            errors.append(f"{prefix}.event_id: noncanonical identity")
+        if claimed_event_id != expected["failed_event_id"]:
+            errors.append(f"{prefix}.event_id: recovery identity mismatch")
+    expected_event_fields = {
+        "type": "failed_validation_worktree_preserved",
+        "task_id": expected["task_id"],
+        "board_namespace": BOARD_NAMESPACE,
+        "canonical_task_cid": expected["canonical_task_cid"],
+        "attempt": expected["attempt"],
+        "implementation_commit": expected["implementation_commit"],
+        "preserved_commit": expected["implementation_commit"],
+        "rescue_branch": expected["rescue_branch"],
+        "preserved": True,
+    }
+    for field, expected_value in expected_event_fields.items():
+        actual = payload.get(field)
+        matches = (
+            actual is expected_value
+            if isinstance(expected_value, bool)
+            else actual == expected_value
+        )
+        if not matches:
+            errors.append(f"{prefix}.{field}: expected {expected_value!r}")
+    for field in ("merge_result", "merge_commit", "merge_dispatched"):
+        if field in payload:
+            errors.append(f"{prefix}.{field}: must be absent for a failed attempt")
+    commit_result = payload.get("commit_result")
+    if not isinstance(commit_result, Mapping):
+        errors.append(f"{prefix}.commit_result: expected object")
+    elif (
+        commit_result.get("committed") is not True
+        or commit_result.get("commit") != expected["implementation_commit"]
+    ):
+        errors.append(f"{prefix}.commit_result: candidate binding mismatch")
+    validation = payload.get("validation_result")
+    if not isinstance(validation, Mapping):
+        errors.append(f"{prefix}.validation_result: expected object")
+        return errors
+    expected_validation = {
+        "attempted": True,
+        "passed": False,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "merge_eligible": False,
+        "returncode": expected["validation_returncode"],
+        "target_commit": _FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"],
+    }
+    for field, expected_value in expected_validation.items():
+        actual = validation.get(field)
+        matches = (
+            actual is expected_value
+            if isinstance(expected_value, bool)
+            else actual == expected_value
+        )
+        if not matches:
+            errors.append(f"{prefix}.validation_result.{field}: mismatch")
+    dag = validation.get("validation_dag_receipt")
+    if not isinstance(dag, Mapping):
+        errors.append(f"{prefix}.validation_dag_receipt: expected object")
+    elif (
+        dag.get("passed") is not False
+        or dag.get("completion_authoritative") is not False
+        or dag.get("repository_tree_id")
+        != _FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"]
+    ):
+        errors.append(f"{prefix}.validation_dag_receipt: failed gate mismatch")
+    return errors
+
+
+def _validate_false_completion_snapshots(
+    *,
+    payloads: Mapping[str, Mapping[str, Any]],
+    digests: Mapping[str, str],
+) -> list[str]:
+    errors: list[str] = []
+    for task_id, record in _FALSE_COMPLETION_RECORDS.items():
+        filename = str(record["merge_receipt_snapshot"])
+        errors.extend(
+            _validate_merge_receipt_snapshot(
+                task_id=task_id,
+                record=record,
+                payload=payloads[filename],
+                digest=str(digests.get(filename, "")),
+            )
+        )
+    failed_filename = str(
+        _FALSE_COMPLETION_FAILED_ATTEMPT["failed_event_snapshot"]
+    )
+    errors.extend(
+        _validate_failed_event_snapshot(
+            payload=payloads[failed_filename],
+            digest=str(digests.get(failed_filename, "")),
+        )
+    )
+    return errors
+
+
 def _validate_repository_binding(
     *,
     repo_root: Path,
     baseline: CurrentMainBaseline,
     rescue: RescueDispositionReport,
     post_wave3: PostWave3ResidualReport,
+    false_completion_recovery: FalseCompletionRecoveryReport,
     fallback_authorization: ProviderFallbackPolicyAuthorization,
 ) -> list[str]:
     errors: list[str] = []
@@ -1881,6 +2862,251 @@ def _validate_repository_binding(
                 f"repository_binding.post_wave3.{task_id}.status_commit: "
                 "not an ancestor of report head"
             )
+
+    recovery_tree = _git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        f"{false_completion_recovery.recovery_parent_head}^{{tree}}",
+    )
+    if recovery_tree.returncode != 0:
+        errors.append(
+            "repository_binding.false_completion_recovery.parent_head: "
+            "Git object unavailable"
+        )
+    elif recovery_tree.stdout.strip() != (
+        false_completion_recovery.recovery_parent_tree
+    ):
+        errors.append(
+            "repository_binding.false_completion_recovery.parent_tree: "
+            "Git identity mismatch"
+        )
+    recovery_ancestor = _git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        false_completion_recovery.recovery_parent_head,
+        "HEAD",
+    )
+    if recovery_ancestor.returncode != 0:
+        errors.append(
+            "repository_binding.false_completion_recovery.parent_head: "
+            "not an ancestor of HEAD"
+        )
+    launch_tree = _git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        f"{_FALSE_COMPLETION_RECOVERY_SOURCE['launch_base_head']}^{{tree}}",
+    )
+    if launch_tree.returncode != 0:
+        errors.append(
+            "repository_binding.false_completion_recovery.launch_base_head: "
+            "Git object unavailable"
+        )
+    elif launch_tree.stdout.strip() != _FALSE_COMPLETION_RECOVERY_SOURCE[
+        "launch_base_tree"
+    ]:
+        errors.append(
+            "repository_binding.false_completion_recovery.launch_base_tree: "
+            "Git identity mismatch"
+        )
+    launch_ancestry = _git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        str(_FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"]),
+        false_completion_recovery.recovery_parent_head,
+    )
+    if launch_ancestry.returncode != 0:
+        errors.append(
+            "repository_binding.false_completion_recovery.launch_base_head: "
+            "not an ancestor of recovery parent"
+        )
+    for relative_path, expected_blob in _FALSE_COMPLETION_RECOVERY_SOURCE[
+        "protected_parent_blobs"
+    ].items():
+        observed_blob = _git(
+            repo_root,
+            "rev-parse",
+            "--verify",
+            f"{false_completion_recovery.recovery_parent_head}:{relative_path}",
+        )
+        if observed_blob.returncode != 0 or observed_blob.stdout.strip() != expected_blob:
+            errors.append(
+                "repository_binding.false_completion_recovery."
+                f"protected_parent_blobs.{relative_path}: Git identity mismatch"
+            )
+    for task_id, record in _FALSE_COMPLETION_RECORDS.items():
+        prefix = f"repository_binding.false_completion_recovery.{task_id}"
+        for commit_field, tree_field in (
+            ("implementation_commit", "implementation_tree"),
+            ("merge_commit", None),
+            ("status_commit", None),
+        ):
+            identity = str(record[commit_field])
+            observed = _git(
+                repo_root,
+                "rev-parse",
+                "--verify",
+                f"{identity}^{{tree}}",
+            )
+            if observed.returncode != 0:
+                errors.append(f"{prefix}.{commit_field}: Git object unavailable")
+            elif tree_field is not None and observed.stdout.strip() != record[tree_field]:
+                errors.append(f"{prefix}.{tree_field}: Git identity mismatch")
+        implementation_parents = _git(
+            repo_root,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            str(record["implementation_commit"]),
+        )
+        if implementation_parents.stdout.strip().split() != [
+            str(record["implementation_commit"]),
+            str(_FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"]),
+        ]:
+            errors.append(
+                f"{prefix}.implementation_commit: expected exact launch-base parent"
+            )
+        integration_parent = (
+            _FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"]
+            if task_id == "ASE3-006"
+            else _FALSE_COMPLETION_RECORDS["ASE3-006"]["status_commit"]
+        )
+        merge_parents = _git(
+            repo_root,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            str(record["merge_commit"]),
+        )
+        if merge_parents.stdout.strip().split() != [
+            str(record["merge_commit"]),
+            str(integration_parent),
+            str(record["implementation_commit"]),
+        ]:
+            errors.append(f"{prefix}.merge_commit: exact parent topology mismatch")
+        status_parents = _git(
+            repo_root,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            str(record["status_commit"]),
+        )
+        if status_parents.stdout.strip().split() != [
+            str(record["status_commit"]),
+            str(record["merge_commit"]),
+        ]:
+            errors.append(f"{prefix}.status_commit: exact parent topology mismatch")
+        historical_board = _git(
+            repo_root,
+            "show",
+            f"{record['status_commit']}:{PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix()}",
+        )
+        if historical_board.returncode != 0:
+            errors.append(f"{prefix}.canonical_task_cid: historical board unavailable")
+        else:
+            try:
+                historical_tasks = _parse_taskboard_metadata(historical_board.stdout)
+                historical_task = historical_tasks[task_id]
+                historical_cid = _canonical_task_cid_from_metadata(historical_task)
+            except (KeyError, ValueError) as exc:
+                errors.append(f"{prefix}.canonical_task_cid: {exc}")
+            else:
+                if historical_cid != record["canonical_task_cid"]:
+                    errors.append(f"{prefix}.canonical_task_cid: historical mismatch")
+    if false_completion_recovery.recovery_parent_head != _FALSE_COMPLETION_RECORDS[
+        "ASE3-018"
+    ]["status_commit"]:
+        errors.append(
+            "repository_binding.false_completion_recovery.parent_head: "
+            "expected terminal ASE3-018 status commit"
+        )
+    failed_commit = str(_FALSE_COMPLETION_FAILED_ATTEMPT["implementation_commit"])
+    failed_tree = _git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        f"{failed_commit}^{{tree}}",
+    )
+    if failed_tree.returncode != 0:
+        errors.append(
+            "repository_binding.false_completion_recovery.ASE3-019."
+            "implementation_commit: Git object unavailable"
+        )
+    elif failed_tree.stdout.strip() != _FALSE_COMPLETION_FAILED_ATTEMPT[
+        "implementation_tree"
+    ]:
+        errors.append(
+            "repository_binding.false_completion_recovery.ASE3-019."
+            "implementation_tree: Git identity mismatch"
+        )
+    failed_parents = _git(
+        repo_root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        failed_commit,
+    )
+    if failed_parents.stdout.strip().split() != [
+        failed_commit,
+        str(_FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"]),
+    ]:
+        errors.append(
+            "repository_binding.false_completion_recovery.ASE3-019."
+            "implementation_commit: expected exact launch-base parent"
+        )
+    rescue_branch = str(_FALSE_COMPLETION_FAILED_ATTEMPT["rescue_branch"])
+    rescue_candidates = (
+        f"refs/heads/{rescue_branch}",
+        f"refs/remotes/origin/{rescue_branch}",
+    )
+    rescue_targets: dict[str, str] = {}
+    for rescue_ref in rescue_candidates:
+        result = _git(repo_root, "rev-parse", "--verify", f"{rescue_ref}^{{commit}}")
+        if result.returncode == 0:
+            rescue_targets[rescue_ref] = result.stdout.strip()
+    if not rescue_targets:
+        errors.append(
+            "repository_binding.false_completion_recovery.ASE3-019.rescue_branch: "
+            "missing exact named local/origin rescue ref"
+        )
+    else:
+        conflicting_refs = sorted(
+            ref for ref, target in rescue_targets.items() if target != failed_commit
+        )
+        if conflicting_refs:
+            errors.append(
+                "repository_binding.false_completion_recovery.ASE3-019."
+                "rescue_branch: exact named refs disagree with candidate: "
+                + ", ".join(conflicting_refs)
+            )
+    for descendant_name, descendant in (
+        ("recovery_parent", false_completion_recovery.recovery_parent_head),
+        ("HEAD", "HEAD"),
+    ):
+        ancestry = _git(
+            repo_root,
+            "merge-base",
+            "--is-ancestor",
+            failed_commit,
+            descendant,
+        )
+        if ancestry.returncode == 0:
+            errors.append(
+                "repository_binding.false_completion_recovery.ASE3-019."
+                f"merge_dispatched: candidate is an ancestor of {descendant_name}"
+            )
+        elif ancestry.returncode != 1:
+            errors.append(
+                "repository_binding.false_completion_recovery.ASE3-019."
+                f"merge_dispatched: unable to test {descendant_name} ancestry"
+            )
     return errors
 
 
@@ -1897,11 +3123,30 @@ def validate_convergence_artifacts(
     errors: list[str] = []
     checked: list[str] = []
     payloads: dict[str, Mapping[str, Any]] = {}
+    artifact_digests: dict[str, str] = {}
+    try:
+        root_status = root.lstat()
+    except OSError as exc:
+        return ConvergenceValidationReport(
+            False,
+            (f"artifact_root: {exc}",),
+            (),
+        )
+    if root.is_symlink() or not stat.S_ISDIR(root_status.st_mode):
+        return ConvergenceValidationReport(
+            False,
+            ("artifact_root: expected a directory, not a symlink",),
+            (),
+        )
     for filename in (*ARTIFACT_FILENAMES, MANIFEST_FILENAME):
         path = root / filename
         checked.append(filename)
         try:
-            payloads[filename] = _load_json(path)
+            raw = _read_regular_bytes(path)
+            payloads[filename] = _load_json_bytes(raw, name=filename)
+            artifact_digests[filename] = (
+                "sha256:" + hashlib.sha256(raw).hexdigest()
+            )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{filename}: {exc}")
     if errors:
@@ -1920,6 +3165,9 @@ def validate_convergence_artifacts(
     post_wave3 = PostWave3ResidualReport.from_dict(
         payloads[POST_WAVE3_RESIDUAL_FILENAME]
     )
+    false_completion_recovery = FalseCompletionRecoveryReport.from_dict(
+        payloads[FALSE_COMPLETION_RECOVERY_FILENAME]
+    )
     fallback_authorization = ProviderFallbackPolicyAuthorization.from_dict(
         payloads[PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME]
     )
@@ -1930,27 +3178,40 @@ def validate_convergence_artifacts(
     errors.extend(rescue.validate(baseline))
     errors.extend(worktree.validate(baseline))
     errors.extend(post_wave3.validate())
+    errors.extend(false_completion_recovery.validate())
     errors.extend(fallback_authorization.validate())
     errors.extend(manifest.validate(baseline))
+    errors.extend(
+        _validate_false_completion_snapshots(
+            payloads=payloads,
+            digests=artifact_digests,
+        )
+    )
     board_path = (
         Path(taskboard_path)
         if taskboard_path is not None
         else Path(repo_root or DEFAULT_REPOSITORY_ROOT)
         / PROMPT_V3_TASKBOARD_RELATIVE_PATH
     )
-    errors.extend(
-        _validate_provider_attempt_reload_gate(
-            taskboard_path=board_path,
-            artifact_root=root,
+    try:
+        board_tasks = _load_taskboard_metadata(board_path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        errors.append(f"taskboard_snapshot: {exc}")
+    else:
+        errors.extend(
+            _validate_provider_attempt_reload_gate(
+                tasks=board_tasks,
+                artifact_root=root,
+            )
         )
-    )
-    errors.extend(_validate_provider_fallback_task_contract(taskboard_path=board_path))
+        errors.extend(_validate_provider_fallback_task_contract(tasks=board_tasks))
+        errors.extend(_validate_false_completion_repair_tasks(tasks=board_tasks))
 
     components = manifest.payload.get("components", {})
     if isinstance(components, Mapping):
         for filename in ARTIFACT_FILENAMES:
             expected = components.get(filename)
-            actual = _sha256_file(root / filename)
+            actual = artifact_digests.get(filename)
             if expected != actual:
                 errors.append(
                     f"convergence_manifest.components.{filename}: digest mismatch"
@@ -1963,6 +3224,7 @@ def validate_convergence_artifacts(
                 baseline=baseline,
                 rescue=rescue,
                 post_wave3=post_wave3,
+                false_completion_recovery=false_completion_recovery,
                 fallback_authorization=fallback_authorization,
             )
         )
