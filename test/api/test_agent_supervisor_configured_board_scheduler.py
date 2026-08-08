@@ -10,6 +10,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as scheduler_module,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_bootstrap_seal import (
+    build_bootstrap_seal_payload,
+    canonical_json_bytes,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     ConfiguredBoardError,
     configured_board_launch_plan,
@@ -615,6 +619,61 @@ def test_preflight_rejects_dirty_submodule_worktree(tmp_path: Path) -> None:
     assert report["valid"] is False
     assert submodule["valid"] is False
     assert submodule["dirty"]
+
+
+def test_preflight_requires_exact_content_addressed_bootstrap_seal(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    seal_relative = "config/bootstrap-seal.json"
+    payload["source_binding"].update(
+        {
+            "bootstrap_seal_path": seal_relative,
+            "record_recursive_repository_forest_at_launch": True,
+            "changed_revision_requires_fresh_inventory_and_baseline": True,
+        }
+    )
+    payload["protected_paths"].append(seal_relative)
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "require bootstrap seal")
+
+    missing_board = load_configured_board(config_path, repo_root=repo)
+    missing = preflight_configured_board(missing_board)
+    assert missing["valid"] is False
+    assert any(error.startswith("bootstrap_seal:") for error in missing["errors"])
+
+    validator_report = {"valid": True, "errors": []}
+    seal = build_bootstrap_seal_payload(
+        repo_root=repo,
+        board_namespace=payload["board_namespace"],
+        source_binding=payload["source_binding"],
+        worktree_submodule_paths=payload["worktree_submodule_paths"],
+        protected_paths=payload["protected_paths"],
+        seal_path=seal_relative,
+        validator_report=validator_report,
+    )
+    (repo / seal_relative).write_bytes(canonical_json_bytes(seal) + b"\n")
+    _git(repo, "add", seal_relative)
+    _git(repo, "commit", "-m", "seal configured board")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    assert report["valid"] is True, report["errors"]
+    seal_check = next(
+        check for check in report["checks"] if check["name"] == "bootstrap_seal"
+    )
+    assert seal_check["passed"] is True
+    assert seal_check["detail"]["seal_id"] == seal["seal_id"]
+
+    _write(repo / "docs/plan.md", "changed after seal\n")
+    stale = preflight_configured_board(board)
+    stale_seal = next(
+        check for check in stale["checks"] if check["name"] == "bootstrap_seal"
+    )
+    assert stale["valid"] is False
+    assert stale_seal["passed"] is False
 
 
 def test_loader_rejects_runtime_path_escape(tmp_path: Path) -> None:

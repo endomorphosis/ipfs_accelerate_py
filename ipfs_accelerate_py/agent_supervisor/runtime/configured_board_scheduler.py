@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .configured_board_bootstrap_seal import (
+    BootstrapSealError,
+    read_bootstrap_seal,
+    verify_bootstrap_seal,
+)
 from .multi_supervisor_runner import (
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
@@ -226,6 +231,7 @@ class ConfiguredBoard:
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
+    bootstrap_seal_path: str
 
     @property
     def task_header_prefix(self) -> str:
@@ -350,6 +356,30 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "scheduler config must protect its own source path"
         )
+    source_binding = payload.get("source_binding")
+    if not isinstance(source_binding, dict):
+        raise ConfiguredBoardError("source_binding must be an object")
+    raw_seal_path = source_binding.get("bootstrap_seal_path")
+    bootstrap_seal_path = (
+        ""
+        if raw_seal_path is None
+        else _safe_relative(
+            raw_seal_path,
+            field="source_binding.bootstrap_seal_path",
+        )
+    )
+    if bootstrap_seal_path:
+        if bootstrap_seal_path not in protected:
+            raise ConfiguredBoardError("bootstrap seal path must be protected")
+        for field in (
+            "record_recursive_repository_forest_at_launch",
+            "changed_revision_requires_fresh_inventory_and_baseline",
+        ):
+            if source_binding.get(field) is not True:
+                raise ConfiguredBoardError(
+                    f"source_binding.{field} must be true when a bootstrap "
+                    "seal is configured"
+                )
 
     runtime_raw = payload.get("runtime_paths")
     if not isinstance(runtime_raw, dict):
@@ -503,6 +533,7 @@ def load_configured_board(
         worktree_submodule_paths=submodules,
         protected_paths=protected,
         runtime_paths=runtime_paths,
+        bootstrap_seal_path=bootstrap_seal_path,
     )
 
 
@@ -829,6 +860,29 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         detail=submodule_checks,
     )
 
+    if board.bootstrap_seal_path:
+        try:
+            seal_detail: Any = verify_bootstrap_seal(
+                repo_root=board.repo_root,
+                board_namespace=board.board_namespace,
+                source_binding=source_binding,
+                worktree_submodule_paths=board.worktree_submodule_paths,
+                protected_paths=board.protected_paths,
+                seal_path=board.bootstrap_seal_path,
+                validator_report=validator_report,
+            )
+            seal_valid = True
+        except BootstrapSealError as exc:
+            seal_detail = str(exc)
+            seal_valid = False
+        _append_check(
+            checks,
+            errors,
+            name="bootstrap_seal",
+            passed=seal_valid,
+            detail=seal_detail,
+        )
+
     implementation_entry = board.path(
         IMPLEMENTATION_ENTRY_PATH.as_posix()
     )
@@ -1015,6 +1069,28 @@ def configured_board_launch_plan(
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
+    bootstrap_seal: dict[str, Any] = {}
+    if board.bootstrap_seal_path:
+        seal = read_bootstrap_seal(board.path(board.bootstrap_seal_path))
+        bootstrap_seal = {
+            "path": board.bootstrap_seal_path,
+            "seal_id": seal.get("seal_id"),
+            "forest_id": (
+                seal.get("forest", {}).get("forest_id")
+                if isinstance(seal.get("forest"), dict)
+                else None
+            ),
+            "inventory_id": (
+                seal.get("inventory", {}).get("inventory_id")
+                if isinstance(seal.get("inventory"), dict)
+                else None
+            ),
+            "baseline_id": (
+                seal.get("baseline", {}).get("baseline_id")
+                if isinstance(seal.get("baseline"), dict)
+                else None
+            ),
+        }
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -1034,6 +1110,7 @@ def configured_board_launch_plan(
         "master_log": str(
             log_dir / f"configured-board-{run_stamp}.log"
         ),
+        "bootstrap_seal": bootstrap_seal,
     }
 
 
