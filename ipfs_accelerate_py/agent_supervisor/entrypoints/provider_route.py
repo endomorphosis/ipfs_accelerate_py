@@ -16,7 +16,9 @@ from typing import Any, Mapping
 from .contracts import ProviderFallbackReason, ProviderSelection
 
 PREFERRED_PROVIDER = "grok"; FALLBACK_PROVIDER = "codex"; MAXIMUM_FALLBACK_DISPATCHES = 1
-PRIMARY_MODEL_ID = "grok-4.5"; FALLBACK_MODEL_ID = "gpt-5.6-terra"; FALLBACK_REASONING_EFFORT = "medium"
+# Compatibility evidence types live here, but the authoritative implementation
+# route itself is owned by llm_router.  Do not introduce another tuple here.
+PRIMARY_MODEL_ID = "grok-4.5"; FALLBACK_MODEL_ID = "gpt-5.6-terra"; FALLBACK_REASONING_EFFORT = "high"
 PROVIDER_ROUTE_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/entrypoints/provider-route-policy@2"
 PROVIDER_ATTEMPT_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/entrypoints/provider-attempt-receipt@2"
 QUOTA_EXHAUSTION_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/entrypoints/quota-exhaustion-evidence@2"

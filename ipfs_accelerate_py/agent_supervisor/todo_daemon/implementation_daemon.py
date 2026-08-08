@@ -28,6 +28,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
 from ...llm_router import (
+    AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT,
     AgentImplementationRoutePlan,
     load_agent_implementation_route_authorization,
     resolve_agent_implementation_route,
@@ -1723,7 +1724,9 @@ def _grok_cli_command(
     model_override: str | None = None,
     failure_receipt_nonce: str = "",
     allow_auth_unavailable_fallback: bool = False,
-    fallback_reasoning_effort: str = "medium",
+    fallback_reasoning_effort: str = (
+        AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT
+    ),
     enable_codex_fallback: bool = True,
     route_plan: AgentImplementationRoutePlan | None = None,
 ) -> list[str]:
@@ -1823,7 +1826,9 @@ _CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
 _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.5"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
-DEFAULT_CODEX_REASONING_EFFORT = "medium"
+DEFAULT_CODEX_REASONING_EFFORT = (
+    AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT
+)
 
 
 def _configured_agent_implementation_route_plan(
@@ -12806,39 +12811,10 @@ class PortalImplementationDaemon:
                     }
                 )
             return audit
-        classified = classify_provider_capacity_failure(
-            text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
-        )
-        if not classified["exhausted"]:
-            return classified
-        if classified.get("failure_class") == "hard_quota_exhausted":
-            classified["evidence"] = [
-                "runner_receipt:"
-                + str(classified.get("quota_probe_receipt_id") or "")
-            ]
-            return classified
-        if classified.get("quota_probe_receipt_id"):
-            classified["evidence"] = [
-                "runner_receipt:"
-                + str(classified.get("quota_probe_receipt_id") or "")
-            ]
-            return classified
-        evidence = [
-            line.strip()
-            for line in text.splitlines()
-            if (
-                any(
-                    pattern.search(line)
-                    for _provider, pattern in PROVIDER_CAPACITY_PATTERNS
-                )
-                or PROVIDER_DECLARED_RETRY_AT_PATTERN.search(line)
-            )
-        ]
-        classified["evidence"] = evidence[-4:]
-        return classified
+        # The daemon treats child output as immutable audit material.  It may
+        # account for a router-emitted terminal outcome above, but never turns
+        # arbitrary text into provider capacity or fallback authority.
+        return {"exhausted": False, "providers": [], "reason": ""}
 
     def _current_implementation_provider_labels(self) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""

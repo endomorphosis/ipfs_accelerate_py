@@ -241,6 +241,10 @@ _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
 _V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
 )
+# Runner and scheduler code import these projections instead of maintaining
+# another provider/model/reasoning tuple.
+AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID = "gpt-5.6-terra"
+AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT = "high"
 _AGENT_IMPLEMENTATION_ROUTE_FIELDS = (
     "primary_provider_id",
     "primary_model_id",
@@ -557,7 +561,9 @@ class AgentImplementationRouteAuthorization:
     source_head: str
     source_tree: str
     authorization_id: str
-    _validation_seal: str = field(repr=False, compare=False)
+    reviewer_identity: str = ""
+    reviewer_provider: str = ""
+    _validation_seal: str = field(default="", repr=False, compare=False)
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -568,6 +574,8 @@ class AgentImplementationRouteAuthorization:
             "source_head": self.source_head,
             "source_tree": self.source_tree,
             "authorization_id": self.authorization_id,
+            "reviewer_identity": self.reviewer_identity,
+            "reviewer_provider": self.reviewer_provider,
         }
 
 
@@ -588,6 +596,7 @@ class AgentImplementationRoutePlan:
     fallback_reasoning_effort: str
     route_id: str
     authorization: AgentImplementationRouteAuthorization | None = None
+    fallback_implementer_identity: str = "codex"
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -646,6 +655,7 @@ class AgentImplementationRoutePlan:
                 if self.authorization is not None
                 else None
             ),
+            "fallback_implementer_identity": self.fallback_implementer_identity,
         }
 
     @property
@@ -661,6 +671,32 @@ class AgentImplementationFallbackDecision:
     requires_independent_quota_verification: bool
     reason_code: str
     verifier_status: str
+    route_id: str = ""
+    fallback_provider_id: str = ""
+    fallback_model_id: str = ""
+    fallback_reasoning_effort: str = ""
+    reviewer_identity: str = ""
+    reviewer_provider: str = ""
+
+    @property
+    def content_id(self) -> str:
+        return _content_addressed_mapping(
+            {
+                "authorized": self.authorized,
+                "requires_independent_quota_verification": (
+                    self.requires_independent_quota_verification
+                ),
+                "reason_code": self.reason_code,
+                "verifier_status": self.verifier_status,
+                "route_id": self.route_id,
+                "fallback_provider_id": self.fallback_provider_id,
+                "fallback_model_id": self.fallback_model_id,
+                "fallback_reasoning_effort": self.fallback_reasoning_effort,
+                "reviewer_identity": self.reviewer_identity,
+                "reviewer_provider": self.reviewer_provider,
+            },
+            identity_field="content_id",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1097,6 +1133,9 @@ def load_agent_implementation_route_authorization(
         not candidate.is_relative_to(root)
         or unresolved_candidate.is_symlink()
         or not stat_module.S_ISREG(candidate_metadata.st_mode)
+        or candidate_metadata.st_uid != os.geteuid()
+        or candidate_metadata.st_nlink != 1
+        or stat_module.S_IMODE(candidate_metadata.st_mode) & 0o022
         or not candidate.is_file()
     ):
         raise ValueError("agent route authorization artifact is unavailable")
@@ -1105,7 +1144,10 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization artifact is oversized")
     digest = "sha256:" + hashlib.sha256(raw).hexdigest()
     expected_digest = str(expected_sha256 or "").strip()
-    if expected_digest and digest != expected_digest:
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", expected_digest) is None
+        or digest != expected_digest
+    ):
         raise ValueError("agent route authorization artifact digest drifted")
 
     def reject_duplicate_keys(
@@ -1132,6 +1174,7 @@ def load_agent_implementation_route_authorization(
     route = payload.get("route")
     ownership = payload.get("ownership_contract")
     bootstrap_guarantees = payload.get("bootstrap_route_guarantees")
+    reviewer = payload.get("reviewer")
     if not isinstance(source, dict) or not isinstance(route, dict):
         raise ValueError(  # noqa: TRY004
             "agent route authorization fields are incomplete"
@@ -1142,9 +1185,13 @@ def load_agent_implementation_route_authorization(
         raise ValueError(  # noqa: TRY004
             "agent route authorization ownership is incomplete"
         )
+    if not isinstance(reviewer, dict):
+        raise ValueError("agent route authorization reviewer is incomplete")
     source_head = str(source.get("source_head") or "").strip()
     source_tree = str(source.get("source_tree") or "").strip()
     authorization_kind = str(source.get("kind") or "").strip()
+    reviewer_identity = str(reviewer.get("identity") or "").strip()
+    reviewer_provider = str(reviewer.get("provider") or "").strip()
     expected_route = {
         "primary_provider_id": "grok_cli",
         "primary_model_id": "grok-4.5",
@@ -1177,6 +1224,9 @@ def load_agent_implementation_route_authorization(
             "explicit_codex_review_conflict_denied"
         )
         is not True
+        or not reviewer_identity
+        or not reviewer_provider
+        or reviewer_provider == "codex"
     ):
         raise ValueError(
             "agent route authorization does not grant the exact scoped route"
@@ -1271,12 +1321,16 @@ def load_agent_implementation_route_authorization(
             final_metadata.st_dev,
             final_metadata.st_ino,
             final_metadata.st_mode,
+            final_metadata.st_nlink,
+            final_metadata.st_uid,
             final_metadata.st_size,
         )
         != (
             candidate_metadata.st_dev,
             candidate_metadata.st_ino,
             candidate_metadata.st_mode,
+            candidate_metadata.st_nlink,
+            candidate_metadata.st_uid,
             candidate_metadata.st_size,
         )
         or final_raw != raw
@@ -1292,6 +1346,8 @@ def load_agent_implementation_route_authorization(
         "authorization_kind": authorization_kind,
         "source_head": source_head,
         "source_tree": source_tree,
+        "reviewer_identity": reviewer_identity,
+        "reviewer_provider": reviewer_provider,
     }
     authorization_id = _agent_implementation_route_id(identity_body)
     expected_identity = str(expected_authorization_id or "").strip()
@@ -1305,6 +1361,8 @@ def load_agent_implementation_route_authorization(
         source_head=source_head,
         source_tree=source_tree,
         authorization_id=authorization_id,
+        reviewer_identity=reviewer_identity,
+        reviewer_provider=reviewer_provider,
         _validation_seal=_agent_implementation_private_seal(identity_body),
     )
 
@@ -1401,8 +1459,13 @@ def resolve_agent_implementation_route(
                             ),
                             "source_head": authorization.source_head,
                             "source_tree": authorization.source_tree,
+                            "reviewer_identity": authorization.reviewer_identity,
+                            "reviewer_provider": authorization.reviewer_provider,
                         }
                     )
+                    or not authorization.reviewer_identity
+                    or not authorization.reviewer_provider
+                    or authorization.reviewer_provider == "codex"
                 ):
                     raise ValueError(
                         "auth-or-quota/high route requires scoped operator "
@@ -1439,6 +1502,7 @@ def resolve_agent_implementation_route_binding(
         *_AGENT_IMPLEMENTATION_ROUTE_FIELDS,
         "route_id",
         "authorization",
+        "fallback_implementer_identity",
     }
     if set(binding) != expected_fields:
         raise ValueError("agent implementation route binding fields are invalid")
@@ -1455,6 +1519,8 @@ def resolve_agent_implementation_route_binding(
             "source_head",
             "source_tree",
             "authorization_id",
+            "reviewer_identity",
+            "reviewer_provider",
         }:
             raise ValueError(
                 "agent implementation route authorization binding is invalid"
@@ -1488,6 +1554,20 @@ def resolve_agent_implementation_route_binding(
     )
     if binding.get("route_id") != plan.route_id:
         raise ValueError("agent implementation route identity drifted")
+    implementer = str(binding.get("fallback_implementer_identity") or "").strip()
+    if not implementer:
+        raise ValueError("fallback implementer identity is required")
+    if (
+        authorization is not None
+        and implementer == authorization.reviewer_identity
+    ):
+        raise ValueError("fallback implementer cannot review itself")
+    plan = AgentImplementationRoutePlan(
+        **plan.as_dict(),
+        route_id=plan.route_id,
+        authorization=plan.authorization,
+        fallback_implementer_identity=implementer,
+    )
     return plan
 
 
@@ -1517,6 +1597,19 @@ def decide_agent_implementation_fallback(
     )
     if canonical_route.route_id != route.route_id:
         raise ValueError("agent implementation route identity is invalid")
+    reviewer = canonical_route.authorization
+
+    def decision(**values: object) -> AgentImplementationFallbackDecision:
+        """Attach the authoritative route/reviewer binding to every outcome."""
+        return AgentImplementationFallbackDecision(
+            **values,
+            route_id=canonical_route.route_id,
+            fallback_provider_id=canonical_route.fallback_provider_id,
+            fallback_model_id=canonical_route.fallback_model_id,
+            fallback_reasoning_effort=canonical_route.fallback_reasoning_effort,
+            reviewer_identity=(reviewer.reviewer_identity if reviewer else ""),
+            reviewer_provider=(reviewer.reviewer_provider if reviewer else ""),
+        )
     receipt_valid = valid_agent_implementation_failure_receipt(
         failure_receipt,
         nonce=expected_nonce,
@@ -1524,7 +1617,7 @@ def decide_agent_implementation_fallback(
         probe_returncode=expected_probe_returncode,
     )
     if not receipt_valid or failure_receipt.get("evidence_overflow") is True:
-        return AgentImplementationFallbackDecision(
+        return decision(
             authorized=False,
             requires_independent_quota_verification=False,
             reason_code="typed_failure_denied",
@@ -1540,27 +1633,27 @@ def decide_agent_implementation_fallback(
             and normalized_evidence
             in _AGENT_IMPLEMENTATION_DIRECT_AUTH_EVIDENCE
         ):
-            return AgentImplementationFallbackDecision(
+            return decision(
                 authorized=True,
                 requires_independent_quota_verification=False,
                 reason_code="authentication_unavailable",
                 verifier_status="not_required_exact_auth",
             )
-        return AgentImplementationFallbackDecision(
+        return decision(
             authorized=False,
             requires_independent_quota_verification=False,
             reason_code="authentication_fallback_not_in_route",
             verifier_status="not_run",
         )
     if normalized_class not in {"hard_quota_exhausted", "authentication"}:
-        return AgentImplementationFallbackDecision(
+        return decision(
             authorized=False,
             requires_independent_quota_verification=False,
             reason_code="failure_class_not_authorized",
             verifier_status="not_run",
         )
     if independent_quota_evidence is None:
-        return AgentImplementationFallbackDecision(
+        return decision(
             authorized=False,
             requires_independent_quota_verification=True,
             reason_code="independent_quota_verification_required",
@@ -1599,13 +1692,13 @@ def decide_agent_implementation_fallback(
         )
     )
     if valid_quota_evidence:
-        return AgentImplementationFallbackDecision(
+        return decision(
             authorized=True,
             requires_independent_quota_verification=False,
             reason_code="quota_exhausted",
             verifier_status="confirmed_quota",
         )
-    return AgentImplementationFallbackDecision(
+    return decision(
         authorized=False,
         requires_independent_quota_verification=False,
         reason_code="independent_quota_not_confirmed",
