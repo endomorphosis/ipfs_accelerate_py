@@ -51,12 +51,18 @@ ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
-"*" = ["*.txt", "*.md"]
+"*" = ["*.txt", "*.md", "*.sql"]
+"ipfs_accelerate_py.agent_supervisor.task_sources" = ["sql/*.sql", "sql/*.md"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+# Optional agent-supervisor control plane (DQP-005). Pins DuckDB 1.5.x for the
+# Quack-era state-owner service; 2.x requires a separately reviewed profile.
+agent-supervisor = [
+  "duckdb>=1.5.0,<1.6.0",
+]
 dev = [
   # test runner + core test deps
   "pytest>=8.0.0",
