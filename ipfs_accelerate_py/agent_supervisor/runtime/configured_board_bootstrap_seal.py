@@ -16,8 +16,13 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from .ordered_provider_authoring import (
+    OrderedProviderAuthoringError,
+    build_authoring_board_projection,
+)
+
 BOOTSTRAP_SEAL_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/configured-board-bootstrap-seal@1"
+    "ipfs_accelerate_py/agent-supervisor/configured-board-bootstrap-seal@2"
 )
 _SHA256_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -217,6 +222,8 @@ def build_bootstrap_seal_payload(
     worktree_submodule_paths: Sequence[str],
     protected_paths: Sequence[str],
     seal_path: str,
+    taskboard_path: str,
+    task_header_prefix: str,
     validator_report: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build, but do not write, the exact seal for current reviewed inputs."""
@@ -265,12 +272,26 @@ def build_bootstrap_seal_payload(
         "valid": True,
     }
     baseline = {**baseline_body, "baseline_id": content_id(baseline_body)}
+    try:
+        authoring_board = build_authoring_board_projection(
+            taskboard_path=_contained(
+                root,
+                _safe_relative(taskboard_path, field="taskboard_path"),
+            ),
+            task_header_prefix=task_header_prefix,
+            board_namespace=board_namespace,
+        )
+    except OrderedProviderAuthoringError as exc:
+        raise BootstrapSealError(
+            f"authoring taskboard is not sealable: {exc.reason_code}"
+        ) from exc
     seal_body: dict[str, Any] = {
         "schema": BOOTSTRAP_SEAL_SCHEMA,
         "board_namespace": board_namespace,
         "forest": forest,
         "inventory": inventory,
         "baseline": baseline,
+        "authoring_board": authoring_board,
     }
     return {**seal_body, "seal_id": content_id(seal_body)}
 
@@ -300,6 +321,8 @@ def verify_bootstrap_seal(
     worktree_submodule_paths: Sequence[str],
     protected_paths: Sequence[str],
     seal_path: str,
+    taskboard_path: str,
+    task_header_prefix: str,
     validator_report: Mapping[str, Any],
 ) -> dict[str, str]:
     """Reobserve all bound bytes and reject anything but the exact seal."""
@@ -313,6 +336,8 @@ def verify_bootstrap_seal(
         worktree_submodule_paths=worktree_submodule_paths,
         protected_paths=protected_paths,
         seal_path=normalized_seal,
+        taskboard_path=taskboard_path,
+        task_header_prefix=task_header_prefix,
         validator_report=validator_report,
     )
     actual = read_bootstrap_seal(_contained(root, normalized_seal))
@@ -325,6 +350,10 @@ def verify_bootstrap_seal(
         ("forest_id", actual.get("forest", {}).get("forest_id")),
         ("inventory_id", actual.get("inventory", {}).get("inventory_id")),
         ("baseline_id", actual.get("baseline", {}).get("baseline_id")),
+        (
+            "authoring_board_id",
+            actual.get("authoring_board", {}).get("authoring_board_id"),
+        ),
     ):
         if not isinstance(value, str) or _SHA256_ID.fullmatch(value) is None:
             raise BootstrapSealError(f"{field} is not a content identity")
@@ -334,6 +363,7 @@ def verify_bootstrap_seal(
         "forest_id": actual["forest"]["forest_id"],
         "inventory_id": actual["inventory"]["inventory_id"],
         "baseline_id": actual["baseline"]["baseline_id"],
+        "authoring_board_id": actual["authoring_board"]["authoring_board_id"],
     }
 
 

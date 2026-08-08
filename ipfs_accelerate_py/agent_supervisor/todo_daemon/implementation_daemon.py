@@ -13470,6 +13470,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         worktree_path: Path,
+        command: Sequence[str] = (),
     ) -> dict[str, Any]:
         """WPD-021: seal a pre-implementation kernel disposition before provider use.
 
@@ -13478,30 +13479,7 @@ class PortalImplementationDaemon:
         implementation path stays free of hard import failures at module load.
         """
 
-        try:
-            from .pre_implementation_provider_gate import (
-                evaluate_provider_gate,
-                build_forest_roots_from_identity,
-            )
-            from .implementation_disposition import implementation_disposition_cid
-        except Exception as exc:  # pragma: no cover - import hygiene fallback
-            return {
-                "skip_provider": True,
-                "provider_authorized": False,
-                "disposition": "defer_capability",
-                "reason_code": "pre_implementation_gate_import_failed",
-                "receipt_cid": "",
-                "event": {
-                    "task_id": task.task_id,
-                    "attempt": int(attempt),
-                    "error": f"{type(exc).__name__}: {exc}"[-500:],
-                },
-            }
-
         task_cid = self._canonical_ref(task) or task.task_id
-        repo_id = implementation_disposition_cid(
-            {"repo_root": str(self.repo_root), "kind": "repository"}
-        )
         try:
             head = (
                 subprocess.run(
@@ -13526,6 +13504,107 @@ class PortalImplementationDaemon:
         except OSError:
             head = "HEAD"
             tree = "HEAD"
+        if (
+            self._task_metadata_value(task, "implementation mode").strip().lower()
+            == "ordered_provider"
+        ):
+            from ..runtime.ordered_provider_authoring import (
+                authoring_provider_invocation_authorized,
+                evaluate_ordered_provider_authoring,
+            )
+
+            authoring_receipt = evaluate_ordered_provider_authoring(
+                repo_root=self.repo_root,
+                taskboard_path=self.todo_path,
+                task_header_prefix=self.task_header_prefix,
+                task_id=task.task_id,
+                title=task.title,
+                metadata=task.metadata,
+                canonical_task_cid=task_cid,
+                current_forest_id="sha256:"
+                + hashlib.sha256(
+                    json.dumps(
+                        {"head": head, "tree": tree},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest(),
+                current_git_tree_id=tree,
+                workspace_path=worktree_path,
+                provider_command=command,
+                runtime_write_scope=self._proposal_scope_paths_for(
+                    task,
+                    include_ast_companions=False,
+                ),
+                isolated_worktree=bool(
+                    getattr(self, "use_ephemeral_worktree", False)
+                    and worktree_path.resolve() != self.repo_root.resolve()
+                ),
+                attempt=int(attempt),
+                environment=os.environ,
+            )
+            authorized = authoring_provider_invocation_authorized(
+                authoring_receipt
+            )
+            disposition = (
+                "ordered_provider_authoring_authorized"
+                if authorized
+                else "ordered_provider_authoring_rejected"
+            )
+            return {
+                "gate_kind": "ordered_provider_authoring",
+                "event_name": "ordered_provider_authoring_gate_evaluated",
+                "skip_provider": not authorized,
+                "provider_authorized": authorized,
+                "disposition": disposition,
+                "reason_code": str(
+                    authoring_receipt.get("reason_code") or ""
+                ),
+                "receipt_cid": str(authoring_receipt.get("receipt_id") or ""),
+                "residual_packet_cid": "",
+                "provider_hook_count": 0,
+                "authoring_receipt": authoring_receipt,
+                "event": {
+                    "event": "ordered_provider_authoring_gate_evaluated",
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "disposition": disposition,
+                    "provider_authorized": authorized,
+                    "provider_hook_count": 0,
+                    "skip_provider": not authorized,
+                    "reason_code": str(
+                        authoring_receipt.get("reason_code") or ""
+                    ),
+                    "receipt_cid": str(
+                        authoring_receipt.get("receipt_id") or ""
+                    ),
+                    "authoring_receipt": authoring_receipt,
+                    "interface": "OrderedProviderAuthoringGate@1",
+                },
+            }
+        try:
+            from .implementation_disposition import implementation_disposition_cid
+            from .pre_implementation_provider_gate import (
+                build_forest_roots_from_identity,
+                evaluate_provider_gate,
+            )
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover
+            return {
+                "skip_provider": True,
+                "provider_authorized": False,
+                "disposition": "defer_capability",
+                "reason_code": "pre_implementation_gate_import_failed",
+                "receipt_cid": "",
+                "event": {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "error": f"{type(exc).__name__}: {exc}"[-500:],
+                },
+            }
+
+        repo_id = implementation_disposition_cid(
+            {"repo_root": str(self.repo_root), "kind": "repository"}
+        )
         forest = build_forest_roots_from_identity(
             repository_id=f"repository:{repo_id}",
             repository_forest_cid=implementation_disposition_cid(
@@ -13547,6 +13626,7 @@ class PortalImplementationDaemon:
             allow_legacy_residual=False,
         )
         return {
+            "gate_kind": "deterministic_repair",
             "skip_provider": decision.skip_provider,
             "provider_authorized": decision.provider_authorized,
             "disposition": decision.disposition.value,
@@ -13554,11 +13634,89 @@ class PortalImplementationDaemon:
             "receipt_cid": decision.receipt_cid,
             "residual_packet_cid": decision.residual_packet_cid,
             "provider_hook_count": decision.provider_hook_count,
+            "kernel_receipt": decision.receipt.to_dict(),
             "event": decision.to_event_payload(
                 task_id=task.task_id,
                 attempt=int(attempt),
             ),
         }
+
+    def _assert_current_provider_gate(
+        self,
+        *,
+        provider_gate: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        worktree_path: Path,
+        command: Sequence[str] = (),
+    ) -> None:
+        """Recheck provider authority immediately before process invocation."""
+
+        if (
+            provider_gate.get("provider_authorized") is not True
+            or provider_gate.get("skip_provider") is not False
+        ):
+            raise RuntimeError(
+                "provider dispatch blocked by pre-implementation authority"
+            )
+        if provider_gate.get("gate_kind") == "ordered_provider_authoring":
+            from ..runtime.ordered_provider_authoring import (
+                assert_current_authoring_dispatch_authority,
+                authoring_provider_invocation_authorized,
+            )
+
+            receipt = provider_gate.get("authoring_receipt") or {}
+            if not authoring_provider_invocation_authorized(receipt):
+                raise RuntimeError(
+                    "provider dispatch blocked by forged authoring receipt"
+                )
+            rechecked_gate = self._evaluate_pre_implementation_provider_gate(
+                task=task,
+                attempt=attempt,
+                worktree_path=worktree_path,
+                command=command,
+            )
+            if (
+                rechecked_gate.get("provider_authorized") is not True
+                or rechecked_gate.get("authoring_receipt") != receipt
+            ):
+                raise RuntimeError(
+                    "provider dispatch blocked by stale authoring authority"
+                )
+            assert_current_authoring_dispatch_authority(
+                receipt,
+                repo_root=self.repo_root,
+                taskboard_path=self.todo_path,
+                workspace_path=worktree_path,
+            )
+            registry = getattr(
+                self,
+                "_ordered_provider_proposal_authorities",
+                None,
+            )
+            if not isinstance(registry, dict):
+                registry = {}
+                self._ordered_provider_proposal_authorities = registry
+            registry[(task.task_id, str(worktree_path.resolve()))] = str(
+                receipt.get("receipt_id") or ""
+            )
+            return
+        if provider_gate.get("gate_kind") != "deterministic_repair":
+            raise RuntimeError("provider dispatch has an unknown gate kind")
+        if not str(provider_gate.get("residual_packet_cid") or "").strip():
+            raise RuntimeError(
+                "provider dispatch requires a sealed residual packet"
+            )
+        rechecked_gate = self._evaluate_pre_implementation_provider_gate(
+            task=task,
+            attempt=attempt,
+            worktree_path=worktree_path,
+            command=command,
+        )
+        if rechecked_gate != dict(provider_gate):
+            raise RuntimeError(
+                "provider dispatch blocked by stale deterministic repair authority"
+            )
 
     def _task_requires_dcr080_deterministic_repair(self, task: PortalTask) -> bool:
         """Return whether this task explicitly selects DCR-080's zero-LLM route.
@@ -13998,6 +14156,7 @@ class PortalImplementationDaemon:
         workspace_path = self.repo_root
         baseline_ref = ""
         command: list[str] = []
+        provider_authority_receipt_cid = ""
         result: dict[str, Any]
         validation_result: dict[str, Any] = {
             "attempted": False,
@@ -14209,41 +14368,88 @@ class PortalImplementationDaemon:
                             returncode=0,
                         )
                 else:
-                    completed = self._decision_runtime_mutation(
-                        "command_invocation",
-                        {
-                            "operation": "implementation_provider",
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "command": tuple(command),
-                            "workspace_path": str(workspace_path),
-                            "context_receipt_path": str(context_receipt_path),
-                        },
-                        lambda: run_process_group_stream(
-                            command,
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            ),
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            ),
-                        ),
+                    provider_gate = self._evaluate_pre_implementation_provider_gate(
+                        task=task,
+                        attempt=attempt,
+                        worktree_path=workspace_path,
+                        command=command,
                     )
+                    provider_authority_receipt_cid = str(
+                        provider_gate.get("receipt_cid") or ""
+                    )
+                    self._record_event(
+                        str(
+                            provider_gate.get("event_name")
+                            or "pre_implementation_kernel_evaluated"
+                        ),
+                        dict(provider_gate.get("event") or {}),
+                    )
+                    if provider_gate.get("skip_provider"):
+                        disposition = str(provider_gate.get("disposition") or "")
+                        log_fh.write(
+                            "ImplementationProviderGate: "
+                            f"disposition={disposition} "
+                            f"reason={provider_gate.get('reason_code')} "
+                            f"receipt_cid={provider_gate.get('receipt_cid')}\n"
+                        )
+                        completed = subprocess.CompletedProcess(
+                            args=(),
+                            returncode=(
+                                0 if disposition == "closed_deterministic" else 1
+                            ),
+                        )
+                    else:
+
+                        def invoke_non_ephemeral_provider() -> subprocess.CompletedProcess[
+                            str
+                        ]:
+                            self._assert_current_provider_gate(
+                                provider_gate=provider_gate,
+                                task=task,
+                                attempt=attempt,
+                                worktree_path=workspace_path,
+                                command=command,
+                            )
+                            return run_process_group_stream(
+                                command,
+                                cwd=workspace_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=self._implementation_process_environment(
+                                    task,
+                                    attempt=attempt,
+                                    checkpoint_dir=checkpoint_dir,
+                                ),
+                                timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=self._implementation_progress_observer(
+                                    state,
+                                    task,
+                                    attempt=attempt,
+                                ),
+                            )
+
+                        completed = self._decision_runtime_mutation(
+                            "command_invocation",
+                            {
+                                "operation": "implementation_provider",
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "command": tuple(command),
+                                "workspace_path": str(workspace_path),
+                                "context_receipt_path": str(context_receipt_path),
+                                "provider_authority_receipt_cid": str(
+                                    provider_gate.get("receipt_cid") or ""
+                                ),
+                            },
+                            invoke_non_ephemeral_provider,
+                        )
             effective_returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -14345,6 +14551,9 @@ class PortalImplementationDaemon:
                             state=state,
                             baseline_ref=baseline_ref,
                             proposal_validation=None,
+                            provider_authority_receipt_cid=(
+                                provider_authority_receipt_cid
+                            ),
                         )
                     )
                     proposal_validation = validation_result.get(
@@ -14387,6 +14596,9 @@ class PortalImplementationDaemon:
                                 state=state,
                                 attempt=attempt,
                                 allow_candidate_stabilization=True,
+                                provider_authority_receipt_cid=(
+                                    provider_authority_receipt_cid
+                                ),
                             )
                         )
                         if not validation_result.get("passed", False):
@@ -22385,6 +22597,26 @@ class PortalImplementationDaemon:
                 },
             )
 
+            reconciliation_authority = (
+                self._reconciliation_accepted_proposal_context(
+                    task=task,
+                    branch_name=branch_name,
+                    baseline_ref=resolved_baseline,
+                )
+            )
+            replay_authority_cids = {
+                str(item.get("provider_authority_receipt_cid") or "").strip()
+                for item in (
+                    reconciliation_authority.get("accepted_receipts") or ()
+                )
+                if isinstance(item, Mapping) and not item.get("mismatches")
+            }
+            replay_authority_cids.discard("")
+            provider_authority_receipt_cid = (
+                next(iter(replay_authority_cids))
+                if len(replay_authority_cids) == 1
+                else ""
+            )
             proposal_validation = self._validate_implementation_patch(
                 worktree_path,
                 task,
@@ -22396,6 +22628,9 @@ class PortalImplementationDaemon:
                     )
                 ),
                 reconciliation_branch_name=branch_name,
+                provider_authority_receipt_cid=(
+                    provider_authority_receipt_cid
+                ),
             )
             validation_result = self._run_validation_commands(
                 worktree_path,
@@ -22413,6 +22648,10 @@ class PortalImplementationDaemon:
                 proposal_validation=proposal_validation,
                 baseline_ref=resolved_baseline,
                 state=state,
+                provider_authority_receipt_cid=(
+                    provider_authority_receipt_cid
+                ),
+                reconciliation_branch_name=branch_name,
             )
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -22442,6 +22681,9 @@ class PortalImplementationDaemon:
                         state=state,
                         attempt=attempt,
                         allow_candidate_stabilization=False,
+                        provider_authority_receipt_cid=(
+                            provider_authority_receipt_cid
+                        ),
                     )
                 )
                 protected_path_violation = (
@@ -22741,6 +22983,7 @@ class PortalImplementationDaemon:
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
+        provider_authority_receipt_cid = ""
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
@@ -22978,9 +23221,16 @@ class PortalImplementationDaemon:
                         task=task,
                         attempt=attempt,
                         worktree_path=worktree_path,
+                        command=command,
+                    )
+                    provider_authority_receipt_cid = str(
+                        provider_gate.get("receipt_cid") or ""
                     )
                     self._record_event(
-                        "pre_implementation_kernel_evaluated",
+                        str(
+                            provider_gate.get("event_name")
+                            or "pre_implementation_kernel_evaluated"
+                        ),
                         dict(provider_gate.get("event") or {}),
                     )
                     if provider_gate.get("skip_provider"):
@@ -23017,11 +23267,13 @@ class PortalImplementationDaemon:
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
                             nonlocal provider_dispatched
-                            # Fail closed if gate identity drifted.
-                            if not provider_gate.get("provider_authorized"):
-                                raise RuntimeError(
-                                    "provider dispatch blocked by pre-implementation kernel"
-                                )
+                            self._assert_current_provider_gate(
+                                provider_gate=provider_gate,
+                                task=task,
+                                attempt=attempt,
+                                worktree_path=worktree_path,
+                                command=command,
+                            )
                             provider_environment = (
                                 self._implementation_process_environment(
                                     task,
@@ -23229,6 +23481,9 @@ class PortalImplementationDaemon:
                                     replayable_consumed_proposal_ids=(
                                         seed_replayable_proposal_ids
                                     ),
+                                    provider_authority_receipt_cid=(
+                                        provider_authority_receipt_cid
+                                    ),
                                 )
                             )
                             proposal_validation = validation_result.get(
@@ -23244,6 +23499,9 @@ class PortalImplementationDaemon:
                                     proposal_validation=proposal_validation,
                                     baseline_ref=baseline_ref,
                                     state=state,
+                                    provider_authority_receipt_cid=(
+                                        provider_authority_receipt_cid
+                                    ),
                                 )
                             )
                         if (
@@ -23264,6 +23522,9 @@ class PortalImplementationDaemon:
                                     state=state,
                                     attempt=attempt,
                                     allow_candidate_stabilization=True,
+                                    provider_authority_receipt_cid=(
+                                        provider_authority_receipt_cid
+                                    ),
                                 )
                             )
                         # Drop live ProposalValidationResult before commit/
@@ -23589,6 +23850,9 @@ class PortalImplementationDaemon:
                                 replayable_consumed_proposal_ids=(
                                     seed_replayable_proposal_ids
                                 ),
+                                provider_authority_receipt_cid=(
+                                    provider_authority_receipt_cid
+                                ),
                             )
                         )
                         proposal_validation = validation_result.get(
@@ -23604,6 +23868,9 @@ class PortalImplementationDaemon:
                                 proposal_validation=proposal_validation,
                                 baseline_ref=baseline_ref,
                                 state=state,
+                                provider_authority_receipt_cid=(
+                                    provider_authority_receipt_cid
+                                ),
                             )
                         )
                     protected_path_violation = (
@@ -23639,6 +23906,9 @@ class PortalImplementationDaemon:
                                 state=state,
                                 attempt=attempt,
                                 allow_candidate_stabilization=True,
+                                provider_authority_receipt_cid=(
+                                    provider_authority_receipt_cid
+                                ),
                             )
                         )
                     validation_result = (
@@ -25316,6 +25586,23 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Replay a prior attempt's task-authorized delta onto a clean baseline."""
 
+        if (
+            self._task_metadata_value(task, "implementation mode")
+            .strip()
+            .lower()
+            == "ordered_provider"
+        ):
+            # Sealed authoring is admitted only from a clean configured-root
+            # baseline.  A prior candidate can be recovered by the committed
+            # reconciliation path, whose event chain carries the original
+            # authoring receipt; an uncommitted seed cannot be silently
+            # introduced before the current provider gate.
+            return {
+                "applied": False,
+                "reason": "ordered_provider_seed_requires_reconciliation_authority",
+                "seed_ref": str(seed_plan.get("seed_ref") or ""),
+                "baseline_ref": baseline_ref,
+            }
         if not seed_plan.get("reuse_prior_attempt"):
             return {
                 "applied": False,
@@ -29103,10 +29390,22 @@ class PortalImplementationDaemon:
     ) -> tuple[str, ...]:
         """Return repository paths owned by a task's output declaration."""
 
+        ordered_authoring = (
+            self._task_metadata_value(task, "implementation mode")
+            .strip()
+            .lower()
+            == "ordered_provider"
+        )
         return self._proposal_scope_paths_for(
             task,
-            repo_root=self.repo_root if include_ast_companions else None,
-            include_ast_companions=include_ast_companions,
+            repo_root=(
+                self.repo_root
+                if include_ast_companions and not ordered_authoring
+                else None
+            ),
+            include_ast_companions=(
+                include_ast_companions and not ordered_authoring
+            ),
         )
 
     @staticmethod
@@ -30613,6 +30912,21 @@ class PortalImplementationDaemon:
                 for name in required_bindings
                 if not str(event.get(name) or "").strip()
             )
+            provider_authority_receipt_cid = str(
+                event.get("provider_authority_receipt_cid") or ""
+            ).strip()
+            if (
+                self._task_metadata_value(task, "implementation mode")
+                .strip()
+                .lower()
+                == "ordered_provider"
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    provider_authority_receipt_cid,
+                )
+                is None
+            ):
+                event_mismatches.add("provider_authority_receipt_cid")
             raw_changed_paths = event.get("changed_paths")
             if not isinstance(raw_changed_paths, list) or any(
                 not isinstance(path, str) or not path.strip()
@@ -30630,6 +30944,9 @@ class PortalImplementationDaemon:
                     "proposal_id": str(event.get("proposal_id") or "").strip(),
                     "policy_id": str(event.get("policy_id") or "").strip(),
                     "receipt_id": str(event.get("receipt_id") or "").strip(),
+                    "provider_authority_receipt_cid": (
+                        provider_authority_receipt_cid
+                    ),
                     "repository_tree_id": str(
                         event.get("repository_tree_id") or ""
                     ).strip(),
@@ -31712,6 +32029,56 @@ class PortalImplementationDaemon:
             receipt=receipt,
         )
 
+    def _require_ordered_provider_proposal_authority(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        provider_authority_receipt_cid: str,
+        reconciliation_branch_name: str = "",
+        baseline_ref: str = "",
+    ) -> None:
+        """Require a dispatch-verified or event-replayed authoring receipt."""
+
+        if (
+            self._task_metadata_value(task, "implementation mode")
+            .strip()
+            .lower()
+            != "ordered_provider"
+        ):
+            return
+        receipt_cid = str(provider_authority_receipt_cid or "").strip()
+        if re.fullmatch(r"baguqeera[a-z2-7]{52}", receipt_cid) is None:
+            raise RuntimeError(
+                "ordered-provider proposal lacks its authoring authority receipt"
+            )
+        registry = getattr(
+            self,
+            "_ordered_provider_proposal_authorities",
+            {},
+        )
+        key = (task.task_id, str(workspace_path.resolve()))
+        if isinstance(registry, Mapping) and registry.get(key) == receipt_cid:
+            return
+        branch_name = str(reconciliation_branch_name or "").strip()
+        if branch_name and baseline_ref:
+            replay_context = self._reconciliation_accepted_proposal_context(
+                task=task,
+                branch_name=branch_name,
+                baseline_ref=baseline_ref,
+            )
+            for binding in replay_context.get("accepted_receipts") or ():
+                if (
+                    isinstance(binding, Mapping)
+                    and not binding.get("mismatches")
+                    and binding.get("provider_authority_receipt_cid")
+                    == receipt_cid
+                ):
+                    return
+        raise RuntimeError(
+            "ordered-provider proposal authority was not dispatch-verified"
+        )
+
     def _validate_implementation_patch(
         self,
         workspace_path: Path,
@@ -31722,6 +32089,7 @@ class PortalImplementationDaemon:
         reconciliation_branch_name: str = "",
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
+        provider_authority_receipt_cid: str = "",
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -31754,6 +32122,15 @@ class PortalImplementationDaemon:
             baseline_ref=baseline_ref,
         )
         scope_paths = self._proposal_scope_paths(task)
+        self._require_ordered_provider_proposal_authority(
+            workspace_path,
+            task,
+            provider_authority_receipt_cid=(
+                provider_authority_receipt_cid
+            ),
+            reconciliation_branch_name=reconciliation_branch_name,
+            baseline_ref=baseline_ref,
+        )
         # A missing output declaration grants no mutation authority.
         allowed_paths = scope_paths or (".proposal-scope-not-declared",)
         expected_output_preflight = self._prepare_proposal_expected_outputs(
@@ -31814,6 +32191,14 @@ class PortalImplementationDaemon:
                         else ()
                     ),
                     *(f"output:{path}" for path in scope_paths),
+                    *(
+                        (
+                            "provider-authority:"
+                            + str(provider_authority_receipt_cid),
+                        )
+                        if provider_authority_receipt_cid
+                        else ()
+                    ),
                 }
             )
         )
@@ -31863,6 +32248,9 @@ class PortalImplementationDaemon:
                         (entry.change_kind.value, entry.old_path, entry.new_path)
                         for entry in entries
                     ],
+                    "provider_authority_receipt_cid": str(
+                        provider_authority_receipt_cid or ""
+                    ),
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -32336,6 +32724,10 @@ class PortalImplementationDaemon:
                 "task_id": task.task_id,
                 **compact,
             }
+            if provider_authority_receipt_cid:
+                proposal_event_payload["provider_authority_receipt_cid"] = (
+                    provider_authority_receipt_cid
+                )
             if accepted_receipt_reused:
                 proposal_event_payload.update(
                     {
@@ -32677,6 +33069,7 @@ class PortalImplementationDaemon:
         state: PortalTaskState | None = None,
         attempt: int = 0,
         allow_candidate_stabilization: bool = False,
+        provider_authority_receipt_cid: str = "",
     ) -> dict[str, Any]:
         """Restore validation output and certify a bounded candidate fixed point.
 
@@ -32861,6 +33254,9 @@ class PortalImplementationDaemon:
                 task,
                 baseline_ref=baseline_ref,
                 allow_scope_adjudication=False,
+                provider_authority_receipt_cid=(
+                    provider_authority_receipt_cid
+                ),
             )
         except Exception as exc:
             stabilization["reproposal_error_type"] = type(exc).__name__
@@ -33359,6 +33755,7 @@ class PortalImplementationDaemon:
         *,
         state: PortalTaskState | None,
         baseline_ref: str,
+        provider_authority_receipt_cid: str = "",
     ) -> dict[str, Any] | None:
         """Validate an unchanged candidate before the empty-patch gate.
 
@@ -33404,6 +33801,9 @@ class PortalImplementationDaemon:
             "reason": "validated_no_change_candidate",
             "changed_paths": [],
             "reason_codes": [],
+            "provider_authority_receipt_cid": str(
+                provider_authority_receipt_cid or ""
+            ),
         }
         result["proposal_gate"] = proposal_gate
         if not result.get("passed", False):
@@ -33454,6 +33854,9 @@ class PortalImplementationDaemon:
             "expected_fingerprint": expected_fingerprint,
             "current_fingerprint": current_fingerprint,
             "reason": "validated_no_change_candidate",
+            "provider_authority_receipt_cid": str(
+                provider_authority_receipt_cid or ""
+            ),
         }
         if collection_error:
             binding["collection_error"] = collection_error
@@ -33490,6 +33893,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         proposal_validation: Any = None,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        provider_authority_receipt_cid: str = "",
     ) -> dict[str, Any]:
         """Validate the exact final candidate, including generated outputs.
 
@@ -33502,6 +33906,14 @@ class PortalImplementationDaemon:
         without being rejected by the empty-patch proposal gate.
         """
 
+        self._require_ordered_provider_proposal_authority(
+            workspace_path,
+            task,
+            provider_authority_receipt_cid=(
+                provider_authority_receipt_cid
+            ),
+            baseline_ref=baseline_ref,
+        )
         result: dict[str, Any] | None = None
         if proposal_validation is None:
             result = self._run_clean_candidate_validation(
@@ -33510,6 +33922,9 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 baseline_ref=baseline_ref,
+                provider_authority_receipt_cid=(
+                    provider_authority_receipt_cid
+                ),
             )
             if result is not None:
                 # Clean path admits without a proposal object; surface that
@@ -33523,6 +33938,9 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     replayable_consumed_proposal_ids=(
                         replayable_consumed_proposal_ids
+                    ),
+                    provider_authority_receipt_cid=(
+                        provider_authority_receipt_cid
                     ),
                 )
             result = self._run_validation_commands(
@@ -33554,6 +33972,9 @@ class PortalImplementationDaemon:
             baseline_ref=baseline_ref,
             replayable_consumed_proposal_ids=(
                 replayable_consumed_proposal_ids
+            ),
+            provider_authority_receipt_cid=(
+                provider_authority_receipt_cid
             ),
         )
         compact_rebound = self._compact_proposal_validation(
@@ -34506,6 +34927,8 @@ class PortalImplementationDaemon:
         proposal_validation: Any = None,
         baseline_ref: str = "",
         state: PortalTaskState | None = None,
+        provider_authority_receipt_cid: str = "",
+        reconciliation_branch_name: str = "",
     ) -> dict[str, Any]:
         """Review a failed validation and accept or attach rescue guidance.
 
@@ -34639,6 +35062,10 @@ class PortalImplementationDaemon:
                 workspace_path,
                 task,
                 baseline_ref=baseline_ref,
+                reconciliation_branch_name=reconciliation_branch_name,
+                provider_authority_receipt_cid=(
+                    provider_authority_receipt_cid
+                ),
             )
             if not bool(getattr(revalidated_proposal, "accepted", False)):
                 result["failure_review_accept_revalidation"] = {
@@ -47592,6 +48019,25 @@ class PortalImplementationDaemon:
     ) -> None:
         """Defer before prompt/worktree dispatch when Grok primary is absent."""
 
+        ordered_authoring = bool(
+            task is not None
+            and self._task_metadata_value(task, "implementation mode")
+            .strip()
+            .lower()
+            == "ordered_provider"
+        )
+        if ordered_authoring:
+            if not (_grok_cli_available() and _grok_binary()):
+                raise ImplementationRetryDeferred(
+                    "sealed authoring requires authenticated Grok 4.5",
+                    backoff_seconds=300,
+                )
+            if not shutil.which("codex"):
+                raise ImplementationRetryDeferred(
+                    "sealed authoring requires the Terra quota fallback binary",
+                    backoff_seconds=300,
+                )
+            return
         declared_provider = self._task_declared_implementation_provider(task)
         if self.implementation_command and not declared_provider:
             return
@@ -47694,6 +48140,32 @@ class PortalImplementationDaemon:
             workspace_path,
             task=task,
         )
+        ordered_authoring = bool(
+            task is not None
+            and self._task_metadata_value(task, "implementation mode")
+            .strip()
+            .lower()
+            == "ordered_provider"
+        )
+        if ordered_authoring:
+            if not self.use_ephemeral_worktree:
+                raise RuntimeError(
+                    "ordered-provider authoring requires an ephemeral worktree"
+                )
+            command = _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override="grok-4.5",
+                failure_receipt_nonce=secrets.token_hex(32),
+            )
+            from ..runtime.ordered_provider_authoring import (
+                validate_ordered_provider_command,
+            )
+
+            validate_ordered_provider_command(
+                command,
+                workspace_path=workspace_path,
+            )
+            return command
         declared_provider = self._task_declared_implementation_provider(task)
         if self._task_uses_typed_local_execution(task):
             raise RuntimeError(

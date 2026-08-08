@@ -13,6 +13,7 @@ optional tools.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -26,13 +27,29 @@ from typing import Any
 
 from .configured_board_bootstrap_seal import (
     BootstrapSealError,
-    read_bootstrap_seal,
+    content_id,
     verify_bootstrap_seal,
 )
 from .multi_supervisor_runner import (
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
     utc_run_stamp,
+)
+from .ordered_provider_authoring import (
+    AUTHORING_LAUNCH_SCHEMA,
+    BOOTSTRAP_AUTHORING_BOARD_ID_ENV,
+    BOOTSTRAP_BASELINE_ID_ENV,
+    BOOTSTRAP_FOREST_ID_ENV,
+    BOOTSTRAP_INVENTORY_ID_ENV,
+    BOOTSTRAP_SEAL_ID_ENV,
+    BOOTSTRAP_SEAL_PATH_ENV,
+    CONFIGURED_BOARD_CONFIG_PATH_ENV,
+    CONFIGURED_BOARD_LAUNCH_HEAD_ENV,
+    CONFIGURED_BOARD_LAUNCH_ID_ENV,
+    CONFIGURED_BOARD_LAUNCH_TREE_ENV,
+    CONFIGURED_BOARD_NAMESPACE_ENV,
+    GROK_MAX_TURNS_ENV,
+    ORDERED_PROVIDER_ENV_NAMES,
 )
 
 SCHEDULER_SCHEMA_PATTERN = re.compile(
@@ -43,17 +60,11 @@ IMPLEMENTATION_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
 )
 PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
-FALLBACK_PROVIDER_ENV = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
-)
-FALLBACK_TRIGGER_ENV = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
-)
+FALLBACK_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+FALLBACK_TRIGGER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
 GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
-CODEX_REASONING_EFFORT_ENV = (
-    "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
-)
+CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 SCHEDULER_PROVIDER_ENV_NAMES = (
     PROVIDER_ENV,
     FALLBACK_PROVIDER_ENV,
@@ -61,6 +72,7 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
+    *ORDERED_PROVIDER_ENV_NAMES,
 )
 ORDERED_PROVIDER_FIELDS = (
     "primary_provider_id",
@@ -99,9 +111,7 @@ def _positive_int(value: Any, *, field: str) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
-        raise ConfiguredBoardError(
-            f"{field} must be a positive integer"
-        ) from exc
+        raise ConfiguredBoardError(f"{field} must be a positive integer") from exc
     if parsed < 1:
         raise ConfiguredBoardError(f"{field} must be a positive integer")
     return parsed
@@ -113,9 +123,7 @@ def _nonnegative_number(value: Any, *, field: str) -> float:
     try:
         parsed = float(value)
     except (TypeError, ValueError) as exc:
-        raise ConfiguredBoardError(
-            f"{field} must be finite and nonnegative"
-        ) from exc
+        raise ConfiguredBoardError(f"{field} must be finite and nonnegative") from exc
     if not math.isfinite(parsed) or parsed < 0:
         raise ConfiguredBoardError(f"{field} must be finite and nonnegative")
     return parsed
@@ -137,9 +145,7 @@ def _provider_string(
 ) -> str:
     value = _required_string(payload, field)
     if "\x00" in value or "\n" in value or "\r" in value:
-        raise ConfiguredBoardError(
-            f"{field} must be a single-line nonempty string"
-        )
+        raise ConfiguredBoardError(f"{field} must be a single-line nonempty string")
     return value
 
 
@@ -171,9 +177,7 @@ def _safe_relative(value: Any, *, field: str) -> str:
         or ".." in path.parts
         or (path.parts and path.parts[0].endswith(":"))
     ):
-        raise ConfiguredBoardError(
-            f"{field} contains unsafe relative path {value!r}"
-        )
+        raise ConfiguredBoardError(f"{field} contains unsafe relative path {value!r}")
     return path.as_posix()
 
 
@@ -194,9 +198,7 @@ def _contained_path(repo_root: Path, relative: str) -> Path:
     try:
         candidate.resolve(strict=False).relative_to(repo_root)
     except (OSError, RuntimeError, ValueError) as exc:
-        raise ConfiguredBoardError(
-            f"path escapes repository: {relative}"
-        ) from exc
+        raise ConfiguredBoardError(f"path escapes repository: {relative}") from exc
     return candidate
 
 
@@ -274,9 +276,7 @@ def load_configured_board(
         raise ConfiguredBoardError("scheduler config root must be an object")
     schema = _required_string(payload, "schema")
     if SCHEDULER_SCHEMA_PATTERN.fullmatch(schema) is None:
-        raise ConfiguredBoardError(
-            f"unsupported scheduler schema: {schema!r}"
-        )
+        raise ConfiguredBoardError(f"unsupported scheduler schema: {schema!r}")
 
     taskboard_path = _safe_relative(
         _required_string(payload, "taskboard_path"),
@@ -311,9 +311,7 @@ def load_configured_board(
     max_lanes = _positive_int(payload.get("max_lanes"), field="max_lanes")
     lanes = payload.get("lanes")
     if not isinstance(lanes, list) or len(lanes) != max_lanes:
-        raise ConfiguredBoardError(
-            "lanes must contain exactly max_lanes entries"
-        )
+        raise ConfiguredBoardError("lanes must contain exactly max_lanes entries")
     expected_indices = list(range(max_lanes))
     actual_indices: list[int] = []
     for position, lane in enumerate(lanes):
@@ -353,9 +351,7 @@ def load_configured_board(
     )
     config_relative = path.relative_to(root).as_posix()
     if config_relative not in protected:
-        raise ConfiguredBoardError(
-            "scheduler config must protect its own source path"
-        )
+        raise ConfiguredBoardError("scheduler config must protect its own source path")
     source_binding = payload.get("source_binding")
     if not isinstance(source_binding, dict):
         raise ConfiguredBoardError("source_binding must be an object")
@@ -462,6 +458,11 @@ def load_configured_board(
                 "'medium', 'high' for "
                 "the ordered provider contract"
             )
+        if provider.get("provider_fallback_for_other_failures", False) is not False:
+            raise ConfiguredBoardError(
+                "provider.provider_fallback_for_other_failures must be false "
+                "for the ordered provider contract"
+            )
         if "provider_id" in provider or "model_id" in provider:
             raise ConfiguredBoardError(
                 "ordered provider fields cannot be mixed with legacy "
@@ -473,10 +474,14 @@ def load_configured_board(
             "provider_id",
         ).lower()
         _optional_provider_string(provider, "model_id")
-        if provider_id and re.fullmatch(
-            r"[a-z0-9][a-z0-9_-]*",
-            provider_id,
-        ) is None:
+        if (
+            provider_id
+            and re.fullmatch(
+                r"[a-z0-9][a-z0-9_-]*",
+                provider_id,
+            )
+            is None
+        ):
             raise ConfiguredBoardError(
                 "provider.provider_id is not a supported identifier"
             )
@@ -485,9 +490,7 @@ def load_configured_board(
         field="provider.max_concurrency",
     )
     if concurrency < max_lanes:
-        raise ConfiguredBoardError(
-            "provider.max_concurrency is lower than max_lanes"
-        )
+        raise ConfiguredBoardError("provider.max_concurrency is lower than max_lanes")
     for field in (
         "strict_task_sharding",
         "exit_when_all_tracks_terminal",
@@ -690,9 +693,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         *board.protected_paths,
     }
     missing_files = sorted(
-        relative
-        for relative in required_files
-        if not board.path(relative).is_file()
+        relative for relative in required_files if not board.path(relative).is_file()
     )
     _append_check(
         checks,
@@ -757,8 +758,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             errors,
             name="declared_validator",
             passed=(
-                validator.returncode == 0
-                and validator_report.get("valid") is True
+                validator.returncode == 0 and validator_report.get("valid") is True
             ),
             detail={
                 "returncode": validator.returncode,
@@ -780,26 +780,38 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     for relative in board.worktree_submodule_paths:
         gitlink = _gitlink_commit(board, relative)
         target = board.path(relative)
-        top_level = _run(
-            ("git", "rev-parse", "--show-toplevel"),
-            cwd=target,
-            timeout=60,
-        ) if target.is_dir() else None
+        top_level = (
+            _run(
+                ("git", "rev-parse", "--show-toplevel"),
+                cwd=target,
+                timeout=60,
+            )
+            if target.is_dir()
+            else None
+        )
         exact_worktree = bool(
             top_level is not None
             and top_level.returncode == 0
             and Path(top_level.stdout.strip()).resolve() == target.resolve()
         )
-        head = _run(
-            ("git", "rev-parse", "HEAD"),
-            cwd=target,
-            timeout=60,
-        ) if exact_worktree else None
-        clean = _run(
-            ("git", "status", "--porcelain=v1", "--untracked-files=all"),
-            cwd=target,
-            timeout=60,
-        ) if head is not None and head.returncode == 0 else None
+        head = (
+            _run(
+                ("git", "rev-parse", "HEAD"),
+                cwd=target,
+                timeout=60,
+            )
+            if exact_worktree
+            else None
+        )
+        clean = (
+            _run(
+                ("git", "status", "--porcelain=v1", "--untracked-files=all"),
+                cwd=target,
+                timeout=60,
+            )
+            if head is not None and head.returncode == 0
+            else None
+        )
         actual_head = head.stdout.strip() if head is not None else ""
         expected_planning = planning_revisions.get(relative, "")
         planning_ancestor = (
@@ -842,14 +854,9 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
                 "exact_worktree": exact_worktree,
                 "planning_revision": expected_planning,
                 "planning_revision_is_ancestor": bool(
-                    planning_ancestor is not None
-                    and planning_ancestor.returncode == 0
+                    planning_ancestor is not None and planning_ancestor.returncode == 0
                 ),
-                "dirty": (
-                    clean.stdout.splitlines()[:50]
-                    if clean is not None
-                    else []
-                ),
+                "dirty": (clean.stdout.splitlines()[:50] if clean is not None else []),
             }
         )
     _append_check(
@@ -869,6 +876,8 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
                 worktree_submodule_paths=board.worktree_submodule_paths,
                 protected_paths=board.protected_paths,
                 seal_path=board.bootstrap_seal_path,
+                taskboard_path=board.taskboard_path,
+                task_header_prefix=board.task_prefix,
                 validator_report=validator_report,
             )
             seal_valid = True
@@ -883,9 +892,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             detail=seal_detail,
         )
 
-    implementation_entry = board.path(
-        IMPLEMENTATION_ENTRY_PATH.as_posix()
-    )
+    implementation_entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
     _append_check(
         checks,
         errors,
@@ -895,10 +902,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     )
 
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "configured-board-preflight@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/configured-board-preflight@1"),
         "valid": not errors,
         "config_path": str(board.config_path),
         "repo_root": str(board.repo_root),
@@ -988,6 +992,7 @@ def configured_board_launch_plan(
     detach: bool,
     duration_seconds: float = float("inf"),
     stamp: str | None = None,
+    preflight_report: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
@@ -1037,9 +1042,7 @@ def configured_board_launch_plan(
         str(board.max_lanes),
     ]
     if board.strict_task_sharding:
-        runner_args.append(
-            "--implementation-supervisor-strict-task-sharding"
-        )
+        runner_args.append("--implementation-supervisor-strict-task-sharding")
     if board.payload.get("exit_when_all_tracks_terminal") is True:
         runner_args.append("--exit-when-all-tracks-terminal")
 
@@ -1049,12 +1052,8 @@ def configured_board_launch_plan(
     if ordered_provider:
         environment = {
             PROVIDER_ENV: str(provider["primary_provider_id"]).strip(),
-            FALLBACK_PROVIDER_ENV: str(
-                provider["fallback_provider_id"]
-            ).strip(),
-            FALLBACK_TRIGGER_ENV: str(
-                provider["fallback_trigger"]
-            ).strip(),
+            FALLBACK_PROVIDER_ENV: str(provider["fallback_provider_id"]).strip(),
+            FALLBACK_TRIGGER_ENV: str(provider["fallback_trigger"]).strip(),
             GROK_MODEL_ENV: str(provider["primary_model_id"]).strip(),
             CODEX_MODEL_ENV: str(provider["fallback_model_id"]).strip(),
             CODEX_REASONING_EFFORT_ENV: str(
@@ -1070,31 +1069,119 @@ def configured_board_launch_plan(
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
     bootstrap_seal: dict[str, Any] = {}
+    authoring_launch: dict[str, Any] = {}
     if board.bootstrap_seal_path:
-        seal = read_bootstrap_seal(board.path(board.bootstrap_seal_path))
-        bootstrap_seal = {
-            "path": board.bootstrap_seal_path,
-            "seal_id": seal.get("seal_id"),
-            "forest_id": (
-                seal.get("forest", {}).get("forest_id")
-                if isinstance(seal.get("forest"), dict)
-                else None
-            ),
-            "inventory_id": (
-                seal.get("inventory", {}).get("inventory_id")
-                if isinstance(seal.get("inventory"), dict)
-                else None
-            ),
-            "baseline_id": (
-                seal.get("baseline", {}).get("baseline_id")
-                if isinstance(seal.get("baseline"), dict)
-                else None
-            ),
-        }
+        report = dict(preflight_report or {})
+        if (
+            report.get("valid") is not True
+            or report.get("board_namespace") != board.board_namespace
+            or Path(str(report.get("config_path") or "")).resolve() != board.config_path
+            or Path(str(report.get("repo_root") or "")).resolve() != board.repo_root
+        ):
+            raise ConfiguredBoardError(
+                "a matching valid preflight report is required for sealed launch"
+            )
+        seal_checks = [
+            item
+            for item in report.get("checks", ())
+            if isinstance(item, Mapping) and item.get("name") == "bootstrap_seal"
+        ]
+        if (
+            len(seal_checks) != 1
+            or seal_checks[0].get("passed") is not True
+            or not isinstance(seal_checks[0].get("detail"), Mapping)
+        ):
+            raise ConfiguredBoardError(
+                "preflight report has no unique verified bootstrap seal"
+            )
+        source_binding = board.payload.get("source_binding")
+        validator_report = report.get("validator_report")
+        try:
+            current_seal = verify_bootstrap_seal(
+                repo_root=board.repo_root,
+                board_namespace=board.board_namespace,
+                source_binding=(
+                    source_binding if isinstance(source_binding, Mapping) else {}
+                ),
+                worktree_submodule_paths=board.worktree_submodule_paths,
+                protected_paths=board.protected_paths,
+                seal_path=board.bootstrap_seal_path,
+                taskboard_path=board.taskboard_path,
+                task_header_prefix=board.task_prefix,
+                validator_report=(
+                    validator_report if isinstance(validator_report, Mapping) else {}
+                ),
+            )
+        except BootstrapSealError as exc:
+            raise ConfiguredBoardError(
+                f"bootstrap seal changed after preflight: {exc}"
+            ) from exc
+        verified_detail = dict(seal_checks[0]["detail"])
+        if current_seal != verified_detail:
+            raise ConfiguredBoardError(
+                "bootstrap seal identity changed after preflight"
+            )
+        bootstrap_seal = dict(current_seal)
+        if implement and ordered_provider:
+            launch_head_result = _git(board, "rev-parse", "HEAD^{commit}")
+            launch_tree_result = _git(board, "rev-parse", "HEAD^{tree}")
+            launch_head = launch_head_result.stdout.strip()
+            launch_tree = launch_tree_result.stdout.strip()
+            if (
+                launch_head_result.returncode != 0
+                or launch_tree_result.returncode != 0
+                or re.fullmatch(r"[0-9a-f]{40}", launch_head) is None
+                or re.fullmatch(r"[0-9a-f]{40}", launch_tree) is None
+            ):
+                raise ConfiguredBoardError(
+                    "cannot bind the configured-board launch Git identity"
+                )
+            config_relative = board.config_path.relative_to(board.repo_root).as_posix()
+            config_sha256 = hashlib.sha256(board.config_path.read_bytes()).hexdigest()
+            launch_body = {
+                "schema": AUTHORING_LAUNCH_SCHEMA,
+                "board_namespace": board.board_namespace,
+                "scheduler_config_path": config_relative,
+                "scheduler_config_sha256": config_sha256,
+                "seal_id": str(bootstrap_seal.get("seal_id") or ""),
+                "forest_id": str(bootstrap_seal.get("forest_id") or ""),
+                "inventory_id": str(bootstrap_seal.get("inventory_id") or ""),
+                "baseline_id": str(bootstrap_seal.get("baseline_id") or ""),
+                "authoring_board_id": str(
+                    bootstrap_seal.get("authoring_board_id") or ""
+                ),
+                "launch_head": launch_head,
+                "launch_tree": launch_tree,
+            }
+            authoring_launch = {
+                **launch_body,
+                "launch_id": content_id(launch_body),
+            }
+            environment.update(
+                {
+                    CONFIGURED_BOARD_NAMESPACE_ENV: board.board_namespace,
+                    CONFIGURED_BOARD_CONFIG_PATH_ENV: config_relative,
+                    BOOTSTRAP_SEAL_PATH_ENV: board.bootstrap_seal_path,
+                    BOOTSTRAP_SEAL_ID_ENV: str(bootstrap_seal.get("seal_id") or ""),
+                    BOOTSTRAP_FOREST_ID_ENV: str(bootstrap_seal.get("forest_id") or ""),
+                    BOOTSTRAP_INVENTORY_ID_ENV: str(
+                        bootstrap_seal.get("inventory_id") or ""
+                    ),
+                    BOOTSTRAP_BASELINE_ID_ENV: str(
+                        bootstrap_seal.get("baseline_id") or ""
+                    ),
+                    BOOTSTRAP_AUTHORING_BOARD_ID_ENV: str(
+                        bootstrap_seal.get("authoring_board_id") or ""
+                    ),
+                    CONFIGURED_BOARD_LAUNCH_HEAD_ENV: launch_head,
+                    CONFIGURED_BOARD_LAUNCH_TREE_ENV: launch_tree,
+                    CONFIGURED_BOARD_LAUNCH_ID_ENV: str(authoring_launch["launch_id"]),
+                    GROK_MAX_TURNS_ENV: "100000",
+                }
+            )
     return {
         "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "configured-board-launch-plan@1"
+            "ipfs_accelerate_py/agent-supervisor/configured-board-launch-plan@1"
         ),
         "board_namespace": board.board_namespace,
         "implement": bool(implement),
@@ -1104,13 +1191,10 @@ def configured_board_launch_plan(
         "argv": runner_args,
         "environment": environment,
         "runtime_root": str(runtime_root),
-        "master_pid_path": str(
-            state_dir / "configured-board-master.pid"
-        ),
-        "master_log": str(
-            log_dir / f"configured-board-{run_stamp}.log"
-        ),
+        "master_pid_path": str(state_dir / "configured-board-master.pid"),
+        "master_log": str(log_dir / f"configured-board-{run_stamp}.log"),
         "bootstrap_seal": bootstrap_seal,
+        "authoring_launch": authoring_launch,
     }
 
 
@@ -1166,8 +1250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             json.dumps(
                 {
                     "schema": (
-                        "ipfs_accelerate_py/agent-supervisor/"
-                        "configured-board-error@1"
+                        "ipfs_accelerate_py/agent-supervisor/configured-board-error@1"
                     ),
                     "valid": False,
                     "errors": [str(exc)],
@@ -1186,12 +1269,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     detach = not bool(args.foreground)
-    plan = configured_board_launch_plan(
-        board,
-        implement=bool(args.implement),
-        detach=detach,
-        duration_seconds=float(args.duration_seconds),
-    )
+    try:
+        plan = configured_board_launch_plan(
+            board,
+            implement=bool(args.implement),
+            detach=detach,
+            duration_seconds=float(args.duration_seconds),
+            preflight_report=preflight,
+        )
+    except ConfiguredBoardError as exc:
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/configured-board-error@1"
+                    ),
+                    "valid": False,
+                    "errors": [str(exc)],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
     print(json.dumps(plan, indent=2, sort_keys=True))
     if args.dry_run:
         return 0

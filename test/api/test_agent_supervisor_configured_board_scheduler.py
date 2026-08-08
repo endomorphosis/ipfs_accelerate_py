@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as scheduler_module,
 )
@@ -23,8 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler impo
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 KITA_CONFIG = (
-    REPO_ROOT
-    / "config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json"
+    REPO_ROOT / "config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json"
 )
 
 
@@ -89,8 +89,7 @@ def _seed_configured_repo(tmp_path: Path) -> tuple[Path, Path]:
         ),
     )
     _write(
-        repo
-        / "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        repo / "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
         "raise SystemExit(0)\n",
     )
     config_path = repo / "config/scheduler.json"
@@ -211,9 +210,7 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     assert "--no-objective-task-janitor" in common
     assert common.count("--worktree-submodule-path") == 2
     assert set(board.worktree_submodule_paths).issubset(common)
-    assert common.count("--implementation-protected-path") == len(
-        board.protected_paths
-    )
+    assert common.count("--implementation-protected-path") == len(board.protected_paths)
     assert plan["environment"] == {
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
@@ -372,7 +369,9 @@ def test_launch_config_overrides_ambient_provider_environment(
         monkeypatch.setenv(name, "ambient-value")
 
     def fake_multi_supervisor_main(_argv: list[str]) -> int:
-        observed.update({name: scheduler_module.os.environ[name] for name in controlled_names})
+        observed.update(
+            {name: scheduler_module.os.environ[name] for name in controlled_names}
+        )
         return 0
 
     monkeypatch.setattr(
@@ -465,10 +464,7 @@ def test_preflight_accepts_exact_committed_binding_then_rejects_drift(
     _write(repo / "docs/plan.md", "dirty plan\n")
     dirty_report = preflight_configured_board(board)
     assert dirty_report["valid"] is False
-    assert any(
-        error.startswith("checkout_clean:")
-        for error in dirty_report["errors"]
-    )
+    assert any(error.startswith("checkout_clean:") for error in dirty_report["errors"])
 
     _write(repo / "docs/plan.md", "plan\n")
     assert not _git(
@@ -519,9 +515,7 @@ def test_preflight_accepts_only_descendant_submodule_progress(
         for check in advanced_report["checks"]
         if check["name"] == "configured_submodules"
     )
-    assert advanced_check["detail"][0][
-        "planning_revision_is_ancestor"
-    ] is True
+    assert advanced_check["detail"][0]["planning_revision_is_ancestor"] is True
 
     _git(child_source, "checkout", "--orphan", "divergent")
     _write(child_source / "dependency.txt", "divergent dependency\n")
@@ -545,9 +539,7 @@ def test_preflight_accepts_only_descendant_submodule_progress(
         if check["name"] == "configured_submodules"
     )
     assert divergent_check["passed"] is False
-    assert divergent_check["detail"][0][
-        "planning_revision_is_ancestor"
-    ] is False
+    assert divergent_check["detail"][0]["planning_revision_is_ancestor"] is False
 
 
 def test_preflight_rejects_missing_submodule_planning_revision(
@@ -563,17 +555,13 @@ def test_preflight_rejects_missing_submodule_planning_revision(
     board = load_configured_board(config_path, repo_root=repo)
     report = preflight_configured_board(board)
     submodule_check = next(
-        check
-        for check in report["checks"]
-        if check["name"] == "configured_submodules"
+        check for check in report["checks"] if check["name"] == "configured_submodules"
     )
 
     assert report["valid"] is False
     assert submodule_check["passed"] is False
     assert submodule_check["detail"][0]["planning_revision"] == ""
-    assert submodule_check["detail"][0][
-        "planning_revision_is_ancestor"
-    ] is False
+    assert submodule_check["detail"][0]["planning_revision_is_ancestor"] is False
 
 
 def test_preflight_rejects_submodule_head_gitlink_mismatch(
@@ -594,9 +582,7 @@ def test_preflight_rejects_submodule_head_gitlink_mismatch(
     board = load_configured_board(config_path, repo_root=repo)
     report = preflight_configured_board(board)
     submodule = next(
-        check
-        for check in report["checks"]
-        if check["name"] == "configured_submodules"
+        check for check in report["checks"] if check["name"] == "configured_submodules"
     )["detail"][0]
 
     assert report["valid"] is False
@@ -611,9 +597,7 @@ def test_preflight_rejects_dirty_submodule_worktree(tmp_path: Path) -> None:
     board = load_configured_board(config_path, repo_root=repo)
     report = preflight_configured_board(board)
     submodule = next(
-        check
-        for check in report["checks"]
-        if check["name"] == "configured_submodules"
+        check for check in report["checks"] if check["name"] == "configured_submodules"
     )["detail"][0]
 
     assert report["valid"] is False
@@ -634,6 +618,15 @@ def test_preflight_requires_exact_content_addressed_bootstrap_seal(
             "changed_revision_requires_fresh_inventory_and_baseline": True,
         }
     )
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 2,
+    }
     payload["protected_paths"].append(seal_relative)
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     _git(repo, "add", "config/scheduler.json")
@@ -652,6 +645,8 @@ def test_preflight_requires_exact_content_addressed_bootstrap_seal(
         worktree_submodule_paths=payload["worktree_submodule_paths"],
         protected_paths=payload["protected_paths"],
         seal_path=seal_relative,
+        taskboard_path=payload["taskboard_path"],
+        task_header_prefix=payload["task_prefix"],
         validator_report=validator_report,
     )
     (repo / seal_relative).write_bytes(canonical_json_bytes(seal) + b"\n")
@@ -666,6 +661,50 @@ def test_preflight_requires_exact_content_addressed_bootstrap_seal(
     )
     assert seal_check["passed"] is True
     assert seal_check["detail"]["seal_id"] == seal["seal_id"]
+    assert (
+        seal_check["detail"]["authoring_board_id"]
+        == seal["authoring_board"]["authoring_board_id"]
+    )
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260808T000000Z",
+        preflight_report=report,
+    )
+    assert (
+        plan["environment"]["IPFS_ACCELERATE_CONFIGURED_BOARD_BOOTSTRAP_SEAL_ID"]
+        == seal["seal_id"]
+    )
+    assert (
+        plan["environment"]["IPFS_ACCELERATE_CONFIGURED_BOARD_AUTHORING_BOARD_ID"]
+        == seal["authoring_board"]["authoring_board_id"]
+    )
+    assert (
+        plan["authoring_launch"]["launch_id"]
+        == plan["environment"]["IPFS_ACCELERATE_CONFIGURED_BOARD_LAUNCH_ID"]
+    )
+    assert (
+        plan["authoring_launch"]["launch_head"]
+        == _git(repo, "rev-parse", "HEAD^{commit}").stdout.strip()
+    )
+    assert (
+        plan["authoring_launch"]["launch_tree"]
+        == _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    )
+
+    tampered_seal = dict(seal)
+    tampered_seal["seal_id"] = "sha256:" + "0" * 64
+    (repo / seal_relative).write_bytes(canonical_json_bytes(tampered_seal) + b"\n")
+    with pytest.raises(ConfiguredBoardError, match="changed after preflight"):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=True,
+            stamp="20260808T000001Z",
+            preflight_report=report,
+        )
+    (repo / seal_relative).write_bytes(canonical_json_bytes(seal) + b"\n")
 
     _write(repo / "docs/plan.md", "changed after seal\n")
     stale = preflight_configured_board(board)
