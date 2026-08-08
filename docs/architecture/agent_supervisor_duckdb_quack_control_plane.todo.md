@@ -295,7 +295,7 @@ this bootstrap is active.
 
 ## DQP-009 Establish state, latency, and LLM-churn baselines
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
