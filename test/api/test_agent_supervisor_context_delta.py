@@ -768,16 +768,49 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
 
     full_prompt = daemon._build_implementation_prompt(task, attempt=1)
     daemon._persist_implementation_context_receipt(task, attempt=1)
+    oversized_review = "Use the failed test as the next repair target.\n" * 4_000
+    failure = {
+        "kind": "validation_failure",
+        "returncode": 7,
+        "failure_review": {
+            "receipt_id": "failure-review:context-delta",
+            "decision": "guide_rescue",
+            "guidance_markdown": oversized_review,
+            "next_attempt_prompt_addendum": oversized_review,
+        },
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 7,
+            "reason": "validation_failed",
+            "failed_command": "pytest test_context.py -q",
+            "failed_tests": ["test_context_retry_evidence"],
+            "failed_test_paths": ["test_context.py"],
+            "exception_types": ["AssertionError"],
+            "failure_head": "expected a context delta receipt",
+            "failure_review": {
+                "receipt_id": "failure-review:context-delta",
+                "decision": "guide_rescue",
+                "guidance_markdown": oversized_review,
+            },
+        },
+    }
     diagnostic = daemon.record_implementation_failure_context(
         task,
-        {
-            "kind": "validation_failure",
-            "returncode": 1,
-            "reason_codes": ["assertion"],
-        },
+        failure,
         changed_files=("src/context.py",),
         changed_symbols=("ContextCompiler.compile_delta",),
         unresolved_requirements=("requirement:test",),
+    )
+    serialized_failure = json.dumps(
+        diagnostic.failure, sort_keys=True, separators=(",", ":")
+    )
+    assert len(serialized_failure.encode()) <= 16 * 1024
+    assert oversized_review not in serialized_failure
+    assert diagnostic.failure["validation"]["attempted"] is True
+    assert diagnostic.failure["validation"]["passed"] is False
+    assert diagnostic.failure["validation"]["failed_command"] == (
+        "pytest test_context.py -q"
     )
     restarted = PortalImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -795,11 +828,16 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
         implementation_context_tokenizer=_tokenizer,
         implementation_provider_context_window=2_200,
     )
+    restarted._implementation_seed_failure_guidance[
+        restarted._canonical_ref(task)
+    ] = "seed recovery prose must not follow typed retry JSON"
     retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
 
     wire = json.loads(retry_prompt)
     assert wire["schema"].endswith("retry-context-capsule@1")
     assert wire["diagnostic_receipt_id"] == diagnostic.receipt_id
+    assert oversized_review not in retry_prompt
+    assert "seed recovery prose" not in retry_prompt
     assert wire["changed_files"] == ["src/context.py"]
     assert wire["changed_symbols"] == ["ContextCompiler.compile_delta"]
     assert wire["unresolved_requirement_ids"] == ["requirement:test"]
@@ -811,13 +849,11 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
         restarted._last_implementation_retry.capsule.delta_capsule,
     ) == restarted._last_implementation_retry.reconstructed_capsule
 
+    reordered_failure = dict(reversed(tuple(failure.items())))
+    assert tuple(reordered_failure) != tuple(failure)
     repeated = restarted.record_implementation_failure_context(
         task,
-        {
-            "reason_codes": ["assertion"],
-            "returncode": 1,
-            "kind": "validation_failure",
-        },
+        reordered_failure,
         changed_files=("src/context.py",),
         changed_symbols=("ContextCompiler.compile_delta",),
         unresolved_requirements=("requirement:test",),
@@ -825,6 +861,7 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
     assert repeated.receipt_id == diagnostic.receipt_id
     with pytest.raises(ImplementationRetryDeferred, match="backoff"):
         restarted._build_implementation_prompt(task, attempt=3)
+
 
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:

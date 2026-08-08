@@ -197,6 +197,15 @@ IMPLEMENTATION_CHECKPOINT_MANIFEST_SCHEMA = (
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
+# Retry diagnostics cross a durable/event boundary and are subsequently added
+# to a provider context.  Keep this deliberately smaller than the normal
+# context limits: a failed validation must be actionable, not a second copy of
+# its (possibly secret-bearing) output.
+MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES = 16 * 1024
+MAX_ACTIONABLE_RETRY_TEXT_BYTES = 2_048
+MAX_ACTIONABLE_RETRY_LIST_ITEMS = 8
+MAX_ACTIONABLE_RETRY_LIST_ITEM_BYTES = 256
+ACTIONABLE_RETRY_EVIDENCE_SCHEMA = "ptr/actionable-retry-evidence@1"
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
@@ -9033,6 +9042,16 @@ class PortalImplementationDaemon:
                     state=state,
                     proposal_validation=proposal_validation,
                 )
+                validation_result = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=validation_result,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
                         task=task,
@@ -9294,7 +9313,6 @@ class PortalImplementationDaemon:
                     self._implementation_checkpoint_manifest(task)
                 ),
             }
-            result["timeout_result"] = timeout_result
             if protected_path_violation:
                 result["reason"] = str(
                     protected_path_violation.get("reason")
@@ -9314,6 +9332,29 @@ class PortalImplementationDaemon:
             result["attempt_consumed"] = not verification_deferred
             if verification_deferred:
                 result["deferred"] = True
+            has_canonical_validation = (
+                validation_result.get("actionable_retry_evidence_schema")
+                == ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                and type(
+                    validation_result.get("actionable_retry_evidence")
+                )
+                is dict
+            )
+            if has_canonical_validation:
+                pass
+            elif validation_result.get("attempted") is not True:
+                validation_result = self._sanitize_failed_validation_result(
+                    {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": terminal_returncode,
+                        "reason": "implementation_timeout",
+                    }
+                )
+            else:
+                validation_result = self._sanitize_failed_validation_result(
+                    validation_result
+                )
             diagnostic = (
                 None
                 if verification_deferred
@@ -9324,6 +9365,41 @@ class PortalImplementationDaemon:
                     timeout_result=timeout_result,
                 )
             )
+            timeout_evidence = (
+                dict(diagnostic.failure)
+                if diagnostic is not None
+                else self._normalize_implementation_failure(
+                    {
+                        "kind": "implementation_timeout",
+                        "returncode": terminal_returncode,
+                        "timeout_reason": timeout_result["timeout_reason"],
+                        "timeout_policy": timeout_result["timeout_policy"],
+                        "checkpoint_manifest": timeout_result[
+                            "checkpoint_manifest"
+                        ],
+                        "validation_result": validation_result,
+                    }
+                )
+            )
+            result["validation_result"] = validation_result
+            result["timeout_result"] = {
+                "timeout_reason": str(
+                    timeout_evidence.get("timeout_reason")
+                    or "implementation_timeout"
+                ),
+                "elapsed_seconds": timeout_result["elapsed_seconds"],
+                "progress_events": timeout_result["progress_events"],
+                "timeout_policy": dict(
+                    timeout_evidence.get("timeout_policy") or {}
+                ),
+                "checkpoint_manifest": dict(
+                    timeout_evidence.get("checkpoint_manifest") or {}
+                ),
+            }
+            result["actionable_retry_evidence_schema"] = (
+                ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+            )
+            result["actionable_retry_evidence"] = timeout_evidence
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             self._record_event("implementation_finished", result)
@@ -9355,10 +9431,16 @@ class PortalImplementationDaemon:
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
             if not verification_deferred:
+                exception_bytes = str(exc).encode(
+                    "utf-8", errors="replace"
+                )
                 self._record_task_queue_outcome(
                     task,
                     1,
-                    reason=f"{type(exc).__name__}: {exc}"[-1000:],
+                    reason=(
+                        f"{type(exc).__name__}:sha256:"
+                        + hashlib.sha256(exception_bytes).hexdigest()
+                    ),
                 )
             exception_result = {
                 "exception_type": type(exc).__name__,
@@ -9366,17 +9448,29 @@ class PortalImplementationDaemon:
                 "phase": failed_phase,
                 "command": command,
             }
-            result = {
-                "task_id": task.task_id,
-                "attempt": attempt,
-                "returncode": 1,
-                "log_path": str(log_path),
-                "validation_result": validation_result,
-                "exception_result": exception_result,
-                "context_receipt_path": (
-                    str(context_receipt_path) if context_receipt_path else ""
-                ),
-            }
+            has_canonical_validation = (
+                validation_result.get("actionable_retry_evidence_schema")
+                == ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                and type(
+                    validation_result.get("actionable_retry_evidence")
+                )
+                is dict
+            )
+            if has_canonical_validation:
+                pass
+            elif validation_result.get("attempted") is True:
+                validation_result = self._sanitize_failed_validation_result(
+                    validation_result
+                )
+            else:
+                validation_result = self._sanitize_failed_validation_result(
+                    {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": "provider_exception",
+                    }
+                )
             diagnostic = (
                 None
                 if verification_deferred
@@ -9387,6 +9481,55 @@ class PortalImplementationDaemon:
                     exception_result=exception_result,
                 )
             )
+            exception_evidence = (
+                dict(diagnostic.failure)
+                if diagnostic is not None
+                else self._normalize_implementation_failure(
+                    {
+                        "kind": "implementation_exception",
+                        "returncode": 1,
+                        "exception_type": exception_result[
+                            "exception_type"
+                        ],
+                        "exception_message": exception_result["message"],
+                        "phase": exception_result["phase"],
+                        "failed_commands": [
+                            shlex.join(exception_result["command"])
+                            if type(exception_result["command"])
+                            in (list, tuple)
+                            else str(exception_result["command"])
+                        ],
+                        "validation_result": validation_result,
+                    }
+                )
+            )
+            safe_exception_result: dict[str, Any] = {}
+            for source_key, target_key in (
+                ("exception_type", "exception_type"),
+                ("exception_message", "message"),
+                ("phase", "phase"),
+            ):
+                value = exception_evidence.get(source_key)
+                if type(value) is str and value:
+                    safe_exception_result[target_key] = value
+            safe_commands = exception_evidence.get("failed_commands")
+            if type(safe_commands) is list and safe_commands:
+                safe_exception_result["command"] = safe_commands[0]
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "returncode": 1,
+                "log_path": str(log_path),
+                "validation_result": validation_result,
+                "exception_result": safe_exception_result,
+                "actionable_retry_evidence_schema": (
+                    ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                ),
+                "actionable_retry_evidence": exception_evidence,
+                "context_receipt_path": (
+                    str(context_receipt_path) if context_receipt_path else ""
+                ),
+            }
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             if protected_path_violation:
@@ -9400,7 +9543,15 @@ class PortalImplementationDaemon:
                 result["deferred"] = True
             self._record_event(
                 "implementation_exception",
-                {"task_id": task.task_id, "attempt": attempt, **exception_result},
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    **safe_exception_result,
+                    "actionable_retry_evidence_schema": (
+                        ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                    ),
+                    "actionable_retry_evidence": exception_evidence,
+                },
             )
             self._record_event("implementation_finished", result)
             return result
@@ -16219,6 +16370,7 @@ class PortalImplementationDaemon:
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
         timeout_result: dict[str, Any] = {}
+        timeout_followup_event_type = ""
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
         provider_dispatched = False
@@ -16896,7 +17048,6 @@ class PortalImplementationDaemon:
             if protected_path_violation:
                 timeout_result["reason"] = "implementation_protected_path_mutated"
                 timeout_result["protected_path_violation"] = protected_path_violation
-            self._record_event("implementation_timeout", timeout_result)
             if worktree_path.exists() and not protected_path_violation:
                 try:
                     self._mark_active_phase(
@@ -17080,14 +17231,12 @@ class PortalImplementationDaemon:
                                     "validation_result": validation_result,
                                 }
                             )
-                            self._record_event(
-                                "implementation_timeout_salvaged",
-                                timeout_result,
+                            timeout_followup_event_type = (
+                                "implementation_timeout_salvaged"
                             )
                         else:
-                            self._record_event(
-                                "implementation_timeout_salvage_failed",
-                                timeout_result,
+                            timeout_followup_event_type = (
+                                "implementation_timeout_salvage_failed"
                             )
                     elif protected_path_violation:
                         failed_preservation_result = (
@@ -17158,9 +17307,8 @@ class PortalImplementationDaemon:
                             "reason": "cleanup_after_timeout_failed",
                             "error": str(cleanup_exc)[-1000:],
                         }
-                    self._record_event(
-                        "implementation_timeout_salvage_failed",
-                        timeout_result,
+                    timeout_followup_event_type = (
+                        "implementation_timeout_salvage_failed"
                     )
             if not worktree_path.exists():
                 if (
@@ -17243,14 +17391,6 @@ class PortalImplementationDaemon:
                 exception_result["cleanup_result"] = cleanup_result
             except Exception as cleanup_exc:
                 exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
-            self._record_event(
-                "implementation_exception",
-                {
-                    "task_id": task.task_id,
-                    "attempt": attempt,
-                    **exception_result,
-                },
-            )
         if provider_failure.get("exhausted", False):
             return self._record_provider_capacity_deferral(
                 task=task,
@@ -17603,12 +17743,24 @@ class PortalImplementationDaemon:
             and not completion_finalized_by_merge_callback
         ):
             outcome_returncode = returncode
-            outcome_reason = str(
-                exception_result.get("message")
-                or merge_result.get("reason")
-                or validation_result.get("reason")
-                or "implementation_failed"
-            )
+            if exception_result:
+                exception_bytes = str(
+                    exception_result.get("message") or ""
+                ).encode("utf-8", errors="replace")
+                outcome_reason = (
+                    str(
+                        exception_result.get("exception_type")
+                        or "implementation_exception"
+                    )
+                    + ":sha256:"
+                    + hashlib.sha256(exception_bytes).hexdigest()
+                )
+            else:
+                outcome_reason = str(
+                    merge_result.get("reason")
+                    or validation_result.get("reason")
+                    or "implementation_failed"
+                )
             if outcome_returncode == 0 and not terminal_outcome:
                 outcome_returncode = 1
                 outcome_reason = "implementation_not_integrated"
@@ -17623,6 +17775,38 @@ class PortalImplementationDaemon:
             prior_seed = locals().get("seed_apply")
             if isinstance(prior_seed, Mapping):
                 workspace_setup["prior_attempt_seed"] = dict(prior_seed)
+        if returncode != 0 and (exception_result or timeout_result):
+            has_canonical_validation = (
+                validation_result.get("actionable_retry_evidence_schema")
+                == ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                and type(
+                    validation_result.get("actionable_retry_evidence")
+                )
+                is dict
+            )
+            if not has_canonical_validation:
+                if (
+                    validation_result.get("attempted") is True
+                    or (
+                        validation_result.get("passed") is False
+                        and validation_result.get("reason") != "not_run"
+                    )
+                ):
+                    terminal_validation_source = validation_result
+                else:
+                    terminal_validation_source = {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": returncode,
+                        "reason": (
+                            "implementation_timeout"
+                            if timeout_result
+                            else "provider_exception"
+                        ),
+                    }
+                validation_result = self._sanitize_failed_validation_result(
+                    terminal_validation_source
+                )
         result = {
             "task_id": task.task_id,
             "task_cid": self._canonical_ref(task),
@@ -17658,10 +17842,6 @@ class PortalImplementationDaemon:
         if termination_result:
             result["termination_result"] = termination_result
             self._record_implementation_termination(task, attempt, termination_result)
-        if exception_result:
-            result["exception_result"] = exception_result
-        if timeout_result:
-            result["timeout_result"] = timeout_result
         diagnostic = (
             self._record_failed_attempt_retry_context(
                 task,
@@ -17675,6 +17855,127 @@ class PortalImplementationDaemon:
         )
         if diagnostic is not None:
             result["diagnostic_receipt_id"] = diagnostic.receipt_id
+        terminal_events: list[tuple[str, dict[str, Any]]] = []
+        if exception_result or timeout_result:
+            if diagnostic is not None:
+                terminal_evidence = dict(diagnostic.failure)
+            else:
+                terminal_source: dict[str, Any] = {
+                    "kind": (
+                        "implementation_timeout"
+                        if timeout_result
+                        else "implementation_exception"
+                    ),
+                    "returncode": returncode,
+                    "validation_result": validation_result,
+                }
+                if timeout_result:
+                    terminal_source.update(
+                        {
+                            "timeout_reason": timeout_result.get(
+                                "timeout_reason"
+                            ),
+                            "timeout_policy": timeout_result.get(
+                                "timeout_policy"
+                            ),
+                            "checkpoint_manifest": timeout_result.get(
+                                "checkpoint_manifest"
+                            ),
+                        }
+                    )
+                else:
+                    terminal_source.update(
+                        {
+                            "exception_type": exception_result.get(
+                                "exception_type"
+                            ),
+                            "exception_message": exception_result.get(
+                                "message"
+                            ),
+                            "phase": exception_result.get("phase"),
+                        }
+                    )
+                terminal_evidence = self._normalize_implementation_failure(
+                    terminal_source
+                )
+            result["actionable_retry_evidence_schema"] = (
+                ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+            )
+            result["actionable_retry_evidence"] = terminal_evidence
+            if exception_result:
+                safe_exception_result: dict[str, Any] = {}
+                for source_key, target_key in (
+                    ("exception_type", "exception_type"),
+                    ("exception_message", "message"),
+                    ("phase", "phase"),
+                ):
+                    value = terminal_evidence.get(source_key)
+                    if type(value) is str and value:
+                        safe_exception_result[target_key] = value
+                safe_commands = terminal_evidence.get("failed_commands")
+                if type(safe_commands) is list and safe_commands:
+                    safe_exception_result["command"] = safe_commands[0]
+                result["exception_result"] = safe_exception_result
+                terminal_events.append(
+                    (
+                        "implementation_exception",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            **safe_exception_result,
+                            "actionable_retry_evidence_schema": (
+                                ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                            ),
+                            "actionable_retry_evidence": terminal_evidence,
+                        },
+                    )
+                )
+            if timeout_result:
+                elapsed_seconds = timeout_result.get("elapsed_seconds")
+                if not (
+                    type(elapsed_seconds) in (int, float)
+                    and not isinstance(elapsed_seconds, bool)
+                    and math.isfinite(float(elapsed_seconds))
+                ):
+                    elapsed_seconds = 0.0
+                progress_events = timeout_result.get("progress_events")
+                if type(progress_events) is not int or isinstance(
+                    progress_events, bool
+                ):
+                    progress_events = 0
+                progress_events = max(0, min(progress_events, 2**31 - 1))
+                safe_timeout_result = {
+                    "timeout_reason": str(
+                        terminal_evidence.get("timeout_reason")
+                        or "implementation_timeout"
+                    ),
+                    "elapsed_seconds": float(elapsed_seconds),
+                    "progress_events": progress_events,
+                    "timeout_policy": dict(
+                        terminal_evidence.get("timeout_policy") or {}
+                    ),
+                    "checkpoint_manifest": dict(
+                        terminal_evidence.get("checkpoint_manifest") or {}
+                    ),
+                    "salvaged": timeout_result.get("salvaged") is True,
+                }
+                result["timeout_result"] = safe_timeout_result
+                terminal_payload = {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    **safe_timeout_result,
+                    "actionable_retry_evidence_schema": (
+                        ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                    ),
+                    "actionable_retry_evidence": terminal_evidence,
+                }
+                terminal_events.append(
+                    ("implementation_timeout", terminal_payload)
+                )
+                if timeout_followup_event_type:
+                    terminal_events.append(
+                        (timeout_followup_event_type, terminal_payload)
+                    )
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
         if completion_receipt_degraded:
@@ -17702,6 +18003,8 @@ class PortalImplementationDaemon:
                     reason="implementation_attempt_finished",
                 )
             )
+        for event_type, event_payload in terminal_events:
+            self._record_event(event_type, event_payload)
         self._record_event("implementation_finished", result)
         return result
 
@@ -17803,7 +18106,12 @@ class PortalImplementationDaemon:
                 "requested_worktree_path": str(worktree_path),
                 "branch": branch_name,
                 "cleanup_result": cleanup_result,
-                "exception_result": exception_result,
+                # ``exception_result`` may contain provider prose, checkpoint
+                # filenames, and other private terminal material.  The caller
+                # records its canonical bounded failure envelope after cleanup.
+                "exception_type": str(
+                    exception_result.get("exception_type") or ""
+                )[:256],
             },
         )
         return cleanup_result
@@ -25167,6 +25475,143 @@ class PortalImplementationDaemon:
             binding=binding,
         )
 
+    def _sanitize_failed_validation_result(
+        self,
+        validation_result: Mapping[str, Any] | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return one canonical, bounded terminal projection of a failure."""
+
+        # Provider results are untrusted at this boundary.  Copy only an exact
+        # built-in mapping so hostile ``__len__``/``__iter__``/``__bool__``
+        # hooks cannot turn a real validation failure into a setup exception.
+        result = dict(validation_result) if type(validation_result) is dict else {}
+        if result.get("passed") is True:
+            return result
+        failed_tests = result.get("failed_tests")
+        if type(failed_tests) in (list, tuple):
+            result["failed_tests"] = [
+                sanitized
+                for item in failed_tests
+                if (sanitized := self._sanitize_retry_test_node_id(item))
+            ]
+        if type(result.get("failure_head")) is str:
+            result["failure_head"] = self._sanitize_retry_failure_head(
+                result["failure_head"]
+            )
+        reviewed = self._normalize_implementation_failure(
+            {
+                "kind": "validation_failure",
+                "returncode": result.get("returncode", 1),
+                "failure_review": result.get("failure_review"),
+                "next_attempt_prompt_addendum": result.get(
+                    "next_attempt_prompt_addendum"
+                ),
+                "timeout_policy": result.get("timeout_policy"),
+                "checkpoint_manifest": result.get("checkpoint_manifest"),
+                "validation_result": result,
+            }
+        )
+        safe_validation = reviewed.get("validation")
+        safe_validation = (
+            safe_validation
+            if isinstance(safe_validation, Mapping)
+            else {}
+        )
+        safe_result: dict[str, Any] = {
+            "actionable_retry_evidence_schema": (
+                ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+            ),
+            # This is the single canonical projection consumed by terminal
+            # events and retry receipts.  Keeping it intact avoids recursively
+            # hashing an already-normalized omitted-tail marker on the retry
+            # boundary.
+            "actionable_retry_evidence": dict(reviewed),
+        }
+        for key in (
+            "attempted",
+            "passed",
+            "returncode",
+            "reason",
+            "error",
+            "failed_command",
+            "failed_commands",
+            "failed_tests",
+            "failed_test_paths",
+            "exception_types",
+            "exception_message",
+            "failure_head",
+        ):
+            if key in safe_validation:
+                safe_result[key] = safe_validation[key]
+        compact_review = reviewed.get("failure_review")
+        if isinstance(compact_review, Mapping) and compact_review:
+            safe_result["failure_review"] = dict(compact_review)
+        for key in (
+            "proposal_gate",
+            "scope_adjudication",
+            "timeout_policy",
+            "checkpoint_manifest",
+        ):
+            compact_value = reviewed.get(key)
+            if isinstance(compact_value, Mapping):
+                safe_result[key] = dict(compact_value)
+        safe_addendum = reviewed.get("next_attempt_prompt_addendum")
+        if isinstance(safe_addendum, str) and safe_addendum:
+            safe_result["next_attempt_prompt_addendum"] = safe_addendum
+        if reviewed.get("truncation"):
+            safe_result["failure_evidence_truncation"] = reviewed[
+                "truncation"
+            ]
+        if reviewed.get("deduplication"):
+            safe_result["failure_evidence_deduplication"] = reviewed[
+                "deduplication"
+            ]
+        raw_results = result.get("results")
+        if type(raw_results) in (list, tuple):
+            safe_commands = safe_validation.get("failed_commands")
+            safe_commands = (
+                safe_commands if type(safe_commands) is list else []
+            )
+            compact_results: list[dict[str, Any]] = []
+            for index, raw_result in enumerate(raw_results[:8]):
+                if type(raw_result) is not dict:
+                    continue
+                compact_result: dict[str, Any] = {}
+                passed = raw_result.get("passed")
+                if type(passed) is bool:
+                    compact_result["passed"] = passed
+                returncode = raw_result.get("returncode")
+                if type(returncode) is int and not isinstance(
+                    returncode, bool
+                ):
+                    compact_result["returncode"] = returncode
+                if index < len(safe_commands):
+                    command = safe_commands[index]
+                    if type(command) is str and not command.startswith(
+                        "[truncated "
+                    ):
+                        compact_result["command"] = command
+                if compact_result:
+                    compact_results.append(compact_result)
+            if compact_results:
+                safe_result["results"] = compact_results
+        accept_revalidation = result.get(
+            "failure_review_accept_revalidation"
+        )
+        if isinstance(accept_revalidation, Mapping):
+            compact_revalidation: dict[str, Any] = {}
+            accepted = accept_revalidation.get("accepted")
+            if isinstance(accepted, bool):
+                compact_revalidation["accepted"] = accepted
+            reason = accept_revalidation.get("reason")
+            if type(reason) is str and reason:
+                compact_revalidation["reason"] = reason[:256]
+            if compact_revalidation:
+                safe_result["failure_review_accept_revalidation"] = (
+                    compact_revalidation
+                )
+        return safe_result
+
     def _apply_implementation_failure_review(
         self,
         *,
@@ -25186,12 +25631,25 @@ class PortalImplementationDaemon:
         failures receive structured rescue/next-attempt guidance.
         """
 
-        result = dict(validation_result or {})
-        if result.get("passed", False) or result.get("failure_review"):
+        result = dict(validation_result) if type(validation_result) is dict else {}
+        if result.get("passed") is True:
             return result
-        if int(result.get("returncode") or 1) == 0 and result.get("attempted") is False:
+        if type(result.get("failure_review")) is dict:
+            # A validation provider may already have attached a review.  It is
+            # still untrusted event input: normalize it before taking the
+            # idempotent early-return path or an oversized nested body can make
+            # implementation_finished fail and relabel the real validation as
+            # implementation_setup/not_run.
+            return self._sanitize_failed_validation_result(result)
+        raw_returncode = result.get("returncode")
+        if (
+            type(raw_returncode) is int
+            and not isinstance(raw_returncode, bool)
+            and raw_returncode == 0
+            and result.get("attempted") is False
+        ):
             # No-command success paths already return passed=True.
-            return result
+            return self._sanitize_failed_validation_result(result)
 
         from ..implementation_failure_review import (
             FailureReviewDecision,
@@ -25247,24 +25705,49 @@ class PortalImplementationDaemon:
             if completion_scope is not None
             else task_declared_output_paths(task)
         )
-        review = review_implementation_failure(
-            task_id=task.task_id,
-            attempt=int(attempt),
-            expected_outputs=expected_outputs,
-            validation_commands=tuple(task.validation),
-            validation_result=result,
-            workspace_path=workspace_path,
-            log_excerpt=log_excerpt,
-            proposal_accepted=proposal_accepted,
-            scope_adjudication=(
-                scope_payload if isinstance(scope_payload, Mapping) else None
-            ),
-        )
+        # Never feed raw provider/result payloads into the deterministic
+        # reviewer.  Besides being private event material, large per-command
+        # result arrays can make the review prose exceed its own constructor
+        # bound before terminal sanitization gets a chance to run.
+        review_input = self._sanitize_failed_validation_result(result)
+        try:
+            review = review_implementation_failure(
+                task_id=task.task_id,
+                attempt=int(attempt),
+                expected_outputs=expected_outputs,
+                validation_commands=tuple(task.validation),
+                validation_result=review_input,
+                workspace_path=workspace_path,
+                log_excerpt=log_excerpt,
+                proposal_accepted=proposal_accepted,
+                scope_adjudication=(
+                    scope_payload if isinstance(scope_payload, Mapping) else None
+                ),
+            )
+        except Exception:
+            # Failure review is advisory.  It must never replace an attempted,
+            # failed validation with a synthetic implementation_setup/not_run
+            # outcome.  The bounded validation counterexample remains enough
+            # for a retry even if the reviewer itself is unavailable.
+            return review_input
+        # Review bodies can include an entire model response.  Keep the useful
+        # decision and next-action text, but never carry that body into the
+        # implementation result/event (which is later retained on the board).
         projection = compact_failure_review(review)
-        result["failure_review"] = review.to_record()
-        result["rescue_guidance_markdown"] = review.guidance_markdown
-        result["next_attempt_prompt_addendum"] = (
-            review.next_attempt_prompt_addendum
+        review_evidence = self._normalize_implementation_failure(
+            {
+                "kind": "validation_failure",
+                "failure_review": projection,
+                "next_attempt_prompt_addendum": (
+                    review.next_attempt_prompt_addendum
+                ),
+            }
+        )
+        projection = dict(review_evidence.get("failure_review") or {})
+        result["failure_review"] = projection
+        result.pop("rescue_guidance_markdown", None)
+        result["next_attempt_prompt_addendum"] = str(
+            review_evidence.get("next_attempt_prompt_addendum") or ""
         )
         self._record_event(
             "implementation_failure_reviewed",
@@ -25277,7 +25760,7 @@ class PortalImplementationDaemon:
         )
 
         if review.decision is not FailureReviewDecision.ACCEPT:
-            return result
+            return self._sanitize_failed_validation_result(result)
 
         # Bounded accept path: re-run proposal+commands only when the original
         # gate was proposal-scope. Hard fails never reach ACCEPT.
@@ -25295,7 +25778,7 @@ class PortalImplementationDaemon:
                     "accepted": False,
                     "reason": "proposal_still_rejected_after_review",
                 }
-                return result
+                return self._sanitize_failed_validation_result(result)
             rerun = self._run_validation_commands(
                 workspace_path,
                 task,
@@ -25306,18 +25789,17 @@ class PortalImplementationDaemon:
             # Prevent recursive review loops.
             if not rerun.get("passed", False):
                 rerun = dict(rerun)
-                rerun["failure_review"] = review.to_record()
-                rerun["rescue_guidance_markdown"] = review.guidance_markdown
-                rerun["next_attempt_prompt_addendum"] = (
-                    review.next_attempt_prompt_addendum
-                )
+                rerun["failure_review"] = projection
+                rerun["next_attempt_prompt_addendum"] = result[
+                    "next_attempt_prompt_addendum"
+                ]
                 rerun["failure_review_accept_revalidation"] = {
                     "accepted": False,
                     "reason": "commands_still_failing_after_review",
                 }
-                return rerun
+                return self._sanitize_failed_validation_result(rerun)
             rerun = dict(rerun)
-            rerun["failure_review"] = review.to_record()
+            rerun["failure_review"] = projection
             rerun["failure_review_accept_revalidation"] = {
                 "accepted": True,
                 "reason": "scope_justified_and_revalidated",
@@ -25330,7 +25812,85 @@ class PortalImplementationDaemon:
             "accepted": False,
             "reason": "accept_only_for_proposal_scope_gate",
         }
-        return result
+        return self._sanitize_failed_validation_result(result)
+
+    @staticmethod
+    def _sanitize_retry_test_node_id(node_id: Any) -> str:
+        """Hash dynamic pytest parameter IDs while retaining test identity."""
+
+        if type(node_id) is not str:
+            return ""
+        original = node_id.strip()
+        if not original:
+            return ""
+        if re.fullmatch(
+            r"\[test-node-omitted original_bytes=\d+ sha256=[0-9a-f]{64}\]",
+            original,
+        ):
+            return original
+
+        def replace_parameter(match: re.Match[str]) -> str:
+            parameter = match.group(1)
+            if re.fullmatch(r"param-sha256=[0-9a-f]{64}", parameter):
+                return f"[{parameter}]"
+            raw = parameter.encode("utf-8", errors="replace")
+            return (
+                "[param-sha256="
+                + hashlib.sha256(raw).hexdigest()
+                + "]"
+            )
+
+        sanitized = re.sub(r"\[([^\]\r\n]*)\]", replace_parameter, original)
+        encoded = sanitized.encode("utf-8", errors="replace")
+        if len(encoded) <= 768:
+            return sanitized
+        raw = original.encode("utf-8", errors="replace")
+        return (
+            f"[test-node-omitted original_bytes={len(raw)} "
+            f"sha256={hashlib.sha256(raw).hexdigest()}]"
+        )
+
+    @classmethod
+    def _sanitize_retry_failure_head(cls, failure_head: Any) -> str:
+        """Content-address raw failure prose and retain structural handles."""
+
+        if type(failure_head) is not str:
+            return ""
+        if re.match(
+            r"^\[failure-head-omitted original_bytes=\d+ "
+            r"sha256=[0-9a-f]{64}\](?:\n|$)",
+            failure_head,
+        ) and len(failure_head.encode("utf-8", errors="replace")) <= 2_048:
+            return failure_head
+        raw = failure_head.encode("utf-8", errors="replace")
+        if not raw:
+            return ""
+        lines = [
+            f"[failure-head-omitted original_bytes={len(raw)} "
+            f"sha256={hashlib.sha256(raw).hexdigest()}]"
+        ]
+        seen_nodes: set[str] = set()
+        for match in re.finditer(
+            r"(?:[A-Za-z0-9_./-]+\.py)(?:::[^\s\[\]\r\n]+)+"
+            r"(?:\[[^\]\r\n]*\])?",
+            failure_head,
+        ):
+            node = cls._sanitize_retry_test_node_id(match.group(0))
+            if node and node not in seen_nodes and len(seen_nodes) < 3:
+                seen_nodes.add(node)
+                lines.append(f"failed_test={node}")
+        seen_exceptions: set[str] = set()
+        for exception_type in re.findall(
+            r"\b[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)\b",
+            failure_head,
+        ):
+            if (
+                exception_type not in seen_exceptions
+                and len(seen_exceptions) < 3
+            ):
+                seen_exceptions.add(exception_type)
+                lines.append(f"exception_type={exception_type}")
+        return "\n".join(lines)
 
     def _run_validation_commands(
         self,
@@ -25638,7 +26198,9 @@ class PortalImplementationDaemon:
                             validation_impact_paths.append(normalized)
                     summary = summarize_test_failure(output)
                     for node_id in summary.get("failed_tests", ()):
-                        normalized_node_id = str(node_id or "").strip()
+                        normalized_node_id = (
+                            self._sanitize_retry_test_node_id(node_id)
+                        )
                         if (
                             normalized_node_id
                             and normalized_node_id not in failed_tests
@@ -25681,6 +26243,9 @@ class PortalImplementationDaemon:
                     failure_head = str(
                         summary.get("failure_head") or ""
                     ).strip()
+                    failure_head = self._sanitize_retry_failure_head(
+                        failure_head
+                    )
                     if failure_head and failure_head not in failure_heads:
                         failure_heads.append(failure_head)
                 # Command output belongs in the attempt log, not the durable
@@ -37877,80 +38442,1508 @@ class PortalImplementationDaemon:
     def _normalize_implementation_failure(
         failure: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Project a failure to stable diagnostic evidence without raw logs."""
+        """Total public boundary for canonical actionable retry evidence."""
 
-        if not isinstance(failure, Mapping):
-            raise TypeError("implementation failure must be a mapping")
-        selected: dict[str, Any] = {}
+        try:
+            return PortalImplementationDaemon._normalize_implementation_failure_unchecked(
+                failure
+            )
+        except BaseException:
+            # This is the last-resort error path for hostile Mapping/scalar
+            # implementations.  Inspect exact built-in containers and values
+            # only; never call user-controlled repr, type labels, or hooks.
+            try:
+                source = failure if type(failure) is dict else {}
+                candidate = dict.get(source, "validation_result")
+                validation = candidate if type(candidate) is dict else {}
+                records: dict[tuple[int, str], dict[str, Any]] = {}
+                private_sources: list[bytes] = []
+
+                def exact_int(value: Any, default: int = 1) -> int:
+                    if type(value) is int and -(2**31) <= value <= 2**31 - 1:
+                        return value
+                    return default
+
+                def remember(
+                    raw: bytes,
+                    *,
+                    omitted_items: int = 0,
+                ) -> str:
+                    digest = hashlib.sha256(raw).hexdigest()
+                    identity = (len(raw), digest)
+                    record = records.get(identity)
+                    if record is None:
+                        record = {
+                            "original_bytes": len(raw),
+                            "sha256": digest,
+                            "marker": (
+                                f"[truncated original_bytes={len(raw)} "
+                                f"sha256={digest}]"
+                            ),
+                            "occurrence_count": 0,
+                        }
+                        records[identity] = record
+                    record["occurrence_count"] += 1
+                    if omitted_items:
+                        record.setdefault(
+                            "omitted_item_count", omitted_items
+                        )
+                        record["total_omitted_item_count"] = (
+                            int(
+                                record.get("total_omitted_item_count") or 0
+                            )
+                            + omitted_items
+                        )
+                    return record["marker"]
+
+                for container in (source, validation):
+                    for key in ("output", "stdout", "stderr", "raw_output"):
+                        value = dict.get(container, key)
+                        if type(value) is str and value:
+                            raw = value.encode("utf-8", errors="replace")
+                            private_sources.append(raw)
+                            remember(raw)
+                    review_value = dict.get(container, "failure_review")
+                    if type(review_value) is dict:
+                        for key in (
+                            "guidance_markdown",
+                            "review_markdown",
+                            "body",
+                            "analysis",
+                            "raw_response",
+                            "next_attempt_prompt_addendum",
+                        ):
+                            value = dict.get(review_value, key)
+                            if type(value) is str and value:
+                                raw = value.encode(
+                                    "utf-8", errors="replace"
+                                )
+                                private_sources.append(raw)
+                                remember(raw)
+                    addendum = dict.get(
+                        container, "next_attempt_prompt_addendum"
+                    )
+                    if type(addendum) is str and addendum:
+                        raw = addendum.encode("utf-8", errors="replace")
+                        private_sources.append(raw)
+                        remember(raw)
+
+                def redact(raw: bytes) -> bytes:
+                    rendered = raw.decode("utf-8", errors="replace")
+                    rendered = re.sub(
+                        r"(?i)\b((?:authorization\s*[:=]\s*)?bearer)\s+"
+                        r"([^\s,;\"']+)",
+                        lambda match: (
+                            match.group(1)
+                            + "=<redacted sha256="
+                            + hashlib.sha256(
+                                match.group(2).encode(
+                                    "utf-8", errors="replace"
+                                )
+                            ).hexdigest()
+                            + ">"
+                        ),
+                        rendered,
+                    )
+                    rendered = re.sub(
+                        r"(?i)(--?(?:password|passwd|token|secret|credential|"
+                        r"api[_-]?key|authorization)|\b(?:password|passwd|"
+                        r"token|secret|credential|api[_-]?key|authorization))"
+                        r"(?:\s+|\s*[:=]\s*)([^\s,;]+)",
+                        lambda match: (
+                            match.group(1)
+                            + "=<redacted sha256="
+                            + hashlib.sha256(
+                                match.group(2).encode(
+                                    "utf-8", errors="replace"
+                                )
+                            ).hexdigest()
+                            + ">"
+                        ),
+                        rendered,
+                    )
+                    return rendered.encode("utf-8", errors="replace")
+
+                def exact_text(
+                    value: Any,
+                    limit: int,
+                    *,
+                    command: bool = False,
+                    private_prose: bool = False,
+                ) -> str:
+                    if type(value) is not str:
+                        return ""
+                    raw = value.encode("utf-8", errors="replace")
+                    if command:
+                        for private in private_sources:
+                            if len(private) >= 8 and private in raw:
+                                digest = hashlib.sha256(private).hexdigest()
+                                raw = raw.replace(
+                                    private,
+                                    f"<private sha256={digest}>".encode(
+                                        "ascii"
+                                    ),
+                                )
+                    elif private_prose and any(
+                        private == raw
+                        or (
+                            len(private) >= 8
+                            and (private in raw or raw in private)
+                        )
+                        for private in private_sources
+                    ):
+                        return remember(raw)
+                    rendered = redact(raw)
+                    if len(raw) <= limit and len(rendered) <= limit:
+                        return rendered.decode("utf-8", errors="replace")
+                    return remember(raw)
+
+                def exact_test_node(value: Any) -> str:
+                    if type(value) is not str:
+                        return ""
+                    original = value
+
+                    def replace_parameter(match: re.Match[str]) -> str:
+                        parameter = match.group(1).encode(
+                            "utf-8", errors="replace"
+                        )
+                        return (
+                            "[param-sha256="
+                            + hashlib.sha256(parameter).hexdigest()
+                            + "]"
+                        )
+
+                    rendered = re.sub(
+                        r"\[([^\]\r\n]*)\]", replace_parameter, original
+                    )
+                    if len(rendered.encode("utf-8")) <= 768:
+                        return rendered
+                    return remember(original.encode("utf-8"))
+
+                def exact_failure_head(value: Any) -> str:
+                    if type(value) is not str or not value:
+                        return ""
+                    raw = value.encode("utf-8", errors="replace")
+                    lines = [
+                        "[failure-head-omitted "
+                        f"original_bytes={len(raw)} "
+                        f"sha256={hashlib.sha256(raw).hexdigest()}]"
+                    ]
+                    seen: set[str] = set()
+                    for exception_type in re.findall(
+                        r"\b[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)\b",
+                        value,
+                    ):
+                        if exception_type not in seen and len(seen) < 3:
+                            seen.add(exception_type)
+                            lines.append(
+                                f"exception_type={exception_type}"
+                            )
+                    remember(raw)
+                    return "\n".join(lines)
+
+                def exact_json(value: Any, depth: int = 0) -> Any:
+                    if depth > 8:
+                        return "<unrenderable>"
+                    if value is None or type(value) in (str, bool, int):
+                        return value
+                    if type(value) is float:
+                        return value if math.isfinite(value) else "<unrenderable>"
+                    if type(value) in (list, tuple):
+                        return [exact_json(item, depth + 1) for item in value]
+                    if type(value) is dict:
+                        return {
+                            key: exact_json(dict.get(value, key), depth + 1)
+                            for key in sorted(
+                                item_key
+                                for item_key in value
+                                if type(item_key) is str
+                            )
+                        }
+                    return "<unrenderable>"
+
+                def exact_list(
+                    value: Any,
+                    limit: int,
+                    *,
+                    test_nodes: bool = False,
+                    commands: bool = False,
+                ) -> list[str]:
+                    if type(value) not in (list, tuple):
+                        return []
+                    kept: list[str] = []
+                    for item in value[:1]:
+                        if test_nodes:
+                            rendered = exact_test_node(item)
+                        else:
+                            rendered = exact_text(
+                                item,
+                                limit,
+                                command=commands,
+                            )
+                        if rendered:
+                            kept.append(rendered)
+                    if len(value) > 1:
+                        tail = canonical_json(
+                            exact_json(list(value[1:]))
+                        ).encode("utf-8")
+                        kept.append(
+                            remember(tail, omitted_items=len(value) - 1)
+                        )
+                    return kept
+
+                source_returncode = dict.get(source, "returncode")
+                if source_returncode is None:
+                    source_returncode = dict.get(validation, "returncode")
+                returncode = exact_int(source_returncode, 1)
+                safe_validation: dict[str, Any] = {
+                    "returncode": exact_int(
+                        dict.get(validation, "returncode"), returncode
+                    )
+                }
+                for key in ("attempted", "passed"):
+                    value = dict.get(validation, key)
+                    if type(value) is bool:
+                        safe_validation[key] = value
+                for key, limit in (
+                    ("reason", 256),
+                    ("failed_command", 512),
+                    ("exception_message", 512),
+                ):
+                    rendered = exact_text(
+                        dict.get(validation, key),
+                        limit,
+                        command=key == "failed_command",
+                        private_prose=key == "exception_message",
+                    )
+                    if rendered:
+                        safe_validation[key] = rendered
+                failure_head = dict.get(validation, "failure_head")
+                rendered_head = exact_failure_head(failure_head)
+                if rendered_head:
+                    safe_validation["failure_head"] = rendered_head
+                for key, limit in (
+                    ("failed_commands", 384),
+                    ("failed_tests", 192),
+                    ("failed_test_paths", 256),
+                    ("exception_types", 128),
+                ):
+                    rendered = exact_list(
+                        dict.get(validation, key),
+                        limit,
+                        test_nodes=key == "failed_tests",
+                        commands=key == "failed_commands",
+                    )
+                    if rendered:
+                        safe_validation[key] = rendered
+                review = dict.get(source, "failure_review")
+                if type(review) is not dict:
+                    review = dict.get(validation, "failure_review")
+                safe_review: dict[str, Any] = {}
+                if type(review) is dict:
+                    for key in ("receipt_id", "decision"):
+                        rendered = exact_text(dict.get(review, key), 256)
+                        if rendered:
+                            safe_review[key] = rendered
+                    accepted = dict.get(review, "accepted")
+                    if type(accepted) is bool:
+                        safe_review["accepted"] = accepted
+                if safe_review:
+                    safe_validation["failure_review"] = dict(safe_review)
+                result: dict[str, Any] = {
+                    "kind": "implementation_failure",
+                    "returncode": returncode,
+                    "validation": safe_validation,
+                    "normalization_error": {
+                        "exception_type": "normalization_error"
+                    },
+                }
+                if safe_review:
+                    result["failure_review"] = safe_review
+                pending_maps: dict[str, dict[str, Any]] = {}
+                for key, scalar_keys, list_keys in (
+                    (
+                        "proposal_gate",
+                        (
+                            "accepted",
+                            "attempted",
+                            "proposal_id",
+                            "policy_id",
+                            "receipt_id",
+                            "repository_tree_id",
+                        ),
+                        ("reason_codes", "changed_paths"),
+                    ),
+                    (
+                        "scope_adjudication",
+                        ("accepted", "receipt_id", "proposal_id"),
+                        ("authorized_paths", "denied_paths"),
+                    ),
+                    (
+                        "timeout_policy",
+                        (
+                            "source",
+                            "configured_timeout_seconds",
+                            "progress_timeout_seconds",
+                            "max_timeout_seconds",
+                            "progress_aware",
+                        ),
+                        (),
+                    ),
+                    (
+                        "checkpoint_manifest",
+                        (
+                            "schema",
+                            "manifest_cid",
+                            "file_count",
+                            "total_size_bytes",
+                            "total_bytes",
+                        ),
+                        (),
+                    ),
+                ):
+                    map_value = dict.get(source, key)
+                    if type(map_value) is not dict:
+                        map_value = dict.get(validation, key)
+                    if type(map_value) is dict:
+                        compact: dict[str, Any] = {}
+                        for field in scalar_keys:
+                            item = dict.get(map_value, field)
+                            if type(item) is bool:
+                                compact[field] = item
+                            elif type(item) is int:
+                                compact[field] = exact_int(item, 0)
+                            elif type(item) is float and math.isfinite(item):
+                                compact[field] = item
+                            elif type(item) is str:
+                                rendered = exact_text(item, 256)
+                                if rendered:
+                                    compact[field] = rendered
+                        for field in list_keys:
+                            rendered_list = exact_list(
+                                dict.get(map_value, field),
+                                192,
+                            )
+                            if rendered_list:
+                                compact[field] = rendered_list
+                        if compact:
+                            pending_maps[key] = compact
+                if records:
+                    record_values = list(records.values())
+                    result["truncation"] = {"records": record_values}
+                    occurrences = sum(
+                        int(item.get("occurrence_count") or 0)
+                        for item in record_values
+                    )
+                    result["deduplication"] = {
+                        "unique_omission_count": len(record_values),
+                        "occurrence_count": occurrences,
+                        "deduplicated_occurrence_count": max(
+                            0, occurrences - len(record_values)
+                        ),
+                    }
+                for key, compact in pending_maps.items():
+                    candidate_result = {**result, key: compact}
+                    if len(canonical_json(candidate_result).encode("utf-8")) <= (
+                        MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+                    ):
+                        result[key] = compact
+                encoded = canonical_json(result).encode("utf-8")
+                if len(encoded) <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES:
+                    return result
+                # All lists/maps above are independently capped.  If the
+                # aggregate is unexpectedly large, keep the required core and
+                # every tail record; discard only non-tail omission records.
+                if records:
+                    result["truncation"] = {
+                        "records": [
+                            item
+                            for item in records.values()
+                            if int(item.get("omitted_item_count") or 0) > 0
+                        ]
+                    }
+                return result
+            except BaseException:
+                return {
+                    "kind": "implementation_failure",
+                    "returncode": 1,
+                    "validation": {"returncode": 1},
+                    "normalization_error": {
+                        "exception_type": "normalization_error"
+                    },
+                }
+
+    @staticmethod
+    def _normalize_implementation_failure_unchecked(
+        failure: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Return bounded, durable evidence for an implementation failure.
+
+        This method sits on the error path, so it must be total: malformed or
+        excessively large reviewer data cannot hide an already-observed
+        subprocess failure behind an ``implementation_setup`` exception.  In
+        particular, command output is intentionally not projected here.
+        """
+
+        omission_records: dict[tuple[int, str], dict[str, Any]] = {}
+        omission_order: list[tuple[int, str]] = []
+        private_identities: set[tuple[int, str]] = set()
+        private_sources: list[bytes] = []
+
+        def get(mapping: Any, key: str, default: Any = None) -> Any:
+            if type(mapping) is not dict:
+                return default
+            return dict.get(mapping, key, default)
+
+        def raw_text(value: Any) -> bytes:
+            try:
+                if type(value) is bytes:
+                    return value
+                if type(value) is bytearray:
+                    return bytes(value)
+                if type(value) is str:
+                    return value.encode("utf-8", errors="replace")
+                if value is None:
+                    return b""
+                if type(value) in (bool, int, float):
+                    return str(value).encode("ascii", errors="replace")
+                return b"<unrenderable>"
+            except Exception:
+                return b"<unrenderable>"
+
+        def marker(original_bytes: int, digest: str) -> str:
+            return (
+                f"[truncated original_bytes={original_bytes} "
+                f"sha256={digest}]"
+            )
+
+        def remember_digest(
+            *,
+            original_bytes: int,
+            digest: str,
+            path: str,
+            omitted_items: int = 0,
+        ) -> str:
+            identity = (int(original_bytes), str(digest))
+            record = omission_records.get(identity)
+            if record is None:
+                record = {
+                    "original_bytes": identity[0],
+                    "sha256": identity[1],
+                    "marker": marker(*identity),
+                    "occurrence_count": 0,
+                    "paths": [],
+                }
+                omission_records[identity] = record
+                omission_order.append(identity)
+            record["occurrence_count"] = int(record["occurrence_count"]) + 1
+            paths = record["paths"]
+            if isinstance(paths, list) and path not in paths and len(paths) < 8:
+                paths.append(path)
+            if omitted_items:
+                record.setdefault("omitted_item_count", int(omitted_items))
+                record["total_omitted_item_count"] = (
+                    int(record.get("total_omitted_item_count") or 0)
+                    + int(omitted_items)
+                )
+            return str(record["marker"])
+
+        def remember_raw(value: Any, *, path: str) -> str:
+            raw = raw_text(value)
+            if not raw:
+                return ""
+            return remember_digest(
+                original_bytes=len(raw),
+                digest=hashlib.sha256(raw).hexdigest(),
+                path=path,
+            )
+
+        def mark_private(value: Any) -> None:
+            raw = raw_text(value)
+            if raw:
+                identity = (len(raw), hashlib.sha256(raw).hexdigest())
+                if identity not in private_identities:
+                    private_identities.add(identity)
+                    private_sources.append(raw)
+
+        def redact_sensitive(raw: bytes, *, path: str) -> bytes:
+            rendered = raw.decode("utf-8", errors="replace")
+            bearer_pattern = re.compile(
+                r"(?i)\b((?:authorization\s*[:=]\s*)?bearer)\s+"
+                r"([^\s,;\"']+)"
+            )
+
+            def bearer_replacement(match: re.Match[str]) -> str:
+                secret = match.group(2).encode("utf-8", errors="replace")
+                digest = hashlib.sha256(secret).hexdigest()
+                remember_digest(
+                    original_bytes=len(secret),
+                    digest=digest,
+                    path=f"{path}.redacted",
+                )
+                prefix = match.group(1)
+                if prefix.lower().lstrip().startswith("authorization"):
+                    return f"Authorization=<redacted sha256={digest}>"
+                return f"Bearer <redacted sha256={digest}>"
+
+            pattern = re.compile(
+                r"(?i)\b(password|passwd|token|secret|credential|"
+                r"api[_-]?key|authorization)(?:\s*[:=]\s*|\s+)"
+                r"([^\s,;]+)"
+            )
+
+            def replacement(match: re.Match[str]) -> str:
+                if match.group(2).startswith("<redacted"):
+                    return match.group(0)
+                secret = match.group(2).encode("utf-8", errors="replace")
+                digest = hashlib.sha256(secret).hexdigest()
+                remember_digest(
+                    original_bytes=len(secret),
+                    digest=digest,
+                    path=f"{path}.redacted",
+                )
+                return f"{match.group(1)}=<redacted sha256={digest}>"
+
+            try:
+                rendered = bearer_pattern.sub(bearer_replacement, rendered)
+                rendered = pattern.sub(replacement, rendered)
+                cli_pattern = re.compile(
+                    r"(?i)(--?(?:password|passwd|token|secret|credential|"
+                    r"api[_-]?key|authorization))(?:\s+|=)([^\s,;]+)"
+                )
+
+                def cli_replacement(match: re.Match[str]) -> str:
+                    if match.group(2).startswith("<redacted"):
+                        return match.group(0)
+                    secret = match.group(2).encode(
+                        "utf-8", errors="replace"
+                    )
+                    digest = hashlib.sha256(secret).hexdigest()
+                    remember_digest(
+                        original_bytes=len(secret),
+                        digest=digest,
+                        path=f"{path}.redacted",
+                    )
+                    return (
+                        f"{match.group(1)} <redacted sha256={digest}>"
+                    )
+
+                return cli_pattern.sub(
+                    cli_replacement, rendered
+                ).encode("utf-8")
+            except Exception:
+                return raw
+
+        def text(
+            value: Any,
+            *,
+            path: str,
+            limit: int,
+            retain_head: bool = True,
+            private_sensitive: bool = False,
+            redact_private_substrings: bool = False,
+        ) -> str:
+            original_raw = raw_text(value)
+            if not original_raw:
+                return ""
+            raw_identity = (
+                len(original_raw),
+                hashlib.sha256(original_raw).hexdigest(),
+            )
+            private_fragment = private_sensitive and (
+                raw_identity in private_identities
+            )
+            if private_sensitive and not private_fragment:
+                for private_source in private_sources:
+                    try:
+                        if (
+                            original_raw in private_source
+                            or (
+                                len(private_source) >= 8
+                                and private_source in original_raw
+                            )
+                        ):
+                            private_fragment = True
+                            break
+                    except Exception:
+                        private_fragment = True
+                        break
+            if private_fragment:
+                return remember_digest(
+                    original_bytes=raw_identity[0],
+                    digest=raw_identity[1],
+                    path=path,
+                )
+            structurally_redacted = original_raw
+            if redact_private_substrings:
+                for private_source in private_sources:
+                    if (
+                        len(private_source) >= 8
+                        and private_source in structurally_redacted
+                    ):
+                        digest = hashlib.sha256(private_source).hexdigest()
+                        remember_digest(
+                            original_bytes=len(private_source),
+                            digest=digest,
+                            path=f"{path}.private_fragment",
+                        )
+                        structurally_redacted = structurally_redacted.replace(
+                            private_source,
+                            f"<private sha256={digest}>".encode("ascii"),
+                        )
+            rendered_raw = redact_sensitive(
+                structurally_redacted,
+                path=path,
+            )
+            if (
+                len(original_raw) <= limit
+                and len(rendered_raw) <= limit
+            ):
+                return rendered_raw.decode("utf-8", errors="replace")
+            omission_marker = remember_digest(
+                original_bytes=len(original_raw),
+                digest=hashlib.sha256(original_raw).hexdigest(),
+                path=path,
+            )
+            if not retain_head:
+                return ""
+            marker_bytes = omission_marker.encode("utf-8")
+            head = rendered_raw[
+                : max(0, limit - len(marker_bytes) - 1)
+            ]
+            return (
+                head.decode("utf-8", errors="replace")
+                + "\n"
+                + omission_marker
+            )
+
+        def number(value: Any, default: int = 0) -> int:
+            if type(value) is int and -(2**31) <= value <= (2**31 - 1):
+                return value
+            return default
+
+        def canonical_item_bytes(value: Any) -> bytes:
+            def exact_json_value(candidate: Any, depth: int = 0) -> Any:
+                if depth > 8:
+                    return "<unrenderable>"
+                if candidate is None or type(candidate) in (str, bool, int):
+                    return candidate
+                if type(candidate) is float:
+                    return (
+                        candidate
+                        if math.isfinite(candidate)
+                        else "<unrenderable>"
+                    )
+                if type(candidate) in (list, tuple):
+                    return [
+                        exact_json_value(item, depth + 1)
+                        for item in candidate
+                    ]
+                if type(candidate) is dict:
+                    return {
+                        key: exact_json_value(
+                            dict.get(candidate, key), depth + 1
+                        )
+                        for key in sorted(
+                            item_key
+                            for item_key in candidate
+                            if type(item_key) is str
+                        )
+                    }
+                return "<unrenderable>"
+
+            return canonical_json(exact_json_value(value)).encode("utf-8")
+
+        def sequence_items(value: Any) -> tuple[list[Any], bool]:
+            if type(value) in (str, bytes, bytearray):
+                return [value], False
+            if type(value) in (list, tuple):
+                return list(value), False
+            return ([] if value is None else ["<unrenderable>"]), (
+                value is not None
+            )
+
+        def values(
+            value: Any,
+            *,
+            path: str,
+            item_limit: int = 192,
+            max_items: int = 3,
+            render_item: Callable[[Any], Any] | None = None,
+        ) -> list[str]:
+            source, scan_truncated = sequence_items(value)
+            kept: list[str] = []
+            tail_hasher = hashlib.sha256()
+            tail_hasher.update(b"[")
+            tail_bytes = 1
+            omitted_count = 0
+            first_tail = True
+            for index, item in enumerate(source):
+                if len(kept) < max_items:
+                    rendered_item = (
+                        render_item(item)
+                        if render_item is not None
+                        else item
+                    )
+                    rendered = text(
+                        rendered_item,
+                        path=f"{path}[{index}]",
+                        limit=item_limit,
+                        redact_private_substrings=(
+                            path.endswith("failed_commands")
+                        ),
+                    ).strip()
+                    if rendered and rendered not in kept:
+                        kept.append(rendered)
+                        continue
+                item_bytes = canonical_item_bytes(item)
+                if not first_tail:
+                    tail_hasher.update(b",")
+                    tail_bytes += 1
+                tail_hasher.update(item_bytes)
+                tail_bytes += len(item_bytes)
+                omitted_count += 1
+                first_tail = False
+            if scan_truncated:
+                scan_marker = b'"<sequence-scan-limit>"'
+                if not first_tail:
+                    tail_hasher.update(b",")
+                    tail_bytes += 1
+                tail_hasher.update(scan_marker)
+                tail_bytes += len(scan_marker)
+                omitted_count += 1
+                first_tail = False
+            tail_hasher.update(b"]")
+            tail_bytes += 1
+            if omitted_count:
+                omitted_marker = remember_digest(
+                    original_bytes=tail_bytes,
+                    digest=tail_hasher.hexdigest(),
+                    path=path,
+                    omitted_items=omitted_count,
+                )
+                kept.append(
+                    f"{omitted_marker[:-1]} omitted_items={omitted_count}]"
+                )
+            return kept
+
+        def compact_review(value: Any, *, path: str) -> dict[str, Any]:
+            if type(value) is not dict:
+                return {}
+            review: dict[str, Any] = {}
+            for key in ("receipt_id", "decision", "policy_version"):
+                rendered = text(
+                    get(value, key),
+                    path=f"{path}.{key}",
+                    limit=256,
+                ).strip()
+                if rendered:
+                    review[key] = rendered
+            accepted = get(value, "accepted")
+            if isinstance(accepted, bool):
+                review["accepted"] = accepted
+            for key in (
+                "reason_codes",
+                "finding_codes",
+                "missing_expected_outputs",
+                "out_of_scope_paths",
+                "justified_paths",
+                "denied_paths",
+                "contract_gap_paths",
+                "failed_commands",
+            ):
+                compact = values(
+                    get(value, key),
+                    path=f"{path}.{key}",
+                    item_limit=128,
+                    max_items=2,
+                )
+                if compact:
+                    review[key] = compact
+            for key in (
+                "guidance_markdown",
+                "review_markdown",
+                "body",
+                "analysis",
+                "raw_response",
+                "next_attempt_prompt_addendum",
+            ):
+                remember_raw(get(value, key), path=f"{path}.{key}")
+            return review
+
+        def compact_mapping(
+            value: Any,
+            *,
+            path: str,
+            scalar_keys: Sequence[str],
+            list_keys: Sequence[str] = (),
+        ) -> dict[str, Any]:
+            if type(value) is not dict:
+                return {}
+            projected: dict[str, Any] = {}
+            for key in scalar_keys:
+                candidate = get(value, key)
+                if type(candidate) is bool:
+                    projected[key] = candidate
+                    continue
+                if type(candidate) is int:
+                    projected[key] = number(candidate)
+                    continue
+                rendered = text(
+                    candidate,
+                    path=f"{path}.{key}",
+                    limit=256,
+                ).strip()
+                if rendered:
+                    projected[key] = rendered
+            for key in list_keys:
+                compact = values(
+                    get(value, key),
+                    path=f"{path}.{key}",
+                    item_limit=128,
+                    max_items=2,
+                )
+                if compact:
+                    projected[key] = compact
+            return projected
+
+        def build() -> dict[str, Any]:
+            source: Mapping[str, Any] = (
+                failure if type(failure) is dict else {}
+            )
+            validation_value = get(source, "validation_result")
+            validation: Mapping[str, Any] = (
+                validation_value
+                if type(validation_value) is dict
+                else {}
+            )
+            source_returncode = get(source, "returncode")
+            if source_returncode is None:
+                source_returncode = get(validation, "returncode", 1)
+            source_review = get(source, "failure_review")
+            validation_review = get(validation, "failure_review")
+            for review_value in (source_review, validation_review):
+                if type(review_value) is not dict:
+                    continue
+                for key in (
+                    "guidance_markdown",
+                    "review_markdown",
+                    "body",
+                    "analysis",
+                    "raw_response",
+                ):
+                    mark_private(get(review_value, key))
+                review_addendum = get(
+                    review_value, "next_attempt_prompt_addendum"
+                )
+                if len(raw_text(review_addendum)) > 1_024:
+                    mark_private(review_addendum)
+            for key in ("output", "stdout", "stderr", "raw_output"):
+                mark_private(get(validation, key))
+            validation_addendum = get(
+                validation, "next_attempt_prompt_addendum"
+            )
+            if len(raw_text(validation_addendum)) > 1_024:
+                mark_private(validation_addendum)
+            selected: dict[str, Any] = {
+                "kind": text(
+                    get(source, "kind", "implementation_failure"),
+                    path="kind",
+                    limit=128,
+                    private_sensitive=False,
+                ).strip()
+                or "implementation_failure",
+                "returncode": number(source_returncode, 1),
+            }
+            scalar_specs = (
+                ("reason", 512),
+                ("exception_type", 256),
+                ("exception_message", 1_024),
+                ("message", 1_024),
+                ("phase", 256),
+                ("timeout_reason", 256),
+                ("counterexample_id", 256),
+            )
+            for key, limit in scalar_specs:
+                rendered = text(
+                    get(source, key),
+                    path=key,
+                    limit=limit,
+                    private_sensitive=key in {
+                        "exception_message",
+                        "message",
+                    },
+                ).strip()
+                if rendered:
+                    target_key = (
+                        "exception_message" if key == "message" else key
+                    )
+                    selected.setdefault(target_key, rendered)
+            for key in (
+                "reason_codes",
+                "failed_commands",
+                "failing_checks",
+                "missing_outputs",
+                "counterexample_ids",
+            ):
+                compact = values(get(source, key), path=key)
+                if compact:
+                    selected[key] = compact
+
+            review_source: Any = (
+                source_review
+                if type(source_review) is dict
+                else validation_review
+            )
+            primary_review = compact_review(
+                review_source,
+                path="failure_review",
+            )
+            if primary_review:
+                selected["failure_review"] = primary_review
+
+            source_addendum = get(source, "next_attempt_prompt_addendum")
+            if source_addendum is None and type(review_source) is dict:
+                source_addendum = get(
+                    review_source,
+                    "next_attempt_prompt_addendum",
+                )
+            safe_addendum = text(
+                source_addendum,
+                path="next_attempt_prompt_addendum",
+                limit=1_024,
+                retain_head=False,
+                private_sensitive=True,
+            ).strip()
+            if safe_addendum:
+                selected["next_attempt_prompt_addendum"] = safe_addendum
+
+            validation_projection: dict[str, Any] = {}
+            for key in ("attempted", "passed"):
+                candidate = get(validation, key)
+                if type(candidate) is bool:
+                    validation_projection[key] = candidate
+            validation_projection["returncode"] = number(
+                get(validation, "returncode", selected["returncode"]),
+                selected["returncode"],
+            )
+            for key, limit in (
+                ("reason", 512),
+                ("error", 512),
+                ("failed_command", 1_024),
+                ("exception_message", 1_024),
+                ("failure_head", MAX_ACTIONABLE_RETRY_TEXT_BYTES),
+            ):
+                candidate = get(validation, key)
+                if key == "failure_head":
+                    candidate = (
+                        PortalImplementationDaemon._sanitize_retry_failure_head(
+                            candidate
+                        )
+                    )
+                rendered = text(
+                    candidate,
+                    path=f"validation.{key}",
+                    limit=limit,
+                    private_sensitive=key == "exception_message",
+                    redact_private_substrings=key == "failed_command",
+                ).strip()
+                if rendered:
+                    validation_projection[key] = rendered
+            for key in (
+                "reason_codes",
+                "failed_commands",
+                "failed_tests",
+                "failed_test_paths",
+                "exception_types",
+            ):
+                candidate = get(validation, key)
+                compact = values(
+                    candidate,
+                    path=f"validation.{key}",
+                    render_item=(
+                        PortalImplementationDaemon._sanitize_retry_test_node_id
+                        if key == "failed_tests"
+                        else None
+                    ),
+                )
+                if compact:
+                    validation_projection[key] = compact
+            nested_review = compact_review(
+                validation_review,
+                path="validation.failure_review",
+            )
+            if nested_review:
+                validation_projection["failure_review"] = {
+                    key: nested_review[key]
+                    for key in ("receipt_id", "decision", "accepted")
+                    if key in nested_review
+                }
+            remember_raw(
+                validation_addendum,
+                path="validation.next_attempt_prompt_addendum",
+            )
+            for key in ("output", "stdout", "stderr", "raw_output"):
+                remember_raw(
+                    get(validation, key),
+                    path=f"validation.{key}",
+                )
+            selected["validation"] = validation_projection
+
+            proposal = compact_mapping(
+                get(validation, "proposal_gate"),
+                path="proposal_gate",
+                scalar_keys=(
+                    "accepted",
+                    "attempted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                ),
+                list_keys=("reason_codes", "changed_paths"),
+            )
+            if proposal:
+                selected["proposal_gate"] = proposal
+            scope = compact_mapping(
+                get(validation, "scope_adjudication"),
+                path="scope_adjudication",
+                scalar_keys=("accepted", "receipt_id", "proposal_id"),
+                list_keys=("authorized_paths", "denied_paths"),
+            )
+            if scope:
+                selected["scope_adjudication"] = scope
+            for key, scalar_keys in (
+                (
+                    "timeout_policy",
+                    (
+                        "source",
+                        "configured_timeout_seconds",
+                        "progress_timeout_seconds",
+                        "max_timeout_seconds",
+                        "progress_aware",
+                    ),
+                ),
+                (
+                    "checkpoint_manifest",
+                    (
+                        "schema",
+                        "manifest_cid",
+                        "file_count",
+                        "total_size_bytes",
+                        "total_bytes",
+                    ),
+                ),
+            ):
+                compact = compact_mapping(
+                    get(source, key),
+                    path=key,
+                    scalar_keys=scalar_keys,
+                )
+                if compact:
+                    selected[key] = compact
+
+            records = [omission_records[item] for item in omission_order]
+            if records:
+                selected["truncation"] = {"records": records}
+                occurrences = sum(
+                    int(record.get("occurrence_count") or 0)
+                    for record in records
+                )
+                selected["deduplication"] = {
+                    "unique_omission_count": len(records),
+                    "occurrence_count": occurrences,
+                    "deduplicated_occurrence_count": max(
+                        0,
+                        occurrences - len(records),
+                    ),
+                }
+            return selected
+
+        try:
+            selected = build()
+        except Exception:
+            # Keep exactly one emergency implementation.  The public wrapper
+            # above is exact-container-only, privacy preserving and bounded;
+            # duplicating a weaker projection here previously reintroduced raw
+            # validation output and dropped authority maps on helper failures.
+            raise
+
+        try:
+            encoded = canonical_json(selected).encode("utf-8")
+        except Exception:
+            encoded = b""
+        if encoded and len(encoded) <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES:
+            return selected
+
+        original_digest = hashlib.sha256(encoded).hexdigest()
+        validation = selected.get("validation")
+        validation = validation if isinstance(validation, Mapping) else {}
+        review = selected.get("failure_review")
+        review = review if isinstance(review, Mapping) else {}
+
+        def fallback_text(value: Any, limit: int) -> str:
+            raw = raw_text(value)
+            if len(raw) <= limit:
+                return raw.decode("utf-8", errors="replace")
+            digest = hashlib.sha256(raw).hexdigest()
+            truncation_marker = marker(len(raw), digest)
+            marker_bytes = truncation_marker.encode("utf-8")
+            head = raw[: max(0, limit - len(marker_bytes) - 1)]
+            return (
+                head.decode("utf-8", errors="replace")
+                + "\n"
+                + truncation_marker
+            )
+
+        def fallback_list(
+            value: Any,
+            *,
+            path: str,
+            limit: int = 256,
+            count: int = 2,
+        ) -> list[str]:
+            if type(value) is not list:
+                return []
+            compact = [
+                fallback_text(item, limit)
+                for item in value[:count]
+                if raw_text(item)
+            ]
+            if len(value) > count:
+                tail_bytes = canonical_json(value[count:]).encode("utf-8")
+                compact.append(
+                    remember_digest(
+                        original_bytes=len(tail_bytes),
+                        digest=hashlib.sha256(tail_bytes).hexdigest(),
+                        path=path,
+                        omitted_items=len(value) - count,
+                    )
+                )
+            return compact
+
+        fallback_validation: dict[str, Any] = {}
+        for key in ("attempted", "passed"):
+            if isinstance(validation.get(key), bool):
+                fallback_validation[key] = validation[key]
+        fallback_validation["returncode"] = number(
+            validation.get("returncode"),
+            number(selected.get("returncode"), 1),
+        )
+        for key, limit in (
+            ("reason", 256),
+            ("failed_command", 768),
+            ("exception_message", 512),
+            ("failure_head", 1_024),
+        ):
+            if key in validation:
+                rendered = fallback_text(validation[key], limit).strip()
+                if rendered:
+                    fallback_validation[key] = rendered
+        for key, limit in (
+            ("failed_commands", 384),
+            ("failed_tests", 192),
+            ("failed_test_paths", 256),
+            ("exception_types", 128),
+        ):
+            compact = fallback_list(
+                validation.get(key),
+                path=f"fallback.validation.{key}",
+                limit=limit,
+            )
+            if compact:
+                fallback_validation[key] = compact
+        nested_review = validation.get("failure_review")
+        if isinstance(nested_review, Mapping):
+            fallback_nested_review: dict[str, Any] = {}
+            for key in ("receipt_id", "decision", "accepted"):
+                if key not in nested_review:
+                    continue
+                value = nested_review[key]
+                fallback_nested_review[key] = (
+                    value
+                    if isinstance(value, bool)
+                    else fallback_text(value, 256)
+                )
+            fallback_validation["failure_review"] = fallback_nested_review
+
+        # ``fallback_list`` may itself omit an item from the already-normalized
+        # projection.  Read the live ledger after those calls so that this new
+        # tail receives the same byte/digest/item-count evidence as source
+        # tails instead of being represented only by an inline marker.
+        truncation_records = [
+            omission_records[identity] for identity in omission_order
+        ]
+        compact_records: list[dict[str, Any]] = []
+        if isinstance(truncation_records, list):
+            for record in truncation_records:
+                if not isinstance(record, Mapping):
+                    continue
+                compact_record = {
+                    key: record[key]
+                    for key in (
+                        "original_bytes",
+                        "sha256",
+                        "marker",
+                        "occurrence_count",
+                        "omitted_item_count",
+                        "total_omitted_item_count",
+                    )
+                    if key in record
+                }
+                if compact_record:
+                    compact_records.append(compact_record)
+        live_occurrences = sum(
+            int(record.get("occurrence_count") or 0)
+            for record in truncation_records
+            if type(record) is dict
+        )
+        live_deduplication = {
+            "unique_omission_count": len(compact_records),
+            "occurrence_count": live_occurrences,
+            "deduplicated_occurrence_count": max(
+                0, live_occurrences - len(compact_records)
+            ),
+        }
+        fallback: dict[str, Any] = {
+            "kind": str(selected.get("kind") or "implementation_failure")[:128],
+            "returncode": number(selected.get("returncode"), 1),
+            "validation": fallback_validation,
+            "failure_review": {},
+            "truncation": {"records": compact_records},
+            "deduplication": live_deduplication,
+            "normalization_truncation": {
+                "original_bytes": len(encoded),
+                "sha256": original_digest,
+                "marker": marker(len(encoded), original_digest),
+            },
+        }
+        for key in ("receipt_id", "decision", "accepted"):
+            if key not in review:
+                continue
+            value = review[key]
+            fallback["failure_review"][key] = (
+                value
+                if isinstance(value, bool)
+                else fallback_text(value, 256)
+            )
         for key in (
-            "kind",
-            "reason",
-            "returncode",
-            "exception_type",
-            "phase",
-            "counterexample_id",
-            "counterexample_ids",
-            "reason_codes",
-            "failed_commands",
-            "failing_checks",
-            "missing_outputs",
-            "timeout_reason",
+            "proposal_gate",
+            "scope_adjudication",
             "timeout_policy",
             "checkpoint_manifest",
-            "failure_review",
-            "next_attempt_prompt_addendum",
         ):
-            value = failure.get(key)
-            if value not in (None, "", (), [], {}):
-                selected[key] = value
-        validation = failure.get("validation_result")
-        if isinstance(validation, Mapping):
-            selected["validation"] = {
-                key: validation[key]
-                for key in (
-                    "passed",
-                    "returncode",
-                    "reason",
-                    "reason_codes",
-                    "failed_commands",
-                    "failure_review",
-                )
-                if validation.get(key) not in (None, "", (), [], {})
+            value = selected.get(key)
+            if isinstance(value, Mapping):
+                fallback[key] = dict(value)
+        for key in (
+            "reason",
+            "exception_type",
+            "exception_message",
+            "phase",
+        ):
+            if key in selected:
+                fallback[key] = fallback_text(selected[key], 512)
+        try:
+            fallback_encoded = canonical_json(fallback).encode("utf-8")
+        except Exception:
+            fallback_encoded = b""
+        if len(fallback_encoded) <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES:
+            return fallback
+
+        # Preserve each omitted sequence tail as its own content-addressed
+        # record.  Non-tail scalar/reviewer omissions may be combined into one
+        # envelope, but aggregating list tails would lose the original count
+        # and digest that make the retry evidence actionable and auditable.
+        tail_records = [
+            record
+            for record in compact_records
+            if int(record.get("omitted_item_count") or 0) > 0
+        ]
+        non_tail_records = [
+            record
+            for record in compact_records
+            if int(record.get("omitted_item_count") or 0) == 0
+        ]
+        compact_truncation: dict[str, Any] = {"records": tail_records}
+        if non_tail_records:
+            record_set_bytes = canonical_json(non_tail_records).encode(
+                "utf-8"
+            )
+            record_set_digest = hashlib.sha256(record_set_bytes).hexdigest()
+            compact_truncation["record_set"] = {
+                "record_count": len(non_tail_records),
+                "original_bytes": len(record_set_bytes),
+                "sha256": record_set_digest,
+                "marker": marker(len(record_set_bytes), record_set_digest),
             }
-            proposal = validation.get("proposal_gate")
-            if isinstance(proposal, Mapping):
-                selected["proposal_gate"] = {
-                    key: proposal[key]
-                    for key in (
-                        "reason_codes",
-                        "proposal_id",
-                        "policy_id",
-                        "receipt_id",
-                        "repository_tree_id",
+        fallback["truncation"] = compact_truncation
+        try:
+            compact_fallback_encoded = canonical_json(fallback).encode(
+                "utf-8"
+            )
+        except Exception:
+            compact_fallback_encoded = b""
+        if (
+            compact_fallback_encoded
+            and len(compact_fallback_encoded)
+            <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+        ):
+            return fallback
+        # If the first compact projection is still too large, shrink only
+        # repeated actionable lists and prose.  Keep the independently bounded
+        # authority/timeout/checkpoint maps and every tail commitment.
+        minimal_validation = dict(fallback["validation"])
+        if isinstance(minimal_validation, dict):
+            for key, limit in (
+                ("reason", 128),
+                ("failed_command", 384),
+                ("exception_message", 256),
+                ("failure_head", 512),
+            ):
+                if key in minimal_validation:
+                    minimal_validation[key] = fallback_text(
+                        minimal_validation[key],
+                        limit,
                     )
-                    if proposal.get(key) not in (None, "", (), [], {})
-                }
-            scope_adjudication = validation.get("scope_adjudication")
-            if isinstance(scope_adjudication, Mapping):
-                selected["scope_adjudication"] = {
-                    key: scope_adjudication[key]
-                    for key in (
-                        "accepted",
-                        "receipt_id",
-                        "proposal_id",
-                        "authorized_paths",
-                        "denied_paths",
-                        "decisions",
+            for key, limit in (
+                ("failed_commands", 256),
+                ("failed_tests", 128),
+                ("failed_test_paths", 192),
+                ("exception_types", 96),
+            ):
+                if key in minimal_validation:
+                    minimal_validation[key] = fallback_list(
+                        minimal_validation[key],
+                        path=f"fallback.minimal.validation.{key}",
+                        limit=limit,
+                        count=1,
                     )
-                    if scope_adjudication.get(key)
-                    not in (None, "", (), [], {})
-                }
-        if not selected:
-            selected = {"kind": "implementation_failure", "reason": "unknown"}
-        encoded = canonical_json(selected).encode("utf-8")
-        if len(encoded) > 16_384:
-            raise ValueError("normalized implementation failure exceeds 16 KiB")
-        return selected
+        # Build a guaranteed-small terminal envelope.  Each tail record uses a
+        # compact explicit (byte-count, SHA-256, item-count) marker; prose and
+        # redaction records are represented by one aggregate commitment.  Add
+        # each already-bounded authority map only after proving it fits.
+        refreshed_records = [
+            omission_records[identity] for identity in omission_order
+        ]
+        refreshed_occurrences = sum(
+            int(record.get("occurrence_count") or 0)
+            for record in refreshed_records
+        )
+        refreshed_deduplication = {
+            "unique_omission_count": len(refreshed_records),
+            "occurrence_count": refreshed_occurrences,
+            "deduplicated_occurrence_count": max(
+                0, refreshed_occurrences - len(refreshed_records)
+            ),
+        }
+        essential_tail_records = [
+            {
+                key: record[key]
+                for key in (
+                    "original_bytes",
+                    "sha256",
+                    "occurrence_count",
+                    "omitted_item_count",
+                    "total_omitted_item_count",
+                )
+                if key in record
+            }
+            for record in refreshed_records
+            if int(record.get("omitted_item_count") or 0) > 0
+        ]
+        essential_validation: dict[str, Any] = {}
+        for key in ("attempted", "passed", "returncode"):
+            if key in minimal_validation:
+                essential_validation[key] = minimal_validation[key]
+        for key in (
+            "reason",
+            "failed_command",
+            "exception_message",
+            "failure_head",
+        ):
+            if key in minimal_validation:
+                essential_validation[key] = minimal_validation[key]
+        for key in (
+            "failed_commands",
+            "failed_tests",
+            "failed_test_paths",
+            "exception_types",
+        ):
+            value = minimal_validation.get(key)
+            if type(value) is list and value:
+                essential_validation[key] = value[:1]
+        nested_review = minimal_validation.get("failure_review")
+        if type(nested_review) is dict and nested_review:
+            essential_validation["failure_review"] = dict(nested_review)
+        essential: dict[str, Any] = {
+            "kind": fallback.get("kind", "implementation_failure"),
+            "returncode": fallback.get("returncode", 1),
+            "validation": essential_validation,
+            "failure_review": dict(fallback.get("failure_review") or {}),
+            "truncation": {"records": essential_tail_records},
+            "deduplication": refreshed_deduplication,
+            "normalization_truncation": dict(
+                fallback.get("normalization_truncation") or {}
+            ),
+        }
+        for key in (
+            "reason",
+            "exception_type",
+            "exception_message",
+            "phase",
+        ):
+            if key in fallback:
+                essential[key] = fallback[key]
+
+        non_tail_records = [
+            {
+                key: record[key]
+                for key in (
+                    "original_bytes",
+                    "sha256",
+                    "occurrence_count",
+                )
+                if key in record
+            }
+            for record in refreshed_records
+            if int(record.get("omitted_item_count") or 0) == 0
+        ]
+        if non_tail_records:
+            record_set_bytes = canonical_json(non_tail_records).encode(
+                "utf-8"
+            )
+            digest = hashlib.sha256(record_set_bytes).hexdigest()
+            essential["truncation"]["record_set"] = {
+                "record_count": len(non_tail_records),
+                "original_bytes": len(record_set_bytes),
+                "sha256": digest,
+            }
+
+        for key in (
+            "proposal_gate",
+            "scope_adjudication",
+            "timeout_policy",
+            "checkpoint_manifest",
+        ):
+            value = fallback.get(key)
+            if type(value) is not dict:
+                continue
+            candidate = {**essential, key: dict(value)}
+            if len(canonical_json(candidate).encode("utf-8")) <= (
+                MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+            ):
+                essential[key] = dict(value)
+        if len(canonical_json(essential).encode("utf-8")) <= (
+            MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+        ):
+            return essential
+
+        # The aggregate non-tail commitment is the only optional member.  The
+        # returned envelope always retains the actionable core, all original
+        # sequence-tail commitments, and deduplication counts.
+        essential["truncation"].pop("record_set", None)
+        return essential
 
     @staticmethod
     def _implementation_context_file_stem(task: PortalTask) -> str:
@@ -38058,6 +40051,7 @@ class PortalImplementationDaemon:
         changed_files: Sequence[str] = (),
         changed_symbols: Sequence[str] = (),
         unresolved_requirements: Sequence[str] = (),
+        normalized_failure: Mapping[str, Any] | None = None,
     ) -> ImplementationDiagnosticReceipt:
         """Persist and return a reusable content-addressed retry diagnosis."""
 
@@ -38068,11 +40062,30 @@ class PortalImplementationDaemon:
                 "cannot record retry diagnosis without a compiled base context"
             )
         capsule, decision_id = parent
+        has_canonical_projection = isinstance(normalized_failure, Mapping)
+        failure_projection = (
+            dict(normalized_failure)
+            if has_canonical_projection
+            else self._normalize_implementation_failure(failure)
+        )
+        try:
+            projection_bytes = len(
+                canonical_json(failure_projection).encode("utf-8")
+            )
+        except Exception:
+            projection_bytes = MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES + 1
+        if (
+            projection_bytes > MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+            and not has_canonical_projection
+        ):
+            failure_projection = self._normalize_implementation_failure(
+                failure_projection
+            )
         receipt = ImplementationDiagnosticReceipt(
             prior_decision_id=decision_id,
             repository_id=capsule.repository_id,
             tree_id=capsule.tree_id,
-            failure=self._normalize_implementation_failure(failure),
+            failure=failure_projection,
             changed_files=tuple(changed_files),
             changed_symbols=tuple(changed_symbols),
             unresolved_requirements=tuple(unresolved_requirements),
@@ -38129,17 +40142,21 @@ class PortalImplementationDaemon:
             # Failure reporting must not replace the primary implementation
             # outcome when setup failed before a retry base was compiled.
             return None
-        validation = (
-            validation_result if isinstance(validation_result, Mapping) else {}
+        validation = validation_result if type(validation_result) is dict else {}
+        has_exception_result = (
+            type(exception_result) is dict and bool(exception_result)
+        )
+        has_timeout_result = (
+            type(timeout_result) is dict and bool(timeout_result)
         )
         changed_files: set[str] = set()
         proposal = validation.get("proposal_gate")
-        if isinstance(proposal, Mapping):
+        if type(proposal) is dict:
             for item in proposal.get("changed_paths") or ():
                 if isinstance(item, str) and item.strip():
                     changed_files.add(item.strip())
         selection = validation.get("selection")
-        if isinstance(selection, Mapping):
+        if type(selection) is dict:
             for item in selection.get("changed_files") or ():
                 if isinstance(item, str) and item.strip():
                     changed_files.add(item.strip())
@@ -38156,6 +40173,86 @@ class PortalImplementationDaemon:
                 *task.validation,
             )
         )
+        canonical_evidence = validation.get("actionable_retry_evidence")
+        if (
+            validation.get("actionable_retry_evidence_schema")
+            == ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+            and type(canonical_evidence) is dict
+        ):
+            canonical_projection = dict(canonical_evidence)
+            augmentation_source: dict[str, Any] = {
+                "kind": canonical_projection.get(
+                    "kind", "implementation_failure"
+                ),
+                "returncode": (
+                    returncode if type(returncode) is int else 1
+                ),
+            }
+            if has_exception_result:
+                for key in ("exception_type", "phase"):
+                    value = exception_result.get(key)
+                    if type(value) is str and value:
+                        augmentation_source[key] = value
+                message = exception_result.get("message")
+                if type(message) is str and message:
+                    augmentation_source["exception_message"] = message
+                command = exception_result.get("command")
+                if type(command) in (list, tuple) and all(
+                    type(item) is str for item in command
+                ):
+                    try:
+                        command = shlex.join(command)
+                    except (TypeError, ValueError):
+                        command = ""
+                if type(command) is str and command.strip():
+                    augmentation_source["failed_commands"] = [
+                        command.strip()
+                    ]
+            if has_timeout_result:
+                timeout_reason = timeout_result.get("timeout_reason")
+                if type(timeout_reason) is str and timeout_reason:
+                    augmentation_source["timeout_reason"] = timeout_reason
+                timeout_policy = timeout_result.get("timeout_policy")
+                if type(timeout_policy) is dict:
+                    augmentation_source["timeout_policy"] = dict(
+                        timeout_policy
+                    )
+                checkpoint_manifest = timeout_result.get(
+                    "checkpoint_manifest"
+                )
+                if type(checkpoint_manifest) is dict:
+                    augmentation_source["checkpoint_manifest"] = dict(
+                        checkpoint_manifest
+                    )
+            if has_exception_result or has_timeout_result:
+                augmentation = self._normalize_implementation_failure(
+                    augmentation_source
+                )
+                for key in (
+                    "exception_type",
+                    "exception_message",
+                    "phase",
+                    "failed_commands",
+                    "timeout_reason",
+                    "timeout_policy",
+                    "checkpoint_manifest",
+                ):
+                    if key in augmentation:
+                        canonical_projection[key] = augmentation[key]
+                canonical_projection["returncode"] = (
+                    returncode if type(returncode) is int else 1
+                )
+                validation["actionable_retry_evidence"] = (
+                    canonical_projection
+                )
+            return self.record_implementation_failure_context(
+                task,
+                canonical_projection,
+                changed_files=tuple(sorted(changed_files)),
+                changed_symbols=changed_symbols,
+                unresolved_requirements=unresolved,
+                normalized_failure=canonical_projection,
+            )
         failure: dict[str, Any] = {
             "kind": (
                 "validation_failure"
@@ -38198,7 +40295,7 @@ class PortalImplementationDaemon:
         checkpoint_manifest = self._implementation_checkpoint_manifest(task)
         if checkpoint_manifest["file_count"]:
             failure["checkpoint_manifest"] = checkpoint_manifest
-        if isinstance(exception_result, Mapping):
+        if has_exception_result:
             failure.update(
                 {
                     key: exception_result[key]
@@ -38206,7 +40303,26 @@ class PortalImplementationDaemon:
                     if exception_result.get(key)
                 }
             )
-        if isinstance(timeout_result, Mapping):
+            exception_message = str(
+                exception_result.get("message") or ""
+            ).strip()
+            if exception_message:
+                failure["exception_message"] = exception_message
+            failed_command = exception_result.get("command")
+            if isinstance(failed_command, Sequence) and not isinstance(
+                failed_command,
+                (str, bytes, bytearray),
+            ):
+                try:
+                    failed_command = shlex.join(
+                        str(item) for item in failed_command
+                    )
+                except (TypeError, ValueError):
+                    failed_command = ""
+            failed_command = str(failed_command or "").strip()
+            if failed_command:
+                failure["failed_commands"] = [failed_command]
+        if has_timeout_result:
             timeout_reason = str(
                 timeout_result.get("timeout_reason") or ""
             ).strip()
@@ -38215,12 +40331,74 @@ class PortalImplementationDaemon:
             timeout_policy = timeout_result.get("timeout_policy")
             if isinstance(timeout_policy, Mapping):
                 failure["timeout_policy"] = dict(timeout_policy)
+        normalized_failure: dict[str, Any] | None = None
+        if (
+            validation.get("actionable_retry_evidence_schema")
+            == ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+            and not has_exception_result
+            and not has_timeout_result
+        ):
+            canonical_validation = {
+                key: validation[key]
+                for key in (
+                    "attempted",
+                    "passed",
+                    "returncode",
+                    "reason",
+                    "error",
+                    "failed_command",
+                    "failed_commands",
+                    "failed_tests",
+                    "failed_test_paths",
+                    "exception_types",
+                    "exception_message",
+                    "failure_head",
+                    "failure_review",
+                )
+                if key in validation
+            }
+            normalized_failure = {
+                "kind": (
+                    "validation_failure"
+                    if validation.get("attempted")
+                    else "implementation_failure"
+                ),
+                "returncode": int(returncode),
+                "validation": canonical_validation,
+            }
+            compact_review = validation.get("failure_review")
+            if isinstance(compact_review, Mapping):
+                normalized_failure["failure_review"] = dict(
+                    compact_review
+                )
+            addendum = validation.get("next_attempt_prompt_addendum")
+            if isinstance(addendum, str) and addendum:
+                normalized_failure["next_attempt_prompt_addendum"] = (
+                    addendum
+                )
+            for source_key, target_key in (
+                ("failure_evidence_truncation", "truncation"),
+                ("failure_evidence_deduplication", "deduplication"),
+            ):
+                compact_value = validation.get(source_key)
+                if isinstance(compact_value, Mapping):
+                    normalized_failure[target_key] = dict(compact_value)
+            for key in (
+                "proposal_gate",
+                "scope_adjudication",
+                "timeout_policy",
+                "checkpoint_manifest",
+            ):
+                compact_value = validation.get(key)
+                if isinstance(compact_value, Mapping):
+                    normalized_failure[key] = dict(compact_value)
         return self.record_implementation_failure_context(
             task,
             failure,
             changed_files=tuple(sorted(changed_files)),
             changed_symbols=changed_symbols,
             unresolved_requirements=unresolved,
+            normalized_failure=normalized_failure,
         )
 
     def _compile_implementation_retry_context(
@@ -38835,7 +41013,11 @@ class PortalImplementationDaemon:
                     addendum = str(
                         review.get("next_attempt_prompt_addendum") or ""
                     ).strip()
-            if addendum:
+            # A retry capsule already carries the diagnostic receipt (and its
+            # compact addendum) as evidence.  Appending prose after its JSON
+            # would both duplicate it and turn the capsule into an invalid
+            # serialized context document.
+            if addendum and self._last_implementation_retry is None:
                 candidate = (
                     f"{rendered.rstrip()}\n\n"
                     "## Prior failure review (deterministic)\n"
@@ -38863,7 +41045,7 @@ class PortalImplementationDaemon:
             seed_guidance = str(
                 self._implementation_seed_failure_guidance.get(key) or ""
             ).strip()
-            if seed_guidance:
+            if seed_guidance and self._last_implementation_retry is None:
                 rendered = (
                     f"{rendered.rstrip()}\n\n"
                     "## Prior attempt seed recovery\n"

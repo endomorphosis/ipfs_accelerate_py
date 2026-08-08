@@ -11494,9 +11494,11 @@ def test_implementation_daemon_persists_bounded_validation_failure_evidence(
                         "stage": "targeted",
                         "returncode": 1,
                         "output": (
-                            "E   AssertionError: stale fixture\n"
+                            "E   AssertionError: "
+                            "OPAQUE_ASSERTION_PRIVATE_SENTINEL\n"
                             "FAILED "
-                            "tests/test_runtime.py::test_runtime_contract "
+                            "tests/test_runtime.py::test_runtime_contract"
+                            "[OPAQUE_PARAM_PRIVATE_SENTINEL] "
                             "- AssertionError\n"
                         ),
                     }
@@ -11526,15 +11528,21 @@ def test_implementation_daemon_persists_bounded_validation_failure_evidence(
     assert result["passed"] is False
     assert result["error"] == "validation_command_failed"
     assert result["reason"] == "declared_validation_failed"
+    parameter_digest = hashlib.sha256(
+        b"OPAQUE_PARAM_PRIVATE_SENTINEL"
+    ).hexdigest()
     assert result["failed_tests"] == [
         "tests/test_runtime.py::test_runtime_contract"
+        f"[param-sha256={parameter_digest}]"
     ]
     assert result["failed_test_paths"] == ["tests/test_runtime.py"]
     assert result["validation_impact_paths"] == ["tests/test_runtime.py"]
     assert result["exception_types"] == ["AssertionError"]
-    assert "stale fixture" in result["failure_head"]
+    assert "failure-head-omitted" in result["failure_head"]
+    assert "OPAQUE_ASSERTION_PRIVATE_SENTINEL" not in json.dumps(result)
+    assert "OPAQUE_PARAM_PRIVATE_SENTINEL" not in json.dumps(result)
     assert "output" not in result["results"][0]
-    assert "FAILED tests/test_runtime.py::test_runtime_contract" in (
+    assert "OPAQUE_PARAM_PRIVATE_SENTINEL" in (
         log_path.read_text(encoding="utf-8")
     )
 
@@ -19143,6 +19151,608 @@ def test_validation_retry_budget_uses_safe_validation_when_failed_command_is_mal
     assert "## AUTO-002 Resolve validation retry-budget failure for AUTO-001" in todo_text
     assert f"- Validation: test -f {discovery_dir}" in todo_text
     assert malformed_command in next(discovery_dir.glob("*retry-budget.md")).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("pre_reviewed", [True, False])
+@pytest.mark.parametrize("use_ephemeral_worktree", [True, False])
+def test_validation_retry_event_preserves_compact_subprocess_counterexample(
+    tmp_path,
+    monkeypatch,
+    pre_reviewed,
+    use_ephemeral_worktree,
+):
+    isolated_home = tmp_path / "home"
+    isolated_home.mkdir()
+    for name in ("config", "state", "cache"):
+        path = tmp_path / f"xdg-{name}"
+        path.mkdir()
+        monkeypatch.setenv(f"XDG_{name.upper()}_HOME", str(path))
+    monkeypatch.setenv("HOME", str(isolated_home))
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=use_ephemeral_worktree,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="AUTO-001",
+        title="Preserve retry evidence",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["result.py"],
+        validation=["pytest test_result.py -q"],
+    )
+    daemon._register_task_identities([task])
+    baseline = _git(repo, "rev-parse", "HEAD")
+    seed_calls = []
+
+    def seed(path, branch, *, task=None):
+        seed_calls.append((path, branch))
+        path.mkdir(parents=True)
+        (path / "result.py").write_text("x = 1\n", encoding="utf-8")
+        return baseline
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_implementation_patch",
+        lambda *args, **kwargs: SimpleNamespace(
+            accepted=True,
+            proposal=SimpleNamespace(candidate_diff=()),
+        ),
+    )
+    secret = "PRIVATE-WRAPPER-SENTINEL\n" * 20_000
+    review = {
+        "receipt_id": "failure-review:real",
+        "decision": "guide_rescue",
+        "guidance_markdown": secret,
+        "next_attempt_prompt_addendum": secret,
+    }
+    validation = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 13,
+        "reason": "declared_validation_failed",
+        "failed_command": "pytest test_result.py -q",
+        "failed_commands": [
+            "pytest test_result.py -q",
+            "pytest test_result.py --token OPAQUE_COMMAND_SECRET",
+        ]
+        + [f"pytest test_result_{index}.py -q" for index in range(298)],
+        "failed_tests": [
+            f"test_result.py::test_result_{index}" for index in range(300)
+        ],
+        "failed_test_paths": [
+            f"test_result_{index}.py" for index in range(300)
+        ],
+        "exception_types": ["AssertionError"],
+        "exception_message": "expected result",
+        "failure_head": "E AssertionError: expected result",
+        "output": secret,
+        "timeout_policy": {
+            "source": "task_metadata",
+            "configured_timeout_seconds": 7200,
+        },
+        "checkpoint_manifest": {
+            "schema": "checkpoint@1",
+            "manifest_cid": "checkpoint:real-wrapper",
+            "file_count": 2,
+            "total_size_bytes": 99,
+        },
+        "results": [
+            {
+                "command": "pytest test_result.py -q",
+                "returncode": 13,
+                "output": secret,
+            }
+        ]
+        + [
+            {
+                "command": f"pytest {'x' * 4_096} {index}",
+                "returncode": 13,
+            }
+            for index in range(255)
+        ],
+        "provider_detail": "untrusted-provider-detail" * 50_000,
+    }
+    if pre_reviewed:
+        validation["failure_review"] = review
+        validation["next_attempt_prompt_addendum"] = secret
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *args, **kwargs: dict(validation),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_failed_validation_worktree",
+        lambda *args, **kwargs: {
+            "commit_result": {"committed": False},
+            "cleanup_result": {"cleaned": True, "reason": "test"},
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    event_text = daemon.events_path.read_text(encoding="utf-8")
+    events = [json.loads(line) for line in event_text.splitlines()]
+    finished = [
+        event for event in events if event["type"] == "implementation_finished"
+    ][-1]
+    diagnostic = json.loads(
+        next(
+            daemon.implementation_log_dir.glob("*diagnostic-receipt.json")
+        ).read_text(encoding="utf-8")
+    )
+    retry = json.loads(daemon._build_implementation_prompt(task, 2))
+    retry_text = json.dumps(retry, sort_keys=True)
+
+    assert result["returncode"] == 13
+    assert bool(seed_calls) is use_ephemeral_worktree
+    assert ("worktree_path" in result) is use_ephemeral_worktree
+    assert any(
+        event["type"] == "implementation_failure_reviewed"
+        for event in events
+    ) is (not pre_reviewed)
+    for observed in (
+        finished["validation_result"],
+        diagnostic["failure"]["validation"],
+    ):
+        assert observed["attempted"] is True
+        assert observed["passed"] is False
+        assert observed["returncode"] == 13
+        assert observed["reason"] == "declared_validation_failed"
+        assert observed["failed_command"] == "pytest test_result.py -q"
+        assert observed["failed_tests"]
+        assert observed["failed_test_paths"]
+        assert observed["exception_types"] == ["AssertionError"]
+        assert observed["exception_message"] == "expected result"
+        assert observed["failure_head"].startswith(
+            "[failure-head-omitted original_bytes=33 sha256="
+        )
+        assert hashlib.sha256(
+            b"E AssertionError: expected result"
+        ).hexdigest() in observed["failure_head"]
+        assert "exception_type=AssertionError" in observed["failure_head"]
+    receipt_id = result["diagnostic_receipt_id"]
+    assert receipt_id == finished["diagnostic_receipt_id"]
+    assert receipt_id == diagnostic["receipt_id"]
+    assert receipt_id == retry["diagnostic_receipt_id"]
+    assert not any(
+        event["type"] == "implementation_exception" for event in events
+    )
+    compact_results = finished["validation_result"]["results"]
+    assert compact_results
+    assert all("output" not in item for item in compact_results)
+    assert len(json.dumps(compact_results).encode("utf-8")) < 8 * 1024
+    assert "provider_detail" not in finished["validation_result"]
+    assert len(json.dumps(finished).encode("utf-8")) < 262_144
+    assert finished["validation_result"]["timeout_policy"]["source"] == (
+        "task_metadata"
+    )
+    assert finished["validation_result"]["checkpoint_manifest"][
+        "manifest_cid"
+    ] == "checkpoint:real-wrapper"
+    diagnostic_validation = diagnostic["failure"]["validation"]
+    canonical_evidence = finished["validation_result"][
+        "actionable_retry_evidence"
+    ]
+    assert finished["validation_result"][
+        "actionable_retry_evidence_schema"
+    ] == "ptr/actionable-retry-evidence@1"
+    assert len(
+        json.dumps(
+            canonical_evidence,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ) <= 16 * 1024
+    assert diagnostic["failure"] == canonical_evidence
+    for key in (
+        "failed_commands",
+        "failed_tests",
+        "failed_test_paths",
+        "exception_types",
+    ):
+        assert finished["validation_result"][key] == diagnostic_validation[key]
+    assert finished["validation_result"][
+        "failure_evidence_truncation"
+    ] == diagnostic["failure"]["truncation"]
+    diagnostic_wire = json.dumps(
+        diagnostic,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert diagnostic_wire in {
+        evidence["summary"]
+        for evidence in retry["delta_capsule"]["evidence"]
+        if evidence.get("kind") == "implementation-failure"
+    }
+    combined = event_text + json.dumps(diagnostic) + retry_text
+    assert "implementation_setup" not in combined
+    assert '"reason": "not_run"' not in combined
+    assert "PRIVATE-WRAPPER-SENTINEL" not in combined
+    assert "OPAQUE_COMMAND_SECRET" not in combined
+    assert "--token=<redacted sha256=" in combined
+    for needle in (
+        "pytest test_result.py -q",
+        "test_result.py::test_result_0",
+        "AssertionError",
+        "expected result",
+    ):
+        assert needle in retry_text
+
+    exception_diagnostic = daemon._record_failed_attempt_retry_context(
+        task,
+        returncode=1,
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 1,
+            "reason": "provider_exception",
+        },
+        exception_result={
+            "exception_type": "RuntimeError",
+            "message": "provider command failed",
+            "phase": "implementing",
+            "command": ["python", "-m", "provider", "--run"],
+        },
+    )
+    assert exception_diagnostic is not None
+    assert exception_diagnostic.failure["exception_type"] == "RuntimeError"
+    assert exception_diagnostic.failure["exception_message"] == (
+        "provider command failed"
+    )
+    assert exception_diagnostic.failure["phase"] == "implementing"
+    assert exception_diagnostic.failure["failed_commands"] == [
+        "python -m provider --run"
+    ]
+
+
+@pytest.mark.parametrize("use_ephemeral_worktree", [False, True])
+@pytest.mark.parametrize("terminal_kind", ["timeout", "exception"])
+def test_implementation_terminal_events_reuse_private_safe_retry_evidence(
+    tmp_path,
+    monkeypatch,
+    terminal_kind,
+    use_ephemeral_worktree,
+):
+    isolated_home = tmp_path / "home"
+    isolated_home.mkdir()
+    monkeypatch.setenv("HOME", str(isolated_home))
+    for name in ("config", "state", "cache"):
+        path = tmp_path / f"xdg-{name}"
+        path.mkdir()
+        monkeypatch.setenv(f"XDG_{name.upper()}_HOME", str(path))
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=use_ephemeral_worktree,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="AUTO-TERMINAL",
+        title="Keep terminal retry evidence private",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["result.py"],
+        validation=["pytest test_result.py -q"],
+    )
+    daemon._register_task_identities([task])
+    baseline = _git(repo, "rev-parse", "HEAD")
+    seed_calls = []
+
+    def seed(path, branch, *, task=None):
+        seed_calls.append((path, branch))
+        path.mkdir(parents=True)
+        (path / "result.py").write_text("x = 1\n", encoding="utf-8")
+        return baseline
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_implementation_patch",
+        lambda *args, **kwargs: SimpleNamespace(
+            accepted=True,
+            proposal=SimpleNamespace(candidate_diff=()),
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_restore_and_verify_post_validation_candidate",
+        lambda *args, validation_result, **kwargs: dict(validation_result),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: None,
+    )
+
+    validation_secret = "PRIVATE_TERMINAL_VALIDATION_OUTPUT"
+    failed_commands = [
+        f"pytest test_result_{index}.py -q" for index in range(300)
+    ]
+    failed_validation = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 13,
+        "reason": "declared_validation_failed",
+        "failed_command": failed_commands[0],
+        "failed_commands": failed_commands,
+        "failed_tests": [
+            f"test_result.py::test_result_{index}" for index in range(300)
+        ],
+        "failed_test_paths": [
+            f"test_result_{index}.py" for index in range(300)
+        ],
+        "exception_types": ["AssertionError"],
+        "exception_message": "expected result",
+        "failure_head": "E AssertionError: expected result",
+        "output": validation_secret,
+        "failure_review": {
+            "receipt_id": "failure-review:terminal",
+            "decision": "guide_rescue",
+            "accepted": False,
+        },
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *args, **kwargs: dict(failed_validation),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_timed_out_worktree",
+        lambda *args, **kwargs: {
+            "commit_result": {"committed": False},
+            "cleanup_result": {"cleaned": True, "reason": "test"},
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree",
+        lambda *args, **kwargs: {"cleaned": True, "reason": "test"},
+    )
+
+    checkpoint_secret = "TOKEN_OPAQUE_CHECKPOINT_SECRET"
+    exception_secret = "OPAQUE_EXCEPTION_SECRET"
+    if terminal_kind == "timeout":
+
+        def terminal_runner(command, **kwargs):
+            checkpoint_dir = Path(
+                kwargs["env"][
+                    implementation_daemon_module.IMPLEMENTATION_CHECKPOINT_DIR_ENV
+                ]
+            )
+            (checkpoint_dir / checkpoint_secret).write_text(
+                "private checkpoint\n", encoding="utf-8"
+            )
+            timeout = subprocess.TimeoutExpired(command, timeout=1)
+            timeout.timeout_reason = "hard_timeout"
+            timeout.elapsed_seconds = 1.25
+            timeout.progress_events = 1
+            raise timeout
+
+        monkeypatch.setattr(
+            daemon,
+            "_finalize_implementation_protected_path_fence",
+            lambda **kwargs: {},
+        )
+    else:
+        def terminal_runner(command, **kwargs):
+            return subprocess.CompletedProcess(command, 0)
+
+        finalize_calls = 0
+
+        def fail_once(**kwargs):
+            nonlocal finalize_calls
+            finalize_calls += 1
+            if finalize_calls == 1:
+                raise RuntimeError(
+                    "provider failed --token " + exception_secret
+                )
+            return {}
+
+        monkeypatch.setattr(
+            daemon,
+            "_finalize_implementation_protected_path_fence",
+            fail_once,
+        )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        terminal_runner,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    finished = [
+        event for event in events if event["type"] == "implementation_finished"
+    ][-1]
+    diagnostic = json.loads(
+        next(
+            daemon.implementation_log_dir.glob("*diagnostic-receipt.json")
+        ).read_text(encoding="utf-8")
+    )
+    retry = json.loads(daemon._build_implementation_prompt(task, 2))
+    diagnostic_wire = json.dumps(
+        diagnostic, sort_keys=True, separators=(",", ":")
+    )
+    retry_text = json.dumps(retry, sort_keys=True)
+    combined = (
+        daemon.events_path.read_text(encoding="utf-8")
+        + diagnostic_wire
+        + retry_text
+    )
+
+    assert result["actionable_retry_evidence"] == diagnostic["failure"]
+    assert finished["actionable_retry_evidence"] == diagnostic["failure"]
+    assert finished["validation_result"][
+        "actionable_retry_evidence"
+    ] == diagnostic["failure"]
+    assert result["diagnostic_receipt_id"] == diagnostic["receipt_id"]
+    assert result["diagnostic_receipt_id"] == retry["diagnostic_receipt_id"]
+    assert diagnostic_wire in {
+        evidence["summary"]
+        for evidence in retry["delta_capsule"]["evidence"]
+        if evidence.get("kind") == "implementation-failure"
+    }
+    assert validation_secret not in combined
+    assert checkpoint_secret not in combined
+    assert exception_secret not in combined
+    assert '"reason": "not_run"' not in combined
+    assert len(json.dumps(finished).encode("utf-8")) < 262_144
+    assert bool(seed_calls) is use_ephemeral_worktree
+    terminal_events = [
+        event
+        for event in events
+        if event["type"]
+        in {
+            "implementation_timeout",
+            "implementation_timeout_salvaged",
+            "implementation_timeout_salvage_failed",
+            "implementation_exception",
+        }
+    ]
+    evidence_events = [finished, *terminal_events]
+    assert all(
+        event["actionable_retry_evidence"] == diagnostic["failure"]
+        for event in evidence_events
+    )
+
+    if terminal_kind == "timeout":
+        assert result["returncode"] == 124
+        assert result["validation_result"]["reason"] == (
+            "declared_validation_failed"
+            if use_ephemeral_worktree
+            else "implementation_timeout"
+        )
+        manifest = result["timeout_result"]["checkpoint_manifest"]
+        assert manifest["file_count"] == 1
+        assert "directory" not in manifest
+        assert "files" not in manifest
+        assert result["timeout_result"]["timeout_reason"] == "hard_timeout"
+        assert all(
+            "directory" not in event["checkpoint_manifest"]
+            and "files" not in event["checkpoint_manifest"]
+            for event in terminal_events
+        )
+    else:
+        assert result["returncode"] == 1
+        exception_events = [
+            event
+            for event in events
+            if event["type"] == "implementation_exception"
+        ]
+        assert len(exception_events) == 1
+        assert exception_events[0]["actionable_retry_evidence"] == (
+            diagnostic["failure"]
+        )
+        assert exception_events[0]["message"].startswith(
+            "provider failed --token=<redacted sha256="
+        )
+        base_tail = json.dumps(
+            failed_commands[3:], sort_keys=True, separators=(",", ":")
+        ).encode()
+        assert any(
+            record.get("omitted_item_count") == 297
+            and record.get("original_bytes") == len(base_tail)
+            and record.get("sha256")
+            == hashlib.sha256(base_tail).hexdigest()
+            for record in diagnostic["failure"]["truncation"]["records"]
+        )
 
 
 def test_implementation_supervisor_refines_objective_goals_before_generating_todos(tmp_path):
