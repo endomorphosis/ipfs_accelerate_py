@@ -56,6 +56,16 @@ ARTIFACT_FILENAMES: Final = (
 )
 MANIFEST_FILENAME: Final = "convergence_manifest.json"
 DEFAULT_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
+PROMPT_V3_TASKBOARD_RELATIVE_PATH: Final = Path(
+    "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+)
+PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME: Final = (
+    "provider_attempt_daemon_reload_receipt.json"
+)
+PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    + PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME
+)
 DEFAULT_ARTIFACT_ROOT: Final = (
     DEFAULT_REPOSITORY_ROOT
     / "data"
@@ -139,6 +149,15 @@ _POST_WAVE3_DISPOSITION: Final = {
     "provider_policy_broadening_authorized": False,
     "attempt_counter_mutation_authorized": False,
 }
+_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID: Final = "ASE3-022"
+_PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES: Final = (
+    "ASE3-006",
+    "ASE3-018",
+    "ASE3-019",
+)
+_PROVIDER_ATTEMPT_RELOAD_GATE_BLOCKED_REASON: Final = (
+    "provider-attempt daemon reload boundary not yet accepted"
+)
 
 
 def _reject_duplicate_keys(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
@@ -1057,6 +1076,105 @@ class ConvergenceValidationReport:
         }
 
 
+def _validate_provider_attempt_reload_gate(
+    *,
+    taskboard_path: Path,
+    artifact_root: Path,
+) -> list[str]:
+    """Validate the initial noncanonical reload gate.
+
+    ASE3-022 may transition to ``completed`` only after this module gains a
+    strict validator for ``provider_attempt_daemon_reload_receipt.json`` and
+    the convergence manifest binds that receipt's digest.  Until both changes
+    land atomically with the protected taskboard transition, the only accepted
+    state is the exact blocked, review-only gate declared below.
+    """
+
+    errors: list[str] = []
+    prefix = "provider_attempt_reload_gate"
+    receipt_path = artifact_root / PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME
+    try:
+        receipt_path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.append(f"{prefix}.receipt: unable to inspect reserved path: {exc}")
+    else:
+        errors.append(
+            f"{prefix}.receipt: present without a strict validator and "
+            "convergence-manifest binding"
+        )
+
+    try:
+        from ..todo_daemon.implementation_daemon import parse_task_file
+
+        tasks = parse_task_file(taskboard_path, task_header_prefix="## ASE3-")
+    except (ImportError, OSError, ValueError) as exc:
+        errors.append(f"{prefix}.taskboard: {exc}")
+        return errors
+
+    reload_gates = [
+        task for task in tasks if task.task_id == _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID
+    ]
+    if len(reload_gates) != 1:
+        errors.append(
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}: expected exactly one task"
+        )
+        return errors
+    gate = reload_gates[0]
+    if gate.status == "completed":
+        errors.append(
+            f"{prefix}.{gate.task_id}.status: completion requires a strict reload "
+            "receipt validator and convergence-manifest binding"
+        )
+    if gate.status != "blocked":
+        errors.append(f"{prefix}.{gate.task_id}.status: expected blocked")
+    if gate.completion != "manual":
+        errors.append(f"{prefix}.{gate.task_id}.completion: expected manual")
+
+    expected_metadata = {
+        "is schedulable": "false",
+        "review only": "true",
+        "canonical board task": "false",
+        "blocked reason": _PROVIDER_ATTEMPT_RELOAD_GATE_BLOCKED_REASON,
+    }
+    for field, expected in expected_metadata.items():
+        actual = gate.metadata.get(field)
+        if actual != expected:
+            errors.append(
+                f"{prefix}.{gate.task_id}.{field.replace(' ', '_')}: "
+                f"expected {expected!r}"
+            )
+    if tuple(gate.depends_on) != _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES:
+        errors.append(
+            f"{prefix}.{gate.task_id}.depends_on: expected exactly "
+            + ",".join(_PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES)
+        )
+    if "goal id" in gate.metadata:
+        errors.append(f"{prefix}.{gate.task_id}.goal_id: must be absent")
+    if tuple(gate.outputs) != (
+        PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
+    ):
+        errors.append(
+            f"{prefix}.{gate.task_id}.outputs: expected only "
+            f"{PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
+        )
+    if gate.metadata.get("predicted files") != (
+        PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH
+    ):
+        errors.append(
+            f"{prefix}.{gate.task_id}.predicted_files: expected only "
+            f"{PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
+        )
+
+    refill_tasks = [task for task in tasks if task.task_id == "ASE3-021"]
+    if len(refill_tasks) != 1:
+        errors.append(f"{prefix}.ASE3-021: expected exactly one task")
+    elif _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID not in refill_tasks[0].depends_on:
+        errors.append(f"{prefix}.ASE3-021.depends_on: missing ASE3-022")
+    return errors
+
+
 def _validate_repository_binding(
     *,
     repo_root: Path,
@@ -1297,6 +1415,7 @@ def validate_convergence_artifacts(
     *,
     repo_root: Path | str | None = DEFAULT_REPOSITORY_ROOT,
     check_repository: bool = True,
+    taskboard_path: Path | str | None = None,
 ) -> ConvergenceValidationReport:
     """Validate the entire ASE3-000 packet without trusting historical state."""
 
@@ -1335,6 +1454,18 @@ def validate_convergence_artifacts(
     errors.extend(worktree.validate(baseline))
     errors.extend(post_wave3.validate())
     errors.extend(manifest.validate(baseline))
+    board_path = (
+        Path(taskboard_path)
+        if taskboard_path is not None
+        else Path(repo_root or DEFAULT_REPOSITORY_ROOT)
+        / PROMPT_V3_TASKBOARD_RELATIVE_PATH
+    )
+    errors.extend(
+        _validate_provider_attempt_reload_gate(
+            taskboard_path=board_path,
+            artifact_root=root,
+        )
+    )
 
     components = manifest.payload.get("components", {})
     if isinstance(components, Mapping):
@@ -1383,6 +1514,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Git worktree used for live object/population checks",
     )
     parser.add_argument(
+        "--taskboard-path",
+        type=Path,
+        default=None,
+        help="protected v3 taskboard; defaults below --repo-root",
+    )
+    parser.add_argument(
         "--no-repository-check",
         action="store_true",
         help="validate packet structure and digests without live Git checks",
@@ -1403,6 +1540,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.artifacts_root,
             repo_root=args.repo_root,
             check_repository=not args.no_repository_check,
+            taskboard_path=args.taskboard_path,
         )
     print(json.dumps(report.to_dict(), sort_keys=True))
     return 0 if report.valid else 1

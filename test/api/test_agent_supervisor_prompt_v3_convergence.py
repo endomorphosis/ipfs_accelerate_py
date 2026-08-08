@@ -19,6 +19,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     DEFAULT_ARTIFACT_ROOT,
     MANIFEST_FILENAME,
     POST_WAVE3_RESIDUAL_FILENAME,
+    PROMPT_V3_TASKBOARD_RELATIVE_PATH,
+    PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME,
+    PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
     CurrentMainBaseline,
     RescueDispositionReport,
     validate_convergence_artifacts,
@@ -30,6 +33,7 @@ CONFIG_PATH = (
     / "config"
     / "agent_supervisor_prompt_only_self_improvement_v3_scheduler.json"
 )
+TASKBOARD_PATH = REPO_ROOT / PROMPT_V3_TASKBOARD_RELATIVE_PATH
 
 
 def _load(path: Path) -> dict[str, object]:
@@ -202,6 +206,152 @@ def test_rebound_post_wave3_authority_and_provider_tampering_fails_closed(
 
     assert report.valid is False
     assert any(error_fragment in error for error in report.errors)
+
+
+def test_reload_gate_rejects_a_removed_blocked_reason(tmp_path: Path) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = (
+        "- Blocked reason: provider-attempt daemon reload boundary not yet accepted\n"
+    )
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, "", 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-022.blocked_reason: expected 'provider-attempt daemon reload "
+        "boundary not yet accepted'" in error
+        for error in report.errors
+    )
+
+
+def test_reload_gate_rejects_a_removed_ase3_021_dependency(tmp_path: Path) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = "- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019, ASE3-022\n"
+    replacement = "- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019\n"
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert "provider_attempt_reload_gate.ASE3-021.depends_on: missing ASE3-022" in (
+        report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "error_fragment"),
+    (
+        (
+            "goal",
+            "- Goal id: ASE3-G055\n- Outputs: ",
+            "ASE3-022.goal_id: must be absent",
+        ),
+        (
+            "outputs",
+            "- Outputs: data/forged-reload-receipt.json",
+            "ASE3-022.outputs: expected only",
+        ),
+        (
+            "predicted",
+            "- Predicted files: data/forged-reload-receipt.json",
+            "ASE3-022.predicted_files: expected only",
+        ),
+    ),
+)
+def test_reload_gate_rejects_goal_enrollment_and_receipt_redirects(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+    error_fragment: str,
+) -> None:
+    taskboard_path = tmp_path / f"prompt-v3-{field}.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    if field == "goal":
+        needle = f"- Outputs: {PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
+        replacement += PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH
+    elif field == "outputs":
+        needle = f"- Outputs: {PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
+    else:
+        needle = (
+            "- Predicted files: "
+            f"{PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
+        )
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
+def test_reload_gate_completion_requires_future_receipt_authority(
+    tmp_path: Path,
+) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = (
+        "## ASE3-022 Accept the provider-attempt daemon reload boundary\n\n"
+        "- Status: blocked\n"
+    )
+    replacement = (
+        "## ASE3-022 Accept the provider-attempt daemon reload boundary\n\n"
+        "- Status: completed\n"
+    )
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-022.status: completion requires a strict reload receipt validator "
+        "and convergence-manifest binding" in error
+        for error in report.errors
+    )
+
+
+def test_reload_receipt_path_is_reserved_until_strictly_validated(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    receipt = root / PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME
+    receipt.symlink_to(tmp_path / "missing-reload-receipt-target.json")
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(
+        "receipt: present without a strict validator and convergence-manifest binding"
+        in error
+        for error in report.errors
+    )
 
 
 def test_duplicate_json_keys_fail_closed(tmp_path: Path) -> None:
@@ -572,6 +722,9 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
         capture_output=True,
         text=True,
     )
+    portable_taskboard_path = portable / PROMPT_V3_TASKBOARD_RELATIVE_PATH
+    portable_taskboard_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(TASKBOARD_PATH, portable_taskboard_path)
     residual = _load(root / POST_WAVE3_RESIDUAL_FILENAME)
     residual_repository = residual["repository"]
     assert isinstance(residual_repository, dict)
@@ -625,6 +778,7 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
         root,
         repo_root=portable,
         check_repository=True,
+        taskboard_path=portable_taskboard_path,
     )
 
     assert report.valid is True, report.errors

@@ -326,7 +326,8 @@ Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
 Wave 3b (parallel): ASE3-006 adaptive scheduler continuation
                     ASE3-018 canonical context/resolver hardening
                     ASE3-019 signed authority/provider-attempt hardening
-Wave 3c:           ASE3-021 durable production refill wiring
+Wave 3c:           ASE3-022 operator-owned daemon reload boundary
+                   ASE3-021 durable production refill wiring
 Wave 3d:           ASE3-020 transactional run truth and crash-safe saga
 Wave 4:            ASE3-008 progress watchdog/Doctor/recovery
 Wave 5:            ASE3-009 Python facade and package exports
@@ -340,11 +341,13 @@ Wave 9:            ASE3-014 canonical materialization and staged cutover
 Wave 3b starts only after the configured primary provider has a verified,
 non-expired local authentication record. Its ready set is deliberately
 three-way sharded: ASE3-006 to lane 0, ASE3-019 to lane 1, and ASE3-018 to
-lane 2. After ASE3-019 is accepted, the bootstrap process tree must be fenced
-and relaunched in the same namespace before ASE3-021 starts so the hardened
-provider-attempt daemon code is loaded. The legacy objective and codebase
-refill flags remain disabled; ASE3-021 owns the later scoped-v3 adoption and
-refill transition.
+lane 2. Once ASE3-006, ASE3-018, and ASE3-019 are all accepted, the bootstrap
+process tree must be fenced. ASE3-022 keeps ASE3-021
+machine-blocked while the old generation is stopped, receipted, and committed;
+the same namespace is then relaunched from that completion commit so the
+hardened provider-attempt daemon code is loaded. The legacy objective and
+codebase refill flags remain disabled; ASE3-021 owns the later scoped-v3
+adoption and refill transition.
 
 ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and
