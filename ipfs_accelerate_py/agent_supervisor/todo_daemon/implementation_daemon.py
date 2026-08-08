@@ -13898,7 +13898,7 @@ class PortalImplementationDaemon:
             canonical_task_cid = self._canonical_ref(task)
             self.task_queue.defer(
                 canonical_task_cid,
-                30,
+                0,
                 reason="implementation_protected_path_maintenance_active",
             )
             self.task_queue.save()
@@ -13907,7 +13907,11 @@ class PortalImplementationDaemon:
                 "reason": "implementation_protected_path_maintenance_active",
                 "task_id": task.task_id,
                 "attempt": attempt,
-                "backoff_seconds": 30,
+                # The shared lease is a watched source and the event runtime
+                # has a bounded missed-notification reconciliation timeout.
+                # Do not add an independent timer here: a fixed cooldown can
+                # survive a just-released peer lease and phase-lock dispatch.
+                "backoff_seconds": 0,
                 "maintenance_owner_pid": int(
                     maintenance_claim.get("pid") or 0
                 ),

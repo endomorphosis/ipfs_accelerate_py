@@ -940,10 +940,77 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     assert clock() == pytest.approx(30.0)
 
 
-def test_shared_protected_maintenance_release_is_a_runtime_wake(
+def test_shared_protected_maintenance_release_wakes_zero_backoff_selection(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    daemon = _drained_daemon(tmp_path)
+    board = tmp_path / "tasks.todo.md"
+    board.write_text(
+        """# Retry board
+
+## PORTAL-001 Retry after transient maintenance
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/retry.py
+- Validation:
+- Acceptance: The ready task is selected immediately after the lease releases.
+""",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "runtime" / "state.json",
+        strategy_path=tmp_path / "runtime" / "strategy.json",
+        events_path=tmp_path / "runtime" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_pool_enabled=False,
+        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
+        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
+    )
+    first = daemon.run_once()
+    assert first["active_task_id"] == "PORTAL-001"
+    state = PortalTaskState.load(daemon.state_path)
+    state.active_task_id = ""
+    state.active_task_key = ""
+    state.active_task_cid = ""
+    state.implementation_in_progress = False
+    state.save(daemon.state_path)
+    daemon.task_queue.defer(
+        "PORTAL-001",
+        0,
+        reason="implementation_protected_path_maintenance_active",
+    )
+    daemon.task_queue.save()
+    assert daemon.task_queue.is_cooled_down("PORTAL-001") is False
+
+    def unexpected_provider_prompt(*_args: object, **_kwargs: object) -> str:
+        pytest.fail("lease release must select before any provider prompt")
+
+    selected_task_ids: list[str] = []
+
+    def capture_selection(
+        task: object,
+        _state: object,
+    ) -> dict[str, object]:
+        selected_task_ids.append(str(getattr(task, "task_id", "")))
+        return {
+            "skipped": True,
+            "reason": "test_selection_capture",
+            "task_id": selected_task_ids[-1],
+            "provider_dispatched": False,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        unexpected_provider_prompt,
+    )
+    monkeypatch.setattr(daemon, "_run_implementation", capture_selection)
+    daemon.implement = True
     lease_paths = daemon._runtime_source_paths()["lease"]
     maintenance_lock = daemon._protected_path_maintenance_lock_path()
     clock = LogicalClock()
@@ -954,21 +1021,34 @@ def test_shared_protected_maintenance_release_is_a_runtime_wake(
         watcher=watcher,
         clock=clock,
     )
+    daemon._runtime_wake_coordinator = coordinator
     try:
         maintenance_lock.parent.mkdir(parents=True, exist_ok=True)
         maintenance_lock.write_text("active\n", encoding="utf-8")
         watcher.notify()
         acquired = coordinator.wait()
         coordinator.acknowledge(acquired)
+        daemon._runtime_last_source_digest = daemon._runtime_source_head()[0]
 
         maintenance_lock.unlink()
         watcher.notify()
-        released = coordinator.wait()
+        released = daemon.wait_for_wake()
+        retried = daemon.run_once()
     finally:
-        coordinator.close()
+        daemon.close_event_runtime()
 
     assert acquired.kinds == (RuntimeWakeKind.LEASE,)
     assert acquired.safety_timer is False
-    assert released.kinds == (RuntimeWakeKind.LEASE,)
-    assert released.safety_timer is False
+    assert len(released) == 1
+    assert RuntimeWakeKind.LEASE in released[0].kinds
+    assert released[0].safety_timer is False
     assert clock() == 0.0
+    assert selected_task_ids == ["PORTAL-001"]
+    assert retried["active_task_id"] == "PORTAL-001"
+    assert "lease" in retried["wake_kinds"]
+    assert retried["implementation_result"] == {
+        "skipped": True,
+        "reason": "test_selection_capture",
+        "task_id": "PORTAL-001",
+        "provider_dispatched": False,
+    }
