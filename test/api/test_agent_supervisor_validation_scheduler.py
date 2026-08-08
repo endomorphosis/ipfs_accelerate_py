@@ -306,6 +306,9 @@ for operation in operations:
 (Path.cwd() / "workspace-multilink-alias").write_text("workspace-link-ok")
 private_home = Path(os.environ["HOME"])
 (private_home / "home-write").write_text("home-ok")
+# Pytest logging opens /dev/null; the fence must keep that sink writable.
+with open("/dev/null", "w", encoding="utf-8") as sink:
+    sink.write("dev-null-ok")
 child = subprocess.run(
     [
         sys.executable,
@@ -364,9 +367,10 @@ print(json.dumps({{
     assert boundary["applied"] is True
     assert boundary["proof_reuse_control_state_read_only"] is True
     assert boundary["proof_reuse_state_write_exception"] == (
-        "exact-workspace-only"
+        "exact-workspace-private-home-and-std-devices"
     )
     assert boundary["protected_hardlink_aliases_checked"] is True
+    assert boundary["standard_device_nodes_writable"] is True
     assert boundary["proof_authoritative"] is False
     assert boundary["completion_authority"] is False
 

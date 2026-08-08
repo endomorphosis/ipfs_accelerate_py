@@ -170,10 +170,13 @@ class ValidationFilesystemBoundaryReceipt:
             "policy_sha256": self.policy_sha256,
             "applied": bool(applied),
             "proof_reuse_control_state_read_only": bool(applied),
-            "proof_reuse_state_write_exception": "exact-workspace-only",
+            "proof_reuse_state_write_exception": (
+                "exact-workspace-private-home-and-std-devices"
+            ),
             "protected_hardlink_aliases_checked": True,
             "workspace_writable": True,
             "private_home_writable": True,
+            "standard_device_nodes_writable": True,
             "proof_authoritative": False,
             "completion_authority": False,
         }
@@ -810,6 +813,30 @@ def validation_landlock_abi() -> int:
     return abi
 
 
+def _validation_standard_device_write_paths() -> tuple[str, ...]:
+    """Return host device nodes that must stay writable under the fence.
+
+    Pytest, cargo, and many hermetic runners open ``/dev/null`` (and similar
+    sinks) for logging.  Denying those nodes breaks ordinary validation even
+    though they cannot forge proof-state evidence.
+    """
+
+    allowed: list[str] = []
+    for candidate in ("/dev/null", "/dev/full", "/dev/zero"):
+        path = Path(candidate)
+        try:
+            if path.is_symlink():
+                continue
+            details = path.lstat()
+            if not stat.S_ISCHR(details.st_mode):
+                continue
+            resolved = path.resolve(strict=True)
+        except OSError:
+            continue
+        allowed.append(str(resolved))
+    return tuple(allowed)
+
+
 def _validation_landlock_launcher_source() -> str:
     """Render the isolated interpreter source that applies the write fence."""
 
@@ -817,6 +844,7 @@ def _validation_landlock_launcher_source() -> str:
 import ctypes
 import json
 import os
+import stat as stat_module
 import sys
 
 CREATE_RULESET = 444
@@ -829,6 +857,9 @@ MINIMUM_ABI = 3
 WRITE_ACCESS = ((1 << 1) | (1 << 4) | (1 << 5) | (1 << 6) |
                 (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) |
                 (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14))
+# Character devices (e.g. /dev/null) only accept file-write bits under
+# PATH_BENEATH; MAKE_*/REMOVE_* bits return EINVAL.
+DEVICE_WRITE_ACCESS = (1 << 1) | (1 << 14)  # WRITE_FILE | TRUNCATE
 FAILURE_MARKER = "ipfs-accelerate-validation-landlock-error:"
 
 class RulesetAttr(ctypes.Structure):
@@ -851,7 +882,11 @@ try:
     if set(payload) != {"writable_paths"}:
         raise ValueError("invalid policy keys")
     writable_paths = payload["writable_paths"]
-    if not isinstance(writable_paths, list) or len(writable_paths) != 2:
+    if (
+        not isinstance(writable_paths, list)
+        or len(writable_paths) < 2
+        or len(writable_paths) > 8
+    ):
         raise ValueError("invalid writable path population")
     command = sys.argv[2:]
     if not command:
@@ -875,12 +910,18 @@ try:
                 raise ValueError("writable path is not absolute")
             if os.path.realpath(raw_path) != raw_path:
                 raise ValueError("writable path is not canonical")
-            path_fd = os.open(
-                raw_path,
-                os.O_PATH | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
-            )
+            identity = os.lstat(raw_path)
+            open_flags = os.O_PATH | os.O_CLOEXEC | os.O_NOFOLLOW
+            allowed_access = WRITE_ACCESS
+            if stat_module.S_ISDIR(identity.st_mode):
+                open_flags |= os.O_DIRECTORY
+            elif stat_module.S_ISCHR(identity.st_mode):
+                allowed_access = DEVICE_WRITE_ACCESS
+            elif not stat_module.S_ISREG(identity.st_mode):
+                raise ValueError("writable path has unsupported file type")
+            path_fd = os.open(raw_path, open_flags)
             try:
-                path_attr = PathBeneathAttr(WRITE_ACCESS, path_fd)
+                path_attr = PathBeneathAttr(allowed_access, path_fd)
                 checked(
                     libc.syscall(
                         ADD_RULE,
@@ -1076,9 +1117,11 @@ def validation_readonly_state_command(
     executable = validation_python_executable(
         {VALIDATION_PYTHON_ENV: environment.get(_CHILD_PYTHON_ENV, "")}
     )
+    writable_paths = [str(workspace), str(private_home)]
+    writable_paths.extend(_validation_standard_device_write_paths())
     policy = json.dumps(
         {
-            "writable_paths": [str(workspace), str(private_home)],
+            "writable_paths": writable_paths,
         },
         sort_keys=True,
         separators=(",", ":"),
