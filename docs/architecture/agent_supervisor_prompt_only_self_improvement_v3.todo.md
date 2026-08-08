@@ -451,7 +451,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-018 Harden canonical trusted context and complete resolver composition
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
