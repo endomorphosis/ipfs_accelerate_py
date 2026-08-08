@@ -785,6 +785,89 @@ def test_exact_post_merge_runtime_hashes_tracked_bytes_and_modes(
         assert proof["expected_object_id"] != proof["observed_object_id"]
 
 
+@pytest.mark.parametrize(
+    ("target_mode", "expected_pass"),
+    (
+        pytest.param(
+            0o755,
+            False,
+            id="100755-to-0654-rejected",
+        ),
+        pytest.param(
+            0o644,
+            True,
+            id="100644-to-0654-equivalent",
+        ),
+    ),
+)
+def test_exact_post_merge_runtime_uses_owner_execute_for_git_mode(
+    tmp_path: Path,
+    target_mode: int,
+    expected_pass: bool,
+) -> None:
+    def apply_group_only_execute(workspace: Path) -> None:
+        _git(workspace, "config", "core.filemode", "false")
+        tracked = workspace / "tracked.txt"
+        tracked.chmod(0o654)
+        assert tracked.stat().st_mode & 0o777 == 0o654
+        assert _git(workspace, "status", "--porcelain") == ""
+        assert _git(
+            workspace,
+            "ls-files",
+            "-v",
+            "--",
+            "tracked.txt",
+        ).startswith("H ")
+
+    scheduler = _RecordingScheduler(apply_group_only_execute)
+    daemon, repo, task, commit, tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+    if target_mode == 0o755:
+        (repo / "tracked.txt").chmod(target_mode)
+        _git(repo, "add", "tracked.txt")
+        _git(repo, "commit", "-qm", "make tracked file executable")
+        commit = _git(repo, "rev-parse", "HEAD")
+        tree_id = f"git-tree:{_git(repo, 'rev-parse', 'HEAD^{tree}')}"
+    assert _git(
+        repo,
+        "ls-tree",
+        commit,
+        "--",
+        "tracked.txt",
+    ).split()[0] == f"100{target_mode:o}"
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is expected_pass
+    validation_result = evidence["validation_result"]
+    if expected_pass:
+        assert validation_result["fence"]["after"][
+            "tracked_checkout_exact"
+        ] is True
+        assert verify_post_merge_validation_evidence(
+            evidence,
+            expected_task_id=task.task_id,
+            expected_target_commit=commit,
+            expected_repository_tree_id=tree_id,
+        ) == (True, ())
+    else:
+        assert validation_result["reason"] == (
+            "post_merge_validation_workspace_integrity_failed_after_execution"
+        )
+        proof = validation_result["fence"]["after"][
+            "tracked_checkout_proof"
+        ]
+        assert proof["reason"] == "post_merge_tracked_worktree_mismatch"
+        assert proof["failure_path"] == "tracked.txt"
+        assert proof["path_error"] == "tracked executable mode mismatch"
+
+
 def test_exact_post_merge_runtime_rejects_hidden_nested_submodule_mutation(
     tmp_path: Path,
 ) -> None:

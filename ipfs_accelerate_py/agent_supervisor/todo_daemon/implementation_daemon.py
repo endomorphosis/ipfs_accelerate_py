@@ -36509,14 +36509,7 @@ class PortalImplementationDaemon:
             if mode in {"100644", "100755"}:
                 if not stat_module.S_ISREG(before.st_mode):
                     return "", None, "tracked path is not a regular file"
-                actual_executable = bool(
-                    before.st_mode
-                    & (
-                        stat_module.S_IXUSR
-                        | stat_module.S_IXGRP
-                        | stat_module.S_IXOTH
-                    )
-                )
+                actual_executable = bool(before.st_mode & stat_module.S_IXUSR)
                 if actual_executable != expected_executable:
                     return "", None, "tracked executable mode mismatch"
                 descriptor = -1
