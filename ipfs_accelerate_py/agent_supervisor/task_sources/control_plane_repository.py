@@ -1127,6 +1127,21 @@ class QuackStateRepository(_ClientBackedStateRepository):
                 "QuackStateRepository refuses embedded file-write fallback; "
                 "set allow_embedded_fallback=False (the only accepted value)"
             )
+        if isinstance(endpoint, Path) or (
+            isinstance(endpoint, str)
+            and not endpoint.strip().casefold().startswith("quack:")
+        ):
+            raise StateRepositoryAuthorityError(
+                "QuackStateRepository requires a quack: endpoint and rejects "
+                "filesystem paths before attach"
+            )
+        if isinstance(endpoint, QuackEndpoint) and (
+            endpoint.mode is not TransportMode.QUACK
+            or endpoint.database_path is not None
+        ):
+            raise StateRepositoryAuthorityError(
+                "QuackStateRepository rejects embedded or path-bearing endpoints"
+            )
         super().__init__(
             authority_mode=RepositoryAuthorityMode.QUACK,
             owner_id=owner_id,
