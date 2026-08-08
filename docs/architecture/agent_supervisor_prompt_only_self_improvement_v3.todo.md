@@ -58,7 +58,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-001 Compose trusted invocation context and infer normal runtime arguments
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
