@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     BOARD_NAMESPACE,
     DEFAULT_ARTIFACT_ROOT,
     MANIFEST_FILENAME,
+    POST_WAVE3_RESIDUAL_FILENAME,
     CurrentMainBaseline,
     RescueDispositionReport,
     validate_convergence_artifacts,
@@ -122,6 +123,85 @@ def test_rebound_historical_state_still_cannot_claim_v3_completion(
     assert report.valid is False
     assert any("authority: must be evidence-only" in error for error in report.errors)
     assert any("v3_completion_credit: must be false" in error for error in report.errors)
+
+
+def test_rebound_post_wave3_residual_mapping_fails_closed(tmp_path: Path) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / POST_WAVE3_RESIDUAL_FILENAME
+    payload = _load(path)
+    residuals = payload["residuals"]
+    assert isinstance(residuals, list)
+    record = next(
+        item
+        for item in residuals
+        if isinstance(item, dict)
+        and item.get("gap_id") == "trusted-context-canonical-composition"
+    )
+    record["target_task"] = "ASE3-019"
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(root, check_repository=False)
+
+    assert report.valid is False
+    assert any(
+        "trusted-context-canonical-composition.target_task: expected ASE3-018"
+        in error
+        for error in report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "error_fragment"),
+    (
+        (
+            "provider_incident",
+            "attempt_consumed",
+            True,
+            "provider_incident.attempt_consumed: expected False",
+        ),
+        (
+            "provider_incident",
+            "fallback_dispatched",
+            True,
+            "provider_incident.fallback_dispatched: expected False",
+        ),
+        (
+            "disposition",
+            "completion_authority",
+            True,
+            "disposition.completion_authority: expected False",
+        ),
+        (
+            "disposition",
+            "gate_task",
+            "ASE3-009",
+            "disposition.gate_task: expected 'ASE3-008'",
+        ),
+    ),
+)
+def test_rebound_post_wave3_authority_and_provider_tampering_fails_closed(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    value: object,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / POST_WAVE3_RESIDUAL_FILENAME
+    payload = _load(path)
+    block = payload[section]
+    assert isinstance(block, dict)
+    block[field] = value
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(root, check_repository=False)
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
 
 
 def test_duplicate_json_keys_fail_closed(tmp_path: Path) -> None:
@@ -492,7 +572,10 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
         capture_output=True,
         text=True,
     )
-    seed_commit = str(seed["commit"])
+    residual = _load(root / POST_WAVE3_RESIDUAL_FILENAME)
+    residual_repository = residual["repository"]
+    assert isinstance(residual_repository, dict)
+    report_head = str(residual_repository["head"])
     seed_tree = str(seed["tree"])
     descendant = subprocess.run(
         [
@@ -504,7 +587,7 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
             "commit-tree",
             seed_tree,
             "-p",
-            seed_commit,
+            report_head,
             "-m",
             "portable descendant",
         ],

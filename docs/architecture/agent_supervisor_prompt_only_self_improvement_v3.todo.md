@@ -232,7 +232,7 @@ Wave 9:            ASE3-014
 - Review only: false
 - Priority: P0
 - Track: monitoring-recovery
-- Depends on: ASE3-005, ASE3-006, ASE3-007
+- Depends on: ASE3-006, ASE3-020
 - Goal id: ASE3-G060
 - Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, test/api/test_agent_supervisor_task_attempt_limit.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
 - Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py test/api/test_agent_supervisor_task_attempt_limit.py -q
@@ -448,3 +448,99 @@ Wave 9:            ASE3-014
 - Retry repair discovery: data/agent_supervisor/prompt_only_self_improvement_v3/convergence/infrastructure_retry_credit_restoration_20260808.json
 - Canonical board task: false
 - Acceptance: Operator adjudication binds the charged attempt to a pre-command fallback sandbox infrastructure failure. Verify the tracked incident receipt has a 40-lowercase-hex remediation commit, a passed exact Codex gpt-5.6-terra medium workspace-write smoke receipt with exit_code 0 and infrastructure_signature_absent true, and a passed positive-count exact board pytest command from the disposable repository cwd with no missing-path, import, toolchain, or bwrap failure; then mark this repair task completed so the supervisor can release ASE3-003 from strategy blocked_tasks. Never edit attempt counters, retry receipts, or task-queue retry fields directly.
+
+## ASE3-018 Harden canonical trusted context and complete resolver composition
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: ambient-inference-hardening
+- Depends on: ASE3-001
+- Goal id: ASE3-G020
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py, test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py test/api/test_agent_supervisor_prompt_v3_resolution.py test/api/test_agent_supervisor_inference_runtime.py -q
+- Board namespace: agent-supervisor-prompt-only-self-improvement-v3
+- Bundle: agent-supervisor/prompt-self-improvement-v3/ambient-inference-hardening
+- Parallel lane: ambient-inference-hardening
+- Resource class: security-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py, test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py
+- Interfaces: FrozenInvocationContext, CanonicalResolutionPipeline, CanonicalResolutionCore, TransportEvidenceEnvelope, SupervisorResolutionService
+- Conflict policy: Own canonical evidence collection, deep freezing, transport-neutral resolution, and leaf-resolver composition only; do not create authority, provider attempts, taskboard mutations, lifecycle effects, or transport-specific success semantics.
+- Preconditions: ASE3-001 current-tree implementation and its tests are readable; canonical target, state, profile, run, objective, task-source, resource, validation, and topology resolvers import on the exact integration tree.
+- Effects: Deep-freeze and canonically encode a bounded trusted-context core while keeping transport evidence in a separate authenticated envelope; verify the real Git worktree/root and installed signed profile; compose repository, state, profile, run, objective, task source, resources, validation, and topology in dependency order; require Python target allowlists, MCP server aliases, and verified attenuated MCP++ UCANs; eliminate caller-supplied authorization booleans and emit typed zero, multiple, stale, or conflicting-evidence continuations.
+- Evidence subset: mutation-stable context CID, deterministic mixed-key/set canonicalization, cross-transport core parity, real-root/profile checks, complete leaf-resolution provenance, path/symlink/client-injection denials, UCAN attenuation, ambiguity matrix, data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json#trusted-context-canonical-composition
+- Acceptance: Mutating original mappings, nested values, or a prebuilt resolution field after collection cannot change the frozen context or receipt CID; identical trusted facts have one canonical core across local, Python, MCP, and MCP++; nonexistent or symlink profiles, fake .git markers, prompt/client paths, unsigned booleans, and unverified UCANs fail closed; every required launch field is resolved by the production pipeline or launch returns one typed continuation before effects.
+
+## ASE3-019 Seal signed provider authority, authentication lifecycle, and once-only fallback
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: authority-provider-hardening
+- Depends on: ASE3-002
+- Goal id: ASE3-G020
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py, ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_prompt_v3_authority_hardening.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q
+- Board namespace: agent-supervisor-prompt-only-self-improvement-v3
+- Bundle: agent-supervisor/prompt-self-improvement-v3/authority-provider-hardening
+- Parallel lane: authority-provider-hardening
+- Resource class: security-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py, ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_prompt_v3_authority_hardening.py
+- Interfaces: SignedSupervisorProfile, SecureLocalIdentityStore, SignedProfileLifecycleReceipt, DurableProviderAttemptCAS, AuthLifecycleFinding, QuotaExhaustionEvidence, ProviderFallbackReceipt
+- Conflict policy: Own cryptographic local-profile lifecycle and provider-attempt admission only; never persist private key or bearer material in repository files, logs, argv, prompts, events, tests, or immutable public replicas; do not weaken independent review, retry accounting, sandbox boundaries, or provider identity pins.
+- Preconditions: ASE3-002 policy objects and the exact Grok-primary, independent-verifier, pinned-Terra fallback path pass their current suites; a fresh state namespace is available for durable attempt CAS tests.
+- Effects: Sign exact repository, baseline tree, effects, budgets, resources, provider route, reviewer, and fallback bounds with a verifiable Ed25519 did:key identity stored as an owned regular nonsymlink 0600 file; persist signed rotation and revocation so copied old authority cannot revive; require runner-authenticated signed typed quota evidence with mandatory wall-clock freshness and exact nonempty invocation/task/prompt/scope/budget/authority/provider equality; reserve one fallback through durable compare-and-swap before any fallback effect and adopt the winning receipt after crash; classify missing, expired, or deleted Grok host authentication as typed operator action with no implementation-attempt charge, no Terra fallback, and bounded backoff.
+- Evidence subset: signature/DID and key-path matrix, signed bounds, persistent rotation/revocation, native quota/session binding, mandatory freshness, exact-field mismatch denials, concurrent/restart fallback CAS, independent signed review, 2026-08-08 expired-host-auth incident event sha256:e2dee32eb866a9a4216c809318f4066bc49bf33e1e0ef3290365cf4ccaf58f97 and redacted log SHA256 2724af1a5b52fadae7130b4a80081cf9849dabc0f0104f839033474fff332596
+- Acceptance: Only a currently valid signed profile can authorize bounded effects; symlink, ownership, permission, substitution, copied-revoked-key, and incomplete-bound cases fail closed; exactly one concurrent or restarted worker can admit a matching pre-effect Terra fallback; arbitrary caller DTOs, optional/stale timestamps, empty equality fields, generic provider errors, post-effect evidence, self-review, and route mismatches deny; the observed `Not signed in` condition remains uncharged and fenced until explicit reauthentication, then the same logical attempt can resume without counter repair or policy broadening.
+
+## ASE3-021 Wire durable production refill, append/adoption CAS, and completion authority
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: refill-completion-hardening
+- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019
+- Goal id: ASE3-G050
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_store.py, test/api/test_agent_supervisor_prompt_v3_refill_hardening.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_refill_hardening.py test/api/test_agent_supervisor_prompt_v3_refill.py test/api/test_agent_supervisor_backlog_refinery.py test/api/test_agent_supervisor_goal_completion.py test/api/test_agent_supervisor_markdown_task_source.py test/api/test_agent_supervisor_duckdb_task_source.py -q
+- Board namespace: agent-supervisor-prompt-only-self-improvement-v3
+- Bundle: agent-supervisor/prompt-self-improvement-v3/refill-completion-hardening
+- Parallel lane: refill-completion-hardening
+- Resource class: io-database
+- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_store.py, test/api/test_agent_supervisor_prompt_v3_refill_hardening.py
+- Interfaces: DurableRefillState, SignedRefillPolicy, CurrentTreeResidualEvaluator, RefillAppendReceipt, RefillAdoptionReceipt, ProductionRefillRuntime
+- Conflict policy: Own durable residual evaluation, refill budgets/state, canonical append/adoption CAS, and production service adapters only; do not mutate an active board outside revision control, bypass plan admission, create a second task parser, or let generated work widen authority, budgets, effects, dependencies, or acceptance gates.
+- Preconditions: ASE3-004 provides admitted revisioned goal/task projections; ASE3-007 provides deterministic local evaluation primitives; backlog refinery, objective tracker, goal completion, Planner Doctor/self-improvement, Doctor findings, and canonical task-source services pass their current suites.
+- Effects: Compose the actual production residual sources and completion evidence; bind evaluation to the observed current integration tree; enforce the signed caps of 3 refill epochs, 8 generated goals, 24 generated tasks, 48 open tasks, and depth 3; persist epoch, canonical seen-gap identities, cooldown, unchanged-set count, budget use, circuit state, and terminal decision across processes and restarts; append fully admitted scheduler metadata through one task-source revision CAS returning prior/new roots, revision, and generated task CIDs; on CAS loss reread and adopt an identical winner or reevaluate the new tree; wire each named trigger before retry/stall paths return and force a final root scan before completion.
+- Evidence subset: production adapter manifest, signed-cap equality, current-tree join, individual trigger/no-trigger matrix, immutable append/adoption receipts, multiprocess/restart CAS, complete generated task metadata, dedup/cooldown/oscillation state, branch/stale reopening, final completion decision, data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json#production-durable-refill-wiring
+- Acceptance: No boolean callback or caller-supplied completion booleans can authorize append or completion; two processes and crash/restart produce one revision and no duplicate gap/task; refill state and budgets never reset on restart; every generated task has lineage, dependencies, outputs, validation, predicted files, conflict/resource lane, effects, evidence, and acceptance; stale-tree or branch-only evidence appends committed convergence work; every trigger is individually wired, unchanged residuals reach the documented circuit reason and EXHAUSTED state, and a healthy evidence-complete final scan alone permits completion.
+
+## ASE3-020 Converge transactional run truth and compose the real crash-safe prompt saga
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: transactional-runtime-hardening
+- Depends on: ASE3-003, ASE3-005, ASE3-018, ASE3-019, ASE3-021
+- Goal id: ASE3-G055
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py, ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry.py, ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py, ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py, ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py, test/api/test_agent_supervisor_prompt_v3_runtime_hardening.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_runtime_hardening.py test/api/test_agent_supervisor_prompt_v3_run_registry.py test/api/test_agent_supervisor_run_registry.py test/api/test_agent_supervisor_prompt_v3_runtime.py test/api/test_agent_supervisor_lifecycle_orchestrator.py -q
+- Board namespace: agent-supervisor-prompt-only-self-improvement-v3
+- Bundle: agent-supervisor/prompt-self-improvement-v3/transactional-runtime-hardening
+- Parallel lane: transactional-runtime-hardening
+- Resource class: process-control
+- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py, ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry.py, ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py, ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py, ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py, test/api/test_agent_supervisor_prompt_v3_runtime_hardening.py
+- Interfaces: AuthoritativeRunRevisionStore, ImmutableRunEpoch, EffectReservation, ProcessBirthObservation, CompleteLaunchPlanGuard, StandardSupervisorRuntimeFactory, PromptToRunSaga
+- Conflict policy: Final runtime fan-in only after ASE3-018/019/021; DuckDB owns mutable run heads and effect reservations; projections, arbitrary handler mappings, PIDs, logs, and provider claims never establish success; do not weaken context, authority, fallback, refill, lifecycle, lease/fence, or validation contracts.
+- Preconditions: Hardened canonical resolution, signed provider authority, durable refill, admitted materialization, lifecycle orchestration, task-source coordination, and current run-registry baselines pass on the exact integration tree.
+- Effects: Make DuckDB authoritative for complete run heads, revision history, adoption/idempotency keys, effect reservations, verified process birth, event cursors, leases/fences, and persisted immutable epochs; validate stored columns against content and reconstruct exact revisions; migrate only verified JSON facts; compare every complete launch-plan field immediately before each effect; reserve/fence intent and idempotency before external effects, then after a crash observe and adopt the exact effect or complete its receipt rather than replaying blindly; compose the production handlers from ASE3-018/019/021 and ASE3-004, compile argv accepted by the real supervisor parser, and implement resolve, preview, authorize, materialize, start/adopt, observe, steer, validate, and stop against real services.
+- Evidence subset: schema/migration parity, full revision history and immutable epoch, concurrent CAS/effect reservation, complete-field stale denial, real parser argv, real child birth and health observations, full operation receipts, every intent/effect/receipt crash boundary, exact restart/adoption, no-op/fabricated receipt denial, current-tree validation, data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json#transactional-run-truth-and-effect-recovery
+- Acceptance: Concurrent revisions or effects have one winner; corrupt or column-mismatched rows and unverified migration facts deny; production construction rejects arbitrary mapping receipts and missing/fake handlers; run returns RUNNING only for a joined live process birth, lease/fence, state revision, health revision, and event cursor; all public lifecycle operations execute through the complete saga; injected crashes before and after each external effect neither duplicate nor lose the effect; an existing projection-only RUNNING row is observed/adopted or repaired, never trusted; exact retries resume the same logical run and synthetic process/health identities cannot pass.

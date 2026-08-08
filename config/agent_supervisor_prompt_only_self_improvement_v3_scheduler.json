@@ -18,8 +18,8 @@
     "historical_ase_or_ase2_completion_is_authority": false
   },
   "initial_projection": {
-    "task_count": 15,
-    "goal_count": 9,
+    "task_count": 19,
+    "goal_count": 10,
     "root_goal_id": "ASE3-G000",
     "bootstrap_task_id": "ASE3-000",
     "first_parallel_wave": [
@@ -60,7 +60,8 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/historical_state_contradictions.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/rescue_artifact_dispositions.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/clean_integration_worktree_receipt.json",
-    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json"
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
@@ -89,10 +90,11 @@
   ],
   "task_groups": {
     "ASE3-G010": ["ASE3-000"],
-    "ASE3-G020": ["ASE3-001", "ASE3-002"],
+    "ASE3-G020": ["ASE3-001", "ASE3-002", "ASE3-018", "ASE3-019"],
     "ASE3-G030": ["ASE3-004"],
     "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006"],
-    "ASE3-G050": ["ASE3-007"],
+    "ASE3-G050": ["ASE3-007", "ASE3-021"],
+    "ASE3-G055": ["ASE3-020"],
     "ASE3-G060": ["ASE3-008"],
     "ASE3-G070": ["ASE3-009", "ASE3-010", "ASE3-011", "ASE3-012"],
     "ASE3-G080": ["ASE3-013", "ASE3-014"]

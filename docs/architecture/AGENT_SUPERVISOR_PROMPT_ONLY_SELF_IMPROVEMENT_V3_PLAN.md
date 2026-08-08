@@ -323,6 +323,11 @@ Wave 2:            ASE3-004 prompt-to-goal/task materializer
 Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
                    ASE3-006 conflict-aware parallel scheduler
                    ASE3-007 bounded objective/task refill
+Wave 3b (parallel): ASE3-006 adaptive scheduler continuation
+                    ASE3-018 canonical context/resolver hardening
+                    ASE3-019 signed authority/provider-attempt hardening
+Wave 3c:           ASE3-021 durable production refill wiring
+Wave 3d:           ASE3-020 transactional run truth and crash-safe saga
 Wave 4:            ASE3-008 progress watchdog/Doctor/recovery
 Wave 5:            ASE3-009 Python facade and package exports
 Wave 6 (parallel): ASE3-010 prompt-first CLI
@@ -331,6 +336,15 @@ Wave 7:            ASE3-012 cross-transport/security/chaos gates
 Wave 8:            ASE3-013 self-hosted improvement canary
 Wave 9:            ASE3-014 canonical materialization and staged cutover
 ```
+
+Wave 3b starts only after the configured primary provider has a verified,
+non-expired local authentication record. Its ready set is deliberately
+three-way sharded: ASE3-006 to lane 0, ASE3-019 to lane 1, and ASE3-018 to
+lane 2. After ASE3-019 is accepted, the bootstrap process tree must be fenced
+and relaunched in the same namespace before ASE3-021 starts so the hardened
+provider-attempt daemon code is loaded. The legacy objective and codebase
+refill flags remain disabled; ASE3-021 owns the later scoped-v3 adoption and
+refill transition.
 
 ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and
@@ -392,4 +406,3 @@ the v3 board is materialized and its runtime profile is validated, launch the
 bootstrap waves through the existing expert supervisor, monitor them with the
 v3 health contract, and use the newly completed prompt facade for ASE3-013's
 self-hosted canary.
-

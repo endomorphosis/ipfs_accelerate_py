@@ -41,13 +41,18 @@ CONVERGENCE_MANIFEST_SCHEMA: Final = (
 CONVERGENCE_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-report@1"
 )
+POST_WAVE3_RESIDUAL_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.post-wave3-residual-report@1"
+)
 
 BOARD_NAMESPACE: Final = "agent-supervisor-prompt-only-self-improvement-v3"
+POST_WAVE3_RESIDUAL_FILENAME: Final = "post_wave3_residuals_20260808.json"
 ARTIFACT_FILENAMES: Final = (
     "current_main_baseline.json",
     "historical_state_contradictions.json",
     "rescue_artifact_dispositions.json",
     "clean_integration_worktree_receipt.json",
+    POST_WAVE3_RESIDUAL_FILENAME,
 )
 MANIFEST_FILENAME: Final = "convergence_manifest.json"
 DEFAULT_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
@@ -73,6 +78,67 @@ _REQUIRED_CONTRADICTIONS: Final = frozenset(
         "branch-local-completion",
     }
 )
+_POST_WAVE3_CREATED_AT: Final = "2026-08-08T09:53:00Z"
+_POST_WAVE3_REPOSITORY: Final = {
+    "head": "4370931d7dc556d56962a88ed1db511487be39d2",
+    "tree": "1d472b508368a0574e1dbfa87467158377797e23",
+    "branch": "agent/prompt-self-improvement-v3",
+}
+_POST_WAVE3_COMPLETED_TASKS: Final = {
+    "ASE3-005": {
+        "implementation_commit": "8b82c968d829a1191fcacff3e20804be0c232b0a",
+        "merge_commit": "8945d1b08e564fb1baf26a38d7ea6909012a104b",
+        "status_commit": "4370931d7dc556d56962a88ed1db511487be39d2",
+        "declared_current_tree_tests_passed": 13,
+        "declared_current_tree_tests_failed": 0,
+    },
+    "ASE3-007": {
+        "implementation_commit": "5c4098a8adf7c29e24602a18b699f9042b3ca9f6",
+        "merge_commit": "023bb9972ca8d9eb6009f565c3293c2ce8a16aea",
+        "status_commit": "05773ac5abcf361a870404428f4e82dcd15168ce",
+        "declared_current_tree_tests_passed": 87,
+        "declared_current_tree_tests_failed": 0,
+    },
+}
+_POST_WAVE3_RESIDUALS: Final = {
+    "trusted-context-canonical-composition": (
+        "ASE3-018",
+        frozenset({"ASE3-001", "ASE3-002", "ASE3-005"}),
+    ),
+    "signed-authority-and-durable-provider-attempt": (
+        "ASE3-019",
+        frozenset({"ASE3-002", "ASE3-006"}),
+    ),
+    "production-durable-refill-wiring": (
+        "ASE3-021",
+        frozenset({"ASE3-007"}),
+    ),
+    "transactional-run-truth-and-effect-recovery": (
+        "ASE3-020",
+        frozenset({"ASE3-003", "ASE3-005", "ASE3-007"}),
+    ),
+}
+_POST_WAVE3_PROVIDER_INCIDENT: Final = {
+    "task_id": "ASE3-006",
+    "event_id": "sha256:e2dee32eb866a9a4216c809318f4066bc49bf33e1e0ef3290365cf4ccaf58f97",
+    "log_sha256": "sha256:2724af1a5b52fadae7130b4a80081cf9849dabc0f0104f839033474fff332596",
+    "failure": "grok_authentication_unavailable",
+    "attempt": 1,
+    "attempt_consumed": False,
+    "fallback_dispatched": False,
+    "workspace_changed": False,
+    "operator_fenced_before_retry": True,
+}
+_POST_WAVE3_DISPOSITION: Final = {
+    "historical_task_status_authoritative": False,
+    "declared_test_success_authorizes_goal_completion": False,
+    "operator_reviewed_refill_required": True,
+    "target_tasks": ["ASE3-018", "ASE3-019", "ASE3-021", "ASE3-020"],
+    "gate_task": "ASE3-008",
+    "completion_authority": False,
+    "provider_policy_broadening_authorized": False,
+    "attempt_counter_mutation_authorized": False,
+}
 
 
 def _reject_duplicate_keys(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
@@ -640,6 +706,228 @@ class CleanIntegrationWorktreeReceipt:
 
 
 @dataclass(frozen=True)
+class PostWave3ResidualReport:
+    """Fail-closed residual audit that authorizes the post-wave-3 refill only."""
+
+    payload: Mapping[str, Any]
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> PostWave3ResidualReport:
+        return cls(dict(payload))
+
+    @property
+    def repository_head(self) -> str:
+        repository = self.payload.get("repository", {})
+        return str(repository.get("head", "")) if isinstance(repository, Mapping) else ""
+
+    @property
+    def repository_tree(self) -> str:
+        repository = self.payload.get("repository", {})
+        return str(repository.get("tree", "")) if isinstance(repository, Mapping) else ""
+
+    @property
+    def completed_task_evidence(self) -> Mapping[str, Any]:
+        evidence = self.payload.get("completed_task_evidence", {})
+        return evidence if isinstance(evidence, Mapping) else {}
+
+    def validate(self) -> tuple[str, ...]:
+        errors: list[str] = []
+        prefix = "post_wave3_residuals"
+        expected_fields = {
+            "schema",
+            "created_at",
+            "board_namespace",
+            "repository",
+            "completed_task_evidence",
+            "residuals",
+            "provider_incident",
+            "disposition",
+        }
+        if set(self.payload) != expected_fields:
+            errors.append(f"{prefix}: field population mismatch")
+        if self.payload.get("schema") != POST_WAVE3_RESIDUAL_SCHEMA:
+            errors.append(f"{prefix}.schema: unsupported schema")
+        if self.payload.get("board_namespace") != BOARD_NAMESPACE:
+            errors.append(f"{prefix}.board_namespace: mismatch")
+        created_at = self.payload.get("created_at")
+        if (
+            not isinstance(created_at, str)
+            or _UTC_TIMESTAMP.fullmatch(created_at) is None
+            or created_at != _POST_WAVE3_CREATED_AT
+        ):
+            errors.append(
+                f"{prefix}.created_at: expected immutable UTC timestamp "
+                f"{_POST_WAVE3_CREATED_AT}"
+            )
+
+        repository = self.payload.get("repository")
+        if not isinstance(repository, Mapping):
+            errors.append(f"{prefix}.repository: expected object")
+        else:
+            if set(repository) != set(_POST_WAVE3_REPOSITORY):
+                errors.append(f"{prefix}.repository: field population mismatch")
+            for field in ("head", "tree"):
+                value = repository.get(field)
+                _require_hex40(errors, f"{prefix}.repository.{field}", value)
+                if value != _POST_WAVE3_REPOSITORY[field]:
+                    errors.append(
+                        f"{prefix}.repository.{field}: immutable identity mismatch"
+                    )
+            if repository.get("branch") != _POST_WAVE3_REPOSITORY["branch"]:
+                errors.append(f"{prefix}.repository.branch: mismatch")
+
+        completed = self.payload.get("completed_task_evidence")
+        if not isinstance(completed, Mapping):
+            errors.append(f"{prefix}.completed_task_evidence: expected object")
+        else:
+            if set(completed) != set(_POST_WAVE3_COMPLETED_TASKS):
+                errors.append(
+                    f"{prefix}.completed_task_evidence: expected exactly "
+                    "ASE3-005 and ASE3-007"
+                )
+            for task_id, expected in _POST_WAVE3_COMPLETED_TASKS.items():
+                item = completed.get(task_id)
+                item_prefix = f"{prefix}.completed_task_evidence.{task_id}"
+                if not isinstance(item, Mapping):
+                    errors.append(f"{item_prefix}: expected object")
+                    continue
+                if set(item) != set(expected):
+                    errors.append(f"{item_prefix}: field population mismatch")
+                for field in (
+                    "implementation_commit",
+                    "merge_commit",
+                    "status_commit",
+                ):
+                    value = item.get(field)
+                    _require_hex40(errors, f"{item_prefix}.{field}", value)
+                    if value != expected[field]:
+                        errors.append(f"{item_prefix}.{field}: immutable identity mismatch")
+                for field in (
+                    "declared_current_tree_tests_passed",
+                    "declared_current_tree_tests_failed",
+                ):
+                    value = item.get(field)
+                    if type(value) is not int or value != expected[field]:
+                        errors.append(
+                            f"{item_prefix}.{field}: expected {expected[field]}"
+                        )
+
+        residuals = self.payload.get("residuals")
+        observed_residuals: dict[str, Mapping[str, Any]] = {}
+        if not isinstance(residuals, list):
+            errors.append(f"{prefix}.residuals: expected list")
+        else:
+            if len(residuals) != len(_POST_WAVE3_RESIDUALS):
+                errors.append(
+                    f"{prefix}.residuals: expected exactly "
+                    f"{len(_POST_WAVE3_RESIDUALS)} records"
+                )
+            residual_fields = {
+                "gap_id",
+                "severity",
+                "source_tasks",
+                "target_task",
+                "evidence",
+            }
+            for index, record in enumerate(residuals):
+                record_prefix = f"{prefix}.residuals[{index}]"
+                if not isinstance(record, Mapping):
+                    errors.append(f"{record_prefix}: expected object")
+                    continue
+                if set(record) != residual_fields:
+                    errors.append(f"{record_prefix}: field population mismatch")
+                gap_id = record.get("gap_id")
+                if not isinstance(gap_id, str) or not gap_id:
+                    errors.append(f"{record_prefix}.gap_id: required")
+                    continue
+                if gap_id in observed_residuals:
+                    errors.append(f"{record_prefix}.gap_id: duplicate {gap_id}")
+                    continue
+                observed_residuals[gap_id] = record
+                if record.get("severity") != "P0":
+                    errors.append(f"{record_prefix}.severity: expected P0")
+                evidence = record.get("evidence")
+                if (
+                    not isinstance(evidence, list)
+                    or not evidence
+                    or any(not isinstance(item, str) or not item.strip() for item in evidence)
+                    or len(evidence) != len(set(evidence))
+                ):
+                    errors.append(
+                        f"{record_prefix}.evidence: expected unique non-empty strings"
+                    )
+            if set(observed_residuals) != set(_POST_WAVE3_RESIDUALS):
+                errors.append(f"{prefix}.residuals: gap population mismatch")
+            for gap_id, (target_task, source_tasks) in _POST_WAVE3_RESIDUALS.items():
+                record = observed_residuals.get(gap_id)
+                if record is None:
+                    continue
+                record_prefix = f"{prefix}.residuals.{gap_id}"
+                if record.get("target_task") != target_task:
+                    errors.append(
+                        f"{record_prefix}.target_task: expected {target_task}"
+                    )
+                observed_sources = record.get("source_tasks")
+                if (
+                    not isinstance(observed_sources, list)
+                    or any(not isinstance(item, str) for item in observed_sources)
+                    or len(observed_sources) != len(set(observed_sources))
+                    or frozenset(observed_sources) != source_tasks
+                ):
+                    errors.append(f"{record_prefix}.source_tasks: population mismatch")
+
+        provider = self.payload.get("provider_incident")
+        if not isinstance(provider, Mapping):
+            errors.append(f"{prefix}.provider_incident: expected object")
+        else:
+            if set(provider) != set(_POST_WAVE3_PROVIDER_INCIDENT):
+                errors.append(f"{prefix}.provider_incident: field population mismatch")
+            _require_sha256(
+                errors,
+                f"{prefix}.provider_incident.event_id",
+                provider.get("event_id"),
+            )
+            _require_sha256(
+                errors,
+                f"{prefix}.provider_incident.log_sha256",
+                provider.get("log_sha256"),
+            )
+            for field, expected in _POST_WAVE3_PROVIDER_INCIDENT.items():
+                actual = provider.get(field)
+                matches = (
+                    actual is expected
+                    if isinstance(expected, bool)
+                    else type(actual) is int and actual == expected
+                    if isinstance(expected, int)
+                    else actual == expected
+                )
+                if not matches:
+                    errors.append(
+                        f"{prefix}.provider_incident.{field}: expected {expected!r}"
+                    )
+
+        disposition = self.payload.get("disposition")
+        if not isinstance(disposition, Mapping):
+            errors.append(f"{prefix}.disposition: expected object")
+        else:
+            if set(disposition) != set(_POST_WAVE3_DISPOSITION):
+                errors.append(f"{prefix}.disposition: field population mismatch")
+            for field, expected in _POST_WAVE3_DISPOSITION.items():
+                actual = disposition.get(field)
+                if isinstance(expected, bool):
+                    matches = actual is expected
+                elif isinstance(expected, list):
+                    matches = isinstance(actual, list) and actual == expected
+                else:
+                    matches = actual == expected
+                if not matches:
+                    errors.append(
+                        f"{prefix}.disposition.{field}: expected {expected!r}"
+                    )
+        return tuple(errors)
+
+
+@dataclass(frozen=True)
 class ConvergenceManifest:
     """Root binding for the bounded ASE3-000 evidence packet."""
 
@@ -774,6 +1062,7 @@ def _validate_repository_binding(
     repo_root: Path,
     baseline: CurrentMainBaseline,
     rescue: RescueDispositionReport,
+    post_wave3: PostWave3ResidualReport,
 ) -> list[str]:
     errors: list[str] = []
     repo_root = repo_root.resolve()
@@ -925,6 +1214,81 @@ def _validate_repository_binding(
         expected_paths = tuple(item.identity for item in rescue.files)
         if actual_paths != expected_paths:
             errors.append("repository_binding.rescue_paths: manifest population mismatch")
+
+    residual_tree = _git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        f"{post_wave3.repository_head}^{{tree}}",
+    )
+    if residual_tree.returncode != 0:
+        errors.append("repository_binding.post_wave3.head: Git object unavailable")
+    elif residual_tree.stdout.strip() != post_wave3.repository_tree:
+        errors.append("repository_binding.post_wave3.tree: Git identity mismatch")
+
+    residual_ancestor = _git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        post_wave3.repository_head,
+        "HEAD",
+    )
+    if residual_ancestor.returncode != 0:
+        errors.append("repository_binding.post_wave3.head: not an ancestor of HEAD")
+
+    for task_id in sorted(_POST_WAVE3_COMPLETED_TASKS):
+        item = post_wave3.completed_task_evidence.get(task_id, {})
+        if not isinstance(item, Mapping):
+            continue
+        identities = {
+            field: str(item.get(field, ""))
+            for field in (
+                "implementation_commit",
+                "merge_commit",
+                "status_commit",
+            )
+        }
+        for field, identity in identities.items():
+            available = _git(
+                repo_root,
+                "rev-parse",
+                "--verify",
+                f"{identity}^{{commit}}",
+            )
+            if available.returncode != 0:
+                errors.append(
+                    f"repository_binding.post_wave3.{task_id}.{field}: "
+                    "Git object unavailable"
+                )
+        ancestry_chain = (
+            ("implementation_commit", "merge_commit"),
+            ("merge_commit", "status_commit"),
+        )
+        for ancestor_field, descendant_field in ancestry_chain:
+            ancestry = _git(
+                repo_root,
+                "merge-base",
+                "--is-ancestor",
+                identities[ancestor_field],
+                identities[descendant_field],
+            )
+            if ancestry.returncode != 0:
+                errors.append(
+                    f"repository_binding.post_wave3.{task_id}.{ancestor_field}: "
+                    f"not an ancestor of {descendant_field}"
+                )
+        status_ancestry = _git(
+            repo_root,
+            "merge-base",
+            "--is-ancestor",
+            identities["status_commit"],
+            post_wave3.repository_head,
+        )
+        if status_ancestry.returncode != 0:
+            errors.append(
+                f"repository_binding.post_wave3.{task_id}.status_commit: "
+                "not an ancestor of report head"
+            )
     return errors
 
 
@@ -960,12 +1324,16 @@ def validate_convergence_artifacts(
     worktree = CleanIntegrationWorktreeReceipt.from_dict(
         payloads["clean_integration_worktree_receipt.json"]
     )
+    post_wave3 = PostWave3ResidualReport.from_dict(
+        payloads[POST_WAVE3_RESIDUAL_FILENAME]
+    )
     manifest = ConvergenceManifest.from_dict(payloads[MANIFEST_FILENAME])
 
     errors.extend(baseline.validate())
     errors.extend(contradictions.validate())
     errors.extend(rescue.validate(baseline))
     errors.extend(worktree.validate(baseline))
+    errors.extend(post_wave3.validate())
     errors.extend(manifest.validate(baseline))
 
     components = manifest.payload.get("components", {})
@@ -984,6 +1352,7 @@ def validate_convergence_artifacts(
                 repo_root=Path(repo_root),
                 baseline=baseline,
                 rescue=rescue,
+                post_wave3=post_wave3,
             )
         )
     return ConvergenceValidationReport(

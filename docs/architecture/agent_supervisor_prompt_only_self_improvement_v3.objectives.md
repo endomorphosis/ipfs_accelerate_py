@@ -20,6 +20,7 @@ ASE3-G000  Production prompt-only self-improving supervisor
 |-- ASE3-G030  Canonical goal, subgoal, and taskboard materialization
 |-- ASE3-G040  Durable real lifecycle and conflict-aware parallel execution
 |-- ASE3-G050  Evidence-driven bounded goal and task refill
+|-- ASE3-G055  Cross-cutting foundational acceptance convergence
 |-- ASE3-G060  Progress watchdog, Doctor, and deterministic recovery
 |-- ASE3-G070  Python, CLI, MCP, and MCP++ product convergence
 `-- ASE3-G080  Self-hosted verification, rollout, and closeout
@@ -39,7 +40,7 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Parallel lane: program
 - Resource class: coordinator
 - Goal: Deliver one safe prompt-only product facade that creates a canonical goal/subgoal/task program, runs independent work in parallel, refills objective residuals, and remains truthfully monitored until current-tree evidence authorizes completion.
-- Producing tasks: ASE3-000, ASE3-001, ASE3-002, ASE3-003, ASE3-004, ASE3-005, ASE3-006, ASE3-007, ASE3-008, ASE3-009, ASE3-010, ASE3-011, ASE3-012, ASE3-013, ASE3-014
+- Producing tasks: ASE3-000, ASE3-001, ASE3-002, ASE3-003, ASE3-004, ASE3-005, ASE3-006, ASE3-007, ASE3-008, ASE3-009, ASE3-010, ASE3-011, ASE3-012, ASE3-013, ASE3-014, ASE3-018, ASE3-019, ASE3-020, ASE3-021
 - Evidence: prompt_self_improvement_v3.PROMPT_SELF_IMPROVEMENT_V3_REQUIREMENT_ID
 - Evidence requirements JSON: ["current-main convergence receipt", "prompt resolution receipt", "canonical objective and task roots", "real lifecycle launch receipt", "parallel overlap and conflict-serialization receipt", "bounded refill receipt", "watchdog recovery receipt", "cross-transport conformance receipt", "self-hosted current-tree rollout decision"]
 - Evidence criteria: One prompt plus trusted ambient context produces or adopts a durable run without expert daemon flags; prompt content never grants authority; goals, subgoals, and tasks have canonical lineage; independent work overlaps; drained-open objectives refill; false-running, stalls, and soft completion recover or fail closed; and completion is proven on the exact promoted tree.
@@ -91,7 +92,7 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Parallel lane: inference-policy
 - Resource class: security-small
 - Goal: Resolve every normal operational argument from one frozen trusted context while keeping intent, authority, provider policy, resource ceilings, and transport authentication separate.
-- Producing tasks: ASE3-001, ASE3-002
+- Producing tasks: ASE3-001, ASE3-002, ASE3-018, ASE3-019
 - Evidence: prompt_v3_resolution.PROMPT_ONLY_RESOLUTION_REQUIREMENT_ID
 - Evidence requirements JSON: ["frozen invocation-context CID", "field-level inference provenance", "signed local profile receipt", "transport target-binding matrix", "provider policy and attempt receipts", "prompt non-influence matrix"]
 - Evidence criteria: Local CLI, Python, MCP, and MCP++ resolve deterministic target, state, profile, run, objective, task-source, provider, resources, validation, and topology values from allowed evidence; material ambiguity yields one typed continuation; inference never grants effects.
@@ -169,7 +170,7 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Parallel lane: refill-completion
 - Resource class: coordinator
 - Goal: Keep useful work available while objective evidence remains open, but bound generation, deduplicate residuals, and prohibit task-drain or branch-local work from becoming completion.
-- Producing tasks: ASE3-007
+- Producing tasks: ASE3-007, ASE3-021
 - Evidence: prompt_v3_refill.BOUNDED_RESIDUAL_REFILL_REQUIREMENT_ID
 - Evidence requirements JSON: ["low-water refill receipt", "drained-open-goal refill receipt", "deduplication identity", "budget and circuit-breaker receipt", "final forced residual scan", "completion authority decision"]
 - Evidence criteria: Low backlog, open objectives after drain, failed validation/review/merge, evidence drift, and retry exhaustion trigger current-tree reconciliation and bounded refinement before a stuck path can return; the signed production profile registers Planner Doctor/self-improvement evaluation; healthy evidence-complete drain does not refill; equivalent residuals cannot create infinite work or relax their own gates.
@@ -181,13 +182,39 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Acceptance: Forced tests cover all refill triggers, no-refill completion, deduplication, cooldown, depth/work/epoch budgets, oscillation, branch-only completion, and final root closure; unchanged unresolvable evidence ends blocked or exhausted without spinning.
 - Gap task: Repair the smallest trigger, evidence refresh, goal reconciliation, deduplication, budget, oscillation, successor-epoch, or completion-authority residual.
 
+## ASE3-G055 Cross-cutting foundational acceptance convergence
+
+- Status: active
+- Parent: ASE3-G000
+- Parent goal IDs JSON: ["ASE3-G000"]
+- Depends on: ASE3-G020, ASE3-G030, ASE3-G040, ASE3-G050
+- Dependencies JSON: ["ASE3-G020", "ASE3-G030", "ASE3-G040", "ASE3-G050"]
+- Fib priority: 20
+- Track: foundational-convergence
+- Priority: P0
+- Bundle: agent-supervisor/prompt-self-improvement-v3/foundational-convergence
+- Parallel lane: foundational-convergence
+- Resource class: coordinator
+- Goal: Reopen green-but-insufficient foundational work from current-tree evidence, harden trusted resolution and provider authority, wire durable refill, and converge one crash-safe transactional runtime before monitoring and public surfaces build on it.
+- Producing tasks: ASE3-020
+- Evidence: data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json
+- Evidence requirements JSON: ["canonical trusted-context and resolver proof", "signed provider authority and durable once-only attempt proof", "durable production refill append/adoption proof", "transactional DuckDB run/effect and complete saga proof"]
+- Evidence criteria: Declared-test success and task status cannot hide no-op handlers, caller-supplied authority, process-local refill state, projection-only running state, or replayable effects; each residual is closed by production wiring plus adversarial current-tree evidence.
+- Evidence source policy: Unit constructors, callback booleans, JSON status, generic provider errors, task completion labels, and branch-local commits are non-authoritative; join signed context/policy, DuckDB revisions and reservations, immutable refill/effect receipts, verified process birth, accepted commits, and current-tree validation.
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py, ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_adapters.py, ipfs_accelerate_py/agent_supervisor/entrypoints/refill_store.py, ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py, ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py, ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py, ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_adapters.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_store.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py", "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py"]
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_refill_hardening.py test/api/test_agent_supervisor_prompt_v3_runtime_hardening.py -q
+- Validation commands JSON: ["python -m pytest test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_refill_hardening.py test/api/test_agent_supervisor_prompt_v3_runtime_hardening.py -q"]
+- Acceptance: The exact current tree proves deeply immutable cross-transport resolution, signed bounded provider authority with durable once-only attempts, restart-safe canonical refill, and a complete real process saga whose external effects are reserved and reconciled without simulation, duplication, or lost work.
+- Gap task: Repair the smallest current-tree authority, durability, production-wiring, crash-boundary, or acceptance-evidence residual identified by the post-Wave-3 report.
+
 ## ASE3-G060 Progress watchdog, Doctor, and deterministic recovery
 
 - Status: active
 - Parent: ASE3-G000
 - Parent goal IDs JSON: ["ASE3-G000"]
-- Depends on: ASE3-G040, ASE3-G050
-- Dependencies JSON: ["ASE3-G040", "ASE3-G050"]
+- Depends on: ASE3-G055
+- Dependencies JSON: ["ASE3-G055"]
 - Fib priority: 21
 - Track: monitoring-recovery
 - Priority: P0
