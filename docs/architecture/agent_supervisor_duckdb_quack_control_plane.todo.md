@@ -202,7 +202,7 @@ this bootstrap is active.
 
 ## DQP-006 Implement the loopback Quack state-owner service
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
