@@ -66,6 +66,9 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_merge_receipt_ase3_006_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_merge_receipt_ase3_018_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_validation_event_ase3_019_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/self_host_seed_failure_ase3_019_attempt_2_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json"
   ],
   "runtime_paths": {

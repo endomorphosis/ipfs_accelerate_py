@@ -325,7 +325,7 @@ Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
                    ASE3-007 bounded objective/task refill
 Wave 3b repair (parallel): ASE3-023 production adaptive-scheduler wiring
                            ASE3-027 production resolver composition
-                           ASE3-019 attempt-2 signed authority/provider repair
+                           ASE3-019 operator-salvaged authority/provider repair
 Wave 3c:           ASE3-022 operator-owned daemon reload boundary
                    ASE3-021 durable production refill wiring
 Wave 3d:           ASE3-020 transactional run truth and crash-safe saga
@@ -388,22 +388,51 @@ accepted repository-only, caller-shaped profile, and caller-constructed UCAN
 evidence. Their green tests and completed projections remain immutable evidence,
 but they do not satisfy product acceptance. The manifest-bound
 `false_completion_recovery_20260808.json` maps those residuals to ASE3-023 and
-ASE3-027 without rewriting counters or runtime history. ASE3-019 retains its
-exact task identity, charged attempt 1, and preserved failed candidate so the
-next dispatch is attempt 2 with the authorized prior-attempt seed.
+ASE3-027 without rewriting counters or runtime history. ASE3-019 retained its
+exact task identity, charged attempt 1, and preserved failed candidate for the
+authorized attempt-2 prior-attempt seed.
 
-The repair ready set is deliberately three-way sharded: ASE3-027 to lane 0,
-ASE3-019 to lane 1, and ASE3-023 to lane 2. Their edit scopes are disjoint:
-ASE3-023 is forbidden from touching `implementation_daemon.py` or provider
-authority files, and ASE3-027 is forbidden from touching ASE3-019 profile,
-router, or daemon surfaces. Once ASE3-019, ASE3-023, and ASE3-027 are all
-accepted and jointly revalidated, the process tree must be fenced. ASE3-022
-keeps ASE3-021 machine-blocked while the exact old generation is stopped,
-receipted, and committed; its receipt must bind the false-completion artifact
-and all three accepted repair chains. The same namespace is then relaunched
-once from that completion commit so both provider-attempt and scheduler changes
-are loaded. The legacy objective and codebase refill flags remain disabled;
-ASE3-021 owns the later scoped-v3 adoption and refill transition.
+Attempt 2 applied that exact seed on launch HEAD
+`e6f8e4a7771907372fc93b0f35cfde30170c2b2a`, then failed before either Grok or
+Codex performed a provider effect. The accepted daemon invoked
+`python -m ipfs_accelerate_py.agent_supervisor.grok_cli_runner` with the seeded
+candidate as its current directory, so Python imported the candidate runner
+and router instead of the accepted provider control plane. The candidate router
+required new signed implementer/reviewer fields that the accepted scheduler
+could not yet supply and returned
+`agent implementation route binding fields are invalid`. The runner subprocess
+was started, the attempt was therefore charged, and neither its counter nor its
+queue history may be restored. The manifest-bound
+`failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json`,
+`failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt`, and
+`self_host_seed_failure_ase3_019_attempt_2_20260808.json` preserve the exact
+event, log, Git/blob provenance, accounting, and fence facts.
+
+ASE3-019 remains the same manual, canonical, todo task. Its next authorized
+path is an operator-owned, no-provider reconciliation of the immutable
+`eb68ff2a20e0719388f60ffef1f5bfcb90b79263` rescue delta on the then-current
+accepted integration tree. The future manifest-bound operator-salvage receipt
+must prove the implementation, merge, current-tree validation, and independent
+bootstrap review chains and must include an `accepted_control_plane` object.
+That object must bind the exact accepted generation tree, router/runner/daemon
+blobs, isolated absolute runner origin, candidate workspace identity, and a
+seed-shadow regression proving candidate code cannot replace the provider
+control plane. It may not claim future signed-provider-review authority, model
+dispatch, counter restoration, runtime-state edits, or queue-history edits.
+
+The second repair launch was deliberately three-way sharded: ASE3-027 to lane
+0, ASE3-019 to lane 1, and ASE3-023 to lane 2. Their authority remains
+disjoint: ASE3-023 is forbidden from touching `implementation_daemon.py` or
+provider authority files, and ASE3-027 is forbidden from touching ASE3-019
+profile, router, or daemon surfaces. That process generation is now fenced;
+interrupted ASE3-023/027 candidates require controlled acceptance or rejection.
+ASE3-022 keeps ASE3-021 machine-blocked until the operator-salvaged unchanged-
+CID ASE3-019 and the ASE3-023/027 repair chains are accepted and jointly
+revalidated. Its final receipt must bind the attempt-2 incident, operator
+salvage, accepted control plane, exact stopped generation, and transition
+daemon/scheduler blobs. The same namespace is then relaunched once from that
+completion commit. The legacy objective and codebase refill flags remain
+disabled; ASE3-021 owns the later scoped-v3 adoption and refill transition.
 
 ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and

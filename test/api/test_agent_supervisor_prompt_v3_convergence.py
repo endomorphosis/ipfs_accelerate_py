@@ -22,17 +22,21 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     ARTIFACT_FILENAMES,
     BOARD_NAMESPACE,
     DEFAULT_ARTIFACT_ROOT,
+    FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME,
+    FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME,
     FAILED_VALIDATION_EVENT_019_FILENAME,
     FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
     FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
     FALSE_COMPLETION_RECOVERY_FILENAME,
     MANIFEST_FILENAME,
     MAX_EVIDENCE_SNAPSHOT_BYTES,
+    OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
     POST_WAVE3_RESIDUAL_FILENAME,
     PROMPT_V3_TASKBOARD_RELATIVE_PATH,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
+    SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME,
     CurrentMainBaseline,
     RescueDispositionReport,
     validate_convergence_artifacts,
@@ -75,6 +79,20 @@ def _rebind_component_digest(root: Path, filename: str) -> None:
     _write(manifest_path, manifest)
 
 
+def _recompute_event_id(event: dict[str, object]) -> str:
+    body = dict(event)
+    body.pop("event_id", None)
+    return "sha256:" + hashlib.sha256(
+        json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _portable_recovery_repository(
     tmp_path: Path,
     *,
@@ -93,12 +111,13 @@ def _portable_recovery_repository(
     taskboard.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(TASKBOARD_PATH, taskboard)
     recovery = _load(root / FALSE_COMPLETION_RECOVERY_FILENAME)
-    source = recovery["source"]
+    incident = _load(root / SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME)
     failed = recovery["failed_attempt"]
+    launch = incident["launch"]
     baseline = _load(root / "current_main_baseline.json")
     seed = baseline["integration_seed"]
-    assert isinstance(source, dict)
     assert isinstance(failed, dict)
+    assert isinstance(launch, dict)
     assert isinstance(seed, dict)
     command = [
         "git",
@@ -109,7 +128,7 @@ def _portable_recovery_repository(
         "commit-tree",
         str(seed["tree"]),
         "-p",
-        str(source["recovery_parent_head"]),
+        str(launch["launch_head"]),
     ]
     if include_failed_candidate_parent:
         command.extend(("-p", str(failed["implementation_commit"])))
@@ -319,6 +338,251 @@ def test_recovery_snapshot_tampering_fails_after_manifest_rebind(
 
     assert report.valid is False
     assert any(error_fragment in error for error in report.errors)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement", "error_fragment"),
+    (
+        (
+            "attempt_accounting",
+            "attempt_restoration_authorized",
+            True,
+            "attempt_restoration_authorized",
+        ),
+        (
+            "terminal_failure",
+            "primary_provider_effect_dispatched",
+            True,
+            "primary_provider_effect_dispatched",
+        ),
+        (
+            "terminal_failure",
+            "implementation_runner_dispatched",
+            False,
+            "implementation_runner_dispatched",
+        ),
+        (
+            "control_plane_provenance",
+            "accepted_control_plane_required_for_salvage",
+            False,
+            "accepted_control_plane_required_for_salvage",
+        ),
+        (
+            "operator_salvage_gate",
+            "accepted_control_plane_required",
+            False,
+            "accepted_control_plane_required",
+        ),
+        (
+            "operator_salvage_gate",
+            "required_receipt_fields",
+            [
+                "schema",
+                "created_at",
+                "board_namespace",
+                "task",
+                "incident",
+                "authority",
+                "source_candidate",
+                "salvage_base",
+                "implementation",
+                "merge",
+                "validation",
+                "review",
+                "denials",
+            ],
+            "required_receipt_fields",
+        ),
+        (
+            "task",
+            "board_status",
+            "completed",
+            "task.board_status",
+        ),
+    ),
+)
+def test_attempt2_incident_tampering_fails_after_manifest_rebind(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    replacement: object,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME
+    payload = _load(path)
+    target = payload[section]
+    assert isinstance(target, dict)
+    target[field] = replacement
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
+def test_attempt2_event_semantics_fail_even_after_identity_and_manifest_rebind(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME
+    payload = _load(path)
+    events = payload["events"]
+    event_ids = payload["event_ids"]
+    assert isinstance(events, dict)
+    assert isinstance(event_ids, list)
+    finished = events["implementation_finished"]
+    assert isinstance(finished, dict)
+    finished["provider_dispatched"] = False
+    finished["event_id"] = _recompute_event_id(finished)
+    event_ids[2] = finished["event_id"]
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(
+        "event_snapshot.provider_dispatched" in error for error in report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("event_name", "event_index", "field", "replacement", "error_fragment"),
+    (
+        (
+            "prior_attempt_seeded",
+            0,
+            "applied",
+            False,
+            "events.prior_attempt_seeded.applied",
+        ),
+        (
+            "implementation_started",
+            1,
+            "branch",
+            "implementation/forged",
+            "events.implementation_started.branch",
+        ),
+        (
+            "implementation_shutdown_reconciled",
+            3,
+            "reconciled",
+            False,
+            "events.implementation_shutdown_reconciled.reconciled",
+        ),
+    ),
+)
+def test_attempt2_event_chain_semantics_fail_after_event_id_rebind(
+    tmp_path: Path,
+    event_name: str,
+    event_index: int,
+    field: str,
+    replacement: object,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME
+    payload = _load(path)
+    events = payload["events"]
+    event_ids = payload["event_ids"]
+    assert isinstance(events, dict)
+    assert isinstance(event_ids, list)
+    event = events[event_name]
+    assert isinstance(event, dict)
+    event[field] = replacement
+    event["event_id"] = _recompute_event_id(event)
+    event_ids[event_index] = event["event_id"]
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
+def test_attempt2_event_bundle_order_is_exact_after_manifest_rebind(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME
+    payload = _load(path)
+    event_order = payload["event_order"]
+    assert isinstance(event_order, list)
+    event_order[0], event_order[1] = event_order[1], event_order[0]
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any("event_snapshot.event_order" in error for error in report.errors)
+
+
+def test_attempt2_log_tampering_fails_after_manifest_rebind(tmp_path: Path) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace(
+            "agent implementation route binding fields are invalid",
+            "forged terminal success",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any("log_snapshot" in error for error in report.errors)
+
+
+def test_attempt2_log_uses_a_dedicated_eight_kibibyte_bound(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME
+    path.write_bytes(b"x" * (8 * 1024 + 1))
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any("8192-byte evidence snapshot bound" in error for error in report.errors)
 
 
 def test_recovery_snapshot_symlink_is_rejected_before_parsing(tmp_path: Path) -> None:
@@ -1163,6 +1427,55 @@ def test_reload_receipt_path_is_reserved_until_strictly_validated(
     )
 
 
+@pytest.mark.parametrize("receipt_kind", ("regular", "dangling-symlink"))
+def test_operator_salvage_receipt_path_is_reserved_during_c1(
+    tmp_path: Path,
+    receipt_kind: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    receipt = root / OPERATOR_SALVAGE_RECEIPT_019_FILENAME
+    if receipt_kind == "regular":
+        receipt.write_text("{}\n", encoding="utf-8")
+    else:
+        receipt.symlink_to(tmp_path / "missing-salvage-receipt-target.json")
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(
+        OPERATOR_SALVAGE_RECEIPT_019_FILENAME in error
+        and "present without a strict validator" in error
+        for error in report.errors
+    )
+
+
+def test_reload_gate_c1_operator_salvage_contract_is_exact(tmp_path: Path) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = "mandatory accepted-control-plane provenance"
+    assert text.count(needle) == 1
+    taskboard_path.write_text(
+        text.replace(needle, "optional ambient control-plane provenance", 1),
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-022.contract_sha256" in error for error in report.errors
+    )
+
+
 def test_duplicate_json_keys_fail_closed(tmp_path: Path) -> None:
     root = tmp_path / "convergence"
     shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
@@ -1534,10 +1847,9 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
     portable_taskboard_path = portable / PROMPT_V3_TASKBOARD_RELATIVE_PATH
     portable_taskboard_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(TASKBOARD_PATH, portable_taskboard_path)
-    recovery = _load(root / FALSE_COMPLETION_RECOVERY_FILENAME)
-    recovery_source = recovery["source"]
-    assert isinstance(recovery_source, dict)
-    recovery_parent_head = str(recovery_source["recovery_parent_head"])
+    incident = _load(root / SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME)
+    launch = incident["launch"]
+    assert isinstance(launch, dict)
     seed_tree = str(seed["tree"])
     descendant = subprocess.run(
         [
@@ -1547,9 +1859,9 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
             "-c",
             "user.email=portable@example.invalid",
             "commit-tree",
-            seed_tree,
-            "-p",
-            recovery_parent_head,
+                seed_tree,
+                "-p",
+                str(launch["launch_head"]),
             "-m",
             "portable descendant",
         ],
@@ -1621,6 +1933,35 @@ def test_recovery_requires_the_failed_candidate_rescue_ref(tmp_path: Path) -> No
 
     assert report.valid is False
     assert any("ASE3-019.rescue_branch" in error for error in report.errors)
+
+
+def test_recovery_requires_the_exact_attempt2_branch_ref(tmp_path: Path) -> None:
+    root, portable, taskboard = _portable_recovery_repository(tmp_path)
+    incident = _load(root / SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME)
+    prior_seed = incident["prior_attempt_seed"]
+    assert isinstance(prior_seed, dict)
+    branch = str(prior_seed["attempt_2_branch"])
+    for reference in (
+        f"refs/heads/{branch}",
+        f"refs/remotes/origin/{branch}",
+    ):
+        subprocess.run(
+            ["git", "update-ref", "-d", reference],
+            cwd=portable,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    report = validate_convergence_artifacts(
+        root,
+        repo_root=portable,
+        check_repository=True,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any("attempt_2_branch: exact ref unavailable" in error for error in report.errors)
 
 
 def test_recovery_rejects_conflicting_exact_named_rescue_refs(

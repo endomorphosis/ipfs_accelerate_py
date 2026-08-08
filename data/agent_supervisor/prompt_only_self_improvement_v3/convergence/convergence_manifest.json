@@ -3,7 +3,7 @@
   "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
   "task_id": "ASE3-000",
   "goal_id": "ASE3-G010",
-  "created_at": "2026-08-08T17:14:30Z",
+  "created_at": "2026-08-08T17:56:14Z",
   "integration_seed_commit": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
   "integration_seed_tree": "d9162b360129ab32f765bb524828e061838a360f",
   "historical_completion_authority": false,
@@ -17,6 +17,9 @@
     "false_completion_merge_receipt_ase3_006_20260808.json": "sha256:838237cd8c8c5fbc47e4ca989d5e2e9f0a27aa7a8b1f9a3ba2552b67048acf0d",
     "false_completion_merge_receipt_ase3_018_20260808.json": "sha256:aee69ba91156b9a6ec9ed75a191ec579d6389a4b4298a2a93af777840612f85b",
     "failed_validation_event_ase3_019_20260808.json": "sha256:df2cb757d0330996c3a586acfd649fdfcf7d76758bddd3c35689ea4998a1115e",
+    "failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json": "sha256:8dfe081d00135789e7c6b6969125f643a4913e3227b2ad3d6a6fa76747ad1d62",
+    "failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt": "sha256:24adec0b6d3cd97badb5586d26b7f17bdbaaa9851cfb344ebcf030773c50744e",
+    "self_host_seed_failure_ase3_019_attempt_2_20260808.json": "sha256:ae9e3e5349db4b0c21ac429259ee0c51ed95a4232825b933929d862080ce61b1",
     "post_wave3_residuals_20260808.json": "sha256:4097fd0f0c886376817a4ab0f4dfd8d27a2197cc75f9ad15214827e0e45cbc6e",
     "provider_fallback_policy_authorization_20260808.json": "sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2"
   },

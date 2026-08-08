@@ -44,7 +44,7 @@ CONVERGENCE_MANIFEST_SCHEMA: Final = (
 CONVERGENCE_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-report@1"
 )
-CONVERGENCE_MANIFEST_CREATED_AT: Final = "2026-08-08T17:14:30Z"
+CONVERGENCE_MANIFEST_CREATED_AT: Final = "2026-08-08T17:56:14Z"
 POST_WAVE3_RESIDUAL_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.post-wave3-residual-report@1"
 )
@@ -53,6 +53,12 @@ FALSE_COMPLETION_RECOVERY_SCHEMA: Final = (
 )
 PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@1"
+)
+ASE3_019_ATTEMPT2_SELF_HOST_INCIDENT_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.ase3-019-attempt2-self-host-incident@1"
+)
+ASE3_019_ATTEMPT2_EVENT_BUNDLE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.ase3-019-attempt2-event-bundle@1"
 )
 
 BOARD_NAMESPACE: Final = "agent-supervisor-prompt-only-self-improvement-v3"
@@ -72,7 +78,19 @@ FAILED_VALIDATION_EVENT_019_FILENAME: Final = (
 PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME: Final = (
     "provider_fallback_policy_authorization_20260808.json"
 )
-ARTIFACT_FILENAMES: Final = (
+FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME: Final = (
+    "failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json"
+)
+FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME: Final = (
+    "failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt"
+)
+SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME: Final = (
+    "self_host_seed_failure_ase3_019_attempt_2_20260808.json"
+)
+OPERATOR_SALVAGE_RECEIPT_019_FILENAME: Final = (
+    "operator_salvage_receipt_ase3_019_20260808.json"
+)
+JSON_ARTIFACT_FILENAMES: Final = (
     "current_main_baseline.json",
     "historical_state_contradictions.json",
     "rescue_artifact_dispositions.json",
@@ -83,7 +101,11 @@ ARTIFACT_FILENAMES: Final = (
     FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
     FAILED_VALIDATION_EVENT_019_FILENAME,
     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
+    FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME,
+    SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME,
 )
+TEXT_ARTIFACT_FILENAMES: Final = (FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME,)
+ARTIFACT_FILENAMES: Final = (*JSON_ARTIFACT_FILENAMES, *TEXT_ARTIFACT_FILENAMES)
 MANIFEST_FILENAME: Final = "convergence_manifest.json"
 DEFAULT_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
 PROMPT_V3_TASKBOARD_RELATIVE_PATH: Final = Path(
@@ -104,6 +126,11 @@ DEFAULT_ARTIFACT_ROOT: Final = (
     / "convergence"
 )
 MAX_EVIDENCE_SNAPSHOT_BYTES: Final[int] = 1_048_576
+_EVIDENCE_SNAPSHOT_BYTE_BOUNDS: Final = {
+    FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME: 64 * 1024,
+    FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME: 8 * 1024,
+    SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME: 32 * 1024,
+}
 _EVIDENCE_READ_CHUNK_BYTES: Final[int] = 64 * 1024
 _TASK_TITLE_KEY: Final = "__task_title__"
 _TASK_IDENTITY_SCHEMA: Final = (
@@ -316,6 +343,119 @@ _FALSE_COMPLETION_DISPOSITION: Final = {
     "reload_gate": "ASE3-022",
     "reload_gate_must_remain_blocked": True,
 }
+_ASE3_019_ATTEMPT2_CREATED_AT: Final = "2026-08-08T17:56:14Z"
+_ASE3_019_ATTEMPT2_TASK_CID: Final = (
+    "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a"
+)
+_ASE3_019_ATTEMPT2_TASK_KEY: Final = (
+    "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674"
+)
+_ASE3_019_ATTEMPT2_EVENT_ID: Final = (
+    "sha256:e0c223f22824466570825cae33c68ef5baceeaae267e7a968bbea13d5b2e9682"
+)
+_ASE3_019_ATTEMPT2_EVENT_SHA256: Final = (
+    "sha256:8dfe081d00135789e7c6b6969125f643a4913e3227b2ad3d6a6fa76747ad1d62"
+)
+_ASE3_019_ATTEMPT2_LOG_SHA256: Final = (
+    "sha256:24adec0b6d3cd97badb5586d26b7f17bdbaaa9851cfb344ebcf030773c50744e"
+)
+_ASE3_019_ATTEMPT2_INCIDENT_SHA256: Final = (
+    "sha256:ae9e3e5349db4b0c21ac429259ee0c51ed95a4232825b933929d862080ce61b1"
+)
+_ASE3_019_ATTEMPT2_SEED_EVENT_ID: Final = (
+    "sha256:6f69feb3b06607060c5d69e790066addf9434c7bbda66f51f83c0cb5b4357f09"
+)
+_ASE3_019_ATTEMPT2_STARTED_EVENT_ID: Final = (
+    "sha256:190828f5596ac57a1790f87131dff3cd4db3bf07e4f6f32c2b59751d34f7e0aa"
+)
+_ASE3_019_ATTEMPT2_SHUTDOWN_EVENT_ID: Final = (
+    "sha256:878bc907f4ee2f844c245cc7a0677496b87dd9b59e21aef4651929b8845aaefb"
+)
+_ASE3_019_ATTEMPT2_LAUNCH: Final = {
+    "branch": "agent/prompt-self-improvement-v3",
+    "launch_stamp": "20260808T173004Z",
+    "launch_head": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+    "launch_tree": "62a5b820bafa6c43387a2047b87e8c48941c83dc",
+    "master_pid": 2329325,
+    "supervisor_pids": [2330228, 2330230, 2330232],
+    "daemon_pids": [2332798, 2330758, 2330811],
+}
+_ASE3_019_ATTEMPT2_BRANCH: Final = (
+    "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208"
+)
+_ASE3_019_ATTEMPT2_REPLAYED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/llm_router.py",
+    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+)
+_ASE3_019_ATTEMPT2_PRIOR_SEED: Final = {
+    "source_attempt": 1,
+    "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+    "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+    "source_rescue_ref": (
+        "rescue/ase3-019-b75326e8a50d-attempt-1-1786206062-failed-validation"
+    ),
+    "merge_base": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+    "attempt_2_branch": _ASE3_019_ATTEMPT2_BRANCH,
+    "seed_event_id": _ASE3_019_ATTEMPT2_SEED_EVENT_ID,
+    "started_event_id": _ASE3_019_ATTEMPT2_STARTED_EVENT_ID,
+    "binary_full_index_delta_sha256": (
+        "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+    ),
+    "replayed_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+}
+_ASE3_019_ATTEMPT2_ACCEPTED_BLOBS: Final = {
+    "ipfs_accelerate_py/agent_supervisor/__init__.py": (
+        "346c809c0457f0d612d378672abbdb0324de1f47"
+    ),
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": (
+        "5774ec9fe78f7b80decb51b82d57cab775d7a615"
+    ),
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": (
+        "70ae5eb357888b50cec3267aaac7281661425b93"
+    ),
+    "ipfs_accelerate_py/llm_router.py": (
+        "0d974f6f085c05979470b34d156f7d4170f2df92"
+    ),
+}
+_ASE3_019_ATTEMPT2_CANDIDATE_BLOBS: Final = {
+    "ipfs_accelerate_py/agent_supervisor/__init__.py": (
+        "346c809c0457f0d612d378672abbdb0324de1f47"
+    ),
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": (
+        "06c6ef1eeca773efc6173130597d44d2664370b4"
+    ),
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": (
+        "bb5e7c469a47d2fb2f2cab287a17d182dff95f63"
+    ),
+    "ipfs_accelerate_py/llm_router.py": (
+        "f4c27ebe41c0968529ebb933a8d7a7bc8315b1f5"
+    ),
+}
+_ASE3_019_OPERATOR_SALVAGE_REQUIRED_FIELDS: Final = (
+    "schema",
+    "created_at",
+    "board_namespace",
+    "task",
+    "incident",
+    "authority",
+    "source_candidate",
+    "salvage_base",
+    "implementation",
+    "merge",
+    "validation",
+    "review",
+    "accepted_control_plane",
+    "denials",
+)
+_ASE3_019_ATTEMPT2_NORMALIZED_ERROR: Final = (
+    "agent implementation route binding fields are invalid"
+)
 _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID: Final = "ASE3-022"
 _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES: Final = (
     "ASE3-006",
@@ -326,6 +466,9 @@ _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES: Final = (
 )
 _PROVIDER_ATTEMPT_RELOAD_GATE_BLOCKED_REASON: Final = (
     "provider-attempt daemon reload boundary not yet accepted"
+)
+_PROVIDER_ATTEMPT_RELOAD_GATE_C1_CONTRACT_SHA256: Final = (
+    "sha256:e38d159c1a30ebf74e171a1d7a00f7dba0773058dd17f96eca34e01f09810e4b"
 )
 _FALSE_COMPLETION_REPAIR_TASKS: Final = {
     "ASE3-023": {
@@ -744,6 +887,55 @@ def _require_hex40(errors: list[str], label: str, value: Any) -> None:
 def _require_sha256(errors: list[str], label: str, value: Any) -> None:
     if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
         errors.append(f"{label}: expected sha256:<64 lowercase hex>")
+
+
+def _validate_exact_structure(
+    errors: list[str],
+    *,
+    prefix: str,
+    actual: Any,
+    expected: Any,
+) -> None:
+    """Recursively require exact keys, sequence population, types, and values."""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping):
+            errors.append(f"{prefix}: expected object")
+            return
+        actual_keys = set(actual)
+        expected_keys = set(expected)
+        if actual_keys != expected_keys:
+            errors.append(f"{prefix}: exact key population required")
+        for key in sorted(expected_keys):
+            if key in actual:
+                _validate_exact_structure(
+                    errors,
+                    prefix=f"{prefix}.{key}",
+                    actual=actual[key],
+                    expected=expected[key],
+                )
+        return
+    if isinstance(expected, (list, tuple)):
+        if not isinstance(actual, list):
+            errors.append(f"{prefix}: expected array")
+            return
+        if len(actual) != len(expected):
+            errors.append(f"{prefix}: exact population required")
+        for index, expected_item in enumerate(expected):
+            if index < len(actual):
+                _validate_exact_structure(
+                    errors,
+                    prefix=f"{prefix}[{index}]",
+                    actual=actual[index],
+                    expected=expected_item,
+                )
+        return
+    if isinstance(expected, bool):
+        if actual is not expected:
+            errors.append(f"{prefix}: expected {expected!r}")
+        return
+    if type(actual) is not type(expected) or actual != expected:
+        errors.append(f"{prefix}: expected {expected!r}")
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -2121,18 +2313,28 @@ def _validate_provider_attempt_reload_gate(
 
     errors: list[str] = []
     prefix = "provider_attempt_reload_gate"
-    receipt_path = artifact_root / PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME
-    try:
-        receipt_path.lstat()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        errors.append(f"{prefix}.receipt: unable to inspect reserved path: {exc}")
-    else:
-        errors.append(
-            f"{prefix}.receipt: present without a strict validator and "
-            "convergence-manifest binding"
-        )
+    reserved_receipts = (
+        (PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME, "receipt"),
+        (
+            OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
+            OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
+        ),
+    )
+    for receipt_filename, receipt_label in reserved_receipts:
+        receipt_path = artifact_root / receipt_filename
+        try:
+            receipt_path.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            errors.append(
+                f"{prefix}.{receipt_label}: unable to inspect reserved path: {exc}"
+            )
+        else:
+            errors.append(
+                f"{prefix}.{receipt_label}: present without a strict validator "
+                "and convergence-manifest binding"
+            )
 
     gate = tasks.get(_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID)
     if gate is None:
@@ -2150,6 +2352,14 @@ def _validate_provider_attempt_reload_gate(
     if gate_status != "blocked":
         errors.append(
             f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.status: expected blocked"
+        )
+    if (
+        _task_contract_sha256(gate)
+        != _PROVIDER_ATTEMPT_RELOAD_GATE_C1_CONTRACT_SHA256
+    ):
+        errors.append(
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.contract_sha256: "
+            "exact C1 incident/salvage/reload gate metadata and prose required"
         )
     if gate.get("completion", "manual").strip().lower() != "manual":
         errors.append(
@@ -2205,6 +2415,15 @@ def _validate_provider_attempt_reload_gate(
         "depends on",
     ):
         errors.append(f"{prefix}.ASE3-021.depends_on: missing ASE3-022")
+
+    provider_task = tasks.get("ASE3-019")
+    if provider_task is None:
+        errors.append(f"{prefix}.ASE3-019: expected exactly one task")
+    elif provider_task.get("status") != "todo":
+        errors.append(
+            f"{prefix}.ASE3-019.status: must remain todo until the tracked "
+            "operator-salvage receipt is strictly validated and bound"
+        )
     return errors
 
 
@@ -2571,6 +2790,538 @@ def _validate_failed_event_snapshot(
     return errors
 
 
+def _validate_attempt2_failed_event_snapshot(
+    *,
+    payload: Mapping[str, Any],
+    digest: str,
+) -> list[str]:
+    """Bind the exhausted attempt-2 terminal event without granting completion."""
+
+    errors: list[str] = []
+    prefix = "self_host_seed_failure.ASE3-019.event_snapshot"
+    if digest != _ASE3_019_ATTEMPT2_EVENT_SHA256:
+        errors.append(f"{prefix}.sha256: exact attempt-2 event digest required")
+    expected_event_order = (
+        "prior_attempt_seeded",
+        "implementation_started",
+        "implementation_finished",
+        "implementation_shutdown_reconciled",
+    )
+    expected_event_ids = (
+        _ASE3_019_ATTEMPT2_SEED_EVENT_ID,
+        _ASE3_019_ATTEMPT2_STARTED_EVENT_ID,
+        _ASE3_019_ATTEMPT2_EVENT_ID,
+        _ASE3_019_ATTEMPT2_SHUTDOWN_EVENT_ID,
+    )
+    expected_sequences = (128, 130, 134, 160)
+    expected_types = (
+        "implementation_prior_attempt_seeded",
+        "implementation_started",
+        "implementation_finished",
+        "implementation_shutdown_reconciled",
+    )
+    expected_wrapper_fields = {
+        "schema": ASE3_019_ATTEMPT2_EVENT_BUNDLE_SCHEMA,
+        "board_namespace": BOARD_NAMESPACE,
+        "task_id": "ASE3-019",
+        "canonical_task_cid": _ASE3_019_ATTEMPT2_TASK_CID,
+        "canonical_task_key": _ASE3_019_ATTEMPT2_TASK_KEY,
+        "attempt": 2,
+        "event_order": list(expected_event_order),
+        "sequence_order": list(expected_sequences),
+        "event_ids": list(expected_event_ids),
+        "completion_authority": False,
+    }
+    for field, expected in expected_wrapper_fields.items():
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.{field}",
+            actual=payload.get(field),
+            expected=expected,
+        )
+    expected_wrapper_keys = {
+        *expected_wrapper_fields,
+        "stream_id",
+        "snapshot_id",
+        "events",
+    }
+    if set(payload) != expected_wrapper_keys:
+        errors.append(f"{prefix}: exact bundle key population required")
+    stream_id = payload.get("stream_id")
+    snapshot_id = payload.get("snapshot_id")
+    if not isinstance(stream_id, str) or not stream_id.startswith("event-log:sha256:"):
+        errors.append(f"{prefix}.stream_id: exact event-log identity required")
+    if (
+        not isinstance(snapshot_id, str)
+        or not snapshot_id.startswith("event-log-snapshot:sha256:")
+    ):
+        errors.append(f"{prefix}.snapshot_id: exact event-log snapshot required")
+    events = payload.get("events")
+    if not isinstance(events, Mapping):
+        errors.append(f"{prefix}.events: expected object")
+        return errors
+    if tuple(events) != expected_event_order:
+        errors.append(f"{prefix}.events: exact ordered population required")
+
+    normalized_events: list[Mapping[str, Any]] = []
+    for index, (event_name, expected_event_id, expected_sequence, expected_type) in (
+        enumerate(
+            zip(
+                expected_event_order,
+                expected_event_ids,
+                expected_sequences,
+                expected_types,
+                strict=True,
+            )
+        )
+    ):
+        event = events.get(event_name)
+        event_prefix = f"{prefix}.events.{event_name}"
+        if not isinstance(event, Mapping):
+            errors.append(f"{event_prefix}: expected object")
+            continue
+        normalized_events.append(event)
+        event_body = dict(event)
+        claimed_id = str(event_body.pop("event_id", ""))
+        try:
+            canonical = json.dumps(
+                event_body,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError, RecursionError) as exc:
+            errors.append(f"{event_prefix}.event_id: noncanonical event: {exc}")
+        else:
+            recomputed_id = "sha256:" + hashlib.sha256(canonical).hexdigest()
+            if claimed_id != recomputed_id or claimed_id != expected_event_id:
+                errors.append(f"{event_prefix}.event_id: exact identity required")
+        for field, expected in {
+            "sequence": expected_sequence,
+            "type": expected_type,
+            "stream_id": stream_id,
+            "snapshot_id": snapshot_id,
+        }.items():
+            _validate_exact_structure(
+                errors,
+                prefix=f"{event_prefix}.{field}",
+                actual=event.get(field),
+                expected=expected,
+            )
+        if index < 3:
+            for field, expected in {
+                "task_id": "ASE3-019",
+                "canonical_task_cid": _ASE3_019_ATTEMPT2_TASK_CID,
+                "canonical_task_key": _ASE3_019_ATTEMPT2_TASK_KEY,
+                "attempt": 2,
+            }.items():
+                _validate_exact_structure(
+                    errors,
+                    prefix=f"{event_prefix}.{field}",
+                    actual=event.get(field),
+                    expected=expected,
+                )
+    if len(normalized_events) != 4:
+        return errors
+
+    seed_event, started_event, finished_event, shutdown_event = normalized_events
+    for field, expected in {
+        "applied": True,
+        "baseline_ref": _ASE3_019_ATTEMPT2_LAUNCH["launch_head"],
+        "branch": _ASE3_019_ATTEMPT2_BRANCH,
+        "merge_base": _ASE3_019_ATTEMPT2_PRIOR_SEED["merge_base"],
+        "no_change": False,
+        "reason": "replayed_prior_delta",
+        "seed_ref": _ASE3_019_ATTEMPT2_PRIOR_SEED["source_commit"],
+        "replayed_root_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+        "scope_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+        "skipped_root_paths": [],
+    }.items():
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.events.prior_attempt_seeded.{field}",
+            actual=seed_event.get(field),
+            expected=expected,
+        )
+    for field, expected in {
+        "baseline_ref": _ASE3_019_ATTEMPT2_LAUNCH["launch_head"],
+        "branch": _ASE3_019_ATTEMPT2_BRANCH,
+        "execution_mode": "model-assisted",
+    }.items():
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.events.implementation_started.{field}",
+            actual=started_event.get(field),
+            expected=expected,
+        )
+    command = started_event.get("command")
+    if (
+        not isinstance(command, list)
+        or command[:3]
+        != [
+            "/home/barberb/.local/bin/python",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
+        or "--agent-implementation-route-json" not in command
+        or "--grok-failure-receipt-nonce" not in command
+    ):
+        errors.append(
+            f"{prefix}.events.implementation_started.command: exact runner "
+            "module and bound route arguments required"
+        )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.events.implementation_shutdown_reconciled",
+        actual={
+            field: shutdown_event.get(field)
+            for field in (
+                "attempt",
+                "attempt_recovery",
+                "blocked",
+                "task_id",
+                "reason",
+                "reconciled",
+                "stale_lock_cleared",
+            )
+        },
+        expected={
+            "attempt": 0,
+            "attempt_recovery": {},
+            "blocked": False,
+            "task_id": "ASE3-019",
+            "reason": "already_quiesced",
+            "reconciled": True,
+            "stale_lock_cleared": False,
+        },
+    )
+
+    payload = finished_event
+    body = dict(payload)
+    claimed_event_id = str(body.pop("event_id", ""))
+    try:
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        errors.append(f"{prefix}.event_id: noncanonical event: {exc}")
+    else:
+        computed = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        if claimed_event_id != computed:
+            errors.append(f"{prefix}.event_id: noncanonical identity")
+        if claimed_event_id != _ASE3_019_ATTEMPT2_EVENT_ID:
+            errors.append(f"{prefix}.event_id: exact attempt-2 identity required")
+
+    expected_event_fields = {
+        "type": "implementation_finished",
+        "task_id": "ASE3-019",
+        "board_namespace": BOARD_NAMESPACE,
+        "canonical_task_cid": _ASE3_019_ATTEMPT2_TASK_CID,
+        "canonical_task_key": _ASE3_019_ATTEMPT2_TASK_KEY,
+        "attempt": 2,
+        "returncode": 2,
+        "provider_dispatched": True,
+        "attempt_consumed": True,
+        "implementation_commit": "",
+    }
+    for field, expected in expected_event_fields.items():
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.{field}",
+            actual=payload.get(field),
+            expected=expected,
+        )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.commit_result",
+        actual=payload.get("commit_result"),
+        expected={"committed": False},
+    )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.validation_result",
+        actual=payload.get("validation_result"),
+        expected={
+            "attempted": False,
+            "passed": True,
+            "reason": "not_run",
+            "results": [],
+            "returncode": 0,
+        },
+    )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.merge_result",
+        actual=payload.get("merge_result"),
+        expected={"merged": False, "reason": "not_attempted"},
+    )
+
+    workspace = payload.get("workspace_setup")
+    if not isinstance(workspace, Mapping):
+        errors.append(f"{prefix}.workspace_setup: expected object")
+        return errors
+    for field, expected in {
+        "base_commit": _ASE3_019_ATTEMPT2_LAUNCH["launch_head"],
+        "base_ref": _ASE3_019_ATTEMPT2_LAUNCH["branch"],
+        "branch": _ASE3_019_ATTEMPT2_BRANCH,
+        "cache_hit": False,
+        "reused": False,
+        "dependency_paths": [],
+    }.items():
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.workspace_setup.{field}",
+            actual=workspace.get(field),
+            expected=expected,
+        )
+    seed = workspace.get("prior_attempt_seed")
+    if not isinstance(seed, Mapping):
+        errors.append(f"{prefix}.workspace_setup.prior_attempt_seed: expected object")
+        return errors
+    for field, expected in {
+        "applied": True,
+        "baseline_ref": _ASE3_019_ATTEMPT2_LAUNCH["launch_head"],
+        "merge_base": _ASE3_019_ATTEMPT2_PRIOR_SEED["merge_base"],
+        "no_change": False,
+        "reason": "replayed_prior_delta",
+        "seed_ref": _ASE3_019_ATTEMPT2_PRIOR_SEED["source_commit"],
+        "replayed_root_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+        "scope_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+        "skipped_root_paths": [],
+    }.items():
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.workspace_setup.prior_attempt_seed.{field}",
+            actual=seed.get(field),
+            expected=expected,
+        )
+    proposal_gate = seed.get("pre_dispatch_proposal_gate")
+    if not isinstance(proposal_gate, Mapping):
+        errors.append(
+            f"{prefix}.workspace_setup.prior_attempt_seed."
+            "pre_dispatch_proposal_gate: expected object"
+        )
+    else:
+        for field, expected in {
+            "accepted": True,
+            "attempted": True,
+            "changed_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+            "reason_codes": [],
+            "repository_tree_id": _ASE3_019_ATTEMPT2_LAUNCH["launch_head"],
+        }.items():
+            _validate_exact_structure(
+                errors,
+                prefix=(
+                    f"{prefix}.workspace_setup.prior_attempt_seed."
+                    f"pre_dispatch_proposal_gate.{field}"
+                ),
+                actual=proposal_gate.get(field),
+                expected=expected,
+            )
+    authority = seed.get("proposal_authority")
+    if not isinstance(authority, Mapping):
+        errors.append(
+            f"{prefix}.workspace_setup.prior_attempt_seed."
+            "proposal_authority: expected object"
+        )
+    else:
+        for field, expected in {
+            "ok": True,
+            "task_id": "ASE3-019",
+            "canonical_task_cid": _ASE3_019_ATTEMPT2_TASK_CID,
+            "canonical_task_key": _ASE3_019_ATTEMPT2_TASK_KEY,
+            "authorized_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+            "declared_scope_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+            "receipt_paths": list(_ASE3_019_ATTEMPT2_REPLAYED_PATHS),
+            "dropped_protected_paths": [],
+            "dropped_receipt_paths": [],
+        }.items():
+            _validate_exact_structure(
+                errors,
+                prefix=(
+                    f"{prefix}.workspace_setup.prior_attempt_seed."
+                    f"proposal_authority.{field}"
+                ),
+                actual=authority.get(field),
+                expected=expected,
+            )
+    return errors
+
+
+def _validate_attempt2_failed_log_snapshot(*, raw: bytes, digest: str) -> list[str]:
+    """Validate the byte-exact redacted attempt-2 implementation-runner log."""
+
+    errors: list[str] = []
+    prefix = "self_host_seed_failure.ASE3-019.log_snapshot"
+    if digest != _ASE3_019_ATTEMPT2_LOG_SHA256:
+        errors.append(f"{prefix}.sha256: exact attempt-2 log digest required")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        errors.append(f"{prefix}: expected UTF-8 text")
+        return errors
+    required_fragments = (
+        "Task: ASE3-019 Seal signed provider authority, authentication lifecycle, "
+        "and once-only fallback\n",
+        f"Branch: {_ASE3_019_ATTEMPT2_BRANCH}\n",
+        f"Baseline: {_ASE3_019_ATTEMPT2_LAUNCH['launch_head']}\n",
+        " -m ipfs_accelerate_py.agent_supervisor.grok_cli_runner ",
+        '"fallback_model_id":"gpt-5.6-terra"',
+        '"fallback_reasoning_effort":"high"',
+    )
+    for fragment in required_fragments:
+        if text.count(fragment) != 1:
+            errors.append(f"{prefix}: exact launch binding is missing or duplicated")
+    if not text.endswith(f"\n{_ASE3_019_ATTEMPT2_NORMALIZED_ERROR}\n"):
+        errors.append(f"{prefix}.terminal_error: exact normalized error required")
+    for forbidden in (
+        "GROK_FAILURE_RECEIPT ",
+        "GROK_ROUTE_OUTCOME ",
+        "Authorization: Bearer ",
+        '"access_token"',
+        '"refresh_token"',
+        '"client_secret"',
+    ):
+        if forbidden in text:
+            errors.append(f"{prefix}: forbidden receipt or secret material present")
+    return errors
+
+
+def _validate_attempt2_self_host_incident(
+    *,
+    payload: Mapping[str, Any],
+    digest: str,
+    event_digest: str,
+    log_digest: str,
+) -> list[str]:
+    """Validate the immutable C1 incident and its future no-provider salvage gate."""
+
+    errors: list[str] = []
+    prefix = "self_host_seed_failure.ASE3-019.incident"
+    if digest != _ASE3_019_ATTEMPT2_INCIDENT_SHA256:
+        errors.append(f"{prefix}.sha256: exact incident digest required")
+    expected = {
+        "schema": ASE3_019_ATTEMPT2_SELF_HOST_INCIDENT_SCHEMA,
+        "created_at": _ASE3_019_ATTEMPT2_CREATED_AT,
+        "board_namespace": BOARD_NAMESPACE,
+        "task": {
+            "task_id": "ASE3-019",
+            "title": _ASE3_019_TITLE,
+            "canonical_task_cid": _ASE3_019_ATTEMPT2_TASK_CID,
+            "canonical_task_key": _ASE3_019_ATTEMPT2_TASK_KEY,
+            "attempt": 2,
+            "max_attempts": 2,
+            "board_status": "todo",
+            "runtime_status": "ready",
+            "completion": "manual",
+        },
+        "launch": _ASE3_019_ATTEMPT2_LAUNCH,
+        "prior_attempt_seed": _ASE3_019_ATTEMPT2_PRIOR_SEED,
+        "terminal_failure": {
+            "finished_event_id": _ASE3_019_ATTEMPT2_EVENT_ID,
+            "event_snapshot": FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME,
+            "event_snapshot_sha256": _ASE3_019_ATTEMPT2_EVENT_SHA256,
+            "log_snapshot": FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME,
+            "log_snapshot_sha256": _ASE3_019_ATTEMPT2_LOG_SHA256,
+            "returncode": 2,
+            "normalized_error": _ASE3_019_ATTEMPT2_NORMALIZED_ERROR,
+            "implementation_runner_dispatched": True,
+            "primary_provider_effect_dispatched": False,
+            "fallback_provider_effect_dispatched": False,
+            "provider_failure_receipt_emitted": False,
+            "route_outcome_emitted": False,
+            "attempt_consumed": True,
+            "validation_attempted": False,
+            "implementation_commit": "",
+            "merge_dispatched": False,
+        },
+        "control_plane_provenance": {
+            "classification": (
+                "candidate_workspace_shadowed_accepted_provider_control_plane"
+            ),
+            "python_executable": "/home/barberb/.local/bin/python",
+            "module_argv": [
+                "-m",
+                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            ],
+            "subprocess_cwd": (
+                "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/"
+                "data/agent_supervisor/prompt_only_self_improvement_v3/live/"
+                "worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+            ),
+            "candidate_package_imported_from_candidate_cwd": True,
+            "invocation_command_sha256": (
+                "sha256:bc60c2bc61d4da36d516bc6b0a7ee92e889f792e746c7816271dc7b9e26ce49f"
+            ),
+            "accepted_generation_blobs": _ASE3_019_ATTEMPT2_ACCEPTED_BLOBS,
+            "seeded_candidate_blobs": _ASE3_019_ATTEMPT2_CANDIDATE_BLOBS,
+            "candidate_only_required_route_fields": [
+                "fallback_implementer_identity",
+                "reviewer_identity",
+                "reviewer_provider",
+            ],
+            "provider_capacity_failure": False,
+            "accepted_control_plane_required_for_salvage": True,
+        },
+        "attempt_accounting": {
+            "attempts_by_task_id": 2,
+            "attempts_by_canonical_task_cid": 2,
+            "queue_attempt_count": 2,
+            "consecutive_failures": 2,
+            "selection_penalty": 200,
+            "exhausted": True,
+            "attempt_restoration_authorized": False,
+            "attempt_counter_mutation_authorized": False,
+            "runtime_state_mutation_authorized": False,
+            "queue_history_mutation_authorized": False,
+        },
+        "fence": {
+            "interrupted_at": "2026-08-08T17:37:31Z",
+            "shutdown_signal": "SIGINT",
+            "lane_statuses": ["stopped", "stopped", "stopped"],
+            "lane_restart_counts": [0, 0, 0],
+            "lane_1_shutdown_event_id": _ASE3_019_ATTEMPT2_SHUTDOWN_EVENT_ID,
+            "lane_1_active_attempt_cleared": True,
+            "zero_owned_processes": True,
+            "zero_scoped_provider_containers": True,
+            "interrupted_lane_0_and_2_candidates_preserved": True,
+        },
+        "operator_salvage_gate": {
+            "receipt_filename": OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
+            "receipt_present": False,
+            "ase3_019_required_status": "todo",
+            "reload_gate_task_id": "ASE3-022",
+            "reload_gate_required_status": "blocked",
+            "provider_dispatch_authorized": False,
+            "accepted_control_plane_required": True,
+            "completion_authority": False,
+            "required_receipt_fields": list(
+                _ASE3_019_OPERATOR_SALVAGE_REQUIRED_FIELDS
+            ),
+        },
+    }
+    _validate_exact_structure(
+        errors,
+        prefix=prefix,
+        actual=payload,
+        expected=expected,
+    )
+    terminal = payload.get("terminal_failure", {})
+    if isinstance(terminal, Mapping):
+        if terminal.get("event_snapshot_sha256") != event_digest:
+            errors.append(f"{prefix}.terminal_failure.event_snapshot_sha256: mismatch")
+        if terminal.get("log_snapshot_sha256") != log_digest:
+            errors.append(f"{prefix}.terminal_failure.log_snapshot_sha256: mismatch")
+    return errors
+
+
 def _validate_false_completion_snapshots(
     *,
     payloads: Mapping[str, Mapping[str, Any]],
@@ -2594,6 +3345,41 @@ def _validate_false_completion_snapshots(
         _validate_failed_event_snapshot(
             payload=payloads[failed_filename],
             digest=str(digests.get(failed_filename, "")),
+        )
+    )
+    return errors
+
+
+def _validate_attempt2_incident_packet(
+    *,
+    payloads: Mapping[str, Mapping[str, Any]],
+    raw_artifacts: Mapping[str, bytes],
+    digests: Mapping[str, str],
+) -> list[str]:
+    event_digest = str(
+        digests.get(FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME, "")
+    )
+    log_digest = str(
+        digests.get(FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME, "")
+    )
+    errors = _validate_attempt2_failed_event_snapshot(
+        payload=payloads[FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME],
+        digest=event_digest,
+    )
+    errors.extend(
+        _validate_attempt2_failed_log_snapshot(
+            raw=raw_artifacts[FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME],
+            digest=log_digest,
+        )
+    )
+    errors.extend(
+        _validate_attempt2_self_host_incident(
+            payload=payloads[SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME],
+            digest=str(
+                digests.get(SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME, "")
+            ),
+            event_digest=event_digest,
+            log_digest=log_digest,
         )
     )
     return errors
@@ -3107,6 +3893,121 @@ def _validate_repository_binding(
                 "repository_binding.false_completion_recovery.ASE3-019."
                 f"merge_dispatched: unable to test {descendant_name} ancestry"
             )
+
+    attempt2_prefix = "repository_binding.self_host_seed_failure.ASE3-019.attempt_2"
+    launch_head = str(_ASE3_019_ATTEMPT2_LAUNCH["launch_head"])
+    launch_tree = _git(repo_root, "rev-parse", "--verify", f"{launch_head}^{{tree}}")
+    if launch_tree.returncode != 0:
+        errors.append(f"{attempt2_prefix}.launch_head: Git object unavailable")
+    elif launch_tree.stdout.strip() != _ASE3_019_ATTEMPT2_LAUNCH["launch_tree"]:
+        errors.append(f"{attempt2_prefix}.launch_tree: Git identity mismatch")
+    launch_ancestor = _git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        launch_head,
+        "HEAD",
+    )
+    if launch_ancestor.returncode != 0:
+        errors.append(f"{attempt2_prefix}.launch_head: not an ancestor of HEAD")
+
+    attempt2_refs = (
+        f"refs/heads/{_ASE3_019_ATTEMPT2_BRANCH}",
+        f"refs/remotes/origin/{_ASE3_019_ATTEMPT2_BRANCH}",
+    )
+    attempt2_targets: dict[str, str] = {}
+    for attempt2_ref in attempt2_refs:
+        attempt2_target = _git(
+            repo_root,
+            "rev-parse",
+            "--verify",
+            f"{attempt2_ref}^{{commit}}",
+        )
+        if attempt2_target.returncode == 0:
+            attempt2_targets[attempt2_ref] = attempt2_target.stdout.strip()
+    if not attempt2_targets:
+        errors.append(f"{attempt2_prefix}.attempt_2_branch: exact ref unavailable")
+    else:
+        mismatched_attempt2_refs = sorted(
+            ref for ref, target in attempt2_targets.items() if target != launch_head
+        )
+        if mismatched_attempt2_refs:
+            errors.append(
+                f"{attempt2_prefix}.attempt_2_branch: exact refs disagree with "
+                "launch head: " + ", ".join(mismatched_attempt2_refs)
+            )
+
+    source_commit = str(_ASE3_019_ATTEMPT2_PRIOR_SEED["source_commit"])
+    source_tree = _git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        f"{source_commit}^{{tree}}",
+    )
+    if source_tree.returncode != 0:
+        errors.append(f"{attempt2_prefix}.source_commit: Git object unavailable")
+    elif source_tree.stdout.strip() != _ASE3_019_ATTEMPT2_PRIOR_SEED["source_tree"]:
+        errors.append(f"{attempt2_prefix}.source_tree: Git identity mismatch")
+    source_parents = _git(
+        repo_root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        source_commit,
+    )
+    if source_parents.stdout.strip().split() != [
+        source_commit,
+        str(_FALSE_COMPLETION_RECOVERY_SOURCE["launch_base_head"]),
+    ]:
+        errors.append(f"{attempt2_prefix}.source_commit: exact parent mismatch")
+
+    delta = _git(
+        repo_root,
+        "diff",
+        "--binary",
+        "--full-index",
+        str(_ASE3_019_ATTEMPT2_PRIOR_SEED["merge_base"]),
+        source_commit,
+    )
+    if delta.returncode != 0:
+        errors.append(f"{attempt2_prefix}.prior_delta: unable to compute")
+    else:
+        delta_digest = "sha256:" + hashlib.sha256(
+            delta.stdout.encode("utf-8")
+        ).hexdigest()
+        if delta_digest != _ASE3_019_ATTEMPT2_PRIOR_SEED[
+            "binary_full_index_delta_sha256"
+        ]:
+            errors.append(f"{attempt2_prefix}.prior_delta: exact digest mismatch")
+    changed_paths = _git(
+        repo_root,
+        "diff",
+        "--name-only",
+        str(_ASE3_019_ATTEMPT2_PRIOR_SEED["merge_base"]),
+        source_commit,
+    )
+    if changed_paths.returncode != 0:
+        errors.append(f"{attempt2_prefix}.replayed_paths: unable to enumerate")
+    elif tuple(changed_paths.stdout.splitlines()) != _ASE3_019_ATTEMPT2_REPLAYED_PATHS:
+        errors.append(f"{attempt2_prefix}.replayed_paths: exact population mismatch")
+
+    for generation, commit, expected_blobs in (
+        ("accepted", launch_head, _ASE3_019_ATTEMPT2_ACCEPTED_BLOBS),
+        ("candidate", source_commit, _ASE3_019_ATTEMPT2_CANDIDATE_BLOBS),
+    ):
+        for relative_path, expected_blob in expected_blobs.items():
+            blob = _git(
+                repo_root,
+                "rev-parse",
+                "--verify",
+                f"{commit}:{relative_path}",
+            )
+            if blob.returncode != 0 or blob.stdout.strip() != expected_blob:
+                errors.append(
+                    f"{attempt2_prefix}.{generation}_control_plane."
+                    f"{relative_path}: Git blob mismatch"
+                )
     return errors
 
 
@@ -3123,6 +4024,7 @@ def validate_convergence_artifacts(
     errors: list[str] = []
     checked: list[str] = []
     payloads: dict[str, Mapping[str, Any]] = {}
+    raw_artifacts: dict[str, bytes] = {}
     artifact_digests: dict[str, str] = {}
     try:
         root_status = root.lstat()
@@ -3142,8 +4044,18 @@ def validate_convergence_artifacts(
         path = root / filename
         checked.append(filename)
         try:
-            raw = _read_regular_bytes(path)
-            payloads[filename] = _load_json_bytes(raw, name=filename)
+            raw = _read_regular_bytes(
+                path,
+                maximum_bytes=_EVIDENCE_SNAPSHOT_BYTE_BOUNDS.get(
+                    filename,
+                    MAX_EVIDENCE_SNAPSHOT_BYTES,
+                ),
+            )
+            raw_artifacts[filename] = raw
+            if filename in (*JSON_ARTIFACT_FILENAMES, MANIFEST_FILENAME):
+                payloads[filename] = _load_json_bytes(raw, name=filename)
+            elif filename not in TEXT_ARTIFACT_FILENAMES:
+                raise ValueError(f"{filename}: undeclared artifact encoding")
             artifact_digests[filename] = (
                 "sha256:" + hashlib.sha256(raw).hexdigest()
             )
@@ -3184,6 +4096,13 @@ def validate_convergence_artifacts(
     errors.extend(
         _validate_false_completion_snapshots(
             payloads=payloads,
+            digests=artifact_digests,
+        )
+    )
+    errors.extend(
+        _validate_attempt2_incident_packet(
+            payloads=payloads,
+            raw_artifacts=raw_artifacts,
             digests=artifact_digests,
         )
     )
