@@ -154,7 +154,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-005 Compose a real resumable prompt-to-run lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
