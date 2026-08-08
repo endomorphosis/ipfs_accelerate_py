@@ -140,7 +140,7 @@ this bootstrap is active.
 
 ## DQP-004 Add a pinned DuckDB and Quack capability profile
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
