@@ -52,11 +52,18 @@ package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
+"ipfs_accelerate_py.agent_supervisor.task_sources" = ["sql/*.sql"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+# Optional agent-supervisor control-plane service (DQP-005).
+# Pins DuckDB 1.5.x for the Quack beta era; Quack itself is a DuckDB extension
+# (not a pip package) and is admitted by quack_capabilities probes.
+agent-supervisor = [
+  "duckdb>=1.5.0,<1.6.0",
+]
 dev = [
   # test runner + core test deps
   "pytest>=8.0.0",
