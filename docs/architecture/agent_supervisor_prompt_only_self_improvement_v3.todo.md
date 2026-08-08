@@ -394,7 +394,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-015 Resolve implementation retry-budget failure for ASE3-001
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -413,7 +413,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-016 Resolve implementation retry-budget failure for ASE3-002
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -432,7 +432,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-017 Resolve implementation retry-budget failure for ASE3-003
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
