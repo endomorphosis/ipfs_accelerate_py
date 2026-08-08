@@ -1,0 +1,140 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt_only_self_improvement_v3.scheduler_config@1",
+  "audited_baseline_commit": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+  "taskboard_path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md",
+  "validator_path": "ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py",
+  "task_prefix": "ASE3-",
+  "goal_prefix": "ASE3-G",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "merge_target_branch": "agent/prompt-self-improvement-v3",
+  "source_binding": {
+    "accelerator_required_ancestor": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+    "accelerator_required_branch": "agent/prompt-self-improvement-v3",
+    "require_clean_worktree_at_task_start": true,
+    "record_repository_tree_at_launch": true,
+    "changed_revision_requires_fresh_convergence_and_validation": true,
+    "historical_ase_or_ase2_completion_is_authority": false
+  },
+  "initial_projection": {
+    "task_count": 15,
+    "goal_count": 9,
+    "root_goal_id": "ASE3-G000",
+    "bootstrap_task_id": "ASE3-000",
+    "first_parallel_wave": [
+      "ASE3-001",
+      "ASE3-002",
+      "ASE3-003"
+    ],
+    "terminal_task_id": "ASE3-014"
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": false,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 30,
+  "check_interval_seconds": 15,
+  "stale_seconds": 300,
+  "watchdog_startup_grace_seconds": 120,
+  "max_restarts": 3,
+  "max_task_attempts": 2,
+  "implementation_retry_budget": 2,
+  "validation_retry_budget": 2,
+  "merge_retry_budget": 2,
+  "implementation_timeout_seconds": 3600,
+  "implementation_max_timeout_seconds": 7200,
+  "implementation_log_stall_seconds": 300,
+  "worktree_submodule_paths": [],
+  "protected_paths": [
+    ".gitignore",
+    "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json",
+    "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md",
+    "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md",
+    "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+    "ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py",
+    "test/api/test_agent_supervisor_prompt_v3_convergence.py",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/current_main_baseline.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/historical_state_contradictions.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/rescue_artifact_dispositions.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/clean_integration_worktree_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
+    "state": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state",
+    "worktrees": "data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees",
+    "merge_queue": "data/agent_supervisor/prompt_only_self_improvement_v3/live/merge-queue",
+    "logs": "data/agent_supervisor/prompt_only_self_improvement_v3/live/logs",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "ase3-lane-0",
+      "strict_shard_remainder": 0
+    },
+    {
+      "index": 1,
+      "name": "ase3-lane-1",
+      "strict_shard_remainder": 1
+    },
+    {
+      "index": 2,
+      "name": "ase3-lane-2",
+      "strict_shard_remainder": 2
+    }
+  ],
+  "task_groups": {
+    "ASE3-G010": ["ASE3-000"],
+    "ASE3-G020": ["ASE3-001", "ASE3-002"],
+    "ASE3-G030": ["ASE3-004"],
+    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006"],
+    "ASE3-G050": ["ASE3-007"],
+    "ASE3-G060": ["ASE3-008"],
+    "ASE3-G070": ["ASE3-009", "ASE3-010", "ASE3-011", "ASE3-012"],
+    "ASE3-G080": ["ASE3-013", "ASE3-014"]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "refill_policy": {
+    "enable_after_task": "ASE3-007",
+    "max_goals_per_epoch": 8,
+    "max_tasks_per_epoch": 24,
+    "max_open_tasks": 48,
+    "max_depth": 3,
+    "max_epochs": 3,
+    "max_attempts_per_task": 2,
+    "unchanged_residual_cooldown_seconds": 3600,
+    "mutate_seed_board": false
+  },
+  "monitor_policy": {
+    "heartbeat_seconds": 5,
+    "stale_control_seconds": 30,
+    "semantic_progress_seconds": 300,
+    "max_recoveries_per_window": 3,
+    "recovery_window_seconds": 1800,
+    "running_requires_process_birth_lease_fence_and_heartbeat": true,
+    "queue_drain_is_completion": false,
+    "branch_local_completion_is_completion": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "ASE3-014",
+    "accepted_tasks_only_satisfy_dependencies": true,
+    "all_goal_evidence_current_on_release_tree": true,
+    "final_forced_residual_scan_required": true,
+    "active_signed_rollout_required": true,
+    "stale_partial_simulated_skipped_soft_or_print_only_evidence_satisfies_release": false
+  }
+}

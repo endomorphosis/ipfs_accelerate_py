@@ -13,6 +13,7 @@ state/*
 *model_functionality*
 *.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
+!data/agent_supervisor/prompt_only_self_improvement_v3/convergence/*.json
 .venv-test
 *result.json*
 *benchmark_report*
@@ -164,6 +165,7 @@ Thumbs.db
 
 # Local/ephemeral data under data/ (WAL, ad-hoc DBs; keep intentional fixtures)
 /data/agent_supervisor/ipfs_kit_runtime_readiness/
+/data/agent_supervisor/prompt_only_self_improvement_v3/live/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
@@ -196,6 +198,7 @@ state/**/*.out
 !config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
 # Stable machine-ingestible supervisor program profile (CPD-000).
 !config/agent_supervisor_control_plane_planner_doctor_v2_scheduler.json
+!config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json
 # Delegated/manual completion seals for Planner/Doctor program gates.
 !config/agent_supervisor_planner_doctor_attestation.seal.json
 !config/agent_supervisor_planner_doctor_quality_oracle.seal.json
@@ -209,4 +212,3 @@ state/**/*.out
 !docs/architecture/formal_verification_post_remediation_delta.json
 !docs/architecture/formal_verification_production_authorization_replacement_receipt.json
 !docs/architecture/formal_verification_g213_terminal_evidence.json
-

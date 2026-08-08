@@ -1,0 +1,39 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@1",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "task_id": "ASE3-000",
+  "goal_id": "ASE3-G010",
+  "created_at": "2026-08-08T07:12:11Z",
+  "integration_seed_commit": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+  "integration_seed_tree": "d9162b360129ab32f765bb524828e061838a360f",
+  "historical_completion_authority": false,
+  "rescue_bulk_merge_allowed": false,
+  "components": {
+    "current_main_baseline.json": "sha256:0ded790a99b25c34482d5bd0bd4e38da02e80d012aaa9e4e30bbcdd1e5e3896c",
+    "historical_state_contradictions.json": "sha256:daa7f156a6a39806828a28b342d63b2039f433945253966bd05af988bb4d1ebb",
+    "rescue_artifact_dispositions.json": "sha256:bf031cb53beed868889a365efdc683425f6367cf3e64451c20ea32e58fc26873",
+    "clean_integration_worktree_receipt.json": "sha256:0d38a9066873e07b36f8077fe9d2edd652bc2a04d9415acc0a838ee3e4833c38"
+  },
+  "population": {
+    "rescue_commits": 36,
+    "rescue_changed_paths": 35,
+    "v2_tasks": 8,
+    "historical_contradictions": 5,
+    "v3_seed_tasks": 15,
+    "v3_seed_goals": 9
+  },
+  "completion_rules": {
+    "historical_status_or_receipt_satisfies_v3": false,
+    "branch_local_commit_satisfies_v3": false,
+    "queue_drain_satisfies_goal_completion": false,
+    "current_tree_acceptance_required": true,
+    "forced_residual_scan_required": true
+  },
+  "downstream_rules": {
+    "required_ancestor": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+    "merge_target_branch": "agent/prompt-self-improvement-v3",
+    "rescue_disposition_required_before_use": true,
+    "fresh_validation_receipt_required_per_task": true,
+    "protected_source_checkout_may_be_modified": false
+  }
+}

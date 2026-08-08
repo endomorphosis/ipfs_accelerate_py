@@ -34,7 +34,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-000 Establish current-main truth and a safe convergence manifest
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -42,19 +42,19 @@ Wave 9:            ASE3-014
 - Track: convergence
 - Depends on:
 - Goal id: ASE3-G010
-- Outputs: ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py, test/api/test_agent_supervisor_prompt_v3_convergence.py, data/agent_supervisor/prompt_only_self_improvement_v3/convergence
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py, test/api/test_agent_supervisor_prompt_v3_convergence.py, config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json, .gitignore, data/agent_supervisor/prompt_only_self_improvement_v3/convergence
 - Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_convergence.py -q
 - Board namespace: agent-supervisor-prompt-only-self-improvement-v3
 - Bundle: agent-supervisor/prompt-self-improvement-v3/convergence
 - Parallel lane: convergence
 - Resource class: coordinator
-- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py, test/api/test_agent_supervisor_prompt_v3_convergence.py, data/agent_supervisor/prompt_only_self_improvement_v3/convergence
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py, test/api/test_agent_supervisor_prompt_v3_convergence.py, config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json, .gitignore, data/agent_supervisor/prompt_only_self_improvement_v3/convergence
 - Interfaces: CurrentMainBaseline, HistoricalStateContradictionReport, RescueArtifactDisposition, ConvergenceManifest, CleanIntegrationWorktreeReceipt
 - Conflict policy: Bootstrap and evidence only; do not modify existing user work, activate old rollout state, restart old prompt-only processes, merge the rescue branch wholesale, or claim any historical task complete.
 - Preconditions: Current checkout, Git object database, rescue branch, v1/v2 state roots, and current tests are readable; any uncommitted user changes remain untouched.
-- Effects: Record exact main, checkout, submodule, dirty-path, source-board, registry/event, test, and rescue-branch identities; mark dead stale-running projections non-authoritative; classify each unique rescue file and commit as port, rewrite, superseded, or discard; create a fresh state namespace and clean isolated integration worktree.
+- Effects: Record exact main, checkout, submodule, dirty-path, source-board, registry/event, test, and rescue-branch identities; mark dead stale-running projections non-authoritative; classify each unique rescue file and commit as port, rewrite, superseded, or discard; create a fresh ignored state namespace and clean isolated integration worktree; seal a three-lane configured-board profile with exact source, provider, retry, timeout, protected-path, and merge-target bindings.
 - Evidence subset: exact base/tree CIDs, dirty-change preservation, branch divergence, source/runtime/state contradiction matrix, per-artifact disposition, protected paths, clean worktree and state-root receipt
-- Acceptance: The manifest accounts for every v2-only implementation and test, proves no user change was overwritten, binds all downstream work to one current base, and prevents stale ASE/ASE2 receipts or branch-local commits from satisfying v3 completion.
+- Acceptance: The manifest accounts for every v2-only implementation and test, proves no user change was overwritten, binds all downstream work to one current base, prevents stale ASE/ASE2 receipts or branch-local commits from satisfying v3 completion, and the sealed scheduler profile passes current-branch preflight before launch.
 
 ## ASE3-001 Compose trusted invocation context and infer normal runtime arguments
 
@@ -234,19 +234,19 @@ Wave 9:            ASE3-014
 - Track: monitoring-recovery
 - Depends on: ASE3-005, ASE3-006, ASE3-007
 - Goal id: ASE3-G060
-- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
-- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, test/api/test_agent_supervisor_task_attempt_limit.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py test/api/test_agent_supervisor_task_attempt_limit.py -q
 - Board namespace: agent-supervisor-prompt-only-self-improvement-v3
 - Bundle: agent-supervisor/prompt-self-improvement-v3/monitoring-recovery
 - Parallel lane: monitoring-recovery
 - Resource class: process-control
-- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
+- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, test/api/test_agent_supervisor_task_attempt_limit.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
 - Interfaces: RunHealthSnapshot, SemanticProgressClock, StallClassifier, RecoveryPolicy, RecoveryReceipt, SupervisorDoctorService
 - Conflict policy: Own health aggregation and recovery orchestration only; reuse process-birth, heartbeat, temporal monitor, Doctor, rescue, lifecycle, lease/fence, and refill services; detection never implies restart authority.
 - Preconditions: Real lifecycle, parallel scheduler, and refill services expose events and authorized callbacks; process and registry identities are durable.
 - Effects: Run a live clock; compare heartbeat, event cursor, run revision, phase progress, task/claim/log/validation/merge ages, ready/active/blocked counts, leases/fences, tree reachability, provider/resource state, and refill outcomes; repair stale projections; adopt/restart/rescue exact processes within timestamp-based budgets; emit terminal shutdown.
 - Evidence subset: 5-second heartbeat and 30-second stale control policy, 300-second bounded task-progress policy, dead/PID-reuse/frozen/false-idle/soft-complete matrix, authorized recovery callback, retry/backoff window, circuit breaker, status repair and shutdown receipts
-- Acceptance: Running cannot outlive its verified process/lease/heartbeat; log noise cannot mask semantic stall; standalone detection reports its authority; at most three canary recoveries occur per thirty minutes; backoff retries later rather than becoming permanent; every injected incident recovers once or yields typed operator action.
+- Acceptance: Running cannot outlive its verified process/lease/heartbeat; log noise cannot mask semantic stall; standalone detection reports its authority; at most three canary recoveries occur per thirty minutes; backoff retries later rather than becoming permanent; retry-accounting, idle-heartbeat, quota-attribution, and provider-review deferral tests use current APIs and pass without weaker behavior; every injected incident recovers once or yields typed operator action.
 
 ## ASE3-009 Export the production Python facade and stable package API
 
@@ -391,4 +391,3 @@ Wave 9:            ASE3-014
 - Effects: Reconcile source board, objective heap, DuckDB run state, immutable events, accepted commits, validations, and canary evidence; force one final residual scan; materialize new task/goal/plan roots and DuckDB/Markdown/Parquet/IPLD parity; run a second fresh-tree release pass; emit signed preview/assist/local-auto promotion or rollback decision; fence and shut down exact owned processes.
 - Evidence subset: complete task/goal/current-tree join, final residual and completion decision, projection root parity, fresh release reports, active or rollback state, exact authority/profile/coordinator/tree identities, rollback triggers, shutdown receipt
 - Acceptance: No unknown dependency, stale completion, missing command/test, branch-unreachable commit, inactive rollout claimed active, open evidence residual, live orphan, unauthorized effect, duplicate effect, projection mismatch, or transport drift is accepted; promotion is explicit, staged, reversible, and bound to the exact release tree.
-

@@ -53,7 +53,7 @@ ASE3-G000  Production prompt-only self-improving supervisor
 
 ## ASE3-G010 Current-main truth and evidence-preserving convergence
 
-- Status: active
+- Status: completed
 - Parent: ASE3-G000
 - Parent goal IDs JSON: ["ASE3-G000"]
 - Depends on:
@@ -70,11 +70,11 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Evidence requirements JSON: ["exact base and tree receipt", "dirty-worktree preservation receipt", "v1/v2 state contradiction report", "per-file and per-commit port rewrite discard map", "clean isolated integration worktree receipt"]
 - Evidence criteria: Every preserved rescue artifact is classified against current code and tests; current-main replacements are preferred; state projections are recorded but not promoted to authority; the integration worktree is isolated, reproducible, and has no unaccounted changes.
 - Evidence source policy: Historical branch names, task status, PID files, logs, and aggregate completion indexes are hints only; Git object identity, current source, current tests, registry/event integrity, and explicit operator-owned dirty-change preservation are authoritative.
-- Outputs: ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py, test/api/test_agent_supervisor_prompt_v3_convergence.py, data/agent_supervisor/prompt_only_self_improvement_v3/convergence
-- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py", "test/api/test_agent_supervisor_prompt_v3_convergence.py", "data/agent_supervisor/prompt_only_self_improvement_v3/convergence"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py, test/api/test_agent_supervisor_prompt_v3_convergence.py, config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json, .gitignore, data/agent_supervisor/prompt_only_self_improvement_v3/convergence
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py", "test/api/test_agent_supervisor_prompt_v3_convergence.py", "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json", ".gitignore", "data/agent_supervisor/prompt_only_self_improvement_v3/convergence"]
 - Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_convergence.py -q
 - Validation commands JSON: ["python -m pytest test/api/test_agent_supervisor_prompt_v3_convergence.py -q"]
-- Acceptance: No wholesale merge of the stale rescue branch occurs; every port is current-base revalidated; no user change is lost; and downstream tasks receive an exact base, protected paths, salvage manifest, and fresh state namespace.
+- Acceptance: No wholesale merge of the stale rescue branch occurs; every port is current-base revalidated; no user change is lost; and downstream tasks receive an exact base, protected paths, salvage manifest, fresh ignored runtime namespace, and a sealed configured-board profile that passes preflight on the integration branch.
 - Gap task: Repair the smallest missing provenance, tree-identity, state-reconciliation, or worktree-isolation fact.
 
 ## ASE3-G020 Trusted prompt-only intent and argument resolution
@@ -200,11 +200,11 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Evidence requirements JSON: ["process-birth and heartbeat receipt", "semantic progress deadline trace", "stale-running repair", "stall and false-idle classification matrix", "bounded restart/rescue receipt", "terminal shutdown receipt"]
 - Evidence criteria: Running requires matching process identity, lease/fence, and fresh heartbeat; progress uses event/revision/phase movement rather than log noise; dead, frozen, idle-open-goal, duplicate, stale-authority, and oscillating cases recover deterministically or become typed operator action.
 - Evidence source policy: PID alone, status JSON, log growth, process exit, and watchdog self-report are non-authoritative; join process birth, registry owner/revision, heartbeat, event cursor, phase deadlines, leases/fences, objective evidence, and recovery receipts.
-- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
-- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py", "test/api/test_agent_supervisor_prompt_v3_monitor.py", "docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md"]
-- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py -q
-- Validation commands JSON: ["python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py -q"]
-- Acceptance: Dead PID with stale running state, PID reuse, missing shutdown, ready-without-worker, frozen worker, drained-open-goal, lost lease, duplicate launch, backoff expiry, and circuit-breaker tests all yield truthful health and one bounded continuation; the standalone monitor has a live clock and an authorized restart callback or explicitly reports detection-only mode.
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py, test/api/test_agent_supervisor_prompt_v3_monitor.py, test/api/test_agent_supervisor_task_attempt_limit.py, docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/entrypoints/run_monitor.py", "test/api/test_agent_supervisor_prompt_v3_monitor.py", "test/api/test_agent_supervisor_task_attempt_limit.py", "docs/guides/AGENT_SUPERVISOR_PROMPT_RUNBOOK.md"]
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py test/api/test_agent_supervisor_task_attempt_limit.py -q
+- Validation commands JSON: ["python -m pytest test/api/test_agent_supervisor_prompt_v3_monitor.py test/api/test_agent_supervisor_supervisor_watchdog.py test/api/test_agent_supervisor_task_attempt_limit.py -q"]
+- Acceptance: Dead PID with stale running state, PID reuse, missing shutdown, ready-without-worker, frozen worker, drained-open-goal, lost lease, duplicate launch, backoff expiry, circuit-breaker, retry-accounting, idle-heartbeat, quota-attribution, and provider-review deferral tests all yield truthful health and one bounded continuation; stale attempt-limit fixtures are reconciled to current APIs without weakening behavior; the standalone monitor has a live clock and an authorized restart callback or explicitly reports detection-only mode.
 - Gap task: Repair the smallest heartbeat, process-identity, phase-deadline, Doctor finding, stale-projection, recovery callback, backoff, circuit-breaker, or shutdown residual.
 
 ## ASE3-G070 Python, CLI, MCP, and MCP++ product convergence
@@ -258,4 +258,3 @@ ASE3-G000  Production prompt-only self-improving supervisor
 - Validation commands JSON: ["python -m pytest test/api/test_agent_supervisor_prompt_only_v3_e2e.py test/api/test_agent_supervisor_prompt_only_v3_chaos.py test/api/test_agent_supervisor_prompt_only_v3_load.py -q"]
 - Acceptance: A real prompt-created canary has complete goal/task/run/effect/event lineage, observed concurrent disjoint workers, serialized conflicts, bounded refill, bounded recovery, reachable accepted commits, exact-tree green gates, a truthful terminal shutdown, and an active signed promotion or explicit rollback receipt.
 - Gap task: Repair the smallest E2E, security, chaos, load, current-tree, canary, observation, materialization, rollout, rollback, or closeout residual.
-
