@@ -2874,6 +2874,43 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def task_declares_validation_config_change(task: PortalTask) -> bool:
+    """Return whether the task explicitly owns a validation-config path.
+
+    Validation configuration remains fail-closed by default.  The narrow
+    exception is an exact path declared in Outputs or Predicted files; a
+    provider-suggested/allowed path alone never grants this authority.
+    """
+
+    from ..validation.proposal_validation import (
+        _VALIDATION_CONFIG_PATHS,
+        _path_matches,
+    )
+
+    predicted = str(
+        (task.metadata or {}).get("predicted files")
+        or (task.metadata or {}).get("predicted_files")
+        or ""
+    )
+    declared_paths = tuple(
+        dict.fromkeys(
+            [
+                *task_declared_output_paths(task),
+                *(
+                    part.strip()
+                    for part in predicted.split(",")
+                    if part.strip()
+                ),
+            ]
+        )
+    )
+    return any(
+        _path_matches(path, config_path)
+        for path in declared_paths
+        for config_path in _VALIDATION_CONFIG_PATHS
+    )
+
+
 @dataclass(frozen=True)
 class ImplementationTimeoutPolicy:
     """One task's bounded implementation lease and progress-idle deadline."""
@@ -32069,6 +32106,9 @@ class PortalImplementationDaemon:
             protected_paths=tuple(self.implementation_protected_paths),
             allowed_validation_commands=allowed_validation_commands,
             allow_test_weakening=task_owned_test_outputs,
+            allow_validation_config_changes=(
+                task_declares_validation_config_change(task)
+            ),
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
