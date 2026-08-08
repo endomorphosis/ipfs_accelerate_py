@@ -130,7 +130,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-004 Materialize prompt intent as canonical goals, subgoals, and tasks
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
