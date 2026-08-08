@@ -25,6 +25,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final
 
 from .duckdb_state import exclusive_file_lock
@@ -52,6 +53,9 @@ TASK_SOURCE_PAGE_SCHEMA: Final = (
 )
 TASK_SOURCE_EVENT_PAGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-source-event-page@1"
+)
+TASK_SOURCE_CONSISTENT_PROJECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-source-consistent-projection@1"
 )
 TASK_SOURCE_CAS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-source-cas@1"
@@ -210,6 +214,20 @@ _QUERY_TABLES: Final = frozenset(
         "formal_plan_input_metadata",
     }
 )
+
+_CONSISTENT_PROJECTION_TABLE_BOUNDS: Final[dict[str, int]] = {
+    "artifacts": MAX_EDGES,
+    "goals": MAX_GOALS,
+    "tasks": MAX_TASKS,
+    "task_dependencies": MAX_EDGES,
+    "task_outputs": MAX_EDGES,
+    "task_validations": MAX_EDGES,
+    "task_acceptance": MAX_EDGES,
+    "task_events": MAX_EVENTS,
+    "materialization_receipts": MAX_QUERY_LIMIT,
+    "formal_plan_input_records": MAX_EDGES,
+    "formal_plan_input_metadata": MAX_QUERY_LIMIT,
+}
 
 _SCHEMA_SQL: Final = """
 CREATE TABLE workflow_metadata (
@@ -437,6 +455,95 @@ class TaskSourceSnapshot(_RecordMapping):
 
 
 @dataclass(frozen=True)
+class ConsistentTaskSourceProjection(_RecordMapping):
+    """One immutable, revision-consistent snapshot and table projection."""
+
+    snapshot: TaskSourceSnapshot
+    tables: Mapping[str, tuple[Mapping[str, Any], ...]]
+    row_counts: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.snapshot, TaskSourceSnapshot):
+            raise TypeError("snapshot must be a TaskSourceSnapshot")
+        table_names = set(self.tables)
+        count_names = set(self.row_counts)
+        if table_names != count_names:
+            raise ValueError("projection tables and row counts must name the same tables")
+        if not table_names or not table_names.issubset(_QUERY_TABLES):
+            raise TaskSourceInjectionError(
+                "projection table is not in the closed allowlist"
+            )
+        snapshot_counts = {
+            "goals": self.snapshot.goal_count,
+            "tasks": self.snapshot.task_count,
+            "task_dependencies": self.snapshot.dependency_count,
+            "task_events": self.snapshot.event_cursor,
+        }
+        normalized_tables: dict[str, tuple[Mapping[str, Any], ...]] = {}
+        normalized_counts: dict[str, int] = {}
+        for table in sorted(table_names):
+            raw_count = self.row_counts[table]
+            if (
+                isinstance(raw_count, bool)
+                or not isinstance(raw_count, int)
+                or raw_count < 0
+            ):
+                raise ValueError("projection row counts must be non-negative integers")
+            rows = tuple(self.tables[table])
+            if len(rows) != raw_count:
+                raise ValueError(
+                    f"projection row count for {table!r} does not match its rows"
+                )
+            bound = _CONSISTENT_PROJECTION_TABLE_BOUNDS[table]
+            if raw_count > bound:
+                raise TaskSourceBoundsError(
+                    f"table {table!r} has {raw_count} rows; projection bound is {bound}"
+                )
+            expected_count = snapshot_counts.get(table)
+            if expected_count is not None and raw_count != expected_count:
+                raise TaskSourceIntegrityError(
+                    f"table {table!r} count disagrees with snapshot metadata"
+                )
+            columns = _TABLE_COLUMNS[table]
+            frozen_rows: list[Mapping[str, Any]] = []
+            for row in rows:
+                if not isinstance(row, Mapping) or set(row) != set(columns):
+                    raise TaskSourceIntegrityError(
+                        f"table {table!r} row does not match its declared schema"
+                    )
+                frozen_rows.append(
+                    MappingProxyType({column: row[column] for column in columns})
+                )
+            normalized_tables[table] = tuple(frozen_rows)
+            normalized_counts[table] = raw_count
+        frozen_tables = MappingProxyType(normalized_tables)
+        frozen_counts = MappingProxyType(normalized_counts)
+        object.__setattr__(self, "tables", frozen_tables)
+        object.__setattr__(self, "row_counts", frozen_counts)
+
+    @property
+    def revision(self) -> int:
+        return self.snapshot.revision
+
+    @property
+    def event_cursor(self) -> int:
+        return self.snapshot.event_cursor
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_SOURCE_CONSISTENT_PROJECTION_SCHEMA,
+            "snapshot": self.snapshot.to_dict(),
+            "tables": {
+                table: [dict(row) for row in rows]
+                for table, rows in self.tables.items()
+            },
+            "row_counts": dict(self.row_counts),
+            "revision": self.revision,
+            "event_cursor": self.event_cursor,
+        }
+
+
+@dataclass(frozen=True)
 class TaskPage(_RecordMapping):
     tasks: tuple[TaskRecord, ...]
     revision: int
@@ -653,6 +760,21 @@ def _positive_limit(limit: int, *, maximum: int = MAX_QUERY_LIMIT) -> int:
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= maximum:
         raise TaskSourceBoundsError(f"limit must be between 1 and {maximum}")
     return limit
+
+
+def _consistent_projection_tables(tables: Iterable[str]) -> tuple[str, ...]:
+    if isinstance(tables, (str, bytes, bytearray)):
+        raise TypeError("projection tables must be an iterable of table names")
+    selected: set[str] = set()
+    for raw_table in tables:
+        if not isinstance(raw_table, str) or raw_table not in _QUERY_TABLES:
+            raise TaskSourceInjectionError(
+                "projection table is not in the closed allowlist"
+            )
+        selected.add(raw_table)
+    if not selected:
+        raise ValueError("projection tables must not be empty")
+    return tuple(sorted(selected))
 
 
 def _as_mapping(value: Any, *, noun: str) -> dict[str, Any]:
@@ -1537,16 +1659,28 @@ class DuckDBTaskSource:
     def _unlocked_read_connection(
         self,
     ) -> Iterator[tuple[Any, dict[str, tuple[str, str]]]]:
-        """Open one validated reader while the caller owns the file lock."""
+        """Open one validated read transaction while the caller owns the lock."""
 
         if not self.database_path.is_file():
             raise TaskSourceIntegrityError("DuckDB task source is not installed")
         connection = _connect(self.database_path, read_only=True)
+        transaction_active = False
         try:
+            connection.execute("BEGIN TRANSACTION")
+            transaction_active = True
             metadata = self._validate_connection(
                 connection, require_complete=True, check_projection=True
             )
             yield connection, metadata
+            connection.execute("COMMIT")
+            transaction_active = False
+        except BaseException:
+            if transaction_active:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+            raise
         finally:
             connection.close()
 
@@ -1998,33 +2132,105 @@ class DuckDBTaskSource:
         result.materialize(source, **materialize)
         return result
 
+    def _snapshot_from_connection(
+        self,
+        connection: Any,
+        metadata: Mapping[str, tuple[str, str]],
+    ) -> TaskSourceSnapshot:
+        """Build snapshot metadata without acquiring another connection or lock."""
+
+        goal_count = int(
+            connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0]
+        )
+        task_count = int(
+            connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        )
+        dependency_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM task_dependencies"
+            ).fetchone()[0]
+        )
+        nonterminal = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM tasks WHERE status NOT IN (?, ?, ?, ?, ?)",
+                sorted(_TERMINAL_STATUSES),
+            ).fetchone()[0]
+        )
+        return TaskSourceSnapshot(
+            source_schema=_meta_value(metadata, "source_schema"),
+            schema_version=int(_meta_value(metadata, "schema_version")),
+            plan_root_cid=_meta_value(metadata, "plan_root_cid"),
+            repository_tree_id=_meta_value(metadata, "repository_tree_id"),
+            projection_cid=_meta_value(metadata, "projection_cid"),
+            formal_plan_id=_meta_value(metadata, "formal_plan_id"),
+            source_identity=_meta_value(metadata, "source_identity"),
+            revision=int(_meta_value(metadata, "revision")),
+            event_cursor=int(_meta_value(metadata, "event_sequence")),
+            goal_count=goal_count,
+            task_count=task_count,
+            dependency_count=dependency_count,
+            terminal=nonterminal == 0,
+        )
+
+    def _consistent_projection_table(
+        self,
+        connection: Any,
+        table: str,
+    ) -> tuple[int, tuple[Mapping[str, Any], ...]]:
+        """Read one already-allowlisted table from the active transaction."""
+
+        row_count = int(
+            connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+        )
+        bound = _CONSISTENT_PROJECTION_TABLE_BOUNDS[table]
+        if row_count > bound:
+            raise TaskSourceBoundsError(
+                f"table {table!r} has {row_count} rows; projection bound is {bound}"
+            )
+        columns = _TABLE_COLUMNS[table]
+        selected = ", ".join(f'"{name}"' for name in columns)
+        order = ", ".join(f'"{name}"' for name in columns)
+        raw_rows = connection.execute(
+            f'SELECT {selected} FROM "{table}" ORDER BY {order}'
+        ).fetchall()
+        if len(raw_rows) != row_count:
+            raise TaskSourceIntegrityError(
+                f"table {table!r} changed during its consistent projection"
+            )
+        rows = tuple(dict(zip(columns, row, strict=True)) for row in raw_rows)
+        return row_count, rows
+
     def snapshot(self) -> TaskSourceSnapshot:
         with self._read_connection() as (connection, metadata):
-            goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
-            task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
-            dependency_count = int(
-                connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
-            )
-            nonterminal = int(
-                connection.execute(
-                    "SELECT COUNT(*) FROM tasks WHERE status NOT IN (?, ?, ?, ?, ?)",
-                    sorted(_TERMINAL_STATUSES),
-                ).fetchone()[0]
-            )
-            return TaskSourceSnapshot(
-                source_schema=_meta_value(metadata, "source_schema"),
-                schema_version=int(_meta_value(metadata, "schema_version")),
-                plan_root_cid=_meta_value(metadata, "plan_root_cid"),
-                repository_tree_id=_meta_value(metadata, "repository_tree_id"),
-                projection_cid=_meta_value(metadata, "projection_cid"),
-                formal_plan_id=_meta_value(metadata, "formal_plan_id"),
-                source_identity=_meta_value(metadata, "source_identity"),
-                revision=int(_meta_value(metadata, "revision")),
-                event_cursor=int(_meta_value(metadata, "event_sequence")),
-                goal_count=goal_count,
-                task_count=task_count,
-                dependency_count=dependency_count,
-                terminal=nonterminal == 0,
+            return self._snapshot_from_connection(connection, metadata)
+
+    def read_consistent_projection(
+        self,
+        tables: Iterable[str],
+    ) -> ConsistentTaskSourceProjection:
+        """Read snapshot metadata and complete tables from one revision.
+
+        Requested names are validated against the same closed allowlist as
+        :meth:`query`, deduplicated, and returned in canonical order.  The
+        process lock and explicit read transaction remain held until every
+        requested row has been materialized.
+        """
+
+        selected_tables = _consistent_projection_tables(tables)
+        with self._read_connection() as (connection, metadata):
+            snapshot = self._snapshot_from_connection(connection, metadata)
+            projected: dict[str, tuple[Mapping[str, Any], ...]] = {}
+            row_counts: dict[str, int] = {}
+            for table in selected_tables:
+                row_count, rows = self._consistent_projection_table(
+                    connection, table
+                )
+                projected[table] = rows
+                row_counts[table] = row_count
+            return ConsistentTaskSourceProjection(
+                snapshot=snapshot,
+                tables=projected,
+                row_counts=row_counts,
             )
 
     def _task_records(self, connection: Any, rows: Sequence[Sequence[Any]]) -> tuple[TaskRecord, ...]:
@@ -2923,6 +3129,7 @@ def materialize_duckdb_task_source(
 
 __all__ = [
     "CASResult",
+    "ConsistentTaskSourceProjection",
     "DEFAULT_QUERY_LIMIT",
     "DUCKDB_TASK_SOURCE_SCHEMA",
     "DUCKDB_TASK_SOURCE_SCHEMA_VERSION",
@@ -2941,6 +3148,7 @@ __all__ = [
     "TaskSourceInjectionError",
     "TaskSourceIntegrityError",
     "TaskSourceSnapshot",
+    "TASK_SOURCE_CONSISTENT_PROJECTION_SCHEMA",
     "UnsupportedSchemaMigrationError",
     "SCHEMA_VERSION",
     "WORKFLOW_SCHEMA",

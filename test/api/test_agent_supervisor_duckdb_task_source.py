@@ -9,9 +9,11 @@ import pytest
 
 duckdb = pytest.importorskip("duckdb")
 
+from ipfs_accelerate_py.agent_supervisor import duckdb_task_source as task_source_module
 from ipfs_accelerate_py.agent_supervisor.duckdb_task_source import (
     DUCKDB_TASK_SOURCE_SCHEMA,
     MAX_QUERY_LIMIT,
+    ConsistentTaskSourceProjection,
     DuckDBTaskSource,
     TaskSourceBoundsError,
     TaskSourceConflictError,
@@ -46,6 +48,17 @@ def _hold_duckdb_writer(
         entered.set()
         if not release.wait(timeout=10.0):
             raise RuntimeError("reader did not release the multiprocess writer")
+
+
+def _complete_task_writer(
+    database_path: str,
+    attempted: object,
+    finished: object,
+) -> None:
+    source = DuckDBTaskSource(database_path)
+    attempted.set()
+    source.compare_and_set_status("REF-275", 1, "completed")
+    finished.set()
 
 
 def _source() -> dict[str, object]:
@@ -359,6 +372,121 @@ def test_multiprocess_reader_waits_for_writer_file_lock(tmp_path: Path) -> None:
     assert process.exitcode == 0
     assert snapshot.task_count == 2
     assert elapsed >= 0.25
+
+
+def test_consistent_projection_validates_deduplicates_and_bounds_tables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _materialized(tmp_path)
+
+    projection = source.read_consistent_projection(
+        ["tasks", "goals", "tasks"]
+    )
+
+    assert tuple(projection.tables) == ("goals", "tasks")
+    assert projection.row_counts == {"goals": 1, "tasks": 2}
+    assert projection.snapshot.goal_count == projection.row_counts["goals"]
+    assert projection.snapshot.task_count == projection.row_counts["tasks"]
+    assert [row["task_cid"] for row in projection.tables["tasks"]] == sorted(
+        row["task_cid"] for row in projection.tables["tasks"]
+    )
+    with pytest.raises(TypeError):
+        projection.tables["tasks"][0]["status"] = "failed"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        source.read_consistent_projection("tasks")  # type: ignore[arg-type]
+    with pytest.raises(TaskSourceInjectionError):
+        source.read_consistent_projection(["tasks; DROP TABLE tasks"])
+    with pytest.raises(ValueError):
+        source.read_consistent_projection([])
+
+    monkeypatch.setitem(
+        task_source_module._CONSISTENT_PROJECTION_TABLE_BOUNDS,
+        "tasks",
+        1,
+    )
+    with pytest.raises(TaskSourceBoundsError, match="projection bound is 1"):
+        source.read_consistent_projection(["tasks"])
+
+
+def test_consistent_projection_blocks_writer_and_captures_one_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _materialized(tmp_path)
+    projection_paused = threading.Event()
+    release_projection = threading.Event()
+    original_reader = source._consistent_projection_table
+
+    def controlled_reader(connection: object, table: str):
+        result = original_reader(connection, table)
+        if table == "task_events":
+            projection_paused.set()
+            if not release_projection.wait(timeout=10.0):
+                raise RuntimeError("writer did not attempt the concurrent update")
+        return result
+
+    monkeypatch.setattr(source, "_consistent_projection_table", controlled_reader)
+    projections: list[ConsistentTaskSourceProjection] = []
+    projection_errors: list[BaseException] = []
+
+    def read_projection() -> None:
+        try:
+            projections.append(
+                source.read_consistent_projection(["tasks", "task_events"])
+            )
+        except BaseException as exc:
+            projection_errors.append(exc)
+
+    reader = threading.Thread(target=read_projection, daemon=True)
+    reader.start()
+    context = mp.get_context("spawn")
+    writer_attempted = context.Event()
+    writer_finished = context.Event()
+    writer: mp.Process | None = None
+    try:
+        assert projection_paused.wait(timeout=10.0)
+        writer = context.Process(
+            target=_complete_task_writer,
+            args=(
+                str(source.database_path),
+                writer_attempted,
+                writer_finished,
+            ),
+        )
+        writer.start()
+        assert writer_attempted.wait(timeout=10.0)
+        assert not writer_finished.wait(timeout=0.3)
+    finally:
+        release_projection.set()
+        reader.join(timeout=10.0)
+        if writer is not None:
+            writer.join(timeout=10.0)
+            if writer.is_alive():
+                writer.terminate()
+                writer.join(timeout=5.0)
+
+    assert not reader.is_alive()
+    assert projection_errors == []
+    assert writer is not None and writer.exitcode == 0
+    assert writer_finished.is_set()
+    assert len(projections) == 1
+    projection = projections[0]
+    assert projection.revision == 1
+    assert projection.event_cursor == 0
+    assert projection.row_counts == {"task_events": 0, "tasks": 2}
+    projected_task = next(
+        row
+        for row in projection.tables["tasks"]
+        if row["task_alias"] == "REF-275"
+    )
+    assert projected_task["status"] == "pending"
+    assert projected_task["revision"] == 1
+
+    current = source.snapshot()
+    assert current.revision == 2
+    assert current.event_cursor == 1
+    assert source.get_task("REF-275").status == "completed"  # type: ignore[union-attr]
 
 
 def test_identical_replay_is_noop_and_population_drift_is_rejected(
