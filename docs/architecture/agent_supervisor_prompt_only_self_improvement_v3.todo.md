@@ -106,7 +106,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-003 Converge durable run truth and revalidate every effect boundary
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
