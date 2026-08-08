@@ -2336,9 +2336,16 @@ def test_protected_board_child_persists_exact_post_merge_authority_receipt(
         "manual_completion_authority_receipt_publication_binding"
     ]
     assert publication["passed"] is True
+    assert publication["schema"].endswith(
+        "manual-completion-receipt-publication-binding@2"
+    )
     assert publication["expected_target_commit"] == parent
     assert publication["receipt_target_commit"] == child
     assert publication["target_advanced"] is True
+    assert publication["publication_parent"] == parent
+    assert publication["publication_parent_count"] == 1
+    assert publication["publication_changed_paths"] == ["tasks.md"]
+    assert publication["publication_tree_entry"].startswith("100644 blob ")
     receipt = update["manual_completion_authority_revalidation_receipt"]
     assert receipt["persisted"] is True
     assert receipt["completion_publication_binding"] == publication
@@ -2355,6 +2362,134 @@ def test_protected_board_child_persists_exact_post_merge_authority_receipt(
     assert restarted_guard["available"] is True
     assert "TEST-002" in restarted_guard["revalidation_receipt_task_ids"]
     assert "TEST-002" not in restarted_guard["revalidation_task_ids"]
+
+
+def test_protected_board_receipt_rejects_interposed_unvalidated_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "todo", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-board-interposed-commit",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    guard = daemon._refresh_manual_completion_authority_guard()
+    assert guard["available"] is True
+    task = {
+        item.task_id: item for item in daemon._load_tasks()
+    }["TEST-002"]
+    parent = _git(repo, "rev-parse", "HEAD")
+    gate = daemon._run_post_merge_completion_validation(
+        task,
+        target_commit=parent,
+    )
+    raw_authority = gate["_manual_completion_authority_evidence"]
+    commit_board = daemon._commit_generated_file_update
+    interposed = False
+
+    def interpose_unvalidated_code(
+        path: Path,
+        *,
+        task_id: str,
+        subject: str,
+    ) -> dict[str, object]:
+        nonlocal interposed
+        if not interposed:
+            interposed = True
+            (repo / "unvalidated.py").write_text(
+                "UNVALIDATED = True\n",
+                encoding="utf-8",
+            )
+            _git(repo, "add", "unvalidated.py")
+            _git(
+                repo,
+                "commit",
+                "-m",
+                "interpose unvalidated code",
+                "--",
+                "unvalidated.py",
+            )
+        return commit_board(
+            path,
+            task_id=task_id,
+            subject=subject,
+        )
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update",
+        interpose_unvalidated_code,
+    )
+    update = daemon._mark_tasks_completed_in_todo(
+        [task.task_id],
+        primary_task_id=task.task_id,
+        completion_reason="exact_post_merge_validation",
+        expected_target_commit=parent,
+        manual_completion_authority_context_id=str(
+            raw_authority["manual_completion_authority_context_id"]
+        ),
+        manual_completion_authority_evidence=raw_authority,
+    )
+
+    child = _git(repo, "rev-parse", "HEAD")
+    commits = _git(
+        repo,
+        "rev-list",
+        "--reverse",
+        f"{parent}..{child}",
+    ).splitlines()
+    assert gate["passed"] is True
+    assert update["updated"] is True
+    assert update["durable"] is False
+    assert len(commits) == 2
+    assert _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        parent,
+        commits[0],
+    ) == "unvalidated.py"
+    assert _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        commits[0],
+        commits[1],
+    ) == "tasks.md"
+    release = update["protected_board_postcondition"]["release_proof"]
+    assert release["trusted"] is True
+    publication = update[
+        "manual_completion_authority_receipt_publication_binding"
+    ]
+    assert publication["passed"] is False
+    assert publication["reason"] == "protected_board_not_direct_child"
+    assert publication["receipt_target_commit"] == child
+    receipt = update["manual_completion_authority_revalidation_receipt"]
+    assert receipt["persisted"] is False
+    assert "completion_publication_binding" not in receipt
+
+    restarted = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-board-interposed-commit",
+        implementation_protected_paths=("tasks.md",),
+    )
+    restarted_guard = restarted._refresh_manual_completion_authority_guard()
+    assert restarted_guard["available"] is True
+    assert "TEST-002" not in restarted_guard["revalidation_receipt_task_ids"]
+    assert "TEST-002" in restarted_guard["revalidation_task_ids"]
 
 
 def test_completed_to_todo_race_at_receipt_boundary_leaves_no_authority(

@@ -57,6 +57,7 @@ from ..runtime.release_evidence import (
     EXPECTED_OUTPUT_MISSING,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
 )
+from .git_environment import sanitized_git_environment
 from .implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
@@ -16449,7 +16450,7 @@ class PortalImplementationDaemon:
         result: dict[str, Any] = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
-                "manual-completion-receipt-publication-binding@1"
+                "manual-completion-receipt-publication-binding@2"
             ),
             "passed": False,
             "reason": "protected_board_publication_binding_missing",
@@ -16520,44 +16521,248 @@ class PortalImplementationDaemon:
             )
             return result
         receipt_target = next(iter(after_heads))
-        resolved_target = self._resolve_git_commit_in_repo(
-            self.repo_root,
-            receipt_target,
-        )
-        current_target = self._resolved_commit_ref(
-            self.repo_root,
-            self._main_branch_name(),
-        )
+        result["receipt_target_commit"] = receipt_target
+        if len(root_histories) != 1:
+            result.update(
+                {
+                    "reason": "protected_board_single_root_required",
+                    "root_history_count": len(root_histories),
+                }
+            )
+            return result
+        root_history = root_histories[0]
+        root_target = str(root_history.get("target") or "")
+        try:
+            expected_board_target = (
+                self.todo_path.resolve()
+                .relative_to(self.repo_root.resolve())
+                .as_posix()
+            )
+        except (OSError, RuntimeError, ValueError):
+            expected_board_target = ""
         if (
-            resolved_target != receipt_target
-            or current_target != receipt_target
+            not self._repo_relative_path_safe(root_target)
+            or root_target == "."
+            or posixpath.normpath(root_target) != root_target
+            or any(character in root_target for character in "\r\n")
+            or root_target != expected_board_target
+        ):
+            result.update(
+                {
+                    "reason": "protected_board_root_target_invalid",
+                    "root_target": root_target,
+                    "expected_board_target": expected_board_target,
+                }
+            )
+            return result
+
+        environment = sanitized_git_environment()
+
+        def protected_git(*arguments: str) -> subprocess.CompletedProcess[str]:
+            try:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=self.repo_root,
+                    env=environment,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            except OSError as exc:
+                return subprocess.CompletedProcess(
+                    ["git", *arguments],
+                    127,
+                    stdout="",
+                    stderr=str(exc),
+                )
+
+        expected_resolution = protected_git(
+            "rev-parse",
+            "--verify",
+            f"{expected_target}^{{commit}}",
+        )
+        target_resolution = protected_git(
+            "rev-parse",
+            "--verify",
+            f"{receipt_target}^{{commit}}",
+        )
+        current_resolution = protected_git(
+            "rev-parse",
+            "--verify",
+            f"{self._main_branch_name()}^{{commit}}",
+        )
+        resolved_expected = expected_resolution.stdout.strip()
+        resolved_target = target_resolution.stdout.strip()
+        current_target = current_resolution.stdout.strip()
+        if not (
+            expected_resolution.returncode == 0
+            and resolved_expected == expected_target
+            and target_resolution.returncode == 0
+            and resolved_target == receipt_target
+            and current_resolution.returncode == 0
+            and current_target == receipt_target
         ):
             result.update(
                 {
                     "reason": "protected_board_target_changed",
-                    "receipt_target_commit": receipt_target,
+                    "resolved_expected_target_commit": resolved_expected,
                     "resolved_target_commit": resolved_target,
                     "current_target_commit": current_target,
                 }
             )
             return result
+
+        raw_commits = root_history.get("commits")
+        release_commits = (
+            [item for item in raw_commits if isinstance(item, Mapping)]
+            if isinstance(raw_commits, Sequence)
+            and not isinstance(raw_commits, (str, bytes, bytearray))
+            else []
+        )
+        publication_parent = expected_target
+        publication_parent_count = 0
+        publication_changed_paths: list[str] = []
+        publication_tree_entry = ""
+        publication_author_email = ""
+        publication_subject = ""
+        tree_entry = protected_git(
+            "ls-tree",
+            receipt_target,
+            "--",
+            root_target,
+        )
+        publication_tree_entry = tree_entry.stdout.strip()
+        tree_entry_parts = publication_tree_entry.split("\t", 1)
+        tree_metadata = tree_entry_parts[0].split()
+        regular_board_entry = bool(
+            tree_entry.returncode == 0
+            and len(tree_entry_parts) == 2
+            and tree_entry_parts[1] == root_target
+            and len(tree_metadata) == 3
+            and tree_metadata[0] in {"100644", "100755"}
+            and tree_metadata[1] == "blob"
+        )
+        if not regular_board_entry:
+            result.update(
+                {
+                    "reason": "protected_board_publication_target_not_regular",
+                    "publication_tree_entry": publication_tree_entry,
+                }
+            )
+            return result
+        if receipt_target == expected_target:
+            if release_commits or release_proof.get("reason") != (
+                "protected_outputs_exact_pre_state"
+            ):
+                result["reason"] = "protected_board_noop_history_nonempty"
+                return result
+        else:
+            parents = protected_git(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                receipt_target,
+            )
+            parent_values = parents.stdout.strip().split()
+            publication_parent_count = max(len(parent_values) - 1, 0)
+            publication_parent = (
+                parent_values[1]
+                if len(parent_values) == 2
+                else ""
+            )
+            if not (
+                parents.returncode == 0
+                and len(parent_values) == 2
+                and parent_values[0] == receipt_target
+                and publication_parent == expected_target
+            ):
+                result.update(
+                    {
+                        "reason": "protected_board_not_direct_child",
+                        "publication_parent": publication_parent,
+                        "publication_parent_count": (
+                            publication_parent_count
+                        ),
+                    }
+                )
+                return result
+            changed = protected_git(
+                "diff-tree",
+                "--no-commit-id",
+                "--no-renames",
+                "--name-only",
+                "-r",
+                expected_target,
+                receipt_target,
+                "--",
+            )
+            publication_changed_paths = [
+                path for path in changed.stdout.splitlines() if path
+            ]
+            if not (
+                changed.returncode == 0
+                and publication_changed_paths == [root_target]
+            ):
+                result.update(
+                    {
+                        "reason": "protected_board_publication_diff_invalid",
+                        "publication_changed_paths": (
+                            publication_changed_paths
+                        ),
+                    }
+                )
+                return result
+            metadata = protected_git(
+                "show",
+                "-s",
+                "--format=%ae%x00%s",
+                receipt_target,
+            )
+            metadata_values = metadata.stdout.rstrip("\n").split("\x00", 1)
+            if len(metadata_values) == 2:
+                publication_author_email, publication_subject = (
+                    metadata_values
+                )
+            release_commit_ids = {
+                str(item.get("commit") or "") for item in release_commits
+            }
+            if not (
+                metadata.returncode == 0
+                and self._trusted_protected_path_commit(
+                    publication_author_email,
+                    publication_subject,
+                )
+                and release_commit_ids == {receipt_target}
+            ):
+                result.update(
+                    {
+                        "reason": "protected_board_publication_commit_untrusted",
+                        "publication_author_email": (
+                            publication_author_email
+                        ),
+                        "publication_subject": publication_subject,
+                        "release_commit_ids": sorted(release_commit_ids),
+                    }
+                )
+                return result
         result.update(
             {
                 "passed": True,
                 "reason": "protected_board_publication_bound",
                 "receipt_target_commit": receipt_target,
                 "target_advanced": receipt_target != expected_target,
+                "publication_parent": publication_parent,
+                "publication_parent_count": publication_parent_count,
+                "publication_changed_paths": publication_changed_paths,
+                "publication_tree_entry": publication_tree_entry,
+                "publication_author_email": publication_author_email,
+                "publication_subject": publication_subject,
                 "release_guard_id": str(
                     release_proof.get("guard_id") or ""
                 ),
                 "root_history_count": len(root_histories),
-                "root_targets": sorted(
-                    {
-                        str(history.get("target") or "")
-                        for history in root_histories
-                        if str(history.get("target") or "")
-                    }
-                ),
+                "root_targets": [root_target],
             }
         )
         return result
