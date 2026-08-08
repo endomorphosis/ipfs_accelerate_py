@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,13 @@ CONFIG_PATH = (
     / "agent_supervisor_prompt_only_self_improvement_v3_scheduler.json"
 )
 TASKBOARD_PATH = REPO_ROOT / PROMPT_V3_TASKBOARD_RELATIVE_PATH
+VALIDATOR_PATH = (
+    REPO_ROOT
+    / "ipfs_accelerate_py"
+    / "agent_supervisor"
+    / "validation"
+    / "prompt_v3_convergence.py"
+)
 
 
 def _load(path: Path) -> dict[str, object]:
@@ -815,6 +823,32 @@ def test_check_all_cli_emits_the_sealed_preflight_contract() -> None:
             str(DEFAULT_ARTIFACT_ROOT),
         ],
         cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(result.stdout)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert payload["valid"] is True
+    assert payload["errors"] == []
+
+
+def test_check_all_direct_file_entrypoint_matches_scheduler_execution() -> None:
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VALIDATOR_PATH),
+            "--check-all",
+            "--repo-root",
+            str(REPO_ROOT),
+            "--artifacts-root",
+            str(DEFAULT_ARTIFACT_ROOT),
+        ],
+        cwd=REPO_ROOT,
+        env=environment,
         check=False,
         capture_output=True,
         text=True,

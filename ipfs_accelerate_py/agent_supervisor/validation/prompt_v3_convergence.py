@@ -1076,6 +1076,62 @@ class ConvergenceValidationReport:
         }
 
 
+def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
+    """Read only the bounded Markdown metadata needed by the bootstrap gate.
+
+    The convergence validator is also executed directly by file path, where
+    package-relative imports are unavailable.  Keep this parser deliberately
+    small and reject duplicate task IDs or metadata keys instead of inheriting
+    the runtime parser's last-value-wins behavior.
+    """
+
+    text = taskboard_path.read_text(encoding="utf-8")
+    tasks: dict[str, dict[str, str]] = {}
+    current_id = ""
+    current_metadata: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current_id, current_metadata
+        if not current_id:
+            return
+        if current_id in tasks:
+            raise ValueError(f"duplicate task id: {current_id}")
+        tasks[current_id] = dict(current_metadata)
+        current_id = ""
+        current_metadata = {}
+
+    for line in text.splitlines():
+        if line.startswith("## "):
+            flush()
+            header = line[3:].strip()
+            task_id = header.split(" ", 1)[0]
+            if task_id.startswith("ASE3-"):
+                current_id = task_id
+            continue
+        if not current_id:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        normalized_key = key.strip().lower()
+        if normalized_key in current_metadata:
+            raise ValueError(
+                f"duplicate metadata key for {current_id}: {normalized_key}"
+            )
+        current_metadata[normalized_key] = value.strip()
+    flush()
+    return tasks
+
+
+def _taskboard_csv(metadata: Mapping[str, str], field: str) -> tuple[str, ...]:
+    return tuple(
+        item.strip()
+        for item in str(metadata.get(field, "")).split(",")
+        if item.strip()
+    )
+
+
 def _validate_provider_attempt_reload_gate(
     *,
     taskboard_path: Path,
@@ -1106,31 +1162,33 @@ def _validate_provider_attempt_reload_gate(
         )
 
     try:
-        from ..todo_daemon.implementation_daemon import parse_task_file
-
-        tasks = parse_task_file(taskboard_path, task_header_prefix="## ASE3-")
-    except (ImportError, OSError, ValueError) as exc:
+        tasks = _load_taskboard_metadata(taskboard_path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
         errors.append(f"{prefix}.taskboard: {exc}")
         return errors
 
-    reload_gates = [
-        task for task in tasks if task.task_id == _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID
-    ]
-    if len(reload_gates) != 1:
+    gate = tasks.get(_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID)
+    if gate is None:
         errors.append(
             f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}: expected exactly one task"
         )
         return errors
-    gate = reload_gates[0]
-    if gate.status == "completed":
+    gate_status = gate.get("status", "todo").strip().lower()
+    if gate_status == "completed":
         errors.append(
-            f"{prefix}.{gate.task_id}.status: completion requires a strict reload "
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.status: "
+            "completion requires a strict reload "
             "receipt validator and convergence-manifest binding"
         )
-    if gate.status != "blocked":
-        errors.append(f"{prefix}.{gate.task_id}.status: expected blocked")
-    if gate.completion != "manual":
-        errors.append(f"{prefix}.{gate.task_id}.completion: expected manual")
+    if gate_status != "blocked":
+        errors.append(
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.status: expected blocked"
+        )
+    if gate.get("completion", "manual").strip().lower() != "manual":
+        errors.append(
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.completion: "
+            "expected manual"
+        )
 
     expected_metadata = {
         "is schedulable": "false",
@@ -1139,38 +1197,46 @@ def _validate_provider_attempt_reload_gate(
         "blocked reason": _PROVIDER_ATTEMPT_RELOAD_GATE_BLOCKED_REASON,
     }
     for field, expected in expected_metadata.items():
-        actual = gate.metadata.get(field)
+        actual = gate.get(field)
         if actual != expected:
             errors.append(
-                f"{prefix}.{gate.task_id}.{field.replace(' ', '_')}: "
+                f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}."
+                f"{field.replace(' ', '_')}: "
                 f"expected {expected!r}"
             )
-    if tuple(gate.depends_on) != _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES:
+    if _taskboard_csv(gate, "depends on") != _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES:
         errors.append(
-            f"{prefix}.{gate.task_id}.depends_on: expected exactly "
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.depends_on: "
+            "expected exactly "
             + ",".join(_PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES)
         )
-    if "goal id" in gate.metadata:
-        errors.append(f"{prefix}.{gate.task_id}.goal_id: must be absent")
-    if tuple(gate.outputs) != (
+    if "goal id" in gate:
+        errors.append(
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.goal_id: must be absent"
+        )
+    if _taskboard_csv(gate, "outputs") != (
         PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
     ):
         errors.append(
-            f"{prefix}.{gate.task_id}.outputs: expected only "
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.outputs: expected only "
             f"{PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
         )
-    if gate.metadata.get("predicted files") != (
+    if gate.get("predicted files") != (
         PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH
     ):
         errors.append(
-            f"{prefix}.{gate.task_id}.predicted_files: expected only "
+            f"{prefix}.{_PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID}.predicted_files: "
+            "expected only "
             f"{PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}"
         )
 
-    refill_tasks = [task for task in tasks if task.task_id == "ASE3-021"]
-    if len(refill_tasks) != 1:
+    refill_task = tasks.get("ASE3-021")
+    if refill_task is None:
         errors.append(f"{prefix}.ASE3-021: expected exactly one task")
-    elif _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID not in refill_tasks[0].depends_on:
+    elif _PROVIDER_ATTEMPT_RELOAD_GATE_TASK_ID not in _taskboard_csv(
+        refill_task,
+        "depends on",
+    ):
         errors.append(f"{prefix}.ASE3-021.depends_on: missing ASE3-022")
     return errors
 
