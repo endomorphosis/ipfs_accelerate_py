@@ -421,8 +421,12 @@ IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
     r"|grok_cli_runner"
     r"|cli_implement_runner"
-    r"|ipfs-accelerate-grok"
+    r"|ipfs-accelerate-(?:grok|codex)"
     r")"
+)
+IMPLEMENTATION_DOCKER_ISOLATION_LABELS = (
+    "ipfs_accelerate.grok_isolation=true",
+    "ipfs_accelerate.codex_fallback_isolation=true",
 )
 # How long a recently written implement log keeps a missing process from
 # being recovered as dead (docker restarts briefly drop process visibility).
@@ -47305,31 +47309,33 @@ class PortalImplementationDaemon:
         return False
 
     def _docker_isolation_active_for_worktree(self, worktree_path: str) -> bool:
-        """Return whether a labeled Grok isolation container mounts worktree."""
+        """Return whether an exact provider-isolation container mounts worktree."""
 
         worktree_path = str(worktree_path or "").strip()
         if not worktree_path:
             return False
-        try:
-            listed = subprocess.run(
-                [
-                    "docker",
-                    "ps",
-                    "--filter",
-                    "label=ipfs_accelerate.grok_isolation=true",
-                    "--format",
-                    "{{.ID}}",
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        if listed.returncode != 0 or not listed.stdout.strip():
-            return False
-        for container_id in listed.stdout.splitlines():
+        container_ids: set[str] = set()
+        for label in IMPLEMENTATION_DOCKER_ISOLATION_LABELS:
+            try:
+                listed = subprocess.run(
+                    [
+                        "docker",
+                        "ps",
+                        "--filter",
+                        f"label={label}",
+                        "--format",
+                        "{{.ID}}",
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if listed.returncode == 0:
+                container_ids.update(listed.stdout.splitlines())
+        for container_id in sorted(container_ids):
             container_id = container_id.strip()
             if not container_id:
                 continue

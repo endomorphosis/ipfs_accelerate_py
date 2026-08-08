@@ -254,9 +254,12 @@ GROK_ISOLATION_DOCKER = "docker"
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
+_CODEX_CONTAINER_HOME = Path("/opt/codex-home")
+_CODEX_CONTAINER_AUTH_PATH = _CODEX_CONTAINER_HOME / "auth.json"
 _DOCKER_CONTAINER_NAME_RE = re.compile(
-    r"ipfs-accelerate-grok-[0-9]+-[0-9a-f]{32}"
+    r"ipfs-accelerate-(?:grok|codex)-[0-9]+-[0-9a-f]{32}"
 )
+_DOCKER_ISOLATION_PROVIDERS = frozenset({"grok", "codex"})
 _DOCKER_CLEANUP_TIMEOUT_SECONDS = 8.0
 _SEALED_GROK_TOOLS = "read_file,search_replace,grep,list_dir,todo_write"
 _SEALED_GROK_DISALLOWED_TOOLS = (
@@ -1713,11 +1716,16 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     """Remove a leaked container after the owning runner closes or dies."""
 
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--provider",
+        required=True,
+        choices=tuple(sorted(_DOCKER_ISOLATION_PROVIDERS)),
+    )
     parser.add_argument("--docker-bin", required=True)
     parser.add_argument("--container-name", required=True)
     parser.add_argument("--cidfile", type=Path, required=True)
     parser.add_argument("--lease-root", type=Path, required=True)
-    parser.add_argument("--grok-home", type=Path, required=True)
+    parser.add_argument("--provider-home", type=Path, required=True)
     parser.add_argument("--prompt-path", type=Path, required=True)
     args = parser.parse_args(list(argv))
 
@@ -1729,22 +1737,28 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     lease_root = args.lease_root.absolute()
     docker_config = lease_root / "docker-config"
     cidfile = args.cidfile.absolute()
-    grok_home = args.grok_home.absolute()
+    provider_home = args.provider_home.absolute()
     prompt_path = args.prompt_path.absolute()
     temporary_root = Path(tempfile.gettempdir()).resolve()
+    expected_container_prefix = f"ipfs-accelerate-{args.provider}-"
     if (
         docker_path not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
         or docker_path.name not in {"docker", "docker.exe"}
         or docker_stat.st_uid != 0
         or docker_stat.st_mode & 0o022
         or _DOCKER_CONTAINER_NAME_RE.fullmatch(args.container_name) is None
+        or not args.container_name.startswith(expected_container_prefix)
         or lease_root.parent != temporary_root
-        or not lease_root.name.startswith("asref-grok-container-")
+        or not lease_root.name.startswith(
+            f"asref-{args.provider}-container-"
+        )
         or cidfile.parent != lease_root
         or cidfile.name != "container.cid"
         or not docker_config.is_dir()
-        or grok_home.parent != temporary_root
-        or not grok_home.name.startswith("asref-grok-home-")
+        or provider_home.parent != temporary_root
+        or not provider_home.name.startswith(
+            f"asref-{args.provider}-home-"
+        )
         or prompt_path.parent != temporary_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
     ):
@@ -1790,7 +1804,7 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
             shutil.rmtree(mask_root)
         except FileNotFoundError:
             pass
-        _robust_remove_runner_temp_tree(grok_home)
+        _robust_remove_runner_temp_tree(provider_home)
         try:
             cidfile.unlink()
         except FileNotFoundError:
@@ -1834,9 +1848,12 @@ class _DockerContainerLease:
         cls,
         docker_bin: str,
         *,
-        grok_home: Path,
+        provider: str,
+        provider_home: Path,
         prompt_path: Path,
     ) -> "_DockerContainerLease":
+        if provider not in _DOCKER_ISOLATION_PROVIDERS:
+            raise ValueError("Docker isolation provider is invalid")
         docker_path = Path(docker_bin).resolve(strict=True)
         docker_stat = docker_path.stat()
         if (
@@ -1847,13 +1864,13 @@ class _DockerContainerLease:
         ):
             raise ValueError("Docker isolation executable is not docker")
         lease_root = Path(
-            tempfile.mkdtemp(prefix="asref-grok-container-")
+            tempfile.mkdtemp(prefix=f"asref-{provider}-container-")
         ).resolve()
         cidfile = lease_root / "container.cid"
         docker_config = lease_root / "docker-config"
         docker_config.mkdir(mode=0o700)
         container_name = (
-            f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
+            f"ipfs-accelerate-{provider}-{os.getpid()}-{uuid.uuid4().hex}"
         )
         read_fd, write_fd = os.pipe()
         try:
@@ -1862,6 +1879,8 @@ class _DockerContainerLease:
                     sys.executable,
                     str(Path(__file__).resolve()),
                     _DOCKER_CLEANUP_WATCHDOG_ARG,
+                    "--provider",
+                    provider,
                     "--docker-bin",
                     str(docker_path),
                     "--container-name",
@@ -1870,8 +1889,8 @@ class _DockerContainerLease:
                     str(cidfile),
                     "--lease-root",
                     str(lease_root),
-                    "--grok-home",
-                    str(grok_home),
+                    "--provider-home",
+                    str(provider_home),
                     "--prompt-path",
                     str(prompt_path),
                 ],
@@ -2104,6 +2123,194 @@ def _docker_grok_command(
     return command
 
 
+def _docker_codex_fallback_command(
+    *,
+    codex_command: Sequence[str],
+    workspace: Path,
+    source_auth: Path,
+    child_env: dict[str, str],
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    docker_bin: str,
+    isolation_image: str,
+) -> list[str]:
+    """Wrap the pinned Codex fallback in a host-write-confined container."""
+
+    docker = str(docker_bin)
+    image = str(isolation_image).strip()
+    if not docker or re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
+        raise ValueError("Codex fallback requires a pinned Docker isolation image")
+    if (
+        _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or not container_name.startswith("ipfs-accelerate-codex-")
+    ):
+        raise ValueError("Codex fallback container name is invalid")
+    source_auth = _validated_codex_auth_path(
+        source_auth=source_auth,
+        workspace=workspace,
+    )
+
+    _validate_codex_quota_fallback_command(
+        codex_command,
+        workspace=workspace,
+    )
+    inner = list(codex_command)
+    sandbox_index = inner.index("-s")
+    if inner[sandbox_index : sandbox_index + 2] != ["-s", "workspace-write"]:
+        raise ValueError("Codex fallback sandbox descriptor is invalid")
+    # Danger-full-access is safe only because Docker is now the enforcing
+    # sandbox: the root filesystem and host /usr are read-only, only this
+    # disposable worktree is writable, and no Docker socket or host home is
+    # projected into the container. This avoids nested bwrap/userns failures
+    # without widening host write authority. The container must be used only
+    # for a trusted repository: API network access and exact Codex auth are
+    # necessarily available to commands inside this external boundary.
+    inner[sandbox_index + 1] = "danger-full-access"
+
+    command = [
+        docker,
+        f"--host={_DOCKER_LOCAL_HOST}",
+        "--config",
+        str(docker_config),
+        "run",
+        "--pull=never",
+        "--rm",
+        "--interactive",
+        "--read-only",
+        "--network=bridge",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--tmpfs",
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--tmpfs",
+        (
+            f"{_CODEX_CONTAINER_HOME}:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--name",
+        container_name,
+        "--cidfile",
+        str(cidfile),
+        "--label",
+        "ipfs_accelerate.codex_fallback_isolation=true",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=1024",
+        "--user",
+        f"{os.getuid()}:{os.getgid()}",
+        "--workdir",
+        str(workspace),
+    ]
+    for name in sorted(child_env):
+        command.extend(["--env", name])
+
+    host_usr = _existing_path(Path("/usr"))
+    if host_usr is None:
+        raise ValueError("Codex fallback requires the pinned host /usr toolchain")
+    command.extend(_docker_mount(host_usr, read_only=True))
+    host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
+    if host_ca_certificates is None:
+        raise ValueError("Codex fallback requires pinned host CA certificates")
+    command.extend(_docker_mount(host_ca_certificates, read_only=True))
+    for git_root in _git_metadata_roots(workspace):
+        command.extend(_docker_mount(git_root, read_only=True))
+    command.extend(_docker_mount(workspace, read_only=False))
+    git_control_path = _existing_path(workspace / ".git")
+    if git_control_path is not None:
+        command.extend(_docker_mount(git_control_path, read_only=True))
+    command.extend(
+        _docker_mount(
+            source_auth,
+            destination=_CODEX_CONTAINER_AUTH_PATH,
+            read_only=True,
+        )
+    )
+    command.extend([image, *inner])
+    return command
+
+
+def _run_codex_quota_fallback_in_docker(
+    codex_command: Sequence[str],
+    *,
+    workspace: Path,
+    prompt: str,
+    prompt_path: Path,
+    base_env: dict[str, str],
+) -> int:
+    """Run Codex only inside the available pinned external sandbox."""
+
+    trusted_codex = resolve_codex_quota_fallback_executable(
+        workspace=workspace,
+        configured=str(codex_command[0] if codex_command else ""),
+    )
+    if not trusted_codex or trusted_codex != str(codex_command[0]):
+        raise ValueError("Codex fallback executable lost its trusted identity")
+    docker_bin = _docker_isolation_binary()
+    if not docker_bin:
+        raise ValueError("Codex fallback requires local Docker isolation")
+
+    isolated_home: tempfile.TemporaryDirectory[str] | None = None
+    docker_lease: _DockerContainerLease | None = None
+    docker_run_finished = False
+    try:
+        isolated_home, child_env, source_auth = (
+            _isolated_codex_quota_fallback_home(
+                workspace=workspace,
+                base_env=base_env,
+            )
+        )
+        codex_home = Path(isolated_home.name)
+        docker_lease = _DockerContainerLease.create(
+            docker_bin,
+            provider="codex",
+            provider_home=codex_home,
+            prompt_path=prompt_path,
+        )
+        isolation_image = _docker_isolation_image_id(
+            docker_bin,
+            docker_config=docker_lease.docker_config,
+            base_env=base_env,
+        )
+        if not isolation_image:
+            raise ValueError(
+                "Codex fallback Docker isolation image is not pinned locally"
+            )
+        command = _docker_codex_fallback_command(
+            codex_command=codex_command,
+            workspace=workspace,
+            source_auth=source_auth,
+            child_env=child_env,
+            docker_config=docker_lease.docker_config,
+            container_name=docker_lease.container_name,
+            cidfile=docker_lease.cidfile,
+            docker_bin=docker_bin,
+            isolation_image=isolation_image,
+        )
+        completed = subprocess.run(
+            command,
+            cwd=workspace,
+            env=_docker_control_env(child_env),
+            input=prompt,
+            text=True,
+            check=False,
+        )
+        docker_run_finished = True
+        return int(completed.returncode)
+    finally:
+        if docker_lease is not None:
+            docker_lease.close(docker_run_finished=docker_run_finished)
+        if isolated_home is not None:
+            _robust_remove_runner_temp_tree(Path(isolated_home.name))
+            isolated_home.cleanup()
+
+
 def _parse_codex_fallback_command(raw: str) -> list[str]:
     """Decode the daemon-authored Codex fallback without invoking a shell."""
 
@@ -2241,14 +2448,16 @@ def _codex_quota_fallback_env(
     candidate = Path(configured_home).expanduser() if configured_home else home / ".codex"
     try:
         codex_home = candidate.resolve(strict=True)
-        auth_path = (codex_home / "auth.json").resolve(strict=True)
     except OSError as exc:
         raise ValueError("Codex quota fallback requires a validated auth.json") from exc
+    _validated_codex_auth_path(
+        source_auth=codex_home / "auth.json",
+        workspace=workspace,
+    )
     if (
         not codex_home.is_dir()
-        or not auth_path.is_file()
+        or Path(os.path.abspath(candidate)).is_relative_to(workspace)
         or codex_home.is_relative_to(workspace)
-        or auth_path.is_relative_to(workspace)
     ):
         raise ValueError("Codex quota fallback auth must be outside the workspace")
 
@@ -2268,6 +2477,68 @@ def _codex_quota_fallback_env(
     environment["CODEX_HOME"] = str(codex_home)
     environment["PATH"] = "/usr/bin:/bin"
     return environment
+
+
+def _validated_codex_auth_path(
+    *,
+    source_auth: Path,
+    workspace: Path,
+) -> Path:
+    """Pin a private, single-link regular credential owned by this account."""
+
+    auth_entry = Path(source_auth).expanduser()
+    try:
+        entry_stat = auth_entry.lstat()
+        resolved_auth = auth_entry.resolve(strict=True)
+        resolved_workspace = workspace.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Codex quota fallback requires a validated auth.json") from exc
+    if (
+        not auth_entry.is_absolute()
+        or auth_entry != resolved_auth
+        or not stat.S_ISREG(entry_stat.st_mode)
+        or entry_stat.st_uid != os.getuid()
+        or stat.S_IMODE(entry_stat.st_mode) != 0o600
+        or entry_stat.st_nlink != 1
+        or resolved_auth.name != "auth.json"
+        or resolved_auth.is_relative_to(resolved_workspace)
+    ):
+        raise ValueError(
+            "Codex quota fallback auth must be a private, owned, regular auth.json"
+        )
+    return resolved_auth
+
+
+def _isolated_codex_quota_fallback_home(
+    *,
+    workspace: Path,
+    base_env: dict[str, str],
+) -> tuple[
+    tempfile.TemporaryDirectory[str],
+    dict[str, str],
+    Path,
+]:
+    """Create an ephemeral Codex home containing only pinned auth authority."""
+
+    host_environment = _codex_quota_fallback_env(
+        workspace=workspace,
+        base_env=base_env,
+    )
+    source_auth = (
+        Path(host_environment["CODEX_HOME"]) / "auth.json"
+    ).resolve(strict=True)
+    temporary_home = tempfile.TemporaryDirectory(
+        prefix="asref-codex-home-"
+    )
+    try:
+        Path(temporary_home.name).chmod(0o700)
+        isolated_environment = dict(host_environment)
+        isolated_environment["HOME"] = str(_CODEX_CONTAINER_HOME)
+        isolated_environment["CODEX_HOME"] = str(_CODEX_CONTAINER_HOME)
+        return temporary_home, isolated_environment, source_auth
+    except Exception:
+        temporary_home.cleanup()
+        raise
 
 
 def _grok_failure_type_from_stream_event(line: str) -> str:
@@ -3030,7 +3301,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                 docker_lease = _DockerContainerLease.create(
                     docker_bin,
-                    grok_home=_policy_path.parent,
+                    provider="grok",
+                    provider_home=_policy_path.parent,
                     prompt_path=Path(prompt_path).resolve(strict=True),
                 )
                 isolation_image = _docker_isolation_image_id(
@@ -3198,22 +3470,16 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         try:
-            fallback_env = _codex_quota_fallback_env(
-                workspace=workspace,
-                base_env=os.environ.copy(),
-            )
-            fallback = subprocess.run(
+            return _run_codex_quota_fallback_in_docker(
                 codex_fallback_command,
-                cwd=workspace,
-                env=fallback_env,
-                input=prompt,
-                text=True,
-                check=False,
+                workspace=workspace,
+                prompt=prompt,
+                prompt_path=Path(prompt_path),
+                base_env=os.environ.copy(),
             )
         except (OSError, ValueError) as exc:
             print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
             return 127
-        return int(fallback.returncode)
     finally:
         command_environment_stack.close()
         if docker_lease is not None:

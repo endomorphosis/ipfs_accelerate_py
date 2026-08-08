@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
+import uuid
 from pathlib import Path
 
 import ipfs_accelerate_py.llm_router as llm_router
@@ -396,9 +398,9 @@ def test_main_route_requires_matching_native_spending_limit_before_terra(
         )
         return 23
 
-    def fake_fallback(command, **kwargs):
+    def fake_fallback(command, **kwargs) -> int:
         fallback_calls.append((list(command), dict(kwargs)))
-        return subprocess.CompletedProcess(command, 0)
+        return 0
 
     monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO(prompt))
     monkeypatch.setattr(
@@ -423,10 +425,9 @@ def test_main_route_requires_matching_native_spending_limit_before_terra(
     )
     monkeypatch.setattr(
         grok_cli_runner,
-        "_codex_quota_fallback_env",
-        lambda **_kwargs: {"PATH": "/usr/bin:/bin"},
+        "_run_codex_quota_fallback_in_docker",
+        fake_fallback,
     )
-    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_fallback)
     monkeypatch.chdir(workspace)
 
     returncode = grok_cli_runner.main(
@@ -449,11 +450,398 @@ def test_main_route_requires_matching_native_spending_limit_before_terra(
         assert command == fallback
         assert command[command.index("-m") + 1] == "gpt-5.6-terra"
         assert 'model_reasoning_effort="medium"' in command
-        assert kwargs["cwd"] == workspace.resolve()
-        assert kwargs["input"] == prompt
-        assert kwargs["text"] is True
+        assert kwargs["workspace"] == workspace.resolve()
+        assert kwargs["prompt"] == prompt
+        assert Path(kwargs["prompt_path"]).name.startswith("asref-grok-prompt-")
     else:
         assert "did not confirm the same quota failure" in capsys.readouterr().err
+
+
+def test_docker_codex_boundary_transforms_only_validated_sandbox(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    provider_bin = tmp_path / "provider-bin"
+    docker_config = tmp_path / "docker-config"
+    workspace.mkdir()
+    provider_bin.mkdir()
+    docker_config.mkdir()
+    codex = provider_bin / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o700)
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    fallback = _terra_fallback_command(str(codex), workspace)
+    image = "sha256:" + "a" * 64
+    container_name = "ipfs-accelerate-codex-1-" + "b" * 32
+
+    command = grok_cli_runner._docker_codex_fallback_command(
+        codex_command=fallback,
+        workspace=workspace,
+        source_auth=source_auth,
+        child_env={
+            "HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
+            "CODEX_HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
+            "PATH": "/usr/bin:/bin",
+            "LANG": "opaque-child-value",
+        },
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=tmp_path / "container.cid",
+        docker_bin="/usr/bin/docker",
+        isolation_image=image,
+    )
+
+    assert fallback[fallback.index("-s") + 1] == "workspace-write"
+    assert command[0] == "/usr/bin/docker"
+    assert f"--host={grok_cli_runner._DOCKER_LOCAL_HOST}" in command
+    assert "--pull=never" in command
+    assert "--read-only" in command
+    assert "--network=bridge" in command
+    assert "--cap-drop=ALL" in command
+    assert "--security-opt=no-new-privileges" in command
+    assert "--device" not in command
+    assert "ipfs_accelerate.codex_fallback_isolation=true" in command
+    assert image in command
+    assert command[command.index("--env") + 1] == "CODEX_HOME"
+    assert "LANG" in [
+        command[index + 1]
+        for index, value in enumerate(command[:-1])
+        if value == "--env"
+    ]
+    assert "opaque-child-value" not in command
+
+    mounts = [
+        command[index + 1]
+        for index, value in enumerate(command[:-1])
+        if value == "--mount"
+    ]
+    writable_mounts = [mount for mount in mounts if "readonly" not in mount]
+    assert writable_mounts == [
+        f"type=bind,src={workspace},dst={workspace}"
+    ]
+    assert "type=bind,src=/usr,dst=/usr,readonly" in mounts
+    assert (
+        "type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs,readonly" in mounts
+    )
+    assert (
+        f"type=bind,src={source_auth},"
+        f"dst={grok_cli_runner._CODEX_CONTAINER_AUTH_PATH},readonly"
+        in mounts
+    )
+    assert not any("/var/run/docker.sock" in mount for mount in mounts)
+    assert not any("/home/" in mount for mount in mounts)
+
+    inner = command[command.index(image) + 1 :]
+    expected_inner = list(fallback)
+    expected_inner[expected_inner.index("-s") + 1] = "danger-full-access"
+    assert inner == expected_inner
+    assert "--dangerously-bypass-approvals-and-sandbox" not in inner
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    ("symlink", "group_readable", "hardlink", "wrong_owner"),
+)
+def test_codex_auth_boundary_rejects_ambient_or_mutable_authority(
+    tmp_path: Path,
+    monkeypatch,
+    invalid_case: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    codex_home = tmp_path / "codex-home"
+    workspace.mkdir()
+    codex_home.mkdir()
+    auth_path = codex_home / "auth.json"
+    auth_path.write_text("{}\n", encoding="utf-8")
+    auth_path.chmod(0o600)
+
+    if invalid_case == "symlink":
+        target = tmp_path / "real-auth.json"
+        target.write_text("{}\n", encoding="utf-8")
+        target.chmod(0o600)
+        auth_path.unlink()
+        auth_path.symlink_to(target)
+    elif invalid_case == "group_readable":
+        auth_path.chmod(0o640)
+    elif invalid_case == "hardlink":
+        os.link(auth_path, tmp_path / "auth-alias.json")
+    else:
+        current_uid = os.getuid()
+        monkeypatch.setattr(
+            grok_cli_runner.os,
+            "getuid",
+            lambda: current_uid + 1,
+        )
+
+    with pytest.raises(ValueError, match="private, owned, regular"):
+        grok_cli_runner._codex_quota_fallback_env(
+            workspace=workspace,
+            base_env={
+                "HOME": str(tmp_path),
+                "CODEX_HOME": str(codex_home),
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    ("mutable_image", "wrong_provider_name", "workspace_mismatch"),
+)
+def test_docker_codex_boundary_rejects_unpinned_or_mismatched_authority(
+    tmp_path: Path,
+    invalid_case: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    other_workspace = tmp_path / "other-workspace"
+    workspace.mkdir()
+    other_workspace.mkdir()
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o700)
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    fallback_workspace = (
+        other_workspace if invalid_case == "workspace_mismatch" else workspace
+    )
+    image = (
+        "ubuntu:24.04"
+        if invalid_case == "mutable_image"
+        else "sha256:" + "a" * 64
+    )
+    container_name = (
+        "ipfs-accelerate-grok-1-" + "b" * 32
+        if invalid_case == "wrong_provider_name"
+        else "ipfs-accelerate-codex-1-" + "b" * 32
+    )
+
+    with pytest.raises(ValueError):
+        grok_cli_runner._docker_codex_fallback_command(
+            codex_command=_terra_fallback_command(
+                str(codex),
+                fallback_workspace,
+            ),
+            workspace=workspace,
+            source_auth=source_auth,
+            child_env={"PATH": "/usr/bin:/bin"},
+            docker_config=tmp_path,
+            container_name=container_name,
+            cidfile=tmp_path / "container.cid",
+            docker_bin="/usr/bin/docker",
+            isolation_image=image,
+        )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_finished"),
+    (("success", True), ("signal", True), ("error", False)),
+)
+def test_docker_codex_fallback_always_closes_its_separate_lease(
+    tmp_path: Path,
+    monkeypatch,
+    outcome: str,
+    expected_finished: bool,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o700)
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    provider_home = tmp_path / "asref-codex-home-test"
+    provider_home.mkdir()
+    prompt_path = tmp_path / "asref-grok-prompt-test.txt"
+    prompt_path.write_text("repair", encoding="utf-8")
+    close_calls: list[bool] = []
+    create_kwargs: list[dict[str, object]] = []
+
+    class FakeHome:
+        name = str(provider_home)
+
+        def cleanup(self) -> None:
+            return None
+
+    class FakeLease:
+        docker_config = tmp_path / "docker-config"
+        container_name = "ipfs-accelerate-codex-1-" + "c" * 32
+        cidfile = tmp_path / "container.cid"
+
+        def close(self, *, docker_run_finished: bool) -> None:
+            close_calls.append(docker_run_finished)
+
+    FakeLease.docker_config.mkdir()
+
+    def fake_create(*_args, **kwargs):
+        create_kwargs.append(dict(kwargs))
+        return FakeLease()
+
+    def fake_run(*_args, **_kwargs):
+        if outcome == "error":
+            raise OSError("docker launch failed")
+        return subprocess.CompletedProcess(
+            ["docker", "run"],
+            0 if outcome == "success" else -15,
+        )
+
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: str(codex),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_docker_isolation_binary",
+        lambda: "/usr/bin/docker",
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_isolated_codex_quota_fallback_home",
+        lambda **_kwargs: (
+            FakeHome(),
+            {
+                "HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
+                "CODEX_HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
+                "PATH": "/usr/bin:/bin",
+            },
+            source_auth,
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner._DockerContainerLease,
+        "create",
+        fake_create,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_docker_isolation_image_id",
+        lambda *_args, **_kwargs: "sha256:" + "d" * 64,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_docker_codex_fallback_command",
+        lambda **_kwargs: ["docker", "run"],
+    )
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+
+    def invocation() -> int:
+        return grok_cli_runner._run_codex_quota_fallback_in_docker(
+            _terra_fallback_command(str(codex), workspace),
+            workspace=workspace,
+            prompt="repair",
+            prompt_path=prompt_path,
+            base_env={},
+        )
+    if outcome == "error":
+        with pytest.raises(OSError, match="docker launch failed"):
+            invocation()
+    else:
+        expected_returncode = 0 if outcome == "success" else -15
+        assert invocation() == expected_returncode
+
+    assert close_calls == [expected_finished]
+    assert create_kwargs == [
+        {
+            "provider": "codex",
+            "provider_home": provider_home,
+            "prompt_path": prompt_path,
+        }
+    ]
+
+
+def test_real_disposable_codex_container_boundary_probe(tmp_path: Path) -> None:
+    docker_bin = grok_cli_runner._docker_isolation_binary()
+    codex = grok_cli_runner.resolve_codex_quota_fallback_executable(
+        workspace=tmp_path,
+    )
+    if not docker_bin or not codex:
+        pytest.skip("trusted local Docker/Codex boundary is unavailable")
+    workspace = tmp_path / "workspace"
+    docker_config = tmp_path / "docker-config"
+    workspace.mkdir()
+    docker_config.mkdir()
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    image = grok_cli_runner._docker_isolation_image_id(
+        docker_bin,
+        docker_config=docker_config,
+    )
+    if not image:
+        pytest.skip("pinned local Docker image is unavailable")
+    child_env = {
+        "HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
+        "CODEX_HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
+        "PATH": "/usr/bin:/bin",
+    }
+    command = grok_cli_runner._docker_codex_fallback_command(
+        codex_command=_terra_fallback_command(codex, workspace),
+        workspace=workspace,
+        source_auth=source_auth,
+        child_env=child_env,
+        docker_config=docker_config,
+        container_name=(
+            f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
+        ),
+        cidfile=tmp_path / "container.cid",
+        docker_bin=docker_bin,
+        isolation_image=image,
+    )
+    image_index = command.index(image)
+    probe_command = [*command[: image_index + 1], codex, "--version"]
+
+    completed = subprocess.run(
+        probe_command,
+        cwd=workspace,
+        env=grok_cli_runner._docker_control_env(child_env),
+        input="",
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.startswith("codex-cli ")
+    assert "bwrap:" not in completed.stderr
+
+
+def test_daemon_liveness_accepts_exact_codex_fallback_container_label(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(list(command))
+        if command[:2] == ["docker", "ps"]:
+            label = command[command.index("--filter") + 1]
+            stdout = "codex-container\n" if "codex_fallback" in label else ""
+            return subprocess.CompletedProcess(command, 0, stdout=stdout)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                [{"Source": str(tmp_path), "Destination": str(tmp_path)}]
+            ),
+        )
+
+    monkeypatch.setattr(implementation_daemon.subprocess, "run", fake_run)
+
+    assert daemon._docker_isolation_active_for_worktree(str(tmp_path)) is True
+    filters = [
+        call[call.index("--filter") + 1]
+        for call in calls
+        if call[:2] == ["docker", "ps"]
+    ]
+    assert filters == [
+        "label=ipfs_accelerate.grok_isolation=true",
+        "label=ipfs_accelerate.codex_fallback_isolation=true",
+    ]
 
 
 def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
