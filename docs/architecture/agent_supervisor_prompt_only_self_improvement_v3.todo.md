@@ -82,7 +82,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-002 Install bounded local authority and exact provider-attempt policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
