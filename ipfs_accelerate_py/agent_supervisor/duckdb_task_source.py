@@ -1534,7 +1534,11 @@ class DuckDBTaskSource:
             os.close(descriptor)
 
     @contextmanager
-    def _read_connection(self) -> Iterator[tuple[Any, dict[str, tuple[str, str]]]]:
+    def _unlocked_read_connection(
+        self,
+    ) -> Iterator[tuple[Any, dict[str, tuple[str, str]]]]:
+        """Open one validated reader while the caller owns the file lock."""
+
         if not self.database_path.is_file():
             raise TaskSourceIntegrityError("DuckDB task source is not installed")
         connection = _connect(self.database_path, read_only=True)
@@ -1545,6 +1549,16 @@ class DuckDBTaskSource:
             yield connection, metadata
         finally:
             connection.close()
+
+    @contextmanager
+    def _read_connection(self) -> Iterator[tuple[Any, dict[str, tuple[str, str]]]]:
+        """Open one reader without racing a separate-process DuckDB writer."""
+
+        with exclusive_file_lock(
+            self._lock_path, timeout_seconds=self.lock_timeout_seconds
+        ):
+            with self._unlocked_read_connection() as opened:
+                yield opened
 
     @contextmanager
     def _write_connection(
@@ -1770,7 +1784,7 @@ class DuckDBTaskSource:
             if self.database_path.exists():
                 if expected_absent:
                     raise TaskSourceConflictError("DuckDB task source already exists")
-                with self._read_connection() as (_connection, metadata):
+                with self._unlocked_read_connection() as (_connection, metadata):
                     if (
                         _meta_value(metadata, "plan_root_cid") != root
                         or _meta_value(metadata, "source_identity")
@@ -1779,15 +1793,14 @@ class DuckDBTaskSource:
                         raise TaskSourceConflictError(
                             "existing task source contains a different task population"
                         )
-                    existing = self.snapshot()
                     return {
                         "schema": MATERIALIZATION_RECEIPT_SCHEMA,
                         "receipt_cid": _meta_value(
                             metadata, "materialization_receipt_cid"
                         ),
                         "plan_root_cid": root,
-                        "projection_cid": existing.projection_cid,
-                        "revision": existing.revision,
+                        "projection_cid": _meta_value(metadata, "projection_cid"),
+                        "revision": int(_meta_value(metadata, "revision")),
                         "changed": False,
                         "replayed": True,
                     }

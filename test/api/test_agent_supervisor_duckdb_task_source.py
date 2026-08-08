@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import multiprocessing as mp
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -31,6 +34,18 @@ from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
     PromptTaskRecord,
     PromptValidationRecord,
 )
+
+
+def _hold_duckdb_writer(
+    database_path: str,
+    entered: object,
+    release: object,
+) -> None:
+    source = DuckDBTaskSource(database_path)
+    with source._write_connection():
+        entered.set()
+        if not release.wait(timeout=10.0):
+            raise RuntimeError("reader did not release the multiprocess writer")
 
 
 def _source() -> dict[str, object]:
@@ -314,6 +329,36 @@ def test_writer_fencing_rejects_stale_and_concurrent_writers(tmp_path: Path) -> 
         fencing_token=lease.fencing_token,
     )
     assert changed.changed
+
+
+def test_multiprocess_reader_waits_for_writer_file_lock(tmp_path: Path) -> None:
+    source = _materialized(tmp_path)
+    context = mp.get_context("spawn")
+    entered = context.Event()
+    release = context.Event()
+    process = context.Process(
+        target=_hold_duckdb_writer,
+        args=(str(source.database_path), entered, release),
+    )
+    process.start()
+    try:
+        assert entered.wait(timeout=10.0)
+        timer = threading.Timer(0.35, release.set)
+        timer.start()
+        started = time.monotonic()
+        snapshot = source.snapshot()
+        elapsed = time.monotonic() - started
+        timer.join(timeout=2.0)
+    finally:
+        release.set()
+        process.join(timeout=10.0)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5.0)
+
+    assert process.exitcode == 0
+    assert snapshot.task_count == 2
+    assert elapsed >= 0.25
 
 
 def test_identical_replay_is_noop_and_population_drift_is_rejected(
