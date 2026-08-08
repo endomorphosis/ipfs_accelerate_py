@@ -233,7 +233,7 @@ this bootstrap is active.
 
 ## DQP-007 Implement the typed Quack client, transaction, and retry adapter
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
