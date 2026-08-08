@@ -178,7 +178,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-006 Compile and enforce adaptive conflict-free parallel execution
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
