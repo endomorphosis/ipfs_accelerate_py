@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.entrypoints.context_adapters import (
     InvocationContextError,
     LocalInvocationContextFactory,
@@ -18,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.inference_runtime import (
 )
 
 
-def test_local_signed_profile_resolves_without_daemon_flags(tmp_path):
+def test_fake_git_and_shape_only_profile_do_not_authorize_local_launch(tmp_path):
     (tmp_path / ".git").mkdir()
     profile = tmp_path / "profile.signed.json"
     profile.write_text('{"signature":"test"}', encoding="utf-8")
@@ -26,9 +25,14 @@ def test_local_signed_profile_resolves_without_daemon_flags(tmp_path):
         cwd=str(tmp_path), profile_path=str(profile), profile_signed=True
     )
     receipt = SupervisorResolutionService().resolve("inspect this repository", context)
-    assert receipt.launch_authorized
-    assert receipt.target == str(tmp_path)
+    assert context.authenticated is False
+    assert receipt.resolved is False
+    assert receipt.launch_authorized is False
+    assert receipt.target is None
+    assert receipt.profile is None
     assert receipt.context_cid == context.cid
+    with pytest.raises(MaterialAmbiguityError):
+        launch_if_authorized(receipt)
 
 
 def test_same_context_replays_identically_across_transport_labels(tmp_path):
