@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     TodoImplementationDaemon,
 )
 import ipfs_accelerate_py.llm_router as llm_router
+
+
+_GROK_1_SPENDING_LIMIT_MESSAGE = (
+    "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
+    "You have run out of credits or need a Grok subscription. Add credits at "
+    "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
+)
 
 
 def _daemon(root: Path) -> TodoImplementationDaemon:
@@ -76,7 +84,7 @@ def test_daemon_auto_route_embeds_strict_terra_fallback_when_codex_resolves(
         lambda **_kwargs: "/opt/providers/codex",
     )
 
-    command = _daemon(tmp_path)._build_implementation_command(tmp_path)
+    command = implementation_daemon._grok_cli_command(workspace_path=tmp_path)
     assert "--codex-fallback-command-json" in command
     fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
     assert fallback[0] == "/opt/providers/codex"
@@ -88,7 +96,7 @@ def test_daemon_auto_route_embeds_strict_terra_fallback_when_codex_resolves(
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback
     head = " ".join(command[: command.index("--codex-fallback-command-json")])
-    assert "codex" not in head
+    assert "/opt/providers/codex" not in head
 
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
@@ -147,6 +155,151 @@ def test_quota_classifier_accepts_exact_balance_exhausted_envelope() -> None:
     parsed = grok_cli_runner.parse_grok_quota_error(transcript)
     assert parsed["kind"] == "usage_balance_exhausted"
     assert parsed["http_status"] == 402
+
+
+def _write_native_grok_1_spending_limit_session(
+    grok_home: Path,
+    *,
+    message: str = _GROK_1_SPENDING_LIMIT_MESSAGE,
+    terminal_message: str | None = None,
+) -> str:
+    session_id = str(uuid.uuid4())
+    session = grok_home / "sessions" / "%2Frepo" / session_id
+    session.mkdir(parents=True)
+    updates = (
+        {
+            "method": "_x.ai/session/update",
+            "params": {
+                "sessionId": session_id,
+                "update": {
+                    "sessionUpdate": "retry_state",
+                    "type": "failed",
+                    "error_type": "api",
+                    "message": message,
+                },
+            },
+        },
+        {
+            "method": "session/update",
+            "params": {
+                "sessionId": session_id,
+                "update": {
+                    "sessionUpdate": "user_message_chunk",
+                    "content": {"type": "text", "text": "quota probe"},
+                    "_meta": {"modelId": "grok-4.5", "promptIndex": 0},
+                },
+            },
+        },
+        {
+            "method": "_x.ai/session/update",
+            "params": {
+                "sessionId": session_id,
+                "update": {
+                    "sessionUpdate": "turn_completed",
+                    "stop_reason": "error",
+                    "agent_result": (
+                        message if terminal_message is None else terminal_message
+                    ),
+                },
+            },
+        },
+    )
+    (session / "updates.jsonl").write_text(
+        "".join(
+            json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n"
+            for item in updates
+        ),
+        encoding="utf-8",
+    )
+    (session / "summary.json").write_text(
+        json.dumps(
+            {
+                "info": {"id": session_id, "cwd": "/repo"},
+                "current_model_id": "grok-4.5",
+                "grok_home": str(grok_home.resolve()),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return session_id
+
+
+def test_native_grok_1_spending_limit_authorizes_only_exact_terminal_record(
+    tmp_path: Path,
+) -> None:
+    grok_home = tmp_path / "grok-home"
+    session_id = _write_native_grok_1_spending_limit_session(grok_home)
+
+    assert (
+        grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
+            grok_home,
+            expected_session_id=session_id,
+        )
+        == "usage_pool_exhausted"
+    )
+
+
+def test_native_grok_1_spending_limit_rejects_session_and_model_drift(
+    tmp_path: Path,
+) -> None:
+    grok_home = tmp_path / "grok-home"
+    session_id = _write_native_grok_1_spending_limit_session(grok_home)
+
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
+        grok_home,
+        expected_session_id=str(uuid.uuid4()),
+    )
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
+        grok_home,
+        expected_model="grok-4",
+        expected_session_id=session_id,
+    )
+
+    terminal_drift_home = tmp_path / "terminal-drift-home"
+    terminal_drift_session = _write_native_grok_1_spending_limit_session(
+        terminal_drift_home,
+        terminal_message=_GROK_1_SPENDING_LIMIT_MESSAGE + " ",
+    )
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
+        terminal_drift_home,
+        expected_session_id=terminal_drift_session,
+    )
+
+    summary_path = next((grok_home / "sessions").rglob("summary.json"))
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["grok_home"] = str((tmp_path / "wrong-home").resolve())
+    summary_path.write_text(json.dumps(summary, sort_keys=True), encoding="utf-8")
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
+        grok_home,
+        expected_session_id=session_id,
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "API error (status 403 Forbidden): authentication failed",
+        _GROK_1_SPENDING_LIMIT_MESSAGE.replace("403", "401"),
+        _GROK_1_SPENDING_LIMIT_MESSAGE.replace("spending-limit", "rate-limit"),
+        _GROK_1_SPENDING_LIMIT_MESSAGE + " ",
+        _GROK_1_SPENDING_LIMIT_MESSAGE + " retry later",
+    ],
+)
+def test_native_grok_1_spending_limit_near_matches_fail_closed(
+    tmp_path: Path,
+    message: str,
+) -> None:
+    grok_home = tmp_path / "grok-home"
+    session_id = _write_native_grok_1_spending_limit_session(
+        grok_home,
+        message=message,
+    )
+
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
+        grok_home,
+        expected_session_id=session_id,
+    )
 
 
 def test_build_grok_quota_routed_agent_command_embeds_terra_shape(

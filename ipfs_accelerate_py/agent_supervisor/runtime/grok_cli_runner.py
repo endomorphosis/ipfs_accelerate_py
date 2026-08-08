@@ -241,8 +241,9 @@ MAX_CODEX_FALLBACK_ARGUMENTS = 64
 MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
 MAX_GROK_STREAM_EVENT_BYTES = 64 * 1024
 MAX_GROK_SESSION_RECORD_BYTES = 16 * 1024 * 1024
-# Only this exact durable native 402 record has been observed and is authorized
-# to cross the provider boundary. Other native types remain diagnostic only.
+# Only exact durable native account-quota records observed from supported Grok
+# CLI releases are authorized to cross the provider boundary. Other native
+# types remain diagnostic only.
 GROK_QUOTA_ERROR_TYPES = frozenset({"usage_pool_exhausted"})
 CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
 CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT = "medium"
@@ -334,6 +335,20 @@ _CONTAINER_RUNTIME_STANDARD_SOCKETS = (
 )
 _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE = (
     "API error (status 402 Payment Required): Grok Build usage balance exhausted"
+)
+_GROK_1_SPENDING_LIMIT_EXHAUSTED_MESSAGE = (
+    "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
+    "You have run out of credits or need a Grok subscription. Add credits at "
+    "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
+)
+_GROK_QUOTA_FAILURE_RECORDS = frozenset(
+    {
+        ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE),
+        (
+            "usage_pool_exhausted",
+            _GROK_1_SPENDING_LIMIT_EXHAUSTED_MESSAGE,
+        ),
+    }
 )
 _CODEX_FALLBACK_CONFIG_KEYS = frozenset(
     {
@@ -2324,12 +2339,12 @@ def _grok_failure_type_from_stream_event(line: str) -> str:
     error_type = str(update.get("error_type") or "").strip().casefold()
     if error_type in GROK_QUOTA_ERROR_TYPES:
         return error_type
-    if (
-        error_type == "api"
-        and str(update.get("message") or "").strip()
-        == _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE
-    ):
-        return "usage_pool_exhausted"
+    if error_type == "api":
+        message = update.get("message")
+        if isinstance(message, str):
+            for quota_type, exact_message in _GROK_QUOTA_FAILURE_RECORDS:
+                if message == exact_message:
+                    return quota_type
     return error_type or "unknown"
 
 
@@ -2425,7 +2440,9 @@ def _terminal_grok_failure_type_from_isolated_home(
                         terminal_verdict = ""
                         continue
                     failure_type = _grok_failure_type_from_stream_event(raw_line)
-                    failure_message = str(update.get("message") or "").strip()
+                    failure_message = update.get("message")
+                    if not isinstance(failure_message, str):
+                        return ""
                     retry_failure_count += 1
                     latest_failure = (failure_type, failure_message)
                     latest_relevant = "retry_state"
@@ -2438,8 +2455,7 @@ def _terminal_grok_failure_type_from_isolated_home(
                         and latest_failure is not None
                         and latest_failure[0] in GROK_QUOTA_ERROR_TYPES
                         and latest_failure[1]
-                        and str(update.get("agent_result") or "").strip()
-                        == latest_failure[1]
+                        and update.get("agent_result") == latest_failure[1]
                     ):
                         terminal_verdict = latest_failure[0]
                     latest_relevant = "turn_completed"
@@ -2475,8 +2491,7 @@ def _terminal_grok_failure_type_from_isolated_home(
         or summary_info.get("id") != recorded_session_id
         or summary.get("current_model_id") != expected_model
         or summary_home != grok_home.resolve()
-        or latest_failure
-        != ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE)
+        or latest_failure not in _GROK_QUOTA_FAILURE_RECORDS
     ):
         return ""
     return terminal_verdict
@@ -3220,7 +3235,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             return primary_returncode
 
         print(
-            "Grok quota exhausted; invoking the pinned Terra/medium fallback",
+            "Grok quota exhausted; invoking the pinned "
+            f"Terra/{args.codex_fallback_reasoning_effort} fallback",
             file=sys.stderr,
         )
         try:
