@@ -245,6 +245,8 @@ MAX_GROK_SESSION_RECORD_BYTES = 16 * 1024 * 1024
 # to cross the provider boundary. Other native types remain diagnostic only.
 GROK_QUOTA_ERROR_TYPES = frozenset({"usage_pool_exhausted"})
 CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
+CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT = "medium"
+CODEX_QUOTA_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
 CODEX_QUOTA_FALLBACK_REASONING = 'model_reasoning_effort="medium"'
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
@@ -490,13 +492,17 @@ def build_grok_quota_routed_agent_command(
     grok_bin: str = "",
     codex_bin: str = "",
     max_turns: int = 100_000,
+    fallback_reasoning_effort: str = CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT,
 ) -> list[str]:
-    """Build the canonical Grok-4.5 then typed-quota Terra/medium route.
+    """Build the canonical Grok-4.5 then typed-quota Terra fallback route.
 
     The returned parent runner owns the Codex argv.  Grok receives neither the
     executable/auth authority nor any way to invoke this fallback directly.
     """
 
+    effort = _validate_codex_quota_fallback_reasoning_effort(
+        fallback_reasoning_effort
+    )
     workspace_text = str(workspace)
     codex = resolve_codex_quota_fallback_executable(
         workspace=workspace,
@@ -514,6 +520,8 @@ def build_grok_quota_routed_agent_command(
         str(max(1, int(max_turns))),
         "--mode",
         "agent",
+        "--codex-fallback-reasoning-effort",
+        effort,
     ]
     if codex:
         fallback = [
@@ -529,7 +537,7 @@ def build_grok_quota_routed_agent_command(
             "-m",
             CODEX_QUOTA_FALLBACK_MODEL,
             "-c",
-            CODEX_QUOTA_FALLBACK_REASONING,
+            f'model_reasoning_effort="{effort}"',
             "-",
         ]
         command.extend(
@@ -2091,7 +2099,25 @@ def _docker_grok_command(
     return command
 
 
-def _parse_codex_fallback_command(raw: str) -> list[str]:
+def _validate_codex_quota_fallback_reasoning_effort(value: object) -> str:
+    """Return a closed Codex fallback effort or reject configuration drift."""
+
+    effort = str(value).strip() if isinstance(value, str) else ""
+    if effort not in CODEX_QUOTA_FALLBACK_REASONING_EFFORTS:
+        allowed = ", ".join(sorted(CODEX_QUOTA_FALLBACK_REASONING_EFFORTS))
+        raise ValueError(
+            "Codex quota fallback reasoning must be one of: " + allowed
+        )
+    return effort
+
+
+def _parse_codex_fallback_command(
+    raw: str,
+    *,
+    expected_fallback_reasoning_effort: str = (
+        CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT
+    ),
+) -> list[str]:
     """Decode the daemon-authored Codex fallback without invoking a shell."""
 
     if not raw.strip():
@@ -2122,7 +2148,10 @@ def _parse_codex_fallback_command(raw: str) -> list[str]:
         raise ValueError("Codex fallback executable must be an absolute codex path")
     if command[1] != "exec" or command[-1] != "-":
         raise ValueError("Codex fallback command must use `codex exec ... -`")
-    _validate_codex_quota_fallback_command(command)
+    _validate_codex_quota_fallback_command(
+        command,
+        expected_fallback_reasoning_effort=expected_fallback_reasoning_effort,
+    )
     return command
 
 
@@ -2130,8 +2159,15 @@ def _validate_codex_quota_fallback_command(
     command: Sequence[str],
     *,
     workspace: Path | None = None,
+    expected_fallback_reasoning_effort: str = (
+        CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT
+    ),
 ) -> None:
-    """Require the exact daemon-owned Terra/medium fallback shape."""
+    """Require the exact daemon-owned Terra fallback shape and effort."""
+
+    expected_effort = _validate_codex_quota_fallback_reasoning_effort(
+        expected_fallback_reasoning_effort
+    )
 
     if len(command) < 8 or Path(command[0]).name.lower() not in {
         "codex",
@@ -2208,8 +2244,10 @@ def _validate_codex_quota_fallback_command(
                 "Codex quota fallback contains an unauthorized or duplicate config"
             )
         configs[key] = value
-    if configs.get("model_reasoning_effort") != '"medium"':
-        raise ValueError("Codex quota fallback reasoning is not exactly medium")
+    if configs.get("model_reasoning_effort") != f'"{expected_effort}"':
+        raise ValueError(
+            "Codex quota fallback reasoning is not exactly " + expected_effort
+        )
     for key in ("agents.max_depth", "agents.max_threads", "model_context_window"):
         value = configs.get(key)
         if value is not None and re.fullmatch(r"[1-9][0-9]*", value) is None:
@@ -2707,7 +2745,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
 
     try:
         codex_fallback_command = _parse_codex_fallback_command(
-            str(args.codex_fallback_command_json)
+            str(args.codex_fallback_command_json),
+            expected_fallback_reasoning_effort=(
+                args.codex_fallback_reasoning_effort
+            ),
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -2731,6 +2772,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             _validate_codex_quota_fallback_command(
                 codex_fallback_command,
                 workspace=workspace,
+                expected_fallback_reasoning_effort=(
+                    args.codex_fallback_reasoning_effort
+                ),
             )
             # The runner changes cwd before dispatch.  Store the already
             # validated absolute workspace so a relative -C cannot be
@@ -3257,6 +3301,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--codex-fallback-reasoning-effort",
+        default=CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT,
+        choices=tuple(sorted(CODEX_QUOTA_FALLBACK_REASONING_EFFORTS)),
+        help="Exact closed reasoning effort bound into the Codex fallback argv.",
+    )
+    parser.add_argument(
         "--require-command",
         action="append",
         default=[],
@@ -3281,8 +3331,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     receipt_fd = _receipt_fd_from_environment()
 
-    # Delegate to the full isolation/fallback implementation. Terra/medium is
-    # only dispatched after terminal quota correlation + independent verify.
+    # Delegate to the full isolation/fallback implementation. Terra is only
+    # dispatched after terminal quota correlation + independent verification.
     try:
         try:
             return _run(args, receipt_fd)
