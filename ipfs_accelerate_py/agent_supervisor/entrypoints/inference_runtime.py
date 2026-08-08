@@ -1,11 +1,8 @@
-"""Ambient inference runtime: collect trusted ambient evidence and orchestrate prompt-only resolution.
+"""Resolve prompt-only invocations from frozen trusted context.
 
-This entrypoint gathers trusted ambient evidence from the local environment
-(CWD, installed signed profiles, authenticated server context) and resolves
-inference targets without requiring low-level target/profile flags when ambient
-evidence is sufficient. Prompt text is never allowed to populate security-sensitive
-fields (allowlist, caller, policy, provider, validation argv, or authority).
-Material ambiguity never launches; unchanged evidence yields an identical receipt.
+The prompt is intentionally only hashed here.  It cannot select a repository,
+principal, policy, provider, validation command, or authority.  This is the
+last gate before an entrypoint may ask a lifecycle component to cause effects.
 """
 
 from __future__ import annotations
@@ -15,34 +12,36 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
-# Fields that prompt text must never populate.
-PROMPT_FORBIDDEN_FIELDS = frozenset({
-    "allowlist",
-    "caller",
-    "policy",
-    "provider",
-    "validation_argv",
-    "authority",
-})
+from .context_adapters import InvocationContext, ResolutionField
+
+PROMPT_FORBIDDEN_FIELDS = frozenset({"allowlist", "caller", "policy", "provider", "validation_argv", "authority"})
 
 
 class AmbientInferenceError(Exception):
-    """Base error for ambient inference runtime failures."""
+    """Base error for prompt-only resolution."""
 
 
 class MaterialAmbiguityError(AmbientInferenceError):
-    """Raised when material ambiguity would prevent a safe launch."""
+    """Effects were requested with unresolved, stale, or ambiguous evidence."""
 
 
 class PromptContaminationError(AmbientInferenceError):
-    """Raised when prompt text attempts to populate forbidden fields."""
+    """Prompt-derived data attempted to populate authority-bearing input."""
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _hash_prompt(prompt: str) -> str:
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
 class AmbientEvidence:
-    """Trusted ambient evidence collected from the local environment."""
+    """Compatibility view of local/server evidence, convertible to a context."""
 
     cwd: str
     profile_path: Optional[str] = None
@@ -52,34 +51,36 @@ class AmbientEvidence:
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def fingerprint(self) -> str:
-        """Stable fingerprint of this evidence for receipt identity."""
-        payload = {
-            "cwd": self.cwd,
-            "profile_path": self.profile_path,
-            "profile_signed": self.profile_signed,
-            "server_authenticated": self.server_authenticated,
-            "server_context": dict(self.server_context) if self.server_context else None,
-            "extra": dict(self.extra) if self.extra else {},
-        }
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return hashlib.sha256(_canonical({"cwd": self.cwd, "profile_path": self.profile_path,
+            "profile_signed": self.profile_signed, "server_authenticated": self.server_authenticated,
+            "server_context": dict(self.server_context or {}), "extra": dict(self.extra)}).encode()).hexdigest()
 
     def is_sufficient_for_prompt_only(self) -> bool:
-        """True when ambient evidence alone supports prompt-only resolution.
+        return bool(self.cwd) and ((bool(self.profile_path) and self.profile_signed) or
+                                   (self.server_authenticated and self.server_context is not None))
 
-        Local CWD plus an installed signed profile OR authenticated server
-        context is sufficient; no low-level target/profile flags are required.
-        """
-        has_cwd = bool(self.cwd)
-        has_signed_profile = bool(self.profile_path) and self.profile_signed
-        has_auth_server = self.server_authenticated and self.server_context is not None
-        return has_cwd and (has_signed_profile or has_auth_server)
+    def invocation_context(self) -> InvocationContext:
+        if self.server_context is not None:
+            # This compatibility route mirrors MCP only when the caller has
+            # independently marked its server context authenticated.
+            target = self.server_context.get("target")
+            fields = {"repository": ResolutionField(value=target, source="authenticated_transport",
+                freshness="fresh" if self.server_authenticated else "unverified")}
+            for key in ("profile", "run", "objective", "task_source", "resources", "validation", "topology"):
+                if key in self.server_context:
+                    fields[key] = ResolutionField(value=self.server_context[key], source="authenticated_transport")
+            return InvocationContext("mcp", self.server_authenticated, fields, {"repository": "authenticated_server_context"})
+        values: dict[str, Any] = {"repository": ResolutionField(value=self.extra.get("default_target") or self.cwd, source="ambient_local")}
+        if self.profile_path:
+            values["profile"] = ResolutionField(value=self.profile_path,
+                source="signed_profile" if self.profile_signed else "unverified_profile",
+                freshness="fresh" if self.profile_signed else "unverified")
+        return InvocationContext("local", bool(self.profile_path and self.profile_signed), values,
+                                 {"repository": "local_cwd", "profile": "installed_profile"})
 
 
 @dataclass(frozen=True)
 class ResolutionReceipt:
-    """Deterministic receipt for an ambient resolution attempt."""
-
     evidence_fingerprint: str
     resolved: bool
     launch_authorized: bool
@@ -93,352 +94,136 @@ class ResolutionReceipt:
     allowlist: Optional[Sequence[str]] = None
     authority: Optional[Mapping[str, Any]] = None
     validation_argv: Optional[Sequence[str]] = None
+    context_cid: Optional[str] = None
+    field_receipts: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    continuation: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "evidence_fingerprint": self.evidence_fingerprint,
-            "resolved": self.resolved,
-            "launch_authorized": self.launch_authorized,
-            "target": self.target,
-            "profile": self.profile,
-            "reason": self.reason,
-            "prompt_hash": self.prompt_hash,
-            "policy": dict(self.policy) if self.policy else None,
-            "provider": self.provider,
-            "caller": self.caller,
-            "allowlist": list(self.allowlist) if self.allowlist else None,
+        return {"evidence_fingerprint": self.evidence_fingerprint, "resolved": self.resolved,
+            "launch_authorized": self.launch_authorized, "target": self.target, "profile": self.profile,
+            "reason": self.reason, "prompt_hash": self.prompt_hash, "policy": dict(self.policy) if self.policy else None,
+            "provider": self.provider, "caller": self.caller, "allowlist": list(self.allowlist) if self.allowlist else None,
             "authority": dict(self.authority) if self.authority else None,
             "validation_argv": list(self.validation_argv) if self.validation_argv else None,
-        }
+            "context_cid": self.context_cid, "field_receipts": {k: dict(v) for k, v in sorted(self.field_receipts.items())},
+            "continuation": self.continuation}
 
     def identity(self) -> str:
-        """Stable identity of this receipt; identical for unchanged evidence."""
-        canonical = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"), default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _hash_prompt(prompt: str) -> str:
-    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-
-
-def collect_ambient_evidence(
-    *,
-    cwd: Optional[str] = None,
-    profile_path: Optional[str] = None,
-    profile_signed: Optional[bool] = None,
-    server_context: Optional[Mapping[str, Any]] = None,
-    server_authenticated: Optional[bool] = None,
-    profile_search_paths: Optional[Sequence[str]] = None,
-    extra: Optional[Mapping[str, Any]] = None,
-) -> AmbientEvidence:
-    """Collect trusted ambient evidence from the local environment.
-
-    Prefers explicit trusted inputs when provided; otherwise inspects CWD and
-    well-known profile locations. Does not trust prompt text.
-    """
-    resolved_cwd = os.path.abspath(cwd if cwd is not None else os.getcwd())
-
-    resolved_profile: Optional[str] = None
-    resolved_signed = False
-
-    if profile_path is not None:
-        resolved_profile = os.path.abspath(profile_path)
-        if profile_signed is not None:
-            resolved_signed = bool(profile_signed)
-        else:
-            resolved_signed = _looks_signed(resolved_profile)
-    else:
-        search = list(profile_search_paths) if profile_search_paths else _default_profile_search_paths(resolved_cwd)
-        for candidate in search:
-            path = Path(candidate)
-            if path.is_file():
-                resolved_profile = str(path.resolve())
-                resolved_signed = _looks_signed(resolved_profile) if profile_signed is None else bool(profile_signed)
-                break
-        if profile_signed is not None and resolved_profile is not None:
-            resolved_signed = bool(profile_signed)
-
-    resolved_server = dict(server_context) if server_context else None
-    if server_authenticated is not None:
-        resolved_auth = bool(server_authenticated)
-    else:
-        resolved_auth = bool(resolved_server and resolved_server.get("authenticated"))
-
-    return AmbientEvidence(
-        cwd=resolved_cwd,
-        profile_path=resolved_profile,
-        profile_signed=resolved_signed,
-        server_authenticated=resolved_auth,
-        server_context=resolved_server,
-        extra=dict(extra) if extra else {},
-    )
+        return hashlib.sha256(_canonical(self.to_dict()).encode()).hexdigest()
 
 
 def _default_profile_search_paths(cwd: str) -> list[str]:
     home = Path.home()
-    return [
-        str(Path(cwd) / ".agent-supervisor" / "profile.signed.json"),
-        str(Path(cwd) / "profile.signed.json"),
-        str(home / ".agent-supervisor" / "profile.signed.json"),
-        str(home / ".config" / "agent-supervisor" / "profile.signed.json"),
-    ]
+    return [str(Path(cwd) / ".agent-supervisor" / "profile.signed.json"), str(Path(cwd) / "profile.signed.json"),
+            str(home / ".agent-supervisor" / "profile.signed.json"), str(home / ".config" / "agent-supervisor" / "profile.signed.json")]
 
 
 def _looks_signed(path: str) -> bool:
-    """Heuristic: signed profiles carry a signature marker in content or name."""
-    p = Path(path)
-    if not p.is_file():
-        return False
-    name = p.name.lower()
-    if "signed" in name or name.endswith(".sig") or name.endswith(".signed.json"):
-        return True
+    candidate = Path(path)
+    if not candidate.is_file(): return False
     try:
-        text = p.read_text(encoding="utf-8", errors="replace")
-        data = json.loads(text)
-        if isinstance(data, dict) and (data.get("signature") or data.get("signed") or data.get("sig")):
-            return True
-    except (OSError, json.JSONDecodeError, UnicodeError):
-        pass
-    return False
+        data = json.loads(candidate.read_text(encoding="utf-8"))
+        return isinstance(data, dict) and bool(data.get("signature") or data.get("signed") or data.get("sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
 
 
-def sanitize_prompt_bindings(
-    prompt: str,
-    bindings: Optional[Mapping[str, Any]] = None,
-) -> dict[str, Any]:
-    """Ensure prompt text cannot populate security-sensitive fields.
+def collect_ambient_evidence(*, cwd: Optional[str] = None, profile_path: Optional[str] = None,
+    profile_signed: Optional[bool] = None, server_context: Optional[Mapping[str, Any]] = None,
+    server_authenticated: Optional[bool] = None, profile_search_paths: Optional[Sequence[str]] = None,
+    extra: Optional[Mapping[str, Any]] = None) -> AmbientEvidence:
+    resolved_cwd = os.path.abspath(cwd or os.getcwd())
+    found = os.path.abspath(profile_path) if profile_path else None
+    if found is None:
+        for candidate in profile_search_paths or _default_profile_search_paths(resolved_cwd):
+            if Path(candidate).is_file():
+                found = str(Path(candidate).resolve()); break
+    signed = bool(profile_signed) if profile_signed is not None else bool(found and _looks_signed(found))
+    context = dict(server_context) if server_context is not None else None
+    authenticated = bool(server_authenticated) if server_authenticated is not None else bool(context and context.get("authenticated") is True)
+    return AmbientEvidence(resolved_cwd, found, signed, authenticated, context, dict(extra or {}))
 
-    Returns a cleaned bindings dict. Raises PromptContaminationError if the
-    prompt body or untrusted bindings attempt to set forbidden fields.
-    """
-    cleaned: dict[str, Any] = {}
-    if bindings:
-        for key, value in bindings.items():
-            if key in PROMPT_FORBIDDEN_FIELDS:
-                raise PromptContaminationError(
-                    f"prompt bindings must not populate forbidden field: {key}"
-                )
-            cleaned[key] = value
 
-    # Detect structured attempts inside prompt text (e.g. JSON/key=value).
+def sanitize_prompt_bindings(prompt: str, bindings: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    if not isinstance(prompt, str): raise TypeError("prompt must be a string")
+    for key in (bindings or {}):
+        if key.lower() in PROMPT_FORBIDDEN_FIELDS:
+            raise PromptContaminationError(f"prompt bindings must not populate forbidden field: {key}")
+    # Only parse structural assignments: ordinary prose mentioning policy is safe.
     lowered = prompt.lower()
-    for field_name in PROMPT_FORBIDDEN_FIELDS:
-        # Common injection patterns: "allowlist:", '"allowlist":', "allowlist="
-        markers = (
-            f"{field_name}:",
-            f'"{field_name}":',
-            f"'{field_name}':",
-            f"{field_name}=",
-            f"{field_name} ",
-        )
-        for marker in markers:
+    for name in PROMPT_FORBIDDEN_FIELDS:
+        for marker in (f'"{name}":', f"'{name}':", f"{name}=", f"{name}:"):
             if marker in lowered:
-                # Only treat as contamination when it looks like an assignment,
-                # not mere discussion of the word in free text without structure.
-                # Require JSON-ish or key=value style near the marker.
-                idx = lowered.find(marker)
-                snippet = prompt[idx : idx + len(marker) + 80]
-                if _looks_like_field_assignment(snippet, field_name):
-                    raise PromptContaminationError(
-                        f"prompt text must not populate forbidden field: {field_name}"
-                    )
-    return cleaned
+                raise PromptContaminationError(f"prompt text must not populate forbidden field: {name}")
+    return dict(bindings or {})
 
 
-def _looks_like_field_assignment(snippet: str, field_name: str) -> bool:
-    s = snippet.strip()
-    fl = field_name.lower()
-    sl = s.lower()
-    if sl.startswith(f'"{fl}":') or sl.startswith(f"'{fl}':"):
-        return True
-    if sl.startswith(f"{fl}=") or sl.startswith(f"{fl}:"):
-        rest = s[len(field_name) + 1 :].lstrip()
-        if not rest:
-            return False
-        # Reject if it's prose ("allowlist is important") vs assignment.
-        if rest[0] in '"\'[{' or rest[:4].lower() in ("true", "fals", "null") or rest[0].isdigit():
-            return True
-        if rest.startswith("[") or rest.startswith("{"):
-            return True
-        # key=value with non-space token
-        token = [REDACTED] if rest.split() else ""
-        if token and not token.endswith((".", ",", "!", "?")):
-            # Heuristic: bare word after colon often prose; require JSON/list-like
-            if "=" in s[: len(field_name) + 1 + len(token)]:
-                return True
-    return False
+class SupervisorResolutionService:
+    """Deterministically resolve a complete effect gate from one frozen context."""
+
+    _REQUIRED = ("repository", "profile")
+
+    def resolve(self, prompt: str, context: InvocationContext, *, trusted_bindings: Optional[Mapping[str, Any]] = None,
+                explicit_target: Optional[str] = None, explicit_profile: Optional[str] = None) -> ResolutionReceipt:
+        if not isinstance(prompt, str): raise TypeError("prompt must be a string")
+        trusted = dict(trusted_bindings or {})
+        fields = {name: item.as_dict() for name, item in context.fields.items()}
+        reasons: list[str] = []
+        if not context.authenticated:
+            reasons.append("unauthenticated invocation context")
+        repository = context.field("repository")
+        profile = context.field("profile")
+        if repository.freshness.lower() in {"stale", "expired", "unverified"}:
+            reasons.append("repository observation is not fresh")
+        if repository.value is None:
+            if repository.alternatives: reasons.append("multiple repository targets")
+            else: reasons.append("zero repository targets")
+        if explicit_target is not None and repository.value is not None and str(explicit_target) != str(repository.value):
+            reasons.append("explicit target conflicts with trusted context")
+        if explicit_profile is not None and profile.value is not None and os.path.abspath(str(explicit_profile)) != os.path.abspath(str(profile.value)):
+            reasons.append("explicit profile conflicts with trusted context")
+        # A signed profile is required locally; authenticated servers may supply policy instead.
+        if context.transport == "local" and (profile.value is None or profile.freshness != "fresh"):
+            reasons.append("no verified installed profile")
+        for name, value in trusted.items():
+            if name in PROMPT_FORBIDDEN_FIELDS:
+                fields[name] = {"value": value, "source": "trusted_binding", "freshness": "fresh", "alternatives": [], "confidence": "high"}
+        allowed = not reasons
+        target_value = repository.value if repository.value is not None else None
+        return ResolutionReceipt(context.cid, allowed, allowed, target=str(target_value) if target_value is not None else None,
+            profile=str(profile.value) if profile.value is not None else None,
+            reason="prompt-only resolution from trusted context" if allowed else "; ".join(reasons), prompt_hash=_hash_prompt(prompt),
+            policy=trusted.get("policy"), provider=trusted.get("provider"), caller=trusted.get("caller"), allowlist=trusted.get("allowlist"),
+            authority=trusted.get("authority"), validation_argv=trusted.get("validation_argv"), context_cid=context.cid,
+            field_receipts=fields, continuation=None if allowed else "resolve_trusted_context")
 
 
-def resolve_prompt_only(
-    prompt: str,
-    evidence: AmbientEvidence,
-    *,
-    trusted_bindings: Optional[Mapping[str, Any]] = None,
-    prompt_bindings: Optional[Mapping[str, Any]] = None,
-    target: Optional[str] = None,
-    profile: Optional[str] = None,
-    require_no_low_level_flags: bool = True,
-) -> ResolutionReceipt:
-    """Orchestrate prompt-only resolution from trusted ambient evidence.
-
-    - When evidence is sufficient (CWD + signed profile or auth server),
-      low-level target/profile flags are not required.
-    - Prompt text cannot populate allowlist, caller, policy, provider,
-      validation_argv, or authority.
-    - Material ambiguity never launches.
-    - Unchanged evidence (+ same inputs) yields an identical receipt.
-    """
-    if not isinstance(prompt, str):
-        raise TypeError("prompt must be a string")
-
-    # Strip any forbidden fields from prompt-sourced bindings.
+def resolve_prompt_only(prompt: str, evidence: AmbientEvidence, *, trusted_bindings: Optional[Mapping[str, Any]] = None,
+    prompt_bindings: Optional[Mapping[str, Any]] = None, target: Optional[str] = None, profile: Optional[str] = None,
+    require_no_low_level_flags: bool = True) -> ResolutionReceipt:
+    del require_no_low_level_flags
     sanitize_prompt_bindings(prompt, prompt_bindings)
-
-    # Trusted bindings may carry policy/provider/etc.; prompt bindings must not.
-    trusted: MutableMapping[str, Any] = dict(trusted_bindings) if trusted_bindings else {}
-
-    fp = evidence.fingerprint()
-    prompt_hash = _hash_prompt(prompt)
-
-    sufficient = evidence.is_sufficient_for_prompt_only()
-
-    # Ambiguity: multiple conflicting resolution paths without clear authority.
-    ambiguities: list[str] = []
-
-    resolved_target = target
-    resolved_profile = profile
-
-    if sufficient:
-        # No low-level flags required; ambient evidence drives resolution.
-        if resolved_profile is None and evidence.profile_path:
-            resolved_profile = evidence.profile_path
-        if resolved_target is None:
-            if evidence.server_context and evidence.server_context.get("target"):
-                resolved_target = str(evidence.server_context["target"])
-            elif evidence.extra.get("default_target"):
-                resolved_target = str(evidence.extra["default_target"])
-            elif evidence.profile_path:
-                # Target may be implied by signed profile path basename.
-                resolved_target = "ambient:" + Path(evidence.profile_path).stem
-    else:
-        # Insufficient ambient evidence: low-level flags may be needed.
-        if require_no_low_level_flags and not (resolved_target or resolved_profile):
-            ambiguities.append(
-                "insufficient ambient evidence and no target/profile flags provided"
-            )
-        if not resolved_profile and evidence.profile_path and not evidence.profile_signed:
-            ambiguities.append("profile present but not signed and no authenticated server")
-        if not resolved_target and not resolved_profile:
-            ambiguities.append("cannot resolve target or profile from ambient evidence")
-
-    # Conflicting explicit target vs server target is material ambiguity.
-    if (
-        target
-        and evidence.server_context
-        and evidence.server_context.get("target")
-        and str(evidence.server_context["target"]) != str(target)
-    ):
-        ambiguities.append("explicit target conflicts with authenticated server target")
-
-    if (
-        profile
-        and evidence.profile_path
-        and os.path.abspath(profile) != os.path.abspath(evidence.profile_path)
-        and evidence.profile_signed
-    ):
-        ambiguities.append("explicit profile conflicts with installed signed profile")
-
-    if ambiguities:
-        return ResolutionReceipt(
-            evidence_fingerprint=fp,
-            resolved=False,
-            launch_authorized=False,
-            target=resolved_target,
-            profile=resolved_profile,
-            reason="; ".join(ambiguities),
-            prompt_hash=prompt_hash,
-            policy=trusted.get("policy"),
-            provider=trusted.get("provider"),
-            caller=trusted.get("caller"),
-            allowlist=trusted.get("allowlist"),
-            authority=trusted.get("authority"),
-            validation_argv=trusted.get("validation_argv"),
-        )
-
-    if not resolved_target and not resolved_profile:
-        return ResolutionReceipt(
-            evidence_fingerprint=fp,
-            resolved=False,
-            launch_authorized=False,
-            reason="material ambiguity: no resolvable target or profile",
-            prompt_hash=prompt_hash,
-            policy=trusted.get("policy"),
-            provider=trusted.get("provider"),
-            caller=trusted.get("caller"),
-            allowlist=trusted.get("allowlist"),
-            authority=trusted.get("authority"),
-            validation_argv=trusted.get("validation_argv"),
-        )
-
-    return ResolutionReceipt(
-        evidence_fingerprint=fp,
-        resolved=True,
-        launch_authorized=True,
-        target=resolved_target,
-        profile=resolved_profile,
-        reason="prompt-only resolution from trusted ambient evidence",
-        prompt_hash=prompt_hash,
-        policy=trusted.get("policy"),
-        provider=trusted.get("provider"),
-        caller=trusted.get("caller"),
-        allowlist=trusted.get("allowlist"),
-        authority=trusted.get("authority"),
-        validation_argv=trusted.get("validation_argv"),
-    )
+    return SupervisorResolutionService().resolve(prompt, evidence.invocation_context(), trusted_bindings=trusted_bindings,
+        explicit_target=target, explicit_profile=profile)
 
 
 def launch_if_authorized(receipt: ResolutionReceipt) -> ResolutionReceipt:
-    """Launch only when authorized; material ambiguity never launches."""
     if not receipt.launch_authorized:
-        raise MaterialAmbiguityError(
-            receipt.reason or "launch denied: material ambiguity or unresolved target"
-        )
+        raise MaterialAmbiguityError(receipt.reason or "launch denied")
     return receipt
 
 
-def orchestrate(
-    prompt: str,
-    *,
-    cwd: Optional[str] = None,
-    profile_path: Optional[str] = None,
-    profile_signed: Optional[bool] = None,
-    server_context: Optional[Mapping[str, Any]] = None,
-    server_authenticated: Optional[bool] = None,
-    trusted_bindings: Optional[Mapping[str, Any]] = None,
-    prompt_bindings: Optional[Mapping[str, Any]] = None,
-    target: Optional[str] = None,
-    profile: Optional[str] = None,
-    launch: bool = False,
-) -> ResolutionReceipt:
-    """Collect ambient evidence and orchestrate prompt-only resolution.
+def orchestrate(prompt: str, *, cwd: Optional[str] = None, profile_path: Optional[str] = None,
+    profile_signed: Optional[bool] = None, server_context: Optional[Mapping[str, Any]] = None,
+    server_authenticated: Optional[bool] = None, trusted_bindings: Optional[Mapping[str, Any]] = None,
+    prompt_bindings: Optional[Mapping[str, Any]] = None, target: Optional[str] = None, profile: Optional[str] = None,
+    launch: bool = False) -> ResolutionReceipt:
+    receipt = resolve_prompt_only(prompt, collect_ambient_evidence(cwd=cwd, profile_path=profile_path, profile_signed=profile_signed,
+        server_context=server_context, server_authenticated=server_authenticated), trusted_bindings=trusted_bindings,
+        prompt_bindings=prompt_bindings, target=target, profile=profile)
+    return launch_if_authorized(receipt) if launch else receipt
 
-    Primary public entrypoint for ASE2-001.
-    """
-    evidence = collect_ambient_evidence(
-        cwd=cwd,
-        profile_path=profile_path,
-        profile_signed=profile_signed,
-        server_context=server_context,
-        server_authenticated=server_authenticated,
-    )
-    receipt = resolve_prompt_only(
-        prompt,
-        evidence,
-        trusted_bindings=trusted_bindings,
-        prompt_bindings=prompt_bindings,
-        target=target,
-        profile=profile,
-    )
-    if launch:
-        return launch_if_authorized(receipt)
-    return receipt
+
+__all__ = ["AmbientEvidence", "AmbientInferenceError", "MaterialAmbiguityError", "PROMPT_FORBIDDEN_FIELDS", "PromptContaminationError",
+           "ResolutionReceipt", "SupervisorResolutionService", "collect_ambient_evidence", "launch_if_authorized", "orchestrate",
+           "resolve_prompt_only", "sanitize_prompt_bindings"]
