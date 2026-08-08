@@ -357,6 +357,9 @@ class PortalSupervisorConfig:
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
+    task_source_kind: str = "legacy-markdown"
+    expected_task_source_root_id: str = ""
+    expected_task_source_repository_root_id: str = ""
 
 
 class AdoptedManagedDaemonProcess:
@@ -416,6 +419,29 @@ class PortalImplementationSupervisor:
         self._last_supervisor_maintenance_at: float = 0.0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
+
+    def _task_source_uses_markdown_board(self) -> bool:
+        """Return whether supervisor-owned Markdown mutations are safe."""
+
+        return self.config.task_source_kind in {"legacy-markdown", "markdown"}
+
+    def _skip_non_markdown_task_source_operation(
+        self,
+        operation: str,
+    ) -> dict[str, Any] | None:
+        """Record why a Markdown-only producer cannot mutate this task source."""
+
+        if self._task_source_uses_markdown_board():
+            return None
+        payload = {
+            "skipped": True,
+            "reason": "task_source_not_markdown",
+            "operation": operation,
+            "task_source_kind": self.config.task_source_kind,
+            "todo_path": str(self.config.todo_path),
+        }
+        self._record_event("markdown_task_source_operation_skipped", payload)
+        return payload
 
     def _autonomous_unstall_state_path(self) -> Path:
         return (
@@ -3680,8 +3706,23 @@ class PortalImplementationSupervisor:
         return "clean"
 
     def _build_worktree_reconciliation_daemon(self) -> PortalImplementationDaemon:
+        canonical_task_source = (
+            self.config.todo_path
+            if self.config.task_source_kind in {"markdown", "duckdb"}
+            else None
+        )
         return PortalImplementationDaemon(
             todo_path=self.config.todo_path,
+            task_source=canonical_task_source,
+            task_source_kind=(
+                self.config.task_source_kind
+                if canonical_task_source is not None
+                else ""
+            ),
+            expected_task_source_root_id=self.config.expected_task_source_root_id,
+            expected_task_source_repository_root_id=(
+                self.config.expected_task_source_repository_root_id
+            ),
             state_path=self.config.state_path,
             strategy_path=self.config.strategy_path,
             events_path=self.config.events_path,
@@ -4655,6 +4696,12 @@ class PortalImplementationSupervisor:
     def ensure_todo_board_for_refill(self) -> dict[str, Any]:
         """Create an empty todo board when refill machinery is expected to populate it."""
 
+        skipped = self._skip_non_markdown_task_source_operation(
+            "ensure_todo_board_for_refill"
+        )
+        if skipped is not None:
+            return {"created": False, **skipped}
+
         if self.config.todo_path.exists():
             if self.config.todo_path.is_dir():
                 if not (
@@ -4790,6 +4837,14 @@ class PortalImplementationSupervisor:
     def release_completed_guardrail_blocks(self) -> list[dict[str, Any]]:
         """Remove strategy blocks once their generated repair task is completed."""
 
+        if (
+            self._skip_non_markdown_task_source_operation(
+                "release_completed_guardrail_blocks"
+            )
+            is not None
+        ):
+            return []
+
         if not self.config.todo_path.exists() or not self.config.strategy_path.exists():
             return []
         from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
@@ -4818,6 +4873,13 @@ class PortalImplementationSupervisor:
         """Convert impossible dependency metadata into ready repair tasks."""
 
         if not self.config.dependency_guardrail_enabled:
+            return []
+        if (
+            self._skip_non_markdown_task_source_operation(
+                "record_dependency_guardrails"
+            )
+            is not None
+        ):
             return []
         if not self.config.todo_path.exists():
             return []
@@ -4879,6 +4941,13 @@ class PortalImplementationSupervisor:
 
         if not self.config.reconciliation_guardrail_enabled:
             return []
+        if (
+            self._skip_non_markdown_task_source_operation(
+                "record_reconciliation_guardrails"
+            )
+            is not None
+        ):
+            return []
         if not self.config.todo_path.exists():
             return []
 
@@ -4934,6 +5003,13 @@ class PortalImplementationSupervisor:
         """Convert repeated daemon blockers into follow-up work before another retry loop."""
 
         if not self.config.retry_budget_guardrail_enabled:
+            return []
+        if (
+            self._skip_non_markdown_task_source_operation(
+                "record_retry_budget_guardrails"
+            )
+            is not None
+        ):
             return []
         if not self.config.todo_path.exists():
             return []
@@ -5343,6 +5419,19 @@ class PortalImplementationSupervisor:
         runs execute the same classifier without changing that document.
         """
 
+        skipped = self._skip_non_markdown_task_source_operation(
+            "migrate_legacy_objective_goal_completion"
+        )
+        if skipped is not None:
+            return {
+                "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+                "schema_version": 1,
+                "enabled": False,
+                "preview": bool(self.config.objective_goal_migration_preview),
+                "changed": False,
+                **skipped,
+            }
+
         if not self.config.objective_goal_migration_enabled:
             disabled = {
                 "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
@@ -5471,6 +5560,11 @@ class PortalImplementationSupervisor:
 
         if not self.config.objective_task_janitor_enabled:
             return {}
+        skipped = self._skip_non_markdown_task_source_operation(
+            "reconcile_objective_task_janitor"
+        )
+        if skipped is not None:
+            return {"changed": False, **skipped}
 
         from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
             load_strategy,
@@ -6107,6 +6201,17 @@ class PortalImplementationSupervisor:
                 analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
                 started_at=started_at,
             )
+        skipped = self._skip_non_markdown_task_source_operation(
+            "refill_objective_backlog"
+        )
+        if skipped is not None:
+            return self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="task_source_not_markdown",
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                metadata=skipped,
+            )
 
         from argparse import Namespace
 
@@ -6450,6 +6555,17 @@ class PortalImplementationSupervisor:
                 scan_mode="disabled",
                 analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
                 started_at=started_at,
+            )
+        skipped = self._skip_non_markdown_task_source_operation(
+            "refill_codebase_backlog"
+        )
+        if skipped is not None:
+            return self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="task_source_not_markdown",
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                metadata=skipped,
             )
 
         from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
@@ -6958,6 +7074,8 @@ class PortalImplementationSupervisor:
                 str(self.config.daemon_interval),
                 "--todo-path",
                 str(self.config.todo_path),
+                "--task-source-kind",
+                self.config.task_source_kind,
                 "--state-dir",
                 str(self.config.state_dir),
                 "--task-prefix",
@@ -6968,6 +7086,20 @@ class PortalImplementationSupervisor:
                 str(max(0, int(self.config.max_task_attempts))),
             ]
         )
+        if self.config.expected_task_source_root_id:
+            command.extend(
+                [
+                    "--expected-task-source-root",
+                    self.config.expected_task_source_root_id,
+                ]
+            )
+        if self.config.expected_task_source_repository_root_id:
+            command.extend(
+                [
+                    "--expected-task-source-repository-root",
+                    self.config.expected_task_source_repository_root_id,
+                ]
+            )
         for path in self.config.generated_dirty_repair_paths:
             command.extend(["--generated-status-path", str(path)])
         for relative in self.config.implementation_protected_paths:
@@ -7306,6 +7438,27 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_cids
         ):
             return False
+        if option_values("--task-source-kind") != {
+            self.config.task_source_kind
+        }:
+            return False
+        expected_task_source_roots = (
+            {self.config.expected_task_source_root_id}
+            if self.config.expected_task_source_root_id
+            else set()
+        )
+        if option_values("--expected-task-source-root") != expected_task_source_roots:
+            return False
+        expected_repository_roots = (
+            {self.config.expected_task_source_repository_root_id}
+            if self.config.expected_task_source_repository_root_id
+            else set()
+        )
+        if (
+            option_values("--expected-task-source-repository-root")
+            != expected_repository_roots
+        ):
+            return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
             if self.config.merge_target_branch
@@ -7345,7 +7498,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--todo-path",
         type=Path,
         default=Path("docs/211_SERVICE_NAVIGATION_PORTAL_TODO.md"),
-        help="Machine-readable markdown backlog",
+        help="Task source path (a Markdown backlog by default, or a DuckDB database)",
+    )
+    parser.add_argument(
+        "--task-source-kind",
+        choices=("legacy-markdown", "markdown", "duckdb"),
+        default="legacy-markdown",
+        help=(
+            "Storage contract for --todo-path. 'legacy-markdown' preserves the "
+            "existing heading parser; 'markdown' opens a canonical Markdown "
+            "task source; 'duckdb' opens the database directly."
+        ),
+    )
+    parser.add_argument(
+        "--expected-task-source-root",
+        default="",
+        help="Optional canonical plan root which the configured source must match.",
+    )
+    parser.add_argument(
+        "--expected-task-source-repository-root",
+        default="",
+        help="Optional repository tree identity which the configured source must match.",
     )
     parser.add_argument(
         "--state-dir",
@@ -8046,6 +8219,16 @@ def supervisor_config_from_args(
         strategy_path=strategy_path or args.state_dir / f"{args.state_prefix}_strategy.json",
         events_path=events_path or args.state_dir / f"{args.state_prefix}_supervisor_events.jsonl",
         state_dir=args.state_dir,
+        task_source_kind=str(
+            getattr(args, "task_source_kind", "legacy-markdown")
+            or "legacy-markdown"
+        ),
+        expected_task_source_root_id=str(
+            getattr(args, "expected_task_source_root", "") or ""
+        ),
+        expected_task_source_repository_root_id=str(
+            getattr(args, "expected_task_source_repository_root", "") or ""
+        ),
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,

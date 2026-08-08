@@ -191,6 +191,7 @@ def _exercise_lifecycle(source):
 
 
 def _daemon(tmp_path: Path, source) -> PortalImplementationDaemon:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     daemon = PortalImplementationDaemon(
         task_source=source,
         state_path=tmp_path / "state.json",

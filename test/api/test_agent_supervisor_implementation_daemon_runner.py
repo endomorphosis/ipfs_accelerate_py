@@ -88,6 +88,119 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
 
+def test_supervisor_propagates_canonical_duckdb_task_source_contract(
+    tmp_path: Path,
+) -> None:
+    task_database = tmp_path / "control.duckdb"
+    expected_root = "sha256:canonical-plan"
+    expected_repository_root = "git-tree:canonical-repository"
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(task_database),
+            "--task-source-kind",
+            "duckdb",
+            "--expected-task-source-root",
+            expected_root,
+            "--expected-task-source-repository-root",
+            expected_repository_root,
+            "--state-dir",
+            str(tmp_path / "state"),
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert config.task_source_kind == "duckdb"
+    assert config.expected_task_source_root_id == expected_root
+    assert (
+        config.expected_task_source_repository_root_id
+        == expected_repository_root
+    )
+    assert command[command.index("--task-source-kind") + 1] == "duckdb"
+    assert (
+        command[command.index("--expected-task-source-root") + 1]
+        == expected_root
+    )
+    assert (
+        command[
+            command.index("--expected-task-source-repository-root") + 1
+        ]
+        == expected_repository_root
+    )
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+
+
+def test_supervisor_defaults_to_legacy_markdown_task_source(tmp_path: Path) -> None:
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    command = PortalImplementationSupervisor(config)._build_daemon_command()
+
+    assert config.task_source_kind == "legacy-markdown"
+    assert command[command.index("--task-source-kind") + 1] == "legacy-markdown"
+    assert "--expected-task-source-root" not in command
+    assert "--expected-task-source-repository-root" not in command
+
+
+def test_supervisor_never_repairs_duckdb_as_markdown(tmp_path: Path) -> None:
+    task_database = tmp_path / "control.duckdb"
+    original_bytes = b"DUCKDB-control-plane\x00\xff\xfe\x80"
+    task_database.write_bytes(original_bytes)
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(task_database),
+            "--task-source-kind",
+            "duckdb",
+            "--state-dir",
+            str(tmp_path / "state"),
+        ]
+    )
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    config.objective_refill_enabled = True
+    config.codebase_refill_enabled = True
+    supervisor = PortalImplementationSupervisor(config)
+
+    repair = supervisor.ensure_todo_board_for_refill()
+    assert repair == {
+        "created": False,
+        "skipped": True,
+        "reason": "task_source_not_markdown",
+        "operation": "ensure_todo_board_for_refill",
+        "task_source_kind": "duckdb",
+        "todo_path": str(task_database),
+    }
+    assert supervisor.release_completed_guardrail_blocks() == []
+    assert supervisor.record_dependency_guardrails() == []
+    assert supervisor.record_reconciliation_guardrails({}, {}) == []
+    assert supervisor.record_retry_budget_guardrails() == []
+    assert supervisor.reconcile_objective_task_janitor()["reason"] == (
+        "task_source_not_markdown"
+    )
+    assert supervisor.migrate_legacy_objective_goal_completion()["reason"] == (
+        "task_source_not_markdown"
+    )
+    assert supervisor.refill_objective_backlog().scan_mode == (
+        "task_source_not_markdown"
+    )
+    assert supervisor.refill_codebase_backlog().scan_mode == (
+        "task_source_not_markdown"
+    )
+
+    assert task_database.read_bytes() == original_bytes
+    assert list(tmp_path.glob("control.duckdb.*")) == []
+
+
 def test_supervisor_propagates_explicit_merge_queue_namespace(
     tmp_path: Path,
 ) -> None:
