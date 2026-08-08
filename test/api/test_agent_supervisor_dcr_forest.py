@@ -39,11 +39,21 @@ _SCHEDULER_SCHEMA = (
     "deterministic_swissknife_mcplusplus_repair.scheduler_config@1"
 )
 _RUNTIME_ROOT = "data/agent_supervisor/deterministic_contract_repair"
+_FIXTURE_GIT_USER_NAME = "DCR lifecycle test"
+_FIXTURE_GIT_USER_EMAIL = "dcr-lifecycle@example.invalid"
+_FIXTURE_GIT_CONFIG = (
+    "-c",
+    "protocol.file.allow=always",
+    "-c",
+    f"user.name={_FIXTURE_GIT_USER_NAME}",
+    "-c",
+    f"user.email={_FIXTURE_GIT_USER_EMAIL}",
+)
 
 
 def _git(path: Path, *arguments: str) -> str:
     result = subprocess.run(
-        ("git", "-c", "protocol.file.allow=always", *arguments),
+        ("git", *_FIXTURE_GIT_CONFIG, *arguments),
         cwd=path,
         stdin=subprocess.DEVNULL,
         capture_output=True,
@@ -60,8 +70,6 @@ def _git(path: Path, *arguments: str) -> str:
 def _initialize_repository(path: Path) -> None:
     path.mkdir(parents=True)
     _git(path, "init", "-b", "main")
-    _git(path, "config", "user.name", "DCR lifecycle test")
-    _git(path, "config", "user.email", "dcr-lifecycle@example.invalid")
 
 
 def _seed_repository(path: Path, label: str) -> None:
@@ -338,6 +346,39 @@ def _portable_cid(portable: dict[str, Any]) -> str:
         ensure_ascii=True,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+
+def test_fixture_git_identity_is_hermetic_under_private_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    private_home = tmp_path / "PrivateHome"
+    private_home.mkdir()
+    monkeypatch.setenv("HOME", str(private_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(private_home / ".config"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for variable in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+
+    fixture = _prepare_subject(tmp_path / "Fixture")
+    expected = f"{_FIXTURE_GIT_USER_NAME} <{_FIXTURE_GIT_USER_EMAIL}>"
+    for repository in (
+        fixture.workspace,
+        fixture.workspace / "external/ipfs_accelerate",
+    ):
+        identity = _git(
+            repository,
+            "show",
+            "-s",
+            "--format=%an <%ae>%n%cn <%ce>",
+            "HEAD",
+        )
+        assert identity.splitlines() == [expected, expected]
 
 
 def test_real_gitlink_forest_accepts_only_c_p1_p2_m_t_lifecycle(
