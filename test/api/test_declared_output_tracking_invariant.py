@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Mapping
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -617,6 +618,7 @@ def test_reconciliation_stays_unresolved_when_completion_revision_changes(
         "implementation_commit": "candidate-commit",
     }
     observed_completion_cids: dict[str, str] = {}
+    observed_expected_target: list[str] = []
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
     daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
@@ -639,13 +641,31 @@ def test_reconciliation_stays_unresolved_when_completion_revision_changes(
     daemon._cleanup_merged_worktree = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
         "cleaned": True,
     }
+    daemon._run_reconciled_post_merge_completion_gate = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "validation": {
+                "passed": True,
+                "target_commit": "integration-commit",
+                "repository_tree_id": "git-tree:integration-tree",
+                "evidence": {},
+                "reasons": [],
+            },
+            "cleanup_result": {"cleaned": True},
+            "cleanup_cleaned": True,
+        }
+    )
 
     def reject_revised_completion(
         _task_arg: PortalTask,
         _completion_tasks: list[PortalTask],
         completion_task_cids: dict[str, str],
+        *,
+        expected_target_commit: str,
+        validation_evidence: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
+        del validation_evidence
         observed_completion_cids.update(completion_task_cids)
+        observed_expected_target.append(expected_target_commit)
         return {
             "updated": False,
             "reason": "completion_task_revision_changed",
@@ -658,6 +678,7 @@ def test_reconciliation_stays_unresolved_when_completion_revision_changes(
     result = daemon._reconcile_failed_merges()
 
     assert observed_completion_cids == {task.task_id: task_cid}
+    assert observed_expected_target == ["integration-commit"]
     assert result[0]["merge_result"]["merged"] is True
     assert result[0]["resolved"] is False
     assert result[0]["reason"] == "completion_persistence_failed"

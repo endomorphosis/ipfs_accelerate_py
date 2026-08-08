@@ -7,6 +7,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
 )
@@ -17,6 +20,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_validation import (
     build_post_merge_validation_evidence,
     verify_post_merge_validation_evidence,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
+    ValidationScheduler,
 )
 
 
@@ -185,6 +191,357 @@ def test_exact_post_merge_runtime_builds_receipt_in_detached_clean_worktree(
     assert evidence["validation_result"]["elapsed_seconds"] == "0.125"
 
 
+def test_exact_post_merge_runtime_unregisters_partial_worktree_add(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler = _RecordingScheduler()
+    daemon, repo, task, commit, tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+    real_run = subprocess.run
+    partial_workspace: Path | None = None
+    remove_calls: list[Path] = []
+
+    def fail_after_registering_worktree(arguments, *args, **kwargs):
+        nonlocal partial_workspace
+        result = real_run(arguments, *args, **kwargs)
+        command = [str(item) for item in arguments]
+        if command[:3] == ["git", "worktree", "add"]:
+            partial_workspace = Path(command[-2])
+            assert result.returncode == 0, result.stderr
+            return subprocess.CompletedProcess(
+                result.args,
+                1,
+                result.stdout,
+                "seeded failure after worktree registration",
+            )
+        if command[:3] == ["git", "worktree", "remove"]:
+            remove_calls.append(Path(command[-1]))
+        return result
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fail_after_registering_worktree,
+    )
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is False
+    assert evidence["validation_result"]["reason"] == (
+        "post_merge_validation_worktree_add_failed"
+    )
+    assert partial_workspace is not None
+    assert remove_calls == [partial_workspace]
+    assert partial_workspace.exists() is False
+    assert str(partial_workspace) not in _git(
+        repo,
+        "worktree",
+        "list",
+        "--porcelain",
+    )
+
+
+def test_exact_post_merge_runtime_executes_every_outer_namespace_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler = ValidationScheduler(max_workers=1, resource_budget=1)
+    daemon, repo, _task, _commit, _tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+    dependency = tmp_path / "ipfs-accelerate"
+    dependency.mkdir()
+    _git(dependency, "init", "-qb", "main")
+    _git(dependency, "config", "user.name", "Outer Namespace Test")
+    _git(
+        dependency,
+        "config",
+        "user.email",
+        "outer-namespace@example.invalid",
+    )
+    module_path = (
+        dependency
+        / "ipfs_accelerate_py/agent_supervisor"
+        / "analysis/deterministic_repair_forest.py"
+    )
+    module_path.parent.mkdir(parents=True)
+    module_path.write_text(
+        """from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+MARKER = \"outer-namespace-loaded\"
+
+
+def main() -> int:
+    if len(sys.argv) != 3 or sys.argv[1] != \"validate\":
+        return 2
+    payload = json.loads(Path(sys.argv[2]).read_text(encoding=\"utf-8\"))
+    return 0 if payload == {\"forest\": \"current\"} else 1
+
+
+if __name__ == \"__main__\":
+    raise SystemExit(main())
+""",
+        encoding="utf-8",
+    )
+    test_path = (
+        dependency / "test/api/test_agent_supervisor_dcr_forest.py"
+    )
+    test_path.parent.mkdir(parents=True)
+    test_path.write_text(
+        """from external.ipfs_accelerate.ipfs_accelerate_py.agent_supervisor.analysis import deterministic_repair_forest
+
+
+def test_outer_namespace_is_importable() -> None:
+    assert deterministic_repair_forest.MARKER == \"outer-namespace-loaded\"
+        """,
+        encoding="utf-8",
+    )
+    (dependency / ".gitignore").write_text(
+        "__pycache__/\n.pytest_cache/\n",
+        encoding="utf-8",
+    )
+    _git(dependency, "add", ".")
+    _git(dependency, "commit", "-qm", "seed forest validator")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(dependency),
+        "external/ipfs_accelerate",
+    )
+    forest_path = (
+        repo / "data/agent_supervisor/deterministic_contract_repair/forest.json"
+    )
+    forest_path.parent.mkdir(parents=True)
+    forest_path.write_text('{"forest": "current"}\n', encoding="utf-8")
+    _git(repo, "add", "data")
+    _git(repo, "commit", "-qm", "seed outer namespace validation")
+    commit = _git(repo, "rev-parse", "HEAD")
+    tree_id = f"git-tree:{_git(repo, 'rev-parse', 'HEAD^{tree}')}"
+    commands = (
+        "python3 -m pytest -q "
+        "external/ipfs_accelerate/test/api/"
+        "test_agent_supervisor_dcr_forest.py",
+        "python3 -m external.ipfs_accelerate.ipfs_accelerate_py."
+        "agent_supervisor.analysis.deterministic_repair_forest validate "
+        "data/agent_supervisor/deterministic_contract_repair/forest.json",
+    )
+    task = PortalTask(
+        task_id="PMV-001",
+        title="Replay the complete DCR validation plan",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="quality",
+        validation=list(commands),
+        metadata={"Provider role": "deterministic-only"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_with_worktree_validation_pythonpath",
+        lambda *_args, **_kwargs: pytest.fail(
+            "post-merge commands must use checkout-root package namespaces"
+        ),
+    )
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is True, evidence.get("validation_result", {}).get(
+        "workspace_error"
+    )
+    results = evidence["validation_result"]["results"]
+    assert [result["command"] for result in results] == list(commands)
+    assert [result["returncode"] for result in results] == [0, 0]
+    assert all("PYTHONPATH=" not in result["command"] for result in results)
+
+
+def test_exact_post_merge_runtime_materializes_local_nested_submodules_offline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grandchild = tmp_path / "grandchild"
+    grandchild.mkdir()
+    _git(grandchild, "init", "-qb", "main")
+    _git(grandchild, "config", "user.name", "Nested Validation Test")
+    _git(
+        grandchild,
+        "config",
+        "user.email",
+        "nested-validation@example.invalid",
+    )
+    (grandchild / "proof.txt").write_text(
+        "nested proof\n",
+        encoding="utf-8",
+    )
+    _git(grandchild, "add", "proof.txt")
+    _git(grandchild, "commit", "-qm", "grandchild proof")
+
+    child = tmp_path / "child"
+    child.mkdir()
+    _git(child, "init", "-qb", "main")
+    _git(child, "config", "user.name", "Nested Validation Test")
+    _git(
+        child,
+        "config",
+        "user.email",
+        "nested-validation@example.invalid",
+    )
+    (child / "child.txt").write_text("child\n", encoding="utf-8")
+    _git(child, "add", "child.txt")
+    _git(child, "commit", "-qm", "child base")
+    _git(
+        child,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(grandchild),
+        "nested/docs",
+    )
+    _git(child, "commit", "-qam", "add nested docs")
+
+    inspected: dict[str, Path] = {}
+
+    def inspect_nested_checkout(workspace: Path) -> None:
+        inspected["workspace"] = workspace
+        assert (workspace / "libs/child/nested/docs/proof.txt").read_text(
+            encoding="utf-8"
+        ) == "nested proof\n"
+        assert _git(workspace / "libs/child", "rev-parse", "HEAD") == _git(
+            workspace,
+            "rev-parse",
+            "HEAD:libs/child",
+        )
+        assert _git(
+            workspace / "libs/child/nested/docs",
+            "rev-parse",
+            "HEAD",
+        ) == _git(
+            workspace / "libs/child",
+            "rev-parse",
+            "HEAD:nested/docs",
+        )
+
+    scheduler = _RecordingScheduler(inspect_nested_checkout)
+    daemon, repo, _task, _commit, _tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "libs/child",
+    )
+    _git(repo, "commit", "-qam", "add nested child")
+    commit = _git(repo, "rev-parse", "HEAD")
+    tree_id = f"git-tree:{_git(repo, 'rev-parse', 'HEAD^{tree}')}"
+
+    # Mirror the provider shape: the primary checkout has the top-level
+    # dependency but intentionally leaves its nested docs gitlink absent,
+    # while a separate local root worktree has the exact nested objects.
+    provider_workspace = tmp_path / "provider-worktree"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "--detach",
+        str(provider_workspace),
+        commit,
+    )
+    _git(
+        provider_workspace,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+        "--",
+        "libs/child",
+    )
+    nested_source = provider_workspace / "libs/child/nested/docs"
+    assert not (repo / "libs/child/nested/docs/.git").exists()
+    assert (nested_source / "proof.txt").read_text(encoding="utf-8") == (
+        "nested proof\n"
+    )
+    task = PortalTask(
+        task_id="PMV-001",
+        title="Validate nested local dependencies",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="quality",
+        validation=["test -f libs/child/nested/docs/proof.txt"],
+        metadata={
+            "Provider role": "deterministic-only",
+            "submodules": "libs/child",
+        },
+    )
+    real_run = implementation_daemon_module.subprocess.run
+
+    def reject_network_git(arguments: Any, *args: Any, **kwargs: Any):
+        command = [str(item) for item in arguments]
+        forbidden = (
+            command[:2] in (["git", "fetch"], ["git", "clone"])
+            or command[:3] == ["git", "submodule", "update"]
+        )
+        assert not forbidden, command
+        return real_run(arguments, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        reject_network_git,
+    )
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["validation_result"]["offline_submodule_paths"] == [
+        "libs/child"
+    ]
+    workspace = inspected["workspace"]
+    assert not workspace.exists()
+    assert str(workspace / "libs/child") not in _git(
+        repo / "libs/child",
+        "worktree",
+        "list",
+        "--porcelain",
+    )
+    assert str(workspace / "libs/child/nested/docs") not in _git(
+        nested_source,
+        "worktree",
+        "list",
+        "--porcelain",
+    )
+
+
 @pytest.mark.parametrize("fence", ("target", "workspace"))
 def test_exact_post_merge_runtime_rejects_changed_fence(
     tmp_path: Path,
@@ -290,16 +647,14 @@ def test_merge_callback_uses_fresh_post_merge_receipt_for_acceptance(
     )
     monkeypatch.setattr(
         daemon,
-        "apply_post_merge_authoritative_acceptance",
-        lambda selected_task, **kwargs: observed.update(
-            {"accepted_task": selected_task, "acceptance_kwargs": kwargs}
+        "_mark_task_completed_in_todo",
+        lambda task_id, **kwargs: observed.update(
+            {"completed_task_id": task_id, "completion_kwargs": kwargs}
         )
         or {
-            "updated": False,
-            "authoritatively_completed": False,
-            "completion_authoritative": False,
-            "pending_gates": ["provider_review"],
-            "todo_update_result": {},
+            "updated": True,
+            "task_id": task_id,
+            "reason": "updated",
         },
     )
     monkeypatch.setattr(
@@ -342,13 +697,13 @@ def test_merge_callback_uses_fresh_post_merge_receipt_for_acceptance(
 
     assert result["merged"] is True
     assert result["post_merge_validation"] == evidence
-    assert result["completion_authoritative"] is False
-    assert result["acceptance_pending"] is True
     assert observed["validation_kwargs"] == {
         "target_commit": commit,
         "repository_tree_id": tree_id,
     }
-    assert observed["acceptance_kwargs"]["validation_result"] == evidence
+    assert observed["completed_task_id"] == task.task_id
+    assert observed["completion_kwargs"]["expected_target_commit"] == commit
+    assert result["todo_update_result"]["updated"] is True
 
 
 def test_reconciliation_reruns_exact_validation_instead_of_replaying_event(
@@ -380,18 +735,6 @@ def test_reconciliation_reruns_exact_validation_instead_of_replaying_event(
         )
         or fresh,
     )
-    monkeypatch.setattr(
-        daemon,
-        "apply_post_merge_authoritative_acceptance",
-        lambda selected_task, **kwargs: observed.update(
-            {"accepted_task": selected_task, "acceptance_kwargs": kwargs}
-        )
-        or {
-            "updated": False,
-            "authoritatively_completed": False,
-            "completion_authoritative": False,
-        },
-    )
     stale_event = {
         "task_id": task.task_id,
         "merge_result": {
@@ -404,16 +747,17 @@ def test_reconciliation_reruns_exact_validation_instead_of_replaying_event(
         },
     }
 
-    result = daemon._apply_reconciled_merge_authoritative_acceptance(
+    result = daemon._run_reconciled_post_merge_completion_gate(
         task,
-        stale_event,
-        implementation_commit=commit,
+        target_commit=commit,
+        target_branch="main",
+        prerequisites_passed=True,
     )
 
-    assert result["acceptance_attempted"] is True
-    assert result["validation_result"] == fresh
+    assert stale_event["merge_result"]["validation_result"] != fresh
+    assert result["validation"]["passed"] is True
+    assert result["validation"]["evidence"] == fresh
     assert observed["validation_kwargs"] == {
         "target_commit": commit,
         "repository_tree_id": tree_id,
     }
-    assert observed["acceptance_kwargs"]["validation_result"] == fresh

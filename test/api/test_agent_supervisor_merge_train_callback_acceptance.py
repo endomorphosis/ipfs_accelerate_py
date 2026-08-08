@@ -225,6 +225,137 @@ def test_successful_callback_lifts_validation_into_runtime_completion(
     assert stored is not None and stored.status == "completed"
 
 
+def test_callback_cannot_label_unrelated_child_as_completion_publication(
+    tmp_path: Path,
+) -> None:
+    repo, _base, candidate = _repo_with_candidate(tmp_path)
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="candidate/callback",
+        task_id="CALLBACK-SPOOFED-PUBLICATION",
+        canonical_task_id="canonical-callback-spoofed-publication",
+        commit_sha=candidate,
+    )
+
+    def merge_callback(_claimed) -> dict[str, Any]:
+        _git(repo, "merge", "--ff-only", candidate)
+        (repo / "unrelated.txt").write_text("unvalidated\n", encoding="utf-8")
+        _git(repo, "add", "unrelated.txt")
+        _git(repo, "commit", "-m", "unrelated immediate child")
+        completion_commit = _git(repo, "rev-parse", "HEAD")
+        return {
+            "merged": True,
+            "target_commit": candidate,
+            "merge_commit": candidate,
+            "post_merge_validation": {
+                "passed": True,
+                "validated_commit": candidate,
+                "receipt_id": "validation:before-unrelated-child",
+            },
+            "todo_update_result": {
+                "commit_result": {
+                    "committed": True,
+                    "commit": completion_commit,
+                    "repo": str(repo),
+                    "path": str(repo / "base.txt"),
+                }
+            },
+        }
+
+    train = MergeTrain(
+        repo,
+        queue,
+        merge_callback=merge_callback,
+        post_merge_validation=lambda *_args, **_kwargs: pytest.fail(
+            "callback-supplied evidence must be inspected"
+        ),
+    )
+    result = train.run_once()
+
+    assert result is not None
+    assert result["status"] == "integrated_pending_validation"
+    assert result["integrated"] is True
+    assert result["accepted"] is False
+    assert result["validation_reason"] == (
+        "callback_post_merge_validation_unbound"
+    )
+    binding = result["post_merge_validation"]
+    assert binding["completion_publication_trusted"] is False
+    assert binding["completion_publication_path"] == "base.txt"
+    assert binding["completion_publication_changed_paths"] == [
+        "unrelated.txt"
+    ]
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "completed"
+
+
+def test_callback_board_child_has_integrity_bound_acceptance_receipt(
+    tmp_path: Path,
+) -> None:
+    repo, _base, candidate = _repo_with_candidate(tmp_path)
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="candidate/callback",
+        task_id="CALLBACK-BOARD-PUBLICATION",
+        canonical_task_id="canonical-callback-board-publication",
+        commit_sha=candidate,
+    )
+    completion_commit = ""
+
+    def merge_callback(_claimed) -> dict[str, Any]:
+        nonlocal completion_commit
+        _git(repo, "merge", "--ff-only", candidate)
+        (repo / "base.txt").write_text("completed board\n", encoding="utf-8")
+        _git(repo, "add", "base.txt")
+        _git(repo, "commit", "-m", "publish board completion")
+        completion_commit = _git(repo, "rev-parse", "HEAD")
+        return {
+            "merged": True,
+            "target_commit": candidate,
+            "merge_commit": candidate,
+            "post_merge_validation": {
+                "passed": True,
+                "validated_commit": candidate,
+                "receipt_id": "validation:before-board-child",
+            },
+            "todo_update_result": {
+                "commit_result": {
+                    "committed": True,
+                    "commit": completion_commit,
+                    "repo": str(repo),
+                    "path": str(repo / "base.txt"),
+                }
+            },
+        }
+
+    train = MergeTrain(
+        repo,
+        queue,
+        merge_callback=merge_callback,
+        post_merge_validation=lambda *_args, **_kwargs: pytest.fail(
+            "callback-supplied evidence must be inspected"
+        ),
+    )
+    result = train.run_once()
+
+    assert result is not None
+    assert result["status"] == "merged"
+    assert result["accepted"] is True
+    assert result["target_commit"] == completion_commit
+    [receipt] = train.acceptance_evidence_receipts()
+    assert receipt.verify_integrity() is True
+    assert receipt.target_commit == completion_commit
+    assert receipt.post_merge_validation["validated_commit"] == candidate
+    assert receipt.proved_requirement_ids_for(completion_commit) == (
+        receipt.requirement_id,
+    )
+    binding = receipt.completion_publication_binding
+    assert binding["completion_publication_trusted"] is True
+    assert binding["completion_publication_parent"] == candidate
+    assert binding["completion_publication_changed_paths"] == ["base.txt"]
+    assert queue.get(request.request_id).status == "completed"
+
+
 def test_preflight_only_callback_missing_validation_is_not_requeued(
     tmp_path: Path,
 ) -> None:

@@ -32,7 +32,7 @@ import uuid
 from collections import deque
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Final, Iterator, Mapping, Sequence
@@ -162,6 +162,9 @@ class ParallelAcceptanceReceipt:
     mutation_fence_token_digest: str
     accepted: bool
     validation_receipt_ids: tuple[str, ...] = ()
+    completion_publication_binding: Mapping[str, Any] = field(
+        default_factory=dict
+    )
     requirement_id: str = PARALLEL_ACCEPTANCE_EVIDENCE_ID
     schema: str = PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
     _producer_seal: object | None = field(
@@ -171,7 +174,7 @@ class ParallelAcceptanceReceipt:
     )
 
     def _content(self) -> dict[str, Any]:
-        return {
+        content = {
             "schema": self.schema,
             "requirement_id": self.requirement_id,
             "request_id": self.request_id,
@@ -194,6 +197,11 @@ class ParallelAcceptanceReceipt:
                 "queue_completion_authorized",
             ),
         }
+        if self.completion_publication_binding:
+            content["completion_publication_binding"] = dict(
+                self.completion_publication_binding
+            )
+        return content
 
     @property
     def receipt_id(self) -> str:
@@ -217,6 +225,35 @@ class ParallelAcceptanceReceipt:
             or validation.get("target_commit")
             or ""
         )
+        publication = self.completion_publication_binding
+        publication_path = str(
+            publication.get("completion_publication_path") or ""
+        )
+        publication_changed_paths = publication.get(
+            "completion_publication_changed_paths"
+        )
+        trusted_publication_bridge = bool(
+            publication
+            and publication.get("passed") is True
+            and publication.get("completion_publication_trusted") is True
+            and publication.get("completion_publication_regular_path")
+            is True
+            and publication.get("completion_publication_parent_count") == 1
+            and publication.get("validation_target_commit")
+            == validated_commit
+            and publication.get("completion_publication_commit")
+            == self.target_commit
+            and publication.get(
+                "completion_publication_resolved_commit"
+            )
+            == self.target_commit
+            and publication.get("completion_publication_parent")
+            == validated_commit
+            and publication.get("callback_target_commit")
+            == self.target_commit
+            and publication_path
+            and publication_changed_paths == [publication_path]
+        )
         return bool(
             self._producer_seal is _PARALLEL_ACCEPTANCE_RECEIPT_SEAL
             and self.schema == PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
@@ -227,7 +264,10 @@ class ParallelAcceptanceReceipt:
             and self.target_commit
             and self.accepted
             and validation.get("passed") is True
-            and validated_commit == self.target_commit
+            and (
+                validated_commit == self.target_commit
+                or trusted_publication_bridge
+            )
             and self.mutation_fence_owner
             and self.mutation_fence_generation > 0
             and self.mutation_fence_token_digest.startswith("sha256:")
@@ -292,6 +332,13 @@ class ParallelAcceptanceReceipt:
             validation_receipt_ids=tuple(
                 str(item)
                 for item in value.get("validation_receipt_ids", ())
+            ),
+            completion_publication_binding=(
+                dict(value["completion_publication_binding"])
+                if isinstance(
+                    value.get("completion_publication_binding"), Mapping
+                )
+                else {}
             ),
             mutation_fence_owner=str(
                 value.get("mutation_fence_owner") or ""
@@ -1697,6 +1744,155 @@ class MergeTrain:
             result.setdefault("reason", default_reason)
         return result
 
+    def _callback_validation_publication_binding(
+        self,
+        callback_result: Mapping[str, Any],
+        *,
+        target_commit: str,
+    ) -> dict[str, Any]:
+        """Bind validation to integration plus its own board publication."""
+
+        validation_target = str(
+            callback_result.get("target_commit")
+            or callback_result.get("merge_commit")
+            or target_commit
+        )
+        raw_todo_update = callback_result.get("todo_update_result")
+        todo_update = (
+            raw_todo_update
+            if isinstance(raw_todo_update, Mapping)
+            else {}
+        )
+        raw_commit_result = todo_update.get("commit_result")
+        commit_result = (
+            raw_commit_result
+            if isinstance(raw_commit_result, Mapping)
+            else {}
+        )
+        completion_repo = str(commit_result.get("repo") or "")
+        completion_path = str(commit_result.get("path") or "")
+        try:
+            completion_repo_matches = bool(
+                completion_repo
+                and Path(completion_repo).resolve() == self.repo_root
+            )
+        except (OSError, RuntimeError):
+            completion_repo_matches = False
+        completion_commit = (
+            str(commit_result.get("commit") or "")
+            if (
+                commit_result.get("committed") is True
+                and completion_repo_matches
+                and completion_path
+            )
+            else ""
+        )
+        completion_relative_path = ""
+        if completion_commit and not any(
+            character in completion_path for character in "\0\r\n"
+        ):
+            try:
+                raw_path = Path(completion_path)
+                absolute_path = (
+                    raw_path.resolve(strict=False)
+                    if raw_path.is_absolute()
+                    else (self.repo_root / raw_path).resolve(strict=False)
+                )
+                relative_path = absolute_path.relative_to(self.repo_root)
+                if relative_path.parts:
+                    completion_relative_path = relative_path.as_posix()
+            except (OSError, RuntimeError, ValueError):
+                completion_relative_path = ""
+
+        resolved_completion_commit = ""
+        completion_parent = ""
+        completion_parent_count = 0
+        completion_changed_paths: list[str] = []
+        completion_regular_path = False
+        if completion_commit and completion_relative_path:
+            resolved = self._git(
+                "rev-parse",
+                "--verify",
+                f"{completion_commit}^{{commit}}",
+            )
+            if (
+                resolved.returncode == 0
+                and resolved.stdout.strip() == completion_commit
+            ):
+                resolved_completion_commit = resolved.stdout.strip()
+                parents = self._git(
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    resolved_completion_commit,
+                )
+                parent_values = parents.stdout.strip().split()
+                if (
+                    parents.returncode == 0
+                    and parent_values
+                    and parent_values[0] == resolved_completion_commit
+                ):
+                    completion_parent_count = len(parent_values) - 1
+                    if completion_parent_count == 1:
+                        completion_parent = parent_values[1]
+                        changed = self._git(
+                            "diff-tree",
+                            "--no-commit-id",
+                            "--no-renames",
+                            "--name-only",
+                            "-r",
+                            completion_parent,
+                            resolved_completion_commit,
+                            "--",
+                        )
+                        if changed.returncode == 0:
+                            completion_changed_paths = [
+                                path
+                                for path in changed.stdout.splitlines()
+                                if path
+                            ]
+                        tree_entry = self._git(
+                            "ls-tree",
+                            resolved_completion_commit,
+                            "--",
+                            completion_relative_path,
+                        )
+                        completion_regular_path = bool(
+                            tree_entry.returncode == 0
+                            and tree_entry.stdout.startswith(
+                                ("100644 blob ", "100755 blob ")
+                            )
+                        )
+        completion_trusted = bool(
+            resolved_completion_commit == completion_commit
+            and completion_parent_count == 1
+            and completion_parent == validation_target
+            and completion_changed_paths == [completion_relative_path]
+            and completion_regular_path
+        )
+        return {
+            "passed": bool(
+                target_commit == validation_target
+                or (
+                    completion_commit == target_commit
+                    and completion_trusted
+                )
+            ),
+            "validation_target_commit": validation_target,
+            "completion_publication_commit": completion_commit,
+            "completion_publication_resolved_commit": (
+                resolved_completion_commit
+            ),
+            "completion_publication_parent": completion_parent,
+            "completion_publication_parent_count": completion_parent_count,
+            "completion_publication_path": completion_relative_path,
+            "completion_publication_changed_paths": completion_changed_paths,
+            "completion_publication_regular_path": completion_regular_path,
+            "completion_publication_trusted": completion_trusted,
+            "callback_target_commit": target_commit,
+        }
+
     @staticmethod
     def _callback_identity(
         callback: Callable[..., Any] | None,
@@ -2756,15 +2952,41 @@ class MergeTrain:
             or validation.get("target_commit")
             or ""
         )
-        if validated_commit != target and (
-            validation.get("passed") is True or not callback_owned
+        raw_callback_result = integration.get("merge_result")
+        callback_result = (
+            raw_callback_result
+            if isinstance(raw_callback_result, Mapping)
+            else {}
+        )
+        callback_binding = self._callback_validation_publication_binding(
+            callback_result,
+            target_commit=target,
+        )
+        validation_target = str(
+            callback_binding["validation_target_commit"]
+        )
+        completion_publication_binding = (
+            dict(callback_binding)
+            if (
+                validation_target != target
+                and callback_binding.get("passed") is True
+            )
+            else {}
+        )
+        if (
+            (
+                validated_commit != validation_target
+                or callback_binding.get("passed") is not True
+            )
+            and (validation.get("passed") is True or not callback_owned)
         ):
             validation.update(
                 {
+                    **callback_binding,
                     "passed": False,
                     "reason": "post_merge_validation_target_mismatch",
                     "validated_commit": validated_commit,
-                    "synthesized_commit": target,
+                    "synthesized_commit": validation_target,
                 }
             )
         live_target = self._target_commit()
@@ -2837,8 +3059,26 @@ class MergeTrain:
             ),
             accepted=bool(validation.get("passed")) and claim_current,
             validation_receipt_ids=self._validation_receipt_ids(validation),
+            completion_publication_binding=(
+                completion_publication_binding
+            ),
             _producer_seal=_PARALLEL_ACCEPTANCE_RECEIPT_SEAL,
         )
+        if receipt.accepted and not receipt.verify_integrity():
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "parallel_acceptance_receipt_integrity_failed",
+                    "completion_publication_binding": (
+                        completion_publication_binding
+                    ),
+                }
+            )
+            receipt = replace(
+                receipt,
+                post_merge_validation=validation,
+                accepted=False,
+            )
         receipt_payload = receipt.to_dict()
         self._write_acceptance_receipt(receipt_payload)
 
@@ -3536,6 +3776,15 @@ class MergeTrain:
                 )
                 callback_validation: dict[str, Any] = {}
                 if self.post_merge_validation is not None:
+                    callback_binding = (
+                        self._callback_validation_publication_binding(
+                            callback_result,
+                            target_commit=callback_target,
+                        )
+                    )
+                    callback_validation_target = str(
+                        callback_binding["validation_target_commit"]
+                    )
                     raw_callback_validation = callback_result.get(
                         "post_merge_validation"
                     )
@@ -3554,20 +3803,26 @@ class MergeTrain:
                         or ""
                     )
                     callback_validation["synthesized_commit"] = (
-                        callback_target
+                        callback_validation_target
                     )
                     if (
                         callback_validation.get("passed") is True
-                        and validated_commit != callback_target
+                        and (
+                            validated_commit != callback_validation_target
+                            or callback_binding.get("passed") is not True
+                        )
                     ):
                         callback_validation.update(
                             {
+                                **callback_binding,
                                 "passed": False,
                                 "reason": (
                                     "callback_post_merge_validation_unbound"
                                 ),
                                 "validated_commit": validated_commit,
-                                "synthesized_commit": callback_target,
+                                "synthesized_commit": (
+                                    callback_validation_target
+                                ),
                             }
                         )
                     if not bool(callback_validation.get("passed")):
