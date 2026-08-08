@@ -109,7 +109,7 @@ this bootstrap is active.
 
 ## DQP-003 Build the checksum-bound migration catalog and runner
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
