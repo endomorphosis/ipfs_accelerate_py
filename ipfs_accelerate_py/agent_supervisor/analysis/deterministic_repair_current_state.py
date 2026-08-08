@@ -18,8 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
-
+from typing import Any, Iterable, Mapping
 
 CURRENT_IMPLEMENTATION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-repair-current-state@1"
@@ -92,6 +91,23 @@ class CurrentImplementationEvidence:
         }
         payload["report_id"] = self.report_id or _content_id(payload)
         return payload
+
+
+@dataclass(frozen=True)
+class CurrentImplementationEvidenceValidation:
+    """Fail-closed replay result for a stored current-state projection.
+
+    ``repository_commit`` and ``report_id`` record the observation that
+    produced an artifact.  They intentionally do not need to equal a later
+    checkout's values, but the historical commit must remain reachable from
+    the checkout being validated and every non-provenance observation must
+    still match exactly.
+    """
+
+    valid: bool = False
+    observed_repository_commit: str = ""
+    current_repository_commit: str = ""
+    reason_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -204,6 +220,14 @@ def _content_id(value: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _valid_git_commit(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) in {40, 64}
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 def _repository_root(value: str | os.PathLike[str] | None) -> Path:
     if value is not None:
         return Path(value).resolve()
@@ -224,7 +248,71 @@ def _git_commit(root: Path) -> str:
     except (OSError, subprocess.SubprocessError):
         return "unavailable"
     commit = result.stdout.strip()
-    return commit if len(commit) in {40, 64} else "unavailable"
+    return commit if _valid_git_commit(commit) else "unavailable"
+
+
+def _is_ancestor_commit(root: Path, observed: str, current: str) -> bool:
+    """Return whether a validated observed commit is reachable from ``HEAD``."""
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                os.fspath(root),
+                "merge-base",
+                "--is-ancestor",
+                observed,
+                current,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def _load_stored_current_evidence(
+    source: (
+        CurrentImplementationEvidence | Mapping[str, Any] | str | os.PathLike[str]
+    ),
+) -> Mapping[str, Any] | None:
+    """Load a stored projection without accepting duplicate JSON keys."""
+
+    if isinstance(source, CurrentImplementationEvidence):
+        return source.to_dict()
+    if isinstance(source, Mapping):
+        return dict(source)
+
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in payload:
+                raise ValueError(f"duplicate JSON key: {key}")
+            payload[key] = value
+        return payload
+
+    try:
+        payload = json.loads(
+            Path(source).read_text(encoding="utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (OSError, TypeError, ValueError):
+        return None
+    return dict(payload) if isinstance(payload, Mapping) else None
+
+
+def _without_observation_provenance(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the exact evidence surface that must survive a later commit."""
+
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in {"repository_commit", "report_id"}
+    }
 
 
 def _path_evidence(root: Path, relative_path: str) -> dict[str, Any]:
@@ -331,6 +419,104 @@ def reconcile_current_evidence(
     )
 
 
+def validate_current_evidence(
+    stored_evidence: (
+        CurrentImplementationEvidence | Mapping[str, Any] | str | os.PathLike[str]
+    ),
+    repository_root: str | os.PathLike[str] | None = None,
+) -> CurrentImplementationEvidenceValidation:
+    """Fail closed unless stored current-state evidence still describes ``HEAD``.
+
+    A report ID is a self-CID over the complete historical projection.  The
+    historical commit and that CID are observation provenance, rather than a
+    claim that the report was created at the checkout currently being
+    validated.  A descendant checkout is therefore accepted only when the
+    observed commit is an ancestor and a fresh component/synthetic scan is an
+    exact match after removing those two provenance fields.
+    """
+
+    stored = _load_stored_current_evidence(stored_evidence)
+    if stored is None:
+        return CurrentImplementationEvidenceValidation(
+            reason_codes=("stored_current_evidence_unreadable",),
+        )
+
+    observed_commit = stored.get("repository_commit")
+    if not _valid_git_commit(observed_commit):
+        return CurrentImplementationEvidenceValidation(
+            reason_codes=("observed_repository_commit_invalid",),
+        )
+    assert isinstance(observed_commit, str)
+
+    claimed_report_id = stored.get("report_id")
+    stored_without_report_id = {
+        key: value for key, value in stored.items() if key != "report_id"
+    }
+    try:
+        expected_report_id = _content_id(stored_without_report_id)
+    except (TypeError, ValueError):
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            reason_codes=("stored_current_evidence_not_canonical",),
+        )
+    if (
+        not isinstance(claimed_report_id, str)
+        or claimed_report_id != expected_report_id
+    ):
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            reason_codes=("stored_report_id_mismatch",),
+        )
+
+    root = _repository_root(repository_root)
+    if not root.is_dir():
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            reason_codes=("repository_root_unavailable",),
+        )
+    current_commit = _git_commit(root)
+    if not _valid_git_commit(current_commit):
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            current_repository_commit=current_commit,
+            reason_codes=("current_repository_commit_unavailable",),
+        )
+    if not _is_ancestor_commit(root, observed_commit, current_commit):
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            current_repository_commit=current_commit,
+            reason_codes=("observed_repository_commit_not_ancestor",),
+        )
+
+    try:
+        current = reconcile_current_evidence(root).to_dict()
+    except (OSError, ValueError):
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            current_repository_commit=current_commit,
+            reason_codes=("current_evidence_reconciliation_failed",),
+        )
+    if current.get("repository_commit") != current_commit:
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            current_repository_commit=current_commit,
+            reason_codes=("repository_head_changed_during_validation",),
+        )
+    if _without_observation_provenance(stored) != _without_observation_provenance(
+        current
+    ):
+        return CurrentImplementationEvidenceValidation(
+            observed_repository_commit=observed_commit,
+            current_repository_commit=current_commit,
+            reason_codes=("current_evidence_drift",),
+        )
+    return CurrentImplementationEvidenceValidation(
+        valid=True,
+        observed_repository_commit=observed_commit,
+        current_repository_commit=current_commit,
+    )
+
+
 def write_current_evidence(
     output_path: str | os.PathLike[str],
     repository_root: str | os.PathLike[str] | None = None,
@@ -354,10 +540,12 @@ __all__ = [
     "CURRENT_IMPLEMENTATION_COMPONENT_SCHEMA",
     "CURRENT_IMPLEMENTATION_EVIDENCE_SCHEMA",
     "CURRENT_STATE_FILENAME",
+    "SYNTHETIC_EVIDENCE_SCHEMA",
     "CurrentImplementationComponent",
     "CurrentImplementationEvidence",
+    "CurrentImplementationEvidenceValidation",
     "ReuseClassification",
-    "SYNTHETIC_EVIDENCE_SCHEMA",
     "reconcile_current_evidence",
+    "validate_current_evidence",
     "write_current_evidence",
 ]
