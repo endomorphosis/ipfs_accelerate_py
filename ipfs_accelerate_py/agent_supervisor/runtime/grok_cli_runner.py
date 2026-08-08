@@ -66,6 +66,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
 )
+from ipfs_accelerate_py.llm_router import (
+    AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID,
+    AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT,
+)
 
 # Self-heal: if a static import is incomplete on an older pin or partial merge,
 # bind every provider-command symbol this module loads by name.
@@ -291,9 +295,13 @@ def _run_isolated_grok_quota_probe(
 
 MAX_CODEX_FALLBACK_ARGUMENTS = 64
 MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
-CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
-DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT = "medium"
-CODEX_QUOTA_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
+CODEX_QUOTA_FALLBACK_MODEL = AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID
+DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT = (
+    AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT
+)
+CODEX_QUOTA_FALLBACK_REASONING_EFFORTS = frozenset(
+    {AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT}
+)
 CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG = (
     "--canonical-legacy-preflight-route"
 )
@@ -582,7 +590,7 @@ def build_grok_quota_routed_agent_command(
     workspace_text = str(workspace)
     reasoning_effort = str(fallback_reasoning_effort).strip()
     if reasoning_effort not in CODEX_QUOTA_FALLBACK_REASONING_EFFORTS:
-        raise ValueError("Codex fallback reasoning must be medium or high")
+        raise ValueError("Codex fallback reasoning must be exactly high")
     codex = (
         resolve_codex_quota_fallback_executable(
             workspace=workspace,
@@ -2648,7 +2656,10 @@ def _validate_codex_quota_fallback_command(
         resolved_executable = executable.resolve(strict=True)
     except OSError as exc:
         raise ValueError("Codex quota fallback executable does not exist") from exc
-    if not executable.is_file() or not os.access(executable, os.X_OK):
+    # ``os.access(..., X_OK)`` is false on a noexec test mount even for a
+    # correctly pinned executable.  The Docker boundary executes the pinned
+    # image command, so verify immutable executable mode here instead.
+    if not executable.is_file() or not (resolved_executable.stat().st_mode & 0o111):
         raise ValueError("Codex quota fallback executable is not executable")
     if workspace is not None and (
         executable.is_relative_to(workspace)
@@ -2668,11 +2679,8 @@ def _validate_codex_quota_fallback_command(
                 "Codex quota fallback contains an unauthorized or duplicate config"
             )
         configs[key] = value
-    if configs.get("model_reasoning_effort") not in {
-        '"medium"',
-        '"high"',
-    }:
-        raise ValueError("Codex fallback reasoning is not medium or high")
+    if configs.get("model_reasoning_effort") != '"high"':
+        raise ValueError("Codex fallback reasoning must be exactly high")
     if required_reasoning_effort is not None and configs.get(
         "model_reasoning_effort"
     ) != json.dumps(required_reasoning_effort):
