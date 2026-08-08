@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -178,6 +179,11 @@ def test_exact_post_merge_runtime_builds_receipt_in_detached_clean_worktree(
     assert evidence["validated_commit"] == commit
     assert evidence["repository_tree_id"] == tree_id
     assert evidence["validation_scope"] == "post_merge"
+    fence = evidence["validation_result"]["fence"]
+    for stage in ("before", "after"):
+        assert fence[stage]["tracked_checkout_exact"] is True
+        assert fence[stage]["tracked_checkout_proof"]["passed"] is True
+        assert fence[stage]["tracked_checkout_proof"]["tracked_entry_count"] == 1
     assert verify_post_merge_validation_evidence(
         evidence,
         expected_task_id=task.task_id,
@@ -526,6 +532,14 @@ def test_exact_post_merge_runtime_materializes_local_nested_submodules_offline(
     assert evidence["validation_result"]["offline_submodule_paths"] == [
         "libs/child"
     ]
+    after_proof = evidence["validation_result"]["fence"]["after"][
+        "tracked_checkout_proof"
+    ]
+    assert after_proof["passed"] is True
+    assert after_proof["materialized_gitlink_count"] == 2
+    assert {
+        item["repository"] for item in after_proof["repositories"]
+    } == {".", "libs/child", "libs/child/nested/docs"}
     workspace = inspected["workspace"]
     assert not workspace.exists()
     assert str(workspace / "libs/child") not in _git(
@@ -540,6 +554,57 @@ def test_exact_post_merge_runtime_materializes_local_nested_submodules_offline(
         "list",
         "--porcelain",
     )
+
+
+def test_exact_post_merge_runtime_allows_clean_unmaterialized_gitlink(
+    tmp_path: Path,
+) -> None:
+    child = tmp_path / "optional-child"
+    child.mkdir()
+    _git(child, "init", "-qb", "main")
+    _git(child, "config", "user.name", "Optional Dependency Test")
+    _git(
+        child,
+        "config",
+        "user.email",
+        "optional-dependency@example.invalid",
+    )
+    (child / "optional.txt").write_text("optional\n", encoding="utf-8")
+    _git(child, "add", "optional.txt")
+    _git(child, "commit", "-qm", "optional dependency")
+
+    scheduler = _RecordingScheduler()
+    daemon, repo, task, _commit, _tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "libs/optional",
+    )
+    _git(repo, "commit", "-qam", "add optional dependency")
+    commit = _git(repo, "rev-parse", "HEAD")
+    tree_id = f"git-tree:{_git(repo, 'rev-parse', 'HEAD^{tree}')}"
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is True
+    proof = evidence["validation_result"]["fence"]["after"][
+        "tracked_checkout_proof"
+    ]
+    assert proof["passed"] is True
+    assert proof["materialized_gitlink_count"] == 0
+    assert {item["repository"] for item in proof["repositories"]} == {"."}
+    assert not scheduler.calls[0]["workspace"].exists()
 
 
 @pytest.mark.parametrize("fence", ("target", "workspace"))
@@ -594,6 +659,217 @@ def test_exact_post_merge_runtime_rejects_changed_fence(
     verified, reasons = verify_post_merge_validation_evidence(evidence)
     assert verified is True
     assert reasons == ()
+
+
+@pytest.mark.parametrize(
+    ("index_flag", "expected_tag"),
+    (
+        ("--assume-unchanged", "h"),
+        ("--skip-worktree", "S"),
+    ),
+)
+def test_exact_post_merge_runtime_rejects_hidden_tracked_mutation(
+    tmp_path: Path,
+    index_flag: str,
+    expected_tag: str,
+) -> None:
+    def conceal_mutation(workspace: Path) -> None:
+        if index_flag == "--skip-worktree":
+            _git(workspace, "update-index", index_flag, "tracked.txt")
+        (workspace / "tracked.txt").write_text(
+            "validation-time mutation\n",
+            encoding="utf-8",
+        )
+        if index_flag == "--assume-unchanged":
+            _git(workspace, "update-index", index_flag, "tracked.txt")
+        assert _git(
+            workspace,
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ) == ""
+        assert _git(
+            workspace,
+            "ls-files",
+            "-v",
+            "--",
+            "tracked.txt",
+        ).startswith(f"{expected_tag} ")
+
+    scheduler = _RecordingScheduler(conceal_mutation)
+    daemon, _repo, task, commit, tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is False
+    assert evidence["stale"] is True
+    validation_result = evidence["validation_result"]
+    assert validation_result["reason"] == (
+        "post_merge_validation_workspace_integrity_failed_after_execution"
+    )
+    after = validation_result["fence"]["after"]
+    assert after["workspace_clean"] is True
+    assert after["tracked_checkout_exact"] is False
+    proof = after["tracked_checkout_proof"]
+    assert proof["reason"] == (
+        "post_merge_tracked_index_flags_forbidden"
+    )
+    assert proof["failure_repository"] == "."
+    assert proof["forbidden_index_flags"] == [
+        {"path": "tracked.txt", "flag": expected_tag}
+    ]
+
+
+@pytest.mark.parametrize(
+    "concealment",
+    ("stat_cache", "ignored_filemode"),
+)
+def test_exact_post_merge_runtime_hashes_tracked_bytes_and_modes(
+    tmp_path: Path,
+    concealment: str,
+) -> None:
+    def conceal_without_index_flag(workspace: Path) -> None:
+        tracked = workspace / "tracked.txt"
+        if concealment == "stat_cache":
+            stable_ns = 1_000_000_000_000_000_000
+            os.utime(tracked, ns=(stable_ns, stable_ns))
+            _git(workspace, "update-index", "--refresh", "tracked.txt")
+            _git(workspace, "config", "core.trustctime", "false")
+            tracked.write_text("mutated!\n", encoding="utf-8")
+            os.utime(tracked, ns=(stable_ns, stable_ns))
+        else:
+            _git(workspace, "config", "core.filemode", "false")
+            tracked.chmod(tracked.stat().st_mode | 0o100)
+        assert _git(workspace, "status", "--porcelain") == ""
+        assert _git(
+            workspace,
+            "ls-files",
+            "-v",
+            "--",
+            "tracked.txt",
+        ).startswith("H ")
+
+    scheduler = _RecordingScheduler(conceal_without_index_flag)
+    daemon, _repo, task, commit, tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is False
+    validation_result = evidence["validation_result"]
+    assert validation_result["reason"] == (
+        "post_merge_validation_workspace_integrity_failed_after_execution"
+    )
+    after = validation_result["fence"]["after"]
+    assert after["workspace_clean"] is True
+    proof = after["tracked_checkout_proof"]
+    assert proof["reason"] == "post_merge_tracked_worktree_mismatch"
+    assert proof["failure_repository"] == "."
+    assert proof["failure_path"] == "tracked.txt"
+    if concealment == "ignored_filemode":
+        assert proof["path_error"] == "tracked executable mode mismatch"
+    else:
+        assert proof["expected_object_id"] != proof["observed_object_id"]
+
+
+def test_exact_post_merge_runtime_rejects_hidden_nested_submodule_mutation(
+    tmp_path: Path,
+) -> None:
+    child = tmp_path / "hidden-child"
+    child.mkdir()
+    _git(child, "init", "-qb", "main")
+    _git(child, "config", "user.name", "Nested Integrity Test")
+    _git(
+        child,
+        "config",
+        "user.email",
+        "nested-integrity@example.invalid",
+    )
+    (child / "child.txt").write_text("child baseline\n", encoding="utf-8")
+    _git(child, "add", "child.txt")
+    _git(child, "commit", "-qm", "child baseline")
+
+    def conceal_nested_mutation(workspace: Path) -> None:
+        nested = workspace / "libs/child"
+        (nested / "child.txt").write_text(
+            "hidden nested mutation\n",
+            encoding="utf-8",
+        )
+        _git(
+            nested,
+            "update-index",
+            "--assume-unchanged",
+            "child.txt",
+        )
+        assert _git(nested, "status", "--porcelain") == ""
+        assert _git(workspace, "status", "--porcelain") == ""
+
+    scheduler = _RecordingScheduler(conceal_nested_mutation)
+    daemon, repo, _task, _commit, _tree_id = _runtime(
+        tmp_path,
+        scheduler=scheduler,
+    )
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "libs/child",
+    )
+    _git(repo, "commit", "-qam", "add integrity child")
+    commit = _git(repo, "rev-parse", "HEAD")
+    tree_id = f"git-tree:{_git(repo, 'rev-parse', 'HEAD^{tree}')}"
+    task = PortalTask(
+        task_id="PMV-001",
+        title="Validate nested tracked checkout integrity",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="quality",
+        validation=["test -f libs/child/child.txt"],
+        metadata={
+            "Provider role": "deterministic-only",
+            "submodules": "libs/child",
+        },
+    )
+
+    evidence = daemon._validate_exact_post_merge_commit(
+        task,
+        target_commit=commit,
+        repository_tree_id=tree_id,
+    )
+
+    assert evidence["passed"] is False
+    validation_result = evidence["validation_result"]
+    assert validation_result["reason"] == (
+        "post_merge_validation_workspace_integrity_failed_after_execution"
+    )
+    after = validation_result["fence"]["after"]
+    assert after["workspace_clean"] is True
+    proof = after["tracked_checkout_proof"]
+    assert proof["reason"] == (
+        "post_merge_tracked_index_flags_forbidden"
+    )
+    assert proof["failure_repository"] == "libs/child"
+    assert proof["forbidden_index_flags"] == [
+        {"path": "child.txt", "flag": "h"}
+    ]
+    assert not scheduler.calls[0]["workspace"].exists()
 
 
 def test_merge_callback_uses_fresh_post_merge_receipt_for_acceptance(

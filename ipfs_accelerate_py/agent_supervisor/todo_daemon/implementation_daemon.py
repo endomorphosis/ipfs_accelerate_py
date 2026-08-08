@@ -36395,6 +36395,649 @@ class PortalImplementationDaemon:
                 )
         return result
 
+    def _exact_post_merge_tracked_checkout_proof(
+        self,
+        workspace: Path,
+        *,
+        expected_commit: str,
+    ) -> dict[str, Any]:
+        """Prove tracked index and checkout bytes match one exact tree.
+
+        ``git status`` deliberately honors assume-unchanged and skip-worktree,
+        so it cannot establish the cleanliness required by an authoritative
+        post-merge validation receipt.  This proof compares every stage-zero
+        index entry and tracked worktree object to the immutable commit and
+        recursively repeats the check for every materialized gitlink.
+        """
+
+        result: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "post-merge-tracked-checkout-proof@1"
+            ),
+            "passed": False,
+            "reason": "post_merge_tracked_checkout_unproven",
+            "expected_commit": str(expected_commit or ""),
+            "repository_count": 0,
+            "tracked_entry_count": 0,
+            "materialized_gitlink_count": 0,
+            "repositories": [],
+        }
+        try:
+            workspace_root = workspace.resolve(strict=True)
+        except (OSError, RuntimeError):
+            result["reason"] = "post_merge_tracked_workspace_unavailable"
+            return result
+        environment = sanitized_git_environment()
+        visited: set[Path] = set()
+
+        def display_path(value: str) -> str:
+            return value.encode(
+                "utf-8",
+                errors="backslashreplace",
+            ).decode("utf-8")[:1000]
+
+        def run_git(
+            repository: Path,
+            *arguments: str,
+        ) -> subprocess.CompletedProcess[str]:
+            try:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=repository,
+                    env=environment,
+                    text=True,
+                    encoding="utf-8",
+                    errors="surrogateescape",
+                    capture_output=True,
+                    check=False,
+                )
+            except (OSError, UnicodeError) as exc:
+                return subprocess.CompletedProcess(
+                    ["git", *arguments],
+                    127,
+                    stdout="",
+                    stderr=str(exc),
+                )
+
+        def fail(
+            reason: str,
+            *,
+            repository: str,
+            **details: Any,
+        ) -> bool:
+            result.update(
+                {
+                    "passed": False,
+                    "reason": reason,
+                    "failure_repository": repository,
+                    **details,
+                }
+            )
+            return False
+
+        def stat_identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                int(value.st_dev),
+                int(value.st_ino),
+                int(value.st_mode),
+                int(value.st_size),
+                int(value.st_mtime_ns),
+                int(value.st_ctime_ns),
+            )
+
+        def new_object_digest(object_format: str) -> Any:
+            try:
+                return hashlib.new(
+                    object_format,
+                    usedforsecurity=False,
+                )
+            except TypeError:
+                return hashlib.new(object_format)
+
+        def worktree_blob_identity(
+            path: Path,
+            *,
+            mode: str,
+            object_format: str,
+        ) -> tuple[str, tuple[int, ...] | None, str]:
+            try:
+                before = os.lstat(path)
+            except OSError as exc:
+                return "", None, f"{type(exc).__name__}: {exc}"[:1000]
+            expected_executable = mode == "100755"
+            if mode in {"100644", "100755"}:
+                if not stat_module.S_ISREG(before.st_mode):
+                    return "", None, "tracked path is not a regular file"
+                actual_executable = bool(
+                    before.st_mode
+                    & (
+                        stat_module.S_IXUSR
+                        | stat_module.S_IXGRP
+                        | stat_module.S_IXOTH
+                    )
+                )
+                if actual_executable != expected_executable:
+                    return "", None, "tracked executable mode mismatch"
+                descriptor = -1
+                try:
+                    descriptor = os.open(
+                        path,
+                        os.O_RDONLY
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0),
+                    )
+                    opened_before = os.fstat(descriptor)
+                    if not stat_module.S_ISREG(opened_before.st_mode):
+                        return "", None, "tracked path changed while opening"
+                    digest = new_object_digest(object_format)
+                    digest.update(
+                        f"blob {opened_before.st_size}\0".encode("ascii")
+                    )
+                    total = 0
+                    while True:
+                        chunk = os.read(descriptor, 1024 * 1024)
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        digest.update(chunk)
+                    opened_after = os.fstat(descriptor)
+                except (OSError, ValueError) as exc:
+                    return "", None, f"{type(exc).__name__}: {exc}"[:1000]
+                finally:
+                    if descriptor >= 0:
+                        os.close(descriptor)
+                try:
+                    after = os.lstat(path)
+                except OSError as exc:
+                    return "", None, f"{type(exc).__name__}: {exc}"[:1000]
+                stable = bool(
+                    total == opened_before.st_size
+                    and stat_identity(before)
+                    == stat_identity(opened_before)
+                    == stat_identity(opened_after)
+                    == stat_identity(after)
+                )
+                if not stable:
+                    return "", None, "tracked file changed while hashing"
+                return digest.hexdigest(), stat_identity(after), ""
+            if mode == "120000":
+                if not stat_module.S_ISLNK(before.st_mode):
+                    return "", None, "tracked path is not a symbolic link"
+                try:
+                    link_bytes = os.fsencode(os.readlink(path))
+                    after = os.lstat(path)
+                except OSError as exc:
+                    return "", None, f"{type(exc).__name__}: {exc}"[:1000]
+                if stat_identity(before) != stat_identity(after):
+                    return "", None, "tracked symlink changed while hashing"
+                digest = new_object_digest(object_format)
+                digest.update(f"blob {len(link_bytes)}\0".encode("ascii"))
+                digest.update(link_bytes)
+                return digest.hexdigest(), stat_identity(after), ""
+            return "", None, "unsupported tracked Git mode"
+
+        def prove_repository(
+            repository: Path,
+            *,
+            commit: str,
+            repository_label: str,
+            depth: int,
+        ) -> bool:
+            if depth > MAX_NESTED_SUBMODULE_DEPTH:
+                return fail(
+                    "post_merge_tracked_submodule_depth_exceeded",
+                    repository=repository_label,
+                )
+            try:
+                resolved_repository = repository.resolve(strict=True)
+                resolved_repository.relative_to(workspace_root)
+            except (OSError, RuntimeError, ValueError):
+                return fail(
+                    "post_merge_tracked_repository_outside_workspace",
+                    repository=repository_label,
+                )
+            if resolved_repository in visited:
+                return fail(
+                    "post_merge_tracked_repository_cycle",
+                    repository=repository_label,
+                )
+            if len(visited) >= MAX_MERGE_PROOF_METADATA_ITEMS:
+                return fail(
+                    "post_merge_tracked_repository_limit_exceeded",
+                    repository=repository_label,
+                )
+            visited.add(resolved_repository)
+            result["repository_count"] = len(visited)
+
+            head_before_result = run_git(
+                resolved_repository,
+                "rev-parse",
+                "--verify",
+                "HEAD^{commit}",
+            )
+            commit_result = run_git(
+                resolved_repository,
+                "rev-parse",
+                "--verify",
+                f"{commit}^{{commit}}",
+            )
+            object_format_result = run_git(
+                resolved_repository,
+                "rev-parse",
+                "--show-object-format",
+            )
+            head_before = head_before_result.stdout.strip()
+            resolved_commit = commit_result.stdout.strip()
+            object_format = object_format_result.stdout.strip()
+            if not (
+                head_before_result.returncode == 0
+                and head_before == commit
+                and commit_result.returncode == 0
+                and resolved_commit == commit
+                and object_format_result.returncode == 0
+                and object_format in {"sha1", "sha256"}
+            ):
+                return fail(
+                    "post_merge_tracked_repository_binding_mismatch",
+                    repository=repository_label,
+                    expected_repository_commit=commit,
+                    observed_repository_commit=head_before,
+                    resolved_repository_commit=resolved_commit,
+                    object_format=object_format,
+                )
+
+            tree_result = run_git(
+                resolved_repository,
+                "ls-tree",
+                "-r",
+                "-z",
+                "--full-tree",
+                commit,
+            )
+            index_before = run_git(
+                resolved_repository,
+                "ls-files",
+                "--stage",
+                "-z",
+            )
+            flags_before = run_git(
+                resolved_repository,
+                "ls-files",
+                "-v",
+                "-z",
+            )
+            if not (
+                tree_result.returncode == 0
+                and index_before.returncode == 0
+                and flags_before.returncode == 0
+            ):
+                return fail(
+                    "post_merge_tracked_git_inventory_failed",
+                    repository=repository_label,
+                    tree_returncode=int(tree_result.returncode),
+                    index_returncode=int(index_before.returncode),
+                    flags_returncode=int(flags_before.returncode),
+                )
+
+            tree_entries: dict[str, tuple[str, str, str]] = {}
+            for record in tree_result.stdout.split("\0"):
+                if not record:
+                    continue
+                header, separator, path = record.partition("\t")
+                fields = header.split()
+                if (
+                    not separator
+                    or len(fields) != 3
+                    or not path
+                    or path in tree_entries
+                ):
+                    return fail(
+                        "post_merge_tracked_tree_inventory_invalid",
+                        repository=repository_label,
+                    )
+                tree_entries[path] = (fields[0], fields[1], fields[2])
+
+            index_entries: dict[str, tuple[str, str]] = {}
+            for record in index_before.stdout.split("\0"):
+                if not record:
+                    continue
+                header, separator, path = record.partition("\t")
+                fields = header.split()
+                if (
+                    not separator
+                    or len(fields) != 3
+                    or fields[2] != "0"
+                    or not path
+                    or path in index_entries
+                ):
+                    return fail(
+                        "post_merge_tracked_index_inventory_invalid",
+                        repository=repository_label,
+                    )
+                index_entries[path] = (fields[0], fields[1])
+
+            index_projection = {
+                path: (mode, object_id)
+                for path, (mode, _kind, object_id) in tree_entries.items()
+            }
+            if index_entries != index_projection:
+                differing_paths = sorted(
+                    path
+                    for path in set(tree_entries) | set(index_entries)
+                    if index_entries.get(path) != index_projection.get(path)
+                )
+                return fail(
+                    "post_merge_tracked_index_tree_mismatch",
+                    repository=repository_label,
+                    differing_paths=[
+                        display_path(path) for path in differing_paths[:64]
+                    ],
+                    differing_path_count=len(differing_paths),
+                )
+
+            index_flags: dict[str, str] = {}
+            for record in flags_before.stdout.split("\0"):
+                if not record:
+                    continue
+                if len(record) < 3 or record[1] != " ":
+                    return fail(
+                        "post_merge_tracked_index_flags_invalid",
+                        repository=repository_label,
+                    )
+                tag = record[0]
+                path = record[2:]
+                if not path or path in index_flags:
+                    return fail(
+                        "post_merge_tracked_index_flags_invalid",
+                        repository=repository_label,
+                    )
+                index_flags[path] = tag
+            if set(index_flags) != set(tree_entries):
+                return fail(
+                    "post_merge_tracked_index_flags_incomplete",
+                    repository=repository_label,
+                )
+            forbidden_flags = [
+                {
+                    "path": display_path(path),
+                    "flag": index_flags[path],
+                }
+                for path in sorted(index_flags)
+                if index_flags[path] != "H"
+            ]
+            if forbidden_flags:
+                return fail(
+                    "post_merge_tracked_index_flags_forbidden",
+                    repository=repository_label,
+                    forbidden_index_flags=forbidden_flags[:64],
+                    forbidden_index_flag_count=len(forbidden_flags),
+                )
+
+            result["tracked_entry_count"] = int(
+                result["tracked_entry_count"]
+            ) + len(tree_entries)
+            stable_paths: dict[Path, tuple[int, ...]] = {}
+            verified_directories: set[Path] = {resolved_repository}
+            for relative, (mode, kind, object_id) in sorted(
+                tree_entries.items()
+            ):
+                pure_relative = PurePosixPath(relative)
+                if (
+                    pure_relative.is_absolute()
+                    or any(
+                        part in {"", ".", ".."}
+                        for part in pure_relative.parts
+                    )
+                ):
+                    return fail(
+                        "post_merge_tracked_path_invalid",
+                        repository=repository_label,
+                        failure_path=display_path(relative),
+                    )
+                current_directory = resolved_repository
+                for part in pure_relative.parts[:-1]:
+                    current_directory /= part
+                    if current_directory in verified_directories:
+                        continue
+                    try:
+                        parent_status = os.lstat(current_directory)
+                    except OSError as exc:
+                        return fail(
+                            "post_merge_tracked_parent_unavailable",
+                            repository=repository_label,
+                            failure_path=display_path(relative),
+                            path_error=(
+                                f"{type(exc).__name__}: {exc}"[:1000]
+                            ),
+                        )
+                    if not stat_module.S_ISDIR(parent_status.st_mode):
+                        return fail(
+                            "post_merge_tracked_parent_not_directory",
+                            repository=repository_label,
+                            failure_path=display_path(relative),
+                        )
+                    verified_directories.add(current_directory)
+
+                tracked_path = resolved_repository.joinpath(
+                    *pure_relative.parts
+                )
+                full_label = (
+                    relative
+                    if repository_label == "."
+                    else f"{repository_label}/{relative}"
+                )
+                if mode in {"100644", "100755", "120000"}:
+                    if kind != "blob":
+                        return fail(
+                            "post_merge_tracked_tree_mode_invalid",
+                            repository=repository_label,
+                            failure_path=display_path(full_label),
+                        )
+                    observed_id, path_status, path_error = (
+                        worktree_blob_identity(
+                            tracked_path,
+                            mode=mode,
+                            object_format=object_format,
+                        )
+                    )
+                    if path_error or observed_id != object_id:
+                        return fail(
+                            "post_merge_tracked_worktree_mismatch",
+                            repository=repository_label,
+                            failure_path=display_path(full_label),
+                            expected_mode=mode,
+                            expected_object_id=object_id,
+                            observed_object_id=observed_id,
+                            path_error=path_error,
+                        )
+                    if path_status is not None:
+                        stable_paths[tracked_path] = path_status
+                    continue
+                if mode != "160000" or kind != "commit":
+                    return fail(
+                        "post_merge_tracked_tree_mode_invalid",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                        expected_mode=mode,
+                        expected_kind=kind,
+                    )
+                try:
+                    gitlink_status = os.lstat(tracked_path)
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    return fail(
+                        "post_merge_tracked_gitlink_unavailable",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                        path_error=f"{type(exc).__name__}: {exc}"[:1000],
+                    )
+                if not stat_module.S_ISDIR(gitlink_status.st_mode):
+                    return fail(
+                        "post_merge_tracked_gitlink_not_directory",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                    )
+                stable_paths[tracked_path] = stat_identity(gitlink_status)
+                git_marker = tracked_path / ".git"
+                try:
+                    git_marker_status = os.lstat(git_marker)
+                except FileNotFoundError:
+                    try:
+                        unmaterialized_entries = list(
+                            os.scandir(tracked_path)
+                        )
+                    except OSError as exc:
+                        return fail(
+                            "post_merge_tracked_gitlink_unavailable",
+                            repository=repository_label,
+                            failure_path=display_path(full_label),
+                            path_error=(
+                                f"{type(exc).__name__}: {exc}"[:1000]
+                            ),
+                        )
+                    if unmaterialized_entries:
+                        return fail(
+                            "post_merge_tracked_gitlink_unmaterialized_dirty",
+                            repository=repository_label,
+                            failure_path=display_path(full_label),
+                        )
+                    continue
+                except OSError as exc:
+                    return fail(
+                        "post_merge_tracked_gitlink_marker_unavailable",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                        path_error=f"{type(exc).__name__}: {exc}"[:1000],
+                    )
+                if not (
+                    stat_module.S_ISREG(git_marker_status.st_mode)
+                    or stat_module.S_ISDIR(git_marker_status.st_mode)
+                ):
+                    return fail(
+                        "post_merge_tracked_gitlink_marker_invalid",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                    )
+                child_probe = run_git(
+                    tracked_path,
+                    "rev-parse",
+                    "--show-toplevel",
+                )
+                if child_probe.returncode != 0:
+                    return fail(
+                        "post_merge_tracked_gitlink_repository_invalid",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                        git_error=child_probe.stderr[-1000:],
+                    )
+                try:
+                    child_toplevel = Path(
+                        child_probe.stdout.strip()
+                    ).resolve(strict=True)
+                    expected_child = tracked_path.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    return fail(
+                        "post_merge_tracked_gitlink_root_unavailable",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                    )
+                if child_toplevel != expected_child:
+                    return fail(
+                        "post_merge_tracked_gitlink_root_mismatch",
+                        repository=repository_label,
+                        failure_path=display_path(full_label),
+                    )
+                result["materialized_gitlink_count"] = int(
+                    result["materialized_gitlink_count"]
+                ) + 1
+                if not prove_repository(
+                    tracked_path,
+                    commit=object_id,
+                    repository_label=display_path(full_label),
+                    depth=depth + 1,
+                ):
+                    return False
+
+            index_after = run_git(
+                resolved_repository,
+                "ls-files",
+                "--stage",
+                "-z",
+            )
+            flags_after = run_git(
+                resolved_repository,
+                "ls-files",
+                "-v",
+                "-z",
+            )
+            head_after_result = run_git(
+                resolved_repository,
+                "rev-parse",
+                "--verify",
+                "HEAD^{commit}",
+            )
+            if not (
+                index_after.returncode == 0
+                and flags_after.returncode == 0
+                and head_after_result.returncode == 0
+                and index_after.stdout == index_before.stdout
+                and flags_after.stdout == flags_before.stdout
+                and head_after_result.stdout.strip() == commit
+            ):
+                return fail(
+                    "post_merge_tracked_inventory_changed_during_proof",
+                    repository=repository_label,
+                    observed_repository_commit=(
+                        head_after_result.stdout.strip()
+                    ),
+                )
+            for path, expected_status in stable_paths.items():
+                try:
+                    final_status = os.lstat(path)
+                except OSError as exc:
+                    return fail(
+                        "post_merge_tracked_path_changed_during_proof",
+                        repository=repository_label,
+                        failure_path=display_path(
+                            path.relative_to(resolved_repository).as_posix()
+                        ),
+                        path_error=f"{type(exc).__name__}: {exc}"[:1000],
+                    )
+                if stat_identity(final_status) != expected_status:
+                    return fail(
+                        "post_merge_tracked_path_changed_during_proof",
+                        repository=repository_label,
+                        failure_path=display_path(
+                            path.relative_to(resolved_repository).as_posix()
+                        ),
+                    )
+            repositories = result["repositories"]
+            if isinstance(repositories, list) and len(repositories) < 64:
+                repositories.append(
+                    {
+                        "repository": repository_label,
+                        "expected_commit": commit,
+                        "tracked_entry_count": len(tree_entries),
+                    }
+                )
+            return True
+
+        if prove_repository(
+            workspace_root,
+            commit=str(expected_commit or ""),
+            repository_label=".",
+            depth=0,
+        ):
+            result.update(
+                {
+                    "passed": True,
+                    "reason": "post_merge_tracked_checkout_exact",
+                }
+            )
+        return result
+
     def _validate_exact_post_merge_commit(
         self,
         task: PortalTask,
@@ -36633,6 +37276,12 @@ class PortalImplementationDaemon:
                 for line in status.stdout.splitlines()
                 if len(line) >= 4 and line[3:].strip()
             ][:64]
+            tracked_checkout_proof = (
+                self._exact_post_merge_tracked_checkout_proof(
+                    selected_workspace,
+                    expected_commit=expected_commit,
+                )
+            )
             return {
                 "live_target_commit": self._resolve_git_commit_in_repo(
                     self.repo_root,
@@ -36646,6 +37295,10 @@ class PortalImplementationDaemon:
                 ),
                 "status_returncode": int(status.returncode),
                 "dirty_paths": dirty_paths,
+                "tracked_checkout_exact": (
+                    tracked_checkout_proof.get("passed") is True
+                ),
+                "tracked_checkout_proof": tracked_checkout_proof,
             }
 
         def fence_reason(
@@ -36661,6 +37314,11 @@ class PortalImplementationDaemon:
                 return f"post_merge_validation_tree_changed_{stage}"
             if record.get("workspace_clean") is not True:
                 return f"post_merge_validation_workspace_dirty_{stage}"
+            if record.get("tracked_checkout_exact") is not True:
+                return (
+                    "post_merge_validation_workspace_integrity_failed_"
+                    f"{stage}"
+                )
             return ""
 
         try:
