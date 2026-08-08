@@ -1688,7 +1688,8 @@ def _grok_cli_command(
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
 
     When a trusted system Codex install is resolvable, attach the exact
-    Terra/medium fallback argv so a single Grok invocation may fall through
+    Terra fallback argv using the configured closed reasoning effort so a
+    single Grok invocation may fall through
     only after independently verified hard-quota exhaustion. Codex is never
     attached without that runner-owned authority gate.
     """
@@ -1715,6 +1716,10 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
+    fallback_reasoning_effort = (
+        os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip()
+        or DEFAULT_CODEX_REASONING_EFFORT
+    )
     from ..runtime.grok_cli_runner import build_grok_quota_routed_agent_command
 
     command = build_grok_quota_routed_agent_command(
@@ -1723,6 +1728,7 @@ def _grok_cli_command(
         grok_bin=grok,
         codex_bin=str(shutil.which("codex") or ""),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
+        fallback_reasoning_effort=fallback_reasoning_effort,
     )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.5":

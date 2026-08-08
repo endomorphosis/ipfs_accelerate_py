@@ -92,7 +92,7 @@ def test_direct_multi_supervisor_canonicalizes_compatible_grok_alias(
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", "always"),
         ("IPFS_ACCELERATE_AGENT_GROK_MODEL", "grok-4.6"),
         ("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "gpt-5.6-codex"),
-        ("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "high"),
+        ("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "low"),
     ),
 )
 def test_direct_multi_supervisor_rejects_incompatible_partial_route_atomically(
@@ -140,6 +140,31 @@ def test_generic_raw_tracks_do_not_receive_implementation_provider_policy(
 
     assert result == 0
     assert captured == {name: None for name in ORDERED_ROUTE}
+
+
+def test_direct_multi_supervisor_preserves_admitted_high_fallback_effort(
+    tmp_path, monkeypatch
+) -> None:
+    _clear_ordered_route(monkeypatch)
+    effort_env = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
+    monkeypatch.setenv(effort_env, "high")
+    captured: dict[str, str] = {}
+
+    def fake_launch(_args, _argv):
+        captured.update(
+            {name: os.environ.get(name, "") for name in ORDERED_ROUTE}
+        )
+        return _fake_detached_payload()
+
+    monkeypatch.setattr(multi_supervisor_runner, "launch_detached", fake_launch)
+
+    assert (
+        multi_supervisor_runner.main(_detached_implementation_args(tmp_path))
+        == 0
+    )
+    expected = dict(ORDERED_ROUTE)
+    expected[effort_env] = "high"
+    assert captured == expected
 
 
 def test_repo_launcher_rejects_incompatible_caller_route_defaults(

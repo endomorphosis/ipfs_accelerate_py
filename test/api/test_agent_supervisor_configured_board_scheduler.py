@@ -261,7 +261,7 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
         ("fallback_provider_id", "openai"),
         ("fallback_model_id", "gpt-5.6"),
         ("fallback_trigger", "primary_unavailable"),
-        ("fallback_reasoning_effort", "high"),
+        ("fallback_reasoning_effort", "low"),
     ),
 )
 def test_ordered_provider_contract_seals_fallback_authority(
@@ -285,6 +285,37 @@ def test_ordered_provider_contract_seals_fallback_authority(
 
     with pytest.raises(ConfiguredBoardError, match=field):
         load_configured_board(config_path, repo_root=repo)
+
+
+@pytest.mark.parametrize("reasoning_effort", ("medium", "high"))
+def test_ordered_provider_contract_accepts_supported_reasoning_efforts(
+    tmp_path: Path,
+    reasoning_effort: str,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": reasoning_effort,
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260803T000000Z",
+    )
+
+    assert plan["environment"][scheduler_module.CODEX_REASONING_EFFORT_ENV] == (
+        reasoning_effort
+    )
 
 
 def test_legacy_provider_launch_environment_remains_backward_compatible(
