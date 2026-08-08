@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shlex
 import subprocess
@@ -25,6 +26,8 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     select_validation_commands,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    PROOF_REUSE_STATE_ROOT_ENV,
+    VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA,
     VALIDATION_NPM_CACHE_ENV,
     VALIDATION_PATH_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
@@ -226,6 +229,267 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     # must still be rejected.
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "proof-backed-test-reuse-v8"
+    state_root.mkdir()
+    workspace = state_root / "worktrees" / "candidate"
+    workspace.mkdir(parents=True)
+    control_state = state_root / "state"
+    control_state.mkdir()
+    control_receipt = control_state / "receipt.json"
+    control_receipt.write_text("sealed-receipt", encoding="utf-8")
+    merge_queue = state_root / "merge-queue"
+    merge_queue.mkdir()
+    control_lock = state_root / "control.lock"
+    control_lock.write_text("locked", encoding="utf-8")
+    workspace_multilink = workspace / "workspace-multilink"
+    workspace_multilink.write_text("before", encoding="utf-8")
+    os.link(workspace_multilink, workspace / "workspace-multilink-alias")
+    historical_root = tmp_path / "proof-backed-test-reuse-v6"
+    historical_root.mkdir()
+    historical_receipt = historical_root / "receipt.json"
+    historical_receipt.write_text("historical-receipt", encoding="utf-8")
+    state_root_alias = tmp_path / "state-root-alias"
+    state_root_alias.symlink_to(state_root, target_is_directory=True)
+    alternate_root = tmp_path / "alternate-proof-backed-test-reuse-v8"
+    alternate_root.mkdir()
+    hostile_home = tmp_path / "host-home"
+    hostile_state = tmp_path / "host-state"
+    source = {
+        "HOME": str(hostile_home),
+        "XDG_STATE_HOME": str(hostile_state),
+        PROOF_REUSE_STATE_ROOT_ENV: str(state_root_alias),
+    }
+
+    environment = build_validation_environment(source)
+    alternate_environment = build_validation_environment(
+        {PROOF_REUSE_STATE_ROOT_ENV: str(alternate_root)}
+    )
+
+    assert environment[PROOF_REUSE_STATE_ROOT_ENV] == str(
+        state_root.resolve()
+    )
+    assert environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
+    assert environment["XDG_CACHE_HOME"] == environment["HOME"]
+    assert environment["XDG_CONFIG_HOME"] == environment["HOME"]
+    assert environment["XDG_DATA_HOME"] == environment["HOME"]
+    assert environment["XDG_STATE_HOME"] == environment["HOME"]
+
+    probe = f"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(os.environ[{PROOF_REUSE_STATE_ROOT_ENV!r}])
+failures = []
+operations = (
+    lambda: (root / "state" / "receipt.json").write_text("tampered"),
+    lambda: (root / "merge-queue" / "forged.json").write_text("forged"),
+    lambda: (root / "control.lock").unlink(),
+    lambda: (root / "state" / "receipt.json").rename(root / "moved.json"),
+    lambda: (root.parent / "proof-backed-test-reuse-v6" / "receipt.json").write_text("tampered"),
+)
+for operation in operations:
+    try:
+        operation()
+    except PermissionError:
+        failures.append("denied")
+    else:
+        failures.append("allowed")
+(Path.cwd() / "workspace-write").write_text("workspace-ok")
+(Path.cwd() / "workspace-multilink-alias").write_text("workspace-link-ok")
+private_home = Path(os.environ["HOME"])
+(private_home / "home-write").write_text("home-ok")
+child = subprocess.run(
+    [
+        sys.executable,
+        "-I",
+        "-c",
+        "from pathlib import Path; import sys; "
+        "Path(sys.argv[1]).write_text('child-tamper')",
+        str(root / "state" / "receipt.json"),
+    ],
+    check=False,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+)
+print(json.dumps({{
+    "root": str(root),
+    "home": str(private_home),
+    "xdg_state": os.environ["XDG_STATE_HOME"],
+    "denied": failures,
+    "child_returncode": child.returncode,
+    "home_write": (private_home / "home-write").read_text(),
+}}, sort_keys=True))
+"""
+    command = f"python -c {shlex.quote(probe)}"
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=validation_environment_for_runner(
+            environment,
+            TodoImplementationDaemon._validation_command_runner,
+        ),
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    observed = json.loads(str(result["output"]))
+    assert observed["root"] == str(state_root.resolve())
+    assert Path(observed["home"]) != hostile_home
+    assert Path(observed["xdg_state"]) == (
+        Path(observed["home"]) / ".local" / "state"
+    )
+    assert observed["denied"] == ["denied"] * 5
+    assert observed["child_returncode"] != 0
+    assert observed["home_write"] == "home-ok"
+    assert not Path(observed["home"]).exists()
+    assert (workspace / "workspace-write").read_text() == "workspace-ok"
+    assert workspace_multilink.read_text() == "workspace-link-ok"
+    assert control_receipt.read_text() == "sealed-receipt"
+    assert not (merge_queue / "forged.json").exists()
+    assert control_lock.read_text() == "locked"
+    assert historical_receipt.read_text() == "historical-receipt"
+    boundary = result["validation_filesystem_boundary"]
+    assert boundary["schema"] == VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA
+    assert boundary["mode"] == "landlock-read-only-host-v1"
+    assert boundary["landlock_abi"] >= 3
+    assert boundary["applied"] is True
+    assert boundary["proof_reuse_control_state_read_only"] is True
+    assert boundary["proof_reuse_state_write_exception"] == (
+        "exact-workspace-only"
+    )
+    assert boundary["protected_hardlink_aliases_checked"] is True
+    assert boundary["proof_authoritative"] is False
+    assert boundary["completion_authority"] is False
+
+    cache_key = build_validation_cache_key(
+        target_commit="commit-a",
+        command="pytest tests/test_alpha.py",
+        environment=environment,
+        dependency_state={"lock": "one"},
+        relevant_environment_keys=environment,
+    )
+    alternate_cache_key = build_validation_cache_key(
+        target_commit="commit-a",
+        command="pytest tests/test_alpha.py",
+        environment=alternate_environment,
+        dependency_state={"lock": "one"},
+        relevant_environment_keys=alternate_environment,
+    )
+    assert cache_key.digest != alternate_cache_key.digest
+
+    runtime = build_hermetic_validation_runtime(
+        command="pytest tests/test_alpha.py",
+        workspace_path=workspace,
+        repository_tree_id="tree-a",
+        environment=environment,
+        timeout_seconds=30,
+        cancellation_id="cancel-a",
+        isolation_executable="/bin/true",
+    )
+    alternate_runtime = build_hermetic_validation_runtime(
+        command="pytest tests/test_alpha.py",
+        workspace_path=workspace,
+        repository_tree_id="tree-a",
+        environment=alternate_environment,
+        timeout_seconds=30,
+        cancellation_id="cancel-a",
+        isolation_executable="/bin/true",
+    )
+    assert dict(runtime.environment)[PROOF_REUSE_STATE_ROOT_ENV] == str(
+        state_root.resolve()
+    )
+    assert runtime.runtime_id != alternate_runtime.runtime_id
+
+
+def test_proof_reuse_state_root_capability_rejects_invalid_directories(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must be an absolute directory",
+    ):
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: "relative/state-root"}
+        )
+    with pytest.raises(ValidationRuntimeError, match="is unavailable"):
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(tmp_path / "missing-state-root")}
+        )
+
+
+def test_proof_reuse_state_root_cannot_be_inside_writable_workspace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    state_root = workspace / "state-root"
+    state_root.mkdir(parents=True)
+    marker = workspace / "command-ran"
+    command = f"python -c {shlex.quote(f'from pathlib import Path; Path({str(marker)!r}).touch()')}"
+    environment = validation_environment_for_runner(
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(state_root)}
+        ),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == (
+        "validation_environment_proof_state_boundary_unavailable"
+    )
+    assert not marker.exists()
+
+
+def test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "proof-backed-test-reuse-v9"
+    workspace = state_root / "worktrees" / "candidate"
+    receipt = state_root / "state" / "receipt.json"
+    workspace.mkdir(parents=True)
+    receipt.parent.mkdir()
+    receipt.write_text("sealed-receipt", encoding="utf-8")
+    os.link(receipt, workspace / "receipt-alias.json")
+    marker = workspace / "command-ran"
+    command = f"python -c {shlex.quote(f'from pathlib import Path; Path({str(marker)!r}).touch()')}"
+    environment = validation_environment_for_runner(
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(state_root)}
+        ),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == (
+        "validation_environment_proof_state_boundary_unavailable"
+    )
+    assert "hardlink" not in str(result["output"]).lower()
+    assert receipt.read_text() == "sealed-receipt"
+    assert not marker.exists()
 
 
 def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(

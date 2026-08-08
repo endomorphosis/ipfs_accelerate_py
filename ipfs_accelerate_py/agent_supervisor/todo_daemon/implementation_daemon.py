@@ -141,11 +141,15 @@ from ..validation.validation_commands import (
     split_validation_commands,
 )
 from ..validation.validation_runtime import (
+    PROOF_REUSE_STATE_ROOT_ENV,
+    VALIDATION_LANDLOCK_FAILURE_MARKER,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    ValidationFilesystemBoundaryReceipt,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
     sealed_validation_python_runner,
     validation_python_launcher_environment,
+    validation_readonly_state_command,
     validation_shell_command,
 )
 from ..validation.validation_scheduler import (
@@ -26519,6 +26523,9 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         launcher_receipt: ValidationPythonLauncherReceipt | None = None
+        filesystem_boundary_receipt: (
+            ValidationFilesystemBoundaryReceipt | None
+        ) = None
         try:
             command_argv = validation_shell_command(str(spec.command))
         except ValidationRuntimeError as exc:
@@ -26547,6 +26554,9 @@ class PortalImplementationDaemon:
                     "XDG_CONFIG_HOME": str(home_path / ".config"),
                     "XDG_DATA_HOME": str(home_path / ".local" / "share"),
                     "XDG_STATE_HOME": str(home_path / ".local" / "state"),
+                    "TMPDIR": str(home_path / ".tmp"),
+                    "TMP": str(home_path / ".tmp"),
+                    "TEMP": str(home_path / ".tmp"),
                 }
             )
             for key in (
@@ -26554,6 +26564,7 @@ class PortalImplementationDaemon:
                 "XDG_CONFIG_HOME",
                 "XDG_DATA_HOME",
                 "XDG_STATE_HOME",
+                "TMPDIR",
             ):
                 Path(child_environment[key]).mkdir(
                     mode=0o700,
@@ -26648,8 +26659,42 @@ class PortalImplementationDaemon:
                                 launcher_evidence
                             ),
                         }
+                    try:
+                        bounded_command, filesystem_boundary_receipt = (
+                            validation_readonly_state_command(
+                                command_argv,
+                                workspace_path=workspace_path,
+                                private_home_path=home_path,
+                                environment=launcher_environment,
+                            )
+                        )
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        return {
+                            "command": str(spec.command),
+                            "raw_command": str(
+                                spec.raw_command or spec.command
+                            ),
+                            "started_at": started_at,
+                            "finished_at": utc_now(),
+                            "returncode": 75,
+                            "output": (
+                                f"{type(exc).__name__}: "
+                                "proof-state filesystem boundary unavailable\n"
+                            ),
+                            "error": (
+                                "validation_environment_proof_state_"
+                                "boundary_unavailable"
+                            ),
+                            "reason": (
+                                "proof_state_root_not_read_only"
+                            ),
+                            "infrastructure_failure": True,
+                            "validation_python_launcher": (
+                                launcher_evidence
+                            ),
+                        }
                     completed = subprocess.run(
-                        command_argv,
+                        bounded_command,
                         cwd=workspace_path,
                         text=True,
                         stdin=subprocess.DEVNULL,
@@ -26697,6 +26742,29 @@ class PortalImplementationDaemon:
                 "policy_sha256": launcher_receipt.policy_sha256,
                 "sealed": launcher_receipt.sealed,
             }
+        if filesystem_boundary_receipt is not None:
+            boundary_failed = (
+                completed.returncode == 75
+                and VALIDATION_LANDLOCK_FAILURE_MARKER in output
+            )
+            result["validation_filesystem_boundary"] = (
+                filesystem_boundary_receipt.to_dict(
+                    applied=not boundary_failed
+                )
+            )
+            if boundary_failed:
+                result.update(
+                    {
+                        "error": (
+                            "validation_environment_proof_state_"
+                            "boundary_unavailable"
+                        ),
+                        "reason": (
+                            "proof_state_root_not_read_only"
+                        ),
+                        "infrastructure_failure": True,
+                    }
+                )
         if (
             completed.returncode != 0
             and PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER in output
@@ -38690,6 +38758,11 @@ class PortalImplementationDaemon:
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+            # The daemon retains this read capability for the later validation
+            # gate.  Do not project its location into the autonomous provider
+            # subprocess; the provider is authorized to edit only its exact
+            # worktree and checkpoint surface.
+            PROOF_REUSE_STATE_ROOT_ENV: "",
         }
 
     def _implementation_progress_observer(

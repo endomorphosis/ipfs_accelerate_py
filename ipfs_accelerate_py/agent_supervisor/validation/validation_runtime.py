@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import resource
 import shlex
 import shutil
@@ -35,6 +36,11 @@ VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
+)
+PROOF_REUSE_STATE_ROOT_ENV = "IPFS_PROOF_REUSE_STATE_ROOT"
+VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-filesystem-boundary@1"
 )
 VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
@@ -69,6 +75,29 @@ _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
 )
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
     "__ipfs_accelerate_sealed_validation_python__"
+)
+_LANDLOCK_CREATE_RULESET_VERSION = 1
+_LANDLOCK_RULE_PATH_BENEATH = 1
+_LANDLOCK_MINIMUM_ABI = 3
+_LANDLOCK_SYSCALL_CREATE_RULESET = 444
+_LANDLOCK_SYSCALL_ADD_RULE = 445
+_LANDLOCK_SYSCALL_RESTRICT_SELF = 446
+_LANDLOCK_WRITE_ACCESS = (
+    (1 << 1)  # WRITE_FILE
+    | (1 << 4)  # REMOVE_DIR
+    | (1 << 5)  # REMOVE_FILE
+    | (1 << 6)  # MAKE_CHAR
+    | (1 << 7)  # MAKE_DIR
+    | (1 << 8)  # MAKE_REG
+    | (1 << 9)  # MAKE_SOCK
+    | (1 << 10)  # MAKE_FIFO
+    | (1 << 11)  # MAKE_BLOCK
+    | (1 << 12)  # MAKE_SYM
+    | (1 << 13)  # REFER (ABI 2)
+    | (1 << 14)  # TRUNCATE (ABI 3)
+)
+VALIDATION_LANDLOCK_FAILURE_MARKER = (
+    "ipfs-accelerate-validation-landlock-error:"
 )
 
 # These values affect deterministic/offline validation without carrying the
@@ -124,6 +153,30 @@ class ValidationPythonLauncherReceipt:
     mode: str
     policy_sha256: str
     sealed: bool
+
+
+@dataclass(frozen=True)
+class ValidationFilesystemBoundaryReceipt:
+    """Body-free evidence for the state-root write boundary."""
+
+    landlock_abi: int
+    policy_sha256: str
+
+    def to_dict(self, *, applied: bool = True) -> dict[str, object]:
+        return {
+            "schema": VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA,
+            "mode": "landlock-read-only-host-v1",
+            "landlock_abi": self.landlock_abi,
+            "policy_sha256": self.policy_sha256,
+            "applied": bool(applied),
+            "proof_reuse_control_state_read_only": bool(applied),
+            "proof_reuse_state_write_exception": "exact-workspace-only",
+            "protected_hardlink_aliases_checked": True,
+            "workspace_writable": True,
+            "private_home_writable": True,
+            "proof_authoritative": False,
+            "completion_authority": False,
+        }
 
 
 class ValidationNetworkMode(str, Enum):
@@ -723,6 +776,320 @@ def _approved_directory(
     return str(resolved)
 
 
+def validation_landlock_abi() -> int:
+    """Return the host Landlock ABI, or fail before untrusted execution."""
+
+    if not sys.platform.startswith("linux"):
+        raise ValidationRuntimeError(
+            "proof-reuse state validation requires Linux Landlock"
+        )
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        ctypes.set_errno(0)
+        abi = int(
+            libc.syscall(
+                _LANDLOCK_SYSCALL_CREATE_RULESET,
+                None,
+                0,
+                _LANDLOCK_CREATE_RULESET_VERSION,
+            )
+        )
+        error_number = ctypes.get_errno()
+    except (AttributeError, ImportError, OSError, TypeError, ValueError) as exc:
+        raise ValidationRuntimeError(
+            "proof-reuse state validation Landlock probe failed"
+        ) from exc
+    if abi < _LANDLOCK_MINIMUM_ABI:
+        detail = f"abi={abi}" if abi >= 0 else f"errno={error_number}"
+        raise ValidationRuntimeError(
+            "proof-reuse state validation requires Landlock ABI 3 or newer "
+            f"({detail})"
+        )
+    return abi
+
+
+def _validation_landlock_launcher_source() -> str:
+    """Render the isolated interpreter source that applies the write fence."""
+
+    return """\
+import ctypes
+import json
+import os
+import sys
+
+CREATE_RULESET = 444
+ADD_RULE = 445
+RESTRICT_SELF = 446
+CREATE_RULESET_VERSION = 1
+RULE_PATH_BENEATH = 1
+PR_SET_NO_NEW_PRIVS = 38
+MINIMUM_ABI = 3
+WRITE_ACCESS = ((1 << 1) | (1 << 4) | (1 << 5) | (1 << 6) |
+                (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) |
+                (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14))
+FAILURE_MARKER = "ipfs-accelerate-validation-landlock-error:"
+
+class RulesetAttr(ctypes.Structure):
+    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+
+class PathBeneathAttr(ctypes.Structure):
+    _fields_ = [
+        ("allowed_access", ctypes.c_uint64),
+        ("parent_fd", ctypes.c_int32),
+    ]
+
+def checked(value):
+    if int(value) < 0:
+        number = ctypes.get_errno()
+        raise OSError(number, os.strerror(number))
+    return int(value)
+
+try:
+    payload = json.loads(sys.argv[1])
+    if set(payload) != {"writable_paths"}:
+        raise ValueError("invalid policy keys")
+    writable_paths = payload["writable_paths"]
+    if not isinstance(writable_paths, list) or len(writable_paths) != 2:
+        raise ValueError("invalid writable path population")
+    command = sys.argv[2:]
+    if not command:
+        raise ValueError("validation command is missing")
+    libc = ctypes.CDLL(None, use_errno=True)
+    abi = checked(libc.syscall(CREATE_RULESET, None, 0, CREATE_RULESET_VERSION))
+    if abi < MINIMUM_ABI:
+        raise RuntimeError("Landlock ABI is too old")
+    ruleset_attr = RulesetAttr(WRITE_ACCESS)
+    ruleset_fd = checked(
+        libc.syscall(
+            CREATE_RULESET,
+            ctypes.byref(ruleset_attr),
+            ctypes.sizeof(ruleset_attr),
+            0,
+        )
+    )
+    try:
+        for raw_path in writable_paths:
+            if not isinstance(raw_path, str) or not os.path.isabs(raw_path):
+                raise ValueError("writable path is not absolute")
+            if os.path.realpath(raw_path) != raw_path:
+                raise ValueError("writable path is not canonical")
+            path_fd = os.open(
+                raw_path,
+                os.O_PATH | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
+            )
+            try:
+                path_attr = PathBeneathAttr(WRITE_ACCESS, path_fd)
+                checked(
+                    libc.syscall(
+                        ADD_RULE,
+                        ruleset_fd,
+                        RULE_PATH_BENEATH,
+                        ctypes.byref(path_attr),
+                        0,
+                    )
+                )
+            finally:
+                os.close(path_fd)
+        checked(libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0))
+        checked(libc.syscall(RESTRICT_SELF, ruleset_fd, 0))
+    finally:
+        os.close(ruleset_fd)
+    os.execvpe(command[0], command, os.environ)
+except BaseException as exc:
+    message = (FAILURE_MARKER + type(exc).__name__ + "\\n").encode(
+        "ascii", errors="replace"
+    )
+    os.write(2, message[:256])
+    os._exit(75)
+"""
+
+
+def _reviewed_proof_state_roots(state_root: Path) -> tuple[Path, ...]:
+    """Return the current root and versioned siblings sharing its profile."""
+
+    match = re.fullmatch(r"(?P<prefix>.+)-v\d+", state_root.name)
+    if match is None:
+        return (state_root,)
+    prefix = str(match.group("prefix"))
+    roots = [state_root]
+    try:
+        siblings = tuple(state_root.parent.iterdir())
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "proof-reuse state-root siblings are unavailable"
+        ) from exc
+    for sibling in siblings:
+        if sibling == state_root or sibling.is_symlink():
+            continue
+        if re.fullmatch(rf"{re.escape(prefix)}-v\d+", sibling.name) is None:
+            continue
+        try:
+            resolved = sibling.resolve(strict=True)
+        except OSError as exc:
+            raise ValidationRuntimeError(
+                "reviewed proof-reuse state root is unavailable"
+            ) from exc
+        if not resolved.is_dir():
+            raise ValidationRuntimeError(
+                "reviewed proof-reuse state root is not a directory"
+            )
+        roots.append(resolved)
+    return tuple(sorted(set(roots), key=str))
+
+
+def _workspace_multilink_inodes(workspace: Path) -> set[tuple[int, int]]:
+    """Collect regular-file identities that have aliases outside one name."""
+
+    identities: set[tuple[int, int]] = set()
+    try:
+        for directory, directory_names, file_names in os.walk(
+            workspace,
+            topdown=True,
+            followlinks=False,
+        ):
+            directory_path = Path(directory)
+            directory_names[:] = [
+                name
+                for name in directory_names
+                if not (directory_path / name).is_symlink()
+            ]
+            for name in file_names:
+                candidate = directory_path / name
+                identity = candidate.lstat()
+                if stat.S_ISREG(identity.st_mode) and identity.st_nlink > 1:
+                    identities.add((int(identity.st_dev), int(identity.st_ino)))
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "validation workspace hardlink inventory is unavailable"
+        ) from exc
+    return identities
+
+
+def _reject_protected_state_hardlink_aliases(
+    *,
+    state_root: Path,
+    workspace: Path,
+) -> None:
+    """Reject a writable worktree name aliasing proof-control evidence."""
+
+    candidate_inodes = _workspace_multilink_inodes(workspace)
+    if not candidate_inodes:
+        return
+    for reviewed_root in _reviewed_proof_state_roots(state_root):
+        try:
+            for directory, directory_names, file_names in os.walk(
+                reviewed_root,
+                topdown=True,
+                followlinks=False,
+            ):
+                directory_path = Path(directory)
+                if directory_path == reviewed_root:
+                    # Other task worktrees are mutable implementation scratch,
+                    # not receipt/control authority.  They may legitimately
+                    # share compiler artifacts with this task.
+                    directory_names[:] = [
+                        name for name in directory_names if name != "worktrees"
+                    ]
+                retained_directories: list[str] = []
+                for name in directory_names:
+                    child = directory_path / name
+                    if child.is_symlink():
+                        continue
+                    try:
+                        workspace.relative_to(child)
+                    except ValueError:
+                        retained_directories.append(name)
+                    else:
+                        # Never compare the authorized writable subtree to
+                        # itself when the configured root contains worktrees.
+                        continue
+                directory_names[:] = retained_directories
+                for name in file_names:
+                    candidate = directory_path / name
+                    identity = candidate.lstat()
+                    if not stat.S_ISREG(identity.st_mode):
+                        continue
+                    if (
+                        int(identity.st_dev),
+                        int(identity.st_ino),
+                    ) in candidate_inodes:
+                        raise ValidationRuntimeError(
+                            "validation workspace aliases protected "
+                            "proof-reuse state through a hardlink"
+                        )
+        except ValidationRuntimeError:
+            raise
+        except OSError as exc:
+            raise ValidationRuntimeError(
+                "protected proof-reuse state hardlink inventory is unavailable"
+            ) from exc
+
+
+def validation_readonly_state_command(
+    command: Sequence[str],
+    *,
+    workspace_path: Path | str,
+    private_home_path: Path | str,
+    environment: Mapping[str, str],
+) -> tuple[list[str], ValidationFilesystemBoundaryReceipt | None]:
+    """Fence an exposed proof-state root against validation-process writes.
+
+    The validation worktree and its fresh private home remain writable.  Every
+    other filesystem object, including the current and reviewed historical
+    proof-state roots, is readable but cannot be created, removed, renamed, or
+    truncated by the command or any descendant.  Landlock is inherited across
+    ``exec`` and cannot be relaxed by the restricted process.
+    """
+
+    argv = [str(value) for value in command]
+    if not argv:
+        raise ValidationRuntimeError("validation command must not be empty")
+    state_root_text = str(
+        environment.get(PROOF_REUSE_STATE_ROOT_ENV) or ""
+    ).strip()
+    if not state_root_text:
+        return argv, None
+    state_root = Path(state_root_text).resolve(strict=True)
+    workspace = Path(workspace_path).resolve(strict=True)
+    private_home = Path(private_home_path).resolve(strict=True)
+    if not state_root.is_dir():
+        raise ValidationRuntimeError(
+            "proof-reuse state root is not a directory"
+        )
+    for writable in (workspace, private_home):
+        try:
+            state_root.relative_to(writable)
+        except ValueError:
+            pass
+        else:
+            raise ValidationRuntimeError(
+                "proof-reuse state root overlaps a writable validation path"
+            )
+    _reject_protected_state_hardlink_aliases(
+        state_root=state_root,
+        workspace=workspace,
+    )
+    abi = validation_landlock_abi()
+    source = _validation_landlock_launcher_source()
+    executable = validation_python_executable(
+        {VALIDATION_PYTHON_ENV: environment.get(_CHILD_PYTHON_ENV, "")}
+    )
+    policy = json.dumps(
+        {
+            "writable_paths": [str(workspace), str(private_home)],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    receipt = ValidationFilesystemBoundaryReceipt(
+        landlock_abi=abi,
+        policy_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    )
+    return [executable, "-I", "-c", source, policy, *argv], receipt
+
+
 def _validation_python_launcher_mode(*, sealed: bool = False) -> str:
     delivery = "sealed-memfd" if sealed else "canonical-direct"
     return f"{sys.platform}:{delivery}"
@@ -866,6 +1233,12 @@ def build_validation_environment(
     )
     if playwright_browsers is not None:
         result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
+    proof_reuse_state_root = _approved_directory(
+        source,
+        PROOF_REUSE_STATE_ROOT_ENV,
+    )
+    if proof_reuse_state_root is not None:
+        result[PROOF_REUSE_STATE_ROOT_ENV] = proof_reuse_state_root
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)

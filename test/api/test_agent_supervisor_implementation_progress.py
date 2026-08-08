@@ -16,6 +16,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     run_process_group_stream,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    PROOF_REUSE_STATE_ROOT_ENV,
+)
 
 
 def _task(*, metadata: dict[str, str] | None = None) -> PortalTask:
@@ -304,7 +307,8 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
     restarted = _daemon(tmp_path)
     retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
     assert str(checkpoint_dir) in first_prompt
-    assert str(checkpoint_dir) in retry_prompt
+    # Retry evidence retains the content identity, not the private host path.
+    assert str(checkpoint_dir) not in retry_prompt
     assert manifest["manifest_cid"] in retry_prompt
     environment = restarted._implementation_process_environment(
         task,
@@ -314,3 +318,4 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
     assert environment[IMPLEMENTATION_CHECKPOINT_DIR_ENV] == str(
         checkpoint_dir
     )
+    assert environment[PROOF_REUSE_STATE_ROOT_ENV] == ""
