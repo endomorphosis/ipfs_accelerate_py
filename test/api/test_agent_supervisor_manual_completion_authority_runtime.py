@@ -251,6 +251,7 @@ def _implementation_revalidation_daemon(
     shard_index: int = 0,
     max_task_attempts: int = 1,
     revalidation_only: bool = False,
+    implementation_protected_paths: tuple[str, ...] = (),
 ) -> daemon_module.PortalImplementationDaemon:
     state_dir = tmp_path / f"state-{suffix}"
     return daemon_module.PortalImplementationDaemon(
@@ -273,6 +274,7 @@ def _implementation_revalidation_daemon(
         manual_completion_authority_task_ids=("TEST-001",),
         manual_completion_authority_epoch_id="seal-epoch-current",
         manual_completion_authority_revalidation_only=revalidation_only,
+        implementation_protected_paths=implementation_protected_paths,
     )
 
 
@@ -2274,6 +2276,85 @@ def _install_successful_authority_validation_runner(
         "_authority_validation_command_runner",
         successful_runner,
     )
+
+
+def test_protected_board_child_persists_exact_post_merge_authority_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "todo", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-board-child-receipt",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    guard = daemon._refresh_manual_completion_authority_guard()
+    assert guard["available"] is True
+    task = {
+        item.task_id: item for item in daemon._load_tasks()
+    }["TEST-002"]
+    parent = _git(repo, "rev-parse", "HEAD")
+
+    gate = daemon._run_post_merge_completion_validation(
+        task,
+        target_commit=parent,
+    )
+    raw_authority = gate["_manual_completion_authority_evidence"]
+    update = daemon._mark_tasks_completed_in_todo(
+        [task.task_id],
+        primary_task_id=task.task_id,
+        completion_reason="exact_post_merge_validation",
+        expected_target_commit=parent,
+        manual_completion_authority_context_id=str(
+            raw_authority["manual_completion_authority_context_id"]
+        ),
+        manual_completion_authority_evidence=raw_authority,
+    )
+
+    child = _git(repo, "rev-parse", "HEAD")
+    assert gate["passed"] is True
+    assert update["updated"] is True
+    assert update["durable"] is True
+    assert child != parent
+    assert _git(repo, "rev-parse", f"{child}^1") == parent
+    assert _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        parent,
+        child,
+    ) == "tasks.md"
+    publication = update[
+        "manual_completion_authority_receipt_publication_binding"
+    ]
+    assert publication["passed"] is True
+    assert publication["expected_target_commit"] == parent
+    assert publication["receipt_target_commit"] == child
+    assert publication["target_advanced"] is True
+    receipt = update["manual_completion_authority_revalidation_receipt"]
+    assert receipt["persisted"] is True
+    assert receipt["completion_publication_binding"] == publication
+    assert "- Status: completed" in board.read_text(encoding="utf-8")
+
+    restarted = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-board-child-receipt",
+        implementation_protected_paths=("tasks.md",),
+    )
+    restarted_guard = restarted._refresh_manual_completion_authority_guard()
+    assert restarted_guard["available"] is True
+    assert "TEST-002" in restarted_guard["revalidation_receipt_task_ids"]
+    assert "TEST-002" not in restarted_guard["revalidation_task_ids"]
 
 
 def test_completed_to_todo_race_at_receipt_boundary_leaves_no_authority(

@@ -9716,6 +9716,7 @@ class PortalImplementationDaemon:
         authority_context_id: str,
         authority_evidence: Mapping[str, Any],
         expected_target_commit: str = "",
+        completion_publication_binding: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist exact task/CID/context bindings after durable completion."""
 
@@ -9746,6 +9747,27 @@ class PortalImplementationDaemon:
                 "persisted": False,
                 "reason": "revalidation_receipt_evidence_invalid",
             }
+        bounded_publication_binding: Mapping[str, Any] | None = None
+        if completion_publication_binding is not None:
+            projected_binding = _bounded_merge_proof_value(
+                completion_publication_binding,
+                field_name="completion_publication_binding",
+            )
+            if not (
+                isinstance(projected_binding, Mapping)
+                and projected_binding.get("passed") is True
+                and str(
+                    projected_binding.get("receipt_target_commit") or ""
+                )
+                == str(expected_target_commit or "")
+            ):
+                return {
+                    "persisted": False,
+                    "reason": (
+                        "revalidation_receipt_publication_binding_invalid"
+                    ),
+                }
+            bounded_publication_binding = projected_binding
         evidence_task_id = str(
             bounded_evidence.get("manual_completion_authority_task_id") or ""
         )
@@ -9888,6 +9910,10 @@ class PortalImplementationDaemon:
                         "validation_result_count": len(result_digests),
                         "validation_result_digests": result_digests,
                     }
+                    if bounded_publication_binding is not None:
+                        receipt["completion_publication_binding"] = dict(
+                            bounded_publication_binding
+                        )
                     receipt_id = content_identity(receipt)
                     records[task_id] = {
                         **receipt,
@@ -9929,6 +9955,10 @@ class PortalImplementationDaemon:
             ),
             "store_id": str(written.get("store_id") or ""),
         }
+        if bounded_publication_binding is not None:
+            result["completion_publication_binding"] = dict(
+                bounded_publication_binding
+            )
         self._trusted_manual_completion_revalidation_receipt_ids.update(
             receipt_ids.values()
         )
@@ -16407,6 +16437,131 @@ class PortalImplementationDaemon:
         result["checkout_mutation_recovery_required"] = True
         return result
 
+    def _manual_completion_receipt_publication_binding(
+        self,
+        mutation_result: Mapping[str, Any],
+        *,
+        expected_target_commit: str,
+    ) -> dict[str, Any]:
+        """Derive the receipt CAS target from a trusted board release proof."""
+
+        expected_target = str(expected_target_commit or "").strip()
+        result: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-receipt-publication-binding@1"
+            ),
+            "passed": False,
+            "reason": "protected_board_publication_binding_missing",
+            "expected_target_commit": expected_target,
+            "receipt_target_commit": expected_target,
+        }
+        if not expected_target:
+            result["reason"] = "protected_board_expected_target_missing"
+            return result
+        postcondition = mutation_result.get(
+            "protected_board_postcondition"
+        )
+        if not isinstance(postcondition, Mapping):
+            return result
+        release_proof = postcondition.get("release_proof")
+        if not isinstance(release_proof, Mapping):
+            return result
+        if not (
+            mutation_result.get("durable") is True
+            and postcondition.get("trusted") is True
+            and postcondition.get("clean") is True
+            and release_proof.get("trusted") is True
+            and release_proof.get("clean") is True
+        ):
+            result["reason"] = "protected_board_release_proof_untrusted"
+            return result
+        raw_histories = release_proof.get("histories")
+        histories = (
+            [
+                history
+                for history in raw_histories
+                if isinstance(history, Mapping)
+            ]
+            if isinstance(raw_histories, Sequence)
+            and not isinstance(raw_histories, (str, bytes, bytearray))
+            else []
+        )
+        root_histories = [
+            history
+            for history in histories
+            if str(history.get("repository") or "") == "."
+        ]
+        if not root_histories:
+            result["reason"] = "protected_board_root_history_missing"
+            return result
+        before_heads = {
+            str(history.get("before_head") or "")
+            for history in root_histories
+        }
+        after_heads = {
+            str(history.get("after_head") or "")
+            for history in root_histories
+        }
+        if before_heads != {expected_target}:
+            result.update(
+                {
+                    "reason": "protected_board_parent_binding_mismatch",
+                    "observed_before_heads": sorted(before_heads),
+                }
+            )
+            return result
+        if len(after_heads) != 1 or not next(iter(after_heads), ""):
+            result.update(
+                {
+                    "reason": "protected_board_target_binding_ambiguous",
+                    "observed_after_heads": sorted(after_heads),
+                }
+            )
+            return result
+        receipt_target = next(iter(after_heads))
+        resolved_target = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            receipt_target,
+        )
+        current_target = self._resolved_commit_ref(
+            self.repo_root,
+            self._main_branch_name(),
+        )
+        if (
+            resolved_target != receipt_target
+            or current_target != receipt_target
+        ):
+            result.update(
+                {
+                    "reason": "protected_board_target_changed",
+                    "receipt_target_commit": receipt_target,
+                    "resolved_target_commit": resolved_target,
+                    "current_target_commit": current_target,
+                }
+            )
+            return result
+        result.update(
+            {
+                "passed": True,
+                "reason": "protected_board_publication_bound",
+                "receipt_target_commit": receipt_target,
+                "target_advanced": receipt_target != expected_target,
+                "release_guard_id": str(
+                    release_proof.get("guard_id") or ""
+                ),
+                "root_history_count": len(root_histories),
+                "root_targets": sorted(
+                    {
+                        str(history.get("target") or "")
+                        for history in root_histories
+                        if str(history.get("target") or "")
+                    }
+                ),
+            }
+        )
+        return result
+
     def _mark_tasks_ready_in_todo(
         self,
         task_ids: Sequence[str],
@@ -17982,6 +18137,28 @@ class PortalImplementationDaemon:
             and isinstance(manual_completion_authority_evidence, Mapping)
             and self._todo_completion_is_durable(result)
         ):
+            receipt_target_commit = expected_target_commit
+            completion_publication_binding: dict[str, Any] | None = None
+            if (
+                expected_target_commit
+                and self._todo_board_is_implementation_protected()
+            ):
+                completion_publication_binding = (
+                    self._manual_completion_receipt_publication_binding(
+                        result,
+                        expected_target_commit=expected_target_commit,
+                    )
+                )
+                result[
+                    "manual_completion_authority_receipt_publication_binding"
+                ] = completion_publication_binding
+                if completion_publication_binding.get("passed") is True:
+                    receipt_target_commit = str(
+                        completion_publication_binding.get(
+                            "receipt_target_commit"
+                        )
+                        or ""
+                    )
             receipt_result = (
                 self._persist_manual_completion_revalidation_receipts(
                     revalidation_members,
@@ -17994,7 +18171,14 @@ class PortalImplementationDaemon:
                     authority_evidence=(
                         manual_completion_authority_evidence
                     ),
-                    expected_target_commit=expected_target_commit,
+                    expected_target_commit=receipt_target_commit,
+                    completion_publication_binding=(
+                        completion_publication_binding
+                        if completion_publication_binding is not None
+                        and completion_publication_binding.get("passed")
+                        is True
+                        else None
+                    ),
                 )
             )
             result[
