@@ -61,12 +61,24 @@ class GrokFailureClassification:
         return self.kind is GrokFailureKind.QUOTA_EXHAUSTED
 
 
-_AUTH_FAILURE_PATTERN = re.compile(
+_EXPLICIT_AUTH_FAILURE_PATTERN = re.compile(
     r"(?:\b(?:unauthenticated|unauthorized)\b|"
     r"\bauthentication\s+(?:failed|required)\b|"
     r"\b(?:invalid|missing|expired)\s+(?:xai\s+)?api[_ -]?key\b|"
-    r"\b(?:login|required to log in|not logged in)\b|"
-    r"\b(?:http|status(?:\s+code)?)\s*[:=]?\s*(?:401|403)\b)",
+    r"\b(?:login|required to log in|not logged in)\b)",
+    re.IGNORECASE,
+)
+_AUTH_STATUS_PATTERN = re.compile(
+    r"\b(?:http|http_status|status(?:\s+code)?)\s*[:=]?\s*(?:401|403)\b",
+    re.IGNORECASE,
+)
+_GROK_SPENDING_LIMIT_PATTERN = re.compile(
+    r"\bpersonal-team-blocked:spending-limit\b",
+    re.IGNORECASE,
+)
+_GROK_SPENDING_LIMIT_EXPLANATION_PATTERN = re.compile(
+    r"\b(?:run out of credits|add credits|need a grok subscription|"
+    r"upgrade at https://grok\.com/supergrok)\b",
     re.IGNORECASE,
 )
 _TIMEOUT_PATTERN = re.compile(
@@ -162,7 +174,11 @@ def classify_grok_failure(result: ProviderRunResult) -> GrokFailureClassificatio
             GrokFailureKind.MALFORMED_OUTPUT,
             "grok_output_not_valid_text",
         )
-    if _AUTH_FAILURE_PATTERN.search(output):
+    # Explicit authentication diagnostics outrank any incidental quota words.
+    # A bare 401/403 is checked only after exact provider-owned quota evidence:
+    # Grok currently reports exhausted account credits as HTTP 403 with the
+    # stable ``personal-team-blocked:spending-limit`` diagnostic.
+    if _EXPLICIT_AUTH_FAILURE_PATTERN.search(output):
         return GrokFailureClassification(
             GrokFailureKind.AUTHENTICATION_FAILURE,
             "grok_authentication_failure",
@@ -183,6 +199,14 @@ def classify_grok_failure(result: ProviderRunResult) -> GrokFailureClassificatio
             GrokFailureKind.QUOTA_EXHAUSTED,
             f"grok_provider_{structured_code}",
         )
+    if (
+        _GROK_SPENDING_LIMIT_PATTERN.search(output)
+        and _GROK_SPENDING_LIMIT_EXPLANATION_PATTERN.search(output)
+    ):
+        return GrokFailureClassification(
+            GrokFailureKind.QUOTA_EXHAUSTED,
+            "grok_provider_spending_limit",
+        )
     if any(
         pattern.fullmatch(line)
         for line in output.splitlines()
@@ -191,6 +215,11 @@ def classify_grok_failure(result: ProviderRunResult) -> GrokFailureClassificatio
         return GrokFailureClassification(
             GrokFailureKind.QUOTA_EXHAUSTED,
             "grok_provider_plain_quota_exhausted",
+        )
+    if _AUTH_STATUS_PATTERN.search(output):
+        return GrokFailureClassification(
+            GrokFailureKind.AUTHENTICATION_FAILURE,
+            "grok_authentication_failure",
         )
     return GrokFailureClassification(
         GrokFailureKind.NONZERO_EXIT,

@@ -428,6 +428,12 @@ def test_runner_falls_back_with_identical_prompt_and_workspace(
     (
         "Error: xAI API usage quota exhausted.",
         '{"error":{"type":"insufficient_quota","message":"no capacity"}}',
+        (
+            'Internal error: {"message":"API error (status 403 Forbidden): '
+            "personal-team-blocked:spending-limit: You have run out of credits "
+            'or need a Grok subscription. Add credits at https://grok.com/usage",'
+            '"http_status":403}'
+        ),
     ),
 )
 def test_quota_only_runner_falls_back_only_on_confirmed_grok_quota(
@@ -477,6 +483,10 @@ def test_quota_only_runner_falls_back_only_on_confirmed_grok_quota(
             "Error: authentication failed; xAI API quota exhausted.",
             "authentication_failure",
         ),
+        (
+            "API error (status 403 Forbidden): permission denied",
+            "authentication_failure",
+        ),
         ("Error: request timed out", "timeout"),
         ("Error: connection reset by peer", "transport_failure"),
         ("Error: rate limit exceeded", "generic_nonzero_exit"),
@@ -486,6 +496,10 @@ def test_quota_only_runner_falls_back_only_on_confirmed_grok_quota(
         ("pytest: 1 failed, 12 passed", "generic_nonzero_exit"),
         (
             "task failed: expected the string 'quota exhausted'",
+            "generic_nonzero_exit",
+        ),
+        (
+            "task failed: personal-team-blocked:spending-limit",
             "generic_nonzero_exit",
         ),
     ),
