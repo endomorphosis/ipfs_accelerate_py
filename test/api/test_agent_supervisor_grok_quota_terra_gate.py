@@ -10,7 +10,6 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    PortalTask,
     TodoImplementationDaemon,
 )
 import ipfs_accelerate_py.llm_router as llm_router
@@ -52,6 +51,7 @@ def test_daemon_auto_route_embeds_strict_terra_fallback_when_codex_resolves(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv(implementation_daemon.IMPLEMENTATION_PROVIDER_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon._CODEX_REASONING_EFFORT_ENV, raising=False)
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(
         implementation_daemon.PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, raising=False
@@ -171,4 +171,57 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
     assert command[command.index("--model") + 1] == "grok-4.5"
     fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in fallback
+    assert command[command.index("--codex-fallback-reasoning-effort") + 1] == "medium"
     assert "--ephemeral" in fallback
+
+
+def test_dcr_reasoning_effort_reaches_terra_fallback_and_binds_validation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_k: "/usr/local/bin/codex",
+    )
+    command = grok_cli_runner.build_grok_quota_routed_agent_command(
+        workspace=tmp_path,
+        python_executable="/usr/bin/python3",
+        grok_bin="/usr/bin/grok",
+        codex_bin="/usr/local/bin/codex",
+        fallback_reasoning_effort="high",
+    )
+    assert command[command.index("--codex-fallback-reasoning-effort") + 1] == "high"
+    fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
+    assert 'model_reasoning_effort="high"' in fallback
+    assert grok_cli_runner._parse_codex_fallback_command(
+        json.dumps(fallback), expected_fallback_reasoning_effort="high"
+    ) == fallback
+    with pytest.raises(ValueError, match="exactly medium"):
+        grok_cli_runner._parse_codex_fallback_command(json.dumps(fallback))
+    with pytest.raises(ValueError, match="must be one of"):
+        grok_cli_runner.build_grok_quota_routed_agent_command(
+            workspace=tmp_path,
+            fallback_reasoning_effort="low",
+        )
+
+
+def test_daemon_passes_configured_dcr_reasoning_effort_to_quota_route(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(implementation_daemon._CODEX_REASONING_EFFORT_ENV, "high")
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(implementation_daemon, "_grok_binary", lambda: "/opt/providers/grok")
+    monkeypatch.setattr(implementation_daemon.shutil, "which", lambda name: "/opt/providers/codex" if name == "codex" else None)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_k: "/opt/providers/codex",
+    )
+
+    command = implementation_daemon._grok_cli_command(workspace_path=tmp_path)
+    assert command[command.index("--codex-fallback-reasoning-effort") + 1] == "high"
+    fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
+    assert 'model_reasoning_effort="high"' in fallback

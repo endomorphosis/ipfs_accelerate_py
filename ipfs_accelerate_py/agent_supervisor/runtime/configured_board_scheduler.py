@@ -70,7 +70,7 @@ ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
-ORDERED_FALLBACK_REASONING_EFFORT = "medium"
+ORDERED_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
 
 
 class ConfiguredBoardError(ValueError):
@@ -426,12 +426,10 @@ def load_configured_board(
                 "provider.fallback_trigger must be "
                 "'primary_quota_exhausted' for the ordered provider contract"
             )
-        if (
-            fallback_reasoning_effort
-            != ORDERED_FALLBACK_REASONING_EFFORT
-        ):
+        if fallback_reasoning_effort not in ORDERED_FALLBACK_REASONING_EFFORTS:
             raise ConfiguredBoardError(
-                "provider.fallback_reasoning_effort must be 'medium' for "
+                "provider.fallback_reasoning_effort must be one of "
+                "'medium', 'high' for "
                 "the ordered provider contract"
             )
         if "provider_id" in provider or "model_id" in provider:

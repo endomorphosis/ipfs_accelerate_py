@@ -1688,7 +1688,8 @@ def _grok_cli_command(
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
 
     When a trusted system Codex install is resolvable, attach the exact
-    Terra/medium fallback argv so a single Grok invocation may fall through
+    Terra fallback argv using the configured closed reasoning effort so a
+    single Grok invocation may fall through
     only after independently verified hard-quota exhaustion. Codex is never
     attached without that runner-owned authority gate.
     """
@@ -1715,6 +1716,10 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
+    fallback_reasoning_effort = (
+        os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip()
+        or DEFAULT_CODEX_REASONING_EFFORT
+    )
     from ..runtime.grok_cli_runner import build_grok_quota_routed_agent_command
 
     command = build_grok_quota_routed_agent_command(
@@ -1723,6 +1728,7 @@ def _grok_cli_command(
         grok_bin=grok,
         codex_bin=str(shutil.which("codex") or ""),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
+        fallback_reasoning_effort=fallback_reasoning_effort,
     )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.5":
@@ -13538,7 +13544,7 @@ class PortalImplementationDaemon:
             forest_roots=forest,
             attempt=int(attempt),
             kernel=kernel,
-            allow_legacy_residual=True,
+            allow_legacy_residual=False,
         )
         return {
             "skip_provider": decision.skip_provider,
@@ -13553,6 +13559,32 @@ class PortalImplementationDaemon:
                 attempt=int(attempt),
             ),
         }
+
+    def _task_requires_dcr080_deterministic_repair(self, task: PortalTask) -> bool:
+        """Return whether this task explicitly selects DCR-080's zero-LLM route.
+
+        This is routing metadata only.  In particular, a boolean, an empty
+        value, or the legacy ``deterministic-only`` provider role cannot
+        authorize repair execution.
+        """
+
+        route = self._task_metadata_value(task, "deterministic repair route")
+        if not route:
+            route = self._task_metadata_value(task, "execution route")
+        return route.strip().lower() in {
+            "dcr080_deterministic_repair",
+            "deterministic_repair",
+        }
+
+    def _run_dcr080_deterministic_repair_composition(
+        self, *, task: PortalTask
+    ) -> dict[str, Any]:
+        """Invoke the separate DCR-080 route; it cannot dispatch a provider."""
+
+        from .deterministic_repair_composition import run_deterministic_repair
+
+        result = run_deterministic_repair(task_id=task.task_id)
+        return {**result.to_dict(), "receipt_cid": result.receipt_cid}
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         authority_revalidation_only = (
@@ -14149,10 +14181,33 @@ class PortalImplementationDaemon:
                     )
                 log_fh.flush()
                 if deterministic_only:
-                    completed = subprocess.CompletedProcess(
-                        args=(),
-                        returncode=0,
-                    )
+                    if self._task_requires_dcr080_deterministic_repair(task):
+                        composition = self._run_dcr080_deterministic_repair_composition(
+                            task=task
+                        )
+                        self._record_event(
+                            "dcr080_deterministic_repair_composition_evaluated",
+                            dict(composition),
+                        )
+                        log_fh.write(
+                            "DCR-080 deterministic repair composition: "
+                            f"disposition={composition['disposition']} "
+                            f"receipt_cid={composition['receipt_cid']}\n"
+                        )
+                        # DCR-050/060 are pending.  Do not turn an empty
+                        # subprocess result into an applied repair.
+                        completed = subprocess.CompletedProcess(args=(), returncode=1)
+                        provider_failure = {
+                            "reason": "dcr080_deterministic_repair_deferred",
+                            "disposition": composition["disposition"],
+                            "reason_codes": composition["reason_codes"],
+                            "receipt_cid": composition["receipt_cid"],
+                        }
+                    else:
+                        completed = subprocess.CompletedProcess(
+                            args=(),
+                            returncode=0,
+                        )
                 else:
                     completed = self._decision_runtime_mutation(
                         "command_invocation",
@@ -22890,10 +22945,31 @@ class PortalImplementationDaemon:
                     )
                 log_fh.flush()
                 if deterministic_only:
-                    completed = subprocess.CompletedProcess(
-                        args=(),
-                        returncode=0,
-                    )
+                    if self._task_requires_dcr080_deterministic_repair(task):
+                        composition = self._run_dcr080_deterministic_repair_composition(
+                            task=task
+                        )
+                        self._record_event(
+                            "dcr080_deterministic_repair_composition_evaluated",
+                            dict(composition),
+                        )
+                        log_fh.write(
+                            "DCR-080 deterministic repair composition: "
+                            f"disposition={composition['disposition']} "
+                            f"receipt_cid={composition['receipt_cid']}\n"
+                        )
+                        completed = subprocess.CompletedProcess(args=(), returncode=1)
+                        provider_failure = {
+                            "reason": "dcr080_deterministic_repair_deferred",
+                            "disposition": composition["disposition"],
+                            "reason_codes": composition["reason_codes"],
+                            "receipt_cid": composition["receipt_cid"],
+                        }
+                    else:
+                        completed = subprocess.CompletedProcess(
+                            args=(),
+                            returncode=0,
+                        )
                 else:
                     # WPD-021: PreImplementationKernel gate — provider path is
                     # unreachable unless disposition is residual_llm_authorized
