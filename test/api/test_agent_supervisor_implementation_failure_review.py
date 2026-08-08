@@ -832,6 +832,102 @@ def test_daemon_normalize_failure_last_resort_is_private_and_bounded(
         assert key in inner_fallback
 
 
+@pytest.mark.parametrize("force_emergency_projection", [False, True])
+def test_daemon_normalize_failure_ignores_hostile_colliding_dict_key(
+    monkeypatch,
+    force_emergency_projection,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    class CollidingKey:
+        boom = False
+
+        def __hash__(self):
+            return hash("validation_result")
+
+        def __eq__(self, _other):
+            if self.boom:
+                raise RuntimeError("hostile key equality must not run")
+            return False
+
+    collision = CollidingKey()
+    failure = {collision: "untrusted-decoy"}
+    failure["validation_result"] = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 47,
+        "reason": "declared_validation_failed",
+        "failed_command": "pytest tests/test_collision.py -q",
+        "output": "PRIVATE_COLLISION_OUTPUT" * 1_000,
+        "proposal_gate": {
+            "accepted": False,
+            "proposal_id": "proposal:collision",
+        },
+        "scope_adjudication": {
+            "accepted": False,
+            "receipt_id": "scope:collision",
+        },
+    }
+    failure.update(
+        returncode=47,
+        timeout_policy={
+            "source": "task_metadata",
+            "configured_timeout_seconds": 7200,
+        },
+        checkpoint_manifest={
+            "schema": "checkpoint@1",
+            "manifest_cid": "checkpoint:collision",
+            "file_count": 2,
+            "total_size_bytes": 99,
+        },
+    )
+    collision.boom = True
+
+    if force_emergency_projection:
+        monkeypatch.setattr(
+            PortalImplementationDaemon,
+            "_normalize_implementation_failure_unchecked",
+            staticmethod(
+                lambda _failure: (_ for _ in ()).throw(
+                    KeyboardInterrupt("force emergency projection")
+                )
+            ),
+        )
+
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    repeated = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+
+    assert normalized == repeated
+    assert len(wire.encode()) <= 16 * 1024
+    assert "PRIVATE_COLLISION_OUTPUT" not in wire
+    validation = normalized["validation"]
+    assert validation["attempted"] is True
+    assert validation["passed"] is False
+    assert validation["returncode"] == 47
+    assert validation["reason"] == "declared_validation_failed"
+    assert validation["failed_command"] == (
+        "pytest tests/test_collision.py -q"
+    )
+    assert normalized["returncode"] == 47
+    assert normalized["proposal_gate"]["proposal_id"] == (
+        "proposal:collision"
+    )
+    assert normalized["scope_adjudication"]["receipt_id"] == (
+        "scope:collision"
+    )
+    assert normalized["timeout_policy"]["source"] == "task_metadata"
+    assert normalized["checkpoint_manifest"]["manifest_cid"] == (
+        "checkpoint:collision"
+    )
+
+
 def test_daemon_normalize_failure_final_envelope_refreshes_tail_ledger() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,

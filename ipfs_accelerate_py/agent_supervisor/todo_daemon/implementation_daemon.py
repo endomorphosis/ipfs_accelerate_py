@@ -38454,7 +38454,25 @@ class PortalImplementationDaemon:
             # only; never call user-controlled repr, type labels, or hooks.
             try:
                 source = failure if type(failure) is dict else {}
-                candidate = dict.get(source, "validation_result")
+
+                def exact_get(
+                    mapping: Any,
+                    key: str,
+                    default: Any = None,
+                ) -> Any:
+                    """Read only exact string keys without invoking peer keys."""
+
+                    if type(mapping) is not dict or type(key) is not str:
+                        return default
+                    for candidate_key, candidate_value in dict.items(mapping):
+                        if (
+                            type(candidate_key) is str
+                            and candidate_key == key
+                        ):
+                            return candidate_value
+                    return default
+
+                candidate = exact_get(source, "validation_result")
                 validation = candidate if type(candidate) is dict else {}
                 records: dict[tuple[int, str], dict[str, Any]] = {}
                 private_sources: list[bytes] = []
@@ -38498,12 +38516,12 @@ class PortalImplementationDaemon:
 
                 for container in (source, validation):
                     for key in ("output", "stdout", "stderr", "raw_output"):
-                        value = dict.get(container, key)
+                        value = exact_get(container, key)
                         if type(value) is str and value:
                             raw = value.encode("utf-8", errors="replace")
                             private_sources.append(raw)
                             remember(raw)
-                    review_value = dict.get(container, "failure_review")
+                    review_value = exact_get(container, "failure_review")
                     if type(review_value) is dict:
                         for key in (
                             "guidance_markdown",
@@ -38513,14 +38531,14 @@ class PortalImplementationDaemon:
                             "raw_response",
                             "next_attempt_prompt_addendum",
                         ):
-                            value = dict.get(review_value, key)
+                            value = exact_get(review_value, key)
                             if type(value) is str and value:
                                 raw = value.encode(
                                     "utf-8", errors="replace"
                                 )
                                 private_sources.append(raw)
                                 remember(raw)
-                    addendum = dict.get(
+                    addendum = exact_get(
                         container, "next_attempt_prompt_addendum"
                     )
                     if type(addendum) is str and addendum:
@@ -38653,7 +38671,7 @@ class PortalImplementationDaemon:
                         return [exact_json(item, depth + 1) for item in value]
                     if type(value) is dict:
                         return {
-                            key: exact_json(dict.get(value, key), depth + 1)
+                            key: exact_json(exact_get(value, key), depth + 1)
                             for key in sorted(
                                 item_key
                                 for item_key in value
@@ -38692,17 +38710,17 @@ class PortalImplementationDaemon:
                         )
                     return kept
 
-                source_returncode = dict.get(source, "returncode")
+                source_returncode = exact_get(source, "returncode")
                 if source_returncode is None:
-                    source_returncode = dict.get(validation, "returncode")
+                    source_returncode = exact_get(validation, "returncode")
                 returncode = exact_int(source_returncode, 1)
                 safe_validation: dict[str, Any] = {
                     "returncode": exact_int(
-                        dict.get(validation, "returncode"), returncode
+                        exact_get(validation, "returncode"), returncode
                     )
                 }
                 for key in ("attempted", "passed"):
-                    value = dict.get(validation, key)
+                    value = exact_get(validation, key)
                     if type(value) is bool:
                         safe_validation[key] = value
                 for key, limit in (
@@ -38711,14 +38729,14 @@ class PortalImplementationDaemon:
                     ("exception_message", 512),
                 ):
                     rendered = exact_text(
-                        dict.get(validation, key),
+                        exact_get(validation, key),
                         limit,
                         command=key == "failed_command",
                         private_prose=key == "exception_message",
                     )
                     if rendered:
                         safe_validation[key] = rendered
-                failure_head = dict.get(validation, "failure_head")
+                failure_head = exact_get(validation, "failure_head")
                 rendered_head = exact_failure_head(failure_head)
                 if rendered_head:
                     safe_validation["failure_head"] = rendered_head
@@ -38729,23 +38747,23 @@ class PortalImplementationDaemon:
                     ("exception_types", 128),
                 ):
                     rendered = exact_list(
-                        dict.get(validation, key),
+                        exact_get(validation, key),
                         limit,
                         test_nodes=key == "failed_tests",
                         commands=key == "failed_commands",
                     )
                     if rendered:
                         safe_validation[key] = rendered
-                review = dict.get(source, "failure_review")
+                review = exact_get(source, "failure_review")
                 if type(review) is not dict:
-                    review = dict.get(validation, "failure_review")
+                    review = exact_get(validation, "failure_review")
                 safe_review: dict[str, Any] = {}
                 if type(review) is dict:
                     for key in ("receipt_id", "decision"):
-                        rendered = exact_text(dict.get(review, key), 256)
+                        rendered = exact_text(exact_get(review, key), 256)
                         if rendered:
                             safe_review[key] = rendered
-                    accepted = dict.get(review, "accepted")
+                    accepted = exact_get(review, "accepted")
                     if type(accepted) is bool:
                         safe_review["accepted"] = accepted
                 if safe_review:
@@ -38802,13 +38820,13 @@ class PortalImplementationDaemon:
                         (),
                     ),
                 ):
-                    map_value = dict.get(source, key)
+                    map_value = exact_get(source, key)
                     if type(map_value) is not dict:
-                        map_value = dict.get(validation, key)
+                        map_value = exact_get(validation, key)
                     if type(map_value) is dict:
                         compact: dict[str, Any] = {}
                         for field in scalar_keys:
-                            item = dict.get(map_value, field)
+                            item = exact_get(map_value, field)
                             if type(item) is bool:
                                 compact[field] = item
                             elif type(item) is int:
@@ -38821,7 +38839,7 @@ class PortalImplementationDaemon:
                                     compact[field] = rendered
                         for field in list_keys:
                             rendered_list = exact_list(
-                                dict.get(map_value, field),
+                                exact_get(map_value, field),
                                 192,
                             )
                             if rendered_list:
@@ -38891,9 +38909,16 @@ class PortalImplementationDaemon:
         private_sources: list[bytes] = []
 
         def get(mapping: Any, key: str, default: Any = None) -> Any:
-            if type(mapping) is not dict:
+            if type(mapping) is not dict or type(key) is not str:
                 return default
-            return dict.get(mapping, key, default)
+            # A built-in dict may still contain an adversarial non-string key
+            # whose equality hook raises on a hash collision.  Iterating and
+            # accepting exact string keys avoids invoking that peer key while
+            # retaining authoritative fields from the same result.
+            for candidate_key, candidate_value in dict.items(mapping):
+                if type(candidate_key) is str and candidate_key == key:
+                    return candidate_value
+            return default
 
         def raw_text(value: Any) -> bytes:
             try:
@@ -39142,7 +39167,7 @@ class PortalImplementationDaemon:
                 if type(candidate) is dict:
                     return {
                         key: exact_json_value(
-                            dict.get(candidate, key), depth + 1
+                            get(candidate, key), depth + 1
                         )
                         for key in sorted(
                             item_key
