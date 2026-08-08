@@ -78,7 +78,7 @@ this bootstrap is active.
 
 ## DQP-002 Define canonical store, schema, identity, and authority contracts
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
