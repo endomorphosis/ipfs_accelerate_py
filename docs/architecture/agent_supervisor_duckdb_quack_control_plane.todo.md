@@ -326,7 +326,7 @@ this bootstrap is active.
 
 ## DQP-010 Import legacy Markdown, JSON, JSONL, SQLite, and DuckDB state
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
