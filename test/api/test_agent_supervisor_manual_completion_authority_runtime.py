@@ -2078,12 +2078,54 @@ def test_todo_descendant_remains_on_provider_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        pre_implementation_provider_gate as provider_gate_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_disposition import (
+        implementation_disposition_cid,
+    )
+
     repo, board = _git_revalidation_repo(
         tmp_path,
         descendants=[("TEST-002", "todo", "TEST-001")],
     )
     daemon = _implementation_revalidation_daemon(
         tmp_path, repo, board, suffix="todo-provider"
+    )
+    # This legacy/manual-authority fixture exercises route selection, not the
+    # ordered-authoring contract.  Give its ordinary provider task the narrow
+    # prerequisites now required before dispatch: authenticated primary
+    # readiness, an internally consistent non-ephemeral workspace, and a
+    # sealed residual packet.  The production readiness and provider-authority
+    # rechecks still execute.
+    daemon.worktree_root = repo
+    monkeypatch.setattr(daemon_module, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        daemon_module,
+        "_grok_binary",
+        lambda: "/fixture/bin/grok",
+    )
+    evaluate_provider_gate = provider_gate_module.evaluate_provider_gate
+    residual_packet_cid = implementation_disposition_cid(
+        {
+            "kind": "manual_authority_provider_route_fixture",
+            "task_id": "TEST-002",
+        }
+    )
+
+    def evaluate_reviewed_provider_route(**kwargs):
+        return evaluate_provider_gate(
+            **{
+                **kwargs,
+                "residual_packet_cid": residual_packet_cid,
+                "allow_legacy_residual": False,
+            }
+        )
+
+    monkeypatch.setattr(
+        provider_gate_module,
+        "evaluate_provider_gate",
+        evaluate_reviewed_provider_route,
     )
     calls: list[str] = []
     monkeypatch.setattr(
