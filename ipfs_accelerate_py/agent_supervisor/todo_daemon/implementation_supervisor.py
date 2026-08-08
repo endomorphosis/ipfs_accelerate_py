@@ -68,6 +68,9 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     ReconciliationLifecycleBlockedError,
+    _prepare_provider_route_receipt,
+    _uses_packaged_provider_fallback_runner,
+    _validated_provider_route_receipt,
     consume_stale_active_attempt,
     load_json_dict,
     normalize_focus_tracks,
@@ -2588,7 +2591,10 @@ class PortalImplementationSupervisor:
                 unmerged_paths=unmerged_paths,
             )
             result["llm_merge_resolver"] = self._compact_resolver_result(llm_result)
-            if self._git_merge_head(repo_root):
+            route_receipt_valid = not bool(
+                llm_result.get("provider_route_receipt_error")
+            )
+            if route_receipt_valid and self._git_merge_head(repo_root):
                 commit_result = self._commit_supervisor_resolved_merge(repo_root)
                 result["commit_result"] = commit_result
                 if commit_result.get("completed") or commit_result.get("reason") == "resolver_committed_merge":
@@ -2602,7 +2608,7 @@ class PortalImplementationSupervisor:
                     )
                     self._record_event("main_checkout_merge_state_repair", result)
                     return result
-            elif not self._git_unmerged_paths(repo_root):
+            elif route_receipt_valid and not self._git_unmerged_paths(repo_root):
                 result.update(
                     {
                         "repaired": True,
@@ -4143,10 +4149,15 @@ class PortalImplementationSupervisor:
 
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
+        active_attempt = 0
         try:
-            active_task_id = PortalTaskState.load(self.config.state_path).active_task_id
+            active_state = PortalTaskState.load(self.config.state_path)
+            active_task_id = active_state.active_task_id
+            active_attempt = max(0, int(active_state.active_attempt or 0))
         except Exception:
             active_task_id = ""
+            active_attempt = 0
+        route_task_id = active_task_id or self.config.state_prefix or "supervisor"
         merge_result = {
             "attempted": True,
             "merged": False,
@@ -4162,14 +4173,14 @@ class PortalImplementationSupervisor:
         }
         event = {
             "type": "supervisor_main_checkout_merge_repair",
-            "task_id": active_task_id or self.config.state_prefix,
-            "attempt": 0,
+            "task_id": route_task_id,
+            "attempt": active_attempt,
             "merge_result": merge_result,
         }
         payload = {
             "found": True,
-            "task_id": active_task_id,
-            "attempt": 0,
+            "task_id": route_task_id,
+            "attempt": active_attempt,
             "events_path": str(self.config.events_path),
             "repo_root": str(repo_root),
             "branch": merge_head,
@@ -4180,11 +4191,74 @@ class PortalImplementationSupervisor:
             "unmerged_paths": unmerged_paths,
             "prompt": build_merge_prompt(event=event, repo_root=repo_root),
         }
-        return invoke_llm_resolver(
+        route_receipt_path: Path | None = None
+        route_arguments: dict[str, Any] = {}
+        if _uses_packaged_provider_fallback_runner(
+            self.config.llm_merge_resolver_command
+        ):
+            route_scope = hashlib.sha256(
+                json.dumps(
+                    {
+                        "merge_head": merge_head,
+                        "repo_root": str(repo_root.resolve()),
+                        "target_branch": target_branch,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()[:16]
+            receipt_dir = (
+                self.config.state_path.parent / "provider_route_receipts"
+            ).resolve()
+            receipt_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                receipt_dir.chmod(0o700)
+            except OSError:
+                pass
+            route_receipt_path = receipt_dir / (
+                "provider-route-semantic-merge-attempt-"
+                f"{active_attempt}-{route_scope}.json"
+            )
+            _prepare_provider_route_receipt(route_receipt_path)
+            route_arguments = {
+                "route_receipt_path": route_receipt_path,
+                "route_task_id": route_task_id,
+                "route_attempt": active_attempt,
+                "route_stage": "semantic_merge",
+            }
+        result = invoke_llm_resolver(
             payload,
             command_template=self.config.llm_merge_resolver_command,
             timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+            **route_arguments,
         )
+        if route_receipt_path is not None:
+            try:
+                route_receipt = _validated_provider_route_receipt(
+                    route_receipt_path,
+                    task_id=route_task_id,
+                    attempt=active_attempt,
+                    stage="semantic_merge",
+                )
+            except RuntimeError:
+                result = {
+                    **result,
+                    "applied": False,
+                    "apply_error": "provider route receipt validation failed",
+                    "provider_route_receipt_error": (
+                        "invalid_provider_route_receipt"
+                    ),
+                }
+            else:
+                if route_receipt:
+                    result = {
+                        **result,
+                        "provider_route_receipt_path": str(
+                            route_receipt_path
+                        ),
+                        "provider_route_receipt": route_receipt,
+                    }
+        return result
 
     @staticmethod
     def _compact_resolver_result(result: dict[str, Any]) -> dict[str, Any]:

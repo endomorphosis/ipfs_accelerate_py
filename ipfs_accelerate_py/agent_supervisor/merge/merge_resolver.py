@@ -1230,6 +1230,10 @@ def invoke_llm_resolver(
     *,
     command_template: str | None = None,
     timeout_seconds: float | None = None,
+    route_receipt_path: Path | None = None,
+    route_task_id: str = "",
+    route_attempt: int | None = None,
+    route_stage: str = "",
 ) -> dict[str, Any]:
     """Invoke an external LLM resolver command with the prompt on stdin."""
 
@@ -1241,6 +1245,31 @@ def invoke_llm_resolver(
             "apply_error": f"{LLM_MERGE_RESOLVER_COMMAND_ENV} is not set",
         }
     command = shlex.split(command_template)
+    if route_receipt_path is not None:
+        if not route_task_id or route_attempt is None or not route_stage:
+            raise ValueError("provider route receipt binding is incomplete")
+        route_flags = {
+            "--route-receipt-path",
+            "--route-task-id",
+            "--route-attempt",
+            "--route-stage",
+        }
+        if any(argument in route_flags for argument in command):
+            raise ValueError(
+                "provider route receipt binding must not be embedded in the static command"
+            )
+        command.extend(
+            [
+                "--route-receipt-path",
+                str(route_receipt_path.resolve()),
+                "--route-task-id",
+                route_task_id,
+                "--route-attempt",
+                str(route_attempt),
+                "--route-stage",
+                route_stage,
+            ]
+        )
     timeout = resolver_timeout_seconds(timeout_seconds)
     process = subprocess.Popen(
         command,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -62,15 +62,24 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run(cmd, **kwargs):
+    class FakeProcess:
+        def __init__(self, cmd, **kwargs):
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("")
+            self.returncode = 0
+
+        def wait(self):
+            return self.returncode
+
+    def fake_popen(cmd, **kwargs):
         captured["cmd"] = list(cmd)
         captured["env"] = dict(kwargs["env"])
         prompt_path = Path(cmd[cmd.index("--prompt-file") + 1])
         captured["prompt"] = prompt_path.read_text(encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0)
+        return FakeProcess(cmd, **kwargs)
 
     monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair the board"))
-    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(grok_cli_runner.subprocess, "Popen", fake_popen)
 
     result = grok_cli_runner.main(
         [
@@ -96,5 +105,61 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
     assert cmd[cmd.index("--model") + 1] == "grok-4.5"
     assert cmd[cmd.index("--max-turns") + 1] == "1234"
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
-    assert cmd[cmd.index("--output-format") + 1] == "plain"
+    assert cmd[cmd.index("--output-format") + 1] == "streaming-json"
     assert "--always-approve" in cmd
+
+
+def test_grok_agent_runner_emits_private_body_free_failure_receipt(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    class FailedProcess:
+        stdout = io.StringIO("")
+        stderr = io.StringIO(
+            '{"error":{"message":"authentication failed",'
+            '"api_key":"xai-private-sentinel-4427"},"http_status":401}\n'
+        )
+
+        @staticmethod
+        def wait():
+            return 19
+
+    read_fd, write_fd = os.pipe()
+    monkeypatch.setenv(
+        grok_cli_runner.TRUSTED_FAILURE_RECEIPT_FD_ENV,
+        str(write_fd),
+    )
+    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair"))
+    monkeypatch.setattr(
+        grok_cli_runner.subprocess,
+        "Popen",
+        lambda cmd, **kwargs: FailedProcess(),
+    )
+    try:
+        result = grok_cli_runner.main(
+            [
+                "--workspace",
+                str(tmp_path),
+                "--grok-bin",
+                "/bin/true",
+                "--mode",
+                "agent",
+            ]
+        )
+        receipt = os.read(read_fd, 4096).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        try:
+            os.close(write_fd)
+        except OSError:
+            pass
+
+    parsed = __import__(
+        "ipfs_accelerate_py.llm_router",
+        fromlist=["parse_agent_cli_failure_receipt"],
+    ).parse_agent_cli_failure_receipt(receipt)
+    assert result == 19
+    assert parsed is not None
+    assert parsed[0].kind.value == "authentication_failure"
+    assert parsed[2].value == "no_activity"
+    assert "xai-private-sentinel-4427" not in receipt

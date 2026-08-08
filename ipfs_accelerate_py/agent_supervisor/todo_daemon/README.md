@@ -63,14 +63,22 @@ Relative imports stay package-local (`from .<module> import ...`).
 ## Ordered provider fallback policies
 
 `grok-codex` provider aliases use the no-shell
-`agent_supervisor/provider_fallback_runner.py`. By default, the runner preserves
-the historical `any_failure` behavior. A supervisor can opt into
-`IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY=grok_quota_exhausted`; under
-that policy Grok must be installed and authenticated, and Codex runs only after
-the runner positively classifies a Grok quota-exhaustion error. Authentication,
-launch, timeout, transport, generic nonzero, malformed-output, and ordinary task
-failures return the Grok exit without fallback. The quota-only policy is not a
-global default and therefore does not change existing supervisor behavior.
+`agent_supervisor/provider_fallback_runner.py`, but the canonical
+`ipfs_accelerate_py.llm_router` owns readiness, failure classification, and the
+fallback decision. The fixed agent policy is
+`IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY=grok_quota_auth_or_unavailable`:
+Grok remains primary, while Codex may run only for a typed quota exhaustion,
+authentication failure, or launch unavailability before side effects and with
+an unchanged candidate workspace. Timeout, transport, generic nonzero,
+malformed-output, ordinary task failure, unknown activity, or workspace
+mutation remains terminal. The adapter sanitizes both output streams and emits
+bounded, task/attempt/stage-bound route telemetry with
+`completion_authority=false`; normal proposal, validation, and merge gates
+remain authoritative.
+
+This explicit agent-CLI route is separate from `llm_router.generate_text`.
+Generic agent/tool requests continue to prohibit cross-provider retries after
+side effects.
 
 ## Extending
 

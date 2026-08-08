@@ -96,6 +96,7 @@ import os
 import re
 import shlex
 import shutil
+import stat as stat_module
 import subprocess
 import sys
 import tempfile
@@ -106,6 +107,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from functools import lru_cache
 from html import unescape
 import hashlib
@@ -163,6 +165,934 @@ class LLMRouterError(RuntimeError):
     This is intentionally a RuntimeError subclass so existing call sites that
     catch RuntimeError continue to work.
     """
+
+
+# Explicit policy for the side-effect-aware Grok Build -> Codex agent route.
+# This is deliberately separate from ``generate_text`` provider fallback: the
+# generic router continues to prohibit provider switching for agent/tool work.
+GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY = (
+    "grok_quota_auth_or_unavailable"
+)
+AGENT_CLI_PROVIDER_ROUTE_SCHEMA = "ipfs_accelerate_py/provider-route@1"
+AGENT_CLI_PROVIDER_FAILURE_SCHEMA = (
+    "ipfs_accelerate_py/provider-failure@1"
+)
+
+
+class AgentCLIProviderFailureKind(str, Enum):
+    """Closed failure vocabulary for the explicit agent CLI route."""
+
+    GROK_QUOTA_EXHAUSTED = "grok_quota_exhausted"
+    AUTHENTICATION_FAILURE = "authentication_failure"
+    LAUNCH_FAILURE = "launch_failure"
+    TIMEOUT = "timeout"
+    TRANSPORT_FAILURE = "transport_failure"
+    MALFORMED_OUTPUT = "malformed_output"
+    GENERIC_NONZERO_EXIT = "generic_nonzero_exit"
+    TASK_FAILURE = "task_failure"
+
+
+class AgentCLIActivityState(str, Enum):
+    """Trusted adapter observation of agent launch/tool side effects."""
+
+    PRE_DISPATCH = "pre_dispatch"
+    NO_ACTIVITY = "no_activity"
+    STARTED = "started"
+    UNKNOWN = "unknown"
+
+
+GROK_AGENT_ROUTE_ALLOWED_FAILURE_KINDS = frozenset(
+    {
+        AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+        AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+        AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+    }
+)
+
+
+@dataclass(frozen=True)
+class AgentCLIProviderResult:
+    """Body-free process outcome supplied to the explicit agent router."""
+
+    returncode: int | None
+    stderr: str = ""
+    launched: bool = True
+    activity_state: AgentCLIActivityState = AgentCLIActivityState.UNKNOWN
+
+
+@dataclass(frozen=True)
+class AgentCLIFailureClassification:
+    """Secret-free failure identity produced at a trusted provider boundary."""
+
+    kind: AgentCLIProviderFailureKind
+    reason_code: str
+
+
+@dataclass(frozen=True)
+class AgentCLIWorkspaceSnapshot:
+    """Stable candidate-workspace identity used to detect agent side effects."""
+
+    digest: str
+    reliable: bool
+    reason_code: str = ""
+
+
+@dataclass(frozen=True)
+class AgentCLIRouteDecision:
+    """Router-owned decision for one explicit Grok Build -> Codex handoff."""
+
+    should_fallback: bool
+    classification: AgentCLIFailureClassification
+    terminal_reason: str
+    route_record: Mapping[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class AgentCLIRouteReadiness:
+    """Body-free, side-effect-free readiness result for the fixed agent route."""
+
+    grok_ready: bool
+    codex_ready: bool
+    effective_provider: str
+    reason_code: str
+    failure_kind: AgentCLIProviderFailureKind | None
+    grok_model: str = "grok-4.5"
+    codex_model: str = "gpt-5.6-terra"
+    codex_reasoning_effort: str = "high"
+
+
+_AGENT_CLI_REDACTED_VALUE = "[REDACTED]"
+_AGENT_CLI_OVERSIZED_DIAGNOSTIC = (
+    "[REDACTED_OVERSIZED_PROVIDER_DIAGNOSTIC]"
+)
+_AGENT_CLI_RESERVED_RECORD = "[REDACTED_RESERVED_PROVIDER_ROUTE_RECORD]"
+AGENT_CLI_STDERR_LINE_LIMIT = 64 * 1024
+_AGENT_CLI_STDERR_TAIL_LIMIT = 256 * 1024
+_AGENT_CLI_LINE_ENDING_PATTERN = re.compile(r"\r\n|\r|\n")
+_AGENT_CLI_SENSITIVE_ENVIRONMENT_NAME_PATTERN = re.compile(
+    r"(?:api[_-]?key|authorization|bearer|password|secret|token)",
+    re.IGNORECASE,
+)
+_AGENT_CLI_SENSITIVE_LABEL_PATTERN_TEXT = (
+    r"(?:[a-z0-9]+[_-])*(?:api[_ -]?key|token|password|secret)"
+)
+_AGENT_CLI_AUTHORIZATION_BEARER_PATTERN = re.compile(
+    r"(?P<prefix>\bauthorization\b[\"']?\s*(?::|=)?\s*[\"']?bearer\s+)"
+    r"(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&\"'\r\n]+)"
+    r"(?P<suffix>[\"']?)",
+    re.IGNORECASE,
+)
+_AGENT_CLI_SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
+    rf"(?P<prefix>\b{_AGENT_CLI_SENSITIVE_LABEL_PATTERN_TEXT}\b"
+    r"[\"']?\s*(?::|=)\s*)"
+    r"(?P<value>(?:bearer\s+)?(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&\r\n]+))",
+    re.IGNORECASE,
+)
+_AGENT_CLI_SENSITIVE_OPTION_PATTERN = re.compile(
+    r"(?P<prefix>(?<![\w-])--(?:[a-z0-9]+-)*"
+    r"(?:api-key|token|password|secret)\s+)"
+    r"(?P<value>(?:bearer\s+)?(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&\r\n]+))",
+    re.IGNORECASE,
+)
+_AGENT_CLI_SENSITIVE_BARE_LABEL_PATTERN = re.compile(
+    rf"(?P<prefix>\b{_AGENT_CLI_SENSITIVE_LABEL_PATTERN_TEXT}\b\s+(?:is\s+)?)"
+    r"(?P<value>(?:bearer\s+)?(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&\r\n]+))",
+    re.IGNORECASE,
+)
+_AGENT_CLI_EXPLICIT_AUTH_FAILURE_PATTERN = re.compile(
+    r"(?:\b(?:unauthenticated|unauthorized)\b|"
+    r"\bauthentication\s+(?:failed|required)\b|"
+    r"\b(?:invalid|missing|expired)\s+(?:xai\s+)?api[_ -]?key\b|"
+    r"\b(?:login\s+required|required to log in|not logged in|"
+    r"not authenticated|not signed in|sign[- ]?in\s+required)\b)",
+    re.IGNORECASE,
+)
+_AGENT_CLI_AUTH_STATUS_PATTERN = re.compile(
+    r"\b(?:http|http_status|status(?:\s+code)?)\s*[:=]?\s*(?:401|403)\b",
+    re.IGNORECASE,
+)
+_AGENT_CLI_GROK_SPENDING_LIMIT_PATTERN = re.compile(
+    r"\bpersonal-team-blocked:spending-limit\b",
+    re.IGNORECASE,
+)
+_AGENT_CLI_GROK_SPENDING_LIMIT_EXPLANATION_PATTERN = re.compile(
+    r"\b(?:run out of credits|add credits|need a grok subscription|"
+    r"upgrade at https://grok\.com/supergrok)\b",
+    re.IGNORECASE,
+)
+_AGENT_CLI_TIMEOUT_PATTERN = re.compile(
+    r"\b(?:timed?\s*out|timeout|deadline\s+exceeded)\b",
+    re.IGNORECASE,
+)
+_AGENT_CLI_TRANSPORT_FAILURE_PATTERN = re.compile(
+    r"(?:\bconnection\s+(?:refused|reset|aborted|closed)\b|"
+    r"\b(?:dns|tls|network|transport|socket)\s+(?:error|failure)\b|"
+    r"\btemporary failure in name resolution\b|\bno route to host\b)",
+    re.IGNORECASE,
+)
+_AGENT_CLI_PLAIN_QUOTA_PATTERNS = (
+    re.compile(
+        r"^\s*(?:error\s*:\s*)?(?:you(?:'|\u2019)?ve|you have)\s+hit\s+"
+        r"your\s+(?:grok\s+|xai\s+)?usage\s+limit\.?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:error\s*:\s*)?(?:(?:grok|xai)(?:\s+api)?\s+)?"
+        r"(?:account\s+|organization\s+)?(?:usage\s+)?quota\s+"
+        r"(?:is\s+|has\s+been\s+)?(?:exhausted|exceeded|depleted)\.?\s*$",
+        re.IGNORECASE,
+    ),
+)
+_AGENT_CLI_STRUCTURED_QUOTA_CODES = frozenset(
+    {
+        "billing_hard_limit_reached",
+        "credit_balance_exhausted",
+        "insufficient_quota",
+        "quota_exhausted",
+        "usage_limit_reached",
+    }
+)
+_AGENT_CLI_SAFE_REASON_PATTERN = re.compile(r"[a-z0-9_]{1,128}")
+
+
+def _agent_cli_replacement_with_original_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return f"{value[0]}{_AGENT_CLI_REDACTED_VALUE}{value[-1]}"
+    return _AGENT_CLI_REDACTED_VALUE
+
+
+def _redact_agent_cli_match(match: re.Match[str]) -> str:
+    return (
+        str(match.group("prefix"))
+        + _agent_cli_replacement_with_original_quotes(str(match.group("value")))
+        + str(match.groupdict().get("suffix") or "")
+    )
+
+
+def _agent_cli_sensitive_environment_values() -> tuple[str, ...]:
+    values = {
+        str(value)
+        for name, value in os.environ.items()
+        if _AGENT_CLI_SENSITIVE_ENVIRONMENT_NAME_PATTERN.search(str(name))
+        and len(str(value)) >= 8
+    }
+    return tuple(sorted(values, key=lambda value: (-len(value), value)))
+
+
+def sanitize_agent_cli_diagnostic(
+    text: str,
+    *,
+    sensitive_values: Sequence[str] = (),
+) -> str:
+    """Remove credential-shaped values and reserved control records."""
+
+    sanitized = str(text)
+    for value in sensitive_values:
+        if value:
+            sanitized = sanitized.replace(str(value), _AGENT_CLI_REDACTED_VALUE)
+    for pattern in (
+        _AGENT_CLI_AUTHORIZATION_BEARER_PATTERN,
+        _AGENT_CLI_SENSITIVE_ASSIGNMENT_PATTERN,
+        _AGENT_CLI_SENSITIVE_OPTION_PATTERN,
+        _AGENT_CLI_SENSITIVE_BARE_LABEL_PATTERN,
+    ):
+        sanitized = pattern.sub(_redact_agent_cli_match, sanitized)
+    candidate = sanitized.strip()
+    if candidate.startswith("{"):
+        try:
+            payload = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        else:
+            if isinstance(payload, dict) and payload.get("schema") in {
+                AGENT_CLI_PROVIDER_ROUTE_SCHEMA,
+                AGENT_CLI_PROVIDER_FAILURE_SCHEMA,
+            }:
+                ending = "\n" if sanitized.endswith("\n") else ""
+                return _AGENT_CLI_RESERVED_RECORD + ending
+    return sanitized
+
+
+def safe_agent_cli_provider_label(value: str, *, default: str) -> str:
+    sanitized = sanitize_agent_cli_diagnostic(
+        str(value),
+        sensitive_values=_agent_cli_sensitive_environment_values(),
+    )
+    sanitized = re.sub(r"[\x00-\x1f\x7f]+", "_", sanitized).strip()
+    return sanitized[:128] or default
+
+
+class AgentCLIStderrSanitizer:
+    """Chunk-safe bounded redactor for provider process diagnostics."""
+
+    def __init__(self, *, sensitive_values: Sequence[str] | None = None) -> None:
+        self._sensitive_values = tuple(
+            _agent_cli_sensitive_environment_values()
+            if sensitive_values is None
+            else sensitive_values
+        )
+        self._pending = ""
+        self._discarding_oversized_line = False
+
+    def feed(self, chunk: str) -> str:
+        self._pending += str(chunk)
+        emitted: list[str] = []
+        while self._pending:
+            if self._discarding_oversized_line:
+                ending = _AGENT_CLI_LINE_ENDING_PATTERN.search(self._pending)
+                if ending is None:
+                    self._pending = ""
+                    break
+                self._pending = self._pending[ending.end() :]
+                self._discarding_oversized_line = False
+                continue
+            ending = _AGENT_CLI_LINE_ENDING_PATTERN.search(self._pending)
+            if ending is not None:
+                line = self._pending[: ending.end()]
+                self._pending = self._pending[ending.end() :]
+                if len(line) > AGENT_CLI_STDERR_LINE_LIMIT:
+                    emitted.append(_AGENT_CLI_OVERSIZED_DIAGNOSTIC + "\n")
+                else:
+                    emitted.append(
+                        sanitize_agent_cli_diagnostic(
+                            line,
+                            sensitive_values=self._sensitive_values,
+                        )
+                    )
+                continue
+            if len(self._pending) > AGENT_CLI_STDERR_LINE_LIMIT:
+                emitted.append(_AGENT_CLI_OVERSIZED_DIAGNOSTIC + "\n")
+                self._pending = ""
+                self._discarding_oversized_line = True
+            break
+        return "".join(emitted)
+
+    def finish(self) -> str:
+        if self._discarding_oversized_line:
+            self._pending = ""
+            self._discarding_oversized_line = False
+            return ""
+        pending = self._pending
+        self._pending = ""
+        return sanitize_agent_cli_diagnostic(
+            pending,
+            sensitive_values=self._sensitive_values,
+        )
+
+
+def _agent_cli_structured_quota_code(output: str) -> str:
+    def visit(value: object, *, inside_error: bool = False) -> str:
+        if isinstance(value, dict):
+            for raw_key, child in value.items():
+                key = str(raw_key).strip().lower()
+                nested_error = inside_error or key in {"error", "errors"}
+                if nested_error and key in {"code", "reason", "type"}:
+                    candidate = str(child).strip().lower().replace("-", "_")
+                    if candidate in _AGENT_CLI_STRUCTURED_QUOTA_CODES:
+                        return candidate
+                found = visit(child, inside_error=nested_error)
+                if found:
+                    return found
+        elif isinstance(value, list):
+            for child in value:
+                found = visit(child, inside_error=inside_error)
+                if found:
+                    return found
+        return ""
+
+    for line in output.splitlines():
+        candidate = line[line.find("{") :].strip() if "{" in line else line.strip()
+        if not candidate.startswith(("{", "[")):
+            continue
+        try:
+            payload = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        code = visit(payload)
+        if code:
+            return code
+    return ""
+
+
+def _agent_cli_structured_error_text(output: str) -> str:
+    """Return canonical JSON from exact provider error envelopes only."""
+
+    records: list[str] = []
+    for line in output.splitlines():
+        candidate = line[line.find("{") :].strip() if "{" in line else line.strip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            payload = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if not any(key in payload for key in ("error", "errors", "http_status")):
+            continue
+        records.append(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    return "\n".join(records)
+
+
+def classify_grok_agent_cli_failure(
+    result: AgentCLIProviderResult,
+) -> AgentCLIFailureClassification:
+    """Classify sanitized Grok stderr at the trusted Grok adapter boundary."""
+
+    if not result.launched:
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+            "grok_process_did_not_launch",
+        )
+    output = result.stderr
+    if "\x00" in output or "\ufffd" in output:
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.MALFORMED_OUTPUT,
+            "grok_output_not_valid_text",
+        )
+    if _AGENT_CLI_TIMEOUT_PATTERN.search(output):
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.TIMEOUT,
+            "grok_timeout",
+        )
+    if _AGENT_CLI_TRANSPORT_FAILURE_PATTERN.search(output):
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.TRANSPORT_FAILURE,
+            "grok_transport_failure",
+        )
+    structured_code = _agent_cli_structured_quota_code(output)
+    if structured_code:
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+            f"grok_provider_{structured_code}",
+        )
+    structured_error = _agent_cli_structured_error_text(output)
+    if (
+        structured_error
+        and _AGENT_CLI_GROK_SPENDING_LIMIT_PATTERN.search(structured_error)
+        and _AGENT_CLI_GROK_SPENDING_LIMIT_EXPLANATION_PATTERN.search(
+            structured_error
+        )
+    ):
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+            "grok_provider_spending_limit",
+        )
+    if structured_error and (
+        _AGENT_CLI_AUTH_STATUS_PATTERN.search(structured_error)
+        or _AGENT_CLI_EXPLICIT_AUTH_FAILURE_PATTERN.search(structured_error)
+    ):
+        return AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+            "grok_authentication_failure",
+        )
+    return AgentCLIFailureClassification(
+        AgentCLIProviderFailureKind.GENERIC_NONZERO_EXIT,
+        "grok_non_routeable_failure",
+    )
+
+
+def serialize_agent_cli_failure_receipt(
+    classification: AgentCLIFailureClassification,
+    *,
+    returncode: int | None,
+    activity_state: AgentCLIActivityState,
+) -> str:
+    """Serialize a bounded body-free trusted-adapter failure receipt."""
+
+    if _AGENT_CLI_SAFE_REASON_PATTERN.fullmatch(classification.reason_code) is None:
+        raise LLMRouterError("agent CLI failure reason is not body-free")
+    if returncode is not None and (
+        type(returncode) is not int or not -(2**31) <= returncode < 2**31
+    ):
+        raise LLMRouterError("agent CLI failure returncode is invalid")
+
+    record = {
+        "activity_state": activity_state.value,
+        "failure_kind": classification.kind.value,
+        "primary_returncode": returncode,
+        "reason_code": classification.reason_code,
+        "schema": AGENT_CLI_PROVIDER_FAILURE_SCHEMA,
+    }
+    return json.dumps(record, sort_keys=True, separators=(",", ":"))
+
+
+def parse_agent_cli_failure_receipt(
+    value: str,
+) -> tuple[AgentCLIFailureClassification, int | None, AgentCLIActivityState] | None:
+    """Validate one private control-channel receipt without returning bodies."""
+
+    if not value or len(value.encode("utf-8", errors="replace")) > 4096:
+        return None
+    try:
+        payload = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {
+            "activity_state",
+            "failure_kind",
+            "primary_returncode",
+            "reason_code",
+            "schema",
+        }
+        or payload.get("schema") != AGENT_CLI_PROVIDER_FAILURE_SCHEMA
+    ):
+        return None
+    try:
+        kind = AgentCLIProviderFailureKind(str(payload.get("failure_kind") or ""))
+        activity = AgentCLIActivityState(str(payload.get("activity_state") or ""))
+    except ValueError:
+        return None
+    reason_code = str(payload.get("reason_code") or "")
+    if _AGENT_CLI_SAFE_REASON_PATTERN.fullmatch(reason_code) is None:
+        return None
+    raw_returncode = payload.get("primary_returncode")
+    if raw_returncode is not None and (
+        type(raw_returncode) is not int or not -(2**31) <= raw_returncode < 2**31
+    ):
+        return None
+    return (
+        AgentCLIFailureClassification(kind, reason_code),
+        raw_returncode,
+        activity,
+    )
+
+
+_AGENT_CLI_SNAPSHOT_MAX_FILES = 250_000
+_AGENT_CLI_SNAPSHOT_MAX_BYTES = 8 * 1024 * 1024 * 1024
+
+
+def _update_agent_cli_snapshot_entry(
+    digest: "hashlib._Hash",
+    *,
+    root: Path,
+    relative: str,
+    byte_count: int,
+) -> int:
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError("workspace path escaped root")
+    path = root / relative_path
+    before = path.lstat()
+    mode = before.st_mode
+    digest.update(b"entry\0")
+    digest.update(os.fsencode(relative_path.as_posix()))
+    digest.update(b"\0")
+    digest.update(str(stat_module.S_IMODE(mode)).encode("ascii"))
+    digest.update(b"\0")
+    if stat_module.S_ISLNK(mode):
+        target = os.readlink(path)
+        digest.update(b"symlink\0")
+        digest.update(os.fsencode(target))
+        after = path.lstat()
+        if (before.st_ino, before.st_mtime_ns) != (
+            after.st_ino,
+            after.st_mtime_ns,
+        ):
+            raise RuntimeError("workspace symlink changed during snapshot")
+        return byte_count + len(os.fsencode(target))
+    if stat_module.S_ISDIR(mode):
+        digest.update(b"directory\0")
+        return byte_count
+    if not stat_module.S_ISREG(mode):
+        raise ValueError("workspace contains unsupported special file")
+    digest.update(b"file\0")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat_module.S_ISREG(opened.st_mode):
+            raise ValueError("workspace entry changed type during snapshot")
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            byte_count += len(chunk)
+            if byte_count > _AGENT_CLI_SNAPSHOT_MAX_BYTES:
+                raise OverflowError("workspace snapshot byte cap exceeded")
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        stable = (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+        if stable != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+            raise RuntimeError("workspace file changed during snapshot")
+    finally:
+        os.close(descriptor)
+    return byte_count
+
+
+def _git_agent_cli_snapshot_paths(workspace: Path) -> tuple[list[str], bytes]:
+    git = shutil.which("git")
+    if not git:
+        raise FileNotFoundError("git unavailable")
+    inside = subprocess.run(
+        [git, "rev-parse", "--is-inside-work-tree"],
+        cwd=workspace,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if inside.returncode != 0 or inside.stdout.strip() != b"true":
+        raise FileNotFoundError("not a Git worktree")
+    listed = subprocess.run(
+        [
+            git,
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            ".",
+        ],
+        cwd=workspace,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if listed.returncode != 0 or len(listed.stdout) > 64 * 1024 * 1024:
+        raise RuntimeError("Git workspace inventory unavailable")
+    raw_paths = [item for item in listed.stdout.split(b"\0") if item]
+    if len(raw_paths) > _AGENT_CLI_SNAPSHOT_MAX_FILES:
+        raise OverflowError("workspace snapshot file cap exceeded")
+    paths = sorted(
+        set(os.fsdecode(item) for item in raw_paths)
+        | set(_filesystem_agent_cli_snapshot_paths(workspace))
+    )
+    if len(paths) > _AGENT_CLI_SNAPSHOT_MAX_FILES:
+        raise OverflowError("workspace snapshot file cap exceeded")
+    metadata = bytearray()
+    for command in (
+        [git, "rev-parse", "--verify", "HEAD"],
+        [
+            git,
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--untracked-files=all",
+            "--ignore-submodules=none",
+            "--",
+            ".",
+        ],
+        [git, "submodule", "status", "--recursive"],
+    ):
+        completed = subprocess.run(
+            command,
+            cwd=workspace,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if completed.returncode not in {0, 1} or len(completed.stdout) > 16 * 1024 * 1024:
+            raise RuntimeError("Git workspace metadata unavailable")
+        metadata.extend(b"command\0")
+        metadata.extend(completed.stdout)
+        metadata.extend(b"\0")
+    return paths, bytes(metadata)
+
+
+def _filesystem_agent_cli_snapshot_paths(workspace: Path) -> list[str]:
+    paths: list[str] = []
+    for current, directory_names, file_names in os.walk(
+        workspace,
+        topdown=True,
+        followlinks=False,
+    ):
+        current_path = Path(current)
+        directory_names[:] = sorted(
+            name for name in directory_names if name != ".git"
+        )
+        for name in sorted(directory_names + file_names):
+            path = current_path / name
+            paths.append(path.relative_to(workspace).as_posix())
+            if len(paths) > _AGENT_CLI_SNAPSHOT_MAX_FILES:
+                raise OverflowError("workspace snapshot file cap exceeded")
+    return sorted(set(paths))
+
+
+def snapshot_agent_cli_workspace(
+    workspace: str | Path,
+) -> AgentCLIWorkspaceSnapshot:
+    """Hash actual candidate bytes, modes, symlinks, and submodule state."""
+
+    try:
+        root = Path(workspace).expanduser().resolve(strict=True)
+        if not root.is_dir():
+            raise ValueError("workspace is not a directory")
+        try:
+            paths, metadata = _git_agent_cli_snapshot_paths(root)
+            source = b"git\0"
+        except FileNotFoundError:
+            paths = _filesystem_agent_cli_snapshot_paths(root)
+            metadata = b""
+            source = b"filesystem\0"
+        digest = hashlib.sha256()
+        digest.update(b"agent-cli-workspace-snapshot@1\0")
+        digest.update(source)
+        digest.update(metadata)
+        byte_count = 0
+        for relative in paths:
+            byte_count = _update_agent_cli_snapshot_entry(
+                digest,
+                root=root,
+                relative=relative,
+                byte_count=byte_count,
+            )
+        digest.update(b"bytes\0" + str(byte_count).encode("ascii"))
+        return AgentCLIWorkspaceSnapshot(digest.hexdigest(), True, "snapshot_ok")
+    except (OSError, ValueError, RuntimeError, OverflowError, subprocess.SubprocessError):
+        return AgentCLIWorkspaceSnapshot("", False, "workspace_snapshot_unavailable")
+
+
+def route_agent_cli_failure(
+    *,
+    policy: str,
+    primary_provider: str,
+    fallback_provider: str,
+    primary_result: AgentCLIProviderResult,
+    workspace_before: AgentCLIWorkspaceSnapshot | None,
+    workspace_after: AgentCLIWorkspaceSnapshot | None,
+    trusted_failure_receipt: str = "",
+    primary_unavailable_kind: AgentCLIProviderFailureKind | str | None = None,
+    receipt_binding: Mapping[str, object] | None = None,
+) -> AgentCLIRouteDecision:
+    """Decide the fixed agent route without weakening generic router safety."""
+
+    if policy != GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY:
+        raise LLMRouterError(f"unsupported agent CLI route policy: {policy!r}")
+    primary_label = safe_agent_cli_provider_label(primary_provider, default="primary")
+    fallback_label = safe_agent_cli_provider_label(fallback_provider, default="fallback")
+    if primary_label.lower() != "grok" or fallback_label.lower() != "codex":
+        raise LLMRouterError("fixed agent CLI route requires Grok then Codex")
+
+    activity = primary_result.activity_state
+    if primary_unavailable_kind is not None:
+        try:
+            unavailable = AgentCLIProviderFailureKind(primary_unavailable_kind)
+        except ValueError as exc:
+            raise LLMRouterError("invalid typed primary-unavailable condition") from exc
+        if unavailable not in {
+            AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+            AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+        } or primary_result.launched or primary_result.returncode is not None:
+            raise LLMRouterError("primary-unavailable condition was not pre-dispatch")
+        classification = AgentCLIFailureClassification(
+            unavailable,
+            (
+                "grok_authentication_failure"
+                if unavailable is AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE
+                else "grok_cli_unavailable"
+            ),
+        )
+        activity = AgentCLIActivityState.PRE_DISPATCH
+    elif not primary_result.launched:
+        if primary_result.returncode is not None:
+            classification = AgentCLIFailureClassification(
+                AgentCLIProviderFailureKind.MALFORMED_OUTPUT,
+                "grok_launch_result_invalid",
+            )
+            activity = AgentCLIActivityState.UNKNOWN
+        else:
+            classification = AgentCLIFailureClassification(
+                AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+                "grok_process_did_not_launch",
+            )
+            activity = AgentCLIActivityState.PRE_DISPATCH
+    elif trusted_failure_receipt:
+        parsed = parse_agent_cli_failure_receipt(trusted_failure_receipt)
+        if (
+            parsed is None
+            or parsed[1] != primary_result.returncode
+            or primary_result.returncode == 0
+        ):
+            classification = AgentCLIFailureClassification(
+                AgentCLIProviderFailureKind.MALFORMED_OUTPUT,
+                "grok_failure_receipt_invalid",
+            )
+            activity = AgentCLIActivityState.UNKNOWN
+        else:
+            classification, _receipt_returncode, activity = parsed
+    else:
+        classification = AgentCLIFailureClassification(
+            AgentCLIProviderFailureKind.GENERIC_NONZERO_EXIT,
+            "grok_failure_receipt_missing",
+        )
+        activity = AgentCLIActivityState.UNKNOWN
+
+    if classification.kind not in GROK_AGENT_ROUTE_ALLOWED_FAILURE_KINDS:
+        return AgentCLIRouteDecision(
+            False,
+            classification,
+            "failure_not_fallback_eligible",
+        )
+    if activity not in {
+        AgentCLIActivityState.PRE_DISPATCH,
+        AgentCLIActivityState.NO_ACTIVITY,
+    }:
+        return AgentCLIRouteDecision(False, classification, "side_effects_started")
+    if activity is AgentCLIActivityState.NO_ACTIVITY and (
+        workspace_before is None
+        or workspace_after is None
+        or not workspace_before.reliable
+        or not workspace_after.reliable
+        or workspace_before.digest != workspace_after.digest
+    ):
+        return AgentCLIRouteDecision(False, classification, "side_effects_started")
+
+    record: dict[str, object] = {
+        "completion_authority": False,
+        "fallback_policy": policy,
+        "fallback_provider": fallback_label,
+        "failure_kind": classification.kind.value,
+        "primary_provider": primary_label,
+        "primary_returncode": primary_result.returncode,
+        "reason_code": classification.reason_code,
+        "route": "fallback",
+        "schema": AGENT_CLI_PROVIDER_ROUTE_SCHEMA,
+        "side_effects_started": False,
+    }
+    if receipt_binding:
+        task_id = safe_agent_cli_provider_label(
+            str(receipt_binding.get("task_id") or ""),
+            default="",
+        )
+        stage = safe_agent_cli_provider_label(
+            str(receipt_binding.get("stage") or ""),
+            default="",
+        )
+        raw_attempt = receipt_binding.get("attempt")
+        if task_id:
+            record["task_id"] = task_id
+        if stage:
+            record["stage"] = stage
+        if type(raw_attempt) is int and 0 <= raw_attempt < 2**31:
+            record["attempt"] = raw_attempt
+    return AgentCLIRouteDecision(True, classification, "fallback_selected", record)
+
+
+def serialize_agent_cli_route_record(decision: AgentCLIRouteDecision) -> str:
+    if not decision.should_fallback or decision.route_record is None:
+        raise LLMRouterError("agent CLI decision has no fallback route record")
+    return json.dumps(
+        dict(decision.route_record),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _bounded_agent_cli_probe(
+    command: Sequence[str],
+    *,
+    timeout_seconds: float,
+) -> tuple[int | None, str, AgentCLIProviderFailureKind | None]:
+    sanitizer = AgentCLIStderrSanitizer()
+    try:
+        with tempfile.TemporaryFile(mode="w+b") as output:
+            completed = subprocess.run(
+                list(command),
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                timeout=max(0.1, float(timeout_seconds)),
+                check=False,
+            )
+            size = output.tell()
+            output.seek(0)
+            raw = output.read(AGENT_CLI_STDERR_LINE_LIMIT + 1)
+    except OSError:
+        return None, "", AgentCLIProviderFailureKind.LAUNCH_FAILURE
+    except subprocess.TimeoutExpired:
+        return None, "", AgentCLIProviderFailureKind.TIMEOUT
+    if size > AGENT_CLI_STDERR_LINE_LIMIT:
+        return int(completed.returncode), "", AgentCLIProviderFailureKind.MALFORMED_OUTPUT
+    text = raw.decode("utf-8", errors="replace")
+    sanitized = sanitizer.feed(text) + sanitizer.finish()
+    if "\ufffd" in sanitized or "\x00" in sanitized:
+        return int(completed.returncode), "", AgentCLIProviderFailureKind.MALFORMED_OUTPUT
+    return int(completed.returncode), sanitized, None
+
+
+def probe_grok_codex_agent_route_readiness(
+    *,
+    grok_bin: str | None = None,
+    codex_bin: str | None = None,
+    grok_model: str = "grok-4.5",
+    codex_model: str = "gpt-5.6-terra",
+    codex_reasoning_effort: str = "high",
+    timeout_seconds: float = 10.0,
+) -> AgentCLIRouteReadiness:
+    """Probe auth/model readiness without dispatching an agent task."""
+
+    grok = str(grok_bin or find_grok_cli() or "").strip()
+    codex = str(codex_bin or shutil.which("codex") or "").strip()
+    grok_failure: AgentCLIProviderFailureKind | None = None
+    grok_reason = "grok_ready"
+    grok_ready = False
+    if not grok:
+        grok_failure = AgentCLIProviderFailureKind.LAUNCH_FAILURE
+        grok_reason = "grok_cli_unavailable"
+    else:
+        grok_rc, grok_output, probe_failure = _bounded_agent_cli_probe(
+            [grok, "models"], timeout_seconds=timeout_seconds
+        )
+        if probe_failure is not None:
+            grok_failure = probe_failure
+            grok_reason = f"grok_probe_{probe_failure.value}"
+        elif _AGENT_CLI_EXPLICIT_AUTH_FAILURE_PATTERN.search(grok_output):
+            grok_failure = AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE
+            grok_reason = "grok_authentication_failure"
+        elif grok_rc != 0:
+            grok_failure = AgentCLIProviderFailureKind.GENERIC_NONZERO_EXIT
+            grok_reason = "grok_probe_nonzero_exit"
+        elif str(grok_model).strip() not in grok_output:
+            grok_failure = AgentCLIProviderFailureKind.MALFORMED_OUTPUT
+            grok_reason = "grok_model_not_confirmed"
+        else:
+            grok_ready = True
+
+    codex_ready = False
+    if codex:
+        codex_rc, codex_output, codex_probe_failure = _bounded_agent_cli_probe(
+            [codex, "login", "status"], timeout_seconds=timeout_seconds
+        )
+        negative = re.search(
+            r"\b(?:not\s+(?:logged\s+in|authenticated)|logged\s+out|"
+            r"unauthenticated|login\s+required)\b",
+            codex_output,
+            re.IGNORECASE,
+        )
+        positive = re.search(r"\blogged\s+in\b", codex_output, re.IGNORECASE)
+        codex_ready = bool(
+            codex_probe_failure is None
+            and codex_rc == 0
+            and negative is None
+            and positive is not None
+        )
+
+    effective = ""
+    reason = grok_reason
+    if grok_ready:
+        effective = "grok"
+    elif (
+        grok_failure in GROK_AGENT_ROUTE_ALLOWED_FAILURE_KINDS
+        and codex_ready
+    ):
+        effective = "codex"
+    elif not codex_ready:
+        reason = "codex_not_ready"
+    return AgentCLIRouteReadiness(
+        grok_ready=grok_ready,
+        codex_ready=codex_ready,
+        effective_provider=effective,
+        reason_code=reason,
+        failure_kind=grok_failure,
+        grok_model=str(grok_model).strip() or "grok-4.5",
+        codex_model=str(codex_model).strip() or "gpt-5.6-terra",
+        codex_reasoning_effort=(
+            str(codex_reasoning_effort).strip() or "high"
+        ),
+    )
 
 
 class UsageCapacityError(LLMRouterError):
@@ -4211,7 +5141,10 @@ def build_grok_cli_command(
             )
         cmd.extend(["--tools", str(tools or "")])
     else:
-        cmd.extend(["--output-format", "plain"])
+        # The trusted agent adapter consumes ACP session updates to prove that
+        # no tool activity preceded an eligible provider failure. Arbitrary
+        # task text is never itself fallback authority.
+        cmd.extend(["--output-format", "streaming-json"])
 
     if prompt_file is not None:
         cmd.extend(["--prompt-file", str(Path(prompt_file).expanduser())])

@@ -344,8 +344,11 @@ IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 PROVIDER_FALLBACK_POLICY_ENV = (
     "IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY"
 )
-ANY_FAILURE_FALLBACK_POLICY = "any_failure"
-GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY = "grok_quota_exhausted"
+GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY = (
+    "grok_quota_auth_or_unavailable"
+)
+PROVIDER_ROUTE_RECEIPT_SCHEMA = "ipfs_accelerate_py/provider-route@1"
+MAX_PROVIDER_ROUTE_RECEIPT_BYTES = 16 * 1024
 GROK_CODEX_PROVIDER_ALIASES = frozenset(
     {
         "grok-codex",
@@ -946,10 +949,6 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
 
     if not _grok_binary():
         raise RuntimeError("grok CLI is not installed")
-    if not _grok_cli_available():
-        raise RuntimeError(
-            "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
-        )
 
     model = (
         os.environ.get(_GROK_MODEL_ENV, "").strip()
@@ -1014,7 +1013,10 @@ def _codex_implementation_command(
 ) -> list[str]:
     """Build the direct stdin-driven Codex implementation command."""
 
-    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_model = (
+        os.environ.get(_CODEX_MODEL_ENV, "gpt-5.6-terra").strip()
+        or "gpt-5.6-terra"
+    )
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None
@@ -1050,18 +1052,36 @@ def _configured_provider_fallback_policy() -> str:
 
     raw = os.environ.get(
         PROVIDER_FALLBACK_POLICY_ENV,
-        ANY_FAILURE_FALLBACK_POLICY,
+        GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
     )
     policy = str(raw).strip().lower().replace("-", "_")
-    if policy in {
-        ANY_FAILURE_FALLBACK_POLICY,
-        GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY,
-    }:
+    if policy == GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY:
         return policy
     raise RuntimeError(
         f"unsupported {PROVIDER_FALLBACK_POLICY_ENV} value {raw!r}; "
-        f"expected {ANY_FAILURE_FALLBACK_POLICY!r} or "
-        f"{GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY!r}"
+        f"expected {GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY!r}"
+    )
+
+
+def _grok_codex_agent_route_readiness(*, codex: str) -> Any:
+    """Use llm_router's public, body-free, side-effect-free route probe."""
+
+    from ...llm_router import probe_grok_codex_agent_route_readiness
+
+    return probe_grok_codex_agent_route_readiness(
+        grok_bin=_grok_binary(),
+        codex_bin=codex,
+        grok_model=(
+            os.environ.get(_GROK_MODEL_ENV, "").strip() or "grok-4.5"
+        ),
+        codex_model=(
+            os.environ.get(_CODEX_MODEL_ENV, "").strip()
+            or "gpt-5.6-terra"
+        ),
+        codex_reasoning_effort=(
+            os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+            or "high"
+        ),
     )
 
 
@@ -1069,17 +1089,22 @@ def _ordered_provider_fallback_command(
     *,
     workspace_path: Path,
     primary_provider: str,
-    primary_command: Sequence[str],
+    primary_command: Sequence[str] | None,
     fallback_provider: str,
     fallback_command: Sequence[str],
-    fallback_policy: str = ANY_FAILURE_FALLBACK_POLICY,
+    fallback_policy: str = GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
+    primary_unavailable_kind: str = "",
+    route_receipt_path: Path | None = None,
+    route_task_id: str = "",
+    route_attempt: int | None = None,
+    route_stage: str = "implementation",
 ) -> list[str]:
     """Build the no-shell ordered provider runner command."""
 
     runner_path = Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
     if not runner_path.is_file():
         raise RuntimeError(f"provider_fallback_runner missing at {runner_path}")
-    return [
+    command = [
         sys.executable,
         str(runner_path),
         "--workspace",
@@ -1089,12 +1114,151 @@ def _ordered_provider_fallback_command(
         "--fallback-provider",
         fallback_provider,
         "--primary-command-json",
-        json.dumps(list(primary_command), separators=(",", ":")),
+        json.dumps(list(primary_command or ()), separators=(",", ":")),
         "--fallback-command-json",
         json.dumps(list(fallback_command), separators=(",", ":")),
         "--fallback-policy",
         fallback_policy,
     ]
+    if primary_unavailable_kind:
+        command.extend(["--primary-unavailable-kind", primary_unavailable_kind])
+    if route_receipt_path is not None:
+        command.extend(["--route-receipt-path", str(route_receipt_path.resolve())])
+    if route_task_id:
+        command.extend(["--route-task-id", route_task_id])
+    if route_attempt is not None:
+        command.extend(["--route-attempt", str(route_attempt)])
+    if route_stage:
+        command.extend(["--route-stage", route_stage])
+    return command
+
+
+def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
+    """Return whether a static resolver command targets our route adapter."""
+
+    try:
+        command = shlex.split(command_template)
+    except ValueError:
+        return False
+    expected = (
+        Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
+    ).resolve()
+    candidates = command[:2]
+    for argument in candidates:
+        if not argument or argument.startswith("-"):
+            continue
+        try:
+            candidate = Path(argument).expanduser().resolve()
+        except (OSError, RuntimeError):
+            continue
+        if candidate == expected:
+            return True
+    return False
+
+
+def _prepare_provider_route_receipt(path: Path) -> None:
+    """Remove only the exact stale attempt receipt before provider dispatch."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    if not stat_module.S_ISREG(metadata.st_mode) and not stat_module.S_ISLNK(
+        metadata.st_mode
+    ):
+        raise RuntimeError("provider route receipt path is not replaceable")
+    path.unlink()
+
+
+def _validated_provider_route_receipt(
+    path: Path,
+    *,
+    task_id: str,
+    attempt: int,
+    stage: str = "implementation",
+) -> dict[str, Any]:
+    """Read one bounded, body-free, exact-bound provider route receipt."""
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        return {}
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > MAX_PROVIDER_ROUTE_RECEIPT_BYTES
+        ):
+            raise RuntimeError("provider route receipt is not bounded regular data")
+        raw = os.read(descriptor, MAX_PROVIDER_ROUTE_RECEIPT_BYTES + 1)
+        after = os.fstat(descriptor)
+        if (
+            len(raw) != before.st_size
+            or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        ):
+            raise RuntimeError("provider route receipt changed while read")
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError("provider route receipt is malformed") from exc
+    expected_keys = {
+        "attempt",
+        "completion_authority",
+        "fallback_policy",
+        "fallback_provider",
+        "failure_kind",
+        "primary_provider",
+        "primary_returncode",
+        "reason_code",
+        "route",
+        "schema",
+        "side_effects_started",
+        "stage",
+        "task_id",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        raise RuntimeError("provider route receipt envelope is not body-free")
+    if (
+        payload.get("schema") != PROVIDER_ROUTE_RECEIPT_SCHEMA
+        or payload.get("route") != "fallback"
+        or payload.get("completion_authority") is not False
+        or payload.get("fallback_policy")
+        != GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY
+        or payload.get("primary_provider") != "grok"
+        or payload.get("fallback_provider") != "codex"
+        or payload.get("failure_kind")
+        not in {
+            "grok_quota_exhausted",
+            "authentication_failure",
+            "launch_failure",
+        }
+        or (
+            payload.get("primary_returncode") is not None
+            and (
+                type(payload.get("primary_returncode")) is not int
+                or not -(2**31)
+                <= payload.get("primary_returncode")
+                < 2**31
+            )
+        )
+        or payload.get("side_effects_started") is not False
+        or payload.get("task_id") != task_id
+        or type(payload.get("attempt")) is not int
+        or payload.get("attempt") != attempt
+        or payload.get("stage") != stage
+        or type(payload.get("reason_code")) is not str
+        or re.fullmatch(
+            r"[a-z0-9_]{1,128}", payload.get("reason_code")
+        ) is None
+    ):
+        raise RuntimeError("provider route receipt binding is invalid")
+    return dict(payload)
 
 
 def _copilot_fallback_command(
@@ -8849,7 +9013,11 @@ class PortalImplementationDaemon:
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        provider_route_receipt: dict[str, Any] = {}
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+        provider_route_receipt_path = (
+            checkpoint_dir / f"provider-route-attempt-{attempt}.json"
+        )
         timeout_policy = self._implementation_timeout_policy(task)
 
         try:
@@ -8900,9 +9068,12 @@ class PortalImplementationDaemon:
                 ).stdout.strip()
             except (OSError, RuntimeError):
                 baseline_ref = ""
+            _prepare_provider_route_receipt(provider_route_receipt_path)
             command = self._build_implementation_command(
                 workspace_path,
                 task=task,
+                route_receipt_path=provider_route_receipt_path,
+                route_attempt=attempt,
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
@@ -8966,6 +9137,23 @@ class PortalImplementationDaemon:
                             attempt=attempt,
                         ),
                     ),
+                )
+            provider_route_receipt = _validated_provider_route_receipt(
+                provider_route_receipt_path,
+                task_id=task.task_id,
+                attempt=attempt,
+            )
+            if provider_route_receipt:
+                self._record_event(
+                    "implementation_provider_routed",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "provider_route_receipt_path": str(
+                            provider_route_receipt_path
+                        ),
+                        "provider_route_receipt": provider_route_receipt,
+                    },
                 )
             effective_returncode = completed.returncode
             protected_path_violation = (
@@ -9221,6 +9409,11 @@ class PortalImplementationDaemon:
                 "validation_result": validation_result,
                 "context_receipt_path": str(context_receipt_path),
             }
+            if provider_route_receipt:
+                result["provider_route_receipt_path"] = str(
+                    provider_route_receipt_path
+                )
+                result["provider_route_receipt"] = provider_route_receipt
             if protected_path_violation:
                 result["reason"] = str(
                     protected_path_violation.get("reason")
@@ -16373,9 +16566,13 @@ class PortalImplementationDaemon:
         timeout_followup_event_type = ""
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        provider_route_receipt: dict[str, Any] = {}
         provider_dispatched = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+        provider_route_receipt_path = (
+            checkpoint_dir / f"provider-route-attempt-{attempt}.json"
+        )
         timeout_policy = self._implementation_timeout_policy(task)
         lifecycle_record: WorkspaceLifecycleRecord | None = None
 
@@ -16472,9 +16669,12 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
+            _prepare_provider_route_receipt(provider_route_receipt_path)
             command = self._build_implementation_command(
                 worktree_path,
                 task=task,
+                route_receipt_path=provider_route_receipt_path,
+                route_attempt=attempt,
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
@@ -16597,6 +16797,23 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                     },
                     invoke_provider,
+                )
+            provider_route_receipt = _validated_provider_route_receipt(
+                provider_route_receipt_path,
+                task_id=task.task_id,
+                attempt=attempt,
+            )
+            if provider_route_receipt:
+                self._record_event(
+                    "implementation_provider_routed",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "provider_route_receipt_path": str(
+                            provider_route_receipt_path
+                        ),
+                        "provider_route_receipt": provider_route_receipt,
+                    },
                 )
             returncode = completed.returncode
             protected_path_violation = (
@@ -17828,6 +18045,11 @@ class PortalImplementationDaemon:
             "attempt_consumed": attempt_consumed,
             "provider_dispatched": provider_dispatched,
         }
+        if provider_route_receipt:
+            result["provider_route_receipt_path"] = str(
+                provider_route_receipt_path
+            )
+            result["provider_route_receipt"] = provider_route_receipt
         if protected_path_violation:
             result["reason"] = str(
                 protected_path_violation.get("reason")
@@ -28270,11 +28492,68 @@ class PortalImplementationDaemon:
             phase="merge_resolver",
             detail=reason,
         )
+        route_receipt_path: Path | None = None
+        route_arguments: dict[str, Any] = {}
+        if _uses_packaged_provider_fallback_runner(command_template):
+            checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+            route_scope = hashlib.sha256(
+                json.dumps(
+                    {
+                        "branch": branch_name,
+                        "reason": reason,
+                        "target_branch": target_branch,
+                        "workspace": str(workspace.resolve()),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()[:16]
+            route_receipt_path = (
+                checkpoint_dir
+                / (
+                    "provider-route-semantic-merge-attempt-"
+                    f"{attempt}-{route_scope}.json"
+                )
+            )
+            _prepare_provider_route_receipt(route_receipt_path)
+            route_arguments = {
+                "route_receipt_path": route_receipt_path,
+                "route_task_id": task.task_id,
+                "route_attempt": attempt,
+                "route_stage": "semantic_merge",
+            }
         result = invoke_llm_resolver(
             payload,
             command_template=command_template,
             timeout_seconds=self.llm_merge_resolver_timeout_seconds,
+            **route_arguments,
         )
+        if route_receipt_path is not None:
+            try:
+                route_receipt = _validated_provider_route_receipt(
+                    route_receipt_path,
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    stage="semantic_merge",
+                )
+            except RuntimeError:
+                result = {
+                    **result,
+                    "applied": False,
+                    "apply_error": "provider route receipt validation failed",
+                    "provider_route_receipt_error": (
+                        "invalid_provider_route_receipt"
+                    ),
+                }
+            else:
+                if route_receipt:
+                    result = {
+                        **result,
+                        "provider_route_receipt_path": str(
+                            route_receipt_path
+                        ),
+                        "provider_route_receipt": route_receipt,
+                    }
         compact_result = dict(result)
         if "prompt" in compact_result:
             compact_result["prompt_chars"] = len(str(compact_result.pop("prompt") or ""))
@@ -37303,6 +37582,9 @@ class PortalImplementationDaemon:
         workspace_path: Path,
         *,
         task: PortalTask | None = None,
+        route_receipt_path: Path | None = None,
+        route_attempt: int | None = None,
+        route_stage: str = "implementation",
     ) -> list[str]:
         workspace_path = workspace_path.resolve()
         if self.implementation_command:
@@ -37363,9 +37645,6 @@ class PortalImplementationDaemon:
 
         if ordered_grok_codex:
             fallback_policy = _configured_provider_fallback_policy()
-            quota_only_fallback = (
-                fallback_policy == GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY
-            )
             codex = shutil.which("codex")
             if not codex:
                 raise RuntimeError(
@@ -37382,27 +37661,32 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
             )
-            if not grok_ready and quota_only_fallback:
+            readiness = _grok_codex_agent_route_readiness(codex=codex)
+            if not bool(readiness.codex_ready):
                 raise RuntimeError(
                     "Implementation provider "
-                    f"{provider!r} with {fallback_policy!r} requires the "
-                    "Grok Build CLI (`grok`) with login/auth; Codex fallback "
-                    "is allowed only after confirmed Grok quota exhaustion"
+                    f"{provider!r} requires authenticated Codex CLI fallback"
                 )
-            if not grok_ready:
-                return codex_command
-            try:
-                grok_command = _grok_cli_command(
-                    workspace_path=workspace_path,
-                )
-            except (OSError, RuntimeError):
-                # Readiness can change between the probe and command
-                # construction. Quota-only policy must preserve that primary
-                # failure; compatibility policy retains the historical direct
-                # Codex fallback.
-                if quota_only_fallback:
-                    raise
-                return codex_command
+            primary_unavailable_kind = ""
+            grok_command: list[str] | None = None
+            if bool(readiness.grok_ready):
+                try:
+                    grok_command = _grok_cli_command(
+                        workspace_path=workspace_path,
+                    )
+                except (OSError, RuntimeError):
+                    primary_unavailable_kind = "launch_failure"
+            else:
+                failure_kind = getattr(readiness.failure_kind, "value", "")
+                if failure_kind not in {
+                    "authentication_failure",
+                    "launch_failure",
+                }:
+                    raise RuntimeError(
+                        "Grok route preflight failed terminally: "
+                        f"{failure_kind or readiness.reason_code}"
+                    )
+                primary_unavailable_kind = failure_kind
             return _ordered_provider_fallback_command(
                 workspace_path=workspace_path,
                 primary_provider="grok",
@@ -37410,6 +37694,11 @@ class PortalImplementationDaemon:
                 fallback_provider="codex",
                 fallback_command=codex_command,
                 fallback_policy=fallback_policy,
+                primary_unavailable_kind=primary_unavailable_kind,
+                route_receipt_path=route_receipt_path,
+                route_task_id=(task.task_id if task is not None else ""),
+                route_attempt=route_attempt,
+                route_stage=route_stage,
             )
 
         # Prefer only when the binary is actually resolvable so an auth-only

@@ -19318,10 +19318,45 @@ def test_validation_retry_event_preserves_compact_subprocess_counterexample(
         "_record_task_queue_outcome",
         lambda *args, **kwargs: None,
     )
+    provider_route_receipt_path = (
+        daemon._implementation_checkpoint_dir(task)
+        / "provider-route-attempt-1.json"
+    )
+    provider_route_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    provider_route_receipt_path.write_text(
+        '{"stale":true}',
+        encoding="utf-8",
+    )
+    expected_provider_route_receipt = {
+        "attempt": 1,
+        "completion_authority": False,
+        "fallback_policy": (
+            implementation_daemon_module.GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY
+        ),
+        "fallback_provider": "codex",
+        "failure_kind": "launch_failure",
+        "primary_provider": "grok",
+        "primary_returncode": None,
+        "reason_code": "grok_cli_unavailable",
+        "route": "fallback",
+        "schema": implementation_daemon_module.PROVIDER_ROUTE_RECEIPT_SCHEMA,
+        "side_effects_started": False,
+        "stage": "implementation",
+        "task_id": task.task_id,
+    }
+
+    def fake_run_process_group_stream(command, **kwargs):
+        assert not provider_route_receipt_path.exists()
+        provider_route_receipt_path.write_text(
+            json.dumps(expected_provider_route_receipt),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0)
+
     monkeypatch.setattr(
         implementation_daemon_module,
         "run_process_group_stream",
-        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+        fake_run_process_group_stream,
     )
 
     result = daemon._run_implementation(task, TodoTaskState())
@@ -19339,6 +19374,10 @@ def test_validation_retry_event_preserves_compact_subprocess_counterexample(
     retry_text = json.dumps(retry, sort_keys=True)
 
     assert result["returncode"] == 13
+    assert result["provider_route_receipt"] == expected_provider_route_receipt
+    assert result["provider_route_receipt_path"] == str(
+        provider_route_receipt_path
+    )
     assert bool(seed_calls) is use_ephemeral_worktree
     assert ("worktree_path" in result) is use_ephemeral_worktree
     assert any(
@@ -19371,6 +19410,18 @@ def test_validation_retry_event_preserves_compact_subprocess_counterexample(
     assert receipt_id == retry["diagnostic_receipt_id"]
     assert not any(
         event["type"] == "implementation_exception" for event in events
+    )
+    provider_route_events = [
+        event
+        for event in events
+        if event["type"] == "implementation_provider_routed"
+    ]
+    assert len(provider_route_events) == 1
+    assert provider_route_events[0]["provider_route_receipt"] == (
+        expected_provider_route_receipt
+    )
+    assert finished["provider_route_receipt"] == (
+        expected_provider_route_receipt
     )
     compact_results = finished["validation_result"]["results"]
     assert compact_results
@@ -24966,6 +25017,33 @@ def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_mer
         "subprocess.check_call(['git', 'add', 'conflict.txt'])\n",
         encoding="utf-8",
     )
+    provider_runner = (
+        Path(implementation_daemon_module.__file__).resolve().parents[1]
+        / "provider_fallback_runner.py"
+    )
+    merge_resolver_command = shlex.join(
+        [
+            sys.executable,
+            str(provider_runner),
+            "--workspace",
+            ".",
+            "--primary-provider",
+            "grok",
+            "--fallback-provider",
+            "codex",
+            "--primary-command-json",
+            "[]",
+            "--fallback-command-json",
+            json.dumps(
+                [sys.executable, str(resolver_script), str(capture_path)],
+                separators=(",", ":"),
+            ),
+            "--fallback-policy",
+            implementation_daemon_module.GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
+            "--primary-unavailable-kind",
+            "launch_failure",
+        ]
+    )
     supervisor = TodoImplementationSupervisor(
         TodoSupervisorConfig(
             todo_path=repo / "todo.md",
@@ -24974,19 +25052,28 @@ def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_mer
             events_path=repo / "state" / "events.jsonl",
             state_dir=repo / "state",
             repo_root=repo,
-            llm_merge_resolver_command=(
-                f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} "
-                f"{shlex.quote(str(capture_path))}"
-            ),
+            llm_merge_resolver_command=merge_resolver_command,
             llm_merge_resolver_timeout_seconds=5,
         )
     )
+    TodoTaskState(
+        active_task_id="SUPERVISOR-ROUTE-001",
+        active_attempt=6,
+    ).save(supervisor.config.state_path)
 
     result = supervisor.repair_main_checkout_merge_state()
 
     assert result["repaired"] is True
     assert result["reason"] == "llm_resolved_merge"
     assert result["llm_merge_resolver"]["applied"] is True
+    provider_route_receipt = result["llm_merge_resolver"][
+        "provider_route_receipt"
+    ]
+    assert provider_route_receipt["task_id"] == "SUPERVISOR-ROUTE-001"
+    assert provider_route_receipt["attempt"] == 6
+    assert provider_route_receipt["stage"] == "semantic_merge"
+    assert provider_route_receipt["failure_kind"] == "launch_failure"
+    assert provider_route_receipt["side_effects_started"] is False
     assert result["commit_result"]["completed"] is True
     assert supervisor._git_merge_head(repo) == ""
     assert supervisor._git_unmerged_paths(repo) == []
@@ -24996,6 +25083,9 @@ def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_mer
     assert "supervisor_main_checkout_merge_in_progress" in prompt
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "main_checkout_merge_state_repair"
+    assert events[-1]["llm_merge_resolver"][
+        "provider_route_receipt"
+    ] == provider_route_receipt
 
 
 def test_implementation_supervisor_defers_merge_repair_when_checkout_lock_is_live(tmp_path):
