@@ -1667,6 +1667,22 @@ def _stream_targets_path(stream: _SupportsFileno, path: Path) -> bool:
     )
 
 
+def _detached_runtime_environment() -> dict[str, str]:
+    """Bind the detached module child to the exact package source in use."""
+
+    environment = dict(os.environ)
+    package_root = str(Path(__file__).resolve().parents[3])
+    inherited = [
+        item
+        for item in environment.get("PYTHONPATH", "").split(os.pathsep)
+        if item
+    ]
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [package_root, *(item for item in inherited if item != package_root)]
+    )
+    return environment
+
+
 def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, object]:
     """Launch this runner detached, redirecting output to the master log."""
 
@@ -1684,6 +1700,7 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         process = subprocess.Popen(
             command,
             cwd=args.repo_root,
+            env=_detached_runtime_environment(),
             stdin=subprocess.DEVNULL,
             stdout=out_handle,
             stderr=subprocess.STDOUT,

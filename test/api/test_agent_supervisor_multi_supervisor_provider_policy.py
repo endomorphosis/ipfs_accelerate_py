@@ -165,6 +165,51 @@ def test_direct_multi_supervisor_preserves_reviewed_high_reasoning(
     assert captured == {**ORDERED_ROUTE, effort_env: "high"}
 
 
+def test_detached_master_inherits_exact_runtime_package_root(
+    tmp_path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    class RunningProcess:
+        pid = os.getpid()
+
+        @staticmethod
+        def poll():
+            return None
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        return RunningProcess()
+
+    monkeypatch.setattr(multi_supervisor_runner.subprocess, "Popen", fake_popen)
+    argv = [
+        "--repo-root",
+        str(tmp_path),
+        "--master-dir",
+        str(tmp_path / "state"),
+        "--master-pid-path",
+        str(tmp_path / "state/master.pid"),
+        "--track",
+        "T|worker.py|child.log|supervisor.pid|daemon.pid",
+        "--detach",
+    ]
+    args = multi_supervisor_runner.build_arg_parser().parse_args(argv)
+
+    result = multi_supervisor_runner.launch_detached(args, argv)
+
+    package_root = str(
+        Path(multi_supervisor_runner.__file__).resolve().parents[3]
+    )
+    assert captured["command"][:3] == [
+        multi_supervisor_runner.sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+    ]
+    assert str(captured["env"]["PYTHONPATH"]).split(os.pathsep)[0] == package_root
+    assert result["master_pid"] == os.getpid()
+
+
 def test_repo_launcher_rejects_incompatible_caller_route_defaults(
     tmp_path,
 ) -> None:
