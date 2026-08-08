@@ -17,22 +17,32 @@ SCANNER = (
 INVENTORY_DOC = (
     REPO_ROOT / "docs/architecture/AGENT_SUPERVISOR_STATE_SINK_INVENTORY.md"
 )
+SCANNER_MODULE_NAME = "agent_supervisor_inventory_state_sinks"
 
 
 def _load_scanner():
     spec = importlib.util.spec_from_file_location(
-        "agent_supervisor_inventory_state_sinks",
+        SCANNER_MODULE_NAME,
         SCANNER,
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
 @pytest.fixture(scope="module")
 def inv():
-    return _load_scanner()
+    module = _load_scanner()
+    try:
+        yield module
+    finally:
+        sys.modules.pop(SCANNER_MODULE_NAME, None)
 
 
 @pytest.fixture(scope="module")
