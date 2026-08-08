@@ -51,7 +51,7 @@ ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
-"*" = ["*.txt", "*.md"]
+"*" = ["*.txt", "*.md", "*.sql", "sql/*.sql", "sql/**/*.sql"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
@@ -89,6 +89,11 @@ minimal = [
   "websockets>=15.0.1; python_version >= '3.10'",
   "tqdm>=4.64.0",
   "numpy>=1.23.0",
+]
+# Optional supervisor control-plane service: pinned DuckDB 1.5.x + Quack profile
+# agent-supervisor-duckdb-quack-1.5 (Quack is a DuckDB extension, not a wheel).
+agent-supervisor = [
+  "duckdb>=1.5.0,<1.6.0",
 ]
 
 # Feature-scoped extras (optional runtime capabilities)
