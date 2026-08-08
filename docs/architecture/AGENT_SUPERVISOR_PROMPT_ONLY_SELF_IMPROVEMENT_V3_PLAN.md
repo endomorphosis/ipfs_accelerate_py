@@ -55,6 +55,23 @@ contract is not available on current `main`:
 - the current launch profile emits arguments the real implementation-supervisor
   parser does not accept, and the prompt workflow fixes ready width at one even
   when the invocation budget admits more lanes;
+- the transient prompt broker has no production consumer and its default
+  process-local body store cannot recover a planning continuation after crash;
+- prompt planning can call a provider before a durable logical-effect
+  reservation exists, so retry after an unknown outcome can duplicate planning
+  or produce a different goal graph;
+- prompt materialization has no current-tree proof that a fresh generated,
+  non-ASE3 board reaches the real configured scheduler and implementation
+  daemon rather than a wrapper, fixture, or preseeded board;
+- generic implementation auto-routing imports upward into entrypoints and owns
+  ranking/classification behavior that belongs in `llm_router`, violating both
+  the package dependency direction and the single routing-policy boundary;
+- durable refill primitives are not joined to real scheduler events,
+  active-plan invalidation, recompilation, and descendant dispatch, while the
+  protected production refill flags remain disabled;
+- monitor construction is not yet a detached durable lifecycle effect, so a
+  client disconnect or monitor death can leave a run without autonomous stall
+  detection and recovery;
 - an empty recovered execution slice can be interpreted as the full board,
   allowing a restarted lane to select work owned by another lane;
 - the decisive v2 facade, CLI, context adapter, launch guard, local profile,
@@ -102,6 +119,13 @@ Advanced overrides remain available for experts, but they are optional,
 validated, and represented in the same resolution receipt. Existing `agent`
 commands and low-level MCP operations remain compatible.
 
+`Supervisor.open()` resolves one installed production service registry and
+returns a body-free content-addressed composition manifest. Python, CLI, MCP,
+and MCP++ must report the same composition CID and bind `preview` and `run` to
+the same resolver, prompt broker, planner, materializer, scheduler, refill,
+monitor, and run-registry backends. In-process fake-service injection and
+schema-only tool registration do not satisfy product conformance.
+
 ### 3.2 Trust boundary
 
 The prompt is intent, never authority. It may describe desired outcomes and
@@ -130,7 +154,7 @@ safe product default. Material ambiguity stops before effects.
 | state root | platform state directory keyed by repository and profile identity | repository files cannot redirect mutable state outside the allowed root |
 | run identity | new idempotency key for `run`; unique compatible registry entry for implicit observe/steer | zero or multiple compatible runs returns a typed continuation |
 | objectives/task source | admitted prompt plan or the unique compatible active program | filename similarity and stale runtime copies are not authority |
-| provider route | installed policy and fresh typed provider-capacity evidence | prompt-selected models and generic failures cannot trigger fallback |
+| provider route | `llm_router` intersects installed policy with fresh typed provider-capacity observations | prompt-selected models and generic failures cannot trigger fallback; lower layers cannot select, classify, or authorize |
 | worker count | minimum of policy ceiling, host capacity, provider capacity, and ready conflict-free lanes | never exceed a lease, resource, or budget ceiling |
 | validation | repository policy/profile plus admitted task checks | model-proposed shell text is data until allowlisted and compiled |
 | resume/adopt | DuckDB revision, process birth identity, lease/fence, and launch-plan equality | PID existence or a JSON status file alone is insufficient |
@@ -145,21 +169,30 @@ The runtime pipeline is:
 
 ```text
 prompt
-  -> transient prompt broker
+  -> run-bound encrypted prompt broker continuation
   -> trusted invocation-context resolution
   -> preview and authority/effect intersection
-  -> objective planner
+  -> durable logical planning-effect reservation
+  -> llm_router-owned planning route and terminal-output adoption
+  -> typed objective planner
   -> root goal + subgoal DAG + atomic task DAG
   -> plan lint/admission
-  -> DuckDB authoritative projection
+  -> DuckDB authoritative program revision CAS
   -> bounded Markdown operator projection
   -> immutable IPLD/Parquet history receipt
-  -> launch/adopt and parallel dispatch
+  -> generated per-run scheduler profile
+  -> real configured-scheduler launch/adopt and parallel dispatch
 ```
 
-Raw prompts remain transient. Persist a prompt digest, redacted summary, and
-derived contracts; do not place secrets or full prompt bodies in taskboards,
-argv, logs, branch names, or public immutable replicas.
+Raw prompts remain confidential and short-lived, but crash recovery cannot rely
+on process memory. Before planning, the broker stores a run-bound encrypted
+intent behind an expiring, single-use continuation lease and the effect store
+reserves the logical planning attempt. A crash adopts the exact terminal output
+and program root, or returns `PROMPT_REPLAY_REQUIRED` before another provider
+effect. Prompt bytes and bearer capabilities are zeroized after admitted
+materialization or bounded expiry. Persist only a prompt digest, redacted
+summary, and derived contracts; never place full bodies or capabilities in
+taskboards, argv, logs, branch names, receipts, or public immutable replicas.
 
 Each generated goal contains a stable goal ID, parent IDs, goal dependencies,
 priority, track, evidence requirements, evidence-source policy, producing task
@@ -175,10 +208,15 @@ effects, and a plan with no executable path to the root goal. A canonical plan
 root binds the goal population, task population, policy, target tree, profile,
 provider route, and validation policy.
 
-DuckDB is the sole mutable source of run heads, task claims, CAS revisions,
-leases, and fences. Markdown is a bounded human-readable projection. Parquet,
-IPLD, and IPFS are immutable evidence/history and read replicas; none may claim
-tasks or authorize effects.
+DuckDB is the sole mutable source of planning reservations, authoritative
+program/run heads, task claims, CAS revisions, leases, and fences. The program
+revision is committed before Markdown and immutable projections and is adopted
+without reinvoking the planner. Markdown is a bounded human-readable
+projection. Parquet, IPLD, and IPFS are immutable evidence/history and read
+replicas; none may claim tasks or authorize effects. The generated program must
+then drive the real configured scheduler and implementation daemon; a wrapper,
+fake claim store, hard-coded ASE3 prefix, or preseeded taskboard is not a
+production materialization proof.
 
 ## 6. Parallel execution
 
@@ -209,14 +247,17 @@ rechecked against actual diffs; an undeclared overlap fences both attempts and
 replans rather than racing.
 
 The seed ASE3 board exposes up to three parallel implementation lanes in its
-first and third implementation waves and two transport lanes later. Refilled
-work is subject to the same dependency and conflict compiler.
+first and third implementation waves and two transport lanes later. A fresh
+prompt-generated board must receive the same adaptive plan, exact task-ID/CID
+slices, claims, worktrees, fences, validation, and merge behavior without an
+ASE3-specific prefix or seed-board fallback. Refilled work is subject to the
+same dependency and conflict compiler.
 
 ## 7. Bounded goal and task refill
 
 Refill is part of normal lifecycle, not an optional operator afterthought.
-Enable the existing objective backlog refinery through one new runtime
-controller and trigger it when any of these conditions holds:
+Compose the existing objective backlog refinery through a durable production
+event adapter and trigger it when any of these conditions holds:
 
 - ready plus active work falls below the configured low-water mark;
 - the taskboard drains while any goal or evidence requirement remains open;
@@ -227,8 +268,11 @@ controller and trigger it when any of these conditions holds:
 
 Refill first refreshes current-tree evidence and reconciles goal completion.
 It derives the smallest residual gaps, deduplicates them by goal/evidence/scope
-CID, and emits bounded child goals or atomic tasks with full lineage. It may
-append only through an epoch/revision CAS; it never silently rewrites the
+CID, and emits bounded child goals or atomic tasks with the same canonical
+schema as the initial generated program. It may append only through an
+epoch/revision CAS; the winning append invalidates the active plan, recompiles
+against the new program revision, and dispatches the admitted descendant
+through the real configured scheduler. It never silently rewrites the
 canonical board a live scheduler is reading.
 
 Guardrails are mandatory: maximum findings per scan, maximum new work per
@@ -237,7 +281,12 @@ equivalence/deduplication, oscillation detection, and a circuit breaker.
 Healthy exhaustion is allowed only when the root goal is evidence-complete.
 Otherwise the run enters `refilling`, `blocked`, or `failed`, never `complete`.
 
-When enabled by the signed profile, the controller also registers the existing
+ASE3-021 lands this complete event-to-append-to-replan-to-dispatch path dormant.
+Only the operator-owned ASE3-026 protected activation may enable scoped
+prompt-program/objective refill and reload the runtime generation. Broad
+legacy codebase refill remains disabled.
+
+When enabled by that signed protected profile, the controller also registers the existing
 Planner Doctor and self-improvement epoch evaluator as real production hooks.
 They evaluate baseline and candidate on exact isolated trees and may propose a
 successor revision; they cannot change their own gates, award completion, or
@@ -273,7 +322,13 @@ v2 work only on its rescue branch.
 
 ## 9. Progress monitoring and deterministic recovery
 
-The monitor evaluates progress, not just process liveness. It watches:
+The monitor is a detached durable lifecycle effect, not a client-owned loop.
+`run` persists monitor intent before returning RUNNING and starts or adopts one
+monitor generation with its own verified process birth, lease, fence,
+heartbeat, and event cursor. CLI exit, MCP disconnect, or Python object loss
+does not stop it; monitor death has one bounded adoption/restart winner, and a
+terminal receipt stops only the exact owned generation. The monitor evaluates
+progress, not just process liveness. It watches:
 
 - supervisor and worker process-birth identities;
 - heartbeat age and monotonic event cursor;
@@ -307,7 +362,10 @@ cursor, `explain` reports inference and scheduling decisions, and `doctor`
 returns findings plus previewable repairs. Recovery actions are idempotent,
 rate-limited, receipt-bound, and never gain broader authority than the launch
 plan. Lane PID/status files are projections and are repaired when contradicted
-by process-birth and registry evidence.
+by process-birth and registry evidence. ASE3-026 is the operator-owned protected
+transition that atomically validates its activation receipt, enables the
+detached monitor and scoped refill, fences the old generation, and reloads one
+new exact-tree generation before public facades become selectable.
 
 ## 10. Implementation waves
 
@@ -326,15 +384,19 @@ Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
 Wave 3b repair (parallel): ASE3-023 production adaptive-scheduler wiring
                            ASE3-027 production resolver composition
                            ASE3-019 operator-salvaged authority/provider repair
-Wave 3c:           ASE3-022 operator-owned daemon reload boundary
-                   ASE3-021 durable production refill wiring
-Wave 3d:           ASE3-020 transactional run truth and crash-safe saga
-Wave 4:            ASE3-008 progress watchdog/Doctor/recovery
-Wave 5:            ASE3-009 Python facade and package exports
+Wave 3c gate:      ASE3-022 operator-owned provider-generation reload
+Wave 3d:           ASE3-028 router ownership and package dependency direction
+Wave 3e:           ASE3-024 crash-safe prompt/planning transaction
+Wave 3f:           ASE3-025 generated-board production runtime proof
+Wave 3g:           ASE3-021 durable refill event/append/replan/dispatch wiring
+Wave 3h:           ASE3-020 transactional run truth and crash-safe saga
+Wave 4:            ASE3-008 autonomous progress watchdog/Doctor/recovery
+Wave 4b gate:      ASE3-026 protected refill/monitor activation and reload
+Wave 5:            ASE3-009 Python facade, service composition, package exports
 Wave 6 (parallel): ASE3-010 prompt-first CLI
                    ASE3-011 MCP and MCP++ tools
-Wave 7:            ASE3-012 cross-transport/security/chaos gates
-Wave 8:            ASE3-013 self-hosted improvement canary
+Wave 7:            ASE3-012 black-box cross-transport/security/chaos gates
+Wave 8:            ASE3-013 fresh-state prompt-generated self-host canary
 Wave 9:            ASE3-014 canonical materialization and staged cutover
 ```
 
@@ -431,8 +493,24 @@ CID ASE3-019 and the ASE3-023/027 repair chains are accepted and jointly
 revalidated. Its final receipt must bind the attempt-2 incident, operator
 salvage, accepted control plane, exact stopped generation, and transition
 daemon/scheduler blobs. The same namespace is then relaunched once from that
-completion commit. The legacy objective and codebase refill flags remain
-disabled; ASE3-021 owns the later scoped-v3 adoption and refill transition.
+completion commit. ASE3-028 then removes the residual lower-to-entrypoints
+dependency and consolidates generic route choice/classification in
+`llm_router`; ASE3-024 reserves and adopts prompt-planning effects; ASE3-025
+proves their generated program reaches the real adaptive runtime; ASE3-021
+lands event-driven refill dormant; ASE3-020 closes the actual-parser and
+transactional saga fan-in; and ASE3-008 makes the monitor a durable detached
+lifecycle. The legacy objective and codebase refill flags remain disabled
+through those implementation waves.
+
+ASE3-026 is a second, distinct operator boundary. It is a canonical producer
+for the monitoring goal but remains blocked, non-schedulable, and review-only
+because it owns the protected scheduler config, convergence validator,
+manifest binding, and live generation reload. In one operator-reviewed commit
+it must add strict validation for the activation receipt, enable only scoped
+prompt-program/objective refill plus the autonomous monitor, disable legacy
+hash sharding for active slices, retain broad legacy codebase refill as false,
+and bind the stopped and replacement generations. ASE3-009 cannot become ready
+until this protected receipt is valid.
 
 ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and
@@ -445,19 +523,31 @@ The release candidate must prove:
 - cold `--help` and package import perform no IPFS/provider/process startup;
 - Python, CLI, MCP, and MCP++ compile equivalent canonical requests and results;
 - one prompt produces a valid root goal, subgoals, atomic tasks, and dual
-  DuckDB/Markdown projections with matching identities;
+  DuckDB/Markdown projections with matching identities, after one durable
+  pre-effect planning reservation and without provider replay after an unknown
+  outcome;
+- a fresh generated non-ASE3 board, rather than this seed board or a wrapper,
+  is consumed by the real configured scheduler and implementation daemon;
 - at least two independent tasks execute concurrently, while conflicting tasks
   never overlap and all claims are fenced;
 - a real supported `run` starts or adopts a real lifecycle process; no default
   in-memory-completed or no-op-effect path is reachable in production mode;
-- low-water, drained-open-goal, failed-validation, and drift cases refill;
+- low-water, drained-open-goal, failed-validation, and drift cases each prove
+  event -> residual -> append/adopt -> plan invalidation -> recompile -> real
+  descendant dispatch;
 - a drained evidence-complete goal does not refill;
 - stale PID, stale heartbeat, frozen worker, dead scheduler, duplicate launch,
-  crash-at-boundary, lease loss, branch-only completion, and corrupt projection
-  cases recover or fail closed deterministically;
+  dead monitor, client disconnect, crash-at-boundary, lease loss, branch-only
+  completion, and corrupt projection cases recover or fail closed
+  deterministically;
 - raw prompt/secret leak scans, path/authority injection, UCAN attenuation,
   provider fallback, retry, resource, and budget adversarial tests pass;
 - existing expert CLI and low-level MCP compatibility suites pass;
+- installed-wheel Python, CLI subprocess, MCP JSON-RPC, and MCP++ black-box
+  paths report one production composition CID and common preview/run backends;
+- the self-host canary begins without an objective/taskboard/task-source seed,
+  derives every program/effect CID from the prompt root, dispatches a refill
+  descendant, and accepts a reviewed non-sentinel repository change;
 - final evidence is produced on the exact current integration tree and the
   canary stays healthy through a sustained observation window.
 
@@ -475,10 +565,14 @@ bounded recovery/refill decision for every injected incident.
    compare all transports without starting effects.
 3. **Assist:** enable real isolated-worktree runs with explicit local profiles;
    keep expert entrypoints available as rollback.
-4. **Self-host canary:** use the new prompt path to perform one bounded
+4. **Protected activation:** after the dormant refill and autonomous monitor
+   implementations pass together, fence the old generation and atomically bind
+   the strict activation receipt, scoped flags, and one replacement generation.
+5. **Self-host canary:** use the new prompt path from a fresh empty state
+   namespace to perform one bounded
    improvement against this package while a separate monitor observes progress,
    refill, branch convergence, and recovery.
-5. **Local auto:** promote only after exact-tree conformance, chaos, load, and
+6. **Local auto:** promote only after exact-tree conformance, chaos, load, and
    sustained canary gates pass. Remote mutation remains separately authorized.
 
 Rollback disables the prompt-only profile, fences its active run revision,
@@ -489,8 +583,10 @@ user work or treat cleanup as authorization to reset a checkout.
 ## 13. Immediate execution rule
 
 Do not restart the old prompt-only scheduler and do not activate its staged
-rollout. Begin with ASE3-000 in a new clean isolated integration worktree. Once
-the v3 board is materialized and its runtime profile is validated, launch the
-bootstrap waves through the existing expert supervisor, monitor them with the
-v3 health contract, and use the newly completed prompt facade for ASE3-013's
-self-hosted canary.
+rollout. Preserve the accepted ASE3-000 convergence base and complete the
+ASE3-019/023/027 recovery plus ASE3-022 operator transition first. Then execute
+ASE3-028 -> ASE3-024 -> ASE3-025 -> ASE3-021 -> ASE3-020 -> ASE3-008. Keep
+refill and the detached monitor dormant until operator-owned ASE3-026 validates
+and reloads the exact generation. Only then build the public facades and use
+the completed prompt path, with no seed board, for ASE3-013's self-hosted
+canary.

@@ -32,7 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     MAX_EVIDENCE_SNAPSHOT_BYTES,
     OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
     POST_WAVE3_RESIDUAL_FILENAME,
+    PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
     PROMPT_V3_TASKBOARD_RELATIVE_PATH,
+    PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
@@ -1197,8 +1199,14 @@ def test_ase3_019_must_name_llm_router_and_its_dedicated_route_test(
 ) -> None:
     taskboard_path = tmp_path / "prompt-v3.todo.md"
     text = TASKBOARD_PATH.read_text(encoding="utf-8")
-    needle = "- Outputs: ipfs_accelerate_py/llm_router.py, "
-    replacement = "- Outputs: "
+    needle = (
+        "- Outputs: ipfs_accelerate_py/llm_router.py, "
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py"
+    )
+    replacement = (
+        "- Outputs: "
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py"
+    )
     assert text.count(needle) == 1
     taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
 
@@ -1307,8 +1315,14 @@ def test_reload_gate_rejects_a_removed_blocked_reason(tmp_path: Path) -> None:
 def test_reload_gate_rejects_a_removed_ase3_021_dependency(tmp_path: Path) -> None:
     taskboard_path = tmp_path / "prompt-v3.todo.md"
     text = TASKBOARD_PATH.read_text(encoding="utf-8")
-    needle = "- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019, ASE3-022\n"
-    replacement = "- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019\n"
+    needle = (
+        "- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019, ASE3-022, "
+        "ASE3-024, ASE3-025\n"
+    )
+    replacement = (
+        "- Depends on: ASE3-004, ASE3-006, ASE3-007, ASE3-019, ASE3-024, "
+        "ASE3-025\n"
+    )
     assert text.count(needle) == 1
     taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
 
@@ -2047,6 +2061,280 @@ def test_scheduler_config_loads_and_binds_the_v3_board_structurally() -> None:
             + filename
         )
         assert relative in board.protected_paths
+
+
+def test_program_expansion_projection_is_exact_and_dormant() -> None:
+    config = _load(CONFIG_PATH)
+    initial = config["initial_projection"]
+    groups = config["task_groups"]
+    dependencies = config["task_dependencies"]
+    activation = config["protected_runtime_activation"]
+    refill = config["refill_policy"]
+    monitor = config["monitor_policy"]
+    assert isinstance(initial, dict)
+    assert isinstance(groups, dict)
+    assert isinstance(dependencies, dict)
+    assert isinstance(activation, dict)
+    assert isinstance(refill, dict)
+    assert isinstance(monitor, dict)
+
+    canonical = initial["canonical_task_ids"]
+    assert initial["task_count"] == 25
+    assert isinstance(canonical, list)
+    assert len(canonical) == len(set(canonical)) == 25
+    assert initial["noncanonical_transition_task_ids"] == ["ASE3-022"]
+    assert set(dependencies) == set(canonical)
+    assert {
+        task_id
+        for task_ids in groups.values()
+        for task_id in task_ids
+    } == set(canonical)
+    assert activation == {
+        "task_id": "ASE3-026",
+        "status": "blocked",
+        "receipt_path": (
+            "data/agent_supervisor/prompt_only_self_improvement_v3/"
+            "convergence/protected_runtime_activation_receipt.json"
+        ),
+        "operator_review_required": True,
+        "strict_validator_and_manifest_binding_required": True,
+    }
+    assert config["strict_task_sharding"] is True
+    assert config["objective_refill_enabled"] is False
+    assert config["codebase_refill_enabled"] is False
+    assert refill["enable_after_task"] == "ASE3-026"
+    assert refill["prompt_program_refill_enabled"] is False
+    assert monitor["enabled"] is False
+    assert monitor["detached"] is True
+    assert monitor["activation_task_id"] == "ASE3-026"
+
+
+@pytest.mark.parametrize("task_id", ("ASE3-024", "ASE3-025", "ASE3-028"))
+def test_program_expansion_task_identity_tampering_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = f"## {task_id} "
+    assert text.count(needle) == 1
+    taskboard.write_text(
+        text.replace(needle, f"## {task_id} Tampered ", 1),
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any(
+        f"program_plan_expansion.{task_id}.title" in error
+        or f"program_plan_expansion.{task_id}.canonical_task_cid" in error
+        for error in report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    (
+        "ASE3-008",
+        "ASE3-009",
+        "ASE3-010",
+        "ASE3-011",
+        "ASE3-012",
+        "ASE3-013",
+        "ASE3-014",
+        "ASE3-020",
+        "ASE3-021",
+        "ASE3-024",
+        "ASE3-025",
+        "ASE3-028",
+    ),
+)
+def test_required_program_task_cannot_complete_without_evidence(
+    tmp_path: Path,
+    task_id: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = f"## {task_id} "
+    start = text.index(needle)
+    status_start = text.index("- Status: todo\n", start)
+    next_task = text.find("\n## ASE3-", start + len(needle))
+    assert next_task == -1 or status_start < next_task
+    taskboard.write_text(
+        text[:status_start]
+        + "- Status: completed\n"
+        + text[status_start + len("- Status: todo\n") :],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any(
+        f"program_plan_expansion.{task_id}.status" in error
+        or f"program_plan_expansion.{task_id}.contract_sha256" in error
+        for error in report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_id", "needle", "replacement"),
+    (
+        (
+            "ASE3-024",
+            "`llm_router` owns planning-provider route and final admission",
+            "the prompt broker owns planning-provider route and final admission",
+        ),
+        (
+            "ASE3-025",
+            "DuckDB owns the authoritative program revision",
+            "Markdown owns the authoritative program revision",
+        ),
+        (
+            "ASE3-028",
+            "all provider selection, authorization, freshness, failure "
+            "classification, and fallback allow/deny decisions remain solely in "
+            "`ipfs_accelerate_py.llm_router`",
+            "provider selection and fallback decisions may be delegated to lower "
+            "layers",
+        ),
+    ),
+)
+def test_program_expansion_critical_policy_is_sealed(
+    tmp_path: Path,
+    task_id: str,
+    needle: str,
+    replacement: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    assert text.count(needle) == 1
+    taskboard.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert (
+        f"program_plan_expansion.{task_id}.contract_sha256: "
+        "exact metadata/prose required"
+    ) in report.errors
+
+
+def test_amended_task_identity_and_activation_dependency_are_pinned(
+    tmp_path: Path,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = "- Depends on: ASE3-005, ASE3-008, ASE3-026\n"
+    assert text.count(needle) == 1
+    taskboard.write_text(
+        text.replace(needle, "- Depends on: ASE3-005, ASE3-008\n", 1),
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert (
+        "program_plan_expansion.ASE3-009.depends_on: exact expansion required"
+        in report.errors
+    )
+
+
+def test_protected_runtime_activation_stays_blocked_without_strict_receipt(
+    tmp_path: Path,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = (
+        "## ASE3-026 Activate and reload the durable refill and autonomous "
+        "monitor runtime\n\n- Status: blocked\n"
+    )
+    assert text.count(needle) == 1
+    taskboard.write_text(
+        text.replace(
+            needle,
+            needle.removesuffix("- Status: blocked\n") + "- Status: completed\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any(
+        "program_plan_expansion.ASE3-026" in error for error in report.errors
+    )
+
+
+def test_unvalidated_protected_runtime_activation_receipt_is_reserved(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    (root / PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME).write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-026.receipt: present without strict validation" in error
+        for error in report.errors
+    )
+
+
+def test_scheduler_dependency_projection_tampering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    dependencies = config["task_dependencies"]
+    assert isinstance(dependencies, dict)
+    dependencies["ASE3-025"] = ["ASE3-004", "ASE3-023"]
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.task_dependencies.ASE3-025: "
+        "taskboard mismatch"
+    ) in errors
 
 
 def test_check_all_cli_emits_the_sealed_preflight_contract() -> None:

@@ -111,12 +111,28 @@ DEFAULT_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
 PROMPT_V3_TASKBOARD_RELATIVE_PATH: Final = Path(
     "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
 )
+PROMPT_V3_OBJECTIVES_RELATIVE_PATH: Final = Path(
+    "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md"
+)
+PROMPT_V3_PLAN_RELATIVE_PATH: Final = Path(
+    "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md"
+)
+PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH: Final = Path(
+    "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json"
+)
 PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME: Final = (
     "provider_attempt_daemon_reload_receipt.json"
 )
 PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH: Final = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     + PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME
+)
+PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME: Final = (
+    "protected_runtime_activation_receipt.json"
+)
+PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    + PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
 )
 DEFAULT_ARTIFACT_ROOT: Final = (
     DEFAULT_REPOSITORY_ROOT
@@ -141,6 +157,39 @@ _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _TASK_IDS: Final = frozenset(f"ASE3-{index:03d}" for index in range(15))
+_PROGRAM_CANONICAL_TASK_IDS: Final = (
+    "ASE3-000",
+    "ASE3-001",
+    "ASE3-002",
+    "ASE3-003",
+    "ASE3-004",
+    "ASE3-005",
+    "ASE3-006",
+    "ASE3-007",
+    "ASE3-008",
+    "ASE3-009",
+    "ASE3-010",
+    "ASE3-011",
+    "ASE3-012",
+    "ASE3-013",
+    "ASE3-014",
+    "ASE3-018",
+    "ASE3-019",
+    "ASE3-020",
+    "ASE3-021",
+    "ASE3-023",
+    "ASE3-024",
+    "ASE3-025",
+    "ASE3-026",
+    "ASE3-027",
+    "ASE3-028",
+)
+_PROGRAM_NONCANONICAL_TASK_IDS: Final = (
+    "ASE3-015",
+    "ASE3-016",
+    "ASE3-017",
+    "ASE3-022",
+)
 _DISPOSITIONS: Final = frozenset({"port", "rewrite", "superseded", "discard"})
 _REQUIRED_CONTRADICTIONS: Final = frozenset(
     {
@@ -531,6 +580,185 @@ _FALSE_COMPLETION_REPAIR_TASKS: Final = {
         ),
     },
 }
+_PROGRAM_EXPANSION_TASKS: Final = {
+    "ASE3-024": {
+        "title": "Make prompt intake and goal planning crash-safe and router-owned",
+        "contract_sha256": (
+            "sha256:989e846c71fe807029013a3e24c26fd67ed515d7a76bd8a4c2af5168d6a3cf8a"
+        ),
+        "canonical_task_cid": (
+            "baguqeeraxhr3u5eec7mxwciyblgnfey54wl6fejnf2npme5ngj3oh7gncjjq"
+        ),
+        "goal id": "ASE3-G030",
+        "depends on": ("ASE3-003", "ASE3-004", "ASE3-028"),
+        "outputs": (
+            "ipfs_accelerate_py/llm_router.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/prompt_broker.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/planning_effect.py",
+            "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+            "test/api/test_agent_supervisor_prompt_v3_prompt_transaction.py",
+            "test/api/test_agent_supervisor_prompt_broker.py",
+            "test/api/test_agent_supervisor_prompt_goal_planner.py",
+        ),
+        "validation": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_prompt_v3_prompt_transaction.py "
+            "test/api/test_agent_supervisor_prompt_broker.py "
+            "test/api/test_agent_supervisor_prompt_goal_planner.py "
+            "test/api/test_agent_supervisor_prompt_v3_provider_route.py -q"
+        ),
+    },
+    "ASE3-025": {
+        "title": (
+            "Prove canonical generated boards execute through the real adaptive "
+            "runtime"
+        ),
+        "contract_sha256": (
+            "sha256:02335f78d611cee290dc4573d86d5a7c23c5d9ea4f8a1a05f86a60dc6cbcc773"
+        ),
+        "canonical_task_cid": (
+            "baguqeera7c5ysb7nxsjug46otrx4fyggq3ge43zugh6icyqbbc3k5z4x7e3a"
+        ),
+        "goal id": "ASE3-G040",
+        "depends on": ("ASE3-004", "ASE3-023", "ASE3-024"),
+        "outputs": (
+            "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/plan_materializer.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/verified_ipld_backend.py",
+            "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/markdown_task_source.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+            "test/api/test_agent_supervisor_prompt_v3_generated_board_e2e.py",
+            "test/api/test_agent_supervisor_prompt_v3_plan_materializer.py",
+            "test/api/test_agent_supervisor_prompt_workflow_contracts.py",
+        ),
+        "validation": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_prompt_v3_generated_board_e2e.py "
+            "test/api/test_agent_supervisor_prompt_v3_plan_materializer.py "
+            "test/api/test_agent_supervisor_prompt_workflow_contracts.py "
+            "test/api/test_agent_supervisor_markdown_task_source.py "
+            "test/api/test_agent_supervisor_duckdb_task_source.py "
+            "test/api/test_agent_supervisor_configured_board_scheduler.py -q"
+        ),
+    },
+    "ASE3-028": {
+        "title": "Restore router ownership and the package dependency direction",
+        "contract_sha256": (
+            "sha256:ab34a031e667fac91752f579d468dde92032aa9f1c740afad477aa4ba36317a9"
+        ),
+        "canonical_task_cid": (
+            "baguqeera4f7xrsljf7krxwq2airkt5ap7c4s4yi25ugx6vhrjm3ph6ktzq5a"
+        ),
+        "goal id": "ASE3-G020",
+        "depends on": ("ASE3-019", "ASE3-022"),
+        "outputs": (
+            "ipfs_accelerate_py/llm_router.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_provider_auto.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/capability_resolver.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_snapshot.py",
+            "test/api/test_implementation_provider_auto.py",
+            "test/api/test_agent_supervisor_entrypoint_package.py",
+        ),
+        "validation": (
+            "python -m pytest test/api/test_implementation_provider_auto.py "
+            "test/api/test_agent_supervisor_entrypoint_package.py "
+            "test/api/test_agent_supervisor_prompt_v3_provider_route.py -q"
+        ),
+    },
+}
+_PROGRAM_AMENDED_TASK_CIDS: Final = {
+    "ASE3-008": "baguqeeraps4yiytww7kf5e7ybn3ctmtjjeacvwao2vvdzlpcq664l3ihpo6q",
+    "ASE3-009": "baguqeera7ly4s4ddus5vo5iyaobxuz5mmlmoi4g3ajcvcuycrpfihtzlbykq",
+    "ASE3-012": "baguqeerakpgeugpi6adjmmkv3vsqgaznlotedao7srb2fnynsco3rbgzjcpa",
+    "ASE3-013": "baguqeeraqipsz6og757q6grl5pkgpmz3fdhfzcfovekuoerumu2rlmu7qmdq",
+    "ASE3-020": "baguqeeraeofnvkxowsyssyahrjh362aembsxtbcmq6mv2drims225tnkggya",
+    "ASE3-021": "baguqeeraycuz4hddho6gr2bqbl3pknpz5e2pqjuvgqtluo63j343gkq52jsq",
+}
+_PROGRAM_AMENDED_TASK_CONTRACT_SHA256S: Final = {
+    "ASE3-008": (
+        "sha256:2243ee5c6e3e749f3ef23ebba14676ece081b1bd015fee7354812670bf819e8f"
+    ),
+    "ASE3-009": (
+        "sha256:82e0a373cc1423b6b2aa9dd1d750cb5f44e8955c20f4b2e25b12bb44b7ab1e5f"
+    ),
+    "ASE3-012": (
+        "sha256:0b35be7e0aacbb9eb3e0540610e0b564969f5888a13d409be33a406ed3430b30"
+    ),
+    "ASE3-013": (
+        "sha256:d5f680ce1c3c95c657e2ac81f56ed7fc4ed93d5689f0246a2001d5dd6e4f7861"
+    ),
+    "ASE3-020": (
+        "sha256:1532bbae10cc65268df2f0ca87512f37375e557aafeaf6b63030e2071033f1d1"
+    ),
+    "ASE3-021": (
+        "sha256:39c2c005fb56b4190b00ebf63b95098e678146054469bcebe69047950272baac"
+    ),
+}
+_PROGRAM_UNCHANGED_FUTURE_TASK_CONTRACT_SHA256S: Final = {
+    "ASE3-010": (
+        "sha256:5e06e1a521e917d7936c4d71f8fd9b48edf513a546710a608d282b7d894d7efa"
+    ),
+    "ASE3-011": (
+        "sha256:e00226a0ea674c095bfce8dbd88b8101927b45203c6084ff1cb1f42bc0b7e4f8"
+    ),
+    "ASE3-014": (
+        "sha256:feb03791e0564d25f7c2e57844423bde13053679d95e1dcff21af7f6ac769025"
+    ),
+}
+_PROGRAM_AMENDED_TASK_DEPENDENCIES: Final = {
+    "ASE3-008": ("ASE3-006", "ASE3-020"),
+    "ASE3-009": ("ASE3-005", "ASE3-008", "ASE3-026"),
+    "ASE3-012": ("ASE3-010", "ASE3-011"),
+    "ASE3-013": ("ASE3-008", "ASE3-012"),
+    "ASE3-020": (
+        "ASE3-003",
+        "ASE3-005",
+        "ASE3-018",
+        "ASE3-019",
+        "ASE3-021",
+        "ASE3-024",
+        "ASE3-025",
+        "ASE3-028",
+    ),
+    "ASE3-021": (
+        "ASE3-004",
+        "ASE3-006",
+        "ASE3-007",
+        "ASE3-019",
+        "ASE3-022",
+        "ASE3-024",
+        "ASE3-025",
+    ),
+}
+_PROGRAM_AMENDED_TASK_REQUIREMENTS: Final = {
+    "ASE3-008": ("DurableMonitorRunner", "client disconnect"),
+    "ASE3-009": ("ProductionServiceCompositionManifest", "ASE3-026"),
+    "ASE3-012": ("black-box", "production composition CID"),
+    "ASE3-013": ("no preseeded objective or taskboard", "non-sentinel"),
+    "ASE3-020": ("RequiredArgumentCoverageReceipt", "actual supervisor and daemon parsers"),
+    "ASE3-021": (
+        (
+            "event -> current-tree residual -> append/adopt CAS -> active-plan "
+            "invalidation -> recompile -> real descendant dispatch"
+        ),
+        "ASE3-025 canonical supervisor schema",
+    ),
+}
+_PROTECTED_RUNTIME_ACTIVATION_TASK_ID: Final = "ASE3-026"
+_PROTECTED_RUNTIME_ACTIVATION_BLOCKED_REASON: Final = (
+    "protected runtime activation receipt not yet accepted"
+)
+_PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256: Final = (
+    "sha256:b2f4f5afeecfdce68ace7509b072646c8f762ffd53692adc9e98431a4a9fe6ce"
+)
+_PROTECTED_RUNTIME_ACTIVATION_TASK_CID: Final = (
+    "baguqeerah5rwdashtgibn3xqzdlo6w4ft4gy567vmov6zfq5vpxsekqxkqra"
+)
 _ASE3_019_TITLE: Final = (
     "Seal signed provider authority, authentication lifecycle, and once-only fallback"
 )
@@ -2180,6 +2408,51 @@ def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
     return _parse_taskboard_metadata(text)
 
 
+def _parse_objective_metadata(text: str) -> dict[str, dict[str, str]]:
+    """Parse bounded goal metadata while rejecting duplicate IDs and fields."""
+
+    goals: dict[str, dict[str, str]] = {}
+    current_id = ""
+    current_metadata: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current_id, current_metadata
+        if not current_id:
+            return
+        if current_id in goals:
+            raise ValueError(f"duplicate goal id: {current_id}")
+        goals[current_id] = dict(current_metadata)
+        current_id = ""
+        current_metadata = {}
+
+    for line in text.splitlines():
+        if line.startswith("## "):
+            flush()
+            header = line[3:].strip()
+            header_parts = header.split(" ", 1)
+            goal_id = header_parts[0]
+            if goal_id.startswith("ASE3-G"):
+                current_id = goal_id
+                current_metadata[_TASK_TITLE_KEY] = (
+                    header_parts[1].strip() if len(header_parts) == 2 else ""
+                )
+            continue
+        if not current_id:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        normalized_key = key.strip().lower()
+        if normalized_key in current_metadata:
+            raise ValueError(
+                f"duplicate metadata key for {current_id}: {normalized_key}"
+            )
+        current_metadata[normalized_key] = value.strip()
+    flush()
+    return goals
+
+
 def _taskboard_csv(metadata: Mapping[str, str], field: str) -> tuple[str, ...]:
     return tuple(
         item.strip()
@@ -2560,6 +2833,381 @@ def _validate_false_completion_repair_tasks(
         errors.append(f"{prefix}: repair/provider output overlap forbidden")
     if resolver_outputs & scheduler_outputs:
         errors.append(f"{prefix}: repair output overlap forbidden")
+    return errors
+
+
+def _validate_program_plan_expansion(
+    *,
+    tasks: Mapping[str, Mapping[str, str]],
+    artifact_root: Path,
+) -> list[str]:
+    """Validate the canonical 25-task expansion and protected activation gate."""
+
+    errors: list[str] = []
+    prefix = "program_plan_expansion"
+    expected_task_ids = {
+        *_PROGRAM_CANONICAL_TASK_IDS,
+        *_PROGRAM_NONCANONICAL_TASK_IDS,
+    }
+    if set(tasks) != expected_task_ids:
+        errors.append(f"{prefix}.task_ids: exact canonical/noncanonical population required")
+
+    observed_canonical = {
+        task_id
+        for task_id, metadata in tasks.items()
+        if metadata.get("canonical board task", "true").strip().lower() != "false"
+    }
+    if observed_canonical != set(_PROGRAM_CANONICAL_TASK_IDS):
+        errors.append(f"{prefix}.canonical_tasks: expected exact 25-task population")
+    for task_id in _PROGRAM_NONCANONICAL_TASK_IDS:
+        task = tasks.get(task_id)
+        if task is not None and task.get("canonical board task") != "false":
+            errors.append(f"{prefix}.{task_id}.canonical_board_task: expected false")
+
+    for task_id, expected in _PROGRAM_EXPANSION_TASKS.items():
+        task = tasks.get(task_id)
+        if task is None:
+            errors.append(f"{prefix}.{task_id}: expected exactly one task")
+            continue
+        if task.get(_TASK_TITLE_KEY) != expected["title"]:
+            errors.append(f"{prefix}.{task_id}.title: exact title required")
+        if _task_contract_sha256(task) != expected["contract_sha256"]:
+            errors.append(
+                f"{prefix}.{task_id}.contract_sha256: exact metadata/prose required"
+            )
+        for field, expected_value in {
+            "status": "todo",
+            "completion": "manual",
+            "is schedulable": "true",
+            "review only": "false",
+            "priority": "P0",
+            "canonical board task": "true",
+            "goal id": expected["goal id"],
+        }.items():
+            if task.get(field) != expected_value:
+                errors.append(
+                    f"{prefix}.{task_id}.{field.replace(' ', '_')}: "
+                    f"expected {expected_value!r}"
+                )
+        for field in ("depends on", "outputs", "predicted files"):
+            expected_items = (
+                expected["outputs"] if field == "predicted files" else expected[field]
+            )
+            if _taskboard_csv(task, field) != expected_items:
+                errors.append(
+                    f"{prefix}.{task_id}.{field.replace(' ', '_')}: "
+                    "exact population required"
+                )
+        if task.get("validation") != expected["validation"]:
+            errors.append(f"{prefix}.{task_id}.validation: exact command required")
+        try:
+            task_cid = _canonical_task_cid_from_metadata(task)
+        except ValueError as exc:
+            errors.append(f"{prefix}.{task_id}.canonical_task_cid: {exc}")
+        else:
+            if task_cid != expected["canonical_task_cid"]:
+                errors.append(
+                    f"{prefix}.{task_id}.canonical_task_cid: semantic identity drift"
+                )
+
+    for task_id, expected_cid in _PROGRAM_AMENDED_TASK_CIDS.items():
+        task = tasks.get(task_id)
+        if task is None:
+            errors.append(f"{prefix}.{task_id}: expected exactly one amended task")
+            continue
+        if (
+            _task_contract_sha256(task)
+            != _PROGRAM_AMENDED_TASK_CONTRACT_SHA256S[task_id]
+        ):
+            errors.append(
+                f"{prefix}.{task_id}.contract_sha256: exact amended "
+                "metadata/prose required"
+            )
+        if task.get("status") != "todo":
+            errors.append(f"{prefix}.{task_id}.status: expected 'todo'")
+        if _taskboard_csv(task, "depends on") != _PROGRAM_AMENDED_TASK_DEPENDENCIES[
+            task_id
+        ]:
+            errors.append(f"{prefix}.{task_id}.depends_on: exact expansion required")
+        try:
+            task_cid = _canonical_task_cid_from_metadata(task)
+        except ValueError as exc:
+            errors.append(f"{prefix}.{task_id}.canonical_task_cid: {exc}")
+        else:
+            if task_cid != expected_cid:
+                errors.append(
+                    f"{prefix}.{task_id}.canonical_task_cid: intentional amended "
+                    "identity required"
+                )
+        searchable = " ".join(task.values())
+        for requirement in _PROGRAM_AMENDED_TASK_REQUIREMENTS[task_id]:
+            if requirement not in searchable:
+                errors.append(
+                    f"{prefix}.{task_id}.contract: missing {requirement!r}"
+                )
+
+    for task_id, expected_contract in (
+        _PROGRAM_UNCHANGED_FUTURE_TASK_CONTRACT_SHA256S.items()
+    ):
+        task = tasks.get(task_id)
+        if task is None:
+            errors.append(f"{prefix}.{task_id}: expected exactly one future task")
+            continue
+        if _task_contract_sha256(task) != expected_contract:
+            errors.append(
+                f"{prefix}.{task_id}.contract_sha256: exact unchanged "
+                "metadata/prose required"
+            )
+        if task.get("status") != "todo":
+            errors.append(f"{prefix}.{task_id}.status: expected 'todo'")
+
+    activation_path = artifact_root / PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
+    try:
+        activation_path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.append(f"{prefix}.ASE3-026.receipt: unable to inspect: {exc}")
+    else:
+        errors.append(
+            f"{prefix}.ASE3-026.receipt: present without strict validation and "
+            "convergence-manifest binding"
+        )
+    activation = tasks.get(_PROTECTED_RUNTIME_ACTIVATION_TASK_ID)
+    if activation is None:
+        errors.append(f"{prefix}.ASE3-026: expected exactly one activation task")
+    else:
+        if (
+            _task_contract_sha256(activation)
+            != _PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256
+        ):
+            errors.append(
+                f"{prefix}.ASE3-026.contract_sha256: exact blocked protected "
+                "activation contract required"
+            )
+        for field, expected_value in {
+            "status": "blocked",
+            "completion": "manual",
+            "is schedulable": "false",
+            "review only": "true",
+            "canonical board task": "true",
+            "blocked reason": _PROTECTED_RUNTIME_ACTIVATION_BLOCKED_REASON,
+            "goal id": "ASE3-G060",
+        }.items():
+            if activation.get(field) != expected_value:
+                errors.append(
+                    f"{prefix}.ASE3-026.{field.replace(' ', '_')}: "
+                    f"expected {expected_value!r}"
+                )
+        try:
+            activation_cid = _canonical_task_cid_from_metadata(activation)
+        except ValueError as exc:
+            errors.append(f"{prefix}.ASE3-026.canonical_task_cid: {exc}")
+        else:
+            if activation_cid != _PROTECTED_RUNTIME_ACTIVATION_TASK_CID:
+                errors.append(f"{prefix}.ASE3-026.canonical_task_cid: mismatch")
+        if PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH not in _taskboard_csv(
+            activation,
+            "outputs",
+        ):
+            errors.append(f"{prefix}.ASE3-026.outputs: activation receipt required")
+
+    dependency_graph = {
+        task_id: _taskboard_csv(metadata, "depends on")
+        for task_id, metadata in tasks.items()
+    }
+    for task_id, dependencies in dependency_graph.items():
+        unknown = sorted(set(dependencies) - set(tasks))
+        if unknown:
+            errors.append(
+                f"{prefix}.{task_id}.depends_on: unknown dependencies "
+                + ",".join(unknown)
+            )
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(task_id: str) -> None:
+        if task_id in visited:
+            return
+        if task_id in visiting:
+            errors.append(f"{prefix}.dependency_graph: cycle includes {task_id}")
+            return
+        visiting.add(task_id)
+        for dependency in dependency_graph.get(task_id, ()):
+            visit(dependency)
+        visiting.remove(task_id)
+        visited.add(task_id)
+
+    for task_id in sorted(dependency_graph):
+        visit(task_id)
+    return errors
+
+
+def _validate_program_scheduler_projection(
+    *,
+    repo_root: Path,
+    tasks: Mapping[str, Mapping[str, str]],
+) -> list[str]:
+    """Join the checked-in scheduler's groups/dependencies to the taskboard."""
+
+    errors: list[str] = []
+    prefix = "program_scheduler_projection"
+    config_path = repo_root / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    try:
+        config = _load_json(config_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return [f"{prefix}: {exc}"]
+
+    goals: Mapping[str, Mapping[str, str]] = {}
+    objectives_path = repo_root / PROMPT_V3_OBJECTIVES_RELATIVE_PATH
+    try:
+        objectives_text = _read_regular_bytes(objectives_path).decode("utf-8")
+        goals = _parse_objective_metadata(objectives_text)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        errors.append(f"{prefix}.objectives: {exc}")
+
+    plan_path = repo_root / PROMPT_V3_PLAN_RELATIVE_PATH
+    try:
+        plan_text = _read_regular_bytes(plan_path).decode("utf-8")
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        errors.append(f"{prefix}.plan: {exc}")
+    else:
+        required_waves = (
+            "Wave 3c gate:      ASE3-022",
+            "Wave 3d:           ASE3-028",
+            "Wave 3e:           ASE3-024",
+            "Wave 3f:           ASE3-025",
+            "Wave 3g:           ASE3-021",
+            "Wave 3h:           ASE3-020",
+            "Wave 4:            ASE3-008",
+            "Wave 4b gate:      ASE3-026",
+            "Wave 5:            ASE3-009",
+            "Wave 6 (parallel): ASE3-010",
+            "Wave 7:            ASE3-012",
+            "Wave 8:            ASE3-013",
+            "Wave 9:            ASE3-014",
+        )
+        positions = [plan_text.find(fragment) for fragment in required_waves]
+        if any(position < 0 for position in positions) or positions != sorted(
+            positions
+        ):
+            errors.append(f"{prefix}.plan.waves: exact ordered expansion required")
+
+    initial = config.get("initial_projection")
+    if not isinstance(initial, Mapping):
+        errors.append(f"{prefix}.initial_projection: expected object")
+    else:
+        if initial.get("task_count") != 25:
+            errors.append(f"{prefix}.initial_projection.task_count: expected 25")
+        if initial.get("canonical_task_ids") != list(_PROGRAM_CANONICAL_TASK_IDS):
+            errors.append(
+                f"{prefix}.initial_projection.canonical_task_ids: exact population "
+                "required"
+            )
+        if initial.get("noncanonical_transition_task_ids") != ["ASE3-022"]:
+            errors.append(
+                f"{prefix}.initial_projection.noncanonical_transition_task_ids: "
+                "expected ASE3-022"
+            )
+
+    groups = config.get("task_groups")
+    if not isinstance(groups, Mapping):
+        errors.append(f"{prefix}.task_groups: expected object")
+    else:
+        grouped: list[str] = []
+        for goal_id, raw_task_ids in groups.items():
+            if not isinstance(raw_task_ids, list):
+                errors.append(f"{prefix}.task_groups.{goal_id}: expected array")
+                continue
+            for task_id in raw_task_ids:
+                grouped.append(str(task_id))
+                task = tasks.get(str(task_id))
+                if task is None or task.get("goal id") != goal_id:
+                    errors.append(
+                        f"{prefix}.task_groups.{goal_id}: task/goal mismatch for "
+                        f"{task_id}"
+                    )
+        if len(grouped) != len(set(grouped)):
+            errors.append(f"{prefix}.task_groups: duplicate task membership")
+        if set(grouped) != set(_PROGRAM_CANONICAL_TASK_IDS):
+            errors.append(f"{prefix}.task_groups: exact 25-task population required")
+        expected_goal_ids = {"ASE3-G000", *(str(goal_id) for goal_id in groups)}
+        if set(goals) != expected_goal_ids:
+            errors.append(f"{prefix}.objectives.goal_ids: exact population required")
+        root_goal = goals.get("ASE3-G000")
+        if root_goal is None or _taskboard_csv(
+            root_goal,
+            "producing tasks",
+        ) != _PROGRAM_CANONICAL_TASK_IDS:
+            errors.append(
+                f"{prefix}.objectives.ASE3-G000.producing_tasks: exact canonical "
+                "population required"
+            )
+        for goal_id, raw_task_ids in groups.items():
+            goal = goals.get(str(goal_id))
+            expected_producers = tuple(str(task_id) for task_id in raw_task_ids)
+            if goal is None or _taskboard_csv(
+                goal,
+                "producing tasks",
+            ) != expected_producers:
+                errors.append(
+                    f"{prefix}.objectives.{goal_id}.producing_tasks: task-group "
+                    "mismatch"
+                )
+
+    dependencies = config.get("task_dependencies")
+    if not isinstance(dependencies, Mapping):
+        errors.append(f"{prefix}.task_dependencies: expected object")
+    elif set(dependencies) != set(_PROGRAM_CANONICAL_TASK_IDS):
+        errors.append(f"{prefix}.task_dependencies: exact key population required")
+    else:
+        for task_id in _PROGRAM_CANONICAL_TASK_IDS:
+            if dependencies.get(task_id) != list(
+                _taskboard_csv(tasks[task_id], "depends on")
+            ):
+                errors.append(
+                    f"{prefix}.task_dependencies.{task_id}: taskboard mismatch"
+                )
+
+    expected_activation = {
+        "task_id": "ASE3-026",
+        "status": "blocked",
+        "receipt_path": PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH,
+        "operator_review_required": True,
+        "strict_validator_and_manifest_binding_required": True,
+    }
+    if config.get("protected_runtime_activation") != expected_activation:
+        errors.append(f"{prefix}.protected_runtime_activation: exact gate required")
+    if config.get("strict_task_sharding") is not True:
+        errors.append(f"{prefix}.strict_task_sharding: must remain true before gate")
+    if config.get("objective_refill_enabled") is not False:
+        errors.append(
+            f"{prefix}.objective_refill_enabled: must remain false before gate"
+        )
+    if config.get("codebase_refill_enabled") is not False:
+        errors.append(f"{prefix}.codebase_refill_enabled: must remain false")
+    refill = config.get("refill_policy")
+    if not isinstance(refill, Mapping):
+        errors.append(f"{prefix}.refill_policy: expected object")
+    else:
+        for field, expected in {
+            "enable_after_task": "ASE3-026",
+            "activation_task_id": "ASE3-026",
+            "prompt_program_refill_enabled": False,
+        }.items():
+            if refill.get(field) != expected:
+                errors.append(f"{prefix}.refill_policy.{field}: expected {expected!r}")
+    monitor = config.get("monitor_policy")
+    if not isinstance(monitor, Mapping):
+        errors.append(f"{prefix}.monitor_policy: expected object")
+    else:
+        for field, expected in {
+            "enabled": False,
+            "detached": True,
+            "activation_task_id": "ASE3-026",
+        }.items():
+            if monitor.get(field) != expected:
+                errors.append(f"{prefix}.monitor_policy.{field}: expected {expected!r}")
     return errors
 
 
@@ -4125,6 +4773,19 @@ def validate_convergence_artifacts(
         )
         errors.extend(_validate_provider_fallback_task_contract(tasks=board_tasks))
         errors.extend(_validate_false_completion_repair_tasks(tasks=board_tasks))
+        errors.extend(
+            _validate_program_plan_expansion(
+                tasks=board_tasks,
+                artifact_root=root,
+            )
+        )
+        if taskboard_path is None and repo_root is not None:
+            errors.extend(
+                _validate_program_scheduler_projection(
+                    repo_root=Path(repo_root),
+                    tasks=board_tasks,
+                )
+            )
 
     components = manifest.payload.get("components", {})
     if isinstance(components, Mapping):
