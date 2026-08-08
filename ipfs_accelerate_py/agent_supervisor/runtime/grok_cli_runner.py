@@ -241,9 +241,11 @@ MAX_CODEX_FALLBACK_ARGUMENTS = 64
 MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
 MAX_GROK_STREAM_EVENT_BYTES = 64 * 1024
 MAX_GROK_SESSION_RECORD_BYTES = 16 * 1024 * 1024
-# Only this exact durable native 402 record has been observed and is authorized
-# to cross the provider boundary. Other native types remain diagnostic only.
-GROK_QUOTA_ERROR_TYPES = frozenset({"usage_pool_exhausted"})
+# Only exact durable native quota records observed below are authorized to
+# cross the provider boundary. Other native types remain diagnostic only.
+GROK_QUOTA_ERROR_TYPES = frozenset(
+    {"usage_pool_exhausted", "spending_limit_exhausted"}
+)
 CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
 CODEX_QUOTA_FALLBACK_REASONING = 'model_reasoning_effort="medium"'
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
@@ -332,6 +334,17 @@ _CONTAINER_RUNTIME_STANDARD_SOCKETS = (
 )
 _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE = (
     "API error (status 402 Payment Required): Grok Build usage balance exhausted"
+)
+_GROK_SPENDING_LIMIT_EXHAUSTED_MESSAGE = (
+    "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
+    "You have run out of credits or need a Grok subscription. Add credits at "
+    "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
+)
+_GROK_NATIVE_QUOTA_FAILURES = frozenset(
+    {
+        ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE),
+        ("spending_limit_exhausted", _GROK_SPENDING_LIMIT_EXHAUSTED_MESSAGE),
+    }
 )
 _CODEX_FALLBACK_CONFIG_KEYS = frozenset(
     {
@@ -2292,6 +2305,12 @@ def _grok_failure_type_from_stream_event(line: str) -> str:
         == _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE
     ):
         return "usage_pool_exhausted"
+    if (
+        error_type == "api"
+        and str(update.get("message") or "").strip()
+        == _GROK_SPENDING_LIMIT_EXHAUSTED_MESSAGE
+    ):
+        return "spending_limit_exhausted"
     return error_type or "unknown"
 
 
@@ -2437,8 +2456,7 @@ def _terminal_grok_failure_type_from_isolated_home(
         or summary_info.get("id") != recorded_session_id
         or summary.get("current_model_id") != expected_model
         or summary_home != grok_home.resolve()
-        or latest_failure
-        != ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE)
+        or latest_failure not in _GROK_NATIVE_QUOTA_FAILURES
     ):
         return ""
     return terminal_verdict
@@ -3154,10 +3172,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             grok_bin=grok_bin,
             base_env=os.environ.copy(),
         )
-        if verifier_failure_type not in GROK_QUOTA_ERROR_TYPES:
+        if verifier_failure_type != failure_type:
             print(
-                "Independent pinned Grok-4.5 verifier did not confirm quota; "
-                "Codex fallback is forbidden",
+                "Independent pinned Grok-4.5 verifier did not confirm the "
+                "same quota failure; Codex fallback is forbidden",
                 file=sys.stderr,
             )
             return primary_returncode
