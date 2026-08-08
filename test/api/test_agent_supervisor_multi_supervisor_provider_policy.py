@@ -56,6 +56,10 @@ def test_direct_multi_supervisor_defaults_complete_route_before_detach(
         == 0
     )
     assert captured == ORDERED_ROUTE
+    assert captured[
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+    ] == "primary_quota_exhausted"
+    assert captured["IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"] == "medium"
 
 
 def test_direct_multi_supervisor_canonicalizes_compatible_grok_alias(
@@ -90,6 +94,14 @@ def test_direct_multi_supervisor_canonicalizes_compatible_grok_alias(
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", "codex"),
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER", "copilot"),
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", "always"),
+        (
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+            "primary_unavailable",
+        ),
+        (
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+            "primary_unavailable_or_quota_exhausted",
+        ),
         ("IPFS_ACCELERATE_AGENT_GROK_MODEL", "grok-4.6"),
         ("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "gpt-5.6-codex"),
         ("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "low"),
@@ -114,6 +126,48 @@ def test_direct_multi_supervisor_rejects_incompatible_partial_route_atomically(
 
     assert raised.value.code == 2
     assert {key: os.environ.get(key) for key in ORDERED_ROUTE} == before
+
+
+@pytest.mark.parametrize(
+    ("fallback_trigger", "reasoning_effort"),
+    (
+        ("primary_quota_exhausted", "medium"),
+        ("primary_quota_exhausted", "high"),
+        ("primary_unavailable_or_quota_exhausted", "high"),
+    ),
+)
+def test_direct_multi_supervisor_preserves_closed_configured_trigger(
+    tmp_path, monkeypatch, fallback_trigger, reasoning_effort
+) -> None:
+    _clear_ordered_route(monkeypatch)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        fallback_trigger,
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+        reasoning_effort,
+    )
+    captured: dict[str, str] = {}
+
+    def fake_launch(_args, _argv):
+        captured.update(
+            {name: os.environ.get(name, "") for name in ORDERED_ROUTE}
+        )
+        return _fake_detached_payload()
+
+    monkeypatch.setattr(multi_supervisor_runner, "launch_detached", fake_launch)
+
+    assert (
+        multi_supervisor_runner.main(_detached_implementation_args(tmp_path))
+        == 0
+    )
+    assert captured[
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+    ] == fallback_trigger
+    assert captured["IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"] == (
+        reasoning_effort
+    )
 
 
 def test_generic_raw_tracks_do_not_receive_implementation_provider_policy(

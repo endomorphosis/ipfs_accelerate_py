@@ -105,7 +105,10 @@ _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _CID = re.compile(r"^b[a-z2-7]{20,}$")
 _CANONICAL_TASK_CID = re.compile(r"^baguqeera[a-z2-7]{52}$")
 _MUTABLE_METADATA = frozenset({"status"})
-_EXPECTED_PROVIDER_ROLES = ("grok-implement", "codex-review")
+_EXPECTED_PROVIDER_ROLES = (
+    "grok-primary-implement",
+    "codex-fallback-implement",
+)
 _EXPECTED_LLM_CONTEXT_BUDGET_BYTES = 262_144
 _EXPECTED_CONTEXT_BUDGET_TOKENS = 16_384
 _EXPECTED_ROUTE = {
@@ -113,10 +116,40 @@ _EXPECTED_ROUTE = {
     "primary_model_id": "grok-4.5",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
-    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_trigger": "primary_unavailable_or_quota_exhausted",
     "fallback_reasoning_effort": "high",
     "fallback_for_other_failures": False,
 }
+ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST: Final[str] = "grok_first"
+ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE: Final[str] = (
+    "codex_fallback_primary_unavailable"
+)
+ORDERED_PRIMARY_DISPATCH_MODES: Final[frozenset[str]] = frozenset(
+    {
+        ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST,
+        ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE,
+    }
+)
+_CODEX_PRIMARY_UNAVAILABLE_FLAG = "--codex-fallback-on-primary-unavailable"
+ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG: Final[str] = (
+    "--primary-unavailability-reason"
+)
+ORDERED_PRIMARY_UNAVAILABILITY_REASON_BINARY: Final[str] = (
+    "grok_binary_unavailable"
+)
+ORDERED_PRIMARY_UNAVAILABILITY_REASON_AUTH: Final[str] = (
+    "grok_auth_unavailable"
+)
+ORDERED_PRIMARY_UNAVAILABILITY_REASON_PROVIDER: Final[str] = (
+    "grok_provider_unavailable"
+)
+ORDERED_PRIMARY_UNAVAILABILITY_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_BINARY,
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_AUTH,
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_PROVIDER,
+    }
+)
 _AUTHORIZED_RECEIPT_KEYS = frozenset(
     {
         "schema",
@@ -140,6 +173,8 @@ _AUTHORIZED_RECEIPT_KEYS = frozenset(
         "workspace_path",
         "provider_command",
         "provider_command_id",
+        "primary_dispatch_mode",
+        "primary_unavailability_reason",
         "launch_authority",
         "provider_route",
         "provider_authorized",
@@ -622,7 +657,7 @@ def _verified_launch_authority(
         or not isinstance(execution_policy, Mapping)
         or execution_policy.get("implementation_authoring_mode") != "ordered_provider"
         or execution_policy.get("implementation_provider_role")
-        != "grok-implement, codex-review"
+        != "grok-primary-implement, codex-fallback-implement"
         or execution_policy.get("repair_runtime_mode") != "deterministic_only"
         or execution_policy.get("repair_runtime_model_calls") != 0
         or execution_policy.get("repair_runtime_llm_calls") != 0
@@ -631,7 +666,7 @@ def _verified_launch_authority(
         or execution_policy.get("implementation_context_budget_tokens")
         != _EXPECTED_CONTEXT_BUDGET_TOKENS
         or execution_policy.get(
-            "provider_fallback_allowed_only_for_primary_quota_exhaustion"
+            "provider_fallback_allowed_only_for_primary_unavailability_or_quota_exhaustion"
         )
         is not True
     ):
@@ -741,7 +776,7 @@ def validate_ordered_provider_command(
     *,
     workspace_path: Path | str,
 ) -> str:
-    """Return the digest of one exact Grok-first, quota-only Terra argv."""
+    """Return the digest of one exact sealed Grok/Terra dispatch argv."""
 
     if isinstance(command, (str, bytes, bytearray)):
         raise OrderedProviderAuthoringError(
@@ -754,7 +789,7 @@ def validate_ordered_provider_command(
             reason_code="authoring_provider_command_mismatch",
         )
     values = [str(item) for item in command]
-    expected_flags = (
+    primary_flags = (
         "--workspace",
         "--model",
         "--max-turns",
@@ -764,16 +799,28 @@ def validate_ordered_provider_command(
         "--grok-bin",
         "--grok-failure-receipt-nonce",
     )
-    if (
-        len(values) != 3 + 2 * len(expected_flags)
-        or values[:3]
-        != [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-        ]
-        or tuple(values[3::2]) != expected_flags
-    ):
+    unavailable_flags = (
+        *primary_flags[:-2],
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG,
+    )
+    runner_prefix = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    ]
+    direct_unavailable = values[-1:] == [_CODEX_PRIMARY_UNAVAILABLE_FLAG]
+    canonical_primary = (
+        len(values) == 3 + 2 * len(primary_flags)
+        and values[:3] == runner_prefix
+        and tuple(values[3::2]) == primary_flags
+    )
+    canonical_unavailable = (
+        len(values) == 4 + 2 * len(unavailable_flags)
+        and values[:3] == runner_prefix
+        and tuple(values[3:-1:2]) == unavailable_flags
+        and direct_unavailable
+    )
+    if not (canonical_primary or canonical_unavailable):
         raise OrderedProviderAuthoringError(
             "ordered provider command is not the canonical runner argv",
             reason_code="authoring_provider_command_mismatch",
@@ -801,24 +848,37 @@ def validate_ordered_provider_command(
             "ordered provider max-turns is invalid",
             reason_code="authoring_provider_command_mismatch",
         )
-    nonce = _single_command_flag(values, "--grok-failure-receipt-nonce")
-    if re.fullmatch(r"[0-9a-f]{64}", nonce) is None:
-        raise OrderedProviderAuthoringError(
-            "ordered provider invocation nonce is invalid",
-            reason_code="authoring_provider_command_mismatch",
-        )
-    grok = Path(_single_command_flag(values, "--grok-bin"))
     if (
-        not grok.is_absolute()
-        or grok.name.casefold() not in {"grok", "grok.exe"}
-        or not grok.is_file()
-        or not os.access(grok, os.X_OK)
-        or grok.resolve().is_relative_to(workspace)
+        canonical_unavailable
+        and _single_command_flag(
+            values,
+            ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG,
+        )
+        not in ORDERED_PRIMARY_UNAVAILABILITY_REASONS
     ):
         raise OrderedProviderAuthoringError(
-            "ordered provider Grok executable is untrusted",
+            "ordered provider direct fallback reason is invalid",
             reason_code="authoring_provider_command_mismatch",
         )
+    if canonical_primary:
+        nonce = _single_command_flag(values, "--grok-failure-receipt-nonce")
+        if re.fullmatch(r"[0-9a-f]{64}", nonce) is None:
+            raise OrderedProviderAuthoringError(
+                "ordered provider invocation nonce is invalid",
+                reason_code="authoring_provider_command_mismatch",
+            )
+        grok = Path(_single_command_flag(values, "--grok-bin"))
+        if (
+            not grok.is_absolute()
+            or grok.name.casefold() not in {"grok", "grok.exe"}
+            or not grok.is_file()
+            or not os.access(grok, os.X_OK)
+            or grok.resolve().is_relative_to(workspace)
+        ):
+            raise OrderedProviderAuthoringError(
+                "ordered provider Grok executable is untrusted",
+                reason_code="authoring_provider_command_mismatch",
+            )
     try:
         fallback = json.loads(
             _single_command_flag(values, "--codex-fallback-command-json")
@@ -866,6 +926,48 @@ def validate_ordered_provider_command(
             reason_code="authoring_provider_command_mismatch",
         )
     return _sha_content_id({"argv": values})
+
+
+def ordered_provider_primary_dispatch_mode(
+    command: Sequence[Any],
+    *,
+    workspace_path: Path | str,
+) -> str:
+    """Return the sealed primary selection encoded in one canonical argv."""
+
+    validate_ordered_provider_command(command, workspace_path=workspace_path)
+    values = [str(item) for item in command]
+    return (
+        ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE
+        if values[-1:] == [_CODEX_PRIMARY_UNAVAILABLE_FLAG]
+        else ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST
+    )
+
+
+def ordered_provider_primary_unavailability_reason(
+    command: Sequence[Any],
+    *,
+    workspace_path: Path | str,
+) -> str:
+    """Return the sealed direct-route reason, or empty for Grok-first argv."""
+
+    mode = ordered_provider_primary_dispatch_mode(
+        command,
+        workspace_path=workspace_path,
+    )
+    if mode == ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST:
+        return ""
+    values = [str(item) for item in command]
+    reason = _single_command_flag(
+        values,
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG,
+    )
+    if reason not in ORDERED_PRIMARY_UNAVAILABILITY_REASONS:
+        raise OrderedProviderAuthoringError(
+            "ordered provider direct fallback reason is invalid",
+            reason_code="authoring_provider_command_mismatch",
+        )
+    return reason
 
 
 def _expected_canonical_task_cid(
@@ -1107,6 +1209,16 @@ def evaluate_ordered_provider_authoring(
             provider_command,
             workspace_path=workspace,
         )
+        primary_dispatch_mode = ordered_provider_primary_dispatch_mode(
+            provider_command,
+            workspace_path=workspace,
+        )
+        primary_unavailability_reason = (
+            ordered_provider_primary_unavailability_reason(
+                provider_command,
+                workspace_path=workspace,
+            )
+        )
         namespace = _environment_value(environment, CONFIGURED_BOARD_NAMESPACE_ENV)
         current_board = build_authoring_board_projection(
             taskboard_path=board_file,
@@ -1191,6 +1303,8 @@ def evaluate_ordered_provider_authoring(
             "workspace_path": str(workspace),
             "provider_command": [str(item) for item in provider_command],
             "provider_command_id": provider_command_id,
+            "primary_dispatch_mode": primary_dispatch_mode,
+            "primary_unavailability_reason": primary_unavailability_reason,
             "launch_authority": launch_authority,
             "provider_route": route,
             "provider_authorized": True,
@@ -1241,6 +1355,8 @@ def authoring_provider_invocation_authorized(receipt: Mapping[str, Any]) -> bool
     authority = payload.get("authority")
     launch_authority = payload.get("launch_authority")
     provider_route = payload.get("provider_route")
+    primary_dispatch_mode = payload.get("primary_dispatch_mode")
+    primary_unavailability_reason = payload.get("primary_unavailability_reason")
     if (
         not isinstance(receipt_id, str)
         or canonical_content_cid(payload) != receipt_id
@@ -1280,6 +1396,19 @@ def authoring_provider_invocation_authorized(receipt: Mapping[str, Any]) -> bool
             if isinstance(value, bool)
             else provider_route.get(key) != value
             for key, value in _EXPECTED_ROUTE.items()
+        )
+        or not isinstance(primary_dispatch_mode, str)
+        or primary_dispatch_mode not in ORDERED_PRIMARY_DISPATCH_MODES
+        or not isinstance(primary_unavailability_reason, str)
+        or (
+            primary_dispatch_mode == ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST
+            and primary_unavailability_reason != ""
+        )
+        or (
+            primary_dispatch_mode
+            == ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE
+            and primary_unavailability_reason
+            not in ORDERED_PRIMARY_UNAVAILABILITY_REASONS
         )
         or not isinstance(authority, Mapping)
         or set(authority)
@@ -1415,6 +1544,22 @@ def authoring_provider_invocation_authorized(receipt: Mapping[str, Any]) -> bool
             provider_command,
             workspace_path=workspace,
         ) != payload.get("provider_command_id"):
+            return False
+        if (
+            ordered_provider_primary_dispatch_mode(
+                provider_command,
+                workspace_path=workspace,
+            )
+            != primary_dispatch_mode
+        ):
+            return False
+        if (
+            ordered_provider_primary_unavailability_reason(
+                provider_command,
+                workspace_path=workspace,
+            )
+            != primary_unavailability_reason
+        ):
             return False
     except (OSError, OrderedProviderAuthoringError, TypeError, ValueError):
         return False
@@ -1616,10 +1761,20 @@ __all__ = (
     "CONFIGURED_BOARD_NAMESPACE_ENV",
     "GROK_MAX_TURNS_ENV",
     "ORDERED_PROVIDER_ENV_NAMES",
+    "ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE",
+    "ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST",
+    "ORDERED_PRIMARY_DISPATCH_MODES",
+    "ORDERED_PRIMARY_UNAVAILABILITY_REASON_AUTH",
+    "ORDERED_PRIMARY_UNAVAILABILITY_REASON_BINARY",
+    "ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG",
+    "ORDERED_PRIMARY_UNAVAILABILITY_REASON_PROVIDER",
+    "ORDERED_PRIMARY_UNAVAILABILITY_REASONS",
     "OrderedProviderAuthoringError",
     "assert_current_authoring_dispatch_authority",
     "authoring_provider_invocation_authorized",
     "build_authoring_board_projection",
     "build_authoring_task_record",
     "evaluate_ordered_provider_authoring",
+    "ordered_provider_primary_dispatch_mode",
+    "ordered_provider_primary_unavailability_reason",
 )

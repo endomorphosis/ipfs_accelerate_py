@@ -38,6 +38,14 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.runtime.ordered_provider_authoring import (
+    ORDERED_PRIMARY_UNAVAILABILITY_REASON_AUTH,
+    ORDERED_PRIMARY_UNAVAILABILITY_REASON_BINARY,
+    ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG,
+    ORDERED_PRIMARY_UNAVAILABILITY_REASON_PROVIDER,
+    ORDERED_PRIMARY_UNAVAILABILITY_REASONS,
+    validate_ordered_provider_command,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_binding import (
     ensure_provider_command_bindings,
     recover_provider_command_name_error,
@@ -250,6 +258,9 @@ CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
 CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT = "medium"
 CODEX_QUOTA_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
 CODEX_QUOTA_FALLBACK_REASONING = 'model_reasoning_effort="medium"'
+CODEX_PRIMARY_UNAVAILABLE_FALLBACK_FLAG = (
+    "--codex-fallback-on-primary-unavailable"
+)
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
@@ -617,24 +628,11 @@ def build_grok_quota_routed_agent_command(
         effort,
     ]
     if codex:
-        fallback = [
-            codex,
-            "exec",
-            "--ignore-user-config",
-            "--ignore-rules",
-            "--ephemeral",
-            "-s",
-            "workspace-write",
-            "-C",
-            workspace_text,
-            "-m",
-            CODEX_QUOTA_FALLBACK_MODEL,
-            "-c",
-            f'model_reasoning_effort="{effort}"',
-            "-c",
-            'web_search="disabled"',
-            "-",
-        ]
+        fallback = _codex_quota_fallback_host_command(
+            codex=codex,
+            workspace_text=workspace_text,
+            reasoning_effort=effort,
+        )
         command.extend(
             [
                 "--codex-fallback-command-json",
@@ -644,6 +642,105 @@ def build_grok_quota_routed_agent_command(
     if str(grok_bin).strip():
         command.extend(["--grok-bin", str(grok_bin).strip()])
     return command
+
+
+def _codex_quota_fallback_host_command(
+    *,
+    codex: str,
+    workspace_text: str,
+    reasoning_effort: str,
+) -> list[str]:
+    """Build the only daemon-authored host form of the Terra fallback."""
+
+    return [
+        codex,
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "-s",
+        "workspace-write",
+        "-C",
+        workspace_text,
+        "-m",
+        CODEX_QUOTA_FALLBACK_MODEL,
+        "-c",
+        f'model_reasoning_effort="{reasoning_effort}"',
+        "-c",
+        'web_search="disabled"',
+        "-",
+    ]
+
+
+def build_grok_primary_unavailable_codex_fallback_command(
+    *,
+    workspace: str | Path = ".",
+    python_executable: str = "",
+    codex_bin: str = "",
+    max_turns: int = 100_000,
+    fallback_reasoning_effort: str = "high",
+    primary_unavailability_reason: str = "",
+) -> list[str]:
+    """Build the exact direct Terra/high route for an unavailable Grok primary.
+
+    This is not a runtime-error fallback.  The sealed daemon selects it only
+    when it cannot prove the local Grok readiness marker before dispatch; the
+    runner rechecks that condition and executes Codex only through the pinned
+    Docker boundary.  This argv is an executor shape, not task/merge/proof
+    authority: the daemon's sealed authoring receipt recheck immediately
+    before spawn remains the authority boundary.
+    """
+
+    effort = _validate_codex_quota_fallback_reasoning_effort(
+        fallback_reasoning_effort
+    )
+    if effort != "high":
+        raise ValueError(
+            "primary-unavailable Codex fallback requires high reasoning"
+        )
+    if primary_unavailability_reason not in ORDERED_PRIMARY_UNAVAILABILITY_REASONS:
+        raise ValueError(
+            "primary-unavailable Codex fallback requires a closed Grok readiness reason"
+        )
+    workspace_path = Path(workspace).expanduser().resolve()
+    if int(max_turns) != 100_000:
+        raise ValueError(
+            "primary-unavailable Codex fallback requires exactly 100000 turns"
+        )
+    workspace_text = str(workspace_path)
+    codex = resolve_codex_quota_fallback_executable(
+        workspace=workspace_path,
+        configured=codex_bin,
+    )
+    if not codex:
+        raise ValueError(
+            "primary-unavailable Codex fallback requires a trusted Codex executable"
+        )
+    fallback = _codex_quota_fallback_host_command(
+        codex=codex,
+        workspace_text=workspace_text,
+        reasoning_effort=effort,
+    )
+    return [
+        str(python_executable or sys.executable),
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "--workspace",
+        workspace_text,
+        "--model",
+        DEFAULT_GROK_MODEL,
+        "--max-turns",
+        "100000",
+        "--mode",
+        "agent",
+        "--codex-fallback-reasoning-effort",
+        effort,
+        "--codex-fallback-command-json",
+        json.dumps(fallback, separators=(",", ":")),
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG,
+        primary_unavailability_reason,
+        CODEX_PRIMARY_UNAVAILABLE_FALLBACK_FLAG,
+    ]
 
 
 GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
@@ -3483,6 +3580,16 @@ def _run_containerized_codex_quota_fallback(
         base_env=base_env,
         require_checkpoint=require_checkpoint,
     )
+    # The caller preflights the same boundary before selecting this executor.
+    # Repeat it after resolving current assets to fail closed on filesystem
+    # changes before the Docker bind mount is assembled.
+    denied_paths = (auth_path, package_root, bwrap_path)
+    if checkpoint_path is not None:
+        denied_paths += (checkpoint_path,)
+    _validate_terra_workspace_boundary(
+        workspace=workspace,
+        denied_paths=denied_paths,
+    )
     if docker != _CODEX_FALLBACK_DOCKER_BIN:
         raise ValueError("Codex quota fallback Docker executable drifted")
     lease = _DockerCodexFallbackLease.create()
@@ -3953,14 +4060,183 @@ def _write_private_receipt(descriptor: int, receipt: dict[str, object]) -> bool:
     return True
 
 
-def _run(args: argparse.Namespace, receipt_fd: int) -> int:
-    from ipfs_accelerate_py.llm_router import (
-        LLMRouterError,
-        build_grok_cli_command,
-        build_grok_cli_env,
-        find_grok_cli,
+def resolve_grok_cli_for_ordered_provider() -> str | None:
+    """Resolve the one local Grok CLI path used by sealed authoring.
+
+    ``find_grok_cli`` covers the configured binary and conventional per-user
+    install locations in addition to PATH.  Both the daemon and runner use
+    this exact resolver so a sealed Grok-first command cannot be built for a
+    different binary than the one readiness inspected.
+    """
+
+    from ipfs_accelerate_py.llm_router import find_grok_cli
+
+    return find_grok_cli()
+
+
+def grok_primary_readiness_for_ordered_provider() -> tuple[str, str]:
+    """Classify only explicit pre-dispatch Grok availability states.
+
+    This resolver is deliberately shared with the implementation daemon.  It
+    performs local binary/auth/provider construction checks only; it does not
+    contact Grok and a stale credential is therefore still merely an auth
+    *marker*, not proof that a later provider request will succeed.  Any
+    import, probe, or construction error remains indeterminate and must not
+    select Codex.
+    """
+
+    try:
+        from ipfs_accelerate_py.llm_router import (
+            _grok_cli_auth_available,
+            get_llm_provider,
+        )
+    except Exception:  # noqa: BLE001 - import fault is indeterminate.
+        return "indeterminate", ""
+    try:
+        if not resolve_grok_cli_for_ordered_provider():
+            return "unavailable", ORDERED_PRIMARY_UNAVAILABILITY_REASON_BINARY
+    except Exception:  # noqa: BLE001 - discovery fault is indeterminate.
+        return "indeterminate", ""
+    try:
+        if not _grok_cli_auth_available():
+            return "unavailable", ORDERED_PRIMARY_UNAVAILABILITY_REASON_AUTH
+    except Exception:  # noqa: BLE001 - auth probe fault is indeterminate.
+        return "indeterminate", ""
+    try:
+        if get_llm_provider("grok_cli") is None:
+            return "unavailable", ORDERED_PRIMARY_UNAVAILABILITY_REASON_PROVIDER
+    except Exception:  # noqa: BLE001 - construction fault is indeterminate.
+        return "indeterminate", ""
+    return "ready", ""
+
+
+def _grok_primary_readiness_for_primary_unavailable_fallback() -> tuple[str, str]:
+    """Compatibility alias for the shared ordered-provider classifier."""
+
+    return grok_primary_readiness_for_ordered_provider()
+
+
+def _validate_terra_workspace_boundary(
+    *,
+    workspace: Path,
+    denied_paths: Sequence[Path],
+) -> None:
+    """Reject workspace aliases before any Terra Docker argv is constructed."""
+
+    symlink_violations = _workspace_symlinks_reach_denied_paths(
+        workspace=workspace,
+        denied_paths=denied_paths,
+    )
+    if symlink_violations:
+        raise ValueError(
+            "Codex fallback refuses workspace symlinks into provider/control paths: "
+            + ", ".join(str(path) for path in symlink_violations)
+        )
+    hardlink_violations = _workspace_regular_file_hardlinks(workspace)
+    if hardlink_violations:
+        raise ValueError(
+            "Codex fallback refuses multiply linked regular workspace files: "
+            + ", ".join(str(path) for path in hardlink_violations)
+        )
+    descendant_mounts = _workspace_descendant_mountpoints(workspace)
+    if descendant_mounts:
+        raise ValueError(
+            "Codex fallback refuses descendant workspace mountpoints: "
+            + ", ".join(str(path) for path in descendant_mounts)
+        )
+
+
+def _preflight_containerized_codex_fallback_workspace(
+    *,
+    workspace: Path,
+    base_env: Mapping[str, str],
+    require_checkpoint: bool,
+) -> None:
+    """Resolve fixed assets and audit the workspace before a Terra dispatch.
+
+    The runner repeats the check inside the launcher immediately before Docker
+    argv construction, closing the interval between a daemon-side direct
+    route check and the actual bind mount.
+    """
+
+    (
+        _docker,
+        auth_path,
+        package_root,
+        bwrap_path,
+        checkpoint_path,
+    ) = _resolve_containerized_codex_fallback_assets(
+        workspace=workspace,
+        base_env=base_env,
+        require_checkpoint=require_checkpoint,
+    )
+    denied_paths = (auth_path, package_root, bwrap_path)
+    if checkpoint_path is not None:
+        denied_paths += (checkpoint_path,)
+    _validate_terra_workspace_boundary(
+        workspace=workspace,
+        denied_paths=denied_paths,
     )
 
+
+def _validate_primary_unavailable_codex_fallback_args(
+    args: argparse.Namespace,
+    *,
+    codex_fallback_command: Sequence[str],
+    workspace: Path,
+) -> None:
+    """Reject every direct-Terra shape except the sealed unavailable route."""
+
+    if not codex_fallback_command:
+        raise ValueError(
+            "primary-unavailable Codex fallback requires an exact Terra argv"
+        )
+    if (
+        str(args.model) != DEFAULT_GROK_MODEL
+        or str(args.max_turns) != "100000"
+        or str(args.mode) != "agent"
+        or str(args.codex_fallback_reasoning_effort) != "high"
+        or str(args.grok_bin).strip()
+        or str(args.grok_failure_receipt_nonce).strip()
+        or str(args.primary_unavailability_reason)
+        not in ORDERED_PRIMARY_UNAVAILABILITY_REASONS
+        or str(args.permission_mode).strip()
+        or bool(args.require_command)
+        or bool(args.receipt_fd_declared)
+        or str(args.invocation_id).strip()
+        or str(args.invocation_binding_sha256).strip()
+        or validate_grok_runner_command_binding(args.outer_runner_command)
+    ):
+        raise ValueError(
+            "primary-unavailable Codex fallback command is not the sealed direct route"
+        )
+    raw_argv = getattr(args, "raw_argv", ())
+    if not isinstance(raw_argv, tuple) or not all(
+        isinstance(item, str) for item in raw_argv
+    ):
+        raise ValueError(
+            "primary-unavailable Codex fallback has no canonical raw argv"
+        )
+    # argparse accepts duplicate/reordered flags by design.  Reuse the sealed
+    # authoring command validator over the raw vector so this executor admits
+    # exactly the same one direct shape the daemon receipt bound.
+    try:
+        validate_ordered_provider_command(
+            [
+                sys.executable,
+                "-m",
+                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                *raw_argv,
+            ],
+            workspace_path=workspace,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "primary-unavailable Codex fallback raw argv is not canonical"
+        ) from exc
+
+
+def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     try:
         codex_fallback_command = _parse_codex_fallback_command(
             str(args.codex_fallback_command_json),
@@ -3970,6 +4246,18 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
+        return 2
+    primary_unavailable_codex_fallback = bool(
+        args.codex_fallback_on_primary_unavailable
+    )
+    if (
+        not primary_unavailable_codex_fallback
+        and str(args.primary_unavailability_reason).strip()
+    ):
+        print(
+            "primary-unavailability reason requires the sealed direct Codex flag",
+            file=sys.stderr,
+        )
         return 2
     if codex_fallback_command and validate_grok_runner_command_binding(
         args.outer_runner_command
@@ -4011,6 +4299,59 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 file=sys.stderr,
             )
             return 2
+
+    if primary_unavailable_codex_fallback:
+        try:
+            _validate_primary_unavailable_codex_fallback_args(
+                args,
+                codex_fallback_command=codex_fallback_command,
+                workspace=workspace,
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        readiness, observed_reason = grok_primary_readiness_for_ordered_provider()
+        if (
+            readiness != "unavailable"
+            or observed_reason != str(args.primary_unavailability_reason)
+        ):
+            print(
+                "primary-unavailable Codex fallback refused because Grok "
+                "readiness is not the sealed unavailable condition",
+                file=sys.stderr,
+            )
+            return 2
+        prompt = sys.stdin.read()
+        if not prompt.strip():
+            print("empty implementation prompt on stdin", file=sys.stderr)
+            return 2
+        try:
+            _preflight_containerized_codex_fallback_workspace(
+                workspace=workspace,
+                base_env=os.environ,
+                require_checkpoint=True,
+            )
+            fallback = _run_containerized_codex_quota_fallback(
+                host_fallback_command=codex_fallback_command,
+                workspace=workspace,
+                base_env=os.environ.copy(),
+                prompt=prompt,
+            )
+        except (OSError, ValueError) as exc:
+            print(
+                "unable to launch primary-unavailable Codex fallback: "
+                f"{exc}",
+                file=sys.stderr,
+            )
+            return 127
+        return int(fallback.returncode)
+
+    from ipfs_accelerate_py.llm_router import (
+        LLMRouterError,
+        build_grok_cli_command,
+        build_grok_cli_env,
+        find_grok_cli,
+    )
 
     grok_bin = str(args.grok_bin).strip() or find_grok_cli() or ""
     if not grok_bin:
@@ -4241,30 +4582,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             for rule in _grok_filesystem_deny_rules(_denied_paths):
                 cmd.extend(["--deny", rule])
             if codex_fallback_command:
-                symlink_violations = _workspace_symlinks_reach_denied_paths(
+                _validate_terra_workspace_boundary(
                     workspace=workspace,
                     denied_paths=_denied_paths,
                 )
-                if symlink_violations:
-                    raise ValueError(
-                        "Default Grok route refuses workspace symlinks into "
-                        "provider/control paths: "
-                        + ", ".join(str(path) for path in symlink_violations)
-                    )
-                hardlink_violations = _workspace_regular_file_hardlinks(workspace)
-                if hardlink_violations:
-                    raise ValueError(
-                        "Default Grok route refuses multiply linked regular "
-                        "workspace files: "
-                        + ", ".join(str(path) for path in hardlink_violations)
-                    )
-                descendant_mounts = _workspace_descendant_mountpoints(workspace)
-                if descendant_mounts:
-                    raise ValueError(
-                        "Default Grok route refuses descendant workspace "
-                        "mountpoints: "
-                        + ", ".join(str(path) for path in descendant_mounts)
-                    )
             grok_launch_env = env
             if isolation_backend == GROK_ISOLATION_DOCKER:
                 docker_bin = _docker_isolation_binary()
@@ -4443,6 +4764,13 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         try:
+            _preflight_containerized_codex_fallback_workspace(
+                workspace=workspace,
+                base_env=os.environ,
+                require_checkpoint=(
+                    str(args.codex_fallback_reasoning_effort) == "high"
+                ),
+            )
             fallback = _run_containerized_codex_quota_fallback(
                 host_fallback_command=codex_fallback_command,
                 workspace=workspace,
@@ -4520,6 +4848,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Exact closed reasoning effort bound into the Codex fallback argv.",
     )
     parser.add_argument(
+        CODEX_PRIMARY_UNAVAILABLE_FALLBACK_FLAG,
+        action="store_true",
+        help=(
+            "Internal sealed route: run the pinned Terra/high boundary only "
+            "when authenticated Grok readiness is unavailable before dispatch."
+        ),
+    )
+    parser.add_argument(
+        ORDERED_PRIMARY_UNAVAILABILITY_REASON_FLAG,
+        default="",
+        choices=tuple(sorted(ORDERED_PRIMARY_UNAVAILABILITY_REASONS)),
+        help="Internal closed reason binding the direct fallback selection.",
+    )
+    parser.add_argument(
         "--require-command",
         action="append",
         default=[],
@@ -4537,6 +4879,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(GROK_INVOCATION_BINDING_FLAG, default="")
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     args = parser.parse_args(raw_argv)
+    args.raw_argv = tuple(raw_argv)
     executable = str(Path(__file__).resolve())
     args.outer_runner_command = [sys.executable, executable, *raw_argv]
     args.receipt_fd_declared = bool(

@@ -75,7 +75,10 @@ def _metadata(*, extra: tuple[tuple[str, str], ...] = ()) -> list[tuple[str, str
         ("Symbolic first", "true"),
         ("LLM context budget bytes", "262144"),
         ("Context budget tokens", "16384"),
-        ("Provider role", "grok-implement, codex-review"),
+        (
+            "Provider role",
+            "grok-primary-implement, codex-fallback-implement",
+        ),
         ("Predicted files", "src/current_state.py, test/test_current_state.py"),
         ("Acceptance", "Current evidence is content-addressed."),
     ]
@@ -125,19 +128,21 @@ def _seal(repo: Path, board: Path) -> tuple[dict[str, object], dict[str, str]]:
             "primary_model_id": "grok-4.5",
             "fallback_provider_id": "codex",
             "fallback_model_id": "gpt-5.6-terra",
-            "fallback_trigger": "primary_quota_exhausted",
+            "fallback_trigger": "primary_unavailable_or_quota_exhausted",
             "fallback_reasoning_effort": "high",
             "provider_fallback_for_other_failures": False,
         },
         "execution_policy": {
             "implementation_authoring_mode": "ordered_provider",
-            "implementation_provider_role": "grok-implement, codex-review",
+            "implementation_provider_role": (
+                "grok-primary-implement, codex-fallback-implement"
+            ),
             "repair_runtime_mode": "deterministic_only",
             "repair_runtime_model_calls": 0,
             "repair_runtime_llm_calls": 0,
             "implementation_llm_context_budget_bytes": 262144,
             "implementation_context_budget_tokens": 16384,
-            "provider_fallback_allowed_only_for_primary_quota_exhaustion": True,
+            "provider_fallback_allowed_only_for_primary_unavailability_or_quota_exhaustion": True,
         },
         "runtime_paths": {"worktrees": "worktree"},
         "worktree_submodule_paths": ["dependency"],
@@ -205,7 +210,7 @@ def _seal(repo: Path, board: Path) -> tuple[dict[str, object], dict[str, str]]:
         GROK_MODEL_ENV: "grok-4.5",
         FALLBACK_PROVIDER_ENV: "codex",
         CODEX_MODEL_ENV: "gpt-5.6-terra",
-        FALLBACK_TRIGGER_ENV: "primary_quota_exhausted",
+        FALLBACK_TRIGGER_ENV: "primary_unavailable_or_quota_exhausted",
         CODEX_REASONING_EFFORT_ENV: "high",
     }
     return payload, environment
@@ -219,6 +224,7 @@ def _evaluate(
     metadata: dict[str, str] | None = None,
     attempt: int = 1,
     current_git_tree_id: str = "1" * 40,
+    primary_unavailability_reason: str = "",
 ) -> dict[str, object]:
     task_metadata = metadata or {key.lower(): value for key, value in _metadata()}
     workspace = repo / "worktree"
@@ -279,11 +285,24 @@ def _evaluate(
         "high",
         "--codex-fallback-command-json",
         json.dumps(fallback, separators=(",", ":")),
-        "--grok-bin",
-        str(grok),
-        "--grok-failure-receipt-nonce",
-        "a" * 64,
     ]
+    if primary_unavailability_reason:
+        command.extend(
+            [
+                "--primary-unavailability-reason",
+                primary_unavailability_reason,
+                "--codex-fallback-on-primary-unavailable",
+            ]
+        )
+    else:
+        command.extend(
+            [
+                "--grok-bin",
+                str(grok),
+                "--grok-failure-receipt-nonce",
+                "a" * 64,
+            ]
+        )
     predicted = [
         item.strip()
         for item in task_metadata.get("predicted files", "").split(",")
@@ -374,6 +393,44 @@ def test_sealed_authoring_authorizes_proposal_without_repair_authority(
     }
 
 
+def test_sealed_authoring_binds_closed_primary_unavailable_mode(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.md"
+    _write_board(board)
+    _payload, environment = _seal(tmp_path, board)
+
+    receipt = _evaluate(
+        tmp_path,
+        board,
+        environment,
+        primary_unavailability_reason="grok_auth_unavailable",
+    )
+
+    assert receipt["status"] == "authorized"
+    assert receipt["primary_dispatch_mode"] == (
+        "codex_fallback_primary_unavailable"
+    )
+    assert receipt["primary_unavailability_reason"] == "grok_auth_unavailable"
+    assert authoring_provider_invocation_authorized(receipt)
+    assert receipt["authority"] == {
+        "proposal_only": True,
+        "deterministic_repair": False,
+        "runtime_repair": False,
+        "planner": False,
+        "doctor": False,
+        "proof": False,
+        "publication": False,
+        "completion": False,
+    }
+
+    forged = json.loads(json.dumps(receipt))
+    forged["primary_unavailability_reason"] = "grok_provider_unavailable"
+    body = {key: value for key, value in forged.items() if key != "receipt_id"}
+    forged["receipt_id"] = canonical_content_cid(body)
+    assert not authoring_provider_invocation_authorized(forged)
+
+
 def test_status_updates_preserve_authority_but_contract_drift_does_not(
     tmp_path: Path,
 ) -> None:
@@ -390,7 +447,7 @@ def test_status_updates_preserve_authority_but_contract_drift_does_not(
 
     board.write_text(
         board.read_text(encoding="utf-8").replace(
-            "grok-implement, codex-review", "codex-implement"
+            "grok-primary-implement, codex-fallback-implement", "codex-implement"
         ),
         encoding="utf-8",
     )
@@ -572,6 +629,14 @@ def test_daemon_uses_authoring_gate_instead_of_synthetic_kernel_receipt(
         current_git_tree_id=current_tree,
     )
     command = [str(item) for item in fixture_receipt["provider_command"]]
+    # This test exercises receipt/gate revalidation, not ambient CLI auth.
+    # Keep its sealed Grok-first argv stable while the new direct route is
+    # separately covered by focused unavailable-readiness tests.
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_readiness",
+        lambda: ("ready", ""),
+    )
 
     original_import = builtins.__import__
 
@@ -732,6 +797,11 @@ def test_daemon_builder_is_ephemeral_and_canonical_grok_only(
         implementation_daemon_module,
         "_grok_cli_command",
         lambda **_kwargs: list(command),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_readiness",
+        lambda: ("ready", ""),
     )
 
     receipt_id = str(receipt["receipt_id"])

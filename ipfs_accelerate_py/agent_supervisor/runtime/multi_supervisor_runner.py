@@ -41,6 +41,12 @@ ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
 )
 _CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 _ORDERED_CODEX_REASONING_EFFORTS = frozenset({"medium", "high"})
+_ORDERED_FALLBACK_TRIGGERS = frozenset(
+    {
+        "primary_quota_exhausted",
+        "primary_unavailable_or_quota_exhausted",
+    }
+)
 _COMPATIBLE_GROK_PRIMARY_ALIASES = frozenset(
     {
         "grok",
@@ -551,6 +557,11 @@ def seal_ordered_implementation_provider_route(
             and value in _ORDERED_CODEX_REASONING_EFFORTS
         ):
             continue
+        if (
+            name == "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+            and value in _ORDERED_FALLBACK_TRIGGERS
+        ):
+            continue
         if value != expected:
             incompatible[name] = value
     if incompatible:
@@ -561,14 +572,36 @@ def seal_ordered_implementation_provider_route(
         raise ValueError(
             "implementation supervisors require the exact six-field "
             "grok_cli/grok-4.5 -> codex/gpt-5.6-terra {medium,high} "
-            "primary_quota_exhausted route; incompatible explicit "
-            f"configuration: {details}"
+            "quota-only or primary-unavailable-or-quota route; incompatible "
+            f"explicit configuration: {details}"
+        )
+    observed_trigger = observed[
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+    ] or ORDERED_IMPLEMENTATION_PROVIDER_ROUTE[
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+    ]
+    observed_effort = observed[_CODEX_REASONING_EFFORT_ENV] or (
+        ORDERED_IMPLEMENTATION_PROVIDER_ROUTE[_CODEX_REASONING_EFFORT_ENV]
+    )
+    if (
+        observed_trigger == "primary_unavailable_or_quota_exhausted"
+        and observed_effort != "high"
+    ):
+        raise ValueError(
+            "implementation supervisors require high Codex reasoning for the "
+            "primary_unavailable_or_quota_exhausted route"
         )
     sealed = dict(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
     if observed[_CODEX_REASONING_EFFORT_ENV]:
         sealed[_CODEX_REASONING_EFFORT_ENV] = observed[
             _CODEX_REASONING_EFFORT_ENV
         ]
+    # Preserve the sealed board/launcher trigger exactly.  In particular, an
+    # old quota-only launch must never be rewritten into the broader DCR route.
+    if observed["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"]:
+        sealed["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"] = (
+            observed["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"]
+        )
     target.update(sealed)
     return sealed
 

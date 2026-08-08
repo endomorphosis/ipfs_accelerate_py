@@ -243,7 +243,9 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
         load_configured_board(config_path, repo_root=repo)
 
     payload["provider"]["fallback_model_id"] = "gpt-5.6-terra"
-    payload["provider"]["fallback_trigger"] = "primary_quota_exhausted"
+    payload["provider"]["fallback_trigger"] = (
+        "primary_unavailable_or_quota_exhausted"
+    )
     payload["provider"]["fallback_reasoning_effort"] = "high"
     payload["provider"]["provider_id"] = "auto"
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -277,7 +279,7 @@ def test_ordered_provider_contract_seals_fallback_authority(
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_trigger": "primary_unavailable_or_quota_exhausted",
         "fallback_reasoning_effort": "high",
         "max_concurrency": 2,
     }
@@ -288,9 +290,17 @@ def test_ordered_provider_contract_seals_fallback_authority(
         load_configured_board(config_path, repo_root=repo)
 
 
-@pytest.mark.parametrize("reasoning_effort", ("medium", "high"))
-def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
+@pytest.mark.parametrize(
+    ("fallback_trigger", "reasoning_effort"),
+    (
+        ("primary_quota_exhausted", "medium"),
+        ("primary_quota_exhausted", "high"),
+        ("primary_unavailable_or_quota_exhausted", "high"),
+    ),
+)
+def test_ordered_provider_contract_accepts_supported_trigger_effort_pairs(
     tmp_path: Path,
+    fallback_trigger: str,
     reasoning_effort: str,
 ) -> None:
     repo, config_path = _seed_configured_repo(tmp_path)
@@ -300,7 +310,7 @@ def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_trigger": fallback_trigger,
         "fallback_reasoning_effort": reasoning_effort,
         "max_concurrency": 2,
     }
@@ -317,6 +327,29 @@ def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
     assert plan["environment"][scheduler_module.CODEX_REASONING_EFFORT_ENV] == (
         reasoning_effort
     )
+    assert plan["environment"][scheduler_module.FALLBACK_TRIGGER_ENV] == (
+        fallback_trigger
+    )
+
+
+def test_ordered_provider_contract_rejects_composite_trigger_with_medium_effort(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_unavailable_or_quota_exhausted",
+        "fallback_reasoning_effort": "medium",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(ConfiguredBoardError, match="must be 'high'"):
+        load_configured_board(config_path, repo_root=repo)
 
 
 def test_legacy_provider_launch_environment_remains_backward_compatible(
@@ -349,7 +382,7 @@ def test_launch_config_overrides_ambient_provider_environment(
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_trigger": "primary_unavailable_or_quota_exhausted",
         "fallback_reasoning_effort": "high",
         "max_concurrency": 2,
     }
@@ -397,7 +430,9 @@ def test_launch_config_overrides_ambient_provider_environment(
     assert observed == {
         scheduler_module.PROVIDER_ENV: "grok_cli",
         scheduler_module.FALLBACK_PROVIDER_ENV: "codex",
-        scheduler_module.FALLBACK_TRIGGER_ENV: "primary_quota_exhausted",
+        scheduler_module.FALLBACK_TRIGGER_ENV: (
+            "primary_unavailable_or_quota_exhausted"
+        ),
         scheduler_module.GROK_MODEL_ENV: "grok-4.5",
         scheduler_module.CODEX_MODEL_ENV: "gpt-5.6-terra",
         scheduler_module.CODEX_REASONING_EFFORT_ENV: "high",
@@ -623,7 +658,7 @@ def test_preflight_requires_exact_content_addressed_bootstrap_seal(
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_trigger": "primary_unavailable_or_quota_exhausted",
         "fallback_reasoning_effort": "high",
         "max_concurrency": 2,
     }

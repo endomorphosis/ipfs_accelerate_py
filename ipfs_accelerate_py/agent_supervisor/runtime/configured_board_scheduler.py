@@ -86,7 +86,22 @@ ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
 ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
-ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
+# ``primary_quota_exhausted`` is the reviewed legacy contract used by the
+# existing KITA boards and generic launcher default.  New sealed DCR
+# authoring can opt into the broader, still-closed pre-dispatch-unavailability
+# route.  Keep the values distinct: accepting the new trigger must not
+# silently grant it to an old board.
+ORDERED_LEGACY_FALLBACK_TRIGGER = "primary_quota_exhausted"
+ORDERED_PRIMARY_UNAVAILABLE_FALLBACK_TRIGGER = (
+    "primary_unavailable_or_quota_exhausted"
+)
+ORDERED_FALLBACK_TRIGGER = ORDERED_LEGACY_FALLBACK_TRIGGER
+ORDERED_FALLBACK_TRIGGERS = frozenset(
+    {
+        ORDERED_LEGACY_FALLBACK_TRIGGER,
+        ORDERED_PRIMARY_UNAVAILABLE_FALLBACK_TRIGGER,
+    }
+)
 ORDERED_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
 
 
@@ -447,16 +462,27 @@ def load_configured_board(
                 "provider.fallback_model_id must be 'gpt-5.6-terra' for "
                 "the ordered provider contract"
             )
-        if fallback_trigger != ORDERED_FALLBACK_TRIGGER:
+        if fallback_trigger not in ORDERED_FALLBACK_TRIGGERS:
             raise ConfiguredBoardError(
-                "provider.fallback_trigger must be "
-                "'primary_quota_exhausted' for the ordered provider contract"
+                "provider.fallback_trigger must be one of "
+                "'primary_quota_exhausted', "
+                "'primary_unavailable_or_quota_exhausted' for the ordered "
+                "provider contract"
             )
         if fallback_reasoning_effort not in ORDERED_FALLBACK_REASONING_EFFORTS:
             raise ConfiguredBoardError(
                 "provider.fallback_reasoning_effort must be one of "
                 "'medium', 'high' for "
                 "the ordered provider contract"
+            )
+        if (
+            fallback_trigger == ORDERED_PRIMARY_UNAVAILABLE_FALLBACK_TRIGGER
+            and fallback_reasoning_effort != "high"
+        ):
+            raise ConfiguredBoardError(
+                "provider.fallback_reasoning_effort must be 'high' when "
+                "provider.fallback_trigger is "
+                "'primary_unavailable_or_quota_exhausted'"
             )
         if provider.get("provider_fallback_for_other_failures", False) is not False:
             raise ConfiguredBoardError(

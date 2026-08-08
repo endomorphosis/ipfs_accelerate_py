@@ -1638,44 +1638,51 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
 
 def _grok_binary() -> str | None:
     try:
-        from ...llm_router import find_grok_cli
+        from ..runtime.grok_cli_runner import resolve_grok_cli_for_ordered_provider
 
-        found = find_grok_cli()
-        if found:
-            return found
+        return resolve_grok_cli_for_ordered_provider()
     except Exception:
-        pass
-    configured = os.environ.get(_GROK_BIN_ENV, "").strip()
-    if configured:
-        path = Path(configured).expanduser()
-        if path.is_file() and os.access(path, os.X_OK):
-            return str(path)
-        found = shutil.which(configured)
-        if found:
-            return found
-    return shutil.which("grok")
+        return None
+
+
+def _grok_cli_readiness() -> tuple[str, str]:
+    """Use the runner's exact, side-effect-free ordered-route classifier."""
+
+    from ..runtime.grok_cli_runner import (
+        grok_primary_readiness_for_ordered_provider,
+    )
+
+    return grok_primary_readiness_for_ordered_provider()
 
 
 def _grok_cli_available() -> bool:
-    """Return whether Grok is ready for non-interactive implementation work.
+    """Return whether Grok is ready for non-interactive implementation work."""
 
-    Binary discovery alone is insufficient for the daemon: selecting an
-    unauthenticated CLI would fail after dispatch instead of allowing the
-    default route to fall back to Codex. Keep the probe side-effect free and
-    fail closed when the shared router cannot prove both authentication and
-    provider construction.
-    """
+    readiness, _reason = _grok_cli_readiness()
+    return readiness == "ready"
 
-    if not _grok_binary():
-        return False
-    try:
-        from ...llm_router import _grok_cli_auth_available, get_llm_provider
 
-        if not _grok_cli_auth_available():
-            return False
-        return get_llm_provider("grok_cli") is not None
-    except Exception:
-        return False
+def _ordered_provider_primary_dispatch_selection() -> tuple[str, str]:
+    """Select one closed Grok-first or explicit-unavailable provider mode."""
+
+    from ..runtime.ordered_provider_authoring import (
+        ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE,
+        ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST,
+        ORDERED_PRIMARY_UNAVAILABILITY_REASONS,
+    )
+
+    readiness, reason = _grok_cli_readiness()
+    if readiness == "ready":
+        return ORDERED_PRIMARY_DISPATCH_MODE_GROK_FIRST, ""
+    if (
+        readiness == "unavailable"
+        and reason in ORDERED_PRIMARY_UNAVAILABILITY_REASONS
+    ):
+        return ORDERED_PRIMARY_DISPATCH_MODE_CODEX_PRIMARY_UNAVAILABLE, reason
+    raise ImplementationRetryDeferred(
+        "sealed authoring Grok readiness is indeterminate",
+        backoff_seconds=300,
+    )
 
 
 def _grok_cli_command(
@@ -13587,6 +13594,12 @@ class PortalImplementationDaemon:
                 "receipt_cid": str(authoring_receipt.get("receipt_id") or ""),
                 "residual_packet_cid": "",
                 "provider_hook_count": 0,
+                "primary_dispatch_mode": str(
+                    authoring_receipt.get("primary_dispatch_mode") or ""
+                ),
+                "primary_unavailability_reason": str(
+                    authoring_receipt.get("primary_unavailability_reason") or ""
+                ),
                 "authoring_receipt": authoring_receipt,
                 "event": {
                     "event": "ordered_provider_authoring_gate_evaluated",
@@ -13595,6 +13608,12 @@ class PortalImplementationDaemon:
                     "disposition": disposition,
                     "provider_authorized": authorized,
                     "provider_hook_count": 0,
+                    "primary_dispatch_mode": str(
+                        authoring_receipt.get("primary_dispatch_mode") or ""
+                    ),
+                    "primary_unavailability_reason": str(
+                        authoring_receipt.get("primary_unavailability_reason") or ""
+                    ),
                     "skip_provider": not authorized,
                     "reason_code": str(
                         authoring_receipt.get("reason_code") or ""
@@ -13687,12 +13706,34 @@ class PortalImplementationDaemon:
             from ..runtime.ordered_provider_authoring import (
                 assert_current_authoring_dispatch_authority,
                 authoring_provider_invocation_authorized,
+                ordered_provider_primary_dispatch_mode,
+                ordered_provider_primary_unavailability_reason,
             )
 
             receipt = provider_gate.get("authoring_receipt") or {}
             if not authoring_provider_invocation_authorized(receipt):
                 raise RuntimeError(
                     "provider dispatch blocked by forged authoring receipt"
+                )
+            command_mode = ordered_provider_primary_dispatch_mode(
+                command,
+                workspace_path=worktree_path,
+            )
+            command_reason = ordered_provider_primary_unavailability_reason(
+                command,
+                workspace_path=worktree_path,
+            )
+            current_mode, current_reason = (
+                _ordered_provider_primary_dispatch_selection()
+            )
+            if (
+                receipt.get("primary_dispatch_mode") != command_mode
+                or receipt.get("primary_unavailability_reason") != command_reason
+                or (current_mode, current_reason)
+                != (command_mode, command_reason)
+            ):
+                raise RuntimeError(
+                    "ordered provider primary dispatch mode changed before invocation"
                 )
             rechecked_gate = self._evaluate_pre_implementation_provider_gate(
                 task=task,
@@ -13721,6 +13762,10 @@ class PortalImplementationDaemon:
             if not isinstance(registry, dict):
                 registry = {}
                 self._ordered_provider_proposal_authorities = registry
+            # An exact runner argv is only a constrained executor shape.  The
+            # registry becomes proposal authority only after this receipt,
+            # current-route, and current-seal recheck immediately before the
+            # process spawn.
             registry[(task.task_id, str(worktree_path.resolve()))] = str(
                 receipt.get("receipt_id") or ""
             )
@@ -47987,7 +48032,11 @@ class PortalImplementationDaemon:
                 )
             return next(iter(local_only_roles))
 
-        grok_primary_roles = {"grok-implement", "grok-draft"}
+        grok_primary_roles = {
+            "grok-implement",
+            "grok-draft",
+            "grok-primary-implement",
+        }
         grok_only_roles = {"grok-only", "grok-pinned"}
         codex_roles = {"codex-implement", "codex-draft"}
         wants_grok_primary = bool(roles & grok_primary_roles)
@@ -48049,7 +48098,7 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask | None,
     ) -> None:
-        """Defer before prompt/worktree dispatch when Grok primary is absent."""
+        """Defer before prompt/worktree dispatch when no sealed route is ready."""
 
         ordered_authoring = bool(
             task is not None
@@ -48059,14 +48108,13 @@ class PortalImplementationDaemon:
             == "ordered_provider"
         )
         if ordered_authoring:
-            if not (_grok_cli_available() and _grok_binary()):
-                raise ImplementationRetryDeferred(
-                    "sealed authoring requires authenticated Grok 4.5",
-                    backoff_seconds=300,
-                )
+            # A closed unavailable state selects the sealed direct Terra/high
+            # route.  Ambiguous readiness remains fail-closed and never
+            # upgrades a probe/import failure into Codex authority.
+            _ordered_provider_primary_dispatch_selection()
             if not shutil.which("codex"):
                 raise ImplementationRetryDeferred(
-                    "sealed authoring requires the Terra quota fallback binary",
+                    "sealed authoring requires the pinned Terra sandbox binary",
                     backoff_seconds=300,
                 )
             return
@@ -48184,11 +48232,28 @@ class PortalImplementationDaemon:
                 raise RuntimeError(
                     "ordered-provider authoring requires an ephemeral worktree"
                 )
-            command = _grok_cli_command(
-                workspace_path=workspace_path,
-                model_override="grok-4.5",
-                failure_receipt_nonce=secrets.token_hex(32),
+            primary_dispatch_mode, primary_unavailability_reason = (
+                _ordered_provider_primary_dispatch_selection()
             )
+            if primary_dispatch_mode == "grok_first":
+                command = _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override="grok-4.5",
+                    failure_receipt_nonce=secrets.token_hex(32),
+                )
+            else:
+                from ..runtime.grok_cli_runner import (
+                    build_grok_primary_unavailable_codex_fallback_command,
+                )
+
+                command = build_grok_primary_unavailable_codex_fallback_command(
+                    workspace=workspace_path,
+                    python_executable=sys.executable,
+                    codex_bin=str(shutil.which("codex") or ""),
+                    max_turns=100_000,
+                    fallback_reasoning_effort="high",
+                    primary_unavailability_reason=primary_unavailability_reason,
+                )
             from ..runtime.ordered_provider_authoring import (
                 validate_ordered_provider_command,
             )
