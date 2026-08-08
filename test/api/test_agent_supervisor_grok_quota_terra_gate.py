@@ -479,7 +479,30 @@ def test_terra_high_quota_fallback_requires_the_pinned_docker_boundary(
     assert "--security-opt=no-new-privileges:true" not in command
     assert command[command.index("--user") + 1] == "0:0"
     assert command[command.index("--entrypoint") + 1] == "/bin/sh"
-    assert command[command.index("PATH=/usr/local/bin:/usr/bin:/bin") - 1] == "--env"
+    toolchain_path = (
+        f"PATH={grok_cli_runner.TYPESCRIPT_TOOLCHAIN_BIN}:"
+        "/usr/local/bin:/usr/bin:/bin"
+    )
+    assert command[command.index(toolchain_path) - 1] == "--env"
+    assert (
+        f"NODE_PATH={grok_cli_runner.TYPESCRIPT_NODE_MODULES}"
+        in command
+    )
+    assert (
+        "IPFS_ACCELERATE_TYPESCRIPT_JS="
+        f"{grok_cli_runner.TYPESCRIPT_COMPILER_JS}"
+        in command
+    )
+    assert (
+        "IPFS_ACCELERATE_TYPESCRIPT_PACKAGE_JSON="
+        f"{grok_cli_runner.TYPESCRIPT_PACKAGE_JSON}"
+        in command
+    )
+    assert (
+        "IPFS_ACCELERATE_TYPESCRIPT_VERSION="
+        f"{grok_cli_runner.TYPESCRIPT_VERSION}"
+        in command
+    )
     assert (
         f"{grok_cli_runner._CODEX_FALLBACK_CHECKPOINT_ENV}={checkpoint_path}"
         in command

@@ -67,6 +67,14 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
     build_grok_failure_receipt,
     render_grok_failure_receipt,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.typescript_validation_image import (
+    TYPESCRIPT_COMPILER_JS,
+    TYPESCRIPT_NODE_MODULES,
+    TYPESCRIPT_PACKAGE_JSON,
+    TYPESCRIPT_TOOLCHAIN_BIN,
+    TYPESCRIPT_VALIDATION_IMAGE,
+    TYPESCRIPT_VERSION,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     ValidationRuntimeError,
@@ -272,9 +280,7 @@ _CODEX_FALLBACK_DOCKER_SHA256 = (
     "414d9e16a30060770648522f8ecadef2f2b57b50b8c61d4b0ae9d3b8b64c2a02"
 )
 _CODEX_FALLBACK_DOCKER_SOCKET = Path("/run/docker.sock")
-_CODEX_FALLBACK_IMAGE = (
-    "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
-)
+_CODEX_FALLBACK_IMAGE = TYPESCRIPT_VALIDATION_IMAGE
 _CODEX_FALLBACK_PACKAGE_ROOT = Path(
     "/usr/local/lib/node_modules/@openai/codex/node_modules/"
     "@openai/codex-linux-arm64"
@@ -3325,7 +3331,18 @@ def _build_containerized_codex_quota_fallback_command(
         "--env",
         f"CODEX_HOME={_CODEX_FALLBACK_CONTAINER_HOME}",
         "--env",
-        "PATH=/usr/local/bin:/usr/bin:/bin",
+        f"PATH={TYPESCRIPT_TOOLCHAIN_BIN}:/usr/local/bin:/usr/bin:/bin",
+        "--env",
+        f"NODE_PATH={TYPESCRIPT_NODE_MODULES}",
+        "--env",
+        f"IPFS_ACCELERATE_TYPESCRIPT_JS={TYPESCRIPT_COMPILER_JS}",
+        "--env",
+        (
+            "IPFS_ACCELERATE_TYPESCRIPT_PACKAGE_JSON="
+            f"{TYPESCRIPT_PACKAGE_JSON}"
+        ),
+        "--env",
+        f"IPFS_ACCELERATE_TYPESCRIPT_VERSION={TYPESCRIPT_VERSION}",
         "--env",
         "TMPDIR=/tmp",
     ]
@@ -3494,7 +3511,18 @@ def _validate_containerized_codex_quota_fallback_command(
         "--env",
         f"CODEX_HOME={_CODEX_FALLBACK_CONTAINER_HOME}",
         "--env",
-        "PATH=/usr/local/bin:/usr/bin:/bin",
+        f"PATH={TYPESCRIPT_TOOLCHAIN_BIN}:/usr/local/bin:/usr/bin:/bin",
+        "--env",
+        f"NODE_PATH={TYPESCRIPT_NODE_MODULES}",
+        "--env",
+        f"IPFS_ACCELERATE_TYPESCRIPT_JS={TYPESCRIPT_COMPILER_JS}",
+        "--env",
+        (
+            "IPFS_ACCELERATE_TYPESCRIPT_PACKAGE_JSON="
+            f"{TYPESCRIPT_PACKAGE_JSON}"
+        ),
+        "--env",
+        f"IPFS_ACCELERATE_TYPESCRIPT_VERSION={TYPESCRIPT_VERSION}",
         "--env",
         "TMPDIR=/tmp",
     ]

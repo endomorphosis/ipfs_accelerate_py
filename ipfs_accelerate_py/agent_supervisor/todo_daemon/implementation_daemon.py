@@ -210,6 +210,15 @@ from ..validation.validation_scheduler import (
     ValidationScheduler,
     build_declared_validation_plan_graph,
 )
+from ..validation.typescript_validation_image import (
+    TYPESCRIPT_COMPILER_JS,
+    TYPESCRIPT_NODE_MODULES,
+    TYPESCRIPT_PACKAGE_JSON,
+    TYPESCRIPT_TOOLCHAIN_BIN,
+    TYPESCRIPT_VALIDATION_IMAGE,
+    TYPESCRIPT_VERSION,
+    typescript_validation_toolchain_contract,
+)
 from .diagnostics import summarize_test_failure
 from .post_merge_validation import (
     build_post_merge_validation_evidence,
@@ -403,9 +412,7 @@ AUTHORITY_VALIDATION_GPU_UUID = (
 )
 # Updated only after the operator builds and validates the immutable local
 # CUDA image. A mutable tag is never an authority-bearing input.
-DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE = (
-    "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
-)
+DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE = TYPESCRIPT_VALIDATION_IMAGE
 AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES = (
     "/opt/ipfs-validation-site-packages"
 )
@@ -10573,6 +10580,9 @@ class PortalImplementationDaemon:
             "gpu_requested": True,
             "validation_site_packages": (
                 AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES
+            ),
+            "typescript_validation_toolchain": (
+                typescript_validation_toolchain_contract()
             ),
         }
         docker_host = str(os.environ.get("DOCKER_HOST") or "").strip()
@@ -37266,10 +37276,17 @@ class PortalImplementationDaemon:
                     "/usr/bin/python"
                 ),
                 "PATH": (
+                    f"{TYPESCRIPT_TOOLCHAIN_BIN}:"
                     "/usr/local/nvidia/bin:/usr/local/cuda/bin:"
                     "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
                     "/sbin:/bin"
                 ),
+                "NODE_PATH": TYPESCRIPT_NODE_MODULES,
+                "IPFS_ACCELERATE_TYPESCRIPT_JS": TYPESCRIPT_COMPILER_JS,
+                "IPFS_ACCELERATE_TYPESCRIPT_PACKAGE_JSON": (
+                    TYPESCRIPT_PACKAGE_JSON
+                ),
+                "IPFS_ACCELERATE_TYPESCRIPT_VERSION": TYPESCRIPT_VERSION,
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONPATH": os.pathsep.join(allowed_python_paths),
                 "TMPDIR": "/tmp",
@@ -37532,6 +37549,9 @@ class PortalImplementationDaemon:
             "no_new_privileges": True,
             "container_root_read_only": True,
             "container_log_driver": "none",
+            "typescript_validation_toolchain": dict(
+                contract.get("typescript_validation_toolchain") or {}
+            ),
             "output_limit_bytes": AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES,
             "output_limit_exceeded": output_limit_exceeded,
             "output_bounded": True,
