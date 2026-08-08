@@ -849,6 +849,8 @@ def validate_ordered_provider_command(
         "gpt-5.6-terra",
         "-c",
         'model_reasoning_effort="high"',
+        "-c",
+        'web_search="disabled"',
         "-",
     ]
     if (

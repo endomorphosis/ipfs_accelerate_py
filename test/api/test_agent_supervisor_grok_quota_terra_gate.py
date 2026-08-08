@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import uuid
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TodoImplementationDaemon,
 )
-import ipfs_accelerate_py.llm_router as llm_router
-
 
 _GROK_1_SPENDING_LIMIT_MESSAGE = (
     "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
@@ -35,7 +36,12 @@ def _daemon(root: Path) -> TodoImplementationDaemon:
     )
 
 
-def _terra_fallback_command(codex: str, workspace: str | Path) -> list[str]:
+def _terra_fallback_command(
+    codex: str,
+    workspace: str | Path,
+    *,
+    reasoning_effort: str = "medium",
+) -> list[str]:
     return [
         str(codex),
         "exec",
@@ -49,7 +55,9 @@ def _terra_fallback_command(codex: str, workspace: str | Path) -> list[str]:
         "-m",
         "gpt-5.6-terra",
         "-c",
-        'model_reasoning_effort="medium"',
+        f'model_reasoning_effort="{reasoning_effort}"',
+        "-c",
+        'web_search="disabled"',
         "-",
     ]
 
@@ -95,6 +103,7 @@ def test_daemon_auto_route_embeds_strict_terra_fallback_when_codex_resolves(
     assert fallback[fallback.index("-s") + 1] == "workspace-write"
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback
+    assert 'web_search="disabled"' in fallback
     head = " ".join(command[: command.index("--codex-fallback-command-json")])
     assert "/opt/providers/codex" not in head
 
@@ -325,6 +334,7 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
     fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback
+    assert 'web_search="disabled"' in fallback
     assert command[command.index("--codex-fallback-reasoning-effort") + 1] == "medium"
     assert "--ephemeral" in fallback
 
@@ -378,3 +388,527 @@ def test_daemon_passes_configured_dcr_reasoning_effort_to_quota_route(
     assert command[command.index("--codex-fallback-reasoning-effort") + 1] == "high"
     fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
     assert 'model_reasoning_effort="high"' in fallback
+
+
+def _containerized_fallback_inputs(tmp_path: Path) -> dict[str, Path]:
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    git_control = workspace / ".git"
+    git_control.mkdir()
+    (git_control / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_control / "objects").mkdir()
+    (git_control / "refs").mkdir()
+    auth_path = (tmp_path / "auth.json").resolve()
+    auth_path.write_text("{}", encoding="utf-8")
+    auth_path.chmod(0o600)
+    package_root = (tmp_path / "codex-linux-arm64").resolve()
+    package_root.mkdir()
+    bwrap_path = (tmp_path / "bwrap").resolve()
+    bwrap_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    bwrap_path.chmod(0o700)
+    checkpoint_path = (tmp_path / "checkpoint").resolve()
+    checkpoint_path.mkdir(mode=0o700)
+    docker_config = (tmp_path / "docker-config").resolve()
+    docker_config.mkdir()
+    return {
+        "workspace": workspace,
+        "git_control": git_control,
+        "auth_path": auth_path,
+        "package_root": package_root,
+        "bwrap_path": bwrap_path,
+        "checkpoint_path": checkpoint_path,
+        "docker_config": docker_config,
+        "cidfile": (tmp_path / "container.cid").resolve(),
+    }
+
+
+def test_terra_high_quota_fallback_requires_the_pinned_docker_boundary(
+    tmp_path: Path,
+) -> None:
+    """The sealed high route can only become the exact nested boundary."""
+
+    paths = _containerized_fallback_inputs(tmp_path)
+    workspace = paths["workspace"]
+    auth_path = paths["auth_path"]
+    package_root = paths["package_root"]
+    bwrap_path = paths["bwrap_path"]
+    checkpoint_path = paths["checkpoint_path"]
+    docker_config = paths["docker_config"]
+    cidfile = paths["cidfile"]
+    git_control = paths["git_control"]
+    container_name = "ipfs-accelerate-codex-1-" + "a" * 32
+    host_route = _terra_fallback_command(
+        "/usr/local/bin/codex", workspace, reasoning_effort="high"
+    )
+    command = grok_cli_runner._build_containerized_codex_quota_fallback_command(
+        host_fallback_command=host_route,
+        workspace=workspace,
+        auth_path=auth_path,
+        package_root=package_root,
+        bwrap_path=bwrap_path,
+        checkpoint_path=checkpoint_path,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        git_controls=(git_control,),
+    )
+
+    assert command[:5] == [
+        "/usr/bin/docker",
+        "--host=unix:///run/docker.sock",
+        "--config",
+        str(docker_config),
+        "run",
+    ]
+    assert "--pull=never" in command
+    assert "--rm" in command
+    assert "--init" in command
+    assert "--network=bridge" in command
+    assert "--read-only" in command
+    assert "--cap-drop=ALL" in command
+    assert command.count("--cap-add=SYS_ADMIN") == 1
+    assert command.count("--cap-add=SYS_CHROOT") == 1
+    assert command.count("--cap-add=SETUID") == 1
+    assert command.count("--cap-add=SETGID") == 1
+    assert command.count("--cap-add=SYS_PTRACE") == 1
+    assert command.count("--cap-add=NET_ADMIN") == 1
+    assert command.count("--cap-add=NET_RAW") == 1
+    assert "--security-opt=seccomp=unconfined" in command
+    assert "--security-opt=apparmor=unconfined" in command
+    assert "--security-opt=systempaths=unconfined" in command
+    assert "--security-opt=no-new-privileges:true" not in command
+    assert command[command.index("--user") + 1] == "0:0"
+    assert command[command.index("--entrypoint") + 1] == "/bin/sh"
+    assert command[command.index("PATH=/usr/local/bin:/usr/bin:/bin") - 1] == "--env"
+    assert (
+        f"{grok_cli_runner._CODEX_FALLBACK_CHECKPOINT_ENV}={checkpoint_path}"
+        in command
+    )
+    assert "/usr/local/bin/codex" not in command
+    image_index = command.index(grok_cli_runner._CODEX_FALLBACK_IMAGE)
+    assert command[image_index + 1] == "-ec"
+    wrapper = command[image_index + 2]
+    assert "/opt/host-bwrap /usr/local/bin/bwrap" in wrapper
+    assert "/bin/chmod 4755 /usr/local/bin/bwrap" in wrapper
+    assert "--clear-groups -- /opt/codex/" in wrapper
+    profile = next(
+        item
+        for item in command
+        if item.startswith('permissions.dcr_fallback={extends=":workspace"')
+    )
+    assert '"/opt/ipfs-accelerate-codex-home/auth.json"="deny"' in profile
+    assert str(auth_path) not in profile
+    assert '"/opt/host-bwrap"="deny"' in profile
+    assert '"/usr/local/bin/bwrap"="deny"' in profile
+    assert '"/opt/codex"="read"' in profile
+    assert f'"{checkpoint_path}"="write"' in profile
+    assert f'"{git_control}"="read"' in profile
+    assert 'default_permissions="dcr_fallback"' in command
+    assert "-s" not in command[image_index + 4 :]
+    assert 'web_search="disabled"' in command
+    tmpfs = [
+        command[index + 1]
+        for index, item in enumerate(command[:-1])
+        if item == "--tmpfs"
+    ]
+    assert any(item.startswith("/tmp:rw,nosuid,nodev,exec,") for item in tmpfs)
+    assert any(
+        item.startswith(
+            "/opt/ipfs-accelerate-codex-home:rw,nosuid,nodev,exec,"
+        )
+        for item in tmpfs
+    )
+    assert "/usr/local/bin:rw,suid,nodev,exec,mode=0755,size=16m" in tmpfs
+    mounts = [
+        command[index + 1]
+        for index, item in enumerate(command[:-1])
+        if item == "--mount"
+    ]
+    assert mounts == [
+        f"type=bind,src={workspace},dst={workspace}",
+        f"type=bind,src={git_control},dst={git_control},readonly",
+        (
+            f"type=bind,src={auth_path},dst="
+            f"{grok_cli_runner._CODEX_FALLBACK_AUTH_DESTINATION},readonly"
+        ),
+        f"type=bind,src={package_root},dst=/opt/codex,readonly",
+        f"type=bind,src={bwrap_path},dst=/opt/host-bwrap,readonly",
+        (
+            "type=bind,src=/dev/null,dst="
+            f"{grok_cli_runner._CODEX_FALLBACK_CONTAINER_BUNDLED_BWRAP},readonly"
+        ),
+        f"type=bind,src={checkpoint_path},dst={checkpoint_path}",
+    ]
+
+    def validate(candidate: list[str]) -> None:
+        grok_cli_runner._validate_containerized_codex_quota_fallback_command(
+            candidate,
+            workspace=workspace,
+            auth_path=auth_path,
+            package_root=package_root,
+            bwrap_path=bwrap_path,
+            checkpoint_path=checkpoint_path,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            git_controls=(git_control,),
+            host_fallback_command=host_route,
+        )
+
+    wrong_image = list(command)
+    wrong_image[image_index] = "sha256:" + "0" * 64
+    wrong_network = list(command)
+    wrong_network[wrong_network.index("--network=bridge")] = "--network=none"
+    wrong_mount = list(command)
+    auth_mount_index = next(
+        index
+        for index, item in enumerate(wrong_mount)
+        if item == "--mount"
+        and f"dst={grok_cli_runner._CODEX_FALLBACK_AUTH_DESTINATION}"
+        in wrong_mount[index + 1]
+    )
+    wrong_mount[auth_mount_index + 1] = wrong_mount[auth_mount_index + 1].replace(
+        str(grok_cli_runner._CODEX_FALLBACK_AUTH_DESTINATION), "/tmp/other.json"
+    )
+    wrong_profile = list(command)
+    wrong_profile[wrong_profile.index('default_permissions="dcr_fallback"')] = (
+        'default_permissions=":workspace"'
+    )
+    legacy_sandbox = list(command)
+    legacy_sandbox.insert(legacy_sandbox.index("-"), "-s")
+    legacy_sandbox.insert(legacy_sandbox.index("-") + 1, "danger-full-access")
+    missing_cleanup = [item for item in command if item != "--rm"]
+    duplicate_environment = list(command)
+    duplicate_environment[duplicate_environment.index("--env") : duplicate_environment.index("--env")] = [
+        "--env",
+        "EXTRA=1",
+    ]
+    unknown_docker_flag = list(command)
+    unknown_docker_flag.insert(image_index, "--privileged")
+    duplicate_network = list(command)
+    duplicate_network.insert(duplicate_network.index("--network=bridge"), "--network=bridge")
+    missing_helper_suid = list(command)
+    helper_tmpfs_index = missing_helper_suid.index(
+        "/usr/local/bin:rw,suid,nodev,exec,mode=0755,size=16m"
+    )
+    missing_helper_suid[helper_tmpfs_index] = (
+        "/usr/local/bin:rw,nodev,exec,mode=0755,size=16m"
+    )
+    for drifted in (
+        wrong_image,
+        wrong_network,
+        wrong_mount,
+        wrong_profile,
+        legacy_sandbox,
+        missing_cleanup,
+        duplicate_environment,
+        unknown_docker_flag,
+        duplicate_network,
+        missing_helper_suid,
+    ):
+        with pytest.raises(ValueError):
+            validate(drifted)
+
+    comma_workspace = (tmp_path / "workspace,option=escape").resolve()
+    comma_workspace.mkdir()
+    with pytest.raises(ValueError, match="mount inputs"):
+        grok_cli_runner._build_containerized_codex_quota_fallback_command(
+            host_fallback_command=_terra_fallback_command(
+                "/usr/local/bin/codex", comma_workspace, reasoning_effort="high"
+            ),
+            workspace=comma_workspace,
+            auth_path=auth_path,
+            package_root=package_root,
+            bwrap_path=bwrap_path,
+            checkpoint_path=checkpoint_path,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            git_controls=(),
+        )
+    with pytest.raises(ValueError, match="checkpoint authority"):
+        grok_cli_runner._build_containerized_codex_quota_fallback_command(
+            host_fallback_command=host_route,
+            workspace=workspace,
+            auth_path=auth_path,
+            package_root=package_root,
+            bwrap_path=bwrap_path,
+            checkpoint_path=None,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            git_controls=(git_control,),
+        )
+    with pytest.raises(ValueError, match="Git metadata"):
+        grok_cli_runner._build_containerized_codex_quota_fallback_command(
+            host_fallback_command=host_route,
+            workspace=workspace,
+            auth_path=auth_path,
+            package_root=package_root,
+            bwrap_path=bwrap_path,
+            checkpoint_path=checkpoint_path,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            git_controls=(tmp_path.resolve(),),
+        )
+
+
+def test_medium_legacy_fallback_has_no_checkpoint_authority(tmp_path: Path) -> None:
+    paths = _containerized_fallback_inputs(tmp_path)
+    workspace = paths["workspace"]
+    command = grok_cli_runner._build_containerized_codex_quota_fallback_command(
+        host_fallback_command=_terra_fallback_command("/usr/local/bin/codex", workspace),
+        workspace=workspace,
+        auth_path=paths["auth_path"],
+        package_root=paths["package_root"],
+        bwrap_path=paths["bwrap_path"],
+        checkpoint_path=None,
+        docker_config=paths["docker_config"],
+        container_name="ipfs-accelerate-codex-1-" + "d" * 32,
+        cidfile=paths["cidfile"],
+        git_controls=(paths["git_control"],),
+    )
+    assert str(paths["checkpoint_path"]) not in command
+    assert not any(
+        item.startswith(grok_cli_runner._CODEX_FALLBACK_CHECKPOINT_ENV + "=")
+        for item in command
+    )
+    profile = next(
+        item for item in command if item.startswith("permissions.dcr_fallback=")
+    )
+    assert str(paths["checkpoint_path"]) not in profile
+    assert '"/opt/ipfs-accelerate-codex-home/auth.json"="deny"' in profile
+
+
+def test_high_checkpoint_requires_safe_owner_writable_directory(
+    tmp_path: Path,
+) -> None:
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    checkpoint = (tmp_path / "checkpoint").resolve()
+    checkpoint.mkdir(mode=0o500)
+    with pytest.raises(ValueError, match="checkpoint"):
+        grok_cli_runner._resolve_codex_quota_fallback_checkpoint_path(
+            workspace=workspace,
+            base_env={
+                grok_cli_runner._CODEX_FALLBACK_CHECKPOINT_ENV: str(checkpoint)
+            },
+        )
+
+
+def test_git_control_scan_rejects_walk_errors_and_unbounded_markers(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+
+    def unreadable_walk(*_args: object, **kwargs: object):
+        onerror = kwargs["onerror"]
+        assert callable(onerror)
+        onerror(OSError("permission denied"))
+        if False:
+            yield "", [], []
+
+    monkeypatch.setattr(grok_cli_runner.os, "walk", unreadable_walk)
+    with pytest.raises(ValueError, match="could not inspect"):
+        grok_cli_runner._codex_fallback_git_controls(workspace)
+
+    def oversized_walk(*_args: object, **_kwargs: object):
+        for _ in range(grok_cli_runner._CODEX_FALLBACK_MAX_GIT_MARKERS + 1):
+            yield str(workspace), [".git"], []
+
+    monkeypatch.setattr(grok_cli_runner.os, "walk", oversized_walk)
+    with pytest.raises(ValueError, match="too many Git controls"):
+        grok_cli_runner._codex_fallback_git_controls(workspace)
+
+
+def test_container_auth_must_be_private_to_its_owner(tmp_path: Path) -> None:
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    codex_home = (tmp_path / "codex-home").resolve()
+    codex_home.mkdir()
+    auth_path = codex_home / "auth.json"
+    auth_path.write_text("{}", encoding="utf-8")
+    auth_path.chmod(0o644)
+    with pytest.raises(ValueError, match="auth"):
+        grok_cli_runner._resolve_codex_quota_fallback_auth_path(
+            workspace=workspace,
+            base_env={"CODEX_HOME": str(codex_home)},
+        )
+
+
+def test_watchdog_defers_reentrant_sigterm_until_exact_cleanup_finishes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A SIGTERM during removal must not interrupt the sole Docker reaper."""
+
+    lease_root = Path(
+        grok_cli_runner.tempfile.mkdtemp(prefix="asref-codex-container-")
+    ).resolve()
+    docker_config = lease_root / "docker-config"
+    docker_config.mkdir(mode=0o700)
+    cidfile = lease_root / "container.cid"
+    ready_fifo = tmp_path / "watchdog-ready"
+    os.mkfifo(ready_fifo)
+    ready_fd = os.open(ready_fifo, os.O_RDWR | os.O_NONBLOCK)
+    handlers: dict[int, object] = {}
+    removal: list[str] = []
+
+    class _Input:
+        class buffer:
+            @staticmethod
+            def read(_size: int) -> bytes:
+                return b""
+
+    def capture_signal(signum: int, handler: object) -> None:
+        handlers[signum] = handler
+
+    def interrupted_remove(**_kwargs: object) -> None:
+        removal.append("started")
+        handler = handlers[signal.SIGTERM]
+        assert callable(handler)
+        handler(signal.SIGTERM, None)
+        removal.append("finished")
+
+    monkeypatch.setattr(grok_cli_runner.sys, "stdin", _Input())
+    monkeypatch.setattr(grok_cli_runner.signal, "signal", capture_signal)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_remove_exact_docker_container",
+        interrupted_remove,
+    )
+    try:
+        assert grok_cli_runner._docker_cleanup_watchdog_main(
+            [
+                "--docker-bin",
+                "/usr/bin/docker",
+                "--container-name",
+                "ipfs-accelerate-codex-1-" + "e" * 32,
+                "--cidfile",
+                str(cidfile),
+                "--lease-root",
+                str(lease_root),
+                "--ready-fd",
+                str(ready_fd),
+                "--codex-fallback",
+            ]
+        ) == 0
+    finally:
+        try:
+            os.close(ready_fd)
+        except OSError:
+            pass
+    assert removal == ["started", "finished"]
+
+
+def test_terra_quota_fallback_invokes_docker_not_host_codex(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = _containerized_fallback_inputs(tmp_path)
+    workspace = paths["workspace"]
+
+    class Lease:
+        container_name = "ipfs-accelerate-codex-1-" + "b" * 32
+        closed = False
+
+        def __init__(self) -> None:
+            self.docker_config = paths["docker_config"]
+            self.cidfile = paths["cidfile"]
+
+        def close(self, *, docker_run_finished: bool) -> None:
+            assert docker_run_finished is True
+            self.closed = True
+
+    lease = Lease()
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_containerized_codex_fallback_assets",
+        lambda **_kwargs: (
+            Path("/usr/bin/docker"),
+            paths["auth_path"],
+            paths["package_root"],
+            paths["bwrap_path"],
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner._DockerCodexFallbackLease,
+        "create",
+        classmethod(lambda _cls: lease),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> object:
+        calls.append(command)
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+    result = grok_cli_runner._run_containerized_codex_quota_fallback(
+        host_fallback_command=_terra_fallback_command("/usr/local/bin/codex", workspace),
+        workspace=workspace,
+        base_env={},
+        prompt="no provider call in this test",
+    )
+
+    assert result.returncode == 0
+    assert lease.closed is True
+    assert len(calls) == 1
+    assert calls[0][0] == "/usr/bin/docker"
+    assert "/usr/local/bin/codex" not in calls[0]
+
+
+def test_terra_quota_fallback_closes_its_lease_on_launch_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = _containerized_fallback_inputs(tmp_path)
+    workspace = paths["workspace"]
+
+    class Lease:
+        container_name = "ipfs-accelerate-codex-1-" + "c" * 32
+        closed_with: bool | None = None
+
+        def __init__(self) -> None:
+            self.docker_config = paths["docker_config"]
+            self.cidfile = paths["cidfile"]
+
+        def close(self, *, docker_run_finished: bool) -> None:
+            self.closed_with = docker_run_finished
+
+    lease = Lease()
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_containerized_codex_fallback_assets",
+        lambda **_kwargs: (
+            Path("/usr/bin/docker"),
+            paths["auth_path"],
+            paths["package_root"],
+            paths["bwrap_path"],
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner._DockerCodexFallbackLease,
+        "create",
+        classmethod(lambda _cls: lease),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("launch failed")),
+    )
+
+    with pytest.raises(OSError, match="launch failed"):
+        grok_cli_runner._run_containerized_codex_quota_fallback(
+            host_fallback_command=_terra_fallback_command(
+                "/usr/local/bin/codex", workspace
+            ),
+            workspace=workspace,
+            base_env={},
+            prompt="no provider call in this test",
+        )
+    assert lease.closed_with is False

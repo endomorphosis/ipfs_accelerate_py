@@ -19,19 +19,20 @@ import json
 import os
 import re
 import secrets
-import signal
+import select
 import shutil
+import signal
+import stat
 import subprocess
 import sys
 import tempfile
-import stat
 import threading
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Mapping, TextIO, Sequence
+from typing import TextIO
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_ROOT) not in sys.path:
@@ -254,9 +255,85 @@ GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
+_CODEX_FALLBACK_DOCKER_HOST = "unix:///run/docker.sock"
+_CODEX_FALLBACK_DOCKER_BIN = Path("/usr/bin/docker")
+_CODEX_FALLBACK_DOCKER_SHA256 = (
+    "414d9e16a30060770648522f8ecadef2f2b57b50b8c61d4b0ae9d3b8b64c2a02"
+)
+_CODEX_FALLBACK_DOCKER_SOCKET = Path("/run/docker.sock")
+_CODEX_FALLBACK_IMAGE = (
+    "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
+)
+_CODEX_FALLBACK_PACKAGE_ROOT = Path(
+    "/usr/local/lib/node_modules/@openai/codex/node_modules/"
+    "@openai/codex-linux-arm64"
+)
+_CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT = Path("/opt/codex")
+_CODEX_FALLBACK_VENDOR_RELATIVE_EXECUTABLE = Path(
+    "vendor/aarch64-unknown-linux-musl/bin/codex"
+)
+_CODEX_FALLBACK_VENDOR_SHA256 = (
+    "e23d0be344d2496986c985cd3db61e6f649b1ddd900e6afc1b5aaabbffcbb4e2"
+)
+_CODEX_FALLBACK_CONTAINER_EXECUTABLE = (
+    _CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT
+    / _CODEX_FALLBACK_VENDOR_RELATIVE_EXECUTABLE
+)
+_CODEX_FALLBACK_CONTAINER_BUNDLED_BWRAP = (
+    _CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT
+    / "vendor/aarch64-unknown-linux-musl/codex-resources/bwrap"
+)
+_CODEX_FALLBACK_BWRAP_BIN = Path("/usr/bin/bwrap")
+_CODEX_FALLBACK_BWRAP_SHA256 = (
+    "ae27935781511400c65ebcc0b4669775d602f46251b8707c947a1ac1b160c1c8"
+)
+_CODEX_FALLBACK_CONTAINER_BWRAP_SOURCE = Path("/opt/host-bwrap")
+_CODEX_FALLBACK_CONTAINER_INSTALLED_BWRAP = Path("/usr/local/bin/bwrap")
+_CODEX_FALLBACK_CONTAINER_RG = Path("/usr/local/bin/rg")
+_CODEX_FALLBACK_CONTAINER_HOME = Path("/opt/ipfs-accelerate-codex-home")
+_CODEX_FALLBACK_AUTH_DESTINATION = _CODEX_FALLBACK_CONTAINER_HOME / "auth.json"
+_CODEX_FALLBACK_CHECKPOINT_ENV = "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR"
+_CODEX_FALLBACK_SAFE_PATH_RE = re.compile(r"\A/[A-Za-z0-9_./:-]+\Z")
+_CODEX_FALLBACK_BWRAP_MASK_SOURCE = Path("/dev/null")
+_CODEX_FALLBACK_MAX_GIT_MARKERS = 128
+_CODEX_FALLBACK_MAX_GIT_CONTROLS = 256
+_CODEX_FALLBACK_MAX_GIT_WALK_DIRECTORIES = 16_384
+_CODEX_FALLBACK_MAX_GIT_DEPTH = 64
+_CODEX_FALLBACK_TMPFS = "64m"
+_CODEX_FALLBACK_MEMORY = "4g"
+_CODEX_FALLBACK_CPUS = "2"
+_CODEX_FALLBACK_PIDS = "256"
+_CODEX_FALLBACK_PACKAGE_MANIFEST = (
+    ("README.md", "ba4e1f69ff48386e72a9c5e1edaf76aad64a475c2d51af79ccba6d1128261ba7"),
+    ("package.json", "d790d6b7998be4f209107e5fb7d092016e6551c28f1d6e9335f60fde68cf6445"),
+    (
+        "vendor/aarch64-unknown-linux-musl/bin/codex",
+        "e23d0be344d2496986c985cd3db61e6f649b1ddd900e6afc1b5aaabbffcbb4e2",
+    ),
+    (
+        "vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host",
+        "c8fd26e2ddb0243d79d7c3dfa8bcd47b6a30b14695083790fc51884e82e8ebc2",
+    ),
+    (
+        "vendor/aarch64-unknown-linux-musl/codex-package.json",
+        "0d0d2dbe7908ad298395bf8858a701064728b768c980567d637e71ef071d7883",
+    ),
+    (
+        "vendor/aarch64-unknown-linux-musl/codex-path/rg",
+        "e36d0eb52e70696bdf1781392722e05a21bb91d3b7b762ef5ec20e5df2ec687b",
+    ),
+    (
+        "vendor/aarch64-unknown-linux-musl/codex-resources/bwrap",
+        "c547cbdc762a70ed216789ffaa4c6c0e7d2beabe32245a498f8e365a9fc8dab4",
+    ),
+    (
+        "vendor/aarch64-unknown-linux-musl/codex-resources/zsh/bin/zsh",
+        "7feeacd883e1dc749847936948c378653c80a69ec4a9542f0f126b411882c179",
+    ),
+)
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
 _DOCKER_CONTAINER_NAME_RE = re.compile(
-    r"ipfs-accelerate-grok-[0-9]+-[0-9a-f]{32}"
+    r"ipfs-accelerate-(?:grok|codex)-[0-9]+-[0-9a-f]{32}"
 )
 _DOCKER_CLEANUP_TIMEOUT_SECONDS = 8.0
 _SEALED_GROK_TOOLS = "read_file,search_replace,grep,list_dir,todo_write"
@@ -356,6 +433,7 @@ _CODEX_FALLBACK_CONFIG_KEYS = frozenset(
         "agents.max_threads",
         "model_context_window",
         "model_reasoning_effort",
+        "web_search",
     }
 )
 
@@ -553,6 +631,8 @@ def build_grok_quota_routed_agent_command(
             CODEX_QUOTA_FALLBACK_MODEL,
             "-c",
             f'model_reasoning_effort="{effort}"',
+            "-c",
+            'web_search="disabled"',
             "-",
         ]
         command.extend(
@@ -1623,6 +1703,137 @@ def _git_metadata_roots(workspace: Path) -> tuple[Path, ...]:
     return tuple(dict.fromkeys((common_dir, git_dir)))
 
 
+def _codex_fallback_git_controls(workspace: Path) -> tuple[Path, ...]:
+    """Find every regular/dir .git control path and linked metadata root."""
+
+    markers: list[Path] = []
+    walked_directories = 0
+
+    def require_git_metadata_directory(
+        git_dir: Path,
+        *,
+        common_dir: Path,
+    ) -> None:
+        """Reject a workspace-controlled pointer to an arbitrary host dir."""
+
+        try:
+            head_entry = (git_dir / "HEAD").lstat()
+            objects_entry = (common_dir / "objects").lstat()
+            refs_entry = (common_dir / "refs").lstat()
+        except OSError as exc:
+            raise ValueError("Codex quota fallback Git directory is not valid") from exc
+        if (
+            not stat.S_ISREG(head_entry.st_mode)
+            or not stat.S_ISDIR(objects_entry.st_mode)
+            or not stat.S_ISDIR(refs_entry.st_mode)
+        ):
+            raise ValueError("Codex quota fallback Git directory is not valid")
+
+    def reject_walk_error(error: OSError) -> None:
+        raise ValueError(
+            "Codex quota fallback could not inspect Git controls"
+        ) from error
+
+    try:
+        for root, directories, files in os.walk(
+            workspace,
+            followlinks=False,
+            onerror=reject_walk_error,
+        ):
+            walked_directories += 1
+            if walked_directories > _CODEX_FALLBACK_MAX_GIT_WALK_DIRECTORIES:
+                raise ValueError("Codex quota fallback Git scan is too large")
+            root_path = Path(root)
+            try:
+                depth = len(root_path.relative_to(workspace).parts)
+            except ValueError as exc:
+                raise ValueError("Codex quota fallback Git scan escaped workspace") from exc
+            if depth > _CODEX_FALLBACK_MAX_GIT_DEPTH:
+                raise ValueError("Codex quota fallback Git scan is too deep")
+            directories.sort()
+            files.sort()
+            if ".git" in directories:
+                directories.remove(".git")
+                markers.append((root_path / ".git").absolute())
+            if ".git" in files:
+                markers.append((root_path / ".git").absolute())
+            if len(markers) > _CODEX_FALLBACK_MAX_GIT_MARKERS:
+                raise ValueError("Codex quota fallback has too many Git controls")
+    except OSError as exc:
+        raise ValueError("Codex quota fallback could not inspect Git controls") from exc
+    controls: list[Path] = []
+    for marker in markers:
+        try:
+            entry = marker.lstat()
+            resolved_marker = marker.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("Codex quota fallback Git control is unavailable") from exc
+        if (
+            marker != resolved_marker
+            or not (stat.S_ISREG(entry.st_mode) or stat.S_ISDIR(entry.st_mode))
+            or _CODEX_FALLBACK_SAFE_PATH_RE.fullmatch(str(marker)) is None
+        ):
+            raise ValueError("Codex quota fallback Git control is unsafe")
+        controls.append(marker)
+        if marker.is_dir():
+            require_git_metadata_directory(marker, common_dir=marker)
+        else:
+            try:
+                prefix, separator, raw_git_dir = marker.read_text(
+                    encoding="utf-8"
+                ).strip().partition(":")
+            except (OSError, UnicodeError) as exc:
+                raise ValueError("Codex quota fallback Git control is malformed") from exc
+            if prefix.casefold() != "gitdir" or not separator or not raw_git_dir.strip():
+                raise ValueError("Codex quota fallback Git control is malformed")
+            candidate = Path(raw_git_dir.strip())
+            if not candidate.is_absolute():
+                candidate = marker.parent / candidate
+            try:
+                git_dir = candidate.resolve(strict=True)
+            except OSError as exc:
+                raise ValueError("Codex quota fallback Git directory is unavailable") from exc
+            if (
+                not git_dir.is_dir()
+                or _CODEX_FALLBACK_SAFE_PATH_RE.fullmatch(str(git_dir)) is None
+            ):
+                raise ValueError("Codex quota fallback Git directory is unsafe")
+            controls.append(git_dir)
+            common_marker = git_dir / "commondir"
+            try:
+                common_entry = common_marker.lstat()
+            except FileNotFoundError:
+                common_entry = None
+            except OSError as exc:
+                raise ValueError(
+                    "Codex quota fallback Git common directory is unavailable"
+                ) from exc
+            if common_entry is not None and not stat.S_ISREG(common_entry.st_mode):
+                raise ValueError("Codex quota fallback Git common directory is unsafe")
+            if common_entry is not None:
+                try:
+                    raw_common = common_marker.read_text(encoding="utf-8").strip()
+                    common_candidate = Path(raw_common)
+                    if not common_candidate.is_absolute():
+                        common_candidate = git_dir / common_candidate
+                    common_dir = common_candidate.resolve(strict=True)
+                except (OSError, UnicodeError) as exc:
+                    raise ValueError("Codex quota fallback Git common directory is invalid") from exc
+                if (
+                    not common_dir.is_dir()
+                    or _CODEX_FALLBACK_SAFE_PATH_RE.fullmatch(str(common_dir)) is None
+                ):
+                    raise ValueError("Codex quota fallback Git common directory is unsafe")
+                controls.append(common_dir)
+            else:
+                common_dir = git_dir
+            require_git_metadata_directory(git_dir, common_dir=common_dir)
+    deduplicated = tuple(dict.fromkeys(controls))
+    if len(deduplicated) > _CODEX_FALLBACK_MAX_GIT_CONTROLS:
+        raise ValueError("Codex quota fallback has too many Git metadata mounts")
+    return deduplicated
+
+
 def _docker_mount(
     source: Path,
     *,
@@ -1648,6 +1859,7 @@ def _remove_exact_docker_container(
     docker_config: Path,
     container_name: str,
     settle_for_creation: bool,
+    docker_host: str = _DOCKER_LOCAL_HOST,
 ) -> None:
     """Boundedly force-remove one runner-owned container by an exact name."""
 
@@ -1657,7 +1869,7 @@ def _remove_exact_docker_container(
             completed = subprocess.run(
                 [
                     docker_bin,
-                    f"--host={_DOCKER_LOCAL_HOST}",
+                    f"--host={docker_host}",
                     "--config",
                     str(docker_config),
                     "rm",
@@ -1727,8 +1939,10 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     parser.add_argument("--container-name", required=True)
     parser.add_argument("--cidfile", type=Path, required=True)
     parser.add_argument("--lease-root", type=Path, required=True)
-    parser.add_argument("--grok-home", type=Path, required=True)
-    parser.add_argument("--prompt-path", type=Path, required=True)
+    parser.add_argument("--ready-fd", type=int, required=True)
+    parser.add_argument("--grok-home", type=Path)
+    parser.add_argument("--prompt-path", type=Path)
+    parser.add_argument("--codex-fallback", action="store_true")
     args = parser.parse_args(list(argv))
 
     try:
@@ -1739,9 +1953,13 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     lease_root = args.lease_root.absolute()
     docker_config = lease_root / "docker-config"
     cidfile = args.cidfile.absolute()
-    grok_home = args.grok_home.absolute()
-    prompt_path = args.prompt_path.absolute()
+    grok_home = args.grok_home.absolute() if args.grok_home else None
+    prompt_path = args.prompt_path.absolute() if args.prompt_path else None
     temporary_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        ready_stat = os.fstat(args.ready_fd)
+    except OSError:
+        return 2
     if (
         docker_path not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
         or docker_path.name not in {"docker", "docker.exe"}
@@ -1749,14 +1967,25 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
         or docker_stat.st_mode & 0o022
         or _DOCKER_CONTAINER_NAME_RE.fullmatch(args.container_name) is None
         or lease_root.parent != temporary_root
-        or not lease_root.name.startswith("asref-grok-container-")
+        or not lease_root.name.startswith(
+            "asref-codex-container-" if args.codex_fallback else "asref-grok-container-"
+        )
         or cidfile.parent != lease_root
         or cidfile.name != "container.cid"
         or not docker_config.is_dir()
-        or grok_home.parent != temporary_root
-        or not grok_home.name.startswith("asref-grok-home-")
-        or prompt_path.parent != temporary_root
-        or not prompt_path.name.startswith("asref-grok-prompt-")
+        or not stat.S_ISFIFO(ready_stat.st_mode)
+        or (args.codex_fallback and (grok_home is not None or prompt_path is not None))
+        or (
+            not args.codex_fallback
+            and (
+                grok_home is None
+                or prompt_path is None
+                or grok_home.parent != temporary_root
+                or not grok_home.name.startswith("asref-grok-home-")
+                or prompt_path.parent != temporary_root
+                or not prompt_path.name.startswith("asref-grok-prompt-")
+            )
+        )
     ):
         return 2
 
@@ -1775,32 +2004,53 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
             docker_config=docker_config,
             container_name=args.container_name,
             settle_for_creation=settle_for_creation,
+            docker_host=(
+                _CODEX_FALLBACK_DOCKER_HOST
+                if args.codex_fallback
+                else _DOCKER_LOCAL_HOST
+            ),
         )
 
     def terminate_watchdog(signum: int, _frame: object) -> None:
         # The supervisor deliberately terminates separately owned descendant
         # process groups before the runner group.  Reap synchronously here so
         # that ordering cannot strand the runner-owned workspace mount.
+        # A second signal can arrive while the bounded Docker removal is
+        # running.  Do not raise into that subprocess call: it has already
+        # claimed cleanup ownership, and interrupting it could leave the exact
+        # container running after the finally block removes its lease files.
+        if cleanup_started:
+            return
         cleanup(settle_for_creation=True)
         raise SystemExit(128 + signum)
 
     try:
         signal.signal(signal.SIGTERM, terminate_watchdog)
         signal.signal(signal.SIGINT, terminate_watchdog)
+        # The parent may be terminated immediately after spawning us.  Do not
+        # let it launch Docker until these handlers are live.
+        os.write(args.ready_fd, b"R")
+        os.close(args.ready_fd)
         clean_exit = sys.stdin.buffer.read(1) == b"C"
         cleanup(settle_for_creation=not clean_exit)
     finally:
         try:
-            prompt_path.unlink()
-        except FileNotFoundError:
+            os.close(args.ready_fd)
+        except OSError:
             pass
-        mask_root = lease_root / "provider-masks"
-        _restore_mask_permissions(mask_root)
-        try:
-            shutil.rmtree(mask_root)
-        except FileNotFoundError:
-            pass
-        _robust_remove_runner_temp_tree(grok_home)
+        if prompt_path is not None:
+            try:
+                prompt_path.unlink()
+            except FileNotFoundError:
+                pass
+        if grok_home is not None:
+            mask_root = lease_root / "provider-masks"
+            _restore_mask_permissions(mask_root)
+            try:
+                shutil.rmtree(mask_root)
+            except FileNotFoundError:
+                pass
+            _robust_remove_runner_temp_tree(grok_home)
         try:
             cidfile.unlink()
         except FileNotFoundError:
@@ -1814,6 +2064,33 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
         except (FileNotFoundError, OSError):
             pass
     return 0
+
+
+def _await_docker_cleanup_watchdog_ready(
+    watchdog: subprocess.Popen[bytes],
+    ready_fd: int,
+) -> None:
+    """Wait until the reaper has installed signal-safe cleanup handlers."""
+
+    try:
+        readable, _writable, _failed = select.select([ready_fd], [], [], 2)
+        ready = os.read(ready_fd, 1) if readable else b""
+    except OSError:
+        ready = b""
+    finally:
+        try:
+            os.close(ready_fd)
+        except OSError:
+            pass
+    if ready == b"R" and watchdog.poll() is None:
+        return
+    watchdog.terminate()
+    try:
+        watchdog.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        watchdog.kill()
+        watchdog.wait(timeout=2)
+    raise ValueError("Docker cleanup watchdog did not become signal-safe")
 
 
 class _DockerContainerLease:
@@ -1866,6 +2143,7 @@ class _DockerContainerLease:
             f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
         )
         read_fd, write_fd = os.pipe()
+        ready_read_fd, ready_write_fd = os.pipe()
         try:
             watchdog = subprocess.Popen(
                 [
@@ -1880,6 +2158,8 @@ class _DockerContainerLease:
                     str(cidfile),
                     "--lease-root",
                     str(lease_root),
+                    "--ready-fd",
+                    str(ready_write_fd),
                     "--grok-home",
                     str(grok_home),
                     "--prompt-path",
@@ -1890,19 +2170,25 @@ class _DockerContainerLease:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
                 close_fds=True,
+                pass_fds=(ready_write_fd,),
             )
         except Exception:
             os.close(read_fd)
             os.close(write_fd)
+            os.close(ready_read_fd)
+            os.close(ready_write_fd)
             docker_config.rmdir()
             lease_root.rmdir()
             raise
         os.close(read_fd)
-        if watchdog.poll() is not None:
+        os.close(ready_write_fd)
+        try:
+            _await_docker_cleanup_watchdog_ready(watchdog, ready_read_fd)
+        except Exception:
             os.close(write_fd)
             docker_config.rmdir()
             lease_root.rmdir()
-            raise ValueError("Docker cleanup watchdog failed to start")
+            raise
         return cls(
             docker_bin=str(docker_path),
             container_name=container_name,
@@ -1950,6 +2236,131 @@ class _DockerContainerLease:
         _restore_mask_permissions(mask_root)
         try:
             shutil.rmtree(mask_root)
+        except FileNotFoundError:
+            pass
+        try:
+            self.docker_config.rmdir()
+        except (FileNotFoundError, OSError):
+            pass
+        try:
+            self.lease_root.rmdir()
+        except (FileNotFoundError, OSError):
+            pass
+
+
+class _DockerCodexFallbackLease:
+    """Own a Codex fallback container with a separate kill-safe reaper."""
+
+    def __init__(
+        self,
+        *,
+        container_name: str,
+        lease_root: Path,
+        docker_config: Path,
+        cidfile: Path,
+        write_fd: int,
+        watchdog: subprocess.Popen[bytes],
+    ) -> None:
+        self.container_name = container_name
+        self.lease_root = lease_root
+        self.docker_config = docker_config
+        self.cidfile = cidfile
+        self._write_fd = write_fd
+        self._watchdog = watchdog
+        self._closed = False
+
+    @classmethod
+    def create(cls) -> _DockerCodexFallbackLease:
+        lease_root = Path(tempfile.mkdtemp(prefix="asref-codex-container-")).resolve()
+        docker_config = lease_root / "docker-config"
+        docker_config.mkdir(mode=0o700)
+        cidfile = lease_root / "container.cid"
+        container_name = f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
+        read_fd, write_fd = os.pipe()
+        ready_read_fd, ready_write_fd = os.pipe()
+        try:
+            watchdog = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    _DOCKER_CLEANUP_WATCHDOG_ARG,
+                    "--docker-bin",
+                    str(_CODEX_FALLBACK_DOCKER_BIN),
+                    "--container-name",
+                    container_name,
+                    "--cidfile",
+                    str(cidfile),
+                    "--lease-root",
+                    str(lease_root),
+                    "--ready-fd",
+                    str(ready_write_fd),
+                    "--codex-fallback",
+                ],
+                stdin=read_fd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+                pass_fds=(ready_write_fd,),
+            )
+        except Exception:
+            os.close(read_fd)
+            os.close(write_fd)
+            os.close(ready_read_fd)
+            os.close(ready_write_fd)
+            docker_config.rmdir()
+            lease_root.rmdir()
+            raise
+        os.close(read_fd)
+        os.close(ready_write_fd)
+        try:
+            _await_docker_cleanup_watchdog_ready(watchdog, ready_read_fd)
+        except Exception:
+            os.close(write_fd)
+            docker_config.rmdir()
+            lease_root.rmdir()
+            raise
+        return cls(
+            container_name=container_name,
+            lease_root=lease_root,
+            docker_config=docker_config,
+            cidfile=cidfile,
+            write_fd=write_fd,
+            watchdog=watchdog,
+        )
+
+    def close(self, *, docker_run_finished: bool) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if docker_run_finished:
+                os.write(self._write_fd, b"C")
+        except OSError:
+            pass
+        finally:
+            try:
+                os.close(self._write_fd)
+            except OSError:
+                pass
+        try:
+            self._watchdog.wait(timeout=_DOCKER_CLEANUP_TIMEOUT_SECONDS + 2)
+        except subprocess.TimeoutExpired:
+            _remove_exact_docker_container(
+                docker_bin=str(_CODEX_FALLBACK_DOCKER_BIN),
+                docker_config=self.docker_config,
+                container_name=self.container_name,
+                settle_for_creation=False,
+                docker_host=_CODEX_FALLBACK_DOCKER_HOST,
+            )
+            self._watchdog.terminate()
+            try:
+                self._watchdog.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._watchdog.kill()
+                self._watchdog.wait(timeout=2)
+        try:
+            self.cidfile.unlink()
         except FileNotFoundError:
             pass
         try:
@@ -2263,51 +2674,843 @@ def _validate_codex_quota_fallback_command(
         raise ValueError(
             "Codex quota fallback reasoning is not exactly " + expected_effort
         )
+    if configs.get("web_search") != '"disabled"':
+        raise ValueError("Codex quota fallback web search must be disabled")
     for key in ("agents.max_depth", "agents.max_threads", "model_context_window"):
         value = configs.get(key)
         if value is not None and re.fullmatch(r"[1-9][0-9]*", value) is None:
             raise ValueError(f"Codex quota fallback {key} must be a positive integer")
 
 
-def _codex_quota_fallback_env(
+def _path_is_root_owned_and_not_group_or_world_writable(path: Path) -> bool:
+    """Return whether a host executable/package path has a trusted chain."""
+
+    try:
+        for candidate in (path, *path.parents):
+            entry = candidate.lstat()
+            if entry.st_uid != 0 or entry.st_mode & 0o022:
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def _codex_fallback_toml_path_is_safe(path: Path) -> bool:
+    """Accept only an exact absolute path that is safe in inline TOML."""
+
+    return path.is_absolute() and _CODEX_FALLBACK_SAFE_PATH_RE.fullmatch(
+        str(path)
+    ) is not None
+
+
+def _codex_fallback_mount_path_is_safe(path: Path) -> bool:
+    """Reject Docker --mount CSV/control injection in an absolute path."""
+
+    return path.is_absolute() and not any(
+        character in str(path) for character in (",", "\n", "\r", "\x00")
+    )
+
+
+def _codex_fallback_paths_overlap(first: Path, second: Path) -> bool:
+    """Return whether either resolved path contains the other."""
+
+    return (
+        first == second
+        or first.is_relative_to(second)
+        or second.is_relative_to(first)
+    )
+
+
+def _resolve_codex_quota_fallback_auth_path(
     *,
     workspace: Path,
-    base_env: dict[str, str],
-) -> dict[str, str]:
-    """Build a minimal official-endpoint Codex environment with pinned auth."""
+    base_env: Mapping[str, str],
+) -> Path:
+    """Resolve one regular Codex auth file, never a credential directory."""
 
     configured_home = str(base_env.get("CODEX_HOME") or "").strip()
     home = Path(str(base_env.get("HOME") or Path.home())).expanduser()
     candidate = Path(configured_home).expanduser() if configured_home else home / ".codex"
+    auth_candidate = candidate / "auth.json"
     try:
         codex_home = candidate.resolve(strict=True)
-        auth_path = (codex_home / "auth.json").resolve(strict=True)
+        auth_path = auth_candidate.resolve(strict=True)
+        auth_entry = auth_candidate.lstat()
+        auth_stat = auth_path.stat()
     except OSError as exc:
         raise ValueError("Codex quota fallback requires a validated auth.json") from exc
     if (
         not codex_home.is_dir()
+        or not stat.S_ISREG(auth_entry.st_mode)
         or not auth_path.is_file()
+        or auth_stat.st_uid not in {0, os.getuid()}
+        or not auth_stat.st_mode & 0o400
+        or auth_stat.st_mode & 0o077
+        or not os.access(auth_path, os.R_OK)
         or codex_home.is_relative_to(workspace)
         or auth_path.is_relative_to(workspace)
+        or not _codex_fallback_mount_path_is_safe(auth_path)
     ):
-        raise ValueError("Codex quota fallback auth must be outside the workspace")
+        raise ValueError("Codex quota fallback auth must be one private file outside workspace")
+    return auth_path
 
-    allowed_exact = {
-        "LANG",
-        "LOGNAME",
-        "NO_COLOR",
-        "TERM",
-        "USER",
-    }
-    environment = {
-        name: value
-        for name, value in base_env.items()
-        if name in allowed_exact or name.startswith("LC_")
-    }
-    environment["HOME"] = str(codex_home)
-    environment["CODEX_HOME"] = str(codex_home)
-    environment["PATH"] = "/usr/bin:/bin"
-    return environment
+
+def _resolve_codex_quota_fallback_checkpoint_path(
+    *,
+    workspace: Path,
+    base_env: Mapping[str, str],
+) -> Path:
+    """Resolve the required external checkpoint directory without aliases."""
+
+    configured_path = base_env.get(_CODEX_FALLBACK_CHECKPOINT_ENV)
+    raw_path = configured_path if isinstance(configured_path, str) else ""
+    candidate = Path(raw_path)
+    try:
+        checkpoint = candidate.resolve(strict=True)
+        checkpoint_stat = checkpoint.stat()
+    except OSError as exc:
+        raise ValueError("Codex quota fallback requires an external checkpoint") from exc
+    if (
+        not raw_path
+        or raw_path != str(candidate)
+        or not _codex_fallback_toml_path_is_safe(candidate)
+        or not candidate.is_absolute()
+        or candidate != checkpoint
+        or not checkpoint.is_dir()
+        or checkpoint_stat.st_uid != os.getuid()
+        or checkpoint_stat.st_mode & 0o300 != 0o300
+        or checkpoint_stat.st_mode & 0o022
+        or checkpoint.is_relative_to(workspace)
+        or not _codex_fallback_toml_path_is_safe(checkpoint)
+    ):
+        raise ValueError("Codex quota fallback checkpoint must be one safe external directory")
+    return checkpoint
+
+
+def _codex_fallback_package_manifest_is_exact(package_root: Path) -> bool:
+    """Verify all and only the pinned regular files in the native package."""
+
+    expected = dict(_CODEX_FALLBACK_PACKAGE_MANIFEST)
+    actual: dict[str, str] = {}
+    try:
+        def reject_walk_error(error: OSError) -> None:
+            raise error
+
+        for root, directories, files in os.walk(
+            package_root,
+            followlinks=False,
+            onerror=reject_walk_error,
+        ):
+            root_path = Path(root)
+            root_entry = root_path.lstat()
+            if (
+                root_entry.st_uid != 0
+                or root_entry.st_mode & 0o022
+                or any((root_path / name).is_symlink() for name in directories)
+            ):
+                return False
+            for name in files:
+                candidate = root_path / name
+                entry = candidate.lstat()
+                if (
+                    candidate.is_symlink()
+                    or not stat.S_ISREG(entry.st_mode)
+                    or entry.st_uid != 0
+                    or entry.st_mode & 0o022
+                ):
+                    return False
+                relative = candidate.relative_to(package_root).as_posix()
+                actual[relative] = _sha256_file(candidate)
+    except OSError:
+        return False
+    return actual == expected
+
+
+def _resolve_containerized_codex_fallback_assets(
+    *,
+    workspace: Path,
+    base_env: Mapping[str, str],
+    require_checkpoint: bool,
+) -> tuple[Path, Path, Path, Path, Path | None]:
+    """Resolve only fixed Docker, auth, and static Codex execution assets."""
+
+    try:
+        docker = _CODEX_FALLBACK_DOCKER_BIN.resolve(strict=True)
+        docker_stat = docker.stat()
+        socket_stat = _CODEX_FALLBACK_DOCKER_SOCKET.lstat()
+        package_root = _CODEX_FALLBACK_PACKAGE_ROOT.resolve(strict=True)
+        executable = (
+            package_root / _CODEX_FALLBACK_VENDOR_RELATIVE_EXECUTABLE
+        ).resolve(strict=True)
+        bwrap = _CODEX_FALLBACK_BWRAP_BIN.resolve(strict=True)
+        bwrap_stat = bwrap.stat()
+        bwrap_mask_stat = _CODEX_FALLBACK_BWRAP_MASK_SOURCE.stat()
+    except OSError as exc:
+        raise ValueError("containerized Codex fallback assets are unavailable") from exc
+    if (
+        docker != _CODEX_FALLBACK_DOCKER_BIN
+        or not docker.is_file()
+        or not os.access(docker, os.X_OK)
+        or docker_stat.st_uid != 0
+        or docker_stat.st_mode & 0o022
+        or _sha256_file(docker) != _CODEX_FALLBACK_DOCKER_SHA256
+        or not stat.S_ISSOCK(socket_stat.st_mode)
+        or socket_stat.st_uid != 0
+        or socket_stat.st_mode & 0o002
+        or not _path_is_root_owned_and_not_group_or_world_writable(
+            _CODEX_FALLBACK_DOCKER_SOCKET.parent
+        )
+        or package_root != _CODEX_FALLBACK_PACKAGE_ROOT
+        or not package_root.is_dir()
+        or not executable.is_file()
+        or not os.access(executable, os.X_OK)
+        or not executable.is_relative_to(package_root)
+        or _sha256_file(executable) != _CODEX_FALLBACK_VENDOR_SHA256
+        or not _codex_fallback_package_manifest_is_exact(package_root)
+        or bwrap != _CODEX_FALLBACK_BWRAP_BIN
+        or not bwrap.is_file()
+        or not os.access(bwrap, os.X_OK)
+        or bwrap_stat.st_uid != 0
+        or bwrap_stat.st_mode & 0o022
+        or _sha256_file(bwrap) != _CODEX_FALLBACK_BWRAP_SHA256
+        or not stat.S_ISCHR(bwrap_mask_stat.st_mode)
+        or bwrap_mask_stat.st_uid != 0
+        or os.major(bwrap_mask_stat.st_rdev) != 1
+        or os.minor(bwrap_mask_stat.st_rdev) != 3
+        or not _path_is_root_owned_and_not_group_or_world_writable(docker)
+        or not _path_is_root_owned_and_not_group_or_world_writable(package_root)
+        or not _path_is_root_owned_and_not_group_or_world_writable(executable)
+        or not _path_is_root_owned_and_not_group_or_world_writable(bwrap)
+    ):
+        raise ValueError("containerized Codex fallback asset trust check failed")
+    auth_path = _resolve_codex_quota_fallback_auth_path(
+        workspace=workspace,
+        base_env=base_env,
+    )
+    checkpoint_path = (
+        _resolve_codex_quota_fallback_checkpoint_path(
+            workspace=workspace,
+            base_env=base_env,
+        )
+        if require_checkpoint
+        else None
+    )
+    if checkpoint_path is not None and (
+        auth_path.is_relative_to(checkpoint_path)
+        or checkpoint_path.is_relative_to(auth_path)
+        or package_root.is_relative_to(checkpoint_path)
+        or checkpoint_path.is_relative_to(package_root)
+        or bwrap.is_relative_to(checkpoint_path)
+        or checkpoint_path.is_relative_to(bwrap)
+    ):
+        raise ValueError("Codex quota fallback checkpoint overlaps a protected asset")
+    if not _pinned_codex_fallback_image_is_local(docker):
+        raise ValueError("pinned Codex fallback authority image is unavailable locally")
+    return docker, auth_path, package_root, bwrap, checkpoint_path
+
+
+def _pinned_codex_fallback_image_is_local(docker: Path) -> bool:
+    """Require the exact authority image to be present without any pull."""
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="asref-codex-image-probe-") as config:
+            completed = subprocess.run(
+                [
+                    str(docker),
+                    f"--host={_CODEX_FALLBACK_DOCKER_HOST}",
+                    "--config",
+                    config,
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    _CODEX_FALLBACK_IMAGE,
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return (
+        completed.returncode == 0
+        and str(completed.stdout or "").strip() == _CODEX_FALLBACK_IMAGE
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    """Hash one already-validated regular file without following a new path."""
+
+    try:
+        with path.open("rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
+    except OSError:
+        return ""
+
+
+def _containerized_codex_fallback_inner_command(
+    command: Sequence[str],
+    *,
+    checkpoint_path: Path | None,
+    git_controls: Sequence[Path],
+) -> list[str]:
+    """Bind the validated host route to the named inner permission profile."""
+
+    inner = list(command[1:])
+    sandbox_index = inner.index("-s")
+    if inner[sandbox_index + 1] != "workspace-write":
+        raise ValueError("Codex quota fallback sandbox is not exactly workspace-write")
+    del inner[sandbox_index : sandbox_index + 2]
+    # Git controls are discovered from a workspace that the previous provider
+    # may have changed.  Protected entries are applied last so an overlapping
+    # control can never weaken a denial or checkpoint-only write grant.
+    filesystem = {str(path): "read" for path in git_controls}
+    filesystem.update(
+        {
+            str(_CODEX_FALLBACK_AUTH_DESTINATION): "deny",
+            str(_CODEX_FALLBACK_CONTAINER_BWRAP_SOURCE): "deny",
+            str(_CODEX_FALLBACK_CONTAINER_INSTALLED_BWRAP): "deny",
+            str(_CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT): "read",
+        }
+    )
+    if checkpoint_path is not None:
+        filesystem[str(checkpoint_path)] = "write"
+    profile = (
+        'permissions.dcr_fallback={extends=":workspace",filesystem={'
+        + ",".join(
+            f'"{path}"="{permission}"'
+            for path, permission in sorted(filesystem.items())
+        )
+        + "}}"
+    )
+    inner[-1:-1] = [
+        "-c",
+        profile,
+        "-c",
+        'default_permissions="dcr_fallback"',
+    ]
+    return inner
+
+
+def _codex_fallback_root_wrapper() -> str:
+    """Return the immutable root prelude needed solely for nested bwrap."""
+
+    return "\n".join(
+        (
+            "set -eu",
+            (
+                f"/bin/cp {_CODEX_FALLBACK_CONTAINER_BWRAP_SOURCE} "
+                f"{_CODEX_FALLBACK_CONTAINER_INSTALLED_BWRAP}"
+            ),
+            f"/bin/chown 0:0 {_CODEX_FALLBACK_CONTAINER_INSTALLED_BWRAP}",
+            f"/bin/chmod 4755 {_CODEX_FALLBACK_CONTAINER_INSTALLED_BWRAP}",
+            (
+                "/bin/cp "
+                f"{_CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT}/"
+                "vendor/aarch64-unknown-linux-musl/codex-path/rg "
+                f"{_CODEX_FALLBACK_CONTAINER_RG}"
+            ),
+            f"/bin/chown 0:0 {_CODEX_FALLBACK_CONTAINER_RG}",
+            f"/bin/chmod 0755 {_CODEX_FALLBACK_CONTAINER_RG}",
+            (
+                "exec /usr/bin/setpriv "
+                f"--reuid={os.getuid()} --regid={os.getgid()} --clear-groups -- "
+                f"{_CODEX_FALLBACK_CONTAINER_EXECUTABLE} \"$@\""
+            ),
+        )
+    )
+
+
+def _codex_quota_fallback_route_digest(command: Sequence[str]) -> str:
+    """Return a stable audit binding for the daemon-authored fallback argv."""
+
+    payload = json.dumps(list(command), ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _build_containerized_codex_quota_fallback_command(
+    *,
+    host_fallback_command: Sequence[str],
+    workspace: Path,
+    auth_path: Path,
+    package_root: Path,
+    bwrap_path: Path,
+    checkpoint_path: Path | None,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    git_controls: Sequence[Path] | None = None,
+) -> list[str]:
+    """Build the mandatory pinned Docker boundary for the Terra fallback."""
+
+    fallback_reasoning_effort = _fallback_reasoning_effort_from_command(
+        host_fallback_command
+    )
+    requires_checkpoint = fallback_reasoning_effort == "high"
+    if requires_checkpoint != (checkpoint_path is not None):
+        raise ValueError(
+            "Codex quota fallback checkpoint authority does not match the route"
+        )
+    _validate_codex_quota_fallback_command(
+        host_fallback_command,
+        workspace=workspace,
+        expected_fallback_reasoning_effort=fallback_reasoning_effort,
+    )
+    try:
+        workspace_resolved = workspace.resolve(strict=True)
+        auth_resolved = auth_path.resolve(strict=True)
+        package_resolved = package_root.resolve(strict=True)
+        bwrap_resolved = bwrap_path.resolve(strict=True)
+        docker_config_resolved = docker_config.resolve(strict=True)
+        cidfile_parent = cidfile.parent.resolve(strict=True)
+        auth_stat = auth_resolved.stat()
+        bwrap_stat = bwrap_resolved.stat()
+        checkpoint_resolved = (
+            checkpoint_path.resolve(strict=True)
+            if checkpoint_path is not None
+            else None
+        )
+        checkpoint_stat = checkpoint_resolved.stat() if checkpoint_resolved else None
+    except OSError as exc:
+        raise ValueError("containerized Codex fallback mount inputs are unavailable") from exc
+    path_values = (
+        workspace,
+        auth_path,
+        package_root,
+        bwrap_path,
+        docker_config,
+        cidfile,
+    )
+    if checkpoint_path is not None:
+        path_values += (checkpoint_path,)
+    if (
+        any(not path.is_absolute() for path in path_values)
+        or workspace != workspace_resolved
+        or auth_path != auth_resolved
+        or package_root != package_resolved
+        or bwrap_path != bwrap_resolved
+        or (checkpoint_path is not None and checkpoint_path != checkpoint_resolved)
+        or docker_config != docker_config_resolved
+        or cidfile.parent != cidfile_parent
+        or not workspace.is_dir()
+        or not auth_path.is_file()
+        or not package_root.is_dir()
+        or not bwrap_path.is_file()
+        or not os.access(bwrap_path, os.X_OK)
+        or not docker_config.is_dir()
+        or not stat.S_ISREG(bwrap_stat.st_mode)
+        or (checkpoint_path is not None and not checkpoint_path.is_dir())
+        or not os.access(auth_path, os.R_OK)
+        or auth_stat.st_uid not in {0, os.getuid()}
+        or not auth_stat.st_mode & 0o400
+        or auth_stat.st_mode & 0o077
+        or (
+            checkpoint_stat is not None
+            and (
+                checkpoint_stat.st_uid != os.getuid()
+                or checkpoint_stat.st_mode & 0o300 != 0o300
+                or checkpoint_stat.st_mode & 0o022
+            )
+        )
+        or auth_path.name != "auth.json"
+        or cidfile.name != "container.cid"
+        or cidfile.parent != docker_config.parent
+        or (
+            checkpoint_path is not None
+            and (
+                checkpoint_path.is_relative_to(workspace)
+                or auth_path.is_relative_to(checkpoint_path)
+                or checkpoint_path.is_relative_to(auth_path)
+            )
+        )
+        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or not all(_codex_fallback_mount_path_is_safe(path) for path in path_values)
+        or not _codex_fallback_toml_path_is_safe(workspace)
+        or (
+            checkpoint_path is not None
+            and not _codex_fallback_toml_path_is_safe(checkpoint_path)
+        )
+    ):
+        raise ValueError("containerized Codex fallback mount inputs are invalid")
+    controls = tuple(
+        git_controls
+        if git_controls is not None
+        else _codex_fallback_git_controls(workspace)
+    )
+    try:
+        controls_are_exact = all(
+            root.is_absolute()
+            and root == root.resolve(strict=True)
+            and root.lstat().st_uid in {0, os.getuid()}
+            and (
+                stat.S_ISREG(root.lstat().st_mode)
+                or stat.S_ISDIR(root.lstat().st_mode)
+            )
+            for root in controls
+        )
+    except OSError:
+        controls_are_exact = False
+    protected_sources = (
+        auth_path,
+        package_root,
+        bwrap_path,
+        *((checkpoint_path,) if checkpoint_path is not None else ()),
+    )
+    if (
+        not controls_are_exact
+        or len(controls) != len(set(controls))
+        or len(controls) > _CODEX_FALLBACK_MAX_GIT_CONTROLS
+        or not all(_codex_fallback_toml_path_is_safe(root) for root in controls)
+        or any(
+            _codex_fallback_paths_overlap(root, protected)
+            for root in controls
+            for protected in protected_sources
+        )
+    ):
+        raise ValueError("containerized Codex fallback Git metadata mounts are invalid")
+    route_digest = _codex_quota_fallback_route_digest(host_fallback_command)
+    command = [
+        str(_CODEX_FALLBACK_DOCKER_BIN),
+        f"--host={_CODEX_FALLBACK_DOCKER_HOST}",
+        "--config",
+        str(docker_config),
+        "run",
+        "--pull=never",
+        "--rm",
+        "--init",
+        "--interactive",
+        "--name",
+        container_name,
+        "--cidfile",
+        str(cidfile),
+        "--network=bridge",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--cap-add=SYS_ADMIN",
+        "--cap-add=SYS_CHROOT",
+        "--cap-add=SETUID",
+        "--cap-add=SETGID",
+        "--cap-add=SYS_PTRACE",
+        "--cap-add=NET_ADMIN",
+        "--cap-add=NET_RAW",
+        "--security-opt=seccomp=unconfined",
+        "--security-opt=apparmor=unconfined",
+        "--security-opt=systempaths=unconfined",
+        "--log-driver=none",
+        "--label",
+        f"ipfs_accelerate.codex_quota_route_sha256={route_digest}",
+        f"--pids-limit={_CODEX_FALLBACK_PIDS}",
+        f"--cpus={_CODEX_FALLBACK_CPUS}",
+        f"--memory={_CODEX_FALLBACK_MEMORY}",
+        f"--memory-swap={_CODEX_FALLBACK_MEMORY}",
+        "--user",
+        "0:0",
+        "--workdir",
+        str(workspace),
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,exec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()},size={_CODEX_FALLBACK_TMPFS}"
+        ),
+        "--tmpfs",
+        (
+            f"{_CODEX_FALLBACK_CONTAINER_HOME}:rw,nosuid,nodev,exec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()},size={_CODEX_FALLBACK_TMPFS}"
+        ),
+        "--tmpfs",
+        "/usr/local/bin:rw,suid,nodev,exec,mode=0755,size=16m",
+        "--env",
+        f"HOME={_CODEX_FALLBACK_CONTAINER_HOME}",
+        "--env",
+        f"CODEX_HOME={_CODEX_FALLBACK_CONTAINER_HOME}",
+        "--env",
+        "PATH=/usr/local/bin:/usr/bin:/bin",
+        "--env",
+        "TMPDIR=/tmp",
+    ]
+    if checkpoint_path is not None:
+        command.extend(
+            [
+                "--env",
+                f"{_CODEX_FALLBACK_CHECKPOINT_ENV}={checkpoint_path}",
+            ]
+        )
+    command.extend(_docker_mount(workspace, read_only=False))
+    for control in controls:
+        command.extend(_docker_mount(control, read_only=True))
+    command.extend(
+        _docker_mount(
+            auth_path,
+            destination=_CODEX_FALLBACK_AUTH_DESTINATION,
+            read_only=True,
+        )
+    )
+    command.extend(
+        _docker_mount(
+            package_root,
+            destination=_CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT,
+            read_only=True,
+        )
+    )
+    command.extend(
+        _docker_mount(
+            bwrap_path,
+            destination=_CODEX_FALLBACK_CONTAINER_BWRAP_SOURCE,
+            read_only=True,
+        )
+    )
+    command.extend(
+        _docker_mount(
+            _CODEX_FALLBACK_BWRAP_MASK_SOURCE,
+            destination=_CODEX_FALLBACK_CONTAINER_BUNDLED_BWRAP,
+            read_only=True,
+        )
+    )
+    if checkpoint_path is not None:
+        command.extend(_docker_mount(checkpoint_path, read_only=False))
+    command.extend(
+        [
+            "--entrypoint",
+            "/bin/sh",
+            _CODEX_FALLBACK_IMAGE,
+            "-ec",
+            _codex_fallback_root_wrapper(),
+            "codex-fallback-root-wrapper",
+            *_containerized_codex_fallback_inner_command(
+                host_fallback_command,
+                checkpoint_path=checkpoint_path,
+                git_controls=controls,
+            ),
+        ]
+    )
+    _validate_containerized_codex_quota_fallback_command(
+        command,
+        workspace=workspace,
+        auth_path=auth_path,
+        package_root=package_root,
+        bwrap_path=bwrap_path,
+        checkpoint_path=checkpoint_path,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        git_controls=controls,
+        host_fallback_command=host_fallback_command,
+    )
+    return command
+
+
+def _fallback_reasoning_effort_from_command(command: Sequence[str]) -> str:
+    """Read the already-validated route's exact effort for revalidation."""
+
+    prefix = 'model_reasoning_effort="'
+    configs = (
+        command[index + 1]
+        for index, item in enumerate(command[:-1])
+        if item == "-c"
+    )
+    config = next((item for item in configs if item.startswith(prefix)), "")
+    if not config.endswith('"'):
+        raise ValueError("Codex quota fallback has no reasoning config")
+    return config[len(prefix) : -1]
+
+
+def _validate_containerized_codex_quota_fallback_command(
+    command: Sequence[str],
+    *,
+    workspace: Path,
+    auth_path: Path,
+    package_root: Path,
+    bwrap_path: Path,
+    checkpoint_path: Path | None,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    git_controls: Sequence[Path],
+    host_fallback_command: Sequence[str],
+) -> None:
+    """Reject every Docker argv shape except the fixed fallback boundary."""
+
+    fallback_reasoning_effort = _fallback_reasoning_effort_from_command(
+        host_fallback_command
+    )
+    if (fallback_reasoning_effort == "high") != (checkpoint_path is not None):
+        raise ValueError(
+            "Codex quota fallback checkpoint authority does not match the route"
+        )
+    route_digest = _codex_quota_fallback_route_digest(host_fallback_command)
+    expected = [
+        str(_CODEX_FALLBACK_DOCKER_BIN),
+        f"--host={_CODEX_FALLBACK_DOCKER_HOST}",
+        "--config",
+        str(docker_config),
+        "run",
+        "--pull=never",
+        "--rm",
+        "--init",
+        "--interactive",
+        "--name",
+        container_name,
+        "--cidfile",
+        str(cidfile),
+        "--network=bridge",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--cap-add=SYS_ADMIN",
+        "--cap-add=SYS_CHROOT",
+        "--cap-add=SETUID",
+        "--cap-add=SETGID",
+        "--cap-add=SYS_PTRACE",
+        "--cap-add=NET_ADMIN",
+        "--cap-add=NET_RAW",
+        "--security-opt=seccomp=unconfined",
+        "--security-opt=apparmor=unconfined",
+        "--security-opt=systempaths=unconfined",
+        "--log-driver=none",
+        "--label",
+        f"ipfs_accelerate.codex_quota_route_sha256={route_digest}",
+        f"--pids-limit={_CODEX_FALLBACK_PIDS}",
+        f"--cpus={_CODEX_FALLBACK_CPUS}",
+        f"--memory={_CODEX_FALLBACK_MEMORY}",
+        f"--memory-swap={_CODEX_FALLBACK_MEMORY}",
+        "--user",
+        "0:0",
+        "--workdir",
+        str(workspace),
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,exec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()},size={_CODEX_FALLBACK_TMPFS}"
+        ),
+        "--tmpfs",
+        (
+            f"{_CODEX_FALLBACK_CONTAINER_HOME}:rw,nosuid,nodev,exec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()},size={_CODEX_FALLBACK_TMPFS}"
+        ),
+        "--tmpfs",
+        "/usr/local/bin:rw,suid,nodev,exec,mode=0755,size=16m",
+        "--env",
+        f"HOME={_CODEX_FALLBACK_CONTAINER_HOME}",
+        "--env",
+        f"CODEX_HOME={_CODEX_FALLBACK_CONTAINER_HOME}",
+        "--env",
+        "PATH=/usr/local/bin:/usr/bin:/bin",
+        "--env",
+        "TMPDIR=/tmp",
+    ]
+    if checkpoint_path is not None:
+        expected.extend(
+            [
+                "--env",
+                f"{_CODEX_FALLBACK_CHECKPOINT_ENV}={checkpoint_path}",
+            ]
+        )
+    expected.extend(_docker_mount(workspace, read_only=False))
+    for control in git_controls:
+        expected.extend(_docker_mount(control, read_only=True))
+    expected.extend(
+        _docker_mount(
+            auth_path,
+            destination=_CODEX_FALLBACK_AUTH_DESTINATION,
+            read_only=True,
+        )
+    )
+    expected.extend(
+        _docker_mount(
+            package_root,
+            destination=_CODEX_FALLBACK_CONTAINER_PACKAGE_ROOT,
+            read_only=True,
+        )
+    )
+    expected.extend(
+        _docker_mount(
+            bwrap_path,
+            destination=_CODEX_FALLBACK_CONTAINER_BWRAP_SOURCE,
+            read_only=True,
+        )
+    )
+    expected.extend(
+        _docker_mount(
+            _CODEX_FALLBACK_BWRAP_MASK_SOURCE,
+            destination=_CODEX_FALLBACK_CONTAINER_BUNDLED_BWRAP,
+            read_only=True,
+        )
+    )
+    if checkpoint_path is not None:
+        expected.extend(_docker_mount(checkpoint_path, read_only=False))
+    expected.extend(
+        [
+            "--entrypoint",
+            "/bin/sh",
+            _CODEX_FALLBACK_IMAGE,
+            "-ec",
+            _codex_fallback_root_wrapper(),
+            "codex-fallback-root-wrapper",
+            *_containerized_codex_fallback_inner_command(
+                host_fallback_command,
+                checkpoint_path=checkpoint_path,
+                git_controls=git_controls,
+            ),
+        ]
+    )
+    if list(command) != expected:
+        raise ValueError("Codex quota fallback Docker argv is not exact")
+
+
+def _run_containerized_codex_quota_fallback(
+    *,
+    host_fallback_command: Sequence[str],
+    workspace: Path,
+    base_env: Mapping[str, str],
+    prompt: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run the fallback only through a temporary Docker CLI control context."""
+
+    require_checkpoint = (
+        _fallback_reasoning_effort_from_command(host_fallback_command) == "high"
+    )
+    (
+        docker,
+        auth_path,
+        package_root,
+        bwrap_path,
+        checkpoint_path,
+    ) = _resolve_containerized_codex_fallback_assets(
+        workspace=workspace,
+        base_env=base_env,
+        require_checkpoint=require_checkpoint,
+    )
+    if docker != _CODEX_FALLBACK_DOCKER_BIN:
+        raise ValueError("Codex quota fallback Docker executable drifted")
+    lease = _DockerCodexFallbackLease.create()
+    docker_run_finished = False
+    try:
+        command = _build_containerized_codex_quota_fallback_command(
+            host_fallback_command=host_fallback_command,
+            workspace=workspace,
+            auth_path=auth_path,
+            package_root=package_root,
+            bwrap_path=bwrap_path,
+            checkpoint_path=checkpoint_path,
+            docker_config=lease.docker_config,
+            container_name=lease.container_name,
+            cidfile=lease.cidfile,
+        )
+        completed = subprocess.run(
+            command,
+            cwd=workspace,
+            env=_docker_control_env(),
+            input=prompt,
+            text=True,
+            check=False,
+        )
+        docker_run_finished = True
+        return completed
+    finally:
+        lease.close(docker_run_finished=docker_run_finished)
 
 
 def _grok_failure_type_from_stream_event(line: str) -> str:
@@ -3240,17 +4443,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         try:
-            fallback_env = _codex_quota_fallback_env(
+            fallback = _run_containerized_codex_quota_fallback(
+                host_fallback_command=codex_fallback_command,
                 workspace=workspace,
                 base_env=os.environ.copy(),
-            )
-            fallback = subprocess.run(
-                codex_fallback_command,
-                cwd=workspace,
-                env=fallback_env,
-                input=prompt,
-                text=True,
-                check=False,
+                prompt=prompt,
             )
         except (OSError, ValueError) as exc:
             print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)

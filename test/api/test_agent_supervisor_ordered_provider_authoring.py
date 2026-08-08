@@ -259,6 +259,8 @@ def _evaluate(
         "gpt-5.6-terra",
         "-c",
         'model_reasoning_effort="high"',
+        "-c",
+        'web_search="disabled"',
         "-",
     ]
     command = [
