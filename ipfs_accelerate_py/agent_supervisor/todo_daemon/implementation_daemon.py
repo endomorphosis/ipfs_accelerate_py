@@ -2882,10 +2882,7 @@ def task_declares_validation_config_change(task: PortalTask) -> bool:
     provider-suggested/allowed path alone never grants this authority.
     """
 
-    from ..validation.proposal_validation import (
-        _VALIDATION_CONFIG_PATHS,
-        _path_matches,
-    )
+    from ..validation.proposal_validation import _VALIDATION_CONFIG_PATHS
 
     predicted = str(
         (task.metadata or {}).get("predicted files")
@@ -2904,11 +2901,24 @@ def task_declares_validation_config_change(task: PortalTask) -> bool:
             ]
         )
     )
-    return any(
-        _path_matches(path, config_path)
-        for path in declared_paths
-        for config_path in _VALIDATION_CONFIG_PATHS
-    )
+    for path in declared_paths:
+        if (
+            not path
+            or path.endswith("/")
+            or any(character in path for character in "*?[]{}")
+        ):
+            continue
+        if any(
+            path == config_path
+            or (
+                config_path.endswith("/")
+                and path.startswith(config_path)
+                and len(path) > len(config_path)
+            )
+            for config_path in _VALIDATION_CONFIG_PATHS
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True)

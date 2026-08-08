@@ -72,6 +72,12 @@ def test_validation_config_authority_requires_declared_task_output() -> None:
     assert not task_declares_validation_config_change(
         PortalTask(**base, outputs=["src/schema.py"])
     )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=[".github/workflows/"])
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=["*.toml"])
+    )
 
 
 def test_validation_command_helpers_unwrap_markdown_inline_code():
