@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import errno
+import json
 import logging
+import os
 import shutil
 import time
 from pathlib import Path
@@ -119,6 +121,80 @@ def _drained_daemon(tmp_path: Path) -> PortalImplementationDaemon:
         validation_cache_dir=tmp_path / "runtime" / "validation-cache",
         merge_queue_dir=tmp_path / "runtime" / "merge-queue",
     )
+
+
+def _maintenance_retry_daemon(tmp_path: Path) -> PortalImplementationDaemon:
+    """Return one ready task reset after a non-implementing projection pass."""
+
+    board = tmp_path / "tasks.todo.md"
+    board.write_text(
+        """# Retry board
+
+## PORTAL-001 Retry after transient maintenance
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/retry.py
+- Validation:
+- Acceptance: The ready task is selected immediately after the lease releases.
+""",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "runtime" / "state.json",
+        strategy_path=tmp_path / "runtime" / "strategy.json",
+        events_path=tmp_path / "runtime" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_pool_enabled=False,
+        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
+        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
+    )
+    first = daemon.run_once()
+    assert first["active_task_id"] == "PORTAL-001"
+    state = PortalTaskState.load(daemon.state_path)
+    state.active_task_id = ""
+    state.active_task_key = ""
+    state.active_task_cid = ""
+    state.implementation_in_progress = False
+    state.save(daemon.state_path)
+    daemon.task_queue.defer(
+        "PORTAL-001",
+        0,
+        reason="implementation_protected_path_maintenance_active",
+    )
+    daemon.task_queue.save()
+    assert daemon.task_queue.is_cooled_down("PORTAL-001") is False
+    daemon.implement = True
+    return daemon
+
+
+def _write_live_protected_maintenance_lease(
+    daemon: PortalImplementationDaemon,
+) -> Path:
+    """Install a live peer lease without invoking a supervisor or provider."""
+
+    maintenance_lock = daemon._protected_path_maintenance_lock_path()
+    maintenance_lock.parent.mkdir(parents=True, exist_ok=True)
+    maintenance_lock.write_text(
+        json.dumps(
+            {
+                "kind": "implementation-protected-maintenance",
+                "pid": os.getpid(),
+                "owner_script": "",
+                "state_dir": str(
+                    maintenance_lock.parent / "foreign-maintenance"
+                ),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return maintenance_lock
 
 
 def test_canonical_cursor_replay_is_gapless_exactly_once_across_restart_and_rotation(
@@ -944,48 +1020,7 @@ def test_shared_protected_maintenance_release_wakes_zero_backoff_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    board = tmp_path / "tasks.todo.md"
-    board.write_text(
-        """# Retry board
-
-## PORTAL-001 Retry after transient maintenance
-
-- Status: todo
-- Completion: manual
-- Priority: P1
-- Track: runtime
-- Depends on:
-- Outputs: src/retry.py
-- Validation:
-- Acceptance: The ready task is selected immediately after the lease releases.
-""",
-        encoding="utf-8",
-    )
-    daemon = PortalImplementationDaemon(
-        todo_path=board,
-        state_path=tmp_path / "runtime" / "state.json",
-        strategy_path=tmp_path / "runtime" / "strategy.json",
-        events_path=tmp_path / "runtime" / "events.jsonl",
-        repo_root=tmp_path,
-        worktree_pool_enabled=False,
-        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
-        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
-    )
-    first = daemon.run_once()
-    assert first["active_task_id"] == "PORTAL-001"
-    state = PortalTaskState.load(daemon.state_path)
-    state.active_task_id = ""
-    state.active_task_key = ""
-    state.active_task_cid = ""
-    state.implementation_in_progress = False
-    state.save(daemon.state_path)
-    daemon.task_queue.defer(
-        "PORTAL-001",
-        0,
-        reason="implementation_protected_path_maintenance_active",
-    )
-    daemon.task_queue.save()
-    assert daemon.task_queue.is_cooled_down("PORTAL-001") is False
+    daemon = _maintenance_retry_daemon(tmp_path)
 
     def unexpected_provider_prompt(*_args: object, **_kwargs: object) -> str:
         pytest.fail("lease release must select before any provider prompt")
@@ -1010,7 +1045,6 @@ def test_shared_protected_maintenance_release_wakes_zero_backoff_selection(
         unexpected_provider_prompt,
     )
     monkeypatch.setattr(daemon, "_run_implementation", capture_selection)
-    daemon.implement = True
     lease_paths = daemon._runtime_source_paths()["lease"]
     maintenance_lock = daemon._protected_path_maintenance_lock_path()
     clock = LogicalClock()
@@ -1052,3 +1086,174 @@ def test_shared_protected_maintenance_release_wakes_zero_backoff_selection(
         "task_id": "PORTAL-001",
         "provider_dispatched": False,
     }
+
+
+def test_shared_protected_maintenance_lease_waits_without_busy_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A held shared lease waits for the safety deadline without dispatching."""
+
+    daemon = _maintenance_retry_daemon(tmp_path)
+    maintenance_lock = _write_live_protected_maintenance_lease(daemon)
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        {
+            RuntimeWakeKind.LEASE: daemon._runtime_source_paths()["lease"],
+        },
+        safety_interval_seconds=30.0,
+        watcher=watcher,
+        clock=clock,
+    )
+    daemon._runtime_wake_coordinator = coordinator
+
+    def unexpected_provider_prompt(*_args: object, **_kwargs: object) -> str:
+        pytest.fail("a held maintenance lease must prevent provider dispatch")
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        unexpected_provider_prompt,
+    )
+    try:
+        blocked = daemon.run_once()
+        assert daemon._waiting_for_maintenance_release is True
+        waiting = daemon.wait_for_wake(timeout=5.0)
+        assert daemon._waiting_for_maintenance_release is True
+    finally:
+        daemon.close_event_runtime()
+        maintenance_lock.unlink(missing_ok=True)
+
+    implementation_result = blocked["implementation_result"]
+    assert implementation_result is not None
+    assert implementation_result["reason"] == (
+        "implementation_protected_path_maintenance_active"
+    )
+    assert implementation_result["attempt_consumed"] is False
+    assert implementation_result["provider_dispatched"] is False
+    assert daemon.task_queue.is_cooled_down("PORTAL-001") is False
+    assert len(waiting) == 1
+    assert waiting[0].kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
+    assert waiting[0].safety_timer is True
+    assert watcher.wait_calls == 1
+    assert clock() == pytest.approx(5.0)
+
+
+def test_native_maintenance_release_race_reconciles_before_wait(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unlink before post-pass cursor sync produces a durable lease wake."""
+
+    daemon = _maintenance_retry_daemon(tmp_path)
+    maintenance_lock = _write_live_protected_maintenance_lease(daemon)
+    coordinator = daemon._ensure_runtime_wake_coordinator()
+    if not coordinator.native:
+        daemon.close_event_runtime()
+        pytest.skip("native inotify is unavailable")
+
+    def unexpected_provider_prompt(*_args: object, **_kwargs: object) -> str:
+        pytest.fail("maintenance coordination must precede provider dispatch")
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        unexpected_provider_prompt,
+    )
+    original_run_implementation = daemon._run_implementation
+    original_active_claim = daemon._active_protected_path_maintenance_claim
+    released = False
+    synchronized_after_release = False
+    acknowledged_events: list[object] = []
+
+    original_synchronize_file_cursors = coordinator.synchronize_file_cursors
+    original_acknowledge = coordinator.acknowledge
+
+    def synchronize_after_release() -> None:
+        nonlocal synchronized_after_release
+        assert released is True
+        assert maintenance_lock.exists() is False
+        synchronized_after_release = True
+        original_synchronize_file_cursors()
+
+    def capture_acknowledgement(event: object) -> None:
+        acknowledged_events.append(event)
+        original_acknowledge(event)
+
+    monkeypatch.setattr(
+        coordinator,
+        "synchronize_file_cursors",
+        synchronize_after_release,
+    )
+    monkeypatch.setattr(coordinator, "acknowledge", capture_acknowledgement)
+
+    def run_with_release_after_maintenance_check(
+        task: object,
+        state: object,
+    ) -> dict[str, object]:
+        def claim_then_release() -> dict[str, object] | None:
+            nonlocal released
+            claim = original_active_claim()
+            if not released:
+                assert claim is not None
+                maintenance_lock.unlink()
+                released = True
+            return claim
+
+        monkeypatch.setattr(
+            daemon,
+            "_active_protected_path_maintenance_claim",
+            claim_then_release,
+        )
+        return original_run_implementation(task, state)
+
+    selected_task_ids: list[str] = []
+
+    def capture_selection(
+        task: object,
+        _state: object,
+    ) -> dict[str, object]:
+        selected_task_ids.append(str(getattr(task, "task_id", "")))
+        return {
+            "skipped": True,
+            "reason": "test_selection_capture",
+            "task_id": selected_task_ids[-1],
+            "provider_dispatched": False,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        run_with_release_after_maintenance_check,
+    )
+    try:
+        blocked = daemon.run_once()
+        assert daemon._waiting_for_maintenance_release is True
+        released_events = daemon.wait_for_wake(timeout=0)
+        assert daemon._waiting_for_maintenance_release is False
+        monkeypatch.setattr(daemon, "_run_implementation", capture_selection)
+        retried = daemon.run_once()
+        assert daemon._current_runtime_wake_events == []
+    finally:
+        daemon.close_event_runtime()
+        maintenance_lock.unlink(missing_ok=True)
+
+    implementation_result = blocked["implementation_result"]
+    assert released is True
+    assert synchronized_after_release is True
+    assert implementation_result is not None
+    assert implementation_result["reason"] == (
+        "implementation_protected_path_maintenance_active"
+    )
+    assert implementation_result["attempt_consumed"] is False
+    assert implementation_result["provider_dispatched"] is False
+    assert daemon.task_queue.is_cooled_down("PORTAL-001") is False
+    assert len(released_events) == 1
+    assert released_events[0].kinds == (RuntimeWakeKind.LEASE,)
+    assert released_events[0].reason == "maintenance_release_reconciliation"
+    assert released_events[0].safety_timer is False
+    assert selected_task_ids == ["PORTAL-001"]
+    assert retried["active_task_id"] == "PORTAL-001"
+    assert "lease" in retried["wake_kinds"]
+    assert acknowledged_events == released_events

@@ -463,6 +463,8 @@ def test_shared_protected_maintenance_lease_defers_model_dispatch(
     assert result["skipped"] is True
     assert result["reason"] == "implementation_protected_path_maintenance_active"
     assert result["backoff_seconds"] == 0
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
     assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is False
     assert not daemon._implementation_task_claim_path(
         task.task_id,
@@ -496,6 +498,8 @@ def test_repo_global_maintenance_lease_defers_daemon_without_local_paths(
     assert result["skipped"] is True
     assert result["reason"] == "implementation_protected_path_maintenance_active"
     assert result["backoff_seconds"] == 0
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
     assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is False
 
 

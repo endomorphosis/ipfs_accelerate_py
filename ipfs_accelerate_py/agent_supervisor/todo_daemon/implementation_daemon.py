@@ -173,6 +173,8 @@ from .implementation_daemon_runner import (
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
+    RuntimeWakeEvent,
+    RuntimeWakeKind,
     locked_taskboard,
     replace_locked_taskboard,
     taskboard_revision,
@@ -4057,6 +4059,11 @@ class PortalImplementationDaemon:
         self._pending_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_kinds: set[str] = set()
+        # A maintenance deferral is coordinated by one exact shared lease,
+        # not a task cooldown. Retain this only until wait_for_wake() proves
+        # that lease has released, so a release raced with post-pass cursor
+        # synchronization cannot be swallowed.
+        self._waiting_for_maintenance_release = False
         self._runtime_checkpoint = self._load_runtime_checkpoint()
         checkpoint_source_identity = self._runtime_checkpoint.get(
             "task_source_identity"
@@ -8959,6 +8966,22 @@ class PortalImplementationDaemon:
         """Block for semantic input, using ``timeout`` as the safety deadline."""
 
         coordinator = self._ensure_runtime_wake_coordinator()
+        if self._waiting_for_maintenance_release:
+            # The coordinator must exist before this recheck. If the release
+            # races this check, its native file event remains observable; if
+            # it happened during the preceding pass and cursor sync advanced
+            # past it, this proof supplies the exact lease wake instead.
+            maintenance_claim = self._active_protected_path_maintenance_claim()
+            if maintenance_claim is None:
+                self._waiting_for_maintenance_release = False
+                event = RuntimeWakeEvent(
+                    kinds=(RuntimeWakeKind.LEASE,),
+                    reason="maintenance_release_reconciliation",
+                    safety_timer=False,
+                )
+                events = [event]
+                self._pending_runtime_wake_events.extend(events)
+                return events
         event = coordinator.wait(timeout=timeout)
         events = [event]
         self._pending_runtime_wake_events.extend(events)
@@ -8971,6 +8994,7 @@ class PortalImplementationDaemon:
         self._runtime_wake_coordinator = None
         self._pending_runtime_wake_events = []
         self._current_runtime_wake_events = []
+        self._waiting_for_maintenance_release = False
         if coordinator is not None:
             coordinator.close()
 
@@ -13895,6 +13919,7 @@ class PortalImplementationDaemon:
         # participate, including a lane configured with no local paths.
         maintenance_claim = self._active_protected_path_maintenance_claim()
         if maintenance_claim is not None:
+            self._waiting_for_maintenance_release = True
             canonical_task_cid = self._canonical_ref(task)
             self.task_queue.defer(
                 canonical_task_cid,
@@ -13907,6 +13932,8 @@ class PortalImplementationDaemon:
                 "reason": "implementation_protected_path_maintenance_active",
                 "task_id": task.task_id,
                 "attempt": attempt,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
                 # The shared lease is a watched source and the event runtime
                 # has a bounded missed-notification reconciliation timeout.
                 # Do not add an independent timer here: a fixed cooldown can
@@ -13931,6 +13958,7 @@ class PortalImplementationDaemon:
             acquired_task_claim = False
             self._record_event("implementation_retry_deferred", result)
             return result
+        self._waiting_for_maintenance_release = False
 
         acquired_resource_claims: list[
             tuple[Path, dict[str, Any]]
