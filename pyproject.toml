@@ -51,8 +51,8 @@ ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
-"*" = ["*.txt", "*.md", "*.sql"]
-"ipfs_accelerate_py.agent_supervisor.task_sources" = ["sql/*.sql", "sql/*.md"]
+"*" = ["*.txt", "*.md"]
+"ipfs_accelerate_py.agent_supervisor.task_sources" = ["sql/*.sql"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
