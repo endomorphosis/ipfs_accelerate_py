@@ -39,6 +39,8 @@ ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
 )
+_CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
+_ORDERED_CODEX_REASONING_EFFORTS = frozenset({"medium", "high"})
 _COMPATIBLE_GROK_PRIMARY_ALIASES = frozenset(
     {
         "grok",
@@ -544,6 +546,11 @@ def seal_ordered_implementation_provider_route(
             and value.lower() in _COMPATIBLE_GROK_PRIMARY_ALIASES
         ):
             continue
+        if (
+            name == _CODEX_REASONING_EFFORT_ENV
+            and value in _ORDERED_CODEX_REASONING_EFFORTS
+        ):
+            continue
         if value != expected:
             incompatible[name] = value
     if incompatible:
@@ -553,12 +560,17 @@ def seal_ordered_implementation_provider_route(
         )
         raise ValueError(
             "implementation supervisors require the exact six-field "
-            "grok_cli/grok-4.5 -> codex/gpt-5.6-terra medium "
+            "grok_cli/grok-4.5 -> codex/gpt-5.6-terra {medium,high} "
             "primary_quota_exhausted route; incompatible explicit "
             f"configuration: {details}"
         )
-    target.update(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
-    return dict(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
+    sealed = dict(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
+    if observed[_CODEX_REASONING_EFFORT_ENV]:
+        sealed[_CODEX_REASONING_EFFORT_ENV] = observed[
+            _CODEX_REASONING_EFFORT_ENV
+        ]
+    target.update(sealed)
+    return sealed
 
 
 def implementation_multi_supervisor_env_defaults(
