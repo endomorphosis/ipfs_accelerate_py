@@ -473,19 +473,15 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     source_auth.write_text("{}\n", encoding="utf-8")
     source_auth.chmod(0o600)
     fallback = _terra_fallback_command(str(codex), workspace)
-    image = "sha256:" + "a" * 64
+    image = grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
     container_name = "ipfs-accelerate-codex-1-" + "b" * 32
+    child_env = grok_cli_runner._codex_task_container_environment()
 
     command = grok_cli_runner._docker_codex_fallback_command(
         codex_command=fallback,
         workspace=workspace,
         source_auth=source_auth,
-        child_env={
-            "HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
-            "CODEX_HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
-            "PATH": "/usr/bin:/bin",
-            "LANG": "opaque-child-value",
-        },
+        child_env=child_env,
         docker_config=docker_config,
         container_name=container_name,
         cidfile=tmp_path / "container.cid",
@@ -499,18 +495,22 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert "--pull=never" in command
     assert "--read-only" in command
     assert "--network=bridge" in command
+    assert "--runtime=runc" in command
+    assert "--entrypoint=/usr/bin/env" in command
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
     assert "--device" not in command
     assert "ipfs_accelerate.codex_fallback_isolation=true" in command
     assert image in command
-    assert command[command.index("--env") + 1] == "CODEX_HOME"
-    assert "LANG" in [
+    docker_env = [
         command[index + 1]
         for index, value in enumerate(command[:-1])
         if value == "--env"
     ]
-    assert "opaque-child-value" not in command
+    assert docker_env == list(grok_cli_runner._CODEX_DOCKER_IMAGE_ENV_OVERRIDES)
+    assert "NVIDIA_VISIBLE_DEVICES=void" in docker_env
+    assert "BASH_ENV=" in docker_env
+    assert "ENV=" in docker_env
 
     mounts = [
         command[index + 1]
@@ -526,6 +526,11 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         "type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs,readonly" in mounts
     )
     assert (
+        f"type=bind,src={grok_cli_runner._HOST_CODEX_TASK_TOOLCHAIN_PYTHON},"
+        f"dst={grok_cli_runner._CODEX_TASK_TOOLCHAIN_PYTHON},readonly"
+        in mounts
+    )
+    assert (
         f"type=bind,src={source_auth},"
         f"dst={grok_cli_runner._CODEX_CONTAINER_AUTH_PATH},readonly"
         in mounts
@@ -536,8 +541,54 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     inner = command[command.index(image) + 1 :]
     expected_inner = list(fallback)
     expected_inner[expected_inner.index("-s") + 1] = "danger-full-access"
-    assert inner == expected_inner
+    expected_environment = [
+        f"{name}={value}" for name, value in sorted(child_env.items())
+    ]
+    assert inner == ["-i", *expected_environment, *expected_inner]
+    assert not any("/home/barberb" in item for item in command)
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
+
+
+@pytest.mark.parametrize("valid_label", (True, False))
+def test_codex_task_toolchain_image_requires_exact_identity_and_label(
+    tmp_path: Path,
+    monkeypatch,
+    valid_label: bool,
+) -> None:
+    expected_line = (
+        f"{grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID}|linux|arm64|"
+        f"{grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_LABEL}"
+    )
+    observed_commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        observed_commands.append(list(command))
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(
+                expected_line
+                if valid_label
+                else expected_line.removesuffix(
+                    grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_LABEL
+                )
+                + "untrusted"
+            ),
+        )
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+
+    resolved = grok_cli_runner._docker_codex_task_toolchain_image_id(
+        "/usr/bin/docker",
+        docker_config=tmp_path,
+    )
+
+    assert resolved == (
+        grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID if valid_label else ""
+    )
+    assert observed_commands[0][-1] == (
+        grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
+    )
 
 
 @pytest.mark.parametrize(
@@ -585,9 +636,50 @@ def test_codex_auth_boundary_rejects_ambient_or_mutable_authority(
         )
 
 
+def test_codex_isolated_home_seals_environment_without_host_toolchain(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    codex_home = tmp_path / "codex-home"
+    workspace.mkdir()
+    codex_home.mkdir()
+    auth_path = codex_home / "auth.json"
+    auth_path.write_text("{}\n", encoding="utf-8")
+    auth_path.chmod(0o600)
+
+    temporary_home, environment, source_auth = (
+        grok_cli_runner._isolated_codex_quota_fallback_home(
+            workspace=workspace,
+            base_env={
+                "CODEX_HOME": str(codex_home),
+                "BASH_ENV": "/workspace/untrusted-hook",
+                "PYTHONPATH": "/home/barberb/.local/lib/python3.12/site-packages",
+            },
+        )
+    )
+    try:
+        assert environment == (
+            grok_cli_runner._codex_task_container_environment()
+        )
+        assert source_auth == auth_path
+        assert not any("/home/barberb" in value for value in environment.values())
+        assert not any(Path(temporary_home.name).iterdir())
+    finally:
+        grok_cli_runner._robust_remove_runner_temp_tree(
+            Path(temporary_home.name)
+        )
+        temporary_home.cleanup()
+
+
 @pytest.mark.parametrize(
     "invalid_case",
-    ("mutable_image", "wrong_provider_name", "workspace_mismatch"),
+    (
+        "mutable_image",
+        "unapproved_image",
+        "wrong_provider_name",
+        "workspace_mismatch",
+        "ambient_environment",
+    ),
 )
 def test_docker_codex_boundary_rejects_unpinned_or_mismatched_authority(
     tmp_path: Path,
@@ -606,16 +698,18 @@ def test_docker_codex_boundary_rejects_unpinned_or_mismatched_authority(
     fallback_workspace = (
         other_workspace if invalid_case == "workspace_mismatch" else workspace
     )
-    image = (
-        "ubuntu:24.04"
-        if invalid_case == "mutable_image"
-        else "sha256:" + "a" * 64
-    )
+    image = {
+        "mutable_image": "ubuntu:24.04",
+        "unapproved_image": "sha256:" + "a" * 64,
+    }.get(invalid_case, grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID)
     container_name = (
         "ipfs-accelerate-grok-1-" + "b" * 32
         if invalid_case == "wrong_provider_name"
         else "ipfs-accelerate-codex-1-" + "b" * 32
     )
+    child_env = grok_cli_runner._codex_task_container_environment()
+    if invalid_case == "ambient_environment":
+        child_env["BASH_ENV"] = "/workspace/untrusted-hook"
 
     with pytest.raises(ValueError):
         grok_cli_runner._docker_codex_fallback_command(
@@ -625,7 +719,7 @@ def test_docker_codex_boundary_rejects_unpinned_or_mismatched_authority(
             ),
             workspace=workspace,
             source_auth=source_auth,
-            child_env={"PATH": "/usr/bin:/bin"},
+            child_env=child_env,
             docker_config=tmp_path,
             container_name=container_name,
             cidfile=tmp_path / "container.cid",
@@ -702,11 +796,7 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         "_isolated_codex_quota_fallback_home",
         lambda **_kwargs: (
             FakeHome(),
-            {
-                "HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
-                "CODEX_HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
-                "PATH": "/usr/bin:/bin",
-            },
+            grok_cli_runner._codex_task_container_environment(),
             source_auth,
         ),
     )
@@ -717,8 +807,10 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
     )
     monkeypatch.setattr(
         grok_cli_runner,
-        "_docker_isolation_image_id",
-        lambda *_args, **_kwargs: "sha256:" + "d" * 64,
+        "_docker_codex_task_toolchain_image_id",
+        lambda *_args, **_kwargs: (
+            grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
+        ),
     )
     monkeypatch.setattr(
         grok_cli_runner,
@@ -752,31 +844,28 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
     ]
 
 
-def test_real_disposable_codex_container_boundary_probe(tmp_path: Path) -> None:
+def test_real_disposable_codex_container_and_board_toolchain_probe(
+    tmp_path: Path,
+) -> None:
+    workspace = Path(__file__).resolve().parents[2]
     docker_bin = grok_cli_runner._docker_isolation_binary()
     codex = grok_cli_runner.resolve_codex_quota_fallback_executable(
-        workspace=tmp_path,
+        workspace=workspace,
     )
     if not docker_bin or not codex:
         pytest.skip("trusted local Docker/Codex boundary is unavailable")
-    workspace = tmp_path / "workspace"
     docker_config = tmp_path / "docker-config"
-    workspace.mkdir()
     docker_config.mkdir()
     source_auth = tmp_path / "auth.json"
     source_auth.write_text("{}\n", encoding="utf-8")
     source_auth.chmod(0o600)
-    image = grok_cli_runner._docker_isolation_image_id(
+    image = grok_cli_runner._docker_codex_task_toolchain_image_id(
         docker_bin,
         docker_config=docker_config,
     )
     if not image:
         pytest.skip("pinned local Docker image is unavailable")
-    child_env = {
-        "HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
-        "CODEX_HOME": str(grok_cli_runner._CODEX_CONTAINER_HOME),
-        "PATH": "/usr/bin:/bin",
-    }
+    child_env = grok_cli_runner._codex_task_container_environment()
     command = grok_cli_runner._docker_codex_fallback_command(
         codex_command=_terra_fallback_command(codex, workspace),
         workspace=workspace,
@@ -786,12 +875,13 @@ def test_real_disposable_codex_container_boundary_probe(tmp_path: Path) -> None:
         container_name=(
             f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
         ),
-        cidfile=tmp_path / "container.cid",
+        cidfile=tmp_path / "version-container.cid",
         docker_bin=docker_bin,
         isolation_image=image,
     )
     image_index = command.index(image)
-    probe_command = [*command[: image_index + 1], codex, "--version"]
+    codex_index = command.index(codex, image_index + 1)
+    probe_command = [*command[:codex_index], codex, "--version"]
 
     completed = subprocess.run(
         probe_command,
@@ -807,6 +897,45 @@ def test_real_disposable_codex_container_boundary_probe(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.startswith("codex-cli ")
     assert "bwrap:" not in completed.stderr
+
+    validation_command = grok_cli_runner._docker_codex_fallback_command(
+        codex_command=_terra_fallback_command(codex, workspace),
+        workspace=workspace,
+        source_auth=source_auth,
+        child_env=child_env,
+        docker_config=docker_config,
+        container_name=(
+            f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
+        ),
+        cidfile=tmp_path / "validation-container.cid",
+        docker_bin=docker_bin,
+        isolation_image=image,
+    )
+    validation_image_index = validation_command.index(image)
+    validation_codex_index = validation_command.index(
+        codex,
+        validation_image_index + 1,
+    )
+    validation_command[validation_codex_index:] = [
+        "python",
+        "-m",
+        "pytest",
+        "test/api/test_agent_supervisor_prompt_v3_convergence.py",
+        "-q",
+    ]
+    validation = subprocess.run(
+        validation_command,
+        cwd=workspace,
+        env=grok_cli_runner._docker_control_env(child_env),
+        input="",
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert validation.returncode == 0, validation.stdout + validation.stderr
+    assert "passed" in validation.stdout
 
 
 def test_daemon_liveness_accepts_exact_codex_fallback_container_label(

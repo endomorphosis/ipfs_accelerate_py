@@ -256,6 +256,28 @@ _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_AUTH_PATH = _CODEX_CONTAINER_HOME / "auth.json"
+_CODEX_TASK_TOOLCHAIN_IMAGE_ID = (
+    "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
+)
+_CODEX_TASK_TOOLCHAIN_IMAGE_LABEL = "2026-08-03-v2"
+_CODEX_TASK_TOOLCHAIN_SITE_PACKAGES = Path(
+    "/opt/ipfs-validation-site-packages"
+)
+_CODEX_TASK_TOOLCHAIN_BIN = Path("/opt/ipfs-task-tools/bin")
+_CODEX_TASK_TOOLCHAIN_PYTHON = _CODEX_TASK_TOOLCHAIN_BIN / "python"
+_HOST_CODEX_TASK_TOOLCHAIN_PYTHON = Path("/usr/bin/python3.12")
+_CODEX_DOCKER_IMAGE_ENV_OVERRIDES = (
+    "BASH_ENV=",
+    "CUDA_VISIBLE_DEVICES=-1",
+    "ENV=",
+    "LD_LIBRARY_PATH=",
+    "LD_PRELOAD=",
+    "LIBRARY_PATH=",
+    "NVIDIA_DRIVER_CAPABILITIES=",
+    "NVIDIA_REQUIRE_CUDA=",
+    "NVIDIA_REQUIRE_JETPACK_HOST_MOUNTS=",
+    "NVIDIA_VISIBLE_DEVICES=void",
+)
 _DOCKER_CONTAINER_NAME_RE = re.compile(
     r"ipfs-accelerate-(?:grok|codex)-[0-9]+-[0-9a-f]{32}"
 )
@@ -1541,6 +1563,90 @@ def _docker_isolation_image_id(
     )
 
 
+def _docker_codex_task_toolchain_image_id(
+    docker_bin: str,
+    *,
+    docker_config: Path,
+) -> str:
+    """Verify the immutable image that supplies the bounded test toolchain."""
+
+    try:
+        completed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                str(docker_config),
+                "image",
+                "inspect",
+                "--format",
+                (
+                    '{{.Id}}|{{.Os}}|{{.Architecture}}|'
+                    '{{index .Config.Labels '
+                    '"org.ipfs-accelerate.authority-validation"}}'
+                ),
+                _CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    expected = (
+        f"{_CODEX_TASK_TOOLCHAIN_IMAGE_ID}|linux|arm64|"
+        f"{_CODEX_TASK_TOOLCHAIN_IMAGE_LABEL}"
+    )
+    return (
+        _CODEX_TASK_TOOLCHAIN_IMAGE_ID
+        if completed.returncode == 0 and completed.stdout.strip() == expected
+        else ""
+    )
+
+
+def _host_codex_task_toolchain_python() -> Path:
+    """Resolve the exact root-owned Python ABI used by the pinned toolchain."""
+
+    entry = _HOST_CODEX_TASK_TOOLCHAIN_PYTHON
+    try:
+        entry_stat = entry.lstat()
+        resolved = entry.resolve(strict=True)
+        resolved_stat = resolved.stat()
+    except OSError as exc:
+        raise ValueError("Codex task Python toolchain is unavailable") from exc
+    if (
+        entry != resolved
+        or not stat.S_ISREG(entry_stat.st_mode)
+        or not stat.S_ISREG(resolved_stat.st_mode)
+        or resolved_stat.st_uid != 0
+        or resolved_stat.st_mode & 0o022
+        or not os.access(resolved, os.X_OK)
+    ):
+        raise ValueError("Codex task Python toolchain is not trusted")
+    return resolved
+
+
+def _codex_task_container_environment() -> dict[str, str]:
+    """Return the complete non-secret environment admitted past ``env -i``."""
+
+    return {
+        "BASH_ENV": "",
+        "CODEX_HOME": str(_CODEX_CONTAINER_HOME),
+        "ENV": "",
+        "HOME": str(_CODEX_CONTAINER_HOME),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": f"{_CODEX_TASK_TOOLCHAIN_BIN}:/usr/bin:/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONPATH": str(_CODEX_TASK_TOOLCHAIN_SITE_PACKAGES),
+        "TERM": "dumb",
+    }
+
+
 def _docker_control_env(
     child_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
@@ -2139,8 +2245,10 @@ def _docker_codex_fallback_command(
 
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    if not docker or re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
-        raise ValueError("Codex fallback requires a pinned Docker isolation image")
+    if not docker or image != _CODEX_TASK_TOOLCHAIN_IMAGE_ID:
+        raise ValueError(
+            "Codex fallback requires the exact pinned task-toolchain image"
+        )
     if (
         _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
         or not container_name.startswith("ipfs-accelerate-codex-")
@@ -2150,6 +2258,10 @@ def _docker_codex_fallback_command(
         source_auth=source_auth,
         workspace=workspace,
     )
+    host_python = _host_codex_task_toolchain_python()
+    expected_environment = _codex_task_container_environment()
+    if child_env != expected_environment:
+        raise ValueError("Codex fallback container environment is not sealed")
 
     _validate_codex_quota_fallback_command(
         codex_command,
@@ -2179,6 +2291,8 @@ def _docker_codex_fallback_command(
         "--interactive",
         "--read-only",
         "--network=bridge",
+        "--runtime=runc",
+        "--entrypoint=/usr/bin/env",
         "--tmpfs",
         (
             "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
@@ -2208,8 +2322,8 @@ def _docker_codex_fallback_command(
         "--workdir",
         str(workspace),
     ]
-    for name in sorted(child_env):
-        command.extend(["--env", name])
+    for override in _CODEX_DOCKER_IMAGE_ENV_OVERRIDES:
+        command.extend(["--env", override])
 
     host_usr = _existing_path(Path("/usr"))
     if host_usr is None:
@@ -2219,6 +2333,13 @@ def _docker_codex_fallback_command(
     if host_ca_certificates is None:
         raise ValueError("Codex fallback requires pinned host CA certificates")
     command.extend(_docker_mount(host_ca_certificates, read_only=True))
+    command.extend(
+        _docker_mount(
+            host_python,
+            destination=_CODEX_TASK_TOOLCHAIN_PYTHON,
+            read_only=True,
+        )
+    )
     for git_root in _git_metadata_roots(workspace):
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
@@ -2232,7 +2353,14 @@ def _docker_codex_fallback_command(
             read_only=True,
         )
     )
-    command.extend([image, *inner])
+    # The authority-validation image contains a large CUDA-oriented Config.Env.
+    # Clearing it here prevents ENV/BASH_ENV hooks and every unrelated image
+    # default from reaching Codex or repository commands.  Only these fixed,
+    # non-secret values are serialized; provider authority remains file-based.
+    environment_assignments = [
+        f"{name}={value}" for name, value in sorted(expected_environment.items())
+    ]
+    command.extend([image, "-i", *environment_assignments, *inner])
     return command
 
 
@@ -2273,14 +2401,13 @@ def _run_codex_quota_fallback_in_docker(
             provider_home=codex_home,
             prompt_path=prompt_path,
         )
-        isolation_image = _docker_isolation_image_id(
+        isolation_image = _docker_codex_task_toolchain_image_id(
             docker_bin,
             docker_config=docker_lease.docker_config,
-            base_env=base_env,
         )
         if not isolation_image:
             raise ValueError(
-                "Codex fallback Docker isolation image is not pinned locally"
+                "Codex fallback task-toolchain image is not pinned locally"
             )
         command = _docker_codex_fallback_command(
             codex_command=codex_command,
@@ -2531,10 +2658,9 @@ def _isolated_codex_quota_fallback_home(
         prefix="asref-codex-home-"
     )
     try:
-        Path(temporary_home.name).chmod(0o700)
-        isolated_environment = dict(host_environment)
-        isolated_environment["HOME"] = str(_CODEX_CONTAINER_HOME)
-        isolated_environment["CODEX_HOME"] = str(_CODEX_CONTAINER_HOME)
+        temporary_home_path = Path(temporary_home.name)
+        temporary_home_path.chmod(0o700)
+        isolated_environment = _codex_task_container_environment()
         return temporary_home, isolated_environment, source_auth
     except Exception:
         temporary_home.cleanup()
