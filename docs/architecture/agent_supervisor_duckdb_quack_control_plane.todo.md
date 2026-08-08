@@ -171,7 +171,7 @@ this bootstrap is active.
 
 ## DQP-005 Install the normalized control-plane schema
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
