@@ -47,7 +47,7 @@ this bootstrap is active.
 
 ## DQP-001 Inventory and classify every mutable supervisor state sink
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
