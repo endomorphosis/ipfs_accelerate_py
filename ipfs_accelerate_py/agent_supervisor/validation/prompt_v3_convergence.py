@@ -44,15 +44,22 @@ CONVERGENCE_REPORT_SCHEMA: Final = (
 POST_WAVE3_RESIDUAL_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.post-wave3-residual-report@1"
 )
+PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@1"
+)
 
 BOARD_NAMESPACE: Final = "agent-supervisor-prompt-only-self-improvement-v3"
 POST_WAVE3_RESIDUAL_FILENAME: Final = "post_wave3_residuals_20260808.json"
+PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME: Final = (
+    "provider_fallback_policy_authorization_20260808.json"
+)
 ARTIFACT_FILENAMES: Final = (
     "current_main_baseline.json",
     "historical_state_contradictions.json",
     "rescue_artifact_dispositions.json",
     "clean_integration_worktree_receipt.json",
     POST_WAVE3_RESIDUAL_FILENAME,
+    PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
 )
 MANIFEST_FILENAME: Final = "convergence_manifest.json"
 DEFAULT_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
@@ -157,6 +164,205 @@ _PROVIDER_ATTEMPT_RELOAD_GATE_DEPENDENCIES: Final = (
 )
 _PROVIDER_ATTEMPT_RELOAD_GATE_BLOCKED_REASON: Final = (
     "provider-attempt daemon reload boundary not yet accepted"
+)
+_PROVIDER_FALLBACK_AUTHORIZATION_CREATED_AT: Final = "2026-08-08T13:59:09Z"
+_PROVIDER_FALLBACK_AUTHORIZATION_SOURCE: Final = {
+    "kind": "explicit_operator_override",
+    "source_head": "b9c1368a35cee206dff6ff34553782be851fc571",
+    "source_tree": "7aeb7e4d78f5b45d2213173a10deebcf6114092f",
+    "prospective_only": True,
+    "requires_descendant_tree": True,
+}
+_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE: Final = {
+    "route_id": (
+        "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
+    ),
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_reasoning_effort": "high",
+    "allowed_trigger_classes": [
+        "grok_authentication_unavailable",
+        "grok_hard_quota_exhausted",
+    ],
+}
+_PROVIDER_FALLBACK_OWNERSHIP_CONTRACT: Final = {
+    "canonical_route_plan_owner": "ipfs_accelerate_py.llm_router",
+    "typed_fallback_decision_owner": "ipfs_accelerate_py.llm_router",
+    "route_plan_and_decision_exports_required_before_bootstrap_dispatch": True,
+    "route_authority_binding_fields": [
+        "board_namespace",
+        "authorization_artifact_sha256",
+        "authorization_source.kind",
+        "authorization_source.source_head",
+        "authorization_source.source_tree",
+    ],
+    "verified_authority_binding_must_reach_terminal_outcome_and_daemon_accounting": True,
+    "ambient_six_field_route_profile_alone_authorizes_fallback": False,
+    "runner_role": "isolation_process_effect_and_terminal_outcome_emitter",
+    "daemon_role": "task_retry_accounting_only",
+    "scheduler_role": "route_profile_input_only",
+    "duplicate_route_policy_or_failure_classification_outside_router_allowed": False,
+}
+_PROVIDER_FALLBACK_BOOTSTRAP_GUARANTEES: Final = {
+    "nonce_bound_auth_or_quota_finding_required": True,
+    "primary_probe_is_fixed_no_tools": True,
+    "direct_auth_signal_allowlist": ["not signed in", "not authenticated"],
+    "ambiguous_direct_auth_signals_denied": [
+        "401",
+        "403",
+        "forbidden",
+        "unauthorized",
+    ],
+    "ambiguous_signal_may_continue_only_as_independently_confirmed_hard_quota": True,
+    "hard_quota_independent_confirmation_required": True,
+    "pre_effect_workspace_fingerprint_required": True,
+    "explicit_codex_review_conflict_denied": True,
+    "fallback_dispatch_scope": "once_per_runner_same_daemon_attempt",
+    "fallback_remains_same_daemon_attempt": True,
+    "durable_cross_process_restart_reservation_present": False,
+    "full_signed_field_equality_present": False,
+}
+_PROVIDER_FALLBACK_ASE3_019_REQUIREMENTS: Final = {
+    "typed_failure_evidence_required": True,
+    "quota_evidence_must_be_independently_verified": True,
+    "evidence_must_precede_repository_effect": True,
+    "signed_equality_fields": [
+        "invocation",
+        "task",
+        "prompt",
+        "scope",
+        "budget",
+        "authority",
+        "provider",
+    ],
+    "durable_cross_process_restart_once_only_cas_required": True,
+    "restart_must_adopt_existing_reservation": True,
+    "auth_signal_policy_expansion_requires_signed_typed_policy": True,
+    "canonical_route_plan_and_typed_decision_must_remain_router_owned": True,
+    "provider_capacity_attempt_restoration_must_remain_denied": True,
+    "signed_reviewer_identity_and_provider_required": True,
+    "fallback_implementer_and_reviewer_must_differ": True,
+}
+_PROVIDER_FALLBACK_DOCKER_BOUNDARY: Final = {
+    "required": True,
+    "runtime": "runc",
+    "image_id": (
+        "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
+    ),
+    "image_label": "2026-08-03-v2",
+    "pull_allowed": False,
+    "read_only_root": True,
+    "cap_drop": "ALL",
+    "no_new_privileges": True,
+    "workspace_is_only_writable_bind_mount": True,
+    "codex_auth_mount_read_only": True,
+    "docker_socket_mounted": False,
+    "host_home_mounted": False,
+    "environment_sealed": True,
+}
+_PROVIDER_FALLBACK_DENIALS: Final = {
+    "arbitrary_error_fallback_allowed": False,
+    "rate_limit_fallback_allowed": False,
+    "transport_error_fallback_allowed": False,
+    "invalid_request_fallback_allowed": False,
+    "unknown_error_fallback_allowed": False,
+    "post_effect_fallback_allowed": False,
+    "workspace_changed_before_fallback_allowed": False,
+    "attempt_counter_mutation_authorized": False,
+    "provider_capacity_attempt_restoration_allowed": False,
+    "legacy_objective_refill_authorized": False,
+    "legacy_codebase_refill_authorized": False,
+}
+_PROVIDER_FALLBACK_HISTORICAL_EVIDENCE: Final = {
+    "post_wave3_residual_report_is_immutable": True,
+    "historical_incident_reclassified": False,
+    "incident_event_id": _POST_WAVE3_PROVIDER_INCIDENT["event_id"],
+    "incident_log_sha256": _POST_WAVE3_PROVIDER_INCIDENT["log_sha256"],
+}
+_ASE3_019_REQUIRED_OUTPUTS: Final = (
+    "ipfs_accelerate_py/llm_router.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+)
+_ASE3_019_REQUIRED_VALIDATION: Final = (
+    "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py "
+    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py "
+    "test/api/test_agent_supervisor_prompt_v3_authority.py "
+    "test/api/test_agent_supervisor_prompt_v3_provider_route.py "
+    "test/api/test_agent_supervisor_grok_quota_terra_gate.py "
+    "test/api/test_agent_supervisor_implementation_provider_receipts.py -q"
+)
+_ASE3_019_REQUIRED_INTERFACES: Final = (
+    "AgentImplementationRoutePlan",
+    "AgentImplementationFallbackDecision",
+    "SignedSupervisorProfile",
+    "SecureLocalIdentityStore",
+    "SignedProfileLifecycleReceipt",
+    "DurableProviderAttemptCAS",
+    "AuthLifecycleFinding",
+    "QuotaExhaustionEvidence",
+    "ProviderFallbackReceipt",
+)
+_ASE3_019_REQUIRED_EFFECTS: Final = (
+    "Export an immutable canonical implementation route plan and typed fallback "
+    "decision from `ipfs_accelerate_py.llm_router` as the sole provider-policy "
+    "source; bind the exact board namespace, authorization-artifact SHA-256, "
+    "authorization kind, source HEAD, source tree, nonempty reviewer identity, and "
+    "reviewer provider into every route plan and terminal outcome, deny when the "
+    "reviewer identity or provider matches the chosen fallback implementer, and "
+    "treat the ambient six-field provider/model/trigger/effort tuple as profile input "
+    "that cannot authorize fallback by itself; make the scheduler pass only the "
+    "route profile, the runner apply only isolation/process effects and emit the "
+    "terminal outcome, and the daemon apply only task retry accounting; remove "
+    "duplicate provider/model/trigger/effort, authentication/quota classification, "
+    "and fallback allow/deny logic from those layers; sign exact repository, "
+    "baseline tree, effects, budgets, resources, provider route, reviewer, and "
+    "fallback bounds with a verifiable Ed25519 did:key identity stored as an owned "
+    "regular nonsymlink 0600 file; persist signed rotation and revocation so copied "
+    "old authority cannot revive; require either runner-produced typed pre-effect "
+    "Grok authentication-unavailable evidence or independently verified native "
+    "signed typed hard-quota evidence, with mandatory wall-clock freshness and exact "
+    "nonempty invocation/task/prompt/scope/budget/authority/provider equality; "
+    "reserve exactly one Codex `gpt-5.6-terra` fallback at `high` reasoning through "
+    "durable compare-and-swap before any fallback effect, execute it only inside the "
+    "pinned external Docker boundary, and adopt the winning receipt after crash as "
+    "the same logical attempt without counter mutation or provider-capacity "
+    "restoration; deny fallback for arbitrary errors, rate limits, transport "
+    "failures, invalid requests, unknown failures, a changed workspace, or post-"
+    "effect evidence."
+)
+_ASE3_019_REQUIRED_ACCEPTANCE: Final = (
+    "Public immutable `AgentImplementationRoutePlan` and "
+    "`AgentImplementationFallbackDecision` "
+    "exports from `ipfs_accelerate_py.llm_router` are the only canonical provider-"
+    "policy source; a missing or mismatched board namespace, authorization-artifact "
+    "SHA-256, authorization kind, source HEAD, source tree, reviewer identity, or "
+    "reviewer provider denies, a chosen fallback implementer cannot be its own "
+    "reviewer, and the ambient six-field route profile alone never creates "
+    "authority; the scheduler, runner, and daemon contain no independent route "
+    "tuple, failure classifier, or fallback allow/deny branch, the runner executes "
+    "only the router decision and emits its terminal outcome, and the daemon never "
+    "reclassifies provider evidence and changes only task retry accounting; only a "
+    "currently valid signed profile and the source-bound prospective authorization "
+    "can authorize bounded effects; symlink, ownership, permission, substitution, "
+    "copied-revoked-key, incomplete-bound, or non-descendant-tree cases fail closed; "
+    "exactly one concurrent or restarted worker automatically admits a matching pre-"
+    "effect Codex `gpt-5.6-terra` fallback at `high` reasoning for only typed Grok "
+    "authentication-unavailable or independently verified hard-quota evidence and "
+    "adopts it as the same logical attempt; arbitrary caller DTOs, optional/stale "
+    "timestamps, empty equality fields, arbitrary/generic/rate-limit/transport/"
+    "invalid/unknown errors, changed-workspace or post-effect evidence, self-review, "
+    "and route mismatches deny; no fallback path mutates or restores attempt counters, "
+    "including provider-capacity restoration, or enables legacy objective/codebase "
+    "refill, and the historical `Not signed in` record remains uncharged, immutable "
+    "evidence rather than being rewritten or reclassified."
 )
 
 
@@ -946,6 +1152,130 @@ class PostWave3ResidualReport:
         return tuple(errors)
 
 
+def _validate_exact_policy_object(
+    errors: list[str],
+    *,
+    prefix: str,
+    actual: Any,
+    expected: Mapping[str, Any],
+) -> None:
+    if not isinstance(actual, Mapping):
+        errors.append(f"{prefix}: expected object")
+        return
+    if set(actual) != set(expected):
+        errors.append(f"{prefix}: field population mismatch")
+    for field, expected_value in expected.items():
+        actual_value = actual.get(field)
+        if isinstance(expected_value, bool):
+            matches = actual_value is expected_value
+        elif isinstance(expected_value, list):
+            matches = isinstance(actual_value, list) and actual_value == expected_value
+        else:
+            matches = (
+                type(actual_value) is type(expected_value)
+                and actual_value == expected_value
+            )
+        if not matches:
+            errors.append(f"{prefix}.{field}: expected {expected_value!r}")
+
+
+@dataclass(frozen=True)
+class ProviderFallbackPolicyAuthorization:
+    """Prospective, source-bound authority for the narrow automatic fallback."""
+
+    payload: Mapping[str, Any]
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> ProviderFallbackPolicyAuthorization:
+        return cls(dict(payload))
+
+    @property
+    def source_head(self) -> str:
+        source = self.payload.get("authorization_source", {})
+        return str(source.get("source_head", "")) if isinstance(source, Mapping) else ""
+
+    @property
+    def source_tree(self) -> str:
+        source = self.payload.get("authorization_source", {})
+        return str(source.get("source_tree", "")) if isinstance(source, Mapping) else ""
+
+    def validate(self) -> tuple[str, ...]:
+        errors: list[str] = []
+        prefix = "provider_fallback_policy_authorization"
+        expected_fields = {
+            "schema",
+            "created_at",
+            "board_namespace",
+            "authorization_source",
+            "route",
+            "ownership_contract",
+            "bootstrap_route_guarantees",
+            "ase3_019_completion_requirements",
+            "external_docker_boundary",
+            "denials",
+            "historical_evidence",
+        }
+        if set(self.payload) != expected_fields:
+            errors.append(f"{prefix}: field population mismatch")
+        if self.payload.get("schema") != PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA:
+            errors.append(f"{prefix}.schema: unsupported schema")
+        if self.payload.get("board_namespace") != BOARD_NAMESPACE:
+            errors.append(f"{prefix}.board_namespace: mismatch")
+        created_at = self.payload.get("created_at")
+        if (
+            not isinstance(created_at, str)
+            or _UTC_TIMESTAMP.fullmatch(created_at) is None
+            or created_at != _PROVIDER_FALLBACK_AUTHORIZATION_CREATED_AT
+        ):
+            errors.append(
+                f"{prefix}.created_at: expected immutable UTC timestamp "
+                f"{_PROVIDER_FALLBACK_AUTHORIZATION_CREATED_AT}"
+            )
+
+        sections = (
+            (
+                "authorization_source",
+                _PROVIDER_FALLBACK_AUTHORIZATION_SOURCE,
+            ),
+            ("route", _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE),
+            ("ownership_contract", _PROVIDER_FALLBACK_OWNERSHIP_CONTRACT),
+            (
+                "bootstrap_route_guarantees",
+                _PROVIDER_FALLBACK_BOOTSTRAP_GUARANTEES,
+            ),
+            (
+                "ase3_019_completion_requirements",
+                _PROVIDER_FALLBACK_ASE3_019_REQUIREMENTS,
+            ),
+            ("external_docker_boundary", _PROVIDER_FALLBACK_DOCKER_BOUNDARY),
+            ("denials", _PROVIDER_FALLBACK_DENIALS),
+            ("historical_evidence", _PROVIDER_FALLBACK_HISTORICAL_EVIDENCE),
+        )
+        for field, expected in sections:
+            _validate_exact_policy_object(
+                errors,
+                prefix=f"{prefix}.{field}",
+                actual=self.payload.get(field),
+                expected=expected,
+            )
+
+        source = self.payload.get("authorization_source", {})
+        if isinstance(source, Mapping):
+            _require_hex40(errors, f"{prefix}.authorization_source.source_head", source.get("source_head"))
+            _require_hex40(errors, f"{prefix}.authorization_source.source_tree", source.get("source_tree"))
+        boundary = self.payload.get("external_docker_boundary", {})
+        if isinstance(boundary, Mapping):
+            _require_sha256(errors, f"{prefix}.external_docker_boundary.image_id", boundary.get("image_id"))
+        historical = self.payload.get("historical_evidence", {})
+        if isinstance(historical, Mapping):
+            _require_sha256(errors, f"{prefix}.historical_evidence.incident_event_id", historical.get("incident_event_id"))
+            _require_sha256(errors, f"{prefix}.historical_evidence.incident_log_sha256", historical.get("incident_log_sha256"))
+        return tuple(errors)
+
+
 @dataclass(frozen=True)
 class ConvergenceManifest:
     """Root binding for the bounded ASE3-000 evidence packet."""
@@ -1241,12 +1571,61 @@ def _validate_provider_attempt_reload_gate(
     return errors
 
 
+def _validate_provider_fallback_task_contract(*, taskboard_path: Path) -> list[str]:
+    """Keep ASE3-019 aligned with the prospective fallback authorization."""
+
+    errors: list[str] = []
+    prefix = "provider_fallback_task_contract"
+    try:
+        tasks = _load_taskboard_metadata(taskboard_path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        errors.append(f"{prefix}.taskboard: {exc}")
+        return errors
+    task = tasks.get("ASE3-019")
+    if task is None:
+        errors.append(f"{prefix}.ASE3-019: expected exactly one task")
+        return errors
+    outputs = _taskboard_csv(task, "outputs")
+    if outputs != _ASE3_019_REQUIRED_OUTPUTS:
+        errors.append(
+            f"{prefix}.ASE3-019.outputs: exact llm_router-owned route surface "
+            "required"
+        )
+    if _taskboard_csv(task, "predicted files") != _ASE3_019_REQUIRED_OUTPUTS:
+        errors.append(
+            f"{prefix}.ASE3-019.predicted_files: exact llm_router-owned route "
+            "surface required"
+        )
+    if task.get("validation") != _ASE3_019_REQUIRED_VALIDATION:
+        errors.append(
+            f"{prefix}.ASE3-019.validation: dedicated llm_router route contract "
+            "test required"
+        )
+    if _taskboard_csv(task, "interfaces") != _ASE3_019_REQUIRED_INTERFACES:
+        errors.append(
+            f"{prefix}.ASE3-019.interfaces: immutable route-plan and typed-decision "
+            "exports required"
+        )
+    if task.get("effects") != _ASE3_019_REQUIRED_EFFECTS:
+        errors.append(
+            f"{prefix}.ASE3-019.effects: exact automatic auth/quota fallback "
+            "contract required"
+        )
+    if task.get("acceptance") != _ASE3_019_REQUIRED_ACCEPTANCE:
+        errors.append(
+            f"{prefix}.ASE3-019.acceptance: exact automatic auth/quota fallback "
+            "contract required"
+        )
+    return errors
+
+
 def _validate_repository_binding(
     *,
     repo_root: Path,
     baseline: CurrentMainBaseline,
     rescue: RescueDispositionReport,
     post_wave3: PostWave3ResidualReport,
+    fallback_authorization: ProviderFallbackPolicyAuthorization,
 ) -> list[str]:
     errors: list[str] = []
     repo_root = repo_root.resolve()
@@ -1420,6 +1799,35 @@ def _validate_repository_binding(
     if residual_ancestor.returncode != 0:
         errors.append("repository_binding.post_wave3.head: not an ancestor of HEAD")
 
+    authorization_tree = _git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        f"{fallback_authorization.source_head}^{{tree}}",
+    )
+    if authorization_tree.returncode != 0:
+        errors.append(
+            "repository_binding.provider_fallback_authorization.source_head: "
+            "Git object unavailable"
+        )
+    elif authorization_tree.stdout.strip() != fallback_authorization.source_tree:
+        errors.append(
+            "repository_binding.provider_fallback_authorization.source_tree: "
+            "Git identity mismatch"
+        )
+    authorization_ancestor = _git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        fallback_authorization.source_head,
+        "HEAD",
+    )
+    if authorization_ancestor.returncode != 0:
+        errors.append(
+            "repository_binding.provider_fallback_authorization.source_head: "
+            "not an ancestor of HEAD"
+        )
+
     for task_id in sorted(_POST_WAVE3_COMPLETED_TASKS):
         item = post_wave3.completed_task_evidence.get(task_id, {})
         if not isinstance(item, Mapping):
@@ -1512,6 +1920,9 @@ def validate_convergence_artifacts(
     post_wave3 = PostWave3ResidualReport.from_dict(
         payloads[POST_WAVE3_RESIDUAL_FILENAME]
     )
+    fallback_authorization = ProviderFallbackPolicyAuthorization.from_dict(
+        payloads[PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME]
+    )
     manifest = ConvergenceManifest.from_dict(payloads[MANIFEST_FILENAME])
 
     errors.extend(baseline.validate())
@@ -1519,6 +1930,7 @@ def validate_convergence_artifacts(
     errors.extend(rescue.validate(baseline))
     errors.extend(worktree.validate(baseline))
     errors.extend(post_wave3.validate())
+    errors.extend(fallback_authorization.validate())
     errors.extend(manifest.validate(baseline))
     board_path = (
         Path(taskboard_path)
@@ -1532,6 +1944,7 @@ def validate_convergence_artifacts(
             artifact_root=root,
         )
     )
+    errors.extend(_validate_provider_fallback_task_contract(taskboard_path=board_path))
 
     components = manifest.payload.get("components", {})
     if isinstance(components, Mapping):
@@ -1550,6 +1963,7 @@ def validate_convergence_artifacts(
                 baseline=baseline,
                 rescue=rescue,
                 post_wave3=post_wave3,
+                fallback_authorization=fallback_authorization,
             )
         )
     return ConvergenceValidationReport(

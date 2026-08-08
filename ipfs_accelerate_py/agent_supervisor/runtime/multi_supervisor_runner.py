@@ -16,39 +16,32 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, Mapping, MutableMapping, Protocol, Sequence
 
+from ...llm_router import (
+    load_agent_implementation_route_authorization,
+    resolve_agent_implementation_route,
+)
 from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
     LinuxProcessAdapter,
     ProcessIdentityMismatch,
 )
-from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 from ..core.wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
-
+from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 
 OutputFn = Callable[[str], None]
 
 ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
-    {
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
-            "primary_quota_exhausted"
-        ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
-        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
-        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
-    }
+    resolve_agent_implementation_route(default_route="legacy").as_environment()
 )
-_COMPATIBLE_GROK_PRIMARY_ALIASES = frozenset(
-    {
-        "grok",
-        "grok_cli",
-        "grok-cli",
-        "grok_build",
-        "grok-build",
-        "xai_cli",
-        "xai-cli",
-    }
+_ROUTE_AUTHORIZATION_ENV_NAMES = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID",
 )
 
 
@@ -520,6 +513,8 @@ def _env_default_value(value: bool | int | str) -> str:
 
 def seal_ordered_implementation_provider_route(
     environment: MutableMapping[str, str] | None = None,
+    *,
+    repo_root: Path | str | None = None,
 ) -> dict[str, str]:
     """Atomically default or validate the reviewed implementation route.
 
@@ -530,35 +525,79 @@ def seal_ordered_implementation_provider_route(
     """
 
     target = os.environ if environment is None else environment
-    observed = {
+    route_environment = {
         name: str(target.get(name, "") or "").strip()
         for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
     }
-    incompatible: dict[str, str] = {}
-    for name, value in observed.items():
-        if not value:
-            continue
-        expected = ORDERED_IMPLEMENTATION_PROVIDER_ROUTE[name]
+    authorization_environment = {
+        name: str(target.get(name, "") or "").strip()
+        for name in _ROUTE_AUTHORIZATION_ENV_NAMES
+    }
+    authorization = None
+    if any(authorization_environment.values()):
+        if not all(authorization_environment.values()):
+            raise ValueError(
+                "scoped agent route authorization environment is incomplete"
+            )
+        authorization = load_agent_implementation_route_authorization(
+            repo_root=(Path.cwd() if repo_root is None else repo_root),
+            artifact_path=authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH"
+            ],
+            board_namespace=authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
+            ],
+            expected_sha256=authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256"
+            ],
+            expected_authorization_id=authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID"
+            ],
+        )
         if (
-            name == "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
-            and value.lower() in _COMPATIBLE_GROK_PRIMARY_ALIASES
+            authorization.authorization_kind
+            != authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND"
+            ]
+            or authorization.source_head
+            != authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
+            ]
+            or authorization.source_tree
+            != authorization_environment[
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE"
+            ]
         ):
-            continue
-        if value != expected:
-            incompatible[name] = value
-    if incompatible:
-        details = ", ".join(
-            f"{name}={value!r}"
-            for name, value in sorted(incompatible.items())
-        )
-        raise ValueError(
-            "implementation supervisors require the exact six-field "
-            "grok_cli/grok-4.5 -> codex/gpt-5.6-terra medium "
-            "primary_quota_exhausted route; incompatible explicit "
-            f"configuration: {details}"
-        )
-    target.update(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
-    return dict(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
+            raise ValueError("scoped agent route authorization binding drifted")
+    plan = resolve_agent_implementation_route(
+        primary_provider_id=route_environment[
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+        ],
+        primary_model_id=route_environment[
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL"
+        ],
+        fallback_provider_id=route_environment[
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+        ],
+        fallback_model_id=route_environment[
+            "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
+        ],
+        fallback_trigger=route_environment[
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+        ],
+        fallback_reasoning_effort=route_environment[
+            "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
+        ],
+        default_route="legacy",
+        authorization=authorization,
+    )
+    if authorization is not None and plan.route_id != authorization_environment[
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
+    ]:
+        raise ValueError("scoped agent implementation route identity drifted")
+    selected_route = plan.as_environment()
+    target.update(selected_route)
+    return selected_route
 
 
 def implementation_multi_supervisor_env_defaults(
@@ -771,8 +810,8 @@ def build_repo_implementation_multi_supervisor_launcher(
 ) -> ConfiguredMultiSupervisorLauncher:
     """Build a repo-local implementation multi-supervisor launcher."""
 
-    from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
     from ..core.wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
+    from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 
     llm_merge_resolver_command = implementation_supervisor_llm_merge_resolver_command
     if not llm_merge_resolver_command and resolver_script_path:
@@ -791,20 +830,25 @@ def build_repo_implementation_multi_supervisor_launcher(
         )
         effective_prepare_environment = runtime_environment.ensure_pythonpath
     provided_env_defaults = dict(_env_default_items(env_defaults))
+    route_environment_names = (
+        *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+        *_ROUTE_AUTHORIZATION_ENV_NAMES,
+    )
     caller_route_defaults = {
         name: provided_env_defaults[name]
-        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
+        for name in route_environment_names
         if name in provided_env_defaults
     }
     sealed_route_defaults = seal_ordered_implementation_provider_route(
-        caller_route_defaults
+        caller_route_defaults,
+        repo_root=repo_root,
     )
     effective_env_defaults = implementation_multi_supervisor_env_defaults()
     effective_env_defaults.update(
         {
             name: value
             for name, value in provided_env_defaults.items()
-            if name not in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
+            if name not in route_environment_names
         }
     )
     effective_env_defaults.update(sealed_route_defaults)
@@ -1766,7 +1810,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("at least one --track or --implementation-track is required")
     if args.implementation_track or args.implementation_supervisor_defaults:
         try:
-            seal_ordered_implementation_provider_route()
+            seal_ordered_implementation_provider_route(
+                repo_root=args.repo_root,
+            )
         except ValueError as exc:
             parser.error(str(exc))
         # Fail closed before leasing worktrees when the Grok/Codex entry module

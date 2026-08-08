@@ -61,7 +61,8 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/rescue_artifact_dispositions.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/clean_integration_worktree_receipt.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
-    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json"
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
@@ -104,8 +105,9 @@
     "primary_model_id": "grok-4.5",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
-    "fallback_trigger": "primary_quota_exhausted",
-    "fallback_reasoning_effort": "medium",
+    "fallback_trigger": "primary_quota_or_auth_unavailable",
+    "fallback_reasoning_effort": "high",
+    "route_authorization_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json",
     "max_concurrency": 3,
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false

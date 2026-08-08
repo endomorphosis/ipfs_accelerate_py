@@ -22,6 +22,14 @@ KITA_CONFIG = (
     REPO_ROOT
     / "config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json"
 )
+V3_BOARD_NAMESPACE = "agent-supervisor-prompt-only-self-improvement-v3"
+V3_ROUTE_ID = (
+    "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
+)
+V3_AUTHORIZATION_PATH = Path(
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    "provider_fallback_policy_authorization_20260808.json"
+)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -175,6 +183,58 @@ def _seed_configured_repo(tmp_path: Path) -> tuple[Path, Path]:
     return repo, config_path
 
 
+def _commit_v3_route_authorization(
+    repo: Path,
+    config_path: Path,
+    payload: dict[str, object],
+) -> None:
+    source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    artifact = repo / V3_AUTHORIZATION_PATH
+    authorization = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "provider-fallback-policy-authorization@1"
+        ),
+        "board_namespace": V3_BOARD_NAMESPACE,
+        "authorization_source": {
+            "kind": "explicit_operator_override",
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "prospective_only": True,
+            "requires_descendant_tree": True,
+        },
+        "route": {
+            "route_id": V3_ROUTE_ID,
+            "primary_provider_id": "grok_cli",
+            "primary_model_id": "grok-4.5",
+            "fallback_provider_id": "codex",
+            "fallback_model_id": "gpt-5.6-terra",
+            "fallback_reasoning_effort": "high",
+            "allowed_trigger_classes": [
+                "grok_authentication_unavailable",
+                "grok_hard_quota_exhausted",
+            ],
+        },
+        "ownership_contract": {
+            "canonical_route_plan_owner": "ipfs_accelerate_py.llm_router",
+            "typed_fallback_decision_owner": "ipfs_accelerate_py.llm_router",
+            "duplicate_route_policy_or_failure_classification_outside_router_allowed": False,
+        },
+        "bootstrap_route_guarantees": {
+            "explicit_codex_review_conflict_denied": True,
+        },
+    }
+    payload["board_namespace"] = V3_BOARD_NAMESPACE
+    provider = payload["provider"]
+    assert isinstance(provider, dict)
+    provider["route_authorization_path"] = V3_AUTHORIZATION_PATH.as_posix()
+    _write(artifact, json.dumps(authorization, indent=2, sort_keys=True) + "\n")
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", config_path.relative_to(repo).as_posix(), V3_AUTHORIZATION_PATH.as_posix())
+    _git(repo, "commit", "-m", "authorize scoped high route")
+
+
 def _common_args(plan: dict[str, object]) -> list[str]:
     prefix = "--common-arg="
     return [
@@ -242,8 +302,10 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
         load_configured_board(config_path, repo_root=repo)
 
     payload["provider"]["fallback_model_id"] = "gpt-5.6-terra"
-    payload["provider"]["fallback_trigger"] = "primary_quota_exhausted"
-    payload["provider"]["fallback_reasoning_effort"] = "medium"
+    payload["provider"]["fallback_trigger"] = (
+        "primary_quota_or_auth_unavailable"
+    )
+    payload["provider"]["fallback_reasoning_effort"] = "high"
     payload["provider"]["provider_id"] = "auto"
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     with pytest.raises(
@@ -256,12 +318,12 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
 @pytest.mark.parametrize(
     ("field", "value"),
     (
-        ("primary_provider_id", "grok"),
+        ("primary_provider_id", "claude"),
         ("primary_model_id", "grok-4"),
         ("fallback_provider_id", "openai"),
         ("fallback_model_id", "gpt-5.6"),
         ("fallback_trigger", "primary_unavailable"),
-        ("fallback_reasoning_effort", "high"),
+        ("fallback_reasoning_effort", "medium"),
     ),
 )
 def test_ordered_provider_contract_seals_fallback_authority(
@@ -276,14 +338,66 @@ def test_ordered_provider_contract_seals_fallback_authority(
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_or_auth_unavailable",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 2,
+    }
+    payload["provider"][field] = value
+    _commit_v3_route_authorization(repo, config_path, payload)
+
+    with pytest.raises(ConfiguredBoardError, match=field):
+        load_configured_board(config_path, repo_root=repo)
+
+
+def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
         "fallback_reasoning_effort": "medium",
         "max_concurrency": 2,
     }
-    payload["provider"][field] = value
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
-    with pytest.raises(ConfiguredBoardError, match=field):
+    board = load_configured_board(config_path, repo_root=repo)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260808T000000Z",
+    )
+
+    assert plan["environment"][scheduler_module.FALLBACK_TRIGGER_ENV] == (
+        "primary_quota_exhausted"
+    )
+    assert plan["environment"][scheduler_module.CODEX_REASONING_EFFORT_ENV] == (
+        "medium"
+    )
+
+
+def test_ordered_provider_contract_rejects_hybrid_legacy_trigger_high_effort(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(ConfiguredBoardError, match="reviewed legacy"):
         load_configured_board(config_path, repo_root=repo)
 
 
@@ -317,27 +431,30 @@ def test_launch_config_overrides_ambient_provider_environment(
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_exhausted",
-        "fallback_reasoning_effort": "medium",
+        "fallback_trigger": "primary_quota_or_auth_unavailable",
+        "fallback_reasoning_effort": "high",
         "max_concurrency": 2,
     }
-    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    _git(repo, "add", "config/scheduler.json")
-    _git(repo, "commit", "-m", "configure ordered provider route")
-    observed: dict[str, str] = {}
-    controlled_names = (
-        scheduler_module.PROVIDER_ENV,
-        scheduler_module.FALLBACK_PROVIDER_ENV,
-        scheduler_module.FALLBACK_TRIGGER_ENV,
-        scheduler_module.GROK_MODEL_ENV,
-        scheduler_module.CODEX_MODEL_ENV,
-        scheduler_module.CODEX_REASONING_EFFORT_ENV,
-    )
+    _commit_v3_route_authorization(repo, config_path, payload)
+    expected_environment = configured_board_launch_plan(
+        load_configured_board(config_path, repo_root=repo),
+        implement=True,
+        detach=False,
+        stamp="20260808T000000Z",
+    )["environment"]
+    assert isinstance(expected_environment, dict)
+    observed: dict[str, str | None] = {}
+    controlled_names = scheduler_module.SCHEDULER_PROVIDER_ENV_NAMES
     for name in controlled_names:
         monkeypatch.setenv(name, "ambient-value")
 
     def fake_multi_supervisor_main(_argv: list[str]) -> int:
-        observed.update({name: scheduler_module.os.environ[name] for name in controlled_names})
+        observed.update(
+            {
+                name: scheduler_module.os.environ.get(name)
+                for name in controlled_names
+            }
+        )
         return 0
 
     monkeypatch.setattr(
@@ -361,12 +478,7 @@ def test_launch_config_overrides_ambient_provider_environment(
 
     assert result == 0
     assert observed == {
-        scheduler_module.PROVIDER_ENV: "grok_cli",
-        scheduler_module.FALLBACK_PROVIDER_ENV: "codex",
-        scheduler_module.FALLBACK_TRIGGER_ENV: "primary_quota_exhausted",
-        scheduler_module.GROK_MODEL_ENV: "grok-4.5",
-        scheduler_module.CODEX_MODEL_ENV: "gpt-5.6-terra",
-        scheduler_module.CODEX_REASONING_EFFORT_ENV: "medium",
+        name: expected_environment.get(name) for name in controlled_names
     }
 
 

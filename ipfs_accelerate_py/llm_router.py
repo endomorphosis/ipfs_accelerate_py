@@ -90,12 +90,15 @@ Additional optional providers (opt-in by selecting provider):
 from __future__ import annotations
 
 import json
+import hmac
 import logging
 import math
 import os
 import re
+import secrets
 import shlex
 import shutil
+import stat as stat_module
 import subprocess
 import sys
 import tempfile
@@ -103,8 +106,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
 from html import unescape
@@ -182,6 +186,1431 @@ class UsageCapacityError(LLMRouterError):
         self.next_eligible_at = next_eligible_at
         self.admission = admission
         self.pre_dispatch = bool(pre_dispatch)
+
+
+_AGENT_IMPLEMENTATION_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+)
+_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+)
+_AGENT_GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
+_AGENT_CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
+_AGENT_CODEX_REASONING_EFFORT_ENV = (
+    "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
+)
+_AGENT_ROUTE_BOARD_NAMESPACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
+)
+_AGENT_ROUTE_AUTHORIZATION_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH"
+)
+_AGENT_ROUTE_AUTHORIZATION_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256"
+)
+_AGENT_ROUTE_AUTHORIZATION_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID"
+)
+_AGENT_ROUTE_AUTHORIZATION_KIND_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND"
+)
+_AGENT_ROUTE_SOURCE_HEAD_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
+)
+_AGENT_ROUTE_SOURCE_TREE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE"
+)
+_AGENT_ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
+_V3_AGENT_ROUTE_BOARD_NAMESPACE = (
+    "agent-supervisor-prompt-only-self-improvement-v3"
+)
+_V3_AGENT_ROUTE_AUTHORIZATION_PATH = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    "provider_fallback_policy_authorization_20260808.json"
+)
+_AGENT_ROUTE_AUTHORIZATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "provider-fallback-policy-authorization@1"
+)
+_LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
+    "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+)
+_V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
+    "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
+)
+_AGENT_IMPLEMENTATION_ROUTE_FIELDS = (
+    "primary_provider_id",
+    "primary_model_id",
+    "fallback_provider_id",
+    "fallback_model_id",
+    "fallback_trigger",
+    "fallback_reasoning_effort",
+)
+_AGENT_IMPLEMENTATION_GROK_ALIASES = frozenset(
+    {
+        "grok",
+        "grok_cli",
+        "grok-cli",
+        "grok_build",
+        "grok-build",
+        "xai_cli",
+        "xai-cli",
+    }
+)
+_AGENT_IMPLEMENTATION_DIRECT_AUTH_EVIDENCE = frozenset(
+    "sha256:" + hashlib.sha256(signal.encode("utf-8")).hexdigest()
+    for signal in ("not signed in", "not authenticated")
+)
+_AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS = frozenset(
+    {"usage_pool_exhausted", "spending_limit_exhausted"}
+)
+AGENT_IMPLEMENTATION_GROK_NOT_SIGNED_IN_GUIDANCE = (
+    "Error: Not signed in. To authenticate without a browser, run:\n"
+    "  grok login --device-code\n\n"
+    "Alternatively, set the XAI_API_KEY environment variable or run `grok "
+    "login` on a machine with a browser."
+)
+_AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.grok-failure-receipt@3"
+)
+_AGENT_IMPLEMENTATION_MAX_FAILURE_EVIDENCE_BYTES = 128 * 1024
+_AGENT_IMPLEMENTATION_FAILURE_SOURCE = (
+    "isolated_no_tools_pre_dispatch_probe"
+)
+_AGENT_IMPLEMENTATION_PROBE_PROMPT = (
+    "This is a provider-capacity preflight. Reply with exactly OK."
+)
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
+    "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
+    "model": "grok-4.5",
+    "mode": "chat",
+    "max_turns": 1,
+    "permission_mode": "dontAsk",
+    "tools": "",
+    "no_plan": True,
+    "no_subagents": True,
+    "disable_web_search": True,
+    "no_memory": True,
+    "isolated_workspace": True,
+    "task_context": False,
+    "prompt": _AGENT_IMPLEMENTATION_PROBE_PROMPT,
+    "timeout_seconds": 60,
+}
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID = (
+    "sha256:"
+    + hashlib.sha256(
+        json.dumps(
+            _AGENT_IMPLEMENTATION_PROBE_CONTRACT,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+)
+_AGENT_HARD_QUOTA_PATTERN = re.compile(
+    r"(?:"
+    r"(?:grok(?:\s+build)?|xai)[^\r\n]{0,200}(?:"
+    r"\b402\b|insufficient[_ ]quota|quota[_ ]exceeded|quota exhausted|"
+    r"balance exhausted|usage balance exhausted)|"
+    r"(?:\b402\b|insufficient[_ ]quota|quota[_ ]exceeded|quota exhausted|"
+    r"balance exhausted|usage balance exhausted)[^\r\n]{0,200}"
+    r"(?:grok(?:\s+build)?|xai)|"
+    r"status\s+402|out of credits|usage balance exhausted|"
+    r"over (?:your )?spending limit"
+    r")",
+    re.IGNORECASE,
+)
+_AGENT_RATE_LIMIT_PATTERN = re.compile(
+    r"(?:\b429\b|rate[_ -]?limit(?:ed|s|_exceeded)?|too many requests|"
+    r"resource[_ -]?exhausted|overloaded)",
+    re.IGNORECASE,
+)
+_AGENT_AUTH_PATTERN = re.compile(
+    r"(?:\b401\b|\b403\b|not signed in|not authenticated|authentication "
+    r"failed|invalid api key|unauthorized|forbidden)",
+    re.IGNORECASE,
+)
+_AGENT_AUTH_UNAVAILABLE_PATTERN = re.compile(
+    r"\A\s*(?:error:\s*)?(?P<signal>not signed in|not authenticated)"
+    r"[.!]?\s*\Z",
+    re.IGNORECASE,
+)
+_AGENT_INVALID_REQUEST_PATTERN = re.compile(
+    r"(?:\b400\b|invalid model|model not found|bad request|invalid argument)",
+    re.IGNORECASE,
+)
+_AGENT_TRANSPORT_PATTERN = re.compile(
+    r"(?:tls|certificate|connection (?:refused|reset)|dns|name resolution|"
+    r"network unreachable|timed? out|timeout)",
+    re.IGNORECASE,
+)
+
+
+def _content_addressed_mapping(
+    value: Mapping[str, object],
+    *,
+    identity_field: str,
+) -> str:
+    body = dict(value)
+    body.pop(identity_field, None)
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def classify_agent_implementation_failure(
+    stderr_text: str,
+    *,
+    max_evidence_bytes: int = 128 * 1024,
+) -> dict[str, str]:
+    """Sole classifier for bounded Grok implementation preflight evidence."""
+
+    encoded = str(stderr_text or "").encode("utf-8", errors="replace")
+    text = encoded[-int(max_evidence_bytes) :].decode(
+        "utf-8",
+        errors="replace",
+    )
+    stripped_text = text.strip()
+    auth_unavailable = _AGENT_AUTH_UNAVAILABLE_PATTERN.fullmatch(text)
+    if (
+        auth_unavailable is not None
+        or stripped_text == AGENT_IMPLEMENTATION_GROK_NOT_SIGNED_IN_GUIDANCE
+    ):
+        normalized = (
+            " ".join(auth_unavailable.group("signal").lower().split())
+            if auth_unavailable is not None
+            else "not signed in"
+        )
+        return {
+            "failure_class": "authentication_unavailable",
+            "evidence_sha256": "sha256:"
+            + hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+        }
+    classes = (
+        ("authentication", _AGENT_AUTH_PATTERN),
+        ("invalid_request", _AGENT_INVALID_REQUEST_PATTERN),
+        ("rate_limited", _AGENT_RATE_LIMIT_PATTERN),
+        ("transport", _AGENT_TRANSPORT_PATTERN),
+        ("hard_quota_exhausted", _AGENT_HARD_QUOTA_PATTERN),
+    )
+    for failure_class, pattern in classes:
+        match = pattern.search(text)
+        if match is None:
+            continue
+        normalized = " ".join(match.group(0).lower().split())
+        return {
+            "failure_class": failure_class,
+            "evidence_sha256": "sha256:"
+            + hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+        }
+    return {
+        "failure_class": "unknown",
+        "evidence_sha256": "sha256:"
+        + hashlib.sha256(text.encode("utf-8")).hexdigest(),
+    }
+
+
+def build_agent_implementation_failure_receipt(
+    *,
+    probe_stderr_text: str,
+    nonce: str,
+    model: str,
+    probe_returncode: int,
+    primary_dispatched: bool = False,
+    evidence_size: int | None = None,
+    evidence_overflow: bool | None = None,
+) -> dict[str, object]:
+    measured_size = (
+        len(str(probe_stderr_text or "").encode("utf-8", errors="replace"))
+        if evidence_size is None
+        else int(evidence_size)
+    )
+    measured_overflow = (
+        measured_size > _AGENT_IMPLEMENTATION_MAX_FAILURE_EVIDENCE_BYTES
+        if evidence_overflow is None
+        else bool(evidence_overflow)
+    )
+    classified = classify_agent_implementation_failure(probe_stderr_text)
+    receipt: dict[str, object] = {
+        "schema": _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA,
+        "source": _AGENT_IMPLEMENTATION_FAILURE_SOURCE,
+        "probe_contract_id": _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID,
+        "nonce": str(nonce),
+        "primary_provider": "grok",
+        "primary_model": str(model),
+        "primary_dispatched": bool(primary_dispatched),
+        "probe_returncode": int(probe_returncode),
+        "evidence_size": measured_size,
+        "evidence_overflow": measured_overflow,
+        **classified,
+    }
+    receipt["receipt_id"] = _content_addressed_mapping(
+        receipt,
+        identity_field="receipt_id",
+    )
+    return receipt
+
+
+def valid_agent_implementation_failure_receipt(
+    receipt: Mapping[str, object],
+    *,
+    nonce: str,
+    model: str,
+    probe_returncode: int,
+) -> bool:
+    expected_fields = {
+        "schema",
+        "source",
+        "probe_contract_id",
+        "nonce",
+        "primary_provider",
+        "primary_model",
+        "primary_dispatched",
+        "probe_returncode",
+        "evidence_size",
+        "evidence_overflow",
+        "failure_class",
+        "evidence_sha256",
+        "receipt_id",
+    }
+    observed_returncode = receipt.get("probe_returncode")
+    evidence_size = receipt.get("evidence_size")
+    evidence_overflow = receipt.get("evidence_overflow")
+    return bool(
+        set(receipt) == expected_fields
+        and receipt.get("schema")
+        == _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA
+        and receipt.get("source") == _AGENT_IMPLEMENTATION_FAILURE_SOURCE
+        and receipt.get("probe_contract_id")
+        == _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
+        and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
+        and receipt.get("nonce") == nonce
+        and receipt.get("primary_provider") == "grok"
+        and receipt.get("primary_model") == model == "grok-4.5"
+        and receipt.get("primary_dispatched") is False
+        and isinstance(evidence_size, int)
+        and not isinstance(evidence_size, bool)
+        and evidence_size >= 0
+        and isinstance(evidence_overflow, bool)
+        and evidence_overflow
+        is (
+            evidence_size
+            > _AGENT_IMPLEMENTATION_MAX_FAILURE_EVIDENCE_BYTES
+        )
+        and receipt.get("failure_class")
+        in {
+            "hard_quota_exhausted",
+            "authentication_unavailable",
+            "authentication",
+            "invalid_request",
+            "rate_limited",
+            "transport",
+            "unknown",
+        }
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(receipt.get("evidence_sha256") or ""),
+        )
+        and isinstance(observed_returncode, int)
+        and not isinstance(observed_returncode, bool)
+        and observed_returncode == probe_returncode != 0
+        and receipt.get("receipt_id")
+        == _content_addressed_mapping(receipt, identity_field="receipt_id")
+    )
+
+
+_AGENT_IMPLEMENTATION_PRIVATE_SEAL_KEY = secrets.token_bytes(32)
+
+
+def _agent_implementation_private_seal(value: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hmac.new(
+        _AGENT_IMPLEMENTATION_PRIVATE_SEAL_KEY,
+        encoded,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class AgentImplementationRouteAuthorization:
+    """Content-bound operator authority for the scoped auth/high route."""
+
+    board_namespace: str
+    artifact_path: str
+    artifact_sha256: str
+    authorization_kind: str
+    source_head: str
+    source_tree: str
+    authorization_id: str
+    _validation_seal: str = field(repr=False, compare=False)
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "board_namespace": self.board_namespace,
+            "artifact_path": self.artifact_path,
+            "artifact_sha256": self.artifact_sha256,
+            "authorization_kind": self.authorization_kind,
+            "source_head": self.source_head,
+            "source_tree": self.source_tree,
+            "authorization_id": self.authorization_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AgentImplementationRoutePlan:
+    """Frozen exceptional route for typed side-effecting agent work.
+
+    Generic side-effecting router requests remain cross-provider fail-closed.
+    This plan is the narrow, explicit supervisor contract whose fallback can
+    be authorized only by :func:`decide_agent_implementation_fallback`.
+    """
+
+    primary_provider_id: str
+    primary_model_id: str
+    fallback_provider_id: str
+    fallback_model_id: str
+    fallback_trigger: str
+    fallback_reasoning_effort: str
+    route_id: str
+    authorization: AgentImplementationRouteAuthorization | None = None
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            field: str(getattr(self, field))
+            for field in _AGENT_IMPLEMENTATION_ROUTE_FIELDS
+        }
+
+    def as_environment(self) -> dict[str, str]:
+        environment = {
+            _AGENT_IMPLEMENTATION_PROVIDER_ENV: self.primary_provider_id,
+            _AGENT_IMPLEMENTATION_FALLBACK_PROVIDER_ENV: (
+                self.fallback_provider_id
+            ),
+            _AGENT_IMPLEMENTATION_FALLBACK_TRIGGER_ENV: self.fallback_trigger,
+            _AGENT_GROK_MODEL_ENV: self.primary_model_id,
+            _AGENT_CODEX_MODEL_ENV: self.fallback_model_id,
+            _AGENT_CODEX_REASONING_EFFORT_ENV: (
+                self.fallback_reasoning_effort
+            ),
+        }
+        if self.authorization is not None:
+            environment.update(
+                {
+                    _AGENT_ROUTE_BOARD_NAMESPACE_ENV: (
+                        self.authorization.board_namespace
+                    ),
+                    _AGENT_ROUTE_AUTHORIZATION_PATH_ENV: (
+                        self.authorization.artifact_path
+                    ),
+                    _AGENT_ROUTE_AUTHORIZATION_SHA256_ENV: (
+                        self.authorization.artifact_sha256
+                    ),
+                    _AGENT_ROUTE_AUTHORIZATION_ID_ENV: (
+                        self.authorization.authorization_id
+                    ),
+                    _AGENT_ROUTE_AUTHORIZATION_KIND_ENV: (
+                        self.authorization.authorization_kind
+                    ),
+                    _AGENT_ROUTE_SOURCE_HEAD_ENV: (
+                        self.authorization.source_head
+                    ),
+                    _AGENT_ROUTE_SOURCE_TREE_ENV: (
+                        self.authorization.source_tree
+                    ),
+                    _AGENT_ROUTE_ID_ENV: self.route_id,
+                }
+            )
+        return environment
+
+    def as_binding_dict(self) -> dict[str, object]:
+        return {
+            **self.as_dict(),
+            "route_id": self.route_id,
+            "authorization": (
+                self.authorization.as_dict()
+                if self.authorization is not None
+                else None
+            ),
+        }
+
+    @property
+    def permits_authentication_unavailable(self) -> bool:
+        return self.fallback_trigger == "primary_quota_or_auth_unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class AgentImplementationFallbackDecision:
+    """Pure typed decision; process execution remains the caller's job."""
+
+    authorized: bool
+    requires_independent_quota_verification: bool
+    reason_code: str
+    verifier_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class AgentImplementationRouteInvocation:
+    """One process-local route plan and its fresh failure-receipt nonce."""
+
+    route_plan: AgentImplementationRoutePlan
+    failure_receipt_nonce: str
+
+
+_AGENT_IMPLEMENTATION_MAX_SESSION_BYTES = 16 * 1024 * 1024
+_AGENT_IMPLEMENTATION_MAX_STREAM_EVENT_BYTES = 64 * 1024
+_AGENT_IMPLEMENTATION_BALANCE_EXHAUSTED_MESSAGE = (
+    "API error (status 402 Payment Required): Grok Build usage balance exhausted"
+)
+_AGENT_IMPLEMENTATION_SPENDING_LIMIT_MESSAGE = (
+    "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
+    "You have run out of credits or need a Grok subscription. Add credits at "
+    "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
+)
+_AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES = frozenset(
+    {
+        (
+            "usage_pool_exhausted",
+            _AGENT_IMPLEMENTATION_BALANCE_EXHAUSTED_MESSAGE,
+        ),
+        (
+            "spending_limit_exhausted",
+            _AGENT_IMPLEMENTATION_SPENDING_LIMIT_MESSAGE,
+        ),
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AgentImplementationQuotaEvidence:
+    """Opaque result of router-owned native isolated-session validation."""
+
+    preflight_receipt_id: str
+    primary_model: str
+    verifier_session_id: str
+    verifier_returncode: int
+    verifier_result: str
+    probe_contract_id: str
+    transcript_sha256: str
+    summary_sha256: str
+    evidence_id: str
+    _validation_seal: str = field(repr=False, compare=False)
+
+    def audit_dict(self) -> dict[str, object]:
+        return {
+            "preflight_receipt_id": self.preflight_receipt_id,
+            "primary_model": self.primary_model,
+            "verifier_session_id": self.verifier_session_id,
+            "verifier_returncode": self.verifier_returncode,
+            "verifier_result": self.verifier_result,
+            "probe_contract_id": self.probe_contract_id,
+            "transcript_sha256": self.transcript_sha256,
+            "summary_sha256": self.summary_sha256,
+            "evidence_id": self.evidence_id,
+        }
+
+
+def _read_stable_agent_implementation_evidence_file(
+    path: Path,
+) -> tuple[bytes, Path] | None:
+    """Read one bounded regular file while pinning its path and inode state."""
+
+    def identity(metadata: os.stat_result) -> tuple[int, ...]:
+        return (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_nlink,
+            metadata.st_uid,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+        )
+
+    try:
+        before_path = path.lstat()
+        before_resolved = path.resolve(strict=True)
+        if (
+            path.is_symlink()
+            or not stat_module.S_ISREG(before_path.st_mode)
+            or not 0 < before_path.st_size
+            <= _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES
+        ):
+            return None
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            remaining = _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES + 1
+            chunks: list[bytes] = []
+            while remaining:
+                chunk = os.read(descriptor, remaining)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after_open = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        after_path = path.lstat()
+        after_resolved = path.resolve(strict=True)
+    except OSError:
+        return None
+    if (
+        not stat_module.S_ISREG(opened.st_mode)
+        or not stat_module.S_ISREG(after_open.st_mode)
+        or path.is_symlink()
+        or not stat_module.S_ISREG(after_path.st_mode)
+        or not 0 < len(raw) <= _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES
+        or len(raw) != after_open.st_size
+        or not (
+            identity(before_path)
+            == identity(opened)
+            == identity(after_open)
+            == identity(after_path)
+        )
+        or before_resolved != after_resolved
+    ):
+        return None
+    return raw, after_resolved
+
+
+def _agent_native_failure_type(line: str) -> str:
+    if (
+        not line
+        or len(line.encode("utf-8", errors="replace"))
+        > _AGENT_IMPLEMENTATION_MAX_STREAM_EVENT_BYTES
+    ):
+        return ""
+    try:
+        payload = json.loads(line)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(payload, dict) or payload.get("method") not in {
+        "_x.ai/session/update",
+        "session/update",
+    }:
+        return ""
+    params = payload.get("params")
+    update = params.get("update") if isinstance(params, dict) else None
+    if (
+        not isinstance(update, dict)
+        or update.get("sessionUpdate") != "retry_state"
+        or update.get("type") != "failed"
+    ):
+        return ""
+    error_type = str(update.get("error_type") or "").strip().casefold()
+    message = str(update.get("message") or "").strip()
+    if error_type in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS:
+        return error_type
+    if (
+        error_type == "api"
+        and message == _AGENT_IMPLEMENTATION_BALANCE_EXHAUSTED_MESSAGE
+    ):
+        return "usage_pool_exhausted"
+    if (
+        error_type == "api"
+        and message == _AGENT_IMPLEMENTATION_SPENDING_LIMIT_MESSAGE
+    ):
+        return "spending_limit_exhausted"
+    return error_type or "unknown"
+
+
+def validate_agent_implementation_quota_evidence(
+    *,
+    grok_home: Path | str,
+    expected_session_id: str,
+    verifier_returncode: int,
+    failure_receipt: Mapping[str, object],
+) -> AgentImplementationQuotaEvidence | None:
+    """Validate one native, terminal-correlated isolated verifier session."""
+
+    home = Path(grok_home)
+    expected_model = str(failure_receipt.get("primary_model") or "")
+    preflight_receipt_id = str(failure_receipt.get("receipt_id") or "")
+    probe_contract_id = str(failure_receipt.get("probe_contract_id") or "")
+    if (
+        expected_model != "grok-4.5"
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", preflight_receipt_id) is None
+        or probe_contract_id != _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
+        or not isinstance(verifier_returncode, int)
+        or isinstance(verifier_returncode, bool)
+        or verifier_returncode == 0
+    ):
+        return None
+    try:
+        uuid.UUID(expected_session_id)
+    except ValueError:
+        return None
+    record = home / "sessions" / expected_session_id / "updates.jsonl"
+    try:
+        home_resolved = home.resolve(strict=True)
+        transcript_read = _read_stable_agent_implementation_evidence_file(
+            record
+        )
+        if transcript_read is None:
+            return None
+        transcript_bytes, record_resolved = transcript_read
+        if not record_resolved.is_relative_to(home_resolved):
+            return None
+        uuid.UUID(record.parent.name)
+        transcript_text = transcript_bytes.decode("utf-8")
+    except (OSError, UnicodeError, ValueError):
+        return None
+    recorded_session_id = record.parent.name
+    if recorded_session_id != expected_session_id:
+        return None
+
+    observed_models: set[str] = set()
+    latest_failure: tuple[str, str] | None = None
+    latest_relevant = ""
+    terminal_verdict = ""
+    final_update_type = ""
+    retry_failure_count = 0
+    user_message_count = 0
+    allowed_update_types = {
+        "retry_state",
+        "user_message_chunk",
+        "turn_completed",
+    }
+    if not transcript_text.endswith("\n") or "\r" in transcript_text:
+        return None
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate native session JSON key")
+            result[key] = value
+        return result
+
+    for raw_line in transcript_text.splitlines(keepends=True):
+        if len(raw_line.encode("utf-8")) > (
+            _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES
+        ):
+            return None
+        try:
+            payload = json.loads(
+                raw_line,
+                object_pairs_hook=reject_duplicate_keys,
+            )
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if not isinstance(payload, dict) or payload.get("method") not in {
+            "_x.ai/session/update",
+            "session/update",
+        }:
+            return None
+        params = payload.get("params")
+        if (
+            not isinstance(params, dict)
+            or params.get("sessionId") != recorded_session_id
+        ):
+            return None
+        update = params.get("update")
+        if not isinstance(update, dict):
+            return None
+        update_type = str(update.get("sessionUpdate") or "")
+        if update_type not in allowed_update_types:
+            return None
+        final_update_type = update_type
+        metadata = update.get("_meta")
+        if isinstance(metadata, dict):
+            model_id = str(metadata.get("modelId") or "").strip()
+            if model_id:
+                observed_models.add(model_id)
+        if update_type == "retry_state":
+            if update.get("type") != "failed":
+                latest_failure = None
+                latest_relevant = "retry_state"
+                terminal_verdict = ""
+                continue
+            failure_type = _agent_native_failure_type(raw_line)
+            failure_message = str(update.get("message") or "").strip()
+            retry_failure_count += 1
+            latest_failure = (failure_type, failure_message)
+            latest_relevant = "retry_state"
+            terminal_verdict = ""
+        elif update_type == "turn_completed":
+            terminal_verdict = ""
+            if (
+                str(update.get("stop_reason") or "").casefold() == "error"
+                and latest_relevant == "retry_state"
+                and latest_failure is not None
+                and latest_failure[0]
+                in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
+                and latest_failure[1]
+                and str(update.get("agent_result") or "").strip()
+                == latest_failure[1]
+            ):
+                terminal_verdict = latest_failure[0]
+            latest_relevant = "turn_completed"
+        elif update_type == "user_message_chunk":
+            user_message_count += 1
+
+    summary_path = record.parent / "summary.json"
+    try:
+        summary_read = _read_stable_agent_implementation_evidence_file(
+            summary_path
+        )
+        if summary_read is None:
+            return None
+        summary_bytes, summary_resolved = summary_read
+        if (
+            not summary_resolved.is_relative_to(home_resolved)
+            or summary_resolved.parent != record_resolved.parent
+        ):
+            return None
+        summary = json.loads(
+            summary_bytes,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+        summary_info = summary.get("info") if isinstance(summary, dict) else None
+        summary_home = Path(str(summary.get("grok_home") or "")).resolve(
+            strict=True
+        )
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+        return None
+    if (
+        final_update_type != "turn_completed"
+        or not observed_models.issubset({expected_model})
+        or retry_failure_count != 1
+        or user_message_count > 1
+        or not isinstance(summary_info, dict)
+        or summary_info.get("id") != recorded_session_id
+        or summary.get("current_model_id") != expected_model
+        or summary_home != home_resolved
+        or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES
+        or terminal_verdict not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
+    ):
+        return None
+    evidence_body = {
+        "preflight_receipt_id": preflight_receipt_id,
+        "primary_model": expected_model,
+        "verifier_session_id": recorded_session_id,
+        "verifier_returncode": verifier_returncode,
+        "verifier_result": terminal_verdict,
+        "probe_contract_id": probe_contract_id,
+        "transcript_sha256": "sha256:"
+        + hashlib.sha256(transcript_bytes).hexdigest(),
+        "summary_sha256": "sha256:"
+        + hashlib.sha256(summary_bytes).hexdigest(),
+    }
+    evidence_id = _content_addressed_mapping(
+        evidence_body,
+        identity_field="evidence_id",
+    )
+    return AgentImplementationQuotaEvidence(
+        **evidence_body,
+        evidence_id=evidence_id,
+        _validation_seal=_agent_implementation_private_seal(evidence_body),
+    )
+
+
+def _agent_implementation_route_id(
+    values: Mapping[str, object],
+    *,
+    authorization_id: str = "",
+) -> str:
+    body: dict[str, object] = dict(values)
+    body["authorization_id"] = str(authorization_id or "")
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _agent_implementation_route_plan(
+    *,
+    fallback_trigger: str,
+    fallback_reasoning_effort: str,
+    route_id: str,
+) -> AgentImplementationRoutePlan:
+    values = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": fallback_trigger,
+        "fallback_reasoning_effort": fallback_reasoning_effort,
+    }
+    return AgentImplementationRoutePlan(
+        **values,
+        route_id=route_id,
+    )
+
+
+def load_agent_implementation_route_authorization(
+    *,
+    repo_root: Path | str,
+    artifact_path: str,
+    board_namespace: str,
+    expected_sha256: str = "",
+    expected_authorization_id: str = "",
+) -> AgentImplementationRouteAuthorization:
+    """Load and validate the one namespace-scoped bootstrap authority.
+
+    Every argument is explicit.  The loader neither searches for a policy nor
+    infers a board from ambient environment state.
+    """
+
+    root = Path(repo_root).expanduser().resolve()
+    relative = str(artifact_path or "").strip()
+    namespace = str(board_namespace or "").strip()
+    if (
+        relative != _V3_AGENT_ROUTE_AUTHORIZATION_PATH
+        or namespace != _V3_AGENT_ROUTE_BOARD_NAMESPACE
+    ):
+        raise ValueError(
+            "auth-or-quota/high route is not authorized for this board scope"
+        )
+    unresolved_candidate = root / relative
+    try:
+        candidate_metadata = unresolved_candidate.lstat()
+    except OSError as exc:
+        raise ValueError(
+            "agent route authorization artifact is unavailable"
+        ) from exc
+    candidate = unresolved_candidate.resolve()
+    if (
+        not candidate.is_relative_to(root)
+        or unresolved_candidate.is_symlink()
+        or not stat_module.S_ISREG(candidate_metadata.st_mode)
+        or not candidate.is_file()
+    ):
+        raise ValueError("agent route authorization artifact is unavailable")
+    raw = candidate.read_bytes()
+    if len(raw) > 128 * 1024:
+        raise ValueError("agent route authorization artifact is oversized")
+    digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    expected_digest = str(expected_sha256 or "").strip()
+    if expected_digest and digest != expected_digest:
+        raise ValueError("agent route authorization artifact digest drifted")
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "agent route authorization contains duplicate JSON keys"
+                )
+            result[key] = value
+        return result
+
+    try:
+        payload = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("agent route authorization is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(  # noqa: TRY004
+            "agent route authorization must be an object"
+        )
+    source = payload.get("authorization_source")
+    route = payload.get("route")
+    ownership = payload.get("ownership_contract")
+    bootstrap_guarantees = payload.get("bootstrap_route_guarantees")
+    if not isinstance(source, dict) or not isinstance(route, dict):
+        raise ValueError(  # noqa: TRY004
+            "agent route authorization fields are incomplete"
+        )
+    if not isinstance(ownership, dict) or not isinstance(
+        bootstrap_guarantees, dict
+    ):
+        raise ValueError(  # noqa: TRY004
+            "agent route authorization ownership is incomplete"
+        )
+    source_head = str(source.get("source_head") or "").strip()
+    source_tree = str(source.get("source_tree") or "").strip()
+    authorization_kind = str(source.get("kind") or "").strip()
+    expected_route = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+    }
+    if (
+        payload.get("schema") != _AGENT_ROUTE_AUTHORIZATION_SCHEMA
+        or payload.get("board_namespace") != namespace
+        or {key: route.get(key) for key in expected_route} != expected_route
+        or route.get("route_id") != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
+        or route.get("allowed_trigger_classes")
+        != [
+            "grok_authentication_unavailable",
+            "grok_hard_quota_exhausted",
+        ]
+        or authorization_kind != "explicit_operator_override"
+        or source.get("prospective_only") is not True
+        or source.get("requires_descendant_tree") is not True
+        or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+        or ownership.get("canonical_route_plan_owner")
+        != "ipfs_accelerate_py.llm_router"
+        or ownership.get("typed_fallback_decision_owner")
+        != "ipfs_accelerate_py.llm_router"
+        or ownership.get("duplicate_route_policy_or_failure_classification_outside_router_allowed")
+        is not False
+        or bootstrap_guarantees.get(
+            "explicit_codex_review_conflict_denied"
+        )
+        is not True
+    ):
+        raise ValueError(
+            "agent route authorization does not grant the exact scoped route"
+        )
+    try:
+        current_head_check = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        current_head = current_head_check.stdout.strip()
+        if (
+            current_head_check.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", current_head) is None
+        ):
+            raise ValueError(
+                "agent route authorization repository HEAD is unavailable"
+            )
+        head_tree_entry = subprocess.run(
+            ["git", "ls-tree", current_head, "--", relative],
+            cwd=root,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        head_artifact = subprocess.run(
+            ["git", "show", f"{current_head}:{relative}"],
+            cwd=root,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        source_tree_check = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{source_head}^{{tree}}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        descendant_check = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                source_head,
+                current_head,
+            ],
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+        )
+        final_head_check = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        final_metadata = unresolved_candidate.lstat()
+        final_candidate = unresolved_candidate.resolve()
+        final_raw = final_candidate.read_bytes()
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(
+            "agent route authorization repository binding is unavailable"
+        ) from exc
+    if (
+        head_tree_entry.returncode != 0
+        or re.fullmatch(
+            rb"100(?:644|755) blob [0-9a-f]{40}\t" + re.escape(relative.encode()),
+            bytes(head_tree_entry.stdout or b"").rstrip(b"\n"),
+        )
+        is None
+        or head_artifact.returncode != 0
+        or bytes(head_artifact.stdout or b"") != raw
+        or source_tree_check.returncode != 0
+        or source_tree_check.stdout.strip() != source_tree
+        or descendant_check.returncode != 0
+        or final_head_check.returncode != 0
+        or final_head_check.stdout.strip() != current_head
+        or unresolved_candidate.is_symlink()
+        or final_candidate != candidate
+        or not stat_module.S_ISREG(final_metadata.st_mode)
+        or (
+            final_metadata.st_dev,
+            final_metadata.st_ino,
+            final_metadata.st_mode,
+            final_metadata.st_size,
+        )
+        != (
+            candidate_metadata.st_dev,
+            candidate_metadata.st_ino,
+            candidate_metadata.st_mode,
+            candidate_metadata.st_size,
+        )
+        or final_raw != raw
+    ):
+        raise ValueError(
+            "agent route authorization is not bound to this descendant tree"
+        )
+    identity_body = {
+        "schema": _AGENT_ROUTE_AUTHORIZATION_SCHEMA,
+        "board_namespace": namespace,
+        "artifact_path": relative,
+        "artifact_sha256": digest,
+        "authorization_kind": authorization_kind,
+        "source_head": source_head,
+        "source_tree": source_tree,
+    }
+    authorization_id = _agent_implementation_route_id(identity_body)
+    expected_identity = str(expected_authorization_id or "").strip()
+    if expected_identity and authorization_id != expected_identity:
+        raise ValueError("agent route authorization identity drifted")
+    return AgentImplementationRouteAuthorization(
+        board_namespace=namespace,
+        artifact_path=relative,
+        artifact_sha256=digest,
+        authorization_kind=authorization_kind,
+        source_head=source_head,
+        source_tree=source_tree,
+        authorization_id=authorization_id,
+        _validation_seal=_agent_implementation_private_seal(identity_body),
+    )
+
+
+_LEGACY_AGENT_IMPLEMENTATION_ROUTE = _agent_implementation_route_plan(
+    fallback_trigger="primary_quota_exhausted",
+    fallback_reasoning_effort="medium",
+    route_id=_LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID,
+)
+_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
+    _agent_implementation_route_plan(
+        fallback_trigger="primary_quota_or_auth_unavailable",
+        fallback_reasoning_effort="high",
+        route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
+    )
+)
+_AGENT_IMPLEMENTATION_ROUTES = (
+    _LEGACY_AGENT_IMPLEMENTATION_ROUTE,
+    _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
+)
+
+
+def create_legacy_agent_implementation_route_invocation(
+) -> AgentImplementationRouteInvocation:
+    """Create the canonical legacy plan with a fresh nonce for this process."""
+
+    return AgentImplementationRouteInvocation(
+        route_plan=_LEGACY_AGENT_IMPLEMENTATION_ROUTE,
+        failure_receipt_nonce=secrets.token_hex(32),
+    )
+
+
+def resolve_agent_implementation_route(
+    *,
+    primary_provider_id: str = "",
+    primary_model_id: str = "",
+    fallback_provider_id: str = "",
+    fallback_model_id: str = "",
+    fallback_trigger: str = "",
+    fallback_reasoning_effort: str = "",
+    default_route: str | None = None,
+    authorization: AgentImplementationRouteAuthorization | None = None,
+) -> AgentImplementationRoutePlan:
+    """Resolve exactly one reviewed agent route without reading ambient state.
+
+    ``default_route="legacy"`` is an explicit caller choice used by legacy
+    launchers to fill otherwise absent compatible fields.  With no default,
+    all six fields are mandatory.  Hybrid tuples and unknown policy values
+    always fail closed.
+    """
+
+    values = {
+        "primary_provider_id": str(primary_provider_id or "").strip(),
+        "primary_model_id": str(primary_model_id or "").strip(),
+        "fallback_provider_id": str(fallback_provider_id or "").strip(),
+        "fallback_model_id": str(fallback_model_id or "").strip(),
+        "fallback_trigger": str(fallback_trigger or "").strip(),
+        "fallback_reasoning_effort": str(
+            fallback_reasoning_effort or ""
+        ).strip(),
+    }
+    if values["primary_provider_id"].lower() in (
+        _AGENT_IMPLEMENTATION_GROK_ALIASES
+    ):
+        values["primary_provider_id"] = "grok_cli"
+    if default_route is not None:
+        if default_route != "legacy":
+            raise ValueError("unknown agent implementation route default")
+        legacy = _LEGACY_AGENT_IMPLEMENTATION_ROUTE.as_dict()
+        values = {
+            field: value or legacy[field]
+            for field, value in values.items()
+        }
+    missing = [field for field, value in values.items() if not value]
+    if missing:
+        raise ValueError(
+            "agent implementation route requires a complete six-field tuple; "
+            "missing " + ", ".join(missing)
+        )
+    for route in _AGENT_IMPLEMENTATION_ROUTES:
+        if values == route.as_dict():
+            if route.permits_authentication_unavailable:
+                if (
+                    authorization is None
+                    or authorization._validation_seal
+                    != _agent_implementation_private_seal(
+                        {
+                            "schema": _AGENT_ROUTE_AUTHORIZATION_SCHEMA,
+                            "board_namespace": authorization.board_namespace,
+                            "artifact_path": authorization.artifact_path,
+                            "artifact_sha256": authorization.artifact_sha256,
+                            "authorization_kind": (
+                                authorization.authorization_kind
+                            ),
+                            "source_head": authorization.source_head,
+                            "source_tree": authorization.source_tree,
+                        }
+                    )
+                ):
+                    raise ValueError(
+                        "auth-or-quota/high route requires scoped operator "
+                        "authorization"
+                    )
+                return AgentImplementationRoutePlan(
+                    **values,
+                    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
+                    authorization=authorization,
+                )
+            if authorization is not None:
+                raise ValueError(
+                    "legacy quota/medium route cannot carry auth authority"
+                )
+            return route
+    details = ", ".join(
+        f"{field}={values[field]!r}"
+        for field in _AGENT_IMPLEMENTATION_ROUTE_FIELDS
+    )
+    raise ValueError(
+        "agent implementation route must be exactly the reviewed legacy "
+        "quota/medium tuple or auth-or-quota/high tuple; " + details
+    )
+
+
+def resolve_agent_implementation_route_binding(
+    binding: Mapping[str, object],
+    *,
+    repo_root: Path | str,
+) -> AgentImplementationRoutePlan:
+    """Revalidate a scheduler-authored frozen plan at an effect boundary."""
+
+    expected_fields = {
+        *_AGENT_IMPLEMENTATION_ROUTE_FIELDS,
+        "route_id",
+        "authorization",
+    }
+    if set(binding) != expected_fields:
+        raise ValueError("agent implementation route binding fields are invalid")
+    authorization_raw = binding.get("authorization")
+    authorization = None
+    if authorization_raw is not None:
+        if not isinstance(authorization_raw, Mapping) or set(
+            authorization_raw
+        ) != {
+            "board_namespace",
+            "artifact_path",
+            "artifact_sha256",
+            "authorization_kind",
+            "source_head",
+            "source_tree",
+            "authorization_id",
+        }:
+            raise ValueError(
+                "agent implementation route authorization binding is invalid"
+            )
+        authorization = load_agent_implementation_route_authorization(
+            repo_root=repo_root,
+            artifact_path=str(authorization_raw.get("artifact_path") or ""),
+            board_namespace=str(
+                authorization_raw.get("board_namespace") or ""
+            ),
+            expected_sha256=str(
+                authorization_raw.get("artifact_sha256") or ""
+            ),
+            expected_authorization_id=str(
+                authorization_raw.get("authorization_id") or ""
+            ),
+        )
+        if authorization.as_dict() != {
+            str(key): str(value)
+            for key, value in authorization_raw.items()
+        }:
+            raise ValueError(
+                "agent implementation route authorization binding drifted"
+            )
+    plan = resolve_agent_implementation_route(
+        **{
+            field: str(binding.get(field) or "")
+            for field in _AGENT_IMPLEMENTATION_ROUTE_FIELDS
+        },
+        authorization=authorization,
+    )
+    if binding.get("route_id") != plan.route_id:
+        raise ValueError("agent implementation route identity drifted")
+    return plan
+
+
+def decide_agent_implementation_fallback(
+    route: AgentImplementationRoutePlan,
+    *,
+    repo_root: Path | str,
+    failure_receipt: Mapping[str, object],
+    expected_nonce: str,
+    expected_model: str,
+    expected_probe_returncode: int,
+    independent_quota_evidence: object | None = None,
+) -> AgentImplementationFallbackDecision:
+    """Decide the exceptional typed fallback for side-effecting agent work.
+
+    The function has no ambient defaults and revalidates the explicit route
+    binding against ``repo_root`` at each decision boundary. A caller must
+    supply a canonical frozen plan and the actual nonce-bound receipt;
+    caller-provided booleans/classes/hashes never create authority.
+    Generic/untyped errors, overflowed evidence, and mixed auth diagnostics
+    never authorize fallback.
+    """
+
+    canonical_route = resolve_agent_implementation_route_binding(
+        route.as_binding_dict(),
+        repo_root=repo_root,
+    )
+    if canonical_route.route_id != route.route_id:
+        raise ValueError("agent implementation route identity is invalid")
+    receipt_valid = valid_agent_implementation_failure_receipt(
+        failure_receipt,
+        nonce=expected_nonce,
+        model=expected_model,
+        probe_returncode=expected_probe_returncode,
+    )
+    if not receipt_valid or failure_receipt.get("evidence_overflow") is True:
+        return AgentImplementationFallbackDecision(
+            authorized=False,
+            requires_independent_quota_verification=False,
+            reason_code="typed_failure_denied",
+            verifier_status="not_run",
+        )
+    normalized_class = str(failure_receipt.get("failure_class") or "").strip()
+    normalized_evidence = str(
+        failure_receipt.get("evidence_sha256") or ""
+    ).strip()
+    if normalized_class == "authentication_unavailable":
+        if (
+            canonical_route.permits_authentication_unavailable
+            and normalized_evidence
+            in _AGENT_IMPLEMENTATION_DIRECT_AUTH_EVIDENCE
+        ):
+            return AgentImplementationFallbackDecision(
+                authorized=True,
+                requires_independent_quota_verification=False,
+                reason_code="authentication_unavailable",
+                verifier_status="not_required_exact_auth",
+            )
+        return AgentImplementationFallbackDecision(
+            authorized=False,
+            requires_independent_quota_verification=False,
+            reason_code="authentication_fallback_not_in_route",
+            verifier_status="not_run",
+        )
+    if normalized_class not in {"hard_quota_exhausted", "authentication"}:
+        return AgentImplementationFallbackDecision(
+            authorized=False,
+            requires_independent_quota_verification=False,
+            reason_code="failure_class_not_authorized",
+            verifier_status="not_run",
+        )
+    if independent_quota_evidence is None:
+        return AgentImplementationFallbackDecision(
+            authorized=False,
+            requires_independent_quota_verification=True,
+            reason_code="independent_quota_verification_required",
+            verifier_status="not_run",
+        )
+    valid_quota_evidence = bool(
+        isinstance(
+            independent_quota_evidence,
+            AgentImplementationQuotaEvidence,
+        )
+        and independent_quota_evidence._validation_seal
+        == _agent_implementation_private_seal(
+            {
+                key: value
+                for key, value in independent_quota_evidence.audit_dict().items()
+                if key != "evidence_id"
+            }
+        )
+        and independent_quota_evidence.preflight_receipt_id
+        == failure_receipt.get("receipt_id")
+        and independent_quota_evidence.primary_model
+        == failure_receipt.get("primary_model") == "grok-4.5"
+        and independent_quota_evidence.verifier_returncode != 0
+        and independent_quota_evidence.probe_contract_id
+        == failure_receipt.get("probe_contract_id")
+        and independent_quota_evidence.verifier_result
+        in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
+        and independent_quota_evidence.evidence_id
+        == _content_addressed_mapping(
+            {
+                key: value
+                for key, value in independent_quota_evidence.audit_dict().items()
+                if key != "evidence_id"
+            },
+            identity_field="evidence_id",
+        )
+    )
+    if valid_quota_evidence:
+        return AgentImplementationFallbackDecision(
+            authorized=True,
+            requires_independent_quota_verification=False,
+            reason_code="quota_exhausted",
+            verifier_status="confirmed_quota",
+        )
+    return AgentImplementationFallbackDecision(
+        authorized=False,
+        requires_independent_quota_verification=False,
+        reason_code="independent_quota_not_confirmed",
+        verifier_status="not_confirmed",
+    )
 
 
 class PinnedSymaiCompletionError(LLMRouterError):

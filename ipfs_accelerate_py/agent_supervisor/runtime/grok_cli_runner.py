@@ -6,7 +6,8 @@ The runner keeps ordinary Grok output live while parsing only top-level
 as an untrusted candidate over a file descriptor not directly inherited by
 Grok. Same-UID descendants can still inject into the Grok stdout pipe through
 procfs, so exit 86 and this candidate are diagnostics, never fallback proof.
-The daemon's independently signed quota verifier is the authority root.
+Only an exact pre-effect authentication finding or independently confirmed
+quota evidence may authorize the isolated fallback boundary.
 """
 
 from __future__ import annotations
@@ -19,19 +20,19 @@ import json
 import os
 import re
 import secrets
-import signal
 import shutil
+import signal
+import stat
 import subprocess
 import sys
 import tempfile
-import stat
 import threading
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Mapping, TextIO, Sequence
+from typing import TextIO
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_ROOT) not in sys.path:
@@ -54,12 +55,15 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
     GROK_FAILURE_RECEIPT_PREFIX,
     GROK_QUOTA_PROBE_PROMPT,
     GROK_QUOTA_PROBE_TIMEOUT_SECONDS,
+    GROK_ROUTE_OUTCOME_PREFIX,
     MAX_GROK_FAILURE_EVIDENCE_BYTES,
     build_grok_failure_receipt,
+    build_grok_route_outcome,
     render_grok_failure_receipt,
+    render_grok_route_outcome,
+    valid_grok_failure_receipt,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
-    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     ValidationRuntimeError,
 )
 
@@ -211,43 +215,88 @@ def _run_isolated_grok_quota_probe(
     command: Sequence[str],
     *,
     env: dict[str, str],
-) -> tuple[int, str]:
-    """Run the fixed no-tools quota probe without exposing task context."""
+    cwd: Path,
+) -> tuple[int, str, int, bool]:
+    """Run the fixed probe while retaining only a bounded stderr tail.
 
+    ``subprocess.run(..., stderr=PIPE)`` buffers the complete provider output
+    before returning.  Besides permitting unbounded memory growth, taking a
+    trusted tail afterwards can erase an earlier conflicting 403/429 signal.
+    Drain concurrently, count every byte, and surface overflow as explicit
+    fail-closed metadata to the route decision.
+    """
+
+    process = subprocess.Popen(
+        list(command),
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        close_fds=True,
+    )
+    if process.stderr is None:
+        raise RuntimeError("isolated Grok quota probe stderr pipe was not created")
+    retained = bytearray()
+    byte_count = 0
+
+    def drain_stderr() -> None:
+        nonlocal byte_count
+        while True:
+            chunk = process.stderr.read(16 * 1024)
+            if not chunk:
+                return
+            byte_count += len(chunk)
+            retained.extend(chunk)
+            if len(retained) > MAX_GROK_FAILURE_EVIDENCE_BYTES:
+                del retained[:-MAX_GROK_FAILURE_EVIDENCE_BYTES]
+
+    drain_thread = threading.Thread(
+        target=drain_stderr,
+        name="grok-quota-probe-stderr",
+        daemon=True,
+    )
+    drain_thread.start()
+    timed_out = False
     try:
-        completed = subprocess.run(
-            list(command),
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=False,
-            timeout=GROK_QUOTA_PROBE_TIMEOUT_SECONDS,
-            check=False,
+        returncode = int(
+            process.wait(timeout=GROK_QUOTA_PROBE_TIMEOUT_SECONDS)
         )
     except subprocess.TimeoutExpired:
-        return 124, "isolated Grok quota probe timeout"
-    stderr = bytes(completed.stderr or b"")
+        timed_out = True
+        process.kill()
+        returncode = 124
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+    finally:
+        drain_thread.join(timeout=5)
+        try:
+            process.stderr.close()
+        except OSError:
+            pass
+    if drain_thread.is_alive():
+        raise RuntimeError("isolated Grok quota probe stderr drain did not finish")
+    if timed_out and not retained:
+        retained.extend(b"isolated Grok quota probe timeout")
+        byte_count = len(retained)
     return (
-        int(completed.returncode),
-        stderr[-MAX_GROK_FAILURE_EVIDENCE_BYTES:].decode(
-            "utf-8",
-            errors="replace",
-        ),
+        returncode,
+        retained.decode("utf-8", errors="replace"),
+        byte_count,
+        byte_count > MAX_GROK_FAILURE_EVIDENCE_BYTES,
     )
 
 
 MAX_CODEX_FALLBACK_ARGUMENTS = 64
 MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
-MAX_GROK_STREAM_EVENT_BYTES = 64 * 1024
-MAX_GROK_SESSION_RECORD_BYTES = 16 * 1024 * 1024
-# Only exact durable native quota records observed below are authorized to
-# cross the provider boundary. Other native types remain diagnostic only.
-GROK_QUOTA_ERROR_TYPES = frozenset(
-    {"usage_pool_exhausted", "spending_limit_exhausted"}
-)
 CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
-CODEX_QUOTA_FALLBACK_REASONING = 'model_reasoning_effort="medium"'
+DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT = "medium"
+CODEX_QUOTA_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
+CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG = (
+    "--canonical-legacy-preflight-route"
+)
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
@@ -259,6 +308,10 @@ _CODEX_CONTAINER_AUTH_PATH = _CODEX_CONTAINER_HOME / "auth.json"
 _CODEX_TASK_TOOLCHAIN_IMAGE_ID = (
     "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
 )
+
+
+class _AgentRouteEffectDenied(ValueError):
+    """The canonical route lost authority before the provider effect."""
 _CODEX_TASK_TOOLCHAIN_IMAGE_LABEL = "2026-08-03-v2"
 _CODEX_TASK_TOOLCHAIN_SITE_PACKAGES = Path(
     "/opt/ipfs-validation-site-packages"
@@ -356,20 +409,6 @@ _CONTAINER_RUNTIME_STANDARD_SOCKETS = (
     "/run/podman/podman.sock",
     "/run/containerd/containerd.sock",
     "/var/run/containerd/containerd.sock",
-)
-_LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE = (
-    "API error (status 402 Payment Required): Grok Build usage balance exhausted"
-)
-_GROK_SPENDING_LIMIT_EXHAUSTED_MESSAGE = (
-    "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
-    "You have run out of credits or need a Grok subscription. Add credits at "
-    "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
-)
-_GROK_NATIVE_QUOTA_FAILURES = frozenset(
-    {
-        ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE),
-        ("spending_limit_exhausted", _GROK_SPENDING_LIMIT_EXHAUSTED_MESSAGE),
-    }
 )
 _CODEX_FALLBACK_CONFIG_KEYS = frozenset(
     {
@@ -528,17 +567,29 @@ def build_grok_quota_routed_agent_command(
     grok_bin: str = "",
     codex_bin: str = "",
     max_turns: int = 100_000,
+    fallback_reasoning_effort: str = (
+        DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT
+    ),
+    enable_codex_fallback: bool = True,
+    enable_internal_legacy_preflight: bool = False,
 ) -> list[str]:
-    """Build the canonical Grok-4.5 then typed-quota Terra/medium route.
+    """Build a sealed Grok-4.5 then typed-failure Terra route.
 
     The returned parent runner owns the Codex argv.  Grok receives neither the
     executable/auth authority nor any way to invoke this fallback directly.
     """
 
     workspace_text = str(workspace)
-    codex = resolve_codex_quota_fallback_executable(
-        workspace=workspace,
-        configured=codex_bin,
+    reasoning_effort = str(fallback_reasoning_effort).strip()
+    if reasoning_effort not in CODEX_QUOTA_FALLBACK_REASONING_EFFORTS:
+        raise ValueError("Codex fallback reasoning must be medium or high")
+    codex = (
+        resolve_codex_quota_fallback_executable(
+            workspace=workspace,
+            configured=codex_bin,
+        )
+        if enable_codex_fallback
+        else ""
     )
     command = [
         str(python_executable or sys.executable),
@@ -567,7 +618,7 @@ def build_grok_quota_routed_agent_command(
             "-m",
             CODEX_QUOTA_FALLBACK_MODEL,
             "-c",
-            CODEX_QUOTA_FALLBACK_REASONING,
+            f'model_reasoning_effort="{reasoning_effort}"',
             "-",
         ]
         command.extend(
@@ -576,6 +627,8 @@ def build_grok_quota_routed_agent_command(
                 json.dumps(fallback, separators=(",", ":")),
             ]
         )
+        if enable_internal_legacy_preflight:
+            command.append(CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG)
     if str(grok_bin).strip():
         command.extend(["--grok-bin", str(grok_bin).strip()])
     return command
@@ -1401,6 +1454,24 @@ def _workspace_descendant_mountpoints(
     except (OSError, UnicodeError) as exc:
         raise ValueError("unable to audit workspace mountpoints") from exc
     return tuple(sorted(set(targets), key=lambda item: str(item)))
+
+
+def _repository_head(workspace: Path) -> str:
+    """Return the exact repository HEAD without accepting symbolic prose."""
+
+    completed = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+        cwd=workspace,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    head = completed.stdout.strip()
+    if completed.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", head) is None:
+        raise ValueError("agent implementation route requires a pinned repository HEAD")
+    return head
 
 
 def _workspace_content_fingerprint(workspace: Path) -> str:
@@ -2371,6 +2442,7 @@ def _run_codex_quota_fallback_in_docker(
     prompt: str,
     prompt_path: Path,
     base_env: dict[str, str],
+    pre_effect_validator: Callable[[], None] | None = None,
 ) -> int:
     """Run Codex only inside the available pinned external sandbox."""
 
@@ -2420,16 +2492,56 @@ def _run_codex_quota_fallback_in_docker(
             docker_bin=docker_bin,
             isolation_image=isolation_image,
         )
-        completed = subprocess.run(
+        if pre_effect_validator is not None:
+            # Validate the route before the final auth check so an auth swap
+            # performed during route validation is caught below.
+            pre_effect_validator()
+        _validated_codex_auth_path(
+            source_auth=source_auth,
+            workspace=workspace,
+        )
+        if pre_effect_validator is not None:
+            # Revalidate the route again as the final operation before the
+            # only external implementation effect. The preceding auth check
+            # and this route check form the narrowest fail-closed boundary
+            # available to the path-based Docker CLI handoff.
+            pre_effect_validator()
+        process = subprocess.Popen(
             command,
             cwd=workspace,
             env=_docker_control_env(child_env),
-            input=prompt,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=False,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
         )
+        if process.stdin is None or process.stdout is None or process.stderr is None:
+            raise RuntimeError("Codex fallback process pipes were not created")
+        stdout_thread = threading.Thread(
+            target=_stream_provider_pipe_without_reserved_records,
+            args=(process.stdout, sys.stdout),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=_stream_provider_pipe_without_reserved_records,
+            args=(process.stderr, sys.stderr),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+        try:
+            process.stdin.write(prompt)
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        returncode = int(process.wait())
+        stdout_thread.join()
+        stderr_thread.join()
         docker_run_finished = True
-        return int(completed.returncode)
+        return returncode
     finally:
         if docker_lease is not None:
             docker_lease.close(docker_run_finished=docker_run_finished)
@@ -2477,8 +2589,9 @@ def _validate_codex_quota_fallback_command(
     command: Sequence[str],
     *,
     workspace: Path | None = None,
+    required_reasoning_effort: str | None = None,
 ) -> None:
-    """Require the exact daemon-owned Terra/medium fallback shape."""
+    """Require an authorized daemon-owned Terra fallback shape."""
 
     if len(command) < 8 or Path(command[0]).name.lower() not in {
         "codex",
@@ -2555,8 +2668,17 @@ def _validate_codex_quota_fallback_command(
                 "Codex quota fallback contains an unauthorized or duplicate config"
             )
         configs[key] = value
-    if configs.get("model_reasoning_effort") != '"medium"':
-        raise ValueError("Codex quota fallback reasoning is not exactly medium")
+    if configs.get("model_reasoning_effort") not in {
+        '"medium"',
+        '"high"',
+    }:
+        raise ValueError("Codex fallback reasoning is not medium or high")
+    if required_reasoning_effort is not None and configs.get(
+        "model_reasoning_effort"
+    ) != json.dumps(required_reasoning_effort):
+        raise ValueError(
+            "Codex fallback reasoning does not match the sealed provider route"
+        )
     for key in ("agents.max_depth", "agents.max_threads", "model_context_window"):
         value = configs.get(key)
         if value is not None and re.fullmatch(r"[1-9][0-9]*", value) is None:
@@ -2667,198 +2789,6 @@ def _isolated_codex_quota_fallback_home(
         raise
 
 
-def _grok_failure_type_from_stream_event(line: str) -> str:
-    """Project one CLI-owned native failure event, never model-authored text."""
-
-    if (
-        not line
-        or len(line.encode("utf-8", errors="replace"))
-        > MAX_GROK_STREAM_EVENT_BYTES
-    ):
-        return ""
-    try:
-        payload = json.loads(line)
-    except (json.JSONDecodeError, TypeError):
-        return ""
-    if not isinstance(payload, dict) or payload.get("method") not in {
-        "_x.ai/session/update",
-        "session/update",
-    }:
-        return ""
-    params = payload.get("params")
-    update = params.get("update") if isinstance(params, dict) else None
-    if (
-        not isinstance(update, dict)
-        or update.get("sessionUpdate") != "retry_state"
-        or update.get("type") != "failed"
-    ):
-        return ""
-    error_type = str(update.get("error_type") or "").strip().casefold()
-    if error_type in GROK_QUOTA_ERROR_TYPES:
-        return error_type
-    if (
-        error_type == "api"
-        and str(update.get("message") or "").strip()
-        == _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE
-    ):
-        return "usage_pool_exhausted"
-    if (
-        error_type == "api"
-        and str(update.get("message") or "").strip()
-        == _GROK_SPENDING_LIMIT_EXHAUSTED_MESSAGE
-    ):
-        return "spending_limit_exhausted"
-    return error_type or "unknown"
-
-
-def _terminal_grok_failure_type_from_isolated_home(
-    grok_home: Path,
-    *,
-    expected_model: str = DEFAULT_GROK_MODEL,
-    expected_session_id: str = "",
-) -> str:
-    """Read one native session's final, terminal-correlated failure verdict.
-
-    The isolated home starts without sessions and the runner supplies the exact
-    UUID.  This record is necessary but never sufficient authority: a second,
-    fresh tool-free Grok invocation must independently confirm quota.  Projected
-    stdout is display-only.
-    """
-
-    try:
-        records = tuple((grok_home / "sessions").rglob("updates.jsonl"))
-    except OSError:
-        return ""
-    if len(records) != 1:
-        return ""
-    record = records[0]
-    try:
-        if (
-            record.is_symlink()
-            or not record.is_file()
-            or not record.resolve(strict=True).is_relative_to(
-                grok_home.resolve(strict=True)
-            )
-            or not 0 < record.stat().st_size <= MAX_GROK_SESSION_RECORD_BYTES
-        ):
-            return ""
-        uuid.UUID(record.parent.name)
-    except (OSError, ValueError):
-        return ""
-
-    recorded_session_id = record.parent.name
-    if expected_session_id and recorded_session_id != expected_session_id:
-        return ""
-    observed_models: set[str] = set()
-    latest_failure: tuple[str, str] | None = None
-    latest_relevant = ""
-    terminal_verdict = ""
-    final_update_type = ""
-    retry_failure_count = 0
-    user_message_count = 0
-    allowed_update_types = {
-        "retry_state",
-        "user_message_chunk",
-        "turn_completed",
-    }
-    try:
-        with record.open("r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                if len(raw_line.encode("utf-8", errors="replace")) > (
-                    MAX_GROK_SESSION_RECORD_BYTES
-                ):
-                    return ""
-                try:
-                    payload = json.loads(raw_line)
-                except (json.JSONDecodeError, TypeError):
-                    return ""
-                if not isinstance(payload, dict) or payload.get("method") not in {
-                    "_x.ai/session/update",
-                    "session/update",
-                }:
-                    return ""
-                params = payload.get("params")
-                if (
-                    not isinstance(params, dict)
-                    or params.get("sessionId") != recorded_session_id
-                ):
-                    return ""
-                update = params.get("update")
-                if not isinstance(update, dict):
-                    return ""
-                update_type = str(update.get("sessionUpdate") or "")
-                if update_type not in allowed_update_types:
-                    return ""
-                final_update_type = update_type
-                metadata = update.get("_meta")
-                if isinstance(metadata, dict):
-                    model_id = str(metadata.get("modelId") or "").strip()
-                    if model_id:
-                        observed_models.add(model_id)
-
-                if update_type == "retry_state":
-                    if update.get("type") != "failed":
-                        latest_failure = None
-                        latest_relevant = "retry_state"
-                        terminal_verdict = ""
-                        continue
-                    failure_type = _grok_failure_type_from_stream_event(raw_line)
-                    failure_message = str(update.get("message") or "").strip()
-                    retry_failure_count += 1
-                    latest_failure = (failure_type, failure_message)
-                    latest_relevant = "retry_state"
-                    terminal_verdict = ""
-                elif update_type == "turn_completed":
-                    terminal_verdict = ""
-                    if (
-                        str(update.get("stop_reason") or "").casefold() == "error"
-                        and latest_relevant == "retry_state"
-                        and latest_failure is not None
-                        and latest_failure[0] in GROK_QUOTA_ERROR_TYPES
-                        and latest_failure[1]
-                        and str(update.get("agent_result") or "").strip()
-                        == latest_failure[1]
-                    ):
-                        terminal_verdict = latest_failure[0]
-                    latest_relevant = "turn_completed"
-                elif update_type == "user_message_chunk":
-                    user_message_count += 1
-    except (OSError, UnicodeError):
-        return ""
-
-    summary_path = record.parent / "summary.json"
-    try:
-        if (
-            summary_path.is_symlink()
-            or not summary_path.is_file()
-            or summary_path.stat().st_size > MAX_GROK_SESSION_RECORD_BYTES
-        ):
-            return ""
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        summary_info = summary.get("info") if isinstance(summary, dict) else None
-        summary_home = Path(str(summary.get("grok_home") or "")).resolve(strict=True)
-    except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
-        return ""
-
-    if (
-        final_update_type != "turn_completed"
-        # Initial balance exhaustion is durably emitted as a two-update
-        # retry/terminal record with no user chunk or update-level model ID.
-        # Later attempts add one user chunk. In both shapes summary.json is
-        # required to pin the exact session, model, and isolated home.
-        or not observed_models.issubset({expected_model})
-        or retry_failure_count != 1
-        or user_message_count > 1
-        or not isinstance(summary_info, dict)
-        or summary_info.get("id") != recorded_session_id
-        or summary.get("current_model_id") != expected_model
-        or summary_home != grok_home.resolve()
-        or latest_failure not in _GROK_NATIVE_QUOTA_FAILURES
-    ):
-        return ""
-    return terminal_verdict
-
-
 def _stream_pipe(
     source: TextIO,
     destination: TextIO,
@@ -2869,6 +2799,25 @@ def _stream_pipe(
         chunk = source.read(16 * 1024)
         if not chunk:
             break
+        destination.write(chunk)
+        destination.flush()
+
+
+def _stream_provider_pipe_without_reserved_records(
+    source: TextIO,
+    destination: TextIO,
+) -> None:
+    """Tee provider output while escaping runner-reserved record prefixes."""
+
+    reserved = (GROK_FAILURE_RECEIPT_PREFIX, GROK_ROUTE_OUTCOME_PREFIX)
+    at_line_start = True
+    while True:
+        chunk = source.readline(16 * 1024)
+        if not chunk:
+            return
+        if at_line_start and chunk.startswith(reserved):
+            chunk = "[provider-child-output-escaped] " + chunk
+        at_line_start = chunk.endswith("\n")
         destination.write(chunk)
         destination.flush()
 
@@ -2914,7 +2863,8 @@ def _independently_verify_grok_quota(
     *,
     grok_bin: str,
     base_env: dict[str, str],
-) -> str:
+    failure_receipt: Mapping[str, object],
+) -> object:
     """Confirm quota with a fresh pinned, tool-free Grok-4.5 invocation."""
 
     from ipfs_accelerate_py.llm_router import build_grok_cli_command, build_grok_cli_env
@@ -2946,8 +2896,10 @@ def _independently_verify_grok_quota(
                 "XDG_CONFIG_HOME": str(verifier_home / "xdg-config"),
                 "XDG_DATA_HOME": str(verifier_home / "xdg-data"),
                 "XDG_STATE_HOME": str(verifier_home / "xdg-state"),
+                "PWD": str(verifier_workspace),
             }
         )
+        verifier_env.pop("OLDPWD", None)
         command = build_grok_cli_command(
             mode="chat",
             workspace=verifier_workspace,
@@ -2972,6 +2924,7 @@ def _independently_verify_grok_quota(
         try:
             completed = subprocess.run(
                 command,
+                cwd=verifier_workspace,
                 env=verifier_env,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -2983,15 +2936,120 @@ def _independently_verify_grok_quota(
             return ""
         if completed.returncode == 0:
             return ""
-        return _terminal_grok_failure_type_from_isolated_home(
-            verifier_home,
+        from ipfs_accelerate_py.llm_router import (
+            validate_agent_implementation_quota_evidence,
+        )
+
+        return validate_agent_implementation_quota_evidence(
+            grok_home=verifier_home,
             expected_session_id=verifier_session_id,
+            verifier_returncode=int(completed.returncode),
+            failure_receipt=failure_receipt,
         )
     finally:
         if isolated_home is not None:
             _robust_remove_runner_temp_tree(Path(isolated_home.name))
             isolated_home.cleanup()
         _robust_remove_runner_temp_tree(verifier_root)
+
+
+def _run_typed_grok_preflight(
+    *,
+    grok_bin: str,
+    base_env: dict[str, str],
+    nonce: str,
+) -> tuple[int, dict[str, object], bool]:
+    """Run the fixed no-tools probe and return its runner-authored receipt.
+
+    The probe has no task prompt or task workspace and runs before the primary
+    implementation dispatch.  Its bounded stderr is classified locally, then
+    bound to the daemon-provided nonce.  Caller code must still validate the
+    returned receipt before granting any fallback effect.
+    """
+
+    if re.fullmatch(r"[0-9a-f]{64}", str(nonce or "")) is None:
+        raise ValueError("typed Grok preflight requires a 256-bit nonce")
+
+    from ipfs_accelerate_py.llm_router import build_grok_cli_command, build_grok_cli_env
+
+    probe_root = Path(tempfile.mkdtemp(prefix="asref-grok-failure-probe-"))
+    isolated_home: tempfile.TemporaryDirectory[str] | None = None
+    try:
+        probe_workspace = probe_root / "workspace"
+        probe_workspace.mkdir(mode=0o700)
+        prompt_path = probe_root / "prompt.txt"
+        prompt_path.write_text(GROK_QUOTA_PROBE_PROMPT, encoding="utf-8")
+        child_env = build_grok_cli_env(
+            base_env=base_env,
+            isolate_alternate_providers=True,
+        )
+        isolated_home, probe_env, _policy, _denied = _isolated_grok_home(
+            base_env=base_env,
+            child_env=child_env,
+            codex_fallback_command=(),
+            workspace=probe_workspace,
+        )
+        probe_home = Path(probe_env["GROK_HOME"])
+        probe_env.update(
+            {
+                "HOME": str(probe_home),
+                "XDG_CONFIG_HOME": str(probe_home / "xdg-config"),
+                "XDG_DATA_HOME": str(probe_home / "xdg-data"),
+                "XDG_STATE_HOME": str(probe_home / "xdg-state"),
+                "PWD": str(probe_workspace),
+            }
+        )
+        probe_env.pop("OLDPWD", None)
+        command = build_grok_cli_command(
+            mode="chat",
+            workspace=probe_workspace,
+            model_name=DEFAULT_GROK_MODEL,
+            max_turns=1,
+            grok_bin=grok_bin,
+            prompt_file=prompt_path,
+            permission_mode="dontAsk",
+            tools="",
+        )
+        command.extend(
+            ["--disallowed-tools", _SEALED_GROK_DISALLOWED_TOOLS]
+        )
+        returncode, stderr_text, stderr_size, stderr_overflow = (
+            _run_isolated_grok_quota_probe(
+            command,
+            env=probe_env,
+            cwd=probe_workspace,
+        )
+        )
+        if returncode == 0:
+            return 0, {}, stderr_overflow
+        receipt_evidence = (
+            "isolated Grok quota probe stderr exceeded the trusted evidence "
+            f"limit ({stderr_size} bytes)"
+            if stderr_overflow
+            else stderr_text
+        )
+        receipt = build_grok_failure_receipt(
+            probe_stderr_text=receipt_evidence,
+            nonce=nonce,
+            model=DEFAULT_GROK_MODEL,
+            probe_returncode=returncode,
+            primary_dispatched=False,
+            evidence_size=stderr_size,
+            evidence_overflow=stderr_overflow,
+        )
+        if not valid_grok_failure_receipt(
+            receipt,
+            nonce=nonce,
+            model=DEFAULT_GROK_MODEL,
+            returncode=returncode,
+        ):
+            return returncode, {}, stderr_overflow
+        return returncode, receipt, stderr_overflow
+    finally:
+        if isolated_home is not None:
+            _robust_remove_runner_temp_tree(Path(isolated_home.name))
+            isolated_home.cleanup()
+        _robust_remove_runner_temp_tree(probe_root)
 
 
 
@@ -3117,7 +3175,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         LLMRouterError,
         build_grok_cli_command,
         build_grok_cli_env,
+        create_legacy_agent_implementation_route_invocation,
+        decide_agent_implementation_fallback,
         find_grok_cli,
+        resolve_agent_implementation_route,
+        resolve_agent_implementation_route_binding,
     )
 
     try:
@@ -3136,16 +3198,100 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         return 2
+    internal_legacy_preflight = bool(
+        args.canonical_legacy_preflight_route
+    )
+    if internal_legacy_preflight and not codex_fallback_command:
+        print(
+            "canonical legacy preflight requires a Codex fallback command",
+            file=sys.stderr,
+        )
+        return 2
 
     workspace = args.workspace.expanduser().resolve()
     if not workspace.is_dir():
         print(f"workspace is not a directory: {workspace}", file=sys.stderr)
         return 2
     if codex_fallback_command:
+        route_repository_head = ""
+        preflight_nonce = str(args.grok_failure_receipt_nonce or "").strip()
+        route_binding_raw = str(
+            args.agent_implementation_route_json or ""
+        ).strip()
+        route_plan = None
+        if preflight_nonce:
+            if internal_legacy_preflight:
+                print(
+                    "canonical legacy preflight cannot be combined with an "
+                    "external nonce or route binding",
+                    file=sys.stderr,
+                )
+                return 2
+            if not route_binding_raw:
+                print(
+                    "typed Grok preflight requires a scoped canonical route "
+                    "binding",
+                    file=sys.stderr,
+                )
+                return 2
+            if len(route_binding_raw.encode("utf-8")) > 16 * 1024:
+                print("agent implementation route binding is oversized", file=sys.stderr)
+                return 2
+
+            def reject_route_duplicate_keys(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError(
+                            "agent implementation route binding has duplicate keys"
+                        )
+                    result[key] = value
+                return result
+
+            try:
+                route_binding = json.loads(
+                    route_binding_raw,
+                    object_pairs_hook=reject_route_duplicate_keys,
+                )
+                if not isinstance(route_binding, dict):
+                    raise ValueError(
+                        "agent implementation route binding must be an object"
+                    )
+                route_plan = resolve_agent_implementation_route_binding(
+                    route_binding,
+                    repo_root=workspace,
+                )
+                route_repository_head = _repository_head(workspace)
+            except (json.JSONDecodeError, OSError, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+        else:
+            if route_binding_raw:
+                print(
+                    "legacy quota route forbids an auth/high route binding",
+                    file=sys.stderr,
+                )
+                return 2
+            if internal_legacy_preflight:
+                legacy_invocation = (
+                    create_legacy_agent_implementation_route_invocation()
+                )
+                route_plan = legacy_invocation.route_plan
+                preflight_nonce = (
+                    legacy_invocation.failure_receipt_nonce
+                )
+                route_repository_head = _repository_head(workspace)
+            else:
+                route_plan = resolve_agent_implementation_route(
+                    default_route="legacy"
+                )
         try:
             _validate_codex_quota_fallback_command(
                 codex_fallback_command,
                 workspace=workspace,
+                required_reasoning_effort=(
+                    route_plan.fallback_reasoning_effort
+                ),
             )
             # The runner changes cwd before dispatch.  Store the already
             # validated absolute workspace so a relative -C cannot be
@@ -3220,6 +3366,334 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         )
     )
 
+    workspace_baseline = ""
+    preflight_fallback_reason = ""
+    preflight_returncode = 0
+    preflight_receipt: dict[str, object] = {}
+    preflight_verifier_status = "not_run"
+    preflight_quota_evidence: object | None = None
+    if codex_fallback_command:
+        try:
+            workspace_baseline = _workspace_content_fingerprint(workspace)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        if preflight_nonce:
+            try:
+                (
+                    preflight_returncode,
+                    preflight_receipt,
+                    _preflight_overflow,
+                ) = (
+                    _run_typed_grok_preflight(
+                        grok_bin=grok_bin,
+                        base_env=os.environ.copy(),
+                        nonce=preflight_nonce,
+                    )
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                print(
+                    f"unable to run typed Grok preflight: {exc}",
+                    file=sys.stderr,
+                )
+                return 2
+            if preflight_receipt:
+                print(
+                    render_grok_failure_receipt(preflight_receipt),
+                    file=sys.stderr,
+                )
+            if preflight_returncode != 0:
+                decision = decide_agent_implementation_fallback(
+                    route_plan,
+                    repo_root=workspace,
+                    failure_receipt=preflight_receipt,
+                    expected_nonce=preflight_nonce,
+                    expected_model=model,
+                    expected_probe_returncode=preflight_returncode,
+                )
+                if decision.requires_independent_quota_verification:
+                    preflight_quota_evidence = (
+                        _independently_verify_grok_quota(
+                            grok_bin=grok_bin,
+                            base_env=os.environ.copy(),
+                            failure_receipt=preflight_receipt,
+                        )
+                    )
+                    decision = decide_agent_implementation_fallback(
+                        route_plan,
+                        repo_root=workspace,
+                        failure_receipt=preflight_receipt,
+                        expected_nonce=preflight_nonce,
+                        expected_model=model,
+                        expected_probe_returncode=preflight_returncode,
+                        independent_quota_evidence=(
+                            preflight_quota_evidence
+                        ),
+                    )
+                preflight_verifier_status = decision.verifier_status
+                if not decision.authorized:
+                    print(
+                        "Typed Grok preflight did not authorize fallback; "
+                        "Codex fallback is forbidden",
+                        file=sys.stderr,
+                    )
+                    if preflight_receipt:
+                        print(
+                            render_grok_route_outcome(
+                                build_grok_route_outcome(
+                                    receipt=preflight_receipt,
+                                    route_plan=route_plan.as_binding_dict(),
+                                    quota_evidence_id=str(
+                                        getattr(
+                                            preflight_quota_evidence,
+                                            "evidence_id",
+                                            "",
+                                        )
+                                    ),
+                                    decision="denied",
+                                    verifier_status=(
+                                        preflight_verifier_status
+                                    ),
+                                    fallback_dispatched=False,
+                                    fallback_returncode=None,
+                                )
+                            ),
+                            file=sys.stderr,
+                        )
+                    return preflight_returncode
+                try:
+                    workspace_after_preflight = _workspace_content_fingerprint(
+                        workspace
+                    )
+                except ValueError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return preflight_returncode
+                if workspace_after_preflight != workspace_baseline:
+                    print(
+                        "The workspace changed during the typed Grok preflight; "
+                        "Codex fallback is forbidden",
+                        file=sys.stderr,
+                    )
+                    print(
+                        render_grok_route_outcome(
+                            build_grok_route_outcome(
+                                receipt=preflight_receipt,
+                                route_plan=route_plan.as_binding_dict(),
+                                quota_evidence_id=str(
+                                    getattr(
+                                        preflight_quota_evidence,
+                                        "evidence_id",
+                                        "",
+                                    )
+                                ),
+                                decision="denied",
+                                verifier_status=preflight_verifier_status,
+                                fallback_dispatched=False,
+                                fallback_returncode=None,
+                            )
+                        ),
+                        file=sys.stderr,
+                    )
+                    return preflight_returncode
+                preflight_fallback_reason = (
+                    "authentication is unavailable"
+                    if decision.reason_code == "authentication_unavailable"
+                    else "quota is exhausted"
+                )
+
+    def run_authorized_preflight_fallback(
+        *,
+        prompt: str,
+        prompt_file: Path,
+    ) -> int:
+        """Revalidate the typed route and dispatch without initializing Grok."""
+
+        outcome_route = route_plan
+        effect_verifier_status = preflight_verifier_status
+
+        def validate_effect_boundary() -> None:
+            nonlocal outcome_route, effect_verifier_status
+            try:
+                hardlink_violations = _workspace_regular_file_hardlinks(
+                    workspace
+                )
+                if hardlink_violations:
+                    raise _AgentRouteEffectDenied(
+                        "Codex fallback refuses multiply linked regular "
+                        "workspace files: "
+                        + ", ".join(str(path) for path in hardlink_violations)
+                    )
+                descendant_mounts = _workspace_descendant_mountpoints(workspace)
+                if descendant_mounts:
+                    raise _AgentRouteEffectDenied(
+                        "Codex fallback refuses descendant workspace "
+                        "mountpoints: "
+                        + ", ".join(str(path) for path in descendant_mounts)
+                    )
+                if (
+                    _workspace_content_fingerprint(workspace)
+                    != workspace_baseline
+                ):
+                    raise _AgentRouteEffectDenied(
+                        "workspace changed after the typed Grok preflight"
+                    )
+                fresh_route = resolve_agent_implementation_route_binding(
+                    route_plan.as_binding_dict(),
+                    repo_root=workspace,
+                )
+                if _repository_head(workspace) != route_repository_head:
+                    raise _AgentRouteEffectDenied(
+                        "agent implementation route HEAD drifted"
+                    )
+                effect_decision = decide_agent_implementation_fallback(
+                    fresh_route,
+                    repo_root=workspace,
+                    failure_receipt=preflight_receipt,
+                    expected_nonce=preflight_nonce,
+                    expected_model=model,
+                    expected_probe_returncode=preflight_returncode,
+                    independent_quota_evidence=preflight_quota_evidence,
+                )
+                if not effect_decision.authorized:
+                    raise _AgentRouteEffectDenied(
+                        "canonical typed fallback decision is no longer "
+                        "authorized"
+                    )
+                _validate_codex_quota_fallback_command(
+                    codex_fallback_command,
+                    workspace=workspace,
+                    required_reasoning_effort=(
+                        fresh_route.fallback_reasoning_effort
+                    ),
+                )
+            except _AgentRouteEffectDenied:
+                raise
+            except (OSError, ValueError) as exc:
+                raise _AgentRouteEffectDenied(str(exc)) from exc
+            outcome_route = fresh_route
+            effect_verifier_status = effect_decision.verifier_status
+
+        try:
+            validate_effect_boundary()
+        except _AgentRouteEffectDenied as exc:
+            print(
+                "Canonical route authority changed before fallback: "
+                f"{exc}; Codex fallback is forbidden",
+                file=sys.stderr,
+            )
+            print(
+                render_grok_route_outcome(
+                    build_grok_route_outcome(
+                        receipt=preflight_receipt,
+                        route_plan=outcome_route.as_binding_dict(),
+                        quota_evidence_id=str(
+                            getattr(
+                                preflight_quota_evidence,
+                                "evidence_id",
+                                "",
+                            )
+                        ),
+                        decision="denied",
+                        verifier_status=effect_verifier_status,
+                        fallback_dispatched=False,
+                        fallback_returncode=None,
+                    )
+                ),
+                file=sys.stderr,
+            )
+            return preflight_returncode
+
+        print(
+            "Grok "
+            + preflight_fallback_reason
+            + "; invoking the pinned Terra fallback",
+            file=sys.stderr,
+        )
+        try:
+            fallback_returncode = _run_codex_quota_fallback_in_docker(
+                codex_fallback_command,
+                workspace=workspace,
+                prompt=prompt,
+                prompt_path=prompt_file,
+                base_env=os.environ.copy(),
+                pre_effect_validator=validate_effect_boundary,
+            )
+            print(
+                render_grok_route_outcome(
+                    build_grok_route_outcome(
+                        receipt=preflight_receipt,
+                        route_plan=outcome_route.as_binding_dict(),
+                        quota_evidence_id=str(
+                            getattr(
+                                preflight_quota_evidence,
+                                "evidence_id",
+                                "",
+                            )
+                        ),
+                        decision=(
+                            "fallback_succeeded"
+                            if fallback_returncode == 0
+                            else "fallback_failed"
+                        ),
+                        verifier_status=effect_verifier_status,
+                        fallback_dispatched=True,
+                        fallback_returncode=fallback_returncode,
+                    )
+                ),
+                file=sys.stderr,
+            )
+            return fallback_returncode
+        except _AgentRouteEffectDenied as exc:
+            print(
+                "Canonical route authority changed at the provider effect "
+                f"boundary: {exc}; Codex fallback is forbidden",
+                file=sys.stderr,
+            )
+            print(
+                render_grok_route_outcome(
+                    build_grok_route_outcome(
+                        receipt=preflight_receipt,
+                        route_plan=outcome_route.as_binding_dict(),
+                        quota_evidence_id=str(
+                            getattr(
+                                preflight_quota_evidence,
+                                "evidence_id",
+                                "",
+                            )
+                        ),
+                        decision="denied",
+                        verifier_status=effect_verifier_status,
+                        fallback_dispatched=False,
+                        fallback_returncode=None,
+                    )
+                ),
+                file=sys.stderr,
+            )
+            return preflight_returncode
+        except (OSError, ValueError) as exc:
+            print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
+            print(
+                render_grok_route_outcome(
+                    build_grok_route_outcome(
+                        receipt=preflight_receipt,
+                        route_plan=outcome_route.as_binding_dict(),
+                        quota_evidence_id=str(
+                            getattr(
+                                preflight_quota_evidence,
+                                "evidence_id",
+                                "",
+                            )
+                        ),
+                        decision="fallback_failed",
+                        verifier_status=effect_verifier_status,
+                        fallback_dispatched=False,
+                        fallback_returncode=127,
+                    )
+                ),
+                file=sys.stderr,
+            )
+            return 127
+
     prompt = sys.stdin.read()
     if not prompt.strip():
         print("empty implementation prompt on stdin", file=sys.stderr)
@@ -3230,7 +3704,6 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     docker_lease: _DockerContainerLease | None = None
     docker_run_finished = False
     grok_launch_env: dict[str, str] = {}
-    workspace_baseline = ""
     command_environment_stack = ExitStack()
     try:
         with tempfile.NamedTemporaryFile(
@@ -3242,6 +3715,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         ) as handle:
             handle.write(prompt)
             prompt_path = handle.name
+
+        if preflight_fallback_reason:
+            # The fixed preflight has already established that the primary
+            # cannot run.  Do not select a task-Grok sandbox, image, home, or
+            # lease before entering the separately pinned Codex boundary.
+            return run_authorized_preflight_fallback(
+                prompt=prompt,
+                prompt_file=Path(prompt_path),
+            )
 
         required_commands = [
             str(os.environ.get(PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV) or ""),
@@ -3474,7 +3956,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         os.chdir(workspace)
         # Without an authorized Codex fallback, project typed quota receipts and
         # exit. With a fallback, take the workspace-fenced + independent-verify
-        # path so Terra/medium may run only after verified hard-quota evidence.
+        # path so Terra may run only after verified typed provider evidence.
         if not codex_fallback_command:
             child_returncode, error_bytes, error_size, error_overflow = (
                 _run_grok_with_bounded_stderr(cmd, env=env)
@@ -3521,12 +4003,6 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 else child_returncode
             )
 
-        try:
-            workspace_baseline = _workspace_content_fingerprint(workspace)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-        failure_type = ""
         output_index = cmd.index("--output-format") + 1
         cmd[output_index] = "streaming-json"
         try:
@@ -3541,71 +4017,20 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         if primary_returncode == 0:
             return primary_returncode
 
-        try:
-            workspace_after_primary = _workspace_content_fingerprint(workspace)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return primary_returncode
-        if workspace_after_primary != workspace_baseline:
+        if preflight_nonce:
             print(
-                "Grok changed the workspace before failing; Codex fallback is "
-                "forbidden until the supervisor restores a clean attempt",
+                "Task Grok failed after a successful typed preflight; the "
+                "canonical pre-effect route does not authorize post-dispatch "
+                "Codex fallback",
                 file=sys.stderr,
             )
             return primary_returncode
-
-        failure_type = _terminal_grok_failure_type_from_isolated_home(
-            Path(grok_launch_env["GROK_HOME"]),
-            expected_session_id=primary_session_id,
-        )
-        if failure_type not in GROK_QUOTA_ERROR_TYPES:
-            print(
-                "Grok CLI failed without a terminal-correlated native quota "
-                "record; Codex fallback is forbidden",
-                file=sys.stderr,
-            )
-            return primary_returncode
-
-        verifier_failure_type = _independently_verify_grok_quota(
-            grok_bin=grok_bin,
-            base_env=os.environ.copy(),
-        )
-        if verifier_failure_type != failure_type:
-            print(
-                "Independent pinned Grok-4.5 verifier did not confirm the "
-                "same quota failure; Codex fallback is forbidden",
-                file=sys.stderr,
-            )
-            return primary_returncode
-
-        try:
-            workspace_before_fallback = _workspace_content_fingerprint(workspace)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return primary_returncode
-        if workspace_before_fallback != workspace_baseline:
-            print(
-                "The workspace changed while Grok quota was being verified; "
-                "Codex fallback is forbidden",
-                file=sys.stderr,
-            )
-            return primary_returncode
-
         print(
-            "Grok quota exhausted; invoking the pinned Terra/medium fallback",
+            "Direct no-nonce Grok failure cannot authorize cross-provider "
+            "fallback; use a canonical nonce-bound route",
             file=sys.stderr,
         )
-        try:
-            return _run_codex_quota_fallback_in_docker(
-                codex_fallback_command,
-                workspace=workspace,
-                prompt=prompt,
-                prompt_path=Path(prompt_path),
-                base_env=os.environ.copy(),
-            )
-        except (OSError, ValueError) as exc:
-            print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
-            return 127
+        return primary_returncode
     finally:
         command_environment_stack.close()
         if docker_lease is not None:
@@ -3680,6 +4105,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="",
         help="Internal 256-bit nonce binding a runner-owned failure receipt.",
     )
+    parser.add_argument(
+        "--agent-implementation-route-json",
+        default="",
+        help="Internal frozen llm_router side-effecting route binding.",
+    )
+    parser.add_argument(
+        CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG,
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(GROK_INVOCATION_ID_FLAG, default="")
     parser.add_argument(GROK_INVOCATION_BINDING_FLAG, default="")
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
@@ -3691,8 +4126,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     receipt_fd = _receipt_fd_from_environment()
 
-    # Delegate to the full isolation/fallback implementation. Terra/medium is
-    # only dispatched after terminal quota correlation + independent verify.
+    # Delegate to the full isolation/fallback implementation. Terra is
+    # dispatched only after typed preflight auth/quota evidence or terminal
+    # quota correlation plus independent verification.
     try:
         try:
             return _run(args, receipt_fd)

@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ...llm_router import (
+    AgentImplementationRoutePlan,
+    load_agent_implementation_route_authorization,
+    resolve_agent_implementation_route,
+)
 from .multi_supervisor_runner import (
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
@@ -49,6 +54,28 @@ CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 )
+ROUTE_BOARD_NAMESPACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
+)
+ROUTE_AUTHORIZATION_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH"
+)
+ROUTE_AUTHORIZATION_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256"
+)
+ROUTE_AUTHORIZATION_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID"
+)
+ROUTE_AUTHORIZATION_KIND_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND"
+)
+ROUTE_SOURCE_HEAD_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
+)
+ROUTE_SOURCE_TREE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE"
+)
+ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 SCHEDULER_PROVIDER_ENV_NAMES = (
     PROVIDER_ENV,
     FALLBACK_PROVIDER_ENV,
@@ -56,6 +83,14 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
+    ROUTE_BOARD_NAMESPACE_ENV,
+    ROUTE_AUTHORIZATION_PATH_ENV,
+    ROUTE_AUTHORIZATION_SHA256_ENV,
+    ROUTE_AUTHORIZATION_ID_ENV,
+    ROUTE_AUTHORIZATION_KIND_ENV,
+    ROUTE_SOURCE_HEAD_ENV,
+    ROUTE_SOURCE_TREE_ENV,
+    ROUTE_ID_ENV,
 )
 ORDERED_PROVIDER_FIELDS = (
     "primary_provider_id",
@@ -65,16 +100,45 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_trigger",
     "fallback_reasoning_effort",
 )
-ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
-ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
-ORDERED_FALLBACK_PROVIDER_ID = "codex"
-ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
-ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
-ORDERED_FALLBACK_REASONING_EFFORT = "medium"
+ROUTE_AUTHORIZATION_PATH_FIELD = "route_authorization_path"
 
 
 class ConfiguredBoardError(ValueError):
     """The scheduler document or its repository binding is inadmissible."""
+
+
+def _resolved_ordered_provider_route(
+    provider: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    board_namespace: str,
+) -> AgentImplementationRoutePlan:
+    """Resolve scheduler profile input through the canonical router policy."""
+
+    values = {
+        field: _provider_string(provider, field)
+        for field in ORDERED_PROVIDER_FIELDS
+    }
+    authorization = None
+    authorization_path = str(
+        provider.get(ROUTE_AUTHORIZATION_PATH_FIELD) or ""
+    ).strip()
+    if authorization_path:
+        try:
+            authorization = load_agent_implementation_route_authorization(
+                repo_root=repo_root,
+                artifact_path=authorization_path,
+                board_namespace=board_namespace,
+            )
+        except (OSError, ValueError) as exc:
+            raise ConfiguredBoardError(str(exc)) from exc
+    try:
+        return resolve_agent_implementation_route(
+            **values,
+            authorization=authorization,
+        )
+    except ValueError as exc:
+        raise ConfiguredBoardError(str(exc)) from exc
 
 
 def _reject_duplicate_keys(
@@ -383,62 +447,16 @@ def load_configured_board(
         raise ConfiguredBoardError("provider must be an object")
     ordered_provider = any(field in provider for field in ORDERED_PROVIDER_FIELDS)
     if ordered_provider:
-        primary_provider_id = _provider_string(
-            provider,
-            "primary_provider_id",
-        )
-        primary_model_id = _provider_string(provider, "primary_model_id")
-        fallback_provider_id = _provider_string(
-            provider,
-            "fallback_provider_id",
-        )
-        fallback_model_id = _provider_string(provider, "fallback_model_id")
-        fallback_trigger = _provider_string(
-            provider,
-            "fallback_trigger",
-        )
-        fallback_reasoning_effort = _provider_string(
-            provider,
-            "fallback_reasoning_effort",
-        )
-        if primary_provider_id != ORDERED_PRIMARY_PROVIDER_ID:
-            raise ConfiguredBoardError(
-                "provider.primary_provider_id must be 'grok_cli' for "
-                "the ordered provider contract"
-            )
-        if primary_model_id != ORDERED_PRIMARY_MODEL_ID:
-            raise ConfiguredBoardError(
-                "provider.primary_model_id must be 'grok-4.5' for "
-                "the ordered provider contract"
-            )
-        if fallback_provider_id != ORDERED_FALLBACK_PROVIDER_ID:
-            raise ConfiguredBoardError(
-                "provider.fallback_provider_id must be 'codex' for "
-                "the ordered provider contract"
-            )
-        if fallback_model_id != ORDERED_FALLBACK_MODEL_ID:
-            raise ConfiguredBoardError(
-                "provider.fallback_model_id must be 'gpt-5.6-terra' for "
-                "the ordered provider contract"
-            )
-        if fallback_trigger != ORDERED_FALLBACK_TRIGGER:
-            raise ConfiguredBoardError(
-                "provider.fallback_trigger must be "
-                "'primary_quota_exhausted' for the ordered provider contract"
-            )
-        if (
-            fallback_reasoning_effort
-            != ORDERED_FALLBACK_REASONING_EFFORT
-        ):
-            raise ConfiguredBoardError(
-                "provider.fallback_reasoning_effort must be 'medium' for "
-                "the ordered provider contract"
-            )
         if "provider_id" in provider or "model_id" in provider:
             raise ConfiguredBoardError(
                 "ordered provider fields cannot be mixed with legacy "
                 "provider_id/model_id"
             )
+        _resolved_ordered_provider_route(
+            provider,
+            repo_root=root,
+            board_namespace=board_namespace,
+        )
     else:
         provider_id = _optional_provider_string(
             provider,
@@ -995,20 +1013,12 @@ def configured_board_launch_plan(
     provider = provider if isinstance(provider, dict) else {}
     ordered_provider = any(field in provider for field in ORDERED_PROVIDER_FIELDS)
     if ordered_provider:
-        environment = {
-            PROVIDER_ENV: str(provider["primary_provider_id"]).strip(),
-            FALLBACK_PROVIDER_ENV: str(
-                provider["fallback_provider_id"]
-            ).strip(),
-            FALLBACK_TRIGGER_ENV: str(
-                provider["fallback_trigger"]
-            ).strip(),
-            GROK_MODEL_ENV: str(provider["primary_model_id"]).strip(),
-            CODEX_MODEL_ENV: str(provider["fallback_model_id"]).strip(),
-            CODEX_REASONING_EFFORT_ENV: str(
-                provider["fallback_reasoning_effort"]
-            ).strip(),
-        }
+        route_plan = _resolved_ordered_provider_route(
+            provider,
+            repo_root=board.repo_root,
+            board_namespace=board.board_namespace,
+        )
+        environment = route_plan.as_environment()
     else:
         provider_id = str(provider.get("provider_id") or "").strip()
         model_id = str(provider.get("model_id") or "").strip()

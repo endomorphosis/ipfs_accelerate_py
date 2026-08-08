@@ -27,6 +27,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
+from ...llm_router import (
+    AgentImplementationRoutePlan,
+    load_agent_implementation_route_authorization,
+    resolve_agent_implementation_route,
+    resolve_agent_implementation_route_binding,
+)
+
 from .. import implementation_timeout as _implementation_timeout
 from ..context.context_compiler import (
     ContextCompilationReceipt,
@@ -64,8 +71,10 @@ from .implementation_timeout import (
 )
 from ..runtime.provider_failure_policy import (
     extract_grok_failure_receipts,
+    extract_grok_route_outcomes,
     valid_grok_failure_receipt,
     valid_grok_hard_quota_receipt,
+    valid_grok_route_outcome,
 )
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -568,6 +577,34 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+)
+_ROUTE_BOARD_NAMESPACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
+)
+_ROUTE_AUTHORIZATION_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH"
+)
+_ROUTE_AUTHORIZATION_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256"
+)
+_ROUTE_AUTHORIZATION_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID"
+)
+_ROUTE_AUTHORIZATION_KIND_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND"
+)
+_ROUTE_SOURCE_HEAD_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
+)
+_ROUTE_SOURCE_TREE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE"
+)
+_ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 # Legacy production-route toggles retained as env names for test/operator
 # cleanup only. Automatic routing is always on for supported providers.
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
@@ -1685,21 +1722,25 @@ def _grok_cli_command(
     workspace_path: Path,
     model_override: str | None = None,
     failure_receipt_nonce: str = "",
+    allow_auth_unavailable_fallback: bool = False,
+    fallback_reasoning_effort: str = "medium",
+    enable_codex_fallback: bool = True,
+    route_plan: AgentImplementationRoutePlan | None = None,
 ) -> list[str]:
-    """Build a Grok CLI agent command through the quota-routed runner.
+    """Build a Grok CLI agent command through the typed-failure runner.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
 
     When a trusted system Codex install is resolvable, attach the exact
-    Terra/medium fallback argv so a single Grok invocation may fall through
-    only after independently verified hard-quota exhaustion. Codex is never
+    Terra fallback argv so a single Grok invocation may fall through only
+    after the runner validates the configured failure policy. Codex is never
     attached without that runner-owned authority gate.
     """
 
     if not _grok_binary():
         raise RuntimeError("grok CLI is not installed")
-    if not _grok_cli_available():
+    if not _grok_cli_available() and not allow_auth_unavailable_fallback:
         raise RuntimeError(
             "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
         )
@@ -1727,7 +1768,16 @@ def _grok_cli_command(
         grok_bin=grok,
         codex_bin=str(shutil.which("codex") or ""),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
+        fallback_reasoning_effort=fallback_reasoning_effort,
+        enable_codex_fallback=enable_codex_fallback,
     )
+    if (
+        allow_auth_unavailable_fallback
+        and "--codex-fallback-command-json" not in command
+    ):
+        raise RuntimeError(
+            "typed Grok authentication fallback requires a trusted Codex CLI"
+        )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.5":
         if "--model" in command:
@@ -1737,6 +1787,17 @@ def _grok_cli_command(
     if failure_receipt_nonce:
         command.extend(
             ["--grok-failure-receipt-nonce", failure_receipt_nonce]
+        )
+    if route_plan is not None:
+        command.extend(
+            [
+                "--agent-implementation-route-json",
+                json.dumps(
+                    route_plan.as_binding_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
         )
     return command
 
@@ -1763,6 +1824,96 @@ _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.5"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
+
+
+def _configured_agent_implementation_route_plan(
+    repo_root: Path,
+) -> AgentImplementationRoutePlan | None:
+    """Resolve explicit daemon profile input through the canonical router."""
+
+    route_values = {
+        "primary_provider_id": os.environ.get(
+            IMPLEMENTATION_PROVIDER_ENV, ""
+        ).strip(),
+        "primary_model_id": os.environ.get(_GROK_MODEL_ENV, "").strip(),
+        "fallback_provider_id": os.environ.get(
+            IMPLEMENTATION_FALLBACK_PROVIDER_ENV, ""
+        ).strip(),
+        "fallback_model_id": os.environ.get(_CODEX_MODEL_ENV, "").strip(),
+        "fallback_trigger": os.environ.get(
+            IMPLEMENTATION_FALLBACK_TRIGGER_ENV, ""
+        ).strip(),
+        "fallback_reasoning_effort": os.environ.get(
+            _CODEX_REASONING_EFFORT_ENV, ""
+        ).strip(),
+    }
+    authorization_values = {
+        "board_namespace": os.environ.get(
+            _ROUTE_BOARD_NAMESPACE_ENV, ""
+        ).strip(),
+        "artifact_path": os.environ.get(
+            _ROUTE_AUTHORIZATION_PATH_ENV, ""
+        ).strip(),
+        "artifact_sha256": os.environ.get(
+            _ROUTE_AUTHORIZATION_SHA256_ENV, ""
+        ).strip(),
+        "authorization_id": os.environ.get(
+            _ROUTE_AUTHORIZATION_ID_ENV, ""
+        ).strip(),
+        "authorization_kind": os.environ.get(
+            _ROUTE_AUTHORIZATION_KIND_ENV, ""
+        ).strip(),
+        "source_head": os.environ.get(_ROUTE_SOURCE_HEAD_ENV, "").strip(),
+        "source_tree": os.environ.get(_ROUTE_SOURCE_TREE_ENV, "").strip(),
+        "route_id": os.environ.get(_ROUTE_ID_ENV, "").strip(),
+    }
+    if not any(route_values.values()) and not any(authorization_values.values()):
+        return None
+    authorization = None
+    if any(authorization_values.values()):
+        if not all(authorization_values.values()):
+            raise ValueError(
+                "scoped agent route authorization environment is incomplete"
+            )
+        authorization = load_agent_implementation_route_authorization(
+            repo_root=repo_root,
+            artifact_path=authorization_values["artifact_path"],
+            board_namespace=authorization_values["board_namespace"],
+            expected_sha256=authorization_values["artifact_sha256"],
+            expected_authorization_id=authorization_values[
+                "authorization_id"
+            ],
+        )
+        if (
+            authorization.authorization_kind
+            != authorization_values["authorization_kind"]
+            or authorization.source_head != authorization_values["source_head"]
+            or authorization.source_tree != authorization_values["source_tree"]
+        ):
+            raise ValueError("scoped agent route authorization binding drifted")
+    plan = resolve_agent_implementation_route(
+        **route_values,
+        authorization=authorization,
+    )
+    if authorization is not None and plan.route_id != authorization_values[
+        "route_id"
+    ]:
+        raise ValueError("scoped agent implementation route identity drifted")
+    return plan
+
+
+def _ordered_grok_codex_route_configured(
+    repo_root: Path | None = None,
+) -> bool:
+    """Compatibility audit helper for the scoped auth/quota route."""
+
+    try:
+        plan = _configured_agent_implementation_route_plan(
+            Path.cwd() if repo_root is None else repo_root
+        )
+    except (OSError, ValueError):
+        return False
+    return bool(plan and plan.permits_authentication_unavailable)
 GROK_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {
         "grok",
@@ -12579,12 +12730,6 @@ class PortalImplementationDaemon:
                 )
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
-        classified = classify_provider_capacity_failure(
-            text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
-        )
         command_items = [str(item) for item in command]
 
         def command_value(flag: str) -> str:
@@ -12598,61 +12743,75 @@ class PortalImplementationDaemon:
 
         receipt_nonce = command_value("--grok-failure-receipt-nonce")
         primary_model = command_value("--model")
-        valid_probe_receipt = False
         if returncode is not None and receipt_nonce and primary_model:
-            for receipt in reversed(
-                extract_grok_failure_receipts(receipt_text)
-            ):
-                if not valid_grok_failure_receipt(
-                    receipt,
-                    nonce=receipt_nonce,
-                    model=primary_model,
-                    returncode=returncode,
+            audit: dict[str, Any] = {
+                "exhausted": False,
+                "providers": [],
+                "reason": "",
+            }
+            binding_raw = command_value("--agent-implementation-route-json")
+            try:
+                binding = json.loads(binding_raw)
+                if not isinstance(binding, dict):
+                    return audit
+                route_plan = resolve_agent_implementation_route_binding(
+                    binding,
+                    repo_root=self.repo_root,
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                return audit
+            valid_receipts = []
+            for receipt in extract_grok_failure_receipts(receipt_text):
+                probe_returncode = receipt.get("probe_returncode")
+                if (
+                    not isinstance(probe_returncode, int)
+                    or isinstance(probe_returncode, bool)
+                    or not valid_grok_failure_receipt(
+                        receipt,
+                        nonce=receipt_nonce,
+                        model=primary_model,
+                        returncode=probe_returncode,
+                    )
                 ):
                     continue
-                valid_probe_receipt = True
-                failure_class = str(
-                    receipt.get("failure_class") or "unknown"
-                )
-                classified.update(
+                valid_receipts.append(receipt)
+            valid_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+            for receipt in valid_receipts:
+                for outcome in extract_grok_route_outcomes(receipt_text):
+                    if valid_grok_route_outcome(
+                        outcome,
+                        receipt=receipt,
+                        route_plan=route_plan.as_binding_dict(),
+                        runner_returncode=returncode,
+                    ):
+                        valid_pairs.append((receipt, outcome))
+            # Auth/high fallback is the same logical attempt. Every nonzero
+            # outcome categorically bypasses provider-capacity restoration;
+            # the sole valid terminal pair is retained only as audit evidence.
+            if len(valid_pairs) == 1:
+                receipt, outcome = valid_pairs[0]
+                audit.update(
                     {
-                        "exhausted": True,
-                        "providers": ["grok"],
-                        "reason": "provider_capacity_exhausted",
-                        "failure_class": failure_class,
+                        "route_outcome": dict(outcome),
+                        "route_outcome_id": str(
+                            outcome.get("outcome_id") or ""
+                        ),
                         "quota_probe_receipt": dict(receipt),
                         "quota_probe_receipt_id": str(
                             receipt.get("receipt_id") or ""
                         ),
-                        "quota_probe_evidence_sha256": str(
-                            receipt.get("evidence_sha256") or ""
+                        "failure_class": str(
+                            receipt.get("failure_class") or "unknown"
                         ),
                     }
                 )
-                if valid_grok_hard_quota_receipt(
-                    receipt,
-                    nonce=receipt_nonce,
-                    model=primary_model,
-                    returncode=returncode,
-                ):
-                    classified.update(
-                        {
-                            "hard_quota_exhausted_providers": ["grok"],
-                            "hard_quota_evidence_sha256": str(
-                                receipt.get("evidence_sha256") or ""
-                            ),
-                        }
-                    )
-                break
-            if not valid_probe_receipt:
-                # Automatic Grok task output is model-controlled. It may
-                # contain quota-looking text, but only the isolated preflight
-                # receipt can classify that command as provider capacity.
-                return {
-                    "exhausted": False,
-                    "providers": [],
-                    "reason": "",
-                }
+            return audit
+        classified = classify_provider_capacity_failure(
+            text,
+            provider_labels=_provider_labels_from_implementation_command(
+                command
+            ),
+        )
         if not classified["exhausted"]:
             return classified
         if classified.get("failure_class") == "hard_quota_exhausted":
@@ -47516,6 +47675,12 @@ class PortalImplementationDaemon:
     def _implementation_context_window(self, task: PortalTask) -> int:
         return self._configured_implementation_provider_context_window(task)
 
+    @staticmethod
+    def _ordered_grok_codex_route_configured() -> bool:
+        """Expose the exact sealed route check for launch-time auditing."""
+
+        return _ordered_grok_codex_route_configured()
+
     def _require_primary_provider_readiness(
         self,
         task: PortalTask | None,
@@ -47523,6 +47688,56 @@ class PortalImplementationDaemon:
         """Defer before prompt/worktree dispatch when Grok primary is absent."""
 
         declared_provider = self._task_declared_implementation_provider(task)
+        try:
+            route_plan = _configured_agent_implementation_route_plan(
+                Path(self.repo_root)
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"invalid sealed implementation route: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if route_plan and route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                if _grok_cli_available() and _grok_binary():
+                    return
+                raise ImplementationRetryDeferred(
+                    "explicit Grok-only task requires authenticated Grok CLI",
+                    backoff_seconds=300,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if _grok_binary() and shutil.which("codex"):
+                # Authentication is intentionally not a readiness condition
+                # for this exact route. The fixed runner preflight turns a
+                # missing/expired credential into a typed, nonce-bound receipt
+                # before the task prompt and may then enter Terra/high.
+                return
+            raise ImplementationRetryDeferred(
+                "sealed Grok/Codex route requires both pinned provider CLIs",
+                backoff_seconds=300,
+            )
         if self.implementation_command and not declared_provider:
             return
         if (
@@ -47630,11 +47845,7 @@ class PortalImplementationDaemon:
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
-        if self.implementation_command and not declared_provider:
-            return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command and not declared_provider:
-            return shlex.split(env_command)
 
         configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
@@ -47649,6 +47860,62 @@ class PortalImplementationDaemon:
                 f"Unsupported implementation provider {provider!r}; "
                 "automatic routing fails closed on unknown values"
             )
+        try:
+            route_plan = _configured_agent_implementation_route_plan(
+                Path(self.repo_root)
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"invalid sealed implementation route: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if route_plan and route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    enable_codex_fallback=False,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if not _grok_binary():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route requires the pinned Grok CLI",
+                    backoff_seconds=300,
+                )
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=route_plan.primary_model_id,
+                failure_receipt_nonce=secrets.token_hex(32),
+                allow_auth_unavailable_fallback=True,
+                fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+                route_plan=route_plan,
+            )
+        if self.implementation_command and not declared_provider:
+            return shlex.split(self.implementation_command)
+        if env_command and not declared_provider:
+            return shlex.split(env_command)
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
         prefer_grok = provider in {
@@ -47807,10 +48074,14 @@ class PortalImplementationDaemon:
             except Exception:
                 pass
             if auto_selection.decision is AutoProviderDecision.GROK:
+                legacy_route_plan = resolve_agent_implementation_route(
+                    default_route="legacy"
+                )
                 return _grok_cli_command(
                     workspace_path=workspace_path,
                     model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
                     failure_receipt_nonce=secrets.token_hex(32),
+                    route_plan=legacy_route_plan,
                 )
             if auto_selection.decision is AutoProviderDecision.CLAUDE:
                 if not automatic_family_allowed("claude"):

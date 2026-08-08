@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     load_configured_board,
 )
@@ -23,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     PROMPT_V3_TASKBOARD_RELATIVE_PATH,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
+    PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
     CurrentMainBaseline,
     RescueDispositionReport,
     validate_convergence_artifacts,
@@ -214,6 +216,416 @@ def test_rebound_post_wave3_authority_and_provider_tampering_fails_closed(
 
     assert report.valid is False
     assert any(error_fragment in error for error in report.errors)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "error_fragment"),
+    (
+        (
+            "authorization_source",
+            "source_head",
+            "0" * 40,
+            "authorization_source.source_head: expected",
+        ),
+        (
+            "authorization_source",
+            "prospective_only",
+            False,
+            "authorization_source.prospective_only: expected True",
+        ),
+        (
+            "route",
+            "route_id",
+            "global-ambient-route",
+            (
+                "route.route_id: expected 'agent-supervisor-prompt-v3-grok45-"
+                "terra56-high-auth-or-hard-quota-v1'"
+            ),
+        ),
+        (
+            "route",
+            "fallback_reasoning_effort",
+            "medium",
+            "route.fallback_reasoning_effort: expected 'high'",
+        ),
+        (
+            "route",
+            "allowed_trigger_classes",
+            ["grok_authentication_unavailable", "rate_limit"],
+            "route.allowed_trigger_classes: expected",
+        ),
+        (
+            "ownership_contract",
+            "canonical_route_plan_owner",
+            "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
+            (
+                "ownership_contract.canonical_route_plan_owner: expected "
+                "'ipfs_accelerate_py.llm_router'"
+            ),
+        ),
+        (
+            "ownership_contract",
+            "typed_fallback_decision_owner",
+            "implementation_daemon",
+            (
+                "ownership_contract.typed_fallback_decision_owner: expected "
+                "'ipfs_accelerate_py.llm_router'"
+            ),
+        ),
+        (
+            "ownership_contract",
+            "route_plan_and_decision_exports_required_before_bootstrap_dispatch",
+            False,
+            (
+                "route_plan_and_decision_exports_required_before_bootstrap_dispatch: "
+                "expected True"
+            ),
+        ),
+        (
+            "ownership_contract",
+            "route_authority_binding_fields",
+            ["board_namespace", "authorization_artifact_sha256"],
+            "ownership_contract.route_authority_binding_fields: expected",
+        ),
+        (
+            "ownership_contract",
+            "verified_authority_binding_must_reach_terminal_outcome_and_daemon_accounting",
+            False,
+            (
+                "verified_authority_binding_must_reach_terminal_outcome_and_daemon_accounting: "
+                "expected True"
+            ),
+        ),
+        (
+            "ownership_contract",
+            "ambient_six_field_route_profile_alone_authorizes_fallback",
+            True,
+            (
+                "ambient_six_field_route_profile_alone_authorizes_fallback: expected "
+                "False"
+            ),
+        ),
+        (
+            "ownership_contract",
+            "runner_role",
+            "route_policy_and_failure_classifier",
+            (
+                "ownership_contract.runner_role: expected "
+                "'isolation_process_effect_and_terminal_outcome_emitter'"
+            ),
+        ),
+        (
+            "ownership_contract",
+            "daemon_role",
+            "provider_failure_reclassification",
+            "ownership_contract.daemon_role: expected 'task_retry_accounting_only'",
+        ),
+        (
+            "ownership_contract",
+            "scheduler_role",
+            "route_policy_owner",
+            "ownership_contract.scheduler_role: expected 'route_profile_input_only'",
+        ),
+        (
+            "ownership_contract",
+            "duplicate_route_policy_or_failure_classification_outside_router_allowed",
+            True,
+            (
+                "duplicate_route_policy_or_failure_classification_outside_router_allowed: "
+                "expected False"
+            ),
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "fallback_dispatch_scope",
+            "once_per_host_forever",
+            (
+                "bootstrap_route_guarantees.fallback_dispatch_scope: expected "
+                "'once_per_runner_same_daemon_attempt'"
+            ),
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "direct_auth_signal_allowlist",
+            ["not signed in", "not authenticated", "forbidden"],
+            "bootstrap_route_guarantees.direct_auth_signal_allowlist: expected",
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "ambiguous_direct_auth_signals_denied",
+            ["401", "403"],
+            "ambiguous_direct_auth_signals_denied: expected",
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "ambiguous_signal_may_continue_only_as_independently_confirmed_hard_quota",
+            False,
+            (
+                "ambiguous_signal_may_continue_only_as_independently_confirmed_hard_quota: "
+                "expected True"
+            ),
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "hard_quota_independent_confirmation_required",
+            False,
+            "hard_quota_independent_confirmation_required: expected True",
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "explicit_codex_review_conflict_denied",
+            False,
+            "explicit_codex_review_conflict_denied: expected True",
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "durable_cross_process_restart_reservation_present",
+            True,
+            "durable_cross_process_restart_reservation_present: expected False",
+        ),
+        (
+            "bootstrap_route_guarantees",
+            "full_signed_field_equality_present",
+            True,
+            "full_signed_field_equality_present: expected False",
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "durable_cross_process_restart_once_only_cas_required",
+            False,
+            "durable_cross_process_restart_once_only_cas_required: expected True",
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "auth_signal_policy_expansion_requires_signed_typed_policy",
+            False,
+            "auth_signal_policy_expansion_requires_signed_typed_policy: expected True",
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "canonical_route_plan_and_typed_decision_must_remain_router_owned",
+            False,
+            (
+                "canonical_route_plan_and_typed_decision_must_remain_router_owned: "
+                "expected True"
+            ),
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "provider_capacity_attempt_restoration_must_remain_denied",
+            False,
+            (
+                "provider_capacity_attempt_restoration_must_remain_denied: expected "
+                "True"
+            ),
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "signed_reviewer_identity_and_provider_required",
+            False,
+            "signed_reviewer_identity_and_provider_required: expected True",
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "fallback_implementer_and_reviewer_must_differ",
+            False,
+            "fallback_implementer_and_reviewer_must_differ: expected True",
+        ),
+        (
+            "ase3_019_completion_requirements",
+            "signed_equality_fields",
+            ["invocation", "task", "prompt", "scope", "budget", "authority"],
+            "ase3_019_completion_requirements.signed_equality_fields: expected",
+        ),
+        (
+            "external_docker_boundary",
+            "image_id",
+            "sha256:" + "0" * 64,
+            "external_docker_boundary.image_id: expected",
+        ),
+        (
+            "external_docker_boundary",
+            "workspace_is_only_writable_bind_mount",
+            False,
+            "workspace_is_only_writable_bind_mount: expected True",
+        ),
+        (
+            "denials",
+            "arbitrary_error_fallback_allowed",
+            True,
+            "denials.arbitrary_error_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "rate_limit_fallback_allowed",
+            True,
+            "denials.rate_limit_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "transport_error_fallback_allowed",
+            True,
+            "denials.transport_error_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "invalid_request_fallback_allowed",
+            True,
+            "denials.invalid_request_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "unknown_error_fallback_allowed",
+            True,
+            "denials.unknown_error_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "post_effect_fallback_allowed",
+            True,
+            "denials.post_effect_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "workspace_changed_before_fallback_allowed",
+            True,
+            "workspace_changed_before_fallback_allowed: expected False",
+        ),
+        (
+            "denials",
+            "attempt_counter_mutation_authorized",
+            True,
+            "attempt_counter_mutation_authorized: expected False",
+        ),
+        (
+            "denials",
+            "provider_capacity_attempt_restoration_allowed",
+            True,
+            "provider_capacity_attempt_restoration_allowed: expected False",
+        ),
+        (
+            "denials",
+            "legacy_objective_refill_authorized",
+            True,
+            "legacy_objective_refill_authorized: expected False",
+        ),
+        (
+            "denials",
+            "legacy_codebase_refill_authorized",
+            True,
+            "legacy_codebase_refill_authorized: expected False",
+        ),
+        (
+            "historical_evidence",
+            "post_wave3_residual_report_is_immutable",
+            False,
+            "post_wave3_residual_report_is_immutable: expected True",
+        ),
+    ),
+)
+def test_rebound_provider_fallback_authorization_tampering_fails_closed(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    value: object,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    path = root / PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME
+    payload = _load(path)
+    block = payload[section]
+    assert isinstance(block, dict)
+    block[field] = value
+    _write(path, payload)
+    _rebind_component_digest(root, path.name)
+
+    report = validate_convergence_artifacts(root, check_repository=False)
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
+def test_ase3_019_cannot_downgrade_terra_reasoning_or_auth_fallback(
+    tmp_path: Path,
+) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = (
+        "exactly one concurrent or restarted worker automatically admits a "
+        "matching pre-effect Codex `gpt-5.6-terra` fallback at `high` reasoning"
+    )
+    replacement = (
+        "exactly one concurrent or restarted worker requires reauthentication "
+        "before a Codex `gpt-5.6-terra` fallback at `medium` reasoning"
+    )
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert (
+        "provider_fallback_task_contract.ASE3-019.acceptance: exact automatic "
+        "auth/quota fallback contract required"
+    ) in report.errors
+
+
+def test_ase3_019_cannot_move_route_policy_outside_llm_router(
+    tmp_path: Path,
+) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = (
+        "Export an immutable canonical implementation route plan and typed "
+        "fallback decision from `ipfs_accelerate_py.llm_router` as the sole "
+        "provider-policy source"
+    )
+    replacement = (
+        "Let the runner and daemon independently choose implementation routes "
+        "and fallback decisions"
+    )
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert (
+        "provider_fallback_task_contract.ASE3-019.effects: exact automatic "
+        "auth/quota fallback contract required"
+    ) in report.errors
+
+
+def test_ase3_019_must_name_llm_router_and_its_dedicated_route_test(
+    tmp_path: Path,
+) -> None:
+    taskboard_path = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = "- Outputs: ipfs_accelerate_py/llm_router.py, "
+    replacement = "- Outputs: "
+    assert text.count(needle) == 1
+    taskboard_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard_path,
+    )
+
+    assert report.valid is False
+    assert (
+        "provider_fallback_task_contract.ASE3-019.outputs: exact "
+        "llm_router-owned route surface required"
+    ) in report.errors
 
 
 def test_reload_gate_rejects_a_removed_blocked_reason(tmp_path: Path) -> None:
@@ -733,10 +1145,10 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
     portable_taskboard_path = portable / PROMPT_V3_TASKBOARD_RELATIVE_PATH
     portable_taskboard_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(TASKBOARD_PATH, portable_taskboard_path)
-    residual = _load(root / POST_WAVE3_RESIDUAL_FILENAME)
-    residual_repository = residual["repository"]
-    assert isinstance(residual_repository, dict)
-    report_head = str(residual_repository["head"])
+    authorization = _load(root / PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME)
+    authorization_source = authorization["authorization_source"]
+    assert isinstance(authorization_source, dict)
+    authorization_head = str(authorization_source["source_head"])
     seed_tree = str(seed["tree"])
     descendant = subprocess.run(
         [
@@ -748,7 +1160,7 @@ def test_repository_validation_is_portable_to_an_alternate_descendant_worktree(
             "commit-tree",
             seed_tree,
             "-p",
-            report_head,
+            authorization_head,
             "-m",
             "portable descendant",
         ],

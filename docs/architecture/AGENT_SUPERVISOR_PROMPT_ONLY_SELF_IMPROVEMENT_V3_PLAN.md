@@ -338,11 +338,52 @@ Wave 8:            ASE3-013 self-hosted improvement canary
 Wave 9:            ASE3-014 canonical materialization and staged cutover
 ```
 
-Wave 3b starts only after the configured primary provider has a verified,
-non-expired local authentication record. Its ready set is deliberately
-three-way sharded: ASE3-006 to lane 0, ASE3-019 to lane 1, and ASE3-018 to
-lane 2. Once ASE3-006, ASE3-018, and ASE3-019 are all accepted, the bootstrap
-process tree must be fenced. ASE3-022 keeps ASE3-021
+Wave 3b starts only after the prospective operator authorization in
+`provider_fallback_policy_authorization_20260808.json` validates against its
+exact source HEAD/tree and this namespace. Each logical implementation attempt
+still tries Grok 4.5 first. The bootstrap route accepts only a nonce-bound
+typed authentication-unavailable finding, or a hard-quota finding plus
+independent confirmation, from the fixed no-tools primary probe; verifies that
+the pre-effect workspace fingerprint is unchanged; and dispatches exact Codex
+`gpt-5.6-terra` at `high` reasoning inside the pinned external Docker boundary
+at most once per runner in the same daemon attempt.
+Direct authentication fallback recognizes only the exact normalized signals
+`not signed in` and `not authenticated`. Bare or ambiguous `401`, `403`,
+`forbidden`, or `unauthorized` signals do not directly authorize authentication
+fallback; they may continue only when separately classified and independently
+confirmed as hard quota. ASE3-019 may expand the authentication signal policy
+only through its signed typed policy.
+Before any bootstrap dispatch, the canonical implementation route plan and the
+typed fallback decision must be owned and exported only by
+`ipfs_accelerate_py.llm_router`. The scheduler
+supplies an immutable route profile as input; the runner consumes the router's
+plan and decision and owns only isolation, process effects, and the terminal
+outcome; the daemon consumes that outcome and owns only task retry accounting.
+Provider/model/trigger/effort tuples, authentication and quota classification,
+and fallback allow/deny logic must not be independently duplicated in those
+layers. The canonical plan and terminal outcome must carry the verified board
+namespace, authorization-artifact SHA-256, authorization kind, source HEAD,
+and source tree into daemon accounting. The ambient six-field
+provider/model/trigger/effort route tuple is profile input only and cannot
+authorize fallback by itself. At bootstrap, a task that explicitly requires
+independent Codex review hard-denies Codex implementation fallback; no reviewer
+identity is inferred or fabricated. ASE3-019 must later bind a nonempty signed
+reviewer identity and provider and prove they differ from the chosen implementer.
+That bounded authorization lets Wave 3b proceed; it does not claim that the
+bootstrap daemon already has a durable cross-process/restart reservation or
+full signed invocation/task/prompt/scope/budget/authority/provider equality.
+ASE3-019 must implement and prove that durable once-only CAS, crash adoption,
+fresh typed evidence, and exact signed equality before it can be accepted.
+Arbitrary errors, rate limits, transport failures, invalid requests, unknown
+failures, a changed workspace, or post-effect evidence do not authorize
+fallback. The route neither charges nor repairs an attempt counter, including
+through provider-capacity restoration. The
+historical post-wave-3 residual report remains immutable evidence and is not
+reclassified by this prospective policy.
+
+The ready set is deliberately three-way sharded: ASE3-006 to lane 0, ASE3-019
+to lane 1, and ASE3-018 to lane 2. Once ASE3-006, ASE3-018, and ASE3-019 are all
+accepted, the bootstrap process tree must be fenced. ASE3-022 keeps ASE3-021
 machine-blocked while the old generation is stopped, receipted, and committed;
 the same namespace is then relaunched from that completion commit so the
 hardened provider-attempt daemon code is loaded. The legacy objective and

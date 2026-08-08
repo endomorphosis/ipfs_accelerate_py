@@ -13,7 +13,8 @@
     "historical_state_contradictions.json": "sha256:daa7f156a6a39806828a28b342d63b2039f433945253966bd05af988bb4d1ebb",
     "rescue_artifact_dispositions.json": "sha256:bf031cb53beed868889a365efdc683425f6367cf3e64451c20ea32e58fc26873",
     "clean_integration_worktree_receipt.json": "sha256:0d38a9066873e07b36f8077fe9d2edd652bc2a04d9415acc0a838ee3e4833c38",
-    "post_wave3_residuals_20260808.json": "sha256:4097fd0f0c886376817a4ab0f4dfd8d27a2197cc75f9ad15214827e0e45cbc6e"
+    "post_wave3_residuals_20260808.json": "sha256:4097fd0f0c886376817a4ab0f4dfd8d27a2197cc75f9ad15214827e0e45cbc6e",
+    "provider_fallback_policy_authorization_20260808.json": "sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2"
   },
   "population": {
     "rescue_commits": 36,
