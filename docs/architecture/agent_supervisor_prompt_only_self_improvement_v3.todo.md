@@ -202,7 +202,7 @@ Wave 9:            ASE3-014
 
 ## ASE3-007 Wire evidence-driven bounded goal and task refill
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
