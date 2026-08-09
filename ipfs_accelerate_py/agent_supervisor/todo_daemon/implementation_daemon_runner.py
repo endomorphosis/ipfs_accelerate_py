@@ -1152,6 +1152,7 @@ def build_portal_implementation_daemon_from_args(
     from .implementation_daemon import (
         DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         PortalImplementationDaemon,
+        resolve_daemon_database_program,
     )
 
     apply_merge_resolver_environment(parsed)
@@ -1166,8 +1167,35 @@ def build_portal_implementation_daemon_from_args(
         or default_implementation_protected_paths
         or None
     )
+    from .implementation_daemon import is_database_authority_mode
+
+    database_program = resolve_daemon_database_program(args=parsed)
+    coordination_database_path = getattr(
+        parsed, "coordination_database_path", None
+    )
+    if (
+        coordination_database_path is None
+        and database_program is not None
+        and is_database_authority_mode(
+            getattr(database_program, "authority_mode", "")
+        )
+    ):
+        coordination_database_path = (
+            Path(parsed.state_dir) / "coordination.duckdb"
+        )
+    task_source_kind = str(getattr(parsed, "task_source_kind", "") or "")
     daemon = PortalImplementationDaemon(
         todo_path=parsed.todo_path,
+        task_source=(
+            parsed.todo_path
+            if task_source_kind in {"markdown", "duckdb"}
+            else None
+        ),
+        task_source_kind=(
+            task_source_kind
+            if task_source_kind in {"markdown", "duckdb"}
+            else ""
+        ),
         state_path=state_paths["state_path"],
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
@@ -1218,6 +1246,8 @@ def build_portal_implementation_daemon_from_args(
             getattr(parsed, "strict_task_sharding", False)
         ),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
+        database_program=database_program,
+        coordination_database_path=coordination_database_path,
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 
