@@ -288,7 +288,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-009 Generate ProviderCapabilityMatrix v2 and migrate canonical writes
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
