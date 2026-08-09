@@ -667,7 +667,7 @@ this bootstrap is active.
 
 ## DQP-021 Add incremental worktree scanning and AST invalidation
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
