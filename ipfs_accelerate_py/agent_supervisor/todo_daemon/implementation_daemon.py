@@ -23560,9 +23560,15 @@ class PortalImplementationDaemon:
             )
         )
         task_scope_paths = cls._proposal_scope_paths(task)
+        changed_set = set(changed_paths)
+        artifact_set = set(artifact_paths)
+        # Envelope applies only when every changed path is declared. Exact
+        # equality is too strict: agents may leave already-correct declared
+        # outputs untouched, and an accidental out-of-scope dirty file must
+        # not silently strip allow_binary after a green validation suite.
         if (
-            set(changed_paths) != set(artifact_paths)
-            or len(changed_paths) != len(artifact_paths)
+            not changed_set
+            or not changed_set.issubset(artifact_set)
             or not all(
                 any(
                     artifact_path == scope_path
@@ -24728,6 +24734,93 @@ class PortalImplementationDaemon:
             "examination_id": content_identity(examination),
         }
 
+    def _restore_out_of_scope_worktree_mutations(
+        self,
+        workspace_path: Path,
+        *,
+        scope_paths: Sequence[str],
+    ) -> tuple[str, ...]:
+        """Revert dirty worktree paths outside the task's declared scope.
+
+        Autonomous providers repeatedly thrash on accidental edits such as
+        ``tests/conftest.py``. Those paths must never enter the proposal gate:
+        they fail path_outside_scope and also collapse declared binary
+        envelopes back to defaults. Restoring them fail-closed before
+        collection keeps the gate focused on declared outputs.
+        """
+
+        if not scope_paths:
+            return ()
+        restored: list[str] = []
+        try:
+            status = subprocess.run(
+                ["git", "-C", str(workspace_path), "status", "--porcelain", "-uall"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ()
+        if status.returncode != 0:
+            return ()
+
+        def _in_scope(path: str) -> bool:
+            for scope in scope_paths:
+                scope_text = str(scope).strip().rstrip("/")
+                if not scope_text:
+                    continue
+                if path == scope_text or path.startswith(scope_text + "/"):
+                    return True
+            return False
+
+        for line in status.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            entry = line[3:].strip()
+            if " -> " in entry:
+                entry = entry.split(" -> ", 1)[1].strip()
+            path = entry.strip().strip('"')
+            if not path or path.startswith(".git/") or _in_scope(path):
+                continue
+            # Prefer checkout for tracked mutations; clean for untracked noise.
+            xy = line[:2]
+            try:
+                if "?" in xy:
+                    target = workspace_path / path
+                    if target.is_file() or target.is_symlink():
+                        target.unlink(missing_ok=True)
+                    elif target.is_dir():
+                        shutil.rmtree(target, ignore_errors=True)
+                else:
+                    subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            str(workspace_path),
+                            "checkout",
+                            "--",
+                            path,
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                restored.append(path)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+        if restored:
+            self._record_event(
+                "implementation_out_of_scope_mutations_restored",
+                {
+                    "workspace_path": str(workspace_path),
+                    "restored_paths": sorted(set(restored)),
+                    "restored_count": len(set(restored)),
+                },
+            )
+        return tuple(sorted(set(restored)))
+
     def _validate_implementation_patch(
         self,
         workspace_path: Path,
@@ -24772,6 +24865,51 @@ class PortalImplementationDaemon:
         scope_paths = self._proposal_scope_paths(task)
         # A missing output declaration grants no mutation authority.
         allowed_paths = scope_paths or (".proposal-scope-not-declared",)
+        # Drop thrash dirt outside declared scope before the proposal is
+        # collected so envelopes and path gates see only task-owned changes.
+        if scope_paths:
+            self._restore_out_of_scope_worktree_mutations(
+                workspace_path,
+                scope_paths=scope_paths,
+            )
+            # Nested submodule dirt (e.g. external/ipfs_datasets/tests/conftest.py)
+            # is restored relative to each owned submodule root when present.
+            for scope in scope_paths:
+                scope_text = str(scope).strip().rstrip("/")
+                if not scope_text.startswith("external/"):
+                    continue
+                parts = Path(scope_text).parts
+                if len(parts) < 2:
+                    continue
+                submodule_rel = "/".join(parts[:2])
+                submodule_path = workspace_path / submodule_rel
+                if not (submodule_path / ".git").exists() and not (
+                    submodule_path / ".git"
+                ).is_file():
+                    # worktree submodules often use gitfile
+                    if not submodule_path.is_dir():
+                        continue
+                nested_scope = [
+                    str(Path(scope_text).relative_to(submodule_rel))
+                    if scope_text != submodule_rel
+                    and scope_text.startswith(submodule_rel + "/")
+                    else "."
+                ]
+                # Build nested scopes from all task scopes under this submodule.
+                nested_scopes = []
+                for candidate in scope_paths:
+                    cand = str(candidate).strip().rstrip("/")
+                    if cand == submodule_rel:
+                        nested_scopes.append(".")
+                    elif cand.startswith(submodule_rel + "/"):
+                        nested_scopes.append(
+                            str(Path(cand).relative_to(submodule_rel))
+                        )
+                if nested_scopes:
+                    self._restore_out_of_scope_worktree_mutations(
+                        submodule_path,
+                        scope_paths=tuple(sorted(set(nested_scopes))),
+                    )
         collection_error = ""
         submodule_expansions: tuple[dict[str, Any], ...] = ()
         try:
