@@ -1008,7 +1008,7 @@ this bootstrap is active.
 
 ## DQP-032 Add database-derived watchdog, stall diagnostics, and safe repair
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
