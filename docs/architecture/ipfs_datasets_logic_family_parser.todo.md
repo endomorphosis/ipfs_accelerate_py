@@ -292,7 +292,7 @@ validation and evidence contract.
 
 ## LFP-009 Unify translation preservation, loss, and authority contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
