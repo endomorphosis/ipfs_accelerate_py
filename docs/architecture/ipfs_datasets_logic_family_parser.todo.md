@@ -695,7 +695,7 @@ validation and evidence contract.
 
 ## LFP-022 Join classical/rule parsers with Z3, cvc5, Vampire, E, SecPAL, and ErgoAI routes
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
