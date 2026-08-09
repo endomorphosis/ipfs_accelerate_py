@@ -227,6 +227,19 @@ def plan_automatic_implementation_rescue(
         or "proposal_gate_failed" in reason_codes
         or bool(set(finding_codes) & STAGE_AND_REVALIDATE_FINDING_CODES)
     )
+    # Incomplete / unstaged declared outputs can surface after proposal
+    # admission already succeeded (declared validation or residual review).
+    # Prefer a deterministic stage pass before spending another provider call.
+    admission_gap = bool(
+        proposal_failed
+        or set(reason_codes) & STAGE_AND_REVALIDATE_REASON_CODES
+        or set(finding_codes) & STAGE_AND_REVALIDATE_FINDING_CODES
+        or str(result.get("reason") or "")
+        in {
+            "declared_outputs_missing_or_untracked",
+            "incomplete_expected_outputs",
+        }
+    )
     staging_plausible = bool(
         expected_outputs_present_on_disk
         or dirty
@@ -235,7 +248,7 @@ def plan_automatic_implementation_rescue(
     )
     if (
         not stage_rescue_used
-        and proposal_failed
+        and admission_gap
         and staging_plausible
     ):
         return AutoRescuePlan(

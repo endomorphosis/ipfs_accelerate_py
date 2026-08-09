@@ -104,6 +104,65 @@ def test_plan_inline_provider_rescue_for_validation_command_failed() -> None:
     assert "validation" in plan.reason
 
 
+def test_plan_stage_after_proposal_accept_when_outputs_incomplete() -> None:
+    """PTR-style: proposal accepted, residual review says outputs incomplete."""
+
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "failed_commands": ["cargo test --locked --manifest-path ..."],
+            "proposal_gate": {"accepted": True},
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": [
+                    "incomplete_expected_outputs",
+                    "large_or_undeclared_refactor",
+                ],
+                "missing_expected_outputs": [
+                    "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/RUST_SETUP.md",
+                    "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/WIRE_FORMAT.md",
+                ],
+                "failed_commands": ["cargo test --locked --manifest-path ..."],
+            },
+        },
+        expected_outputs=(
+            "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/RUST_SETUP.md",
+            "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/WIRE_FORMAT.md",
+        ),
+        expected_outputs_present_on_disk=True,
+        dirty_in_scope_paths=(
+            "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/RUST_SETUP.md",
+        ),
+        allow_provider_rescue=True,
+    )
+    assert plan.action is AutoRescueAction.STAGE_AND_REVALIDATE
+    assert plan.reason == "stage_declared_outputs_and_revalidate"
+
+    after_stage = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "failed_commands": ["cargo test --locked --manifest-path ..."],
+            "proposal_gate": {"accepted": True},
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["incomplete_expected_outputs"],
+                "failed_commands": ["cargo test --locked --manifest-path ..."],
+            },
+        },
+        expected_outputs=(
+            "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/RUST_SETUP.md",
+        ),
+        expected_outputs_present_on_disk=True,
+        stage_rescue_used=True,
+        allow_provider_rescue=True,
+    )
+    assert after_stage.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
+
+
 def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     hard = plan_automatic_implementation_rescue(
         validation_result={
