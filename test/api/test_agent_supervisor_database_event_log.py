@@ -149,7 +149,7 @@ def test_redaction_on_append(tmp_path: Path) -> None:
             "provider.call",
             {
                 "model": "test",
-                "access_token": "super-secret-token-value",
+                "access_token": "synthetic-access-token-value",
                 "nested": {"password": "also-secret"},
             },
         )
