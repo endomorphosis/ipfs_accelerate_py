@@ -47554,163 +47554,95 @@ class PortalImplementationDaemon:
         }
         return result
 
-    def _expected_outputs_present_on_disk(
+    def _run_auto_rescue_materialize_commands(
         self,
+        *,
         workspace_path: Path,
+        log_path: Path,
+        commands: Sequence[str],
         task: PortalTask,
-    ) -> bool:
-        """True when at least one declared output exists as a regular file/dir."""
+    ) -> list[dict[str, Any]]:
+        """Run derived materialize/write CLIs inside the implementer workspace."""
 
-        for relative in task_declared_output_paths(task):
-            if not self._repo_relative_path_safe(relative):
-                continue
-            target = workspace_path / relative
-            try:
-                if target.is_symlink():
-                    continue
-                if target.is_file() or target.is_dir():
-                    return True
-            except OSError:
-                continue
-        return False
-
-    def _dirty_in_scope_declared_output_paths(
-        self,
-        workspace_path: Path,
-        task: PortalTask,
-    ) -> tuple[str, ...]:
-        """Return dirty declared-output paths (modified/untracked) under workspace."""
-
-        scope = tuple(
-            path
-            for path in task_declared_output_paths(task)
-            if self._repo_relative_path_safe(path)
-        )
-        if not scope:
-            return ()
-        status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all", "--", *scope],
-            cwd=workspace_path,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if status.returncode != 0:
-            return ()
-        dirty: list[str] = []
-        for line in status.stdout.splitlines():
-            if len(line) < 4:
-                continue
-            path = line[3:].strip()
-            if " -> " in path:
-                path = path.split(" -> ", 1)[1].strip()
-            path = path.strip().replace("\\", "/")
-            if path.startswith("./"):
-                path = path[2:]
-            if path and path not in dirty and self._repo_relative_path_safe(path):
-                dirty.append(path)
-        return tuple(sorted(dirty))
-
-    def _stage_declared_candidate_outputs(
-        self,
-        workspace_path: Path,
-        task: PortalTask,
-    ) -> tuple[str, ...]:
-        """Stage declared outputs that exist on disk into the candidate index.
-
-        Combines force-add of ignored generated evidence with ordinary
-        ``git add`` for dirty declared sources/tests. Protected paths are never
-        force-added.
-        """
-
-        staged: list[str] = []
-        try:
-            ignored_staged = self._stage_declared_ignored_outputs(
-                workspace_path,
-                task,
+        results: list[dict[str, Any]] = []
+        if not commands:
+            return results
+        env = dict(os.environ)
+        # Match common board PYTHONPATH layout for multi-root workspaces.
+        pythonpath_parts = [
+            str(workspace_path / relative)
+            for relative in (
+                "Mcp-Plus-Plus",
+                "external/ipfs_accelerate",
+                "external/ipfs_datasets",
+                "external/ipfs_kit",
+                "swissknife",
+                ".",
             )
-            staged.extend(ignored_staged)
-        except RuntimeError as exc:
-            self._record_event(
-                "implementation_auto_rescue_stage_ignored_failed",
-                {
-                    "task_id": task.task_id,
-                    "workspace_path": str(workspace_path),
-                    "error": str(exc)[-1000:],
-                },
-            )
-
-        protected_paths = tuple(
-            str(path).strip("/")
-            for path in self.implementation_protected_paths
-            if str(path).strip("/")
-        )
-        candidates: list[str] = []
-        for relative in task_declared_output_paths(task):
-            if not self._repo_relative_path_safe(relative):
-                continue
-            if any(
-                self._path_matches_scope(relative, path)
-                for path in protected_paths
-            ):
-                continue
-            target = workspace_path / relative
-            try:
-                if target.is_symlink():
+            if (workspace_path / relative).exists() or relative == "."
+        ]
+        existing = str(env.get("PYTHONPATH") or "").strip()
+        if existing:
+            pythonpath_parts.append(existing)
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+        with log_path.open("a", encoding="utf-8") as log_fh:
+            for raw in commands:
+                command = str(raw or "").strip()
+                if not command:
                     continue
-                if target.is_file() or target.is_dir():
-                    candidates.append(relative)
-            except OSError:
-                continue
-        dirty = self._dirty_in_scope_declared_output_paths(workspace_path, task)
-        for relative in dirty:
-            if relative not in candidates and self._repo_relative_path_safe(relative):
-                if any(
-                    self._path_matches_scope(relative, path)
-                    for path in protected_paths
-                ):
+                log_fh.write(f"\n[auto-rescue] materialize $ {command}\n")
+                log_fh.flush()
+                try:
+                    completed = subprocess.run(
+                        command,
+                        cwd=workspace_path,
+                        shell=True,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        env=env,
+                        timeout=min(
+                            float(self.implementation_timeout or 600),
+                            900.0,
+                        ),
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    entry = {
+                        "command": command,
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}"[:500],
+                    }
+                    results.append(entry)
+                    log_fh.write(f"[auto-rescue] materialize error: {entry['error']}\n")
                     continue
-                candidates.append(relative)
-
-        for relative in sorted(set(candidates)):
-            if relative in staged:
-                continue
-            add = subprocess.run(
-                ["git", "--literal-pathspecs", "add", "--", relative],
-                cwd=workspace_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if add.returncode != 0:
-                forced = subprocess.run(
-                    [
-                        "git",
-                        "--literal-pathspecs",
-                        "add",
-                        "--force",
-                        "--",
-                        relative,
-                    ],
-                    cwd=workspace_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
+                output = (completed.stdout or "") + (completed.stderr or "")
+                if output:
+                    log_fh.write(output)
+                    if not output.endswith("\n"):
+                        log_fh.write("\n")
+                log_fh.write(
+                    f"[auto-rescue] materialize returncode={completed.returncode}\n"
                 )
-                if forced.returncode != 0:
-                    continue
-            staged.append(relative)
-
-        if staged:
-            self._record_event(
-                "implementation_declared_candidate_outputs_staged",
-                {
-                    "task_id": task.task_id,
-                    "workspace_path": str(workspace_path),
-                    "paths": list(dict.fromkeys(staged)),
-                },
-            )
-        return tuple(dict.fromkeys(staged))
+                results.append(
+                    {
+                        "command": command,
+                        "ok": completed.returncode == 0,
+                        "returncode": int(completed.returncode),
+                        "output_tail": output[-1200:],
+                    }
+                )
+                # Prefer the first successful materialize alias.
+                if completed.returncode == 0:
+                    break
+        self._record_event(
+            "implementation_auto_rescue_materialize_commands",
+            {
+                "task_id": task.task_id,
+                "workspace_path": str(workspace_path),
+                "results": results,
+            },
+        )
+        return results
 
     def _automatic_implementation_rescue(
         self,
@@ -47731,10 +47663,11 @@ class PortalImplementationDaemon:
         """Attempt bounded same-attempt rescue after failure review.
 
         Order:
-        1. Stage declared dirty/ignored outputs and revalidate once.
-        2. If still failing with guide_rescue validation signal, run one
-           focused provider repair pass on the preserved worktree, then
-           revalidate again.
+        1. Materialize missing generated artifacts via validate→materialize
+           CLI rewrites, stage, and revalidate.
+        2. Stage declared dirty/ignored outputs and revalidate once.
+        3. If still failing with guide_rescue signal, run one focused
+           provider repair pass on the preserved worktree, then revalidate.
         """
 
         from ..validation.implementation_auto_rescue import (
@@ -47750,11 +47683,13 @@ class PortalImplementationDaemon:
             return result
 
         stage_used = False
+        materialize_used = False
         provider_passes = 0
         steps: list[dict[str, Any]] = []
         expected = task_declared_output_paths(task)
+        validation_commands = tuple(getattr(task, "validation", ()) or ())
 
-        for _step in range(2):
+        for _step in range(3):
             present = self._expected_outputs_present_on_disk(
                 workspace_path,
                 task,
@@ -47763,19 +47698,102 @@ class PortalImplementationDaemon:
                 workspace_path,
                 task,
             )
+            review = result.get("failure_review")
+            missing = ()
+            if isinstance(review, Mapping):
+                missing = tuple(
+                    str(item)
+                    for item in (review.get("missing_expected_outputs") or ())
+                    if str(item).strip()
+                )
             plan = plan_automatic_implementation_rescue(
                 validation_result=result,
                 expected_outputs=expected,
+                validation_commands=validation_commands,
                 already_auto_rescued=bool(steps),
                 provider_rescue_passes_used=provider_passes,
                 stage_rescue_used=stage_used,
+                materialize_rescue_used=materialize_used,
                 allow_provider_rescue=bool(allow_provider_rescue and command),
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
+                missing_expected_outputs=missing,
             )
             steps.append(plan.to_record())
             if plan.action is AutoRescueAction.NONE:
                 break
+
+            if plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE:
+                materialize_used = True
+                materialize_results = self._run_auto_rescue_materialize_commands(
+                    workspace_path=workspace_path,
+                    log_path=log_path,
+                    commands=plan.materialize_commands,
+                    task=task,
+                )
+                staged_paths = self._stage_declared_candidate_outputs(
+                    workspace_path,
+                    task,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_materialize_and_stage",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "materialize_results": materialize_results,
+                        "staged_paths": list(staged_paths),
+                        "plan": plan.to_record(),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] materialize_and_stage "
+                        f"commands={list(plan.materialize_commands)} "
+                        f"staged={list(staged_paths)}\n"
+                    )
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=tuple(
+                        replayable_consumed_proposal_ids
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "materialize_used": materialize_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                    "materialize_results": materialize_results,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_materialize_and_stage_passed"
+                    )
+                    return result
+                continue
 
             if plan.action is AutoRescueAction.STAGE_AND_REVALIDATE:
                 stage_used = True
@@ -48716,6 +48734,18 @@ class PortalImplementationDaemon:
                     failure_head = str(
                         summary.get("failure_head") or ""
                     ).strip()
+                    # Non-pytest validators often emit plain JSON/reason codes
+                    # without FAILED lines; keep a compact tail so auto-rescue
+                    # prompts are not evidence-starved.
+                    if not failure_head:
+                        raw_output = str(output or "").strip()
+                        if raw_output:
+                            tail = "\n".join(
+                                line
+                                for line in raw_output.splitlines()[-40:]
+                                if line.strip()
+                            )
+                            failure_head = tail[-1800:]
                     if failure_head and failure_head not in failure_heads:
                         failure_heads.append(failure_head)
                 # Command output belongs in the attempt log, not the durable
