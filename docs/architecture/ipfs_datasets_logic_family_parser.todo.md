@@ -1253,7 +1253,7 @@ validation and evidence contract.
 
 ## LFP-040 Build the domain-view-family-provider cross-product conformance suite
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
