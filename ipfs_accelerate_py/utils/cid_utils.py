@@ -1,21 +1,56 @@
-"""Deterministic CID helpers used by router response caches and identity bridges.
+"""Dependency-free helpers for the supervisor's closed CIDv1 profile.
 
-This module is the in-tree, dependency-light CID surface for
-``ipfs_accelerate_py``.  The agent-supervisor multiformats identity bridge
-prefers :mod:`ipfs_datasets_py.utils.cid_utils` when that package is importable,
-and falls back here under hermetic validation (empty worktree submodule
-placeholders + ``PYTHONNOUSERSITE``).
+The launch-time control plane cannot depend on user-site packages.  This
+module therefore owns the complete wire implementation for the two admitted
+CID codecs instead of importing :mod:`multiformats`:
+
+* CIDv1 encoded as canonical lowercase, unpadded base32 multibase;
+* ``raw`` (multicodec ``0x55``) or ``dag-json`` (``0x0129``);
+* one ``sha2-256`` multihash (code ``0x12``) with a 32-byte digest.
+
+Decoding is deliberately strict.  Non-minimal or overflowing uvarints,
+non-canonical base32, trailing bytes, and every profile deviation fail closed.
+External multiformats libraries may be used by tests as an independent parity
+oracle, but never participate in production construction or validation.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import math
+import re
+from dataclasses import dataclass
 from typing import Any, Iterable
+
+_CID_VERSION = 1
+_CID_BASE = "base32"
+_MH_TYPE = "sha2-256"
+_MH_CODE = 0x12
+_DIGEST_SIZE = 32
+_MAX_UVARINT_BYTES = 10
+_CODEC_CODES = {"raw": 0x55, "dag-json": 0x0129}
+_CODEC_NAMES = {value: key for key, value in _CODEC_CODES.items()}
+_LOWER_BASE32_RE = re.compile(r"^[a-z2-7]+$")
+
+
+@dataclass(frozen=True)
+class _DecodedCID:
+    version: int
+    codec: str
+    multihash_type: str
+    digest: bytes
 
 
 def canonical_json_bytes(value: Any) -> bytes:
-    """Serialize a value into stable JSON bytes."""
+    """Serialize a value into stable legacy JSON bytes.
+
+    This compatibility helper intentionally retains its historical
+    ``default=repr`` behavior.  CID-bearing DAG-JSON identities must instead
+    use :func:`canonical_dag_json_bytes`, which rejects unsupported objects.
+    """
 
     return json.dumps(
         value,
@@ -68,31 +103,164 @@ def canonical_dag_json_bytes(obj: Any) -> bytes:
     return text.encode("utf-8")
 
 
+def _encode_uvarint(value: int) -> bytes:
+    """Encode one unsigned integer in canonical unsigned LEB128 form."""
+
+    if type(value) is not int or value < 0 or value > (1 << 64) - 1:
+        raise ValueError("uvarint value is outside the uint64 domain")
+    encoded = bytearray()
+    while value >= 0x80:
+        encoded.append((value & 0x7F) | 0x80)
+        value >>= 7
+    encoded.append(value)
+    return bytes(encoded)
+
+
+def _decode_uvarint(data: bytes, offset: int) -> tuple[int, int]:
+    """Decode exactly one minimal uint64 uvarint starting at ``offset``."""
+
+    if type(data) is not bytes or type(offset) is not int or offset < 0:
+        raise ValueError("uvarint input is invalid")
+    start = offset
+    result = 0
+    shift = 0
+    for index in range(_MAX_UVARINT_BYTES):
+        if offset >= len(data):
+            raise ValueError("uvarint is truncated")
+        octet = data[offset]
+        offset += 1
+        if index == _MAX_UVARINT_BYTES - 1 and octet > 0x01:
+            raise ValueError("uvarint overflows uint64")
+        result |= (octet & 0x7F) << shift
+        if octet & 0x80 == 0:
+            if data[start:offset] != _encode_uvarint(result):
+                raise ValueError("uvarint is not minimally encoded")
+            return result, offset
+        shift += 7
+    raise ValueError("uvarint overflows uint64")
+
+
+def _base32_multibase_encode(payload: bytes) -> str:
+    if type(payload) is not bytes or not payload:
+        raise ValueError("CID binary payload must be nonempty bytes")
+    encoded = base64.b32encode(payload).decode("ascii").lower().rstrip("=")
+    return "b" + encoded
+
+
+def _base32_multibase_decode(value: Any) -> bytes:
+    if not isinstance(value, str) or not value:
+        raise ValueError("CID must be a nonempty lowercase string")
+    if value != value.lower():
+        raise ValueError("CID must use canonical lowercase base32")
+    if not value.startswith("b"):
+        raise ValueError("CID must use lowercase base32 multibase")
+    payload = value[1:]
+    if not payload or _LOWER_BASE32_RE.fullmatch(payload) is None:
+        raise ValueError("CID base32 payload is invalid")
+    # RFC 4648 unpadded base32 cannot have 1, 3, or 6 residual characters.
+    if len(payload) % 8 in {1, 3, 6}:
+        raise ValueError("CID base32 payload is truncated")
+    padded = payload.upper() + "=" * ((-len(payload)) % 8)
+    try:
+        decoded = base64.b32decode(padded, casefold=False)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("CID base32 payload is invalid") from exc
+    # Re-encoding catches padding-bit aliases, including nonzero trailing bits.
+    if _base32_multibase_encode(decoded) != value:
+        raise ValueError("CID base32 payload is not canonical")
+    return decoded
+
+
+def _decode_cid(value: Any) -> _DecodedCID:
+    binary = _base32_multibase_decode(value)
+    offset = 0
+    version, offset = _decode_uvarint(binary, offset)
+    codec_code, offset = _decode_uvarint(binary, offset)
+    mh_code, offset = _decode_uvarint(binary, offset)
+    digest_size, offset = _decode_uvarint(binary, offset)
+    digest = binary[offset:]
+    codec = _CODEC_NAMES.get(codec_code)
+    if version != _CID_VERSION:
+        raise ValueError("CID version is not CIDv1")
+    if codec is None:
+        raise ValueError("CID codec is outside the admitted profile")
+    if mh_code != _MH_CODE:
+        raise ValueError("CID multihash is not sha2-256")
+    if digest_size != _DIGEST_SIZE or len(digest) != _DIGEST_SIZE:
+        raise ValueError("CID sha2-256 digest must be exactly 32 bytes")
+    # A fixed digest consumes every remaining byte; this also rejects suffixes.
+    if offset + digest_size != len(binary):
+        raise ValueError("CID contains trailing or truncated digest bytes")
+    return _DecodedCID(
+        version=version,
+        codec=codec,
+        multihash_type=_MH_TYPE,
+        digest=digest,
+    )
+
+
+def _cid_from_digest(digest: bytes, *, codec: str) -> str:
+    if type(digest) is not bytes:
+        raise TypeError("sha2-256 digest must be exact bytes")
+    if len(digest) != _DIGEST_SIZE:
+        raise ValueError("sha2-256 digest must be exactly 32 bytes")
+    try:
+        codec_code = _CODEC_CODES[codec]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("codec must be raw or dag-json") from exc
+    binary = b"".join(
+        (
+            _encode_uvarint(_CID_VERSION),
+            _encode_uvarint(codec_code),
+            _encode_uvarint(_MH_CODE),
+            _encode_uvarint(_DIGEST_SIZE),
+            digest,
+        )
+    )
+    return _base32_multibase_encode(binary)
+
+
 def cid_for_bytes(
     data: bytes,
     *,
-    base: str = "base32",
+    base: str = _CID_BASE,
     codec: str = "raw",
-    mh_type: str = "sha2-256",
-    version: int = 1,
+    mh_type: str = _MH_TYPE,
+    version: int = _CID_VERSION,
 ) -> str:
-    """Compute a CID for bytes using the multiformats package."""
+    """Compute a canonical CID for exact bytes without external packages."""
 
-    from multiformats import CID, multihash
+    if type(data) is not bytes:
+        raise TypeError("CID input must be exact bytes")
+    if (
+        base != _CID_BASE
+        or mh_type != _MH_TYPE
+        or type(version) is not int
+        or version != _CID_VERSION
+    ):
+        raise ValueError("only CIDv1/base32/sha2-256 is supported")
+    return _cid_from_digest(hashlib.sha256(data).digest(), codec=codec)
 
-    digest = multihash.digest(data, mh_type)
-    return str(CID(base, version, codec, digest))
+
+def cid_from_sha256_digest(
+    digest: bytes,
+    *,
+    codec: str = "raw",
+) -> str:
+    """Wrap one already-computed sha2-256 digest without hashing it again."""
+
+    return _cid_from_digest(digest, codec=codec)
 
 
 def cid_for_obj(
     value: Any,
     *,
-    base: str = "base32",
+    base: str = _CID_BASE,
     codec: str = "raw",
-    mh_type: str = "sha2-256",
-    version: int = 1,
+    mh_type: str = _MH_TYPE,
+    version: int = _CID_VERSION,
 ) -> str:
-    """Compute a CID for a deterministically serialized value."""
+    """Compute a CID for the legacy deterministic JSON representation."""
 
     return cid_for_bytes(
         canonical_json_bytes(value),
@@ -106,9 +274,9 @@ def cid_for_obj(
 def cid_for_dag_json(
     obj: Any,
     *,
-    base: str = "base32",
-    mh_type: str = "sha2-256",
-    version: int = 1,
+    base: str = _CID_BASE,
+    mh_type: str = _MH_TYPE,
+    version: int = _CID_VERSION,
 ) -> str:
     """Return a canonical CID for strict deterministic DAG-JSON bytes."""
 
@@ -125,37 +293,50 @@ def validate_cid(
     value: Any,
     *,
     codecs: Iterable[str] = ("raw", "dag-json"),
-    mh_type: str = "sha2-256",
-    version: int = 1,
-    base: str = "base32",
+    mh_type: str = _MH_TYPE,
+    version: int = _CID_VERSION,
+    base: str = _CID_BASE,
 ) -> str:
-    """Validate and return one canonical lowercase CID string."""
+    """Validate and return one canonical CID in the closed profile."""
 
-    if not isinstance(value, str) or not value or value != value.lower():
-        raise ValueError("CID must be a nonempty lowercase string")
-    from multiformats import CID, multihash
-
-    try:
-        parsed = CID.decode(value)
-    except Exception as exc:
-        raise ValueError("CID is not decodable") from exc
-    allowed_codecs = frozenset(codecs)
-    expected_digest_size = multihash.get(mh_type).max_digest_size
     if (
-        parsed.version != version
-        or parsed.codec.name not in allowed_codecs
-        or parsed.hashfun.name != mh_type
-        or (
-            expected_digest_size is not None
-            and len(parsed.raw_digest) != expected_digest_size
-        )
-        or parsed.base.name != base
-        or str(parsed) != value
+        mh_type != _MH_TYPE
+        or type(version) is not int
+        or version != _CID_VERSION
+        or base != _CID_BASE
     ):
-        raise ValueError(
-            "CID must use the requested canonical version/base/codec/multihash"
-        )
+        raise ValueError("only CIDv1/base32/sha2-256 validation is supported")
+    try:
+        allowed = frozenset(codecs)
+    except TypeError as exc:
+        raise ValueError("codecs must be an iterable of codec names") from exc
+    if not allowed or not allowed.issubset(_CODEC_CODES):
+        raise ValueError("codecs must be a nonempty subset of raw and dag-json")
+    decoded = _decode_cid(value)
+    if decoded.codec not in allowed:
+        raise ValueError("CID codec is outside the requested profile")
     return value
+
+
+def digest_bytes_from_cid(
+    value: Any,
+    *,
+    codecs: Iterable[str] = ("raw", "dag-json"),
+) -> bytes:
+    """Extract the exact digest from a validated admitted CID."""
+
+    validate_cid(value, codecs=codecs)
+    return _decode_cid(value).digest
+
+
+def digest_hex_from_cid(
+    value: Any,
+    *,
+    codecs: Iterable[str] = ("raw", "dag-json"),
+) -> str:
+    """Extract lowercase sha2-256 hex from a validated admitted CID."""
+
+    return digest_bytes_from_cid(value, codecs=codecs).hex()
 
 
 __all__ = [
@@ -164,5 +345,8 @@ __all__ = [
     "cid_for_bytes",
     "cid_for_dag_json",
     "cid_for_obj",
+    "cid_from_sha256_digest",
+    "digest_bytes_from_cid",
+    "digest_hex_from_cid",
     "validate_cid",
 ]

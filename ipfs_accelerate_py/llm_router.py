@@ -286,8 +286,10 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/model_catalog/identity.py",
     "ipfs_accelerate_py/model_catalog/schema.py",
     "ipfs_accelerate_py/utils/__init__.py",
+    "ipfs_accelerate_py/utils/cid_utils.py",
     "ipfs_accelerate_py/utils/mistral_vibe.py",
     "ipfs_accelerate_py/agent_supervisor/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
     "ipfs_accelerate_py/agent_supervisor/entrypoints/__init__.py",
     "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
     "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
@@ -449,8 +451,9 @@ def _agent_dag_json_content_identity(value: Mapping[str, object]) -> str:
         ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
-    raw = b"\x01\xa9\x02\x12\x20" + hashlib.sha256(encoded).digest()
-    return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+    from .utils.cid_utils import cid_for_bytes
+
+    return cid_for_bytes(encoded, codec="dag-json")
 
 
 def classify_agent_implementation_failure(
@@ -5787,6 +5790,7 @@ def _agent_control_plane_source_files(
         "ipfs_accelerate_py.model_catalog.identity",
         "ipfs_accelerate_py.model_catalog.schema",
         "ipfs_accelerate_py.utils",
+        "ipfs_accelerate_py.utils.cid_utils",
         "ipfs_accelerate_py.utils.mistral_vibe",
     }
     for module_name, module in observed_modules:
@@ -6401,6 +6405,8 @@ def build_agent_implementation_control_plane_pin(
         != _content_addressed_mapping(manifest, identity_field="capsule_id")
     ):
         raise ValueError("accepted control-plane manifest identity is invalid")
+    if not set(_AGENT_CONTROL_PLANE_RELATIVE_FILES).issubset(files):
+        raise ValueError("accepted control-plane manifest is missing a dependency")
     expected_entries = {Path(_AGENT_CONTROL_PLANE_MANIFEST_FILENAME)}
     expected_digests: dict[Path, str] = {}
     for relative_text, digest in files.items():
@@ -8168,19 +8174,11 @@ def _safe_cid_filename(cid: str) -> str:
 
 
 def _cid_for_bytes(data: bytes) -> str:
-    # Prefer multiformats CIDv1 (raw, sha2-256) when available.
-    try:
-        from multiformats import CID, multihash  # type: ignore
+    """Address exact bytes through the sealed dependency-free CID profile."""
 
-        mh = multihash.digest(data, "sha2-256")
-        try:
-            cid = CID("base32", 1, "raw", mh)
-        except TypeError:
-            # Older constructor variant.
-            cid = CID("base32", "raw", mh)
-        return str(cid)
-    except Exception:
-        return "sha256_" + hashlib.sha256(data).hexdigest()
+    from .utils.cid_utils import cid_for_bytes
+
+    return cid_for_bytes(data, codec="raw")
 
 
 def _cid_for_text(text: str) -> str:
