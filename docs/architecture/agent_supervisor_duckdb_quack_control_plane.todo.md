@@ -760,7 +760,7 @@ this bootstrap is active.
 
 ## DQP-024 Integrate AST and mutation state with symbolic planning, repair, and proof
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
