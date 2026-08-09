@@ -7987,6 +7987,9 @@ class PortalImplementationSupervisor:
             merge_target_branch=self.config.merge_target_branch,
             merge_queue_dir=self.config.merge_queue_dir,
             worktree_submodule_paths=self.config.worktree_submodule_paths,
+            task_shard_count=self.config.task_shard_count,
+            task_shard_index=self.config.task_shard_index,
+            strict_task_sharding=self.config.strict_task_sharding,
             implementation_protected_paths=(
                 self.config.implementation_protected_paths
             ),

@@ -1493,6 +1493,33 @@ def test_supervisor_startup_preflight_releases_quiesced_dead_claim(
     )
 
 
+def test_worktree_reconciliation_daemon_preserves_lane_shard_identity(
+    tmp_path: Path,
+) -> None:
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.todo.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "2",
+            "--strict-task-sharding",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=tmp_path)
+    )
+
+    daemon = supervisor._build_worktree_reconciliation_daemon()
+
+    assert daemon.task_shard_count == 4
+    assert daemon.task_shard_index == 2
+    assert daemon.strict_task_sharding is True
+
+
 def test_supervisor_startup_does_not_reconcile_live_managed_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
