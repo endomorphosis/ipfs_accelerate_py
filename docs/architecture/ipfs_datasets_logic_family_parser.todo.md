@@ -943,7 +943,7 @@ validation and evidence contract.
 
 ## LFP-030 Add Tamarin multiset-rewriting protocol mappings
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
