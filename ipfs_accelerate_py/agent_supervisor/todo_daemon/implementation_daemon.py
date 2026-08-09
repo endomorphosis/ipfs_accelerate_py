@@ -450,6 +450,48 @@ def _bounded_merge_proof_value(
     return str(value)[:MAX_MERGE_PROOF_METADATA_TEXT]
 
 
+def _duckdb_compact_validation_proof_digest(
+    proof: Mapping[str, Any],
+) -> str:
+    """Digest the exact bounded passed proof without recursive receipt fields."""
+
+    material = {
+        key: proof[key]
+        for key in (
+            "attempted",
+            "passed",
+            "returncode",
+            "target_commit",
+            "target_tree",
+            "repository_tree_id",
+            "selection",
+            "stages",
+            "results",
+            "verdicts",
+            "proof",
+            "fallbacks",
+            "operator_state",
+            "cache_hits",
+            "cache_misses",
+            "proof_gate",
+            "proposal_gate",
+            "scope_adjudication",
+        )
+        if key in proof
+    }
+    try:
+        encoded = json.dumps(
+            material,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("compact validation proof is not canonical JSON") from exc
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def shared_worktree_source_roots(repo_root: Path) -> tuple[Path, ...]:
     """Return checkout roots that may provide untracked shared dependencies.
 
@@ -1372,6 +1414,293 @@ class ImplementationDiagnosticReceipt:
             raise ValueError("implementation diagnostic failure identity is forged")
         if payload.get("receipt_id") not in (None, "", result.receipt_id):
             raise ValueError("implementation diagnostic receipt identity is forged")
+        return result
+
+
+@dataclass(frozen=True)
+class DuckDBValidationExecutionReceipt:
+    """Content-bound receipt for the exact compact validation proof enqueued."""
+
+    task_cid: str
+    task_source_identity_id: str
+    target_commit: str
+    target_tree: str
+    selection_scope: str
+    validation_result_digests: tuple[str, ...]
+    validation_ids: tuple[str, ...]
+    proposal_receipt_id: str
+    compact_proof_digest: str
+
+    SCHEMA = (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "duckdb-validation-execution-receipt@1"
+    )
+
+    def __post_init__(self) -> None:
+        for name in (
+            "task_cid",
+            "task_source_identity_id",
+            "selection_scope",
+            "proposal_receipt_id",
+            "compact_proof_digest",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if (
+                not value
+                or any(character in value for character in ("\0", "\n", "\r"))
+                or len(value.encode("utf-8")) > 4096
+            ):
+                raise ValueError(f"{name} is required and must be bounded")
+            object.__setattr__(self, name, value)
+        for name in ("target_commit", "target_tree"):
+            value = str(getattr(self, name) or "").strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value):
+                raise ValueError(f"{name} must be a full Git object ID")
+            object.__setattr__(self, name, value)
+        if self.selection_scope != "pre_merge":
+            raise ValueError("validation execution scope must be pre_merge")
+        for name in ("validation_result_digests", "validation_ids"):
+            values = tuple(str(item).strip() for item in getattr(self, name))
+            if (
+                not values
+                or len(values) > MAX_MERGE_PROOF_METADATA_ITEMS
+                or len(set(values)) != len(values)
+                or any(
+                    not item
+                    or any(character in item for character in ("\0", "\n", "\r"))
+                    or len(item.encode("utf-8")) > 4096
+                    for item in values
+                )
+            ):
+                raise ValueError(f"{name} must contain unique bounded identities")
+            object.__setattr__(self, name, values)
+        if any(
+            not re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", item)
+            for item in self.validation_result_digests
+        ):
+            raise ValueError(
+                "validation_result_digests must be full SHA-256 identities"
+            )
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", self.compact_proof_digest):
+            raise ValueError("compact_proof_digest is malformed")
+
+    @property
+    def receipt_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "task_cid": self.task_cid,
+            "task_source_identity_id": self.task_source_identity_id,
+            "target_commit": self.target_commit,
+            "target_tree": self.target_tree,
+            "selection_scope": self.selection_scope,
+            "validation_result_digests": list(self.validation_result_digests),
+            "validation_ids": list(self.validation_ids),
+            "proposal_receipt_id": self.proposal_receipt_id,
+            "compact_proof_digest": self.compact_proof_digest,
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self.to_dict(), "receipt_id": self.receipt_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "DuckDBValidationExecutionReceipt":
+        if not isinstance(payload, Mapping):
+            raise ValueError("DuckDB validation execution receipt must be an object")
+        allowed = {
+            "schema",
+            "receipt_id",
+            "task_cid",
+            "task_source_identity_id",
+            "target_commit",
+            "target_tree",
+            "selection_scope",
+            "validation_result_digests",
+            "validation_ids",
+            "proposal_receipt_id",
+            "compact_proof_digest",
+        }
+        if set(payload).difference(allowed) or payload.get("schema") != cls.SCHEMA:
+            raise ValueError("DuckDB validation execution receipt schema is invalid")
+        result = cls(
+            task_cid=str(payload.get("task_cid") or ""),
+            task_source_identity_id=str(
+                payload.get("task_source_identity_id") or ""
+            ),
+            target_commit=str(payload.get("target_commit") or ""),
+            target_tree=str(payload.get("target_tree") or ""),
+            selection_scope=str(payload.get("selection_scope") or ""),
+            validation_result_digests=tuple(
+                payload.get("validation_result_digests") or ()
+            ),
+            validation_ids=tuple(payload.get("validation_ids") or ()),
+            proposal_receipt_id=str(payload.get("proposal_receipt_id") or ""),
+            compact_proof_digest=str(payload.get("compact_proof_digest") or ""),
+        )
+        if payload.get("receipt_id") not in (None, "", result.receipt_id):
+            raise ValueError("DuckDB validation execution receipt identity is forged")
+        return result
+
+
+@dataclass(frozen=True)
+class DuckDBTaskCompletionEvidence:
+    """Exact, content-addressed authority for one DuckDB completion CAS.
+
+    A merge worker may construct this record only from a live merge-queue
+    claim after the candidate is integrated.  The completion boundary checks
+    every field again against the current queue claim, Git graph, task source,
+    and DuckDB writer fence before changing task status.
+    """
+
+    task_cid: str
+    task_source_identity_id: str
+    implementation_commit: str
+    merge_commit: str
+    target_tree: str
+    validation_receipt_ids: tuple[str, ...]
+    proposal_receipt_id: str
+    merge_request_id: str
+    merge_consumer_id: str
+    lease_id: str
+    fencing_token: int
+    task_source_writer_id: str
+    task_source_fencing_token: int
+
+    SCHEMA = (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "duckdb-task-completion-evidence@1"
+    )
+
+    def __post_init__(self) -> None:
+        for name in (
+            "task_cid",
+            "task_source_identity_id",
+            "implementation_commit",
+            "merge_commit",
+            "target_tree",
+            "proposal_receipt_id",
+            "merge_request_id",
+            "merge_consumer_id",
+            "lease_id",
+            "task_source_writer_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value or any(character in value for character in ("\0", "\n", "\r")):
+                raise ValueError(f"{name} is required and must be one line")
+            if len(value.encode("utf-8")) > 4096:
+                raise ValueError(f"{name} exceeds its byte bound")
+            object.__setattr__(self, name, value)
+        for name in ("implementation_commit", "merge_commit", "target_tree"):
+            value = str(getattr(self, name))
+            if not re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", value):
+                raise ValueError(f"{name} must be a full Git object ID")
+            object.__setattr__(self, name, value.lower())
+        receipt_ids = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in self.validation_receipt_ids
+                    if str(item).strip()
+                }
+            )
+        )
+        if not receipt_ids:
+            raise ValueError("validation_receipt_ids must not be empty")
+        if len(receipt_ids) > MAX_MERGE_PROOF_METADATA_ITEMS:
+            raise ValueError("validation_receipt_ids exceeds its item bound")
+        if any(
+            any(character in item for character in ("\0", "\n", "\r"))
+            or len(item.encode("utf-8")) > 4096
+            for item in receipt_ids
+        ):
+            raise ValueError("validation_receipt_ids contains an unsafe value")
+        object.__setattr__(self, "validation_receipt_ids", receipt_ids)
+        for name in ("fencing_token", "task_source_fencing_token"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+
+    @property
+    def evidence_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "task_cid": self.task_cid,
+            "task_source_identity_id": self.task_source_identity_id,
+            "implementation_commit": self.implementation_commit,
+            "merge_commit": self.merge_commit,
+            "target_tree": self.target_tree,
+            "validation_receipt_ids": list(self.validation_receipt_ids),
+            "proposal_receipt_id": self.proposal_receipt_id,
+            "merge_request_id": self.merge_request_id,
+            "merge_consumer_id": self.merge_consumer_id,
+            "lease_id": self.lease_id,
+            "fencing_token": self.fencing_token,
+            "task_source_writer_id": self.task_source_writer_id,
+            "task_source_fencing_token": self.task_source_fencing_token,
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self.to_dict(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> DuckDBTaskCompletionEvidence:
+        if not isinstance(payload, Mapping):
+            raise ValueError("DuckDB completion evidence must be an object")
+        allowed = {
+            "schema",
+            "evidence_id",
+            "task_cid",
+            "task_source_identity_id",
+            "implementation_commit",
+            "merge_commit",
+            "target_tree",
+            "validation_receipt_ids",
+            "proposal_receipt_id",
+            "merge_request_id",
+            "merge_consumer_id",
+            "lease_id",
+            "fencing_token",
+            "task_source_writer_id",
+            "task_source_fencing_token",
+        }
+        if set(payload).difference(allowed):
+            raise ValueError("DuckDB completion evidence contains unsupported fields")
+        if payload.get("schema") != cls.SCHEMA:
+            raise ValueError("DuckDB completion evidence schema is unsupported")
+        result = cls(
+            task_cid=str(payload.get("task_cid") or ""),
+            task_source_identity_id=str(
+                payload.get("task_source_identity_id") or ""
+            ),
+            implementation_commit=str(payload.get("implementation_commit") or ""),
+            merge_commit=str(payload.get("merge_commit") or ""),
+            target_tree=str(payload.get("target_tree") or ""),
+            validation_receipt_ids=tuple(
+                payload.get("validation_receipt_ids") or ()
+            ),
+            proposal_receipt_id=str(payload.get("proposal_receipt_id") or ""),
+            merge_request_id=str(payload.get("merge_request_id") or ""),
+            merge_consumer_id=str(payload.get("merge_consumer_id") or ""),
+            lease_id=str(payload.get("lease_id") or ""),
+            fencing_token=int(payload.get("fencing_token") or 0),
+            task_source_writer_id=str(
+                payload.get("task_source_writer_id") or ""
+            ),
+            task_source_fencing_token=int(
+                payload.get("task_source_fencing_token") or 0
+            ),
+        )
+        if payload.get("evidence_id") not in (None, "", result.evidence_id):
+            raise ValueError("DuckDB completion evidence identity is forged")
         return result
 
 
@@ -2549,6 +2878,23 @@ class PortalImplementationDaemon:
             cursor = page.next_cursor
             if not cursor:
                 break
+        if self.task_source.source_kind == "duckdb":
+            completed = [
+                task
+                for task in records
+                if normalize_status(task.status) == "completed"
+            ]
+            qualifying = self._duckdb_completion_records_for_tasks(completed)
+            unqualified = sorted(
+                task.task_id
+                for task in completed
+                if task.task_cid not in qualifying
+            )
+            if unqualified:
+                raise TaskSourceIntegrityError(
+                    "DuckDB completed tasks lack authoritative post-merge "
+                    "evidence: " + ", ".join(unqualified)
+                )
         return [self._portal_task_from_source_task(task) for task in records]
 
     def _task_source_identity_record(self) -> dict[str, Any] | None:
@@ -5471,6 +5817,11 @@ class PortalImplementationDaemon:
             unresolved_merge_failure = task.task_id in unresolved_merge_failure_task_ids
             transient_merge_deferral = task.task_id in transient_merge_deferral_task_ids
             artifact_complete = (
+                not (
+                    self.task_source is not None
+                    and self.task_source.source_kind == "duckdb"
+                )
+                and
                 task.completion == "artifact"
                 and bool(task.outputs)
                 and len(existing_outputs) == len(task.outputs)
@@ -5478,6 +5829,11 @@ class PortalImplementationDaemon:
                 and not transient_merge_deferral
             )
             merged_complete = (
+                not (
+                    self.task_source is not None
+                    and self.task_source.source_kind == "duckdb"
+                )
+                and
                 task.task_id in successfully_merged_task_ids
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
@@ -6587,6 +6943,22 @@ class PortalImplementationDaemon:
                     },
                 )
                 todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+                if (
+                    self.task_source is not None
+                    and self.task_source.source_kind == "duckdb"
+                    and not (
+                        todo_update_result.get("updated_task_ids")
+                        or todo_update_result.get("already_completed_task_ids")
+                    )
+                ):
+                    effective_returncode = 2
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 2,
+                        "reason": "duckdb_completion_status_rejected",
+                        "todo_update_result": todo_update_result,
+                    }
             finished_at = utc_now()
             self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
@@ -6923,12 +7295,461 @@ class PortalImplementationDaemon:
             self._record_event("dependency_blocked_tasks_reopened", result)
         return result
 
-    def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
+    @staticmethod
+    def _coerce_duckdb_completion_evidence(
+        value: (
+            DuckDBTaskCompletionEvidence
+            | Mapping[str, DuckDBTaskCompletionEvidence | Mapping[str, Any]]
+            | Mapping[str, Any]
+            | None
+        ),
+    ) -> dict[str, DuckDBTaskCompletionEvidence]:
+        if value is None:
+            return {}
+        if isinstance(value, DuckDBTaskCompletionEvidence):
+            return {value.task_cid: value}
+        if not isinstance(value, Mapping):
+            raise ValueError("DuckDB completion evidence must be a record or mapping")
+        if value.get("schema") == DuckDBTaskCompletionEvidence.SCHEMA:
+            evidence = DuckDBTaskCompletionEvidence.from_dict(value)
+            return {evidence.task_cid: evidence}
+        selected: dict[str, DuckDBTaskCompletionEvidence] = {}
+        for raw_reference, raw_evidence in value.items():
+            evidence = (
+                raw_evidence
+                if isinstance(raw_evidence, DuckDBTaskCompletionEvidence)
+                else DuckDBTaskCompletionEvidence.from_dict(raw_evidence)
+            )
+            reference = str(raw_reference or "").strip()
+            if not reference:
+                raise ValueError("DuckDB completion evidence reference is empty")
+            if reference in selected and selected[reference] != evidence:
+                raise ValueError("DuckDB completion evidence reference is duplicated")
+            selected[reference] = evidence
+        return selected
+
+    @staticmethod
+    def _merge_completion_receipt_binding(
+        metadata: Mapping[str, Any],
+    ) -> tuple[tuple[str, ...], str]:
+        proof = metadata.get("validation_proof")
+        if not isinstance(proof, Mapping) or proof.get("passed") is not True:
+            raise ValueError("merge completion lacks passed validation proof")
+        raw_receipt_ids = proof.get("validation_receipt_ids")
+        if not isinstance(raw_receipt_ids, Sequence) or isinstance(
+            raw_receipt_ids, (str, bytes, bytearray)
+        ):
+            raw_receipt_ids = ()
+        validation_receipt_ids = tuple(
+            sorted({str(item).strip() for item in raw_receipt_ids if str(item).strip()})
+        )
+        if not validation_receipt_ids:
+            raise ValueError("merge completion lacks validation receipt IDs")
+        proposal = proof.get("proposal_gate")
+        if not isinstance(proposal, Mapping) or proposal.get("accepted") is not True:
+            raise ValueError("merge completion lacks an accepted proposal receipt")
+        proposal_receipt_id = str(proposal.get("receipt_id") or "").strip()
+        if not proposal_receipt_id:
+            raise ValueError("merge completion lacks a proposal receipt ID")
+        raw_execution_receipt = proof.get("validation_execution_receipt")
+        if not isinstance(raw_execution_receipt, Mapping):
+            raise ValueError(
+                "merge completion lacks a validation execution receipt"
+            )
+        execution_receipt = DuckDBValidationExecutionReceipt.from_dict(
+            raw_execution_receipt
+        )
+        if raw_execution_receipt.get("receipt_id") != execution_receipt.receipt_id:
+            raise ValueError(
+                "validation execution receipt lacks its content identity"
+            )
+        if execution_receipt.receipt_id not in validation_receipt_ids:
+            raise ValueError(
+                "validation execution receipt is absent from receipt IDs"
+            )
+        source_identity = metadata.get("task_source_identity")
+        results = proof.get("results")
+        if (
+            not isinstance(source_identity, Mapping)
+            or not isinstance(results, Sequence)
+            or isinstance(results, (str, bytes, bytearray))
+            or execution_receipt.task_cid
+            != str(metadata.get("canonical_task_cid") or "").strip()
+            or execution_receipt.task_source_identity_id
+            != str(source_identity.get("identity_id") or "").strip()
+            or execution_receipt.target_commit
+            != str(proof.get("target_commit") or "").strip().lower()
+            or execution_receipt.target_tree
+            != str(proof.get("target_tree") or "").strip().lower()
+            or execution_receipt.proposal_receipt_id != proposal_receipt_id
+            or execution_receipt.compact_proof_digest
+            != _duckdb_compact_validation_proof_digest(proof)
+        ):
+            raise ValueError("validation execution receipt binding is stale")
+        exact_results = [item for item in results if isinstance(item, Mapping)]
+        if len(exact_results) != len(results) or (
+            execution_receipt.validation_result_digests
+            != tuple(
+                str(item.get("validation_result_digest") or "").strip()
+                for item in exact_results
+            )
+            or execution_receipt.validation_ids
+            != tuple(
+                str(item.get("validation_id") or "").strip()
+                for item in exact_results
+            )
+        ):
+            raise ValueError("validation execution result binding is stale")
+        return validation_receipt_ids, proposal_receipt_id
+
+    def _duckdb_writer_binding(self) -> tuple[str, int]:
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            raise ValueError("DuckDB writer binding requires a DuckDB task source")
+        backend = self.task_source.backend
+        current_writer_fence = getattr(backend, "current_writer_fence", None)
+        if callable(current_writer_fence):
+            writer = current_writer_fence()
+            writer_id = str(getattr(writer, "writer_id", "") or "").strip()
+            fencing_token = getattr(writer, "fencing_token", 0)
+        else:
+            writer_id = str(getattr(backend, "writer_id", "") or "").strip()
+            fencing_token = getattr(backend, "fencing_token", 0)
+        if (
+            not writer_id
+            or isinstance(fencing_token, bool)
+            or not isinstance(fencing_token, int)
+            or fencing_token < 1
+        ):
+            raise ValueError("DuckDB task source has no valid writer fence")
+        return writer_id, fencing_token
+
+    def _validate_duckdb_completion_evidence(
+        self,
+        current: TaskSourceTask,
+        evidence: DuckDBTaskCompletionEvidence,
+        *,
+        completion_claim: Any,
+    ) -> None:
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            raise ValueError("DuckDB completion evidence used for a non-DuckDB source")
+        if evidence.task_cid != current.task_cid:
+            raise ValueError("completion evidence task CID does not match the task")
+        if (
+            evidence.task_source_identity_id
+            != self.task_source.identity.identity_id
+        ):
+            raise ValueError("completion evidence task-source identity is stale")
+        if completion_claim is None:
+            raise ValueError("completion evidence requires a live merge claim")
+        owns_claim = getattr(self.merge_queue, "owns_claim", None)
+        if not callable(owns_claim) or not owns_claim(completion_claim):
+            raise ValueError("completion evidence merge claim is stale")
+        claim_metadata = getattr(completion_claim, "metadata", None)
+        if not isinstance(claim_metadata, Mapping):
+            raise ValueError("completion evidence merge claim metadata is malformed")
+        claim_fields = {
+            "merge_request_id": str(
+                getattr(completion_claim, "request_id", "") or ""
+            ),
+            "merge_consumer_id": str(
+                getattr(completion_claim, "consumer_id", "") or ""
+            ),
+            "lease_id": str(getattr(completion_claim, "claim_token", "") or ""),
+            "fencing_token": int(
+                getattr(completion_claim, "claim_generation", 0) or 0
+            ),
+        }
+        if any(
+            getattr(evidence, field_name) != expected
+            for field_name, expected in claim_fields.items()
+        ):
+            raise ValueError("completion evidence merge lease or fence is stale")
+
+        authorized_task_ids = {
+            str(getattr(completion_claim, "task_id", "") or "").strip()
+        }
+        bundle = claim_metadata.get("bundle_work_order")
+        if isinstance(bundle, Mapping):
+            authorized_task_ids.update(
+                str(item or "").strip()
+                for item in (
+                    bundle.get("primary_task_id"),
+                    *(bundle.get("covered_task_ids") or ()),
+                )
+            )
+        authorized_task_ids.discard("")
+        claim_task_cid = str(
+            getattr(completion_claim, "canonical_task_id", "") or ""
+        ).strip()
+        if current.task_id not in authorized_task_ids and current.task_cid != claim_task_cid:
+            raise ValueError("completion evidence claim does not authorize this task")
+
+        validation_receipt_ids, proposal_receipt_id = (
+            self._merge_completion_receipt_binding(claim_metadata)
+        )
+        if evidence.validation_receipt_ids != validation_receipt_ids:
+            raise ValueError("completion evidence validation receipts are stale")
+        if evidence.proposal_receipt_id != proposal_receipt_id:
+            raise ValueError("completion evidence proposal receipt is stale")
+
+        implementation_commit = str(
+            getattr(completion_claim, "commit_sha", "")
+            or claim_metadata.get("implementation_commit")
+            or ""
+        ).strip().lower()
+        proof = claim_metadata.get("validation_proof")
+        assert isinstance(proof, Mapping)
+        if (
+            evidence.implementation_commit != implementation_commit
+            or str(proof.get("target_commit") or "").strip().lower()
+            != implementation_commit
+        ):
+            raise ValueError("completion evidence implementation commit is stale")
+        implementation_tree = self._candidate_repository_tree(
+            evidence.implementation_commit
+        ).lower()
+        if (
+            not implementation_tree
+            or str(claim_metadata.get("candidate_tree") or "").strip().lower()
+            != implementation_tree
+            or str(proof.get("target_tree") or "").strip().lower()
+            != implementation_tree
+        ):
+            raise ValueError("completion evidence implementation tree is stale")
+        merge_tree = self._candidate_repository_tree(evidence.merge_commit).lower()
+        if not merge_tree or merge_tree != evidence.target_tree:
+            raise ValueError("completion evidence target tree is stale")
+        if not self._git_ref_is_ancestor(
+            evidence.implementation_commit, evidence.merge_commit
+        ):
+            raise ValueError("completion evidence implementation was not merged")
+        if not self._git_ref_is_ancestor(
+            evidence.merge_commit, self.resolved_merge_target_branch
+        ):
+            raise ValueError("completion evidence merge is not on the target branch")
+
+        writer_id, writer_fencing_token = self._duckdb_writer_binding()
+        if (
+            evidence.task_source_writer_id != writer_id
+            or evidence.task_source_fencing_token != writer_fencing_token
+        ):
+            raise ValueError("completion evidence DuckDB writer fence is stale")
+
+    def _duckdb_completion_evidence_for_merge_claim(
+        self,
+        completion_claim: Any,
+        merge_result: Mapping[str, Any],
+        task_ids: Sequence[str],
+    ) -> dict[str, DuckDBTaskCompletionEvidence]:
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            return {}
+        owns_claim = getattr(self.merge_queue, "owns_claim", None)
+        if not callable(owns_claim) or not owns_claim(completion_claim):
+            raise ValueError("cannot build completion evidence from a stale merge claim")
+        metadata = getattr(completion_claim, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            raise ValueError("merge claim metadata is malformed")
+        validation_receipt_ids, proposal_receipt_id = (
+            self._merge_completion_receipt_binding(metadata)
+        )
+        implementation_commit = str(
+            getattr(completion_claim, "commit_sha", "")
+            or metadata.get("implementation_commit")
+            or ""
+        ).strip().lower()
+        merge_commit = str(
+            merge_result.get("merge_commit")
+            or merge_result.get("target_commit")
+            or ""
+        ).strip().lower()
+        target_tree = self._candidate_repository_tree(merge_commit).lower()
+        writer_id, writer_fencing_token = self._duckdb_writer_binding()
+        source_identity_id = self.task_source.identity.identity_id
+        evidence_by_task: dict[str, DuckDBTaskCompletionEvidence] = {}
+        for task_id in dict.fromkeys(str(item).strip() for item in task_ids):
+            if not task_id:
+                continue
+            current = self.task_source.get(task_id)
+            if current is None:
+                raise ValueError(f"task source does not contain {task_id!r}")
+            evidence_by_task[task_id] = DuckDBTaskCompletionEvidence(
+                task_cid=current.task_cid,
+                task_source_identity_id=source_identity_id,
+                implementation_commit=implementation_commit,
+                merge_commit=merge_commit,
+                target_tree=target_tree,
+                validation_receipt_ids=validation_receipt_ids,
+                proposal_receipt_id=proposal_receipt_id,
+                merge_request_id=str(
+                    getattr(completion_claim, "request_id", "") or ""
+                ),
+                merge_consumer_id=str(
+                    getattr(completion_claim, "consumer_id", "") or ""
+                ),
+                lease_id=str(
+                    getattr(completion_claim, "claim_token", "") or ""
+                ),
+                fencing_token=int(
+                    getattr(completion_claim, "claim_generation", 0) or 0
+                ),
+                task_source_writer_id=writer_id,
+                task_source_fencing_token=writer_fencing_token,
+            )
+        return evidence_by_task
+
+    def _mark_task_completed_in_todo(
+        self,
+        task_id: str,
+        *,
+        completion_evidence: (
+            DuckDBTaskCompletionEvidence | Mapping[str, Any] | None
+        ) = None,
+        completion_claim: Any = None,
+    ) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
             [task_id],
             primary_task_id=task_id,
             completion_reason="single_task",
+            completion_evidence=completion_evidence,
+            completion_claim=completion_claim,
         )
+
+    def _duckdb_completed_status_events(self) -> dict[str, dict[str, Any]]:
+        """Return the latest durable completed-status event for each DuckDB CID."""
+
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            return {}
+        backend = self.task_source.backend
+        events_method = getattr(backend, "events", None)
+        if not callable(events_method):
+            raise TaskSourceIntegrityError(
+                "DuckDB task source does not expose durable event history"
+            )
+        cursor = 0
+        scanned = 0
+        selected: dict[str, dict[str, Any]] = {}
+        while scanned < 100_000:
+            page = events_method(cursor=cursor, limit=1_000)
+            events = tuple(getattr(page, "events", ()) or ())
+            if not events:
+                break
+            for raw_event in events:
+                scanned += 1
+                event = dict(raw_event)
+                body = event.get("body")
+                if (
+                    event.get("event_type") != "status_changed"
+                    or not isinstance(body, Mapping)
+                    or normalize_status(str(body.get("status") or ""))
+                    != "completed"
+                ):
+                    continue
+                task_cid = str(event.get("task_cid") or "").strip()
+                if task_cid:
+                    selected[task_cid] = event
+            next_cursor = int(getattr(page, "cursor", cursor) or cursor)
+            if next_cursor <= cursor:
+                raise TaskSourceIntegrityError(
+                    "DuckDB task event cursor did not advance"
+                )
+            cursor = next_cursor
+            if len(events) < 1_000:
+                break
+        if scanned >= 100_000:
+            trailing = events_method(cursor=cursor, limit=1)
+            if tuple(getattr(trailing, "events", ()) or ()):
+                raise TaskSourceIntegrityError(
+                    "DuckDB task event history exceeds its admission bound"
+                )
+        return selected
+
+    def _validated_duckdb_completion_event(
+        self,
+        current: TaskSourceTask,
+        event: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Validate restart-admissible post-merge evidence without a live claim."""
+
+        if (
+            self.task_source is None
+            or self.task_source.source_kind != "duckdb"
+            or not isinstance(event, Mapping)
+        ):
+            return None
+        body = event.get("body")
+        receipt = body.get("receipt") if isinstance(body, Mapping) else None
+        raw_evidence = (
+            receipt.get("completion_evidence")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if not isinstance(raw_evidence, Mapping):
+            return None
+        try:
+            evidence = DuckDBTaskCompletionEvidence.from_dict(raw_evidence)
+            if (
+                raw_evidence.get("evidence_id") != evidence.evidence_id
+                or
+                event.get("event_type") != "status_changed"
+                or str(event.get("task_cid") or "") != current.task_cid
+                or normalize_status(str(body.get("status") or ""))
+                != "completed"
+                or int(body.get("task_revision") or 0) != int(current.revision)
+                or receipt.get("operation") != "mark_task_completed"
+                or receipt.get("task_source_identity_id")
+                != self.task_source.identity.identity_id
+                or evidence.task_cid != current.task_cid
+                or evidence.task_source_identity_id
+                != self.task_source.identity.identity_id
+                or self._candidate_repository_tree(evidence.merge_commit).lower()
+                != evidence.target_tree
+                or not self._git_ref_is_ancestor(
+                    evidence.implementation_commit, evidence.merge_commit
+                )
+                or not self._git_ref_is_ancestor(
+                    evidence.merge_commit, self.resolved_merge_target_branch
+                )
+            ):
+                return None
+            writer_id, writer_fence = self._duckdb_writer_binding()
+            if (
+                evidence.task_source_writer_id != writer_id
+                or evidence.task_source_fencing_token > writer_fence
+            ):
+                return None
+        except (KeyError, OSError, TaskSourceError, TypeError, ValueError):
+            return None
+        event_cid = str(event.get("event_cid") or "").strip()
+        if not event_cid:
+            return None
+        return {
+            "event_cid": event_cid,
+            "event_sequence": int(event.get("sequence") or 0),
+            "task_source_receipt_id": content_identity(
+                {
+                    "namespace": "task-status-receipt",
+                    "event_cid": event_cid,
+                    "receipt": dict(receipt),
+                }
+            ),
+            "completion_evidence": evidence.to_record(),
+        }
+
+    def _duckdb_completion_records_for_tasks(
+        self,
+        tasks: Sequence[TaskSourceTask],
+    ) -> dict[str, dict[str, Any]]:
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            return {}
+        events = self._duckdb_completed_status_events()
+        result: dict[str, dict[str, Any]] = {}
+        for task in tasks:
+            record = self._validated_duckdb_completion_event(
+                task, events.get(task.task_cid)
+            )
+            if record is not None:
+                result[task.task_cid] = record
+        return result
 
     def _completion_receipts_for_task_ids(
         self,
@@ -6953,6 +7774,17 @@ class PortalImplementationDaemon:
             # generated board is concurrently replaced or becomes unreadable.
             pass
 
+        duckdb_current: dict[str, TaskSourceTask] = {}
+        duckdb_records: dict[str, dict[str, Any]] = {}
+        if self.task_source is not None and self.task_source.source_kind == "duckdb":
+            for task_id in dict.fromkeys(str(item).strip() for item in task_ids):
+                current = self.task_source.get(task_id)
+                if current is not None:
+                    duckdb_current[task_id] = current
+            duckdb_records = self._duckdb_completion_records_for_tasks(
+                tuple(duckdb_current.values())
+            )
+
         receipts: list[dict[str, Any]] = []
         for task_id in dict.fromkeys(str(item).strip() for item in task_ids):
             if not task_id:
@@ -6963,6 +7795,14 @@ class PortalImplementationDaemon:
                 identity = self._identity_for_task(task)
             if identity is None:
                 continue
+            durable_completion: dict[str, Any] | None = None
+            if self.task_source is not None and self.task_source.source_kind == "duckdb":
+                current = duckdb_current.get(task_id)
+                if current is None:
+                    continue
+                durable_completion = duckdb_records.get(current.task_cid)
+                if durable_completion is None:
+                    continue
             member_receipt = {
                     "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
                     "task_id": task_id,
@@ -6975,18 +7815,37 @@ class PortalImplementationDaemon:
                 member_receipt["task_source_identity"] = (
                     self.task_source.identity.to_dict()
                 )
+            if durable_completion is not None:
+                member_receipt.update(durable_completion)
             receipts.append(member_receipt)
         return receipts
 
-    def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
+    def _mark_task_or_bundle_completed_in_todo(
+        self,
+        task: PortalTask,
+        *,
+        completion_evidence: (
+            DuckDBTaskCompletionEvidence
+            | Mapping[str, DuckDBTaskCompletionEvidence | Mapping[str, Any]]
+            | Mapping[str, Any]
+            | None
+        ) = None,
+        completion_claim: Any = None,
+    ) -> dict[str, Any]:
         work_order = self._bundle_work_order_for_task(task)
         if work_order is None:
-            return self._mark_task_completed_in_todo(task.task_id)
+            return self._mark_task_completed_in_todo(
+                task.task_id,
+                completion_evidence=completion_evidence,
+                completion_claim=completion_claim,
+            )
         return self._mark_tasks_completed_in_todo(
             work_order.task_ids,
             primary_task_id=work_order.primary_task_id,
             completion_reason="bundle_work_order",
             bundle_work_order=work_order.to_dict(),
+            completion_evidence=completion_evidence,
+            completion_claim=completion_claim,
         )
 
     def _mark_tasks_completed_in_todo(
@@ -6996,6 +7855,13 @@ class PortalImplementationDaemon:
         primary_task_id: str,
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
+        completion_evidence: (
+            DuckDBTaskCompletionEvidence
+            | Mapping[str, DuckDBTaskCompletionEvidence | Mapping[str, Any]]
+            | Mapping[str, Any]
+            | None
+        ) = None,
+        completion_claim: Any = None,
     ) -> dict[str, Any]:
         return self._decision_runtime_mutation(
             "task_board_mutation",
@@ -7005,12 +7871,15 @@ class PortalImplementationDaemon:
                 "task_ids": tuple(task_ids),
                 "primary_task_id": primary_task_id,
                 "completion_reason": completion_reason,
+                "completion_evidence_supplied": completion_evidence is not None,
             },
             lambda: self._mark_tasks_completed_in_todo_unchecked(
                 task_ids,
                 primary_task_id=primary_task_id,
                 completion_reason=completion_reason,
                 bundle_work_order=bundle_work_order,
+                completion_evidence=completion_evidence,
+                completion_claim=completion_claim,
             ),
         )
 
@@ -7021,6 +7890,13 @@ class PortalImplementationDaemon:
         primary_task_id: str,
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
+        completion_evidence: (
+            DuckDBTaskCompletionEvidence
+            | Mapping[str, DuckDBTaskCompletionEvidence | Mapping[str, Any]]
+            | Mapping[str, Any]
+            | None
+        ) = None,
+        completion_claim: Any = None,
     ) -> dict[str, Any]:
         target_task_ids = [
             str(task_id).strip()
@@ -7032,6 +7908,12 @@ class PortalImplementationDaemon:
             already_completed_task_ids: list[str] = []
             completion_receipts: list[dict[str, Any]] = []
             try:
+                current_by_task_id: dict[str, TaskSourceTask] = {}
+                completed_events = (
+                    self._duckdb_completed_status_events()
+                    if self.task_source.source_kind == "duckdb"
+                    else {}
+                )
                 for task_id in target_task_ids:
                     current = self.task_source.get(task_id)
                     if current is None:
@@ -7039,18 +7921,74 @@ class PortalImplementationDaemon:
                             f"task source does not contain {task_id!r}"
                         )
                     if normalize_status(current.status) == "completed":
+                        if (
+                            self.task_source.source_kind == "duckdb"
+                            and self._validated_duckdb_completion_event(
+                                current, completed_events.get(current.task_cid)
+                            )
+                            is None
+                        ):
+                            raise PermissionError(
+                                f"authoritative completion evidence is required "
+                                f"for already-completed {task_id!r}"
+                            )
                         already_completed_task_ids.append(task_id)
                         continue
+                    current_by_task_id[task_id] = current
+
+                validated_evidence: dict[
+                    str, DuckDBTaskCompletionEvidence
+                ] = {}
+                if (
+                    self.task_source.source_kind == "duckdb"
+                    and current_by_task_id
+                ):
+                    evidence_by_reference = (
+                        self._coerce_duckdb_completion_evidence(
+                            completion_evidence
+                        )
+                    )
+                    for task_id, current in current_by_task_id.items():
+                        evidence = evidence_by_reference.get(
+                            task_id
+                        ) or evidence_by_reference.get(current.task_cid)
+                        if evidence is None:
+                            if evidence_by_reference:
+                                raise ValueError(
+                                    f"completion evidence does not bind {task_id!r}"
+                                )
+                            raise PermissionError(
+                                f"completion evidence is required for {task_id!r}"
+                            )
+                        self._validate_duckdb_completion_evidence(
+                            current,
+                            evidence,
+                            completion_claim=completion_claim,
+                        )
+                        validated_evidence[task_id] = evidence
+
+                for task_id, current in current_by_task_id.items():
+                    receipt: dict[str, Any] = {
+                        "operation": "mark_task_completed",
+                        "primary_task_id": primary_task_id,
+                        "completion_reason": completion_reason,
+                    }
+                    evidence = validated_evidence.get(task_id)
+                    if evidence is not None:
+                        owns_claim = getattr(self.merge_queue, "owns_claim", None)
+                        if not callable(owns_claim) or not owns_claim(
+                            completion_claim
+                        ):
+                            raise ValueError(
+                                "completion evidence merge claim became stale"
+                            )
+                        receipt["completion_evidence"] = evidence.to_record()
                     changed = self.task_source.compare_and_swap_status(
                         task_id,
                         expected_status=current.status,
                         new_status="completed",
                         expected_revision=current.revision,
-                        receipt={
-                            "operation": "mark_task_completed",
-                            "primary_task_id": primary_task_id,
-                            "completion_reason": completion_reason,
-                        },
+                        receipt=receipt,
                     )
                     updated_task_ids.append(task_id)
                     completion_receipts.append(
@@ -7067,16 +8005,40 @@ class PortalImplementationDaemon:
                             "board_namespace": current.board_namespace,
                             "status": "succeeded",
                             "task_source_receipt_id": changed.receipt_id,
+                            "task_source_event_cursor": changed.event_cursor,
+                            **(
+                                {"completion_evidence": evidence.to_record()}
+                                if evidence is not None
+                                else {}
+                            ),
                             "task_source_identity": (
                                 self.task_source.identity.to_dict()
                             ),
                         }
                     )
-            except (TaskSourceError, KeyError, ValueError) as exc:
+            except PermissionError as exc:
                 result = {
                     "updated": False,
                     "task_id": primary_task_id,
-                    "reason": "task_source_update_failed",
+                    "reason": "completion_evidence_required",
+                    "error": str(exc),
+                    "completion_reason": completion_reason,
+                    "updated_task_ids": [],
+                    "already_completed_task_ids": already_completed_task_ids,
+                    "task_source_identity": self._task_source_identity_record(),
+                }
+                self._record_event("todo_status_update_failed", result)
+                return result
+            except (TaskSourceError, KeyError, TypeError, ValueError) as exc:
+                result = {
+                    "updated": False,
+                    "task_id": primary_task_id,
+                    "reason": (
+                        "completion_evidence_invalid"
+                        if self.task_source.source_kind == "duckdb"
+                        and completion_evidence is not None
+                        else "task_source_update_failed"
+                    ),
                     "error": str(exc),
                     "completion_reason": completion_reason,
                     "updated_task_ids": updated_task_ids,
@@ -7824,10 +8786,22 @@ class PortalImplementationDaemon:
             "repo_root": str(self.repo_root),
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
+            "canonical_task_cid": identity.canonical_task_cid,
+            "canonical_task_key": identity.canonical_task_key,
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
             ),
         }
+        if self.task_source is not None:
+            metadata["task_source_identity"] = (
+                self.task_source.identity.to_dict()
+            )
+            if self.task_source.source_kind == "duckdb":
+                writer_id, writer_fencing_token = self._duckdb_writer_binding()
+                metadata["task_source_writer"] = {
+                    "writer_id": writer_id,
+                    "fencing_token": writer_fencing_token,
+                }
         if changed_submodule_paths is not None:
             metadata["changed_submodule_paths"] = sorted(
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
@@ -7839,6 +8813,7 @@ class PortalImplementationDaemon:
                     for key in (
                         "command",
                         "validation_id",
+                        "validation_result_digest",
                         "returncode",
                         "passed",
                         "verdict",
@@ -7859,6 +8834,27 @@ class PortalImplementationDaemon:
                 ]
                 if isinstance(item, dict)
             ]
+            if (
+                self.task_source is not None
+                and self.task_source.source_kind == "duckdb"
+            ):
+                for item in result_records:
+                    if not str(item.get("validation_id") or "").strip():
+                        item["validation_id"] = content_identity(
+                            {
+                                "schema": (
+                                    "ipfs_accelerate_py/agent-supervisor/"
+                                    "duckdb-declared-validation-command@1"
+                                ),
+                                "task_cid": identity.canonical_task_cid,
+                                "task_source_identity_id": (
+                                    self.task_source.identity.identity_id
+                                ),
+                                "command": str(item.get("command") or ""),
+                                "stage": str(item.get("stage") or ""),
+                                "ordinal": int(item.get("ordinal") or 0),
+                            }
+                        )
             validation_proof = {
                 "attempted": bool(validation_result.get("attempted")),
                 "passed": bool(validation_result.get("passed")),
@@ -7901,6 +8897,33 @@ class PortalImplementationDaemon:
                 "cache_hits": int(validation_result.get("cache_hits") or 0),
                 "cache_misses": int(validation_result.get("cache_misses") or 0),
             }
+            validation_receipt_ids: set[str] = set()
+            validation_dag_receipt = validation_result.get(
+                "validation_dag_receipt"
+            )
+            if isinstance(validation_dag_receipt, Mapping):
+                receipt_id = str(
+                    validation_dag_receipt.get("receipt_id") or ""
+                ).strip()
+                if receipt_id:
+                    validation_receipt_ids.add(receipt_id)
+            proof_record = validation_result.get("proof")
+            if isinstance(proof_record, Mapping):
+                authoritative_ids = proof_record.get(
+                    "authoritative_receipt_ids"
+                )
+                if isinstance(authoritative_ids, Sequence) and not isinstance(
+                    authoritative_ids, (str, bytes, bytearray)
+                ):
+                    validation_receipt_ids.update(
+                        str(item).strip()
+                        for item in authoritative_ids
+                        if str(item).strip()
+                    )
+            if validation_receipt_ids:
+                validation_proof["validation_receipt_ids"] = sorted(
+                    validation_receipt_ids
+                )[:MAX_MERGE_PROOF_METADATA_ITEMS]
             raw_proof_gate = validation_result.get(
                 "proof_gate",
                 validation_result.get("proof_gate_packet"),
@@ -7924,6 +8947,64 @@ class PortalImplementationDaemon:
                             field_name=gate_name,
                         )
                     )
+            if (
+                self.task_source is not None
+                and self.task_source.source_kind == "duckdb"
+                and validation_proof.get("passed") is True
+            ):
+                proposal = validation_proof.get("proposal_gate")
+                proposal_receipt_id = (
+                    str(proposal.get("receipt_id") or "").strip()
+                    if isinstance(proposal, Mapping)
+                    and proposal.get("accepted") is True
+                    else ""
+                )
+                validation_result_digests = tuple(
+                    str(item.get("validation_result_digest") or "").strip()
+                    for item in result_records
+                    if str(item.get("validation_result_digest") or "").strip()
+                )
+                validation_ids = tuple(
+                    str(item.get("validation_id") or "").strip()
+                    for item in result_records
+                    if str(item.get("validation_id") or "").strip()
+                )
+                if (
+                    proposal_receipt_id
+                    and len(validation_result_digests) == len(result_records)
+                    and len(validation_ids) == len(result_records)
+                    and result_records
+                ):
+                    execution_receipt = DuckDBValidationExecutionReceipt(
+                        task_cid=identity.canonical_task_cid,
+                        task_source_identity_id=(
+                            self.task_source.identity.identity_id
+                        ),
+                        target_commit=implementation_commit,
+                        target_tree=candidate_tree,
+                        selection_scope=str(
+                            validation_proof["selection"].get("scope") or ""
+                        ) if isinstance(
+                            validation_proof.get("selection"), Mapping
+                        ) else "",
+                        validation_result_digests=validation_result_digests,
+                        validation_ids=validation_ids,
+                        proposal_receipt_id=proposal_receipt_id,
+                        compact_proof_digest=(
+                            _duckdb_compact_validation_proof_digest(
+                                validation_proof
+                            )
+                        ),
+                    )
+                    validation_proof["validation_execution_receipt"] = (
+                        execution_receipt.to_record()
+                    )
+                    validation_receipt_ids.add(
+                        execution_receipt.receipt_id
+                    )
+                    validation_proof["validation_receipt_ids"] = sorted(
+                        validation_receipt_ids
+                    )[:MAX_MERGE_PROOF_METADATA_ITEMS]
             metadata["validation_proof"] = validation_proof
         if self.formal_verification_policy is not None:
             metadata["formal_verification_policy"] = _bounded_merge_proof_value(
@@ -8199,6 +9280,35 @@ class PortalImplementationDaemon:
                     "validation_result": validation_proof,
                     "validation_gate_reason": scope_binding_error,
                 }
+        queued_source_identity = metadata.get("task_source_identity")
+        if (
+            isinstance(queued_source_identity, Mapping)
+            and queued_source_identity.get("source_kind") == "duckdb"
+        ):
+            try:
+                self._merge_completion_receipt_binding(metadata)
+                queued_writer = metadata.get("task_source_writer")
+                if (
+                    not isinstance(queued_writer, Mapping)
+                    or not str(queued_writer.get("writer_id") or "").strip()
+                    or isinstance(queued_writer.get("fencing_token"), bool)
+                    or int(queued_writer.get("fencing_token") or 0) < 1
+                    or not str(
+                        getattr(request, "canonical_task_id", "") or ""
+                    ).strip()
+                ):
+                    raise ValueError(
+                        "queued DuckDB completion writer/task binding is missing"
+                    )
+            except (TypeError, ValueError) as exc:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "duckdb_completion_evidence_invalid",
+                    "branch": branch_name,
+                    "completion_error": str(exc),
+                }
         raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
         changed_submodule_paths = (
             {
@@ -8308,6 +9418,45 @@ class PortalImplementationDaemon:
                 request_todo_path = Path(str(metadata.get("todo_path") or self.todo_path))
                 if request_todo_path != self.todo_path:
                     request_state_path = Path(str(metadata.get("state_path") or self.state_path))
+                    source_options: dict[str, Any] = {}
+                    source_identity = metadata.get("task_source_identity")
+                    if isinstance(source_identity, Mapping):
+                        source_kind = str(
+                            source_identity.get("source_kind") or ""
+                        ).strip()
+                        configured_source: Any = request_todo_path
+                        if source_kind == "duckdb":
+                            from ..duckdb_task_source import DuckDBTaskSource
+
+                            writer = metadata.get("task_source_writer")
+                            if not isinstance(writer, Mapping):
+                                raise TaskSourceIntegrityError(
+                                    "queued DuckDB task source lacks writer binding"
+                                )
+                            configured_source = DuckDBTaskSource(
+                                request_todo_path,
+                                expected_plan_root_cid=str(
+                                    source_identity.get("root_id") or ""
+                                ),
+                                expected_repository_tree_id=str(
+                                    source_identity.get("repository_root_id") or ""
+                                ),
+                                writer_id=str(writer.get("writer_id") or ""),
+                                fencing_token=int(
+                                    writer.get("fencing_token") or 0
+                                ),
+                            )
+                        source_options = {
+                            "task_source": configured_source,
+                            "task_source_kind": source_kind,
+                            "expected_task_source_identity": source_identity,
+                            "expected_task_source_root_id": str(
+                                source_identity.get("root_id") or ""
+                            ),
+                            "expected_task_source_repository_root_id": str(
+                                source_identity.get("repository_root_id") or ""
+                            ),
+                        }
                     completion_daemon = PortalImplementationDaemon(
                         todo_path=request_todo_path,
                         state_path=request_state_path,
@@ -8322,12 +9471,43 @@ class PortalImplementationDaemon:
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
                         decision_runtime=self.decision_runtime,
+                        **source_options,
                     )
                 completion_tree_id = str(
                     result.get("merge_commit")
                     or result.get("target_commit")
                     or implementation_commit
                 )
+                bundle_payload = metadata.get("bundle_work_order")
+                if isinstance(bundle_payload, dict):
+                    task_ids = [
+                        str(item)
+                        for item in [
+                            bundle_payload.get("primary_task_id"),
+                            *(bundle_payload.get("covered_task_ids") or []),
+                        ]
+                        if str(item or "")
+                    ]
+                else:
+                    task_ids = [task.task_id]
+                try:
+                    completion_evidence = (
+                        completion_daemon._duckdb_completion_evidence_for_merge_claim(
+                            request,
+                            result,
+                            task_ids,
+                        )
+                    )
+                except (TaskSourceError, TypeError, ValueError) as exc:
+                    result.update(
+                        {
+                            "merged": False,
+                            "returncode": 2,
+                            "reason": "duckdb_completion_evidence_invalid",
+                            "completion_error": str(exc),
+                        }
+                    )
+                    return result
                 completion_daemon._decision_runtime_completion(
                     task,
                     merged_tree_id=completion_tree_id,
@@ -8346,24 +9526,42 @@ class PortalImplementationDaemon:
                         },
                     },
                 )
-                bundle_payload = metadata.get("bundle_work_order")
                 if isinstance(bundle_payload, dict):
-                    task_ids = [
-                        str(item)
-                        for item in [
-                            bundle_payload.get("primary_task_id"),
-                            *(bundle_payload.get("covered_task_ids") or []),
-                        ]
-                        if str(item or "")
-                    ]
                     todo_update_result = completion_daemon._mark_tasks_completed_in_todo(
                         task_ids,
                         primary_task_id=str(bundle_payload.get("primary_task_id") or task.task_id),
                         completion_reason="bundle_work_order",
                         bundle_work_order=bundle_payload,
+                        completion_evidence=completion_evidence,
+                        completion_claim=request,
                     )
                 else:
-                    todo_update_result = completion_daemon._mark_task_completed_in_todo(task.task_id)
+                    todo_update_result = completion_daemon._mark_task_completed_in_todo(
+                        task.task_id,
+                        completion_evidence=completion_evidence,
+                        completion_claim=request,
+                    )
+                completed_task_ids = {
+                    str(item)
+                    for item in (
+                        *(todo_update_result.get("updated_task_ids") or ()),
+                        *(todo_update_result.get("already_completed_task_ids") or ()),
+                    )
+                }
+                if (
+                    completion_daemon.task_source is not None
+                    and completion_daemon.task_source.source_kind == "duckdb"
+                    and set(task_ids).difference(completed_task_ids)
+                ):
+                    result.update(
+                        {
+                            "merged": False,
+                            "returncode": 2,
+                            "reason": "duckdb_completion_status_rejected",
+                            "todo_update_result": todo_update_result,
+                        }
+                    )
+                    return result
                 completion_daemon._record_task_queue_outcome(task, 0)
                 result["todo_update_result"] = todo_update_result
         return result
@@ -9538,6 +10736,20 @@ class PortalImplementationDaemon:
                 },
             )
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+            if (
+                self.task_source is not None
+                and self.task_source.source_kind == "duckdb"
+                and not (
+                    todo_update_result.get("updated_task_ids")
+                    or todo_update_result.get("already_completed_task_ids")
+                )
+            ):
+                returncode = 2
+                state.last_implementation_returncode = returncode
+                merge_result["completion_status_reason"] = (
+                    "duckdb_completion_status_rejected"
+                )
+                merge_result["todo_update_result"] = todo_update_result
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
@@ -17955,6 +19167,21 @@ class PortalImplementationDaemon:
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
                 resolved = not failed_submodules and cleanup_cleaned
                 todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+                duckdb_completion_rejected = bool(
+                    resolved
+                    and self.task_source is not None
+                    and self.task_source.source_kind == "duckdb"
+                    and task_id
+                    not in {
+                        str(item)
+                        for item in (
+                            *(todo_update_result.get("updated_task_ids") or ()),
+                            *(todo_update_result.get("already_completed_task_ids") or ()),
+                        )
+                    }
+                )
+                if duckdb_completion_rejected:
+                    resolved = False
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
@@ -17962,7 +19189,9 @@ class PortalImplementationDaemon:
                     "implementation_commit": implementation_commit,
                     "resolved": resolved,
                     "reason": (
-                        "submodule_merge_retry_failed"
+                        "duckdb_completion_status_rejected"
+                        if duckdb_completion_rejected
+                        else "submodule_merge_retry_failed"
                         if failed_submodules
                         else "implementation_commit_already_merged"
                         if cleanup_cleaned
@@ -18051,6 +19280,22 @@ class PortalImplementationDaemon:
             if merge_result.get("merged") and not cleanup_cleaned:
                 reason = "cleanup_retry_failed"
             todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+            duckdb_completion_rejected = bool(
+                resolved
+                and self.task_source is not None
+                and self.task_source.source_kind == "duckdb"
+                and task_id
+                not in {
+                    str(item)
+                    for item in (
+                        *(todo_update_result.get("updated_task_ids") or ()),
+                        *(todo_update_result.get("already_completed_task_ids") or ()),
+                    )
+                }
+            )
+            if duckdb_completion_rejected:
+                resolved = False
+                reason = "duckdb_completion_status_rejected"
             result = {
                 "task_id": task_id,
                 "attempt": attempt,

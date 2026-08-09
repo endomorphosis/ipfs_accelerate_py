@@ -2394,6 +2394,16 @@ class DuckDBTaskSource:
 
     readiness = ready_tasks
 
+    def current_writer_fence(self) -> WriterFence:
+        """Return the authoritative writer owner and fence without advancing it."""
+
+        with self._read_connection() as (_connection, metadata):
+            return WriterFence(
+                writer_id=_meta_value(metadata, "writer_id"),
+                fencing_token=int(_meta_value(metadata, "writer_fence")),
+                revision=int(_meta_value(metadata, "revision")),
+            )
+
     def acquire_writer(
         self,
         writer_id: str,

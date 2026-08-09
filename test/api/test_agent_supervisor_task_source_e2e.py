@@ -241,31 +241,39 @@ def test_daemon_consumes_either_source_and_receipts_bind_source_identity(
     tmp_path: Path,
 ) -> None:
     markdown, database = _sources(tmp_path)
-    observed: list[tuple[str, str, str]] = []
-    for name, source in (("markdown", markdown), ("duckdb", database)):
-        daemon = _daemon(tmp_path / name, source)
-        first = daemon.run_once()
-        completed = daemon._mark_task_completed_in_todo("FIX-001")
-        second = daemon.run_once()
+    markdown_daemon = _daemon(tmp_path / "markdown", markdown)
+    first = markdown_daemon.run_once()
+    completed = markdown_daemon._mark_task_completed_in_todo("FIX-001")
+    second = markdown_daemon.run_once()
+    assert first["active_task_id"] == "FIX-001"
+    assert second["active_task_id"] == "FIX-002"
+    assert completed["completion_receipts"][0][
+        "task_source_identity"
+    ] == markdown.identity.to_dict()
 
-        assert first["active_task_id"] == "FIX-001"
-        assert second["active_task_id"] == "FIX-002"
-        assert completed["completion_receipts"][0][
-            "task_source_identity"
-        ] == source.identity.to_dict()
-        checkpoint = daemon._runtime_checkpoint
-        assert checkpoint["task_source_identity"] == source.identity.to_dict()
-        observed.append(
-            (
-                first["active_task_id"],
-                second["active_task_id"],
-                completed["updated_task_ids"][0],
-            )
-        )
-    assert observed == [
-        ("FIX-001", "FIX-002", "FIX-001"),
-        ("FIX-001", "FIX-002", "FIX-001"),
-    ]
+    database_daemon = _daemon(tmp_path / "duckdb", database)
+    assert database_daemon.run_once()["active_task_id"] == "FIX-001"
+    rejected = database_daemon._mark_task_completed_in_todo("FIX-001")
+    assert rejected["reason"] == "completion_evidence_required"
+    current = database.get("FIX-001")
+    assert current is not None
+    database.compare_and_swap_status(
+        current.task_id,
+        expected_status=current.status,
+        new_status="completed",
+        expected_revision=current.revision,
+        receipt={"fixture": "bare manual completion must not qualify"},
+    )
+
+    restart = _daemon(tmp_path / "duckdb-restart", database)
+    with pytest.raises(TaskSourceIntegrityError, match="post-merge evidence"):
+        restart._load_tasks()
+    invalid = restart.run_once()
+    assert invalid["reason"] == "task_source_invalid"
+    replay = restart._mark_task_completed_in_todo("FIX-001")
+    assert replay["reason"] == "completion_evidence_required"
+    assert replay.get("completion_receipts") in (None, [])
+    assert restart._completion_receipts_for_task_ids(["FIX-001"]) == []
     assert not list(tmp_path.rglob("*duckdb*.md"))
 
 
