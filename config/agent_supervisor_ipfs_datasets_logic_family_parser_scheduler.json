@@ -37,7 +37,7 @@
     "root_goal_id": "LFP-G000"
   },
   "max_lanes": 4,
-  "strict_task_sharding": true,
+  "strict_task_sharding": false,
   "exit_when_all_tracks_terminal": false,
   "objective_refill_enabled": true,
   "codebase_refill_enabled": false,
@@ -82,36 +82,24 @@
       "index": 0,
       "name": "lfp-lane-0",
       "strict_shard_remainder": 0,
-      "initial_task_ids": [
-        "LFP-004"
-      ],
       "initial_focus": "domain-family-provider-capability-matrix"
     },
     {
       "index": 1,
       "name": "lfp-lane-1",
       "strict_shard_remainder": 1,
-      "initial_task_ids": [
-        "LFP-001"
-      ],
       "initial_focus": "parser-ast-printer-decoder-inventory"
     },
     {
       "index": 2,
       "name": "lfp-lane-2",
       "strict_shard_remainder": 2,
-      "initial_task_ids": [
-        "LFP-002"
-      ],
       "initial_focus": "cross-family-conformance-corpus"
     },
     {
       "index": 3,
       "name": "lfp-lane-3",
       "strict_shard_remainder": 3,
-      "initial_task_ids": [
-        "LFP-003"
-      ],
       "initial_focus": "canonical-family-identifier-audit"
     }
   ],
@@ -215,6 +203,7 @@
     "derived_refill": {
       "max_goals_per_epoch": 8,
       "max_tasks_per_epoch": 24,
+      "min_open_tasks": 8,
       "max_open_tasks": 48,
       "max_refinement_depth": 3,
       "max_unchanged_failure_retries": 2,

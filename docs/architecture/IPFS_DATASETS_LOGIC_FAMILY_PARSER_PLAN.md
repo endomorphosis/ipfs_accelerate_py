@@ -465,9 +465,13 @@ typed inconclusive case and a refill candidate.
 
 ## Supervisor execution model
 
-The program uses four strict shards. Control documents are protected. Domain
-and parser work occurs in initialized `ipfs_datasets_py` nested worktrees; a
-nested commit must land before a serialized accelerator gitlink update.
+The program uses four hash-preferred lanes with non-strict fallback work
+stealing, so an idle lane may claim any otherwise-unreserved ready task.
+Control documents are protected. Domain and parser work occurs in initialized
+`ipfs_datasets_py` nested worktrees; a nested commit must land before a
+serialized accelerator gitlink update. Objective refill starts below eight
+open tasks (two per lane), emits at most 24 findings per epoch, caps the open
+set at 48, and observes a 3,600-second unchanged-evidence cooldown.
 
 Initial ready width is four inventory/corpus/audit tasks. Shared contracts are
 joined before parser implementation. After that gate, parser-family,

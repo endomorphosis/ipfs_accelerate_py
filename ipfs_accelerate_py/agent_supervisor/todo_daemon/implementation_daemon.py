@@ -31264,7 +31264,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         scope_paths: Sequence[str],
     ) -> dict[str, Any]:
-        """Stage only exact ignored outputs and capture fail-closed evidence."""
+        """Stage exact ignored outputs in their owning Git repository."""
 
         expected_paths = self._exact_proposal_expected_output_paths(task)
         predicted_paths = {
@@ -31295,8 +31295,21 @@ class PortalImplementationDaemon:
         all_submodule_paths = tuple(
             sorted({*submodule_paths, *discovered_submodule_paths})
         )
+        ordered_submodule_paths = tuple(
+            sorted(
+                all_submodule_paths,
+                key=lambda value: (-len(value.split("/")), value),
+            )
+        )
+        ordered_configured_submodule_paths = tuple(
+            sorted(
+                set(submodule_paths),
+                key=lambda value: (-len(value.split("/")), value),
+            )
+        )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
+        index_authorities: dict[str, tuple[Path, str]] = {}
 
         for relative in expected_paths:
             target = workspace_path / relative
@@ -31306,9 +31319,55 @@ class PortalImplementationDaemon:
                 baseline_ref=baseline_ref,
                 relative=relative,
             )
+            submodule_root = next(
+                (
+                    path
+                    for path in ordered_submodule_paths
+                    if relative == path or relative.startswith(f"{path}/")
+                ),
+                "",
+            )
+            configured_submodule_root = next(
+                (
+                    path
+                    for path in ordered_configured_submodule_paths
+                    if relative.startswith(f"{path}/")
+                ),
+                "",
+            )
+            # Ignore and index policy is repository-local. A configured
+            # submodule grants the boundary authority; a discovered nested
+            # gitlink below it identifies the deepest repository that owns the
+            # exact path. Unconfigured submodule boundaries stay fail-closed.
+            owning_submodule_root = ""
+            if configured_submodule_root:
+                candidate_root = (
+                    submodule_root
+                    if submodule_root
+                    and (
+                        submodule_root == configured_submodule_root
+                        or submodule_root.startswith(
+                            f"{configured_submodule_root}/"
+                        )
+                    )
+                    else configured_submodule_root
+                )
+                if self._is_git_worktree(workspace_path / candidate_root):
+                    owning_submodule_root = candidate_root
+            index_workspace = (
+                workspace_path / owning_submodule_root
+                if owning_submodule_root
+                else workspace_path
+            )
+            index_relative = (
+                relative[len(owning_submodule_root) + 1 :]
+                if owning_submodule_root
+                else relative
+            )
+            index_authorities[relative] = (index_workspace, index_relative)
             indexed = self._exact_path_is_indexed(
-                workspace_path,
-                relative,
+                index_workspace,
+                index_relative,
             )
             ignored_result = subprocess.run(
                 [
@@ -31318,8 +31377,8 @@ class PortalImplementationDaemon:
                     "-z",
                     "--stdin",
                 ],
-                cwd=workspace_path,
-                input=relative.encode(
+                cwd=index_workspace,
+                input=index_relative.encode(
                     "utf-8",
                     errors="surrogateescape",
                 )
@@ -31335,22 +31394,12 @@ class PortalImplementationDaemon:
             )
             forbidden = any(
                 self._path_matches_scope(relative, path)
+                or self._path_matches_scope(index_relative, path)
                 for path in default_forbidden
             )
             submodule_bound = any(
                 self._path_matches_prefix(relative, path)
                 for path in all_submodule_paths
-            )
-            submodule_root = next(
-                (
-                    path
-                    for path in sorted(
-                        all_submodule_paths,
-                        key=lambda value: (-len(value.split("/")), value),
-                    )
-                    if relative == path or relative.startswith(f"{path}/")
-                ),
-                "",
             )
             submodule_unpopulated = bool(
                 submodule_root
@@ -31400,7 +31449,7 @@ class PortalImplementationDaemon:
                 if (
                     protected
                     or forbidden
-                    or submodule_bound
+                    or (submodule_bound and not owning_submodule_root)
                     or symlink_bound
                     or not in_scope
                     or not regular_file
@@ -31415,9 +31464,9 @@ class PortalImplementationDaemon:
                             "add",
                             "--force",
                             "--",
-                            relative,
+                            index_relative,
                         ],
-                        cwd=workspace_path,
+                        cwd=index_workspace,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         check=False,
@@ -31425,8 +31474,8 @@ class PortalImplementationDaemon:
                     force_stage_succeeded = bool(
                         staged.returncode == 0
                         and self._exact_path_is_indexed(
-                            workspace_path,
-                            relative,
+                            index_workspace,
+                            index_relative,
                         )
                     )
                     if not force_stage_succeeded:
@@ -31435,6 +31484,8 @@ class PortalImplementationDaemon:
             checks.append(
                 {
                     "path": relative,
+                    "index_repository": owning_submodule_root or ".",
+                    "index_path": index_relative,
                     "exists": exists,
                     "baseline_present": baseline_present,
                     "indexed_before": indexed,
@@ -31457,16 +31508,28 @@ class PortalImplementationDaemon:
             )
 
         staged_paths = set(self._staged_worktree_paths(workspace_path))
+        staged_by_repository: dict[Path, set[str]] = {
+            workspace_path: set(staged_paths)
+        }
         for check in checks:
             relative = str(check["path"])
-            check["staged"] = relative in staged_paths
+            index_workspace, index_relative = index_authorities[relative]
+            repository_staged_paths = staged_by_repository.get(index_workspace)
+            if repository_staged_paths is None:
+                repository_staged_paths = set(
+                    self._staged_worktree_paths(index_workspace)
+                )
+                staged_by_repository[index_workspace] = repository_staged_paths
+            check["staged"] = index_relative in repository_staged_paths
+            if check["staged"] and index_workspace != workspace_path:
+                staged_paths.add(relative)
             if (
                 check["force_stage_required"]
                 and (
                     not check["staged"]
                     or not self._exact_path_is_indexed(
-                        workspace_path,
-                        relative,
+                        index_workspace,
+                        index_relative,
                     )
                 )
                 and not check["issue"]

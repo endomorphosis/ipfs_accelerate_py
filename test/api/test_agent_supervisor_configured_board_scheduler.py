@@ -22,6 +22,10 @@ KITA_CONFIG = (
     REPO_ROOT
     / "config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json"
 )
+LOGIC_FAMILY_CONFIG = (
+    REPO_ROOT
+    / "config/agent_supervisor_ipfs_datasets_logic_family_parser_scheduler.json"
+)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -220,6 +224,76 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
+
+
+def test_logic_family_config_enables_work_stealing_and_forwards_refill_policy() -> None:
+    board = load_configured_board(LOGIC_FAMILY_CONFIG, repo_root=REPO_ROOT)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260809T000000Z",
+    )
+    args = plan["argv"]
+    common = _common_args(plan)
+
+    assert board.strict_task_sharding is False
+    assert plan["strict_task_sharding"] is False
+    assert "--implementation-supervisor-strict-task-sharding" not in args
+    assert "--strict-task-sharding" not in common
+    assert all(
+        "initial_task_ids" not in lane
+        for lane in board.payload["lanes"]
+    )
+    expected_refill_values = {
+        "--objective-scan-min-open-tasks": "8",
+        "--objective-scan-max-findings": "24",
+        "--objective-scan-cooldown-seconds": "3600",
+    }
+    for flag, expected in expected_refill_values.items():
+        assert common.count(flag) == 1
+        assert common[common.index(flag) + 1] == expected
+    assert plan["environment"] == {
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "high",
+    }
+
+
+def test_loader_requires_bounded_objective_refill_controls(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["objective_refill_enabled"] = True
+    payload["refill_policy"] = {
+        "derived_refill": {
+            "min_open_tasks": 4,
+            "max_tasks_per_epoch": 3,
+            "max_open_tasks": 5,
+            "cooldown_seconds": 60,
+        }
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    common = scheduler_module.configured_board_common_args(
+        board,
+        implement=True,
+    )
+    assert common[common.index("--objective-scan-min-open-tasks") + 1] == "4"
+    assert common[common.index("--objective-scan-max-findings") + 1] == "3"
+    assert common[common.index("--objective-scan-cooldown-seconds") + 1] == "60"
+
+    del payload["refill_policy"]["derived_refill"]["min_open_tasks"]
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    with pytest.raises(ConfiguredBoardError, match="min_open_tasks"):
+        load_configured_board(config_path, repo_root=repo)
 
 
 def test_ordered_provider_contract_requires_complete_unambiguous_fields(

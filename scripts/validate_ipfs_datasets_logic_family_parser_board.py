@@ -22,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # 
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (  # noqa: E402
     ConfiguredBoardError,
+    configured_board_launch_plan,
     load_configured_board,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402
@@ -87,13 +88,6 @@ EXPECTED_TASK_TO_GOAL = {
         for task_id in task_ids
     },
 }
-EXPECTED_LANE_SEEDS = (
-    "LFP-004",
-    "LFP-001",
-    "LFP-002",
-    "LFP-003",
-)
-
 GOAL_STATES = frozenset(
     {
         "active",
@@ -224,6 +218,7 @@ EXPECTED_SOURCE_BINDING = {
 EXPECTED_DERIVED_REFILL = {
     "max_goals_per_epoch": 8,
     "max_tasks_per_epoch": 24,
+    "min_open_tasks": 8,
     "max_open_tasks": 48,
     "max_refinement_depth": 3,
     "max_unchanged_failure_retries": 2,
@@ -399,8 +394,8 @@ def _validate_actual_source_binding(errors: list[str]) -> dict[str, object]:
         r"160000 commit ([0-9a-f]{40})\tipfs_datasets_py\n?", gitlink.stdout
     )
     gitlink_revision = gitlink_match.group(1) if gitlink_match else ""
-    if gitlink_revision != DATASETS_REVISION:
-        errors.append("ipfs_datasets_py gitlink does not equal the sealed revision")
+    if not gitlink_revision:
+        errors.append("ipfs_datasets_py gitlink is missing or malformed")
 
     nested = REPO_ROOT / "ipfs_datasets_py"
     nested_top = _git("rev-parse", "--show-toplevel", cwd=nested)
@@ -412,8 +407,23 @@ def _validate_actual_source_binding(errors: list[str]) -> dict[str, object]:
         errors.append("ipfs_datasets_py is not an initialized exact nested worktree")
     nested_head = _git("rev-parse", "HEAD", cwd=nested) if exact_nested_root else None
     actual_nested_head = nested_head.stdout.strip() if nested_head else ""
-    if actual_nested_head != DATASETS_REVISION:
-        errors.append("ipfs_datasets_py nested HEAD does not equal the sealed revision")
+    if gitlink_revision and actual_nested_head != gitlink_revision:
+        errors.append("ipfs_datasets_py gitlink does not equal nested HEAD")
+    planning_revision_ancestor = False
+    if actual_nested_head:
+        planning_ancestor = _git(
+            "merge-base",
+            "--is-ancestor",
+            DATASETS_REVISION,
+            actual_nested_head,
+            cwd=nested,
+        )
+        planning_revision_ancestor = planning_ancestor.returncode == 0
+        if not planning_revision_ancestor:
+            errors.append(
+                "ipfs_datasets_py nested HEAD does not descend from the sealed "
+                "planning revision"
+            )
     nested_status = (
         _git("status", "--porcelain=v1", "--untracked-files=all", cwd=nested)
         if exact_nested_root
@@ -425,6 +435,8 @@ def _validate_actual_source_binding(errors: list[str]) -> dict[str, object]:
     return {
         "branch": branch.stdout.strip(),
         "required_ancestor": ACCELERATOR_REQUIRED_ANCESTOR,
+        "planning_revision": DATASETS_REVISION,
+        "planning_revision_ancestor": planning_revision_ancestor,
         "gitlink": gitlink_revision,
         "nested_head": actual_nested_head,
         "nested_exact_worktree": exact_nested_root,
@@ -764,8 +776,12 @@ def validate(
         )
 
     scheduler = _load_json(scheduler_path, errors)
+    configured_board = None
     try:
-        load_configured_board(scheduler_path, repo_root=REPO_ROOT)
+        configured_board = load_configured_board(
+            scheduler_path,
+            repo_root=REPO_ROOT,
+        )
     except ConfiguredBoardError as exc:
         errors.append(f"configured scheduler schema rejected: {exc}")
 
@@ -785,7 +801,7 @@ def validate(
         "board_namespace": BOARD_NAMESPACE,
         "merge_target_branch": MERGE_TARGET_BRANCH,
         "max_lanes": 4,
-        "strict_task_sharding": True,
+        "strict_task_sharding": False,
         "exit_when_all_tracks_terminal": False,
         "objective_refill_enabled": True,
         "codebase_refill_enabled": False,
@@ -835,7 +851,6 @@ def validate(
         errors.append("scheduler runtime_paths differ from the isolated runtime contract")
 
     lanes = scheduler.get("lanes")
-    lane_seeds: list[str] = []
     if not isinstance(lanes, list) or len(lanes) != 4:
         errors.append("scheduler must define exactly four lanes")
     else:
@@ -847,25 +862,10 @@ def validate(
                 errors.append(f"scheduler lane {index} has wrong index")
             if lane.get("strict_shard_remainder") != index:
                 errors.append(f"scheduler lane {index} has wrong shard remainder")
-            initial = lane.get("initial_task_ids")
-            if not isinstance(initial, list) or len(initial) != 1:
-                errors.append(f"scheduler lane {index} must have one seed task")
-                continue
-            task_id = str(initial[0])
-            lane_seeds.append(task_id)
-            if task_id != EXPECTED_LANE_SEEDS[index]:
-                errors.append(f"scheduler lane {index} has wrong seed {task_id}")
-            try:
-                numeric_id = int(task_id.rsplit("-", 1)[1])
-            except (IndexError, ValueError):
-                errors.append(f"scheduler lane {index} seed ID is malformed")
-            else:
-                if numeric_id % 4 != index:
-                    errors.append(
-                        f"scheduler lane {index} seed {task_id} violates strict sharding"
-                    )
-    if set(lane_seeds) != set(INITIAL_READY):
-        errors.append("scheduler lane seeds differ from the initial ready set")
+            if "initial_task_ids" in lane:
+                errors.append(
+                    f"scheduler lane {index} declares unused initial_task_ids"
+                )
 
     task_groups = scheduler.get("task_groups")
     expected_groups_json = {
@@ -887,6 +887,44 @@ def validate(
     }
     if refill_policy != expected_refill_policy:
         errors.append("scheduler refill_policy differs from the bounded append-only contract")
+
+    if configured_board is not None:
+        launch_plan = configured_board_launch_plan(
+            configured_board,
+            implement=True,
+            detach=True,
+            stamp="validator",
+        )
+        launch_argv = launch_plan["argv"]
+        common_prefix = "--common-arg="
+        common_args = [
+            item[len(common_prefix) :]
+            for item in launch_argv
+            if isinstance(item, str) and item.startswith(common_prefix)
+        ]
+        if "--implementation-supervisor-strict-task-sharding" in launch_argv:
+            errors.append("scheduler launch unexpectedly enables strict master sharding")
+        if "--strict-task-sharding" in common_args:
+            errors.append("scheduler launch unexpectedly enables strict lane sharding")
+        expected_refill_args = {
+            "--objective-scan-min-open-tasks": "8",
+            "--objective-scan-max-findings": "24",
+            "--objective-scan-cooldown-seconds": "3600",
+        }
+        for flag, expected_value in expected_refill_args.items():
+            positions = [
+                index
+                for index, value in enumerate(common_args)
+                if value == flag
+            ]
+            if (
+                len(positions) != 1
+                or positions[0] + 1 >= len(common_args)
+                or common_args[positions[0] + 1] != expected_value
+            ):
+                errors.append(
+                    f"scheduler launch does not seal {flag}={expected_value}"
+                )
 
     actual_source_binding = _validate_actual_source_binding(errors)
     return {

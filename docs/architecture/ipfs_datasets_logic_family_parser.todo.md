@@ -44,7 +44,7 @@ validation and evidence contract.
 
 ## LFP-001 Inventory parser, AST, type, printer, and decoder surfaces
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -75,7 +75,7 @@ validation and evidence contract.
 
 ## LFP-002 Freeze the cross-family conformance corpus manifest
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -106,7 +106,7 @@ validation and evidence contract.
 
 ## LFP-003 Audit canonical and free-form family identifiers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -137,7 +137,7 @@ validation and evidence contract.
 
 ## LFP-004 Materialize the domain-family-provider capability matrix baseline
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

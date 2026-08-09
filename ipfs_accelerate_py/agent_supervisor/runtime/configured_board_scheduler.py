@@ -116,6 +116,54 @@ def _nonnegative_number(value: Any, *, field: str) -> float:
     return parsed
 
 
+def _nonnegative_int(value: Any, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ConfiguredBoardError(f"{field} must be a nonnegative integer")
+    return value
+
+
+def _objective_refill_controls(
+    payload: Mapping[str, Any],
+) -> tuple[int, int, int] | None:
+    """Return the sealed low-watermark, epoch bound, and cooldown controls."""
+
+    if payload.get("objective_refill_enabled") is not True:
+        return None
+    refill_policy = payload.get("refill_policy")
+    if not isinstance(refill_policy, dict):
+        raise ConfiguredBoardError(
+            "refill_policy must be an object when objective refill is enabled"
+        )
+    derived = refill_policy.get("derived_refill")
+    if not isinstance(derived, dict):
+        raise ConfiguredBoardError(
+            "refill_policy.derived_refill must be an object when objective "
+            "refill is enabled"
+        )
+    min_open_tasks = _nonnegative_int(
+        derived.get("min_open_tasks"),
+        field="refill_policy.derived_refill.min_open_tasks",
+    )
+    max_findings = _positive_int(
+        derived.get("max_tasks_per_epoch"),
+        field="refill_policy.derived_refill.max_tasks_per_epoch",
+    )
+    max_open_tasks = _positive_int(
+        derived.get("max_open_tasks"),
+        field="refill_policy.derived_refill.max_open_tasks",
+    )
+    cooldown_seconds = _nonnegative_int(
+        derived.get("cooldown_seconds"),
+        field="refill_policy.derived_refill.cooldown_seconds",
+    )
+    if min_open_tasks >= max_open_tasks:
+        raise ConfiguredBoardError(
+            "refill_policy.derived_refill.min_open_tasks must be below "
+            "max_open_tasks"
+        )
+    return min_open_tasks, max_findings, cooldown_seconds
+
+
 def _required_string(
     payload: Mapping[str, Any],
     field: str,
@@ -486,6 +534,8 @@ def load_configured_board(
         "merge_retry_budget",
     ):
         _positive_int(payload.get(field), field=field)
+
+    _objective_refill_controls(payload)
 
     return ConfiguredBoard(
         config_path=path,
@@ -866,6 +916,7 @@ def configured_board_common_args(
     """Map scheduler policy to existing implementation-supervisor CLI args."""
 
     payload = board.payload
+    objective_refill_controls = _objective_refill_controls(payload)
     args: list[str] = [
         "--todo-path",
         str(board.path(board.taskboard_path)),
@@ -914,12 +965,21 @@ def configured_board_common_args(
         args.extend(["--worktree-submodule-path", relative])
     for relative in board.protected_paths:
         args.extend(["--implementation-protected-path", relative])
-    if payload.get("objective_refill_enabled") is True:
+    if objective_refill_controls is not None:
+        min_open_tasks, max_findings, cooldown_seconds = (
+            objective_refill_controls
+        )
         args.extend(
             [
                 "--objective-refill-scan",
                 "--objective-path",
                 str(board.path(board.objectives_path)),
+                "--objective-scan-min-open-tasks",
+                str(min_open_tasks),
+                "--objective-scan-max-findings",
+                str(max_findings),
+                "--objective-scan-cooldown-seconds",
+                str(cooldown_seconds),
             ]
         )
     if payload.get("codebase_refill_enabled") is True:
