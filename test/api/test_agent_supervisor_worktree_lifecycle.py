@@ -695,6 +695,129 @@ def test_same_lane_dead_owner_reclaimed_before_lease_expiry(tmp_path: Path) -> N
     assert store.load_workspace(replacement_workspace) == replacement
 
 
+def test_same_lane_dead_owner_cleanup_authorized_before_lease_expiry(
+    tmp_path: Path,
+) -> None:
+    """Cleanup/pool reuse must auto-unstick dead same-lane owners mid-lease."""
+
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    peer_state = tmp_path / "state" / "lane-2"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 13,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    workspace = tmp_path / "worktrees" / "stuck-cleanup"
+    record = store.begin_preparing(
+        task_id="CLEANUP-DEAD",
+        canonical_task_cid="cid:cleanup-dead",
+        attempt=2,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/cleanup-dead",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=dead_owner,
+    )
+    assert record.state is WorkspaceLifecycleState.ACTIVE or record.is_nonterminal
+
+    # Without lane identity, peers (and legacy callers) stay lease-gated.
+    peer_decision = store.evaluate_cleanup(workspace_path=workspace)
+    assert not peer_decision.allowed
+    assert peer_decision.reason == "owner_dead_lease_unexpired"
+    peer_auth = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=peer_state,
+    )
+    assert not peer_auth.allowed
+    assert peer_auth.reason == "owner_dead_lease_unexpired"
+
+    # Same-lane cleanup reclaims immediately and authorizes disposal.
+    evaluate = store.evaluate_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=lane_state,
+    )
+    assert evaluate.allowed
+    assert evaluate.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW
+    assert evaluate.reason == "owner_dead_same_lane_reclaim"
+
+    authorized = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=lane_state,
+        caller_lease_id="lane-reclaimer",
+    )
+    assert authorized.allowed
+    assert authorized.reason == "reclaimed_dead_same_lane_owner"
+    assert authorized.record is not None
+    assert authorized.record.state is WorkspaceLifecycleState.TERMINAL
+    assert authorized.record.fence == record.fence + 1
+    assert authorized.record.terminal_reason == "owner_dead_same_lane_reclaim"
+
+    # Follow-up cleanup is a no-op once the claim is terminal.
+    follow = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=lane_state,
+    )
+    assert follow.allowed
+    assert follow.reason == "terminal_record"
+
+
+def test_periodic_same_lane_dead_owner_bulk_reclaim(tmp_path: Path) -> None:
+    """Bulk reclaim path used by daemon periodic maintenance."""
+
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    other_state = tmp_path / "state" / "lane-2"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 15,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    same = store.begin_preparing(
+        task_id="BULK-SAME",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=tmp_path / "ws-same",
+        branch="implementation/bulk-same",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=dead_owner,
+    )
+    store.begin_preparing(
+        task_id="BULK-OTHER",
+        attempt=1,
+        lane_id="lane-2",
+        workspace_path=tmp_path / "ws-other",
+        branch="implementation/bulk-other",
+        merge_target="main",
+        state_dir=str(other_state),
+        owner=dead_owner,
+    )
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(
+        expected_state_dir=lane_state,
+        reason="periodic_dead_same_lane_owner_reclaim",
+    )
+    assert len(recovered) == 1
+    assert recovered[0].task_id == same.task_id
+    assert recovered[0].terminal_reason == "periodic_dead_same_lane_owner_reclaim"
+    assert store.load_workspace(tmp_path / "ws-same").state is WorkspaceLifecycleState.TERMINAL
+    assert store.load_workspace(tmp_path / "ws-other").is_nonterminal
+
+
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
     store = _store(tmp_path)
     workspace = tmp_path / "cad"

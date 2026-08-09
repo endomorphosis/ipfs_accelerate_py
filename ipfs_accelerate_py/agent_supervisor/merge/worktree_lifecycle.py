@@ -1055,12 +1055,31 @@ class WorktreeLifecycleStore:
 
     # ---------------------------------------------------------------- cleanup
 
+    def _same_lane_state_dir(
+        self,
+        record: WorkspaceLifecycleRecord | None,
+        expected_state_dir: str | Path = "",
+    ) -> bool:
+        """True when the record is owned by the caller's exact lane state dir."""
+
+        if record is None:
+            return False
+        # Empty paths must not normalize to cwd and look "same-lane".
+        expected_raw = str(expected_state_dir or "").strip()
+        current_raw = str(record.state_dir or "").strip()
+        if not expected_raw or not current_raw:
+            return False
+        expected = normalize_workspace_path(expected_raw)
+        current = normalize_workspace_path(current_raw)
+        return bool(expected and current and expected == current)
+
     def evaluate_cleanup(
         self,
         *,
         workspace_path: str | Path | None = None,
         branch: str = "",
         caller_lease_id: str = "",
+        expected_state_dir: str | Path = "",
         now: float | None = None,
     ) -> CleanupDecision:
         """Decide whether cleanup may delete/prune/unregister a worktree.
@@ -1068,6 +1087,10 @@ class WorktreeLifecycleStore:
         Nonterminal claims are never cleaned, including the window between
         ``git worktree add`` and child-process discovery, even when the branch
         tip is an ancestor of the merge target.
+
+        Same-lane callers may reclaim a *provably dead* owner without waiting
+        for the full lease window so a crashed daemon does not pin a task for
+        ``DEFAULT_LEASE_SECONDS`` (default 6h). Peer lanes remain lease-gated.
         """
 
         clock_now = float(self.clock() if now is None else now)
@@ -1127,10 +1150,13 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
-        # Owner is dead.  Still require lease expiry (plus optional grace for
-        # brand-new preparing records that may be mid-publication).
+        # Owner is dead.  Peer lanes still require lease expiry (plus optional
+        # grace for brand-new preparing records that may be mid-publication).
+        # Same-lane recovery may reclaim immediately after that grace so a
+        # crashed worker cannot pin ready tasks for the full lease window.
         age = clock_now - float(record.created_at)
         expired = clock_now >= float(record.expires_at)
+        same_lane = self._same_lane_state_dir(record, expected_state_dir)
         if not expired:
             if (
                 record.state is WorkspaceLifecycleState.PREPARING
@@ -1139,6 +1165,15 @@ class WorktreeLifecycleStore:
                 return CleanupDecision(
                     disposition=CleanupDisposition.DENY,
                     reason="preparing_startup_grace",
+                    record=record,
+                    failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                    provider_call_allowed=False,
+                    attempt_consumed=False,
+                )
+            if same_lane:
+                return CleanupDecision(
+                    disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
+                    reason="owner_dead_same_lane_reclaim",
                     record=record,
                     failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                     provider_call_allowed=False,
@@ -1340,17 +1375,23 @@ class WorktreeLifecycleStore:
         workspace_path: str | Path,
         branch: str = "",
         caller_lease_id: str = "",
+        expected_state_dir: str | Path = "",
     ) -> CleanupDecision:
         """Evaluate and, when stale, reclaim under the store lock path.
 
         This is the single entry point cleanup code should call before
         ``git worktree remove`` / prune / branch delete / pool reuse.
+
+        Pass ``expected_state_dir`` (the caller's lane state directory) so a
+        dead same-lane owner can be terminalized without waiting for the full
+        lease window. Peer callers omit it and remain lease-expiry gated.
         """
 
         decision = self.evaluate_cleanup(
             workspace_path=workspace_path,
             branch=branch,
             caller_lease_id=caller_lease_id,
+            expected_state_dir=expected_state_dir,
         )
         if decision.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW:
             # Branch fallback can find a preparing claim whose provisional
@@ -1361,17 +1402,36 @@ class WorktreeLifecycleStore:
                 if decision.record is not None
                 else workspace_path
             )
-            reclaimed = self.reclaim_stale(
-                reclaim_workspace,
-                reclaimer_lease_id=caller_lease_id or new_lease_id(seed="reclaim"),
-                reason=decision.reason,
-            )
+            reclaimer = caller_lease_id or new_lease_id(seed="reclaim")
+            reclaimed: WorkspaceLifecycleRecord | None = None
+            # Same-lane dead owners may still be inside the advertised lease
+            # window; reclaim_stale refuses those. Use the controlled-restart
+            # fence which requires a provably dead birth identity + matching
+            # state_dir.
+            if decision.reason == "owner_dead_same_lane_reclaim":
+                lane_state = expected_state_dir or (
+                    decision.record.state_dir if decision.record is not None else ""
+                )
+                if lane_state:
+                    reclaimed = self.reclaim_dead_owner_for_controlled_restart(
+                        reclaim_workspace,
+                        expected_state_dir=lane_state,
+                        reclaimer_lease_id=reclaimer,
+                        reason=decision.reason,
+                    )
+            if reclaimed is None:
+                reclaimed = self.reclaim_stale(
+                    reclaim_workspace,
+                    reclaimer_lease_id=reclaimer,
+                    reason=decision.reason,
+                )
             if reclaimed is None:
                 # Lost the reclaim race; re-evaluate.
                 refreshed = self.evaluate_cleanup(
                     workspace_path=workspace_path,
                     branch=branch,
                     caller_lease_id=caller_lease_id,
+                    expected_state_dir=expected_state_dir,
                 )
                 if (
                     refreshed.disposition
@@ -1391,7 +1451,11 @@ class WorktreeLifecycleStore:
                 return refreshed
             return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
-                reason="reclaimed_stale_record",
+                reason=(
+                    "reclaimed_dead_same_lane_owner"
+                    if decision.reason == "owner_dead_same_lane_reclaim"
+                    else "reclaimed_stale_record"
+                ),
                 record=reclaimed,
                 failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                 provider_call_allowed=False,
