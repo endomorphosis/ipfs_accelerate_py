@@ -1129,7 +1129,7 @@ validation and evidence contract.
 
 ## LFP-036 Migrate intent_ir skill-prompt views to canonical typed logic
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
