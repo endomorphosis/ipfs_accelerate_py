@@ -388,7 +388,7 @@ this bootstrap is active.
 
 ## DQP-012 Migrate objectives, goals, plans, tasks, queues, and completion state
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
