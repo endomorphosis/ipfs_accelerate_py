@@ -1408,7 +1408,7 @@ validation and evidence contract.
 
 ## LFP-045 Migrate documentation and consumer surfaces, then close legacy drift
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
