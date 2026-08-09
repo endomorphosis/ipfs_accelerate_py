@@ -1225,7 +1225,7 @@ this bootstrap is active.
 
 ## DQP-039 Issue the joined database-control-plane release receipt
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: true
