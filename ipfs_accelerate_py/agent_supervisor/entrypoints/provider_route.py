@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
@@ -16,6 +15,9 @@ from typing import Any, Mapping
 from .contracts import ProviderFallbackReason, ProviderSelection
 
 PREFERRED_PROVIDER = "grok"; FALLBACK_PROVIDER = "codex"; MAXIMUM_FALLBACK_DISPATCHES = 1
+# Compatibility evidence types live here; the legacy entrypoint contract stays
+# quota-only/medium.  The source-bound v3 high route is resolved exclusively by
+# ``ipfs_accelerate_py.llm_router`` and is never inferred from these defaults.
 PRIMARY_MODEL_ID = "grok-4.5"; FALLBACK_MODEL_ID = "gpt-5.6-terra"; FALLBACK_REASONING_EFFORT = "medium"
 PROVIDER_ROUTE_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/entrypoints/provider-route-policy@2"
 PROVIDER_ATTEMPT_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/entrypoints/provider-attempt-receipt@2"
