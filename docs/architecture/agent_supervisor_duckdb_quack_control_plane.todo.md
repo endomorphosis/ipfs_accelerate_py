@@ -853,7 +853,7 @@ this bootstrap is active.
 
 ## DQP-027 Persist provider calls, usage, failure signatures, and churn decisions
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
