@@ -1501,7 +1501,7 @@ validation and evidence contract.
 
 ## LFP-048 Resolve 2 preflight-conflicting backlogged worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -1513,6 +1513,7 @@ validation and evidence contract.
 - Reconciliation reason: preflight_merge_conflict
 - Reconciliation fingerprint: 0215bd6d31c82e1fdfd6a7a29061095a33a4a4f5
 - Reconciliation discovery: /home/barberb/lift_coding/.worktrees/logic-family-parser-supervisor-runtime/data/agent_supervisor/ipfs_datasets_logic_family_parser/state/discovery/2026-08-09-lfp-048-reconciliation-0215bd6d31c8.md
+- Resolution receipt digest: sha256:32538129c5f298371af503fe3cfed75e4f7f511c179a9307508b45564f0da889
 - Canonical board task: false
 - Fingerprint: 0215bd6d31c82e1fdfd6a7a29061095a33a4a4f5
 - Dedupe key: reconciliation_guardrail:preflight_merge_conflict
@@ -1528,7 +1529,7 @@ validation and evidence contract.
 
 ## LFP-049 Resolve dirty main checkout blocking 2 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -1540,6 +1541,7 @@ validation and evidence contract.
 - Reconciliation reason: main_checkout_dirty
 - Reconciliation fingerprint: c3abe0c7a4e083a96ef866487d4feabd31116149
 - Reconciliation discovery: /home/barberb/lift_coding/.worktrees/logic-family-parser-supervisor-runtime/data/agent_supervisor/ipfs_datasets_logic_family_parser/state/discovery/2026-08-09-lfp-049-reconciliation-c3abe0c7a4e0.md
+- Resolution receipt digest: sha256:0577b86dd16b6b775adef7bbe0017a76e0bc1b3254e48fa7ca8e9dfc9556b9ca
 - Canonical board task: false
 - Fingerprint: c3abe0c7a4e083a96ef866487d4feabd31116149
 - Dedupe key: reconciliation_guardrail:main_checkout_dirty
