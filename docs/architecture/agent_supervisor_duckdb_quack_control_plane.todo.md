@@ -543,7 +543,7 @@ this bootstrap is active.
 
 ## DQP-017 Propagate database task-source and Quack options through every runner
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
