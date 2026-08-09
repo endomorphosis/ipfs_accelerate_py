@@ -1,0 +1,249 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_logic_family_parser_v2.scheduler_config@1",
+  "taskboard_path": "docs/architecture/ipfs_datasets_logic_family_parser_v2.todo.md",
+  "objectives_path": "docs/architecture/ipfs_datasets_logic_family_parser_v2.objectives.md",
+  "plan_path": "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_V2_PLAN.md",
+  "validator_path": "scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py",
+  "task_prefix": "LFP2-",
+  "goal_prefix": "LFP2-G",
+  "board_namespace": "ipfs-datasets-logic-family-parser-v2",
+  "merge_target_branch": "agent/logic-family-parser-v2-supervisor",
+  "predecessor_binding": {
+    "predecessor_board_namespace": "ipfs-datasets-logic-family-parser-v1",
+    "predecessor_terminal_task_id": "LFP-047",
+    "predecessor_accelerator_commit": "e162c19d087d4e6511f8eb97fd34ecb449777897",
+    "predecessor_datasets_commit": "fc49cbb3e0e96bf07b367859da32123187d706c1",
+    "predecessor_seed_definition_sha256": "sha256:f5d01bcc13c0b62d35b713cccb2e04abe49da454e9fa6f35cd28a5ad4b72eb44",
+    "predecessor_release_receipt_path": "ipfs_datasets_py/data/logic/conformance/logic_family_parser_release.json",
+    "predecessor_release_receipt_sha256": "sha256:86412a60bfde9b8a13156ab097b44443a4a8f70a7b286f1c7a707366c93757ce"
+  },
+  "source_binding": {
+    "accelerator_required_ancestor": "e162c19d087d4e6511f8eb97fd34ecb449777897",
+    "accelerator_required_branch": "agent/logic-family-parser-v2-supervisor",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "fc49cbb3e0e96bf07b367859da32123187d706c1",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 51,
+    "completed_task_ids": [
+      "LFP2-000"
+    ],
+    "ready_task_ids": [
+      "LFP2-001",
+      "LFP2-002",
+      "LFP2-003",
+      "LFP2-004"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "LFP2-050",
+    "goal_count": 11,
+    "root_goal_id": "LFP2-G000"
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": false,
+  "exit_when_all_tracks_terminal": false,
+  "objective_refill_enabled": true,
+  "objective_goal_refinement_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 3,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 9000,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1500,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_V2_PLAN.md",
+    "docs/architecture/ipfs_datasets_logic_family_parser_v2.objectives.md",
+    "docs/architecture/ipfs_datasets_logic_family_parser_v2.todo.md",
+    "config/agent_supervisor_ipfs_datasets_logic_family_parser_v2_scheduler.json",
+    "scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py",
+    "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_PLAN.md",
+    "docs/architecture/ipfs_datasets_logic_family_parser.objectives.md",
+    "docs/architecture/ipfs_datasets_logic_family_parser.todo.md",
+    "config/agent_supervisor_ipfs_datasets_logic_family_parser_scheduler.json",
+    "scripts/validate_ipfs_datasets_logic_family_parser_board.py",
+    "ipfs_datasets_py/docs/architecture/logic/LOGIC_FAMILY_PARSER_RELEASE.md",
+    "ipfs_datasets_py/data/logic/conformance/logic_family_parser_release.json",
+    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/fixed_point_receipt.json",
+    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/gap_ledger.jsonl",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/ipfs_datasets_logic_family_parser_v2",
+    "state": "data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/state",
+    "worktrees": "data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/worktrees",
+    "merge_queue": "data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/merge-queue",
+    "logs": "data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/logs",
+    "evidence": "data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "lfp2-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_focus": "contracts-identity-governance"
+    },
+    {
+      "index": 1,
+      "name": "lfp2-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_focus": "parsers-elaboration-families"
+    },
+    {
+      "index": 2,
+      "name": "lfp2-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_focus": "translations-domain-bridges"
+    },
+    {
+      "index": 3,
+      "name": "lfp2-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_focus": "providers-execution-evidence"
+    }
+  ],
+  "task_groups": {
+    "LFP2-G010": [
+      "LFP2-001",
+      "LFP2-002",
+      "LFP2-003",
+      "LFP2-004"
+    ],
+    "LFP2-G020": [
+      "LFP2-005",
+      "LFP2-006",
+      "LFP2-007",
+      "LFP2-008",
+      "LFP2-009"
+    ],
+    "LFP2-G030": [
+      "LFP2-010",
+      "LFP2-011",
+      "LFP2-012",
+      "LFP2-013",
+      "LFP2-014",
+      "LFP2-015"
+    ],
+    "LFP2-G040": [
+      "LFP2-016",
+      "LFP2-017",
+      "LFP2-018",
+      "LFP2-019",
+      "LFP2-020",
+      "LFP2-021"
+    ],
+    "LFP2-G050": [
+      "LFP2-022",
+      "LFP2-023",
+      "LFP2-024",
+      "LFP2-025",
+      "LFP2-026",
+      "LFP2-027"
+    ],
+    "LFP2-G060": [
+      "LFP2-028",
+      "LFP2-029",
+      "LFP2-030",
+      "LFP2-031",
+      "LFP2-032",
+      "LFP2-033",
+      "LFP2-034",
+      "LFP2-035",
+      "LFP2-036"
+    ],
+    "LFP2-G070": [
+      "LFP2-037",
+      "LFP2-038",
+      "LFP2-039",
+      "LFP2-040",
+      "LFP2-041",
+      "LFP2-042",
+      "LFP2-043"
+    ],
+    "LFP2-G080": [
+      "LFP2-044",
+      "LFP2-045",
+      "LFP2-046",
+      "LFP2-047"
+    ],
+    "LFP2-G090": [
+      "LFP2-048",
+      "LFP2-049"
+    ],
+    "LFP2-G100": [
+      "LFP2-050"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "nested_repository_policy": {
+    "task_specific_nested_branch_required": true,
+    "nested_commit_before_parent_gitlink_update": true,
+    "parent_gitlink_updates_serialized_by_merge_queue": true,
+    "rebase_nested_change_on_latest_accepted_gitlink": true,
+    "rerun_nested_validation_after_rebase": true,
+    "dirty_or_detached_nested_completion_allowed": false,
+    "broad_snapshot_merge_allowed": false,
+    "cross_repository_tasks_require_independent_commits_and_receipts": true
+  },
+  "refill_policy": {
+    "source": "objective_heap",
+    "append_only": true,
+    "content_addressed": true,
+    "seed_tasks_are_immutable": true,
+    "seed_goals_are_immutable": true,
+    "unscoped_codebase_refill_allowed": false,
+    "empty_scan_may_claim_completion": false,
+    "reachable_gaps_only": true,
+    "derived_refill": {
+      "max_goals_per_epoch": 8,
+      "max_tasks_per_epoch": 24,
+      "min_open_tasks": 8,
+      "max_open_tasks": 48,
+      "max_refinement_depth": 3,
+      "max_unchanged_failure_retries": 2,
+      "cooldown_seconds": 3600,
+      "mutate_seed_board": false,
+      "mutate_seed_objectives": false
+    }
+  },
+  "authority_policy": {
+    "parser_or_solver_success_is_completion_authority": false,
+    "advisor_output_is_completion_authority": false,
+    "official_kernel_check_required_for_kernel_proof": true,
+    "independent_countermodel_validation_required_for_refutation": true,
+    "silent_translation_loss_allowed": false,
+    "raw_target_source_without_receipt_allowed": false,
+    "differential_agreement_is_proof": false,
+    "unknown_ambiguous_stale_or_unsupported_disposition": "abstain_or_require_approval"
+  }
+}

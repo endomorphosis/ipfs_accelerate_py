@@ -514,6 +514,13 @@ def load_configured_board(
     ):
         if not isinstance(payload.get(field), bool):
             raise ConfiguredBoardError(f"{field} must be boolean")
+    if (
+        "objective_goal_refinement_enabled" in payload
+        and not isinstance(payload.get("objective_goal_refinement_enabled"), bool)
+    ):
+        raise ConfiguredBoardError(
+            "objective_goal_refinement_enabled must be boolean"
+        )
 
     for field in (
         "poll_interval_seconds",
@@ -982,6 +989,8 @@ def configured_board_common_args(
                 str(cooldown_seconds),
             ]
         )
+        if payload.get("objective_goal_refinement_enabled") is False:
+            args.append("--no-objective-goal-refinement")
     if payload.get("codebase_refill_enabled") is True:
         args.append("--codebase-refill-scan")
     return tuple(args)

@@ -296,6 +296,39 @@ def test_loader_requires_bounded_objective_refill_controls(
         load_configured_board(config_path, repo_root=repo)
 
 
+def test_static_objective_heap_disables_goal_refinement(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["objective_refill_enabled"] = True
+    payload["objective_goal_refinement_enabled"] = False
+    payload["refill_policy"] = {
+        "derived_refill": {
+            "min_open_tasks": 4,
+            "max_tasks_per_epoch": 3,
+            "max_open_tasks": 5,
+            "cooldown_seconds": 60,
+        }
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    common = scheduler_module.configured_board_common_args(
+        board,
+        implement=True,
+    )
+    assert common.count("--no-objective-goal-refinement") == 1
+
+    payload["objective_goal_refinement_enabled"] = "false"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="objective_goal_refinement_enabled must be boolean",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
 def test_ordered_provider_contract_requires_complete_unambiguous_fields(
     tmp_path: Path,
 ) -> None:
