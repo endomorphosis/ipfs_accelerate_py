@@ -18,8 +18,8 @@ import secrets
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields, replace
 from functools import wraps
 from pathlib import Path
@@ -27,8 +27,14 @@ from typing import Any, Iterator
 
 from ..task_sources.duckdb_state import (
     DuckDBConnection as _DuckConnection,
-    DuckDBCursor as _DuckCursor,
+)
+from ..task_sources.duckdb_state import (
     DuckDBRow as _DuckRow,
+)
+from ..task_sources.duckdb_state import (
+    connect_duckdb_with_policy as _connect_duckdb_with_policy,
+)
+from ..task_sources.duckdb_state import (
     exclusive_file_lock as _exclusive_file_lock,
 )
 from ..task_sources.task_identity import canonical_bundle_identity
@@ -88,6 +94,147 @@ DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
 # only when projecting immutable TaskSpecs.
 PROFILE_G_MAX_TASK_ATTEMPTS = 100
 
+_COORDINATION_COMPACTION_TABLES = (
+    "artifacts",
+    "tasks",
+    "task_aliases",
+    "task_dependencies",
+    "task_dependency_repairs",
+    "task_dependency_repair_state",
+    "leases",
+    "token_history",
+    "heartbeats",
+    "receipts",
+    "distributed_inputs",
+    "worker_capability_receipts",
+    "worker_environment_receipts",
+    "distributed_dispatches",
+    "distributed_publications",
+    "coordination_metadata",
+)
+
+# DuckDB's ``SHOW TABLES`` and ``PRAGMA table_info`` are intentionally narrow:
+# the former only sees the current schema and the latter omits constraints,
+# collations, indexes, and other persistent catalog objects.  Compaction must
+# compare the complete path-independent catalog of its source and freshly
+# initialized target or it could silently erase state it does not understand.
+# Object identifiers, database names/paths, estimated sizes, and read-only
+# connection state are excluded because they necessarily differ between the
+# authoritative source and temporary target.
+_COORDINATION_PERSISTENT_CATALOG_QUERIES = (
+    (
+        "database",
+        """
+        SELECT database_name, comment, internal, type, encrypted, cipher, options
+        FROM duckdb_databases()
+        ORDER BY database_name
+        """,
+    ),
+    (
+        "schemas",
+        """
+        SELECT schema_name, comment, tags, internal, sql
+        FROM duckdb_schemas()
+        WHERE database_name=current_database()
+        ORDER BY schema_name
+        """,
+    ),
+    (
+        "tables",
+        """
+        SELECT schema_name, table_name, comment, tags, internal, temporary,
+               has_primary_key, column_count, index_count,
+               check_constraint_count, sql
+        FROM duckdb_tables()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, table_name
+        """,
+    ),
+    (
+        "views",
+        """
+        SELECT schema_name, view_name, comment, tags, internal, temporary,
+               column_count, sql, is_bound
+        FROM duckdb_views()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, view_name
+        """,
+    ),
+    (
+        "sequences",
+        """
+        SELECT schema_name, sequence_name, comment, tags, temporary,
+               start_value, min_value, max_value, increment_by, cycle,
+               last_value, sql
+        FROM duckdb_sequences()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, sequence_name
+        """,
+    ),
+    (
+        "functions",
+        """
+        SELECT schema_name, function_name, alias_of, function_type, comment,
+               tags, return_type, parameters, parameter_types, varargs,
+               macro_definition, has_side_effects, internal, stability,
+               categories
+        FROM duckdb_functions()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, function_name, function_type
+        """,
+    ),
+    (
+        "types",
+        """
+        SELECT schema_name, type_name, type_size, logical_type, type_category,
+               comment, tags, internal, labels
+        FROM duckdb_types()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, type_name
+        """,
+    ),
+    (
+        "indexes",
+        """
+        SELECT schema_name, index_name, table_name, comment, tags, is_unique,
+               is_primary, expressions, sql
+        FROM duckdb_indexes()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, index_name
+        """,
+    ),
+    (
+        "constraints",
+        """
+        SELECT schema_name, table_name, constraint_type, constraint_text,
+               expression, constraint_column_indexes, constraint_column_names,
+               constraint_name, referenced_table, referenced_column_names
+        FROM duckdb_constraints()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, table_name, constraint_type, constraint_text,
+                 constraint_name
+        """,
+    ),
+    (
+        "columns",
+        """
+        SELECT schema_name, table_name, column_name, column_index, comment,
+               internal, column_default, is_nullable, data_type,
+               character_maximum_length, numeric_precision,
+               numeric_precision_radix, numeric_scale
+        FROM duckdb_columns()
+        WHERE database_name=current_database()
+        ORDER BY schema_name, table_name, column_index
+        """,
+    ),
+)
+
+_COORDINATION_ADDITIVE_NOT_NULL_DEFAULT_COLUMNS = {
+    ("tasks", "registered_at_ms"): ("BIGINT", "0"),
+    ("tasks", "updated_at_ms"): ("BIGINT", "0"),
+    ("leases", "retry_not_before_ms"): ("BIGINT", "0"),
+}
+
 
 def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
     """Return whether ``exc`` is DuckDB's narrow external-lock conflict."""
@@ -143,10 +290,6 @@ def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
     return wrapped
 
 
-def _duckdb_path_literal(path: Path) -> str:
-    return "'" + str(path).replace("'", "''") + "'"
-
-
 def _is_transient_duckdb_file_lock_error(
     error: BaseException,
     duckdb_module: Any,
@@ -163,8 +306,13 @@ def _is_transient_duckdb_file_lock_error(
     )
 
 
-def _connect_coordination_duckdb(duckdb_module: Any, path: Path) -> Any:
-    """Open a writable coordination connection with bounded lock retries.
+def _connect_coordination_duckdb(
+    duckdb_module: Any,
+    path: Path | str,
+    *,
+    read_only: bool = False,
+) -> Any:
+    """Open a coordination connection with bounded lock retries.
 
     The surrounding advisory lock remains held while this retries.  The retry
     is deliberately limited to DuckDB's explicit cross-process file-lock
@@ -175,7 +323,15 @@ def _connect_coordination_duckdb(duckdb_module: Any, path: Path) -> Any:
     delay = COORDINATION_DUCKDB_CONNECT_INITIAL_BACKOFF_SECONDS
     for attempt in range(1, COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS + 1):
         try:
-            return duckdb_module.connect(str(path))
+            return _connect_duckdb_with_policy(
+                duckdb_module,
+                path,
+                read_only=read_only,
+                configuration={
+                    "threads": 1,
+                    "memory_limit": COORDINATION_DUCKDB_MEMORY_LIMIT,
+                },
+            )
         except Exception as exc:
             if (
                 not _is_transient_duckdb_file_lock_error(exc, duckdb_module)
@@ -188,6 +344,149 @@ def _connect_coordination_duckdb(duckdb_module: Any, path: Path) -> Any:
                 COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS,
             )
     raise AssertionError("unreachable DuckDB connection retry state")
+
+
+def _coordination_table_schema(connection: Any, table: str) -> tuple[tuple[Any, ...], ...]:
+    if table not in _COORDINATION_COMPACTION_TABLES:
+        raise ValueError("coordination compaction table is outside the closed schema")
+    return tuple(
+        tuple(row)
+        for row in connection.execute(
+            f'PRAGMA table_info("{table}")'
+        ).fetchall()
+    )
+
+
+def _add_coordination_not_null_default_column(
+    connection: Any,
+    *,
+    table: str,
+    column: str,
+) -> None:
+    """Transactionally add one closed legacy column on DuckDB 1.5.x."""
+
+    try:
+        column_type, default = _COORDINATION_ADDITIVE_NOT_NULL_DEFAULT_COLUMNS[
+            (table, column)
+        ]
+    except KeyError as exc:
+        raise ValueError(
+            "coordination schema evolution requested an unknown column"
+        ) from exc
+    # DuckDB 1.5 rejects ADD COLUMN when NOT NULL is written in the same DDL.
+    # Adding a DEFAULT backfills existing rows; the second statement can then
+    # install the constraint.  The caller's schema transaction makes a crash
+    # or exception between these statements roll back the entire evolution.
+    connection.execute(
+        f'ALTER TABLE "{table}" ADD COLUMN "{column}" '
+        f"{column_type} DEFAULT {default}"
+    )
+    connection.execute(
+        f'ALTER TABLE "{table}" ALTER COLUMN "{column}" SET NOT NULL'
+    )
+
+
+def _coordination_persistent_catalog(
+    connection: Any,
+) -> tuple[tuple[str, tuple[tuple[Any, ...], ...]], ...]:
+    """Return the complete path-independent persistent DuckDB catalog."""
+
+    current_row = connection.execute("SELECT current_database()").fetchone()
+    if (
+        not isinstance(current_row, tuple)
+        or len(current_row) != 1
+        or type(current_row[0]) is not str
+        or not current_row[0]
+    ):
+        raise RuntimeError(
+            "coordination compaction could not identify the current catalog"
+        )
+    current_database = current_row[0]
+    result: list[tuple[str, tuple[tuple[Any, ...], ...]]] = []
+    for category, query in _COORDINATION_PERSISTENT_CATALOG_QUERIES:
+        rows = [tuple(row) for row in connection.execute(query).fetchall()]
+        if category == "database":
+            # File-backed database names differ because the target has a
+            # temporary filename.  Normalize only the exact current database;
+            # any attached catalog remains visible under its real name.
+            rows = [
+                (
+                    "current" if row[0] == current_database else row[0],
+                    *row[1:],
+                )
+                for row in rows
+            ]
+            rows.sort(key=lambda row: tuple(repr(value) for value in row))
+        result.append((category, tuple(rows)))
+    return tuple(result)
+
+
+def _copy_coordination_store_rows(source: Any, target: Any) -> None:
+    """Copy only the sealed coordination catalog between local connections."""
+
+    expected_tables = set(_COORDINATION_COMPACTION_TABLES)
+    source_tables = {
+        str(row[0]) for row in source.execute("SHOW TABLES").fetchall()
+    }
+    target_tables = {
+        str(row[0]) for row in target.execute("SHOW TABLES").fetchall()
+    }
+    if source_tables != expected_tables or target_tables != expected_tables:
+        raise RuntimeError("coordination compaction observed a foreign table set")
+
+    source_catalog = _coordination_persistent_catalog(source)
+    target_catalog = _coordination_persistent_catalog(target)
+    if source_catalog != target_catalog:
+        source_by_category = dict(source_catalog)
+        target_by_category = dict(target_catalog)
+        changed = sorted(
+            category
+            for category in source_by_category.keys() | target_by_category.keys()
+            if source_by_category.get(category) != target_by_category.get(category)
+        )
+        raise RuntimeError(
+            "coordination compaction persistent catalog mismatch: "
+            + ", ".join(changed)
+        )
+
+    # The fresh target receives one metadata row during schema initialization.
+    # Clear it so every copied row has the same insert semantics and a missing
+    # source metadata row cannot be silently synthesized by compaction.
+    target.execute("DELETE FROM coordination_metadata")
+    for table in _COORDINATION_COMPACTION_TABLES:
+        source_schema = _coordination_table_schema(source, table)
+        target_schema = _coordination_table_schema(target, table)
+        if source_schema != target_schema:
+            raise RuntimeError(
+                f"coordination compaction schema mismatch for table {table!r}"
+            )
+        cursor = source.execute(f'SELECT * FROM "{table}"')
+        column_count = len(cursor.description or ())
+        if column_count < 1:
+            raise RuntimeError(
+                f"coordination compaction table {table!r} has no columns"
+            )
+        insert_sql = (
+            f'INSERT INTO "{table}" VALUES ('
+            + ", ".join("?" for _ in range(column_count))
+            + ")"
+        )
+        while True:
+            rows = cursor.fetchmany(256)
+            if not rows:
+                break
+            target.executemany(insert_sql, rows)
+
+
+def _fsync_path(path: Path, *, directory: bool = False) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    if directory:
+        flags |= getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 class LeaseError(RuntimeError):
@@ -1304,10 +1603,6 @@ class LeaseCoordinator:
                         "DuckDB is required for lease coordination"
                     ) from exc
                 duckdb_connection = _connect_coordination_duckdb(duckdb, self.path)
-                duckdb_connection.execute("SET threads=1")
-                duckdb_connection.execute(
-                    f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
-                )
                 self._connection = _DuckConnection.wrap(
                     duckdb_connection,
                     transaction_on_context=True,
@@ -1419,12 +1714,16 @@ class LeaseCoordinator:
                 str(row["name"]) for row in self._connection.execute("PRAGMA table_info(tasks)")
             }
             if "registered_at_ms" not in task_columns:
-                self._connection.execute(
-                    "ALTER TABLE tasks ADD COLUMN registered_at_ms BIGINT NOT NULL DEFAULT 0"
+                _add_coordination_not_null_default_column(
+                    self._connection,
+                    table="tasks",
+                    column="registered_at_ms",
                 )
             if "updated_at_ms" not in task_columns:
-                self._connection.execute(
-                    "ALTER TABLE tasks ADD COLUMN updated_at_ms BIGINT NOT NULL DEFAULT 0"
+                _add_coordination_not_null_default_column(
+                    self._connection,
+                    table="tasks",
+                    column="updated_at_ms",
                 )
             lease_columns = {
                 str(row["name"]) for row in self._connection.execute("PRAGMA table_info(leases)")
@@ -1432,8 +1731,10 @@ class LeaseCoordinator:
             if "release_reason" not in lease_columns:
                 self._connection.execute("ALTER TABLE leases ADD COLUMN release_reason TEXT")
             if "retry_not_before_ms" not in lease_columns:
-                self._connection.execute(
-                    "ALTER TABLE leases ADD COLUMN retry_not_before_ms BIGINT NOT NULL DEFAULT 0"
+                _add_coordination_not_null_default_column(
+                    self._connection,
+                    table="leases",
+                    column="retry_not_before_ms",
                 )
             self._connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_leases_scheduler_state "
@@ -1476,8 +1777,10 @@ class LeaseCoordinator:
                     f".{self.path.name}.compact-{os.getpid()}-"
                     f"{threading.get_ident()}.tmp"
                 )
+                temporary_lock = temporary.with_name(f".{temporary.name}.lock")
                 temporary.unlink(missing_ok=True)
                 Path(f"{temporary}.wal").unlink(missing_ok=True)
+                temporary_lock.unlink(missing_ok=True)
                 try:
                     try:
                         import duckdb
@@ -1485,57 +1788,61 @@ class LeaseCoordinator:
                         raise RuntimeError(
                             "DuckDB is required for lease coordination"
                         ) from exc
-                    connection = duckdb.connect(":memory:")
+
+                    # Build the target with the canonical additive schema.  A
+                    # separate local connection avoids multi-database SQL and
+                    # keeps both file identities explicit throughout copying.
+                    with LeaseCoordinator(
+                        temporary,
+                        clock_ms=self._clock_ms,
+                    ):
+                        pass
+                    source_connection = _connect_coordination_duckdb(
+                        duckdb,
+                        self.path,
+                        read_only=True,
+                    )
                     try:
-                        connection.execute("SET threads=1")
-                        connection.execute(
-                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
+                        target_connection = _connect_coordination_duckdb(
+                            duckdb,
+                            temporary,
                         )
-                        connection.execute(
-                            "ATTACH "
-                            f"{_duckdb_path_literal(self.path)} "
-                            "AS source_store (READ_ONLY)"
-                        )
-                        connection.execute(
-                            "ATTACH "
-                            f"{_duckdb_path_literal(temporary)} "
-                            "AS target_store"
-                        )
-                        connection.execute(
-                            "COPY FROM DATABASE source_store TO target_store"
-                        )
-                        connection.execute("DETACH target_store")
-                        connection.execute("DETACH source_store")
-                    finally:
-                        connection.close()
-                    compacted = duckdb.connect(str(temporary))
-                    try:
-                        compacted.execute("SET threads=1")
-                        compacted.execute(
-                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
-                        )
-                        compacted.execute(
-                            "INSERT OR REPLACE INTO coordination_metadata "
-                            "VALUES(?,?)",
-                            (
-                                "last_compaction",
-                                json.dumps(
-                                    {
-                                        "compacted_at_ms": self._clock_ms(),
-                                        "source_bytes": source_bytes,
-                                    },
-                                    sort_keys=True,
+                        try:
+                            target_connection.execute("BEGIN TRANSACTION")
+                            _copy_coordination_store_rows(
+                                source_connection,
+                                target_connection,
+                            )
+                            target_connection.execute(
+                                "INSERT OR REPLACE INTO coordination_metadata "
+                                "VALUES(?,?)",
+                                (
+                                    "last_compaction",
+                                    json.dumps(
+                                        {
+                                            "compacted_at_ms": self._clock_ms(),
+                                            "source_bytes": source_bytes,
+                                        },
+                                        sort_keys=True,
+                                    ),
                                 ),
-                            ),
-                        )
-                        compacted.execute("CHECKPOINT")
+                            )
+                            target_connection.execute("COMMIT")
+                            target_connection.execute("CHECKPOINT")
+                        finally:
+                            target_connection.close()
                     finally:
-                        compacted.close()
+                        source_connection.close()
                     target_bytes = temporary.stat().st_size
+                    source_mode = self.path.stat().st_mode & 0o777
+                    os.chmod(temporary, source_mode)
+                    _fsync_path(temporary)
                     os.replace(temporary, self.path)
+                    _fsync_path(self.path.parent, directory=True)
                 finally:
                     temporary.unlink(missing_ok=True)
                     Path(f"{temporary}.wal").unlink(missing_ok=True)
+                    temporary_lock.unlink(missing_ok=True)
                 return {
                     "source_bytes": source_bytes,
                     "target_bytes": target_bytes,
