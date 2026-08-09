@@ -562,7 +562,8 @@ _TRANSITION_Q_CHANGED_PATHS: Final = (
     PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix(),
 )
 _TRANSITION_CONSTRUCTION_RESERVED_PATHS: Final = (
-    *_TRANSITION_CONSTRUCTION_OUTPUTS[:5],
+    # Tooling must already be integrated in Q's parent while ASE3-033 remains
+    # todo. Only the Q inventory is reserved until the Q status transition.
     _TRANSITION_Q_INVENTORY_RELATIVE_PATH,
 )
 _TRANSITION_CONSTRUCTION_PUBLIC_APIS: Final = (
@@ -13611,8 +13612,8 @@ def _validate_program_scheduler_projection(
                     )
                 else:
                     errors.append(
-                        f"{transition_prefix}.{relative_path}: future product "
-                        "present before ASE3-033 implementation acceptance"
+                        f"{transition_prefix}.{relative_path}: Q inventory "
+                        "present before ASE3-033 Q acceptance"
                     )
 
     layering_policy = config.get("neutral_contract_layering")

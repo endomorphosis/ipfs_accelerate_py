@@ -7591,8 +7591,12 @@ def test_ase3_033_protected_transition_roadmap_contract_is_exact_and_dormant() -
     assert config["objective_refill_enabled"] is False
     assert config["codebase_refill_enabled"] is False
     assert config["monitor_policy"]["enabled"] is False
+    # Tooling may exist in Q's parent while ASE3-033 remains todo; only the Q
+    # inventory stays reserved until the Q status transition.
     for relative_path in convergence_module._TRANSITION_CONSTRUCTION_RESERVED_PATHS:
         assert not (REPO_ROOT / relative_path).exists()
+    for relative_path in convergence_module._TRANSITION_CONSTRUCTION_OUTPUTS[:5]:
+        assert (REPO_ROOT / relative_path).is_file()
 
 
 @pytest.mark.parametrize(
