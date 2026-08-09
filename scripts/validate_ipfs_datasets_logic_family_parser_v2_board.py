@@ -66,11 +66,19 @@ PREDECESSOR_FILE_DIGESTS = {
         PREDECESSOR_RELEASE_SHA256
     ),
 }
+PREDECESSOR_RUNTIME_ARTIFACT_DIGESTS = {
+    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/fixed_point_receipt.json": (
+        "sha256:df389198f2f1a5982ede95ce775c468ad7a85abf8447f4d0cc51f8b6f5eddc2c"
+    ),
+    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/gap_ledger.jsonl": (
+        "sha256:6258dc0a9070fd531b77f96d1044f840454d02517022aa1c9e0f3e7b8debbcac"
+    ),
+}
 
 # Filled after the 51 seed cards are materialized. Only Status values are
 # normalized, so implementation progress cannot mutate semantic task identity.
 SEALED_SEED_DEFINITION_SHA256 = (
-    "sha256:770912c9d7123f12bf06cc1428900bf5f8e2e7b662cd3c95e9d0be11181d3e22"
+    "sha256:54ae267bb959cbf927424932056005538b8b5b16ff5bb7ab5f07c6fb694e4e97"
 )
 
 EXPECTED_TASK_GROUPS: Mapping[str, tuple[str, ...]] = {
@@ -92,6 +100,19 @@ EXPECTED_TASK_TO_GOAL = {
         for goal_id, task_ids in EXPECTED_TASK_GROUPS.items()
         for task_id in task_ids
     },
+}
+REQUIRED_INTERFACE_OWNERS: Mapping[str, str] = {
+    "ParseArtifact@2": "LFP2-006",
+    "ElaborationArtifact@2": "LFP2-006",
+    "FormalizationArtifact@3": "LFP2-007",
+    "DomainLogicSlice@2": "LFP2-007",
+    "ProviderExecutionReceipt@2": "LFP2-008",
+    "EvidenceReplayReceipt@1": "LFP2-008",
+    "ProtocolTargetTranslationEdges@1": "LFP2-021",
+    "LogicFamilyRegistry@3": "LFP2-044",
+    "LogicProfileCatalog@3": "LFP2-044",
+    "FamilyRoutePublication@1": "LFP2-044",
+    "ExecutableVerticalSliceReceipt@1": "LFP2-046",
 }
 
 REQUIRED_TASK_FIELDS = (
@@ -205,6 +226,7 @@ EXPECTED_ENVIRONMENT = {
 }
 CONTROL_PATHS = frozenset(
     {
+        ".gitignore",
         "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_V2_PLAN.md",
         "docs/architecture/ipfs_datasets_logic_family_parser_v2.objectives.md",
         "docs/architecture/ipfs_datasets_logic_family_parser_v2.todo.md",
@@ -309,6 +331,7 @@ def _validate_tasks(text: str, errors: list[str]) -> dict[str, object]:
     open_ids: set[str] = set()
     dependencies: dict[str, tuple[str, ...]] = {}
     output_sets: dict[str, set[str]] = {}
+    interface_owners: dict[str, set[str]] = {}
     for position, task in enumerate(tasks):
         metadata = task.metadata
         missing = [field for field in REQUIRED_TASK_FIELDS if field not in metadata]
@@ -346,6 +369,8 @@ def _validate_tasks(text: str, errors: list[str]) -> dict[str, object]:
             errors.append(f"{task.task_id} seed implementation task must be schedulable")
         if metadata["symbolic first"].lower() != "true":
             errors.append(f"{task.task_id} Symbolic first must be true")
+        for interface in _split_csv(metadata["interfaces"]):
+            interface_owners.setdefault(interface, set()).add(task.task_id)
         for field in ("estimated tokens", "implementation timeout seconds", "llm context budget bytes"):
             try:
                 if int(metadata[field]) <= 0:
@@ -374,6 +399,13 @@ def _validate_tasks(text: str, errors: list[str]) -> dict[str, object]:
             ) or task.task_id == "LFP2-000"
             if not allowed_output:
                 errors.append(f"{task.task_id} output is outside admitted owner roots: {output}")
+    for interface, expected_owner in REQUIRED_INTERFACE_OWNERS.items():
+        actual_owners = sorted(interface_owners.get(interface, set()))
+        if actual_owners != [expected_owner]:
+            errors.append(
+                f"{interface} must be owned exactly by {expected_owner}; "
+                f"got {actual_owners}"
+            )
     for task_id in completed:
         missing_completed = set(dependencies.get(task_id, ())) - completed
         if missing_completed:
@@ -432,6 +464,19 @@ def _validate_predecessor(scheduler: Mapping[str, object], errors: list[str]) ->
         path = REPO_ROOT / relative
         if not path.is_file() or _sha256(path) != expected:
             errors.append(f"Wave-1 predecessor artifact changed: {relative}")
+    if (
+        scheduler.get("predecessor_runtime_artifact_digests")
+        != PREDECESSOR_RUNTIME_ARTIFACT_DIGESTS
+    ):
+        errors.append(
+            "scheduler predecessor_runtime_artifact_digests differs from release seal"
+        )
+    for relative, expected in PREDECESSOR_RUNTIME_ARTIFACT_DIGESTS.items():
+        path = REPO_ROOT / relative
+        if not path.is_file() or _sha256(path) != expected:
+            errors.append(
+                f"Wave-1 predecessor runtime artifact changed: {relative}"
+            )
     expected_binding = {
         "predecessor_board_namespace": "ipfs-datasets-logic-family-parser-v1",
         "predecessor_terminal_task_id": "LFP-047",
@@ -479,6 +524,17 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
         errors.append("scheduler board namespace differs")
     if scheduler.get("task_prefix") != "LFP2-" or scheduler.get("goal_prefix") != "LFP2-G":
         errors.append("scheduler task/goal prefix differs")
+    protected_paths = scheduler.get("protected_paths")
+    if not isinstance(protected_paths, list):
+        errors.append("scheduler protected_paths must be a list")
+    else:
+        missing_protected = sorted(CONTROL_PATHS - set(protected_paths))
+        if missing_protected:
+            errors.append(
+                f"scheduler protected_paths missing controls: {missing_protected}"
+            )
+        if len(protected_paths) != len(set(protected_paths)):
+            errors.append("scheduler protected_paths contain duplicates")
     if scheduler.get("max_lanes") != 4 or scheduler.get("strict_task_sharding") is not False:
         errors.append("scheduler must use four dynamic work-stealing lanes")
     if scheduler.get("objective_refill_enabled") is not True or scheduler.get("codebase_refill_enabled") is not False:

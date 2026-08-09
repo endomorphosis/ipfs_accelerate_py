@@ -275,6 +275,43 @@ def test_task_specific_max_timeout_extends_only_the_parent_watchdog(
     )
 
 
+def test_no_implement_daemon_retains_reconciliation_path_identity(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    worktree_root = tmp_path / "managed-worktrees"
+    objective = tmp_path / "objectives.md"
+    parsed = parse_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--no-implement",
+            "--worktree-root",
+            str(worktree_root),
+            "--worktree-submodule-path",
+            "ipfs_datasets_py",
+            "--objective-path",
+            str(objective),
+            "--once",
+        ]
+    )
+    supervisor, _context = build_portal_implementation_supervisor_from_args(
+        parsed,
+        repo_root=tmp_path,
+    )
+
+    command = supervisor._build_daemon_command()
+    assert "--implement" not in command
+    assert command[command.index("--worktree-root") + 1] == str(worktree_root)
+    assert command[command.index("--worktree-submodule-path") + 1] == (
+        "ipfs_datasets_py"
+    )
+    assert command[command.index("--objective-path") + 1] == str(objective)
+
+
 def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(caplog):
     class FakeSupervisor:
         def run_once(self) -> dict[str, int]:

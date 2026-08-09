@@ -1,9 +1,11 @@
 # IPFS Datasets Logic-Family Parser Wave-2 Task Board
 
-Canonical seed tasks are immutable except for `Status`. Objective refill may
-append content-addressed cards after `LFP2-050`; it may not rewrite seed cards
-or the objective heap. All implementation outputs are owner-scoped within the
-pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
+Canonical seed tasks are immutable except for `Status`. Once `LFP2-048`
+publishes the validated scorer and admission contract, objective refill may
+append content-addressed derived cards before the `LFP2-049` fixed point and
+`LFP2-050` release; it may never rewrite seed cards or the objective heap. All
+implementation outputs are owner-scoped within the pinned `ipfs_datasets_py`
+worktree. The four initial tasks own disjoint files.
 
 ## LFP2-000 Seal the Wave-2 control plane and predecessor binding
 
@@ -191,7 +193,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Acceptance: Conflicting claims fail closed; each reachable gap has one owner and evidence obligation.
 - Embedding query: baseline join capability lifecycle declared executable validated
 
-## LFP2-006 Add schema-governed extension nodes and semantic traversal hooks
+## LFP2-006 Add schema-governed extensions and versioned parse/elaboration artifacts
 
 - Status: todo
 - Completion: manual
@@ -201,8 +203,8 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Track: shared-contracts
 - Depends on: LFP2-005
 - Goal id: LFP2-G020
-- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/extensions.py, ipfs_datasets_py/tests/unit/logic/syntax_core/test_extensions.py
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/syntax_core/test_extensions.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/extensions.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/artifacts_v2.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/ast.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/elaboration.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/codec.py, ipfs_datasets_py/tests/unit/logic/syntax_core/test_artifacts_v2.py, ipfs_datasets_py/tests/unit/logic/syntax_core/test_extensions.py
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/syntax_core/test_artifacts_v2.py tests/unit/logic/syntax_core/test_extensions.py
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/contracts/extensions
 - Parallel lane: lfp2-parsers
@@ -210,19 +212,19 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Resource stage: contract
 - Estimated tokens: 24000
 - Implementation timeout seconds: 9000
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/extensions.py, ipfs_datasets_py/tests/unit/logic/syntax_core/test_extensions.py
-- Interfaces: ExtensionSchemaRegistry@1
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/extensions.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/artifacts_v2.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/ast.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/elaboration.py, ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core/codec.py, ipfs_datasets_py/tests/unit/logic/syntax_core/test_artifacts_v2.py, ipfs_datasets_py/tests/unit/logic/syntax_core/test_extensions.py
+- Interfaces: ExtensionSchemaRegistry@1, ParseArtifact@2, ElaborationArtifact@2
 - Allow concurrent with:
-- Conflict policy: Own extension registry and tests; existing AST algebra changes require focused compatibility adapters.
+- Conflict policy: Own extension registry, v2 syntax artifacts, AST/elaboration/codec integration, and focused tests; legacy contracts remain readable through explicit adapters.
 - Preconditions: Raw extension payload gaps are classified by LFP2-002/LFP2-005.
-- Effects: Registers payload codecs, child/binder positions, sorts, traversal, substitution, normalization, and unsupported behavior.
+- Effects: Registers payload codecs, child/binder positions, sorts, traversal, substitution, normalization, and unsupported behavior, then binds source/CST/AST and typed elaboration identities in versioned artifacts.
 - Evidence subset: extension schema binder scope sort codec substitution normalization
 - Symbolic first: true
 - LLM context budget bytes: 32000
-- Acceptance: Unknown or malformed extension payloads fail with stable diagnostics; registered nodes participate correctly in algebra and semantic hashing.
+- Acceptance: Unknown or malformed extension payloads fail with stable diagnostics; registered nodes participate in algebra, elaboration, codecs, and semantic hashing; parse and elaboration artifacts preserve exact source and diagnostic lineage.
 - Embedding query: logic extension schema binder type scope traversal codec
 
-## LFP2-007 Introduce LogicObligation and BackendRequest version 2
+## LFP2-007 Introduce common formalization slices, LogicObligation, and BackendRequest v2
 
 - Status: todo
 - Completion: manual
@@ -232,8 +234,8 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Track: shared-contracts
 - Depends on: LFP2-005, LFP2-006
 - Goal id: LFP2-G020
-- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/requests_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_requests_v2.py
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/backends/test_requests_v2.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/formalization/artifacts_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/requests_v2.py, ipfs_datasets_py/tests/unit/logic/formalization/test_artifacts_v3.py, ipfs_datasets_py/tests/unit/logic/backends/test_requests_v2.py
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/formalization/test_artifacts_v3.py tests/unit/logic/backends/test_requests_v2.py
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/contracts/requests
 - Parallel lane: lfp2-contracts
@@ -241,19 +243,19 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Resource stage: contract
 - Estimated tokens: 22000
 - Implementation timeout seconds: 9000
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/requests_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_requests_v2.py
-- Interfaces: LogicObligation@2, BackendRequest@2
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/formalization/artifacts_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/requests_v2.py, ipfs_datasets_py/tests/unit/logic/formalization/test_artifacts_v3.py, ipfs_datasets_py/tests/unit/logic/backends/test_requests_v2.py
+- Interfaces: FormalizationArtifact@3, DomainLogicSlice@2, LogicObligation@2, BackendRequest@2
 - Allow concurrent with:
-- Conflict policy: Own successor request contracts; legacy request modules remain dual-read until LFP2-009.
+- Conflict policy: Own common formalization/domain-slice and successor request contracts; legacy artifact and request modules remain dual-read until migration completes.
 - Preconditions: Canonical namespace and extension contracts are available.
-- Effects: Replaces free-form family/payload routing with typed family, profile, property, view, notation, encoding, expression, feature, evidence, and bound fields.
+- Effects: Publishes a source-mapped domain-neutral formalization/slice envelope and replaces free-form family/payload routing with typed family, profile, property, view, notation, encoding, expression, feature, evidence, and bound fields.
 - Evidence subset: backend request obligation family profile encoding evidence bounds
 - Symbolic first: true
 - LLM context budget bytes: 32000
-- Acceptance: Cross-namespace misuse, arbitrary payloads, unsupported extensions, missing bounds, and authority overclaims fail before provider selection.
+- Acceptance: Every admitted domain slice binds source and typed-expression identity before BackendRequest@2; cross-namespace misuse, arbitrary payloads, unsupported extensions, missing bounds, and authority overclaims fail before provider selection.
 - Embedding query: typed backend request logic obligation family profile evidence
 
-## LFP2-008 Gate raw target source with compiled and parsed artifact receipts
+## LFP2-008 Gate raw target and result paths with compiled, parsed, execution, and replay receipts
 
 - Status: todo
 - Completion: manual
@@ -263,8 +265,8 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Track: shared-contracts
 - Depends on: LFP2-007
 - Goal id: LFP2-G020
-- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/artifacts_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_artifacts_v2.py
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/backends/test_artifacts_v2.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/artifacts_v2.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/evidence_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_artifacts_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_evidence_v2.py
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/backends/test_artifacts_v2.py tests/unit/logic/backends/test_evidence_v2.py
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/contracts/artifacts
 - Parallel lane: lfp2-contracts
@@ -272,16 +274,16 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Resource stage: contract
 - Estimated tokens: 22000
 - Implementation timeout seconds: 9000
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/artifacts_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_artifacts_v2.py
-- Interfaces: CompiledLogicArtifact@1, ParsedTargetArtifact@1
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/artifacts_v2.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/evidence_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_artifacts_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_evidence_v2.py
+- Interfaces: CompiledLogicArtifact@1, ParsedTargetArtifact@1, ProviderExecutionReceipt@2, EvidenceReplayReceipt@1
 - Allow concurrent with:
-- Conflict policy: Own artifact envelopes and validation tests; backend-specific compilers/adapters migrate later.
+- Conflict policy: Own common target-artifact and provider-evidence envelopes and validation tests; backend-specific compilers/adapters migrate later.
 - Preconditions: BackendRequest@2 exists.
-- Effects: Binds target text/bytes to typed origin, source map, compiler, encoding, toolchain request, assumptions, losses, bounds, and decoded evidence.
+- Effects: Binds target text/bytes to typed origin, source map, compiler, encoding, toolchain request, assumptions, losses, bounds, launch/tool/output/result identities, decoded evidence, and replay disposition.
 - Evidence subset: compiled target source parsed output receipt source map identity
 - Symbolic first: true
 - LLM context budget bytes: 30000
-- Acceptance: No admitted executable backend accepts or returns unidentifiable raw target content through the v2 route.
+- Acceptance: No admitted executable backend accepts or returns unidentifiable raw target/result content; metadata-only or mock records cannot claim execution or replay through the v2 route.
 - Embedding query: compiled logic artifact parsed target source receipt backend
 
 ## LFP2-009 Generate ProviderCapabilityMatrix v2 and migrate canonical writes
@@ -656,7 +658,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Acceptance: Unsupported alternation or unbounded composition fails; accepted transformations have differential/witness fixtures.
 - Embedding query: hyperltl self composition translation noninterference
 
-## LFP2-021 Join translation edges and controlled kernel-target compilers
+## LFP2-021 Join translation edges and controlled protocol/kernel-target compilers
 
 - Status: todo
 - Completion: manual
@@ -666,8 +668,8 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Track: translation-graph
 - Depends on: LFP2-011, LFP2-012, LFP2-013, LFP2-014, LFP2-015, LFP2-017, LFP2-018, LFP2-019, LFP2-020
 - Goal id: LFP2-G040
-- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/translations/catalog.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/kernel_targets.py, ipfs_datasets_py/tests/conformance/logic/test_translation_paths_v2.py
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/conformance/logic/test_translation_paths_v2.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/translations/catalog.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/protocol_targets.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/kernel_targets.py, ipfs_datasets_py/tests/unit/logic/translations/test_protocol_targets.py, ipfs_datasets_py/tests/conformance/logic/test_translation_paths_v2.py
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/translations/test_protocol_targets.py tests/conformance/logic/test_translation_paths_v2.py
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/translations/join
 - Parallel lane: lfp2-translations
@@ -675,16 +677,16 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Resource stage: translation
 - Estimated tokens: 28000
 - Implementation timeout seconds: 10800
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/translations/catalog.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/kernel_targets.py, ipfs_datasets_py/tests/conformance/logic/test_translation_paths_v2.py
-- Interfaces: LogicTranslationGraph@3, KernelTargetCompiler@2
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/translations/catalog.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/protocol_targets.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/kernel_targets.py, ipfs_datasets_py/tests/unit/logic/translations/test_protocol_targets.py, ipfs_datasets_py/tests/conformance/logic/test_translation_paths_v2.py
+- Interfaces: LogicTranslationGraph@3, ProtocolTargetTranslationEdges@1, KernelTargetCompiler@2
 - Allow concurrent with:
-- Conflict policy: Join task publishes catalogs and controlled theory targets; semantic edges remain owned by their tasks.
+- Conflict policy: Join task publishes catalogs plus controlled protocol and theory targets; other semantic edges remain owned by their tasks.
 - Preconditions: All Wave-2 frontend and translation-edge fixtures pass.
-- Effects: Publishes composed graph and typed Lean/Rocq/Isabelle target-theory artifacts with imports/axioms/source maps.
-- Evidence subset: translation catalog composed path kernel target lean rocq isabelle
+- Effects: Publishes the composed graph, separate neutral-protocol translations to ProVerif applied-pi and Tamarin multiset rewriting, and typed Lean/Rocq/Isabelle target-theory artifacts with imports/axioms/source maps.
+- Evidence subset: translation catalog composed path proverif applied pi tamarin multiset rewriting kernel target lean rocq isabelle
 - Symbolic first: true
 - LLM context budget bytes: 40000
-- Acceptance: All registered paths are feature total and loss receipted; target theories are compilation candidates until official kernels accept them.
+- Acceptance: All registered paths are feature total and loss receipted; protocol equations, roles/rules, channels, attacker semantics, and query identities remain dialect-specific; target theories are compilation candidates until official kernels accept them.
 - Embedding query: translation graph catalog lean rocq isabelle target compiler
 
 ## LFP2-022 Connect Security IR through typed executable logic slices
@@ -718,7 +720,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Acceptance: Each admitted route has source-span-to-result lineage; information-flow, attacker, bound, and policy authority assumptions are explicit.
 - Embedding query: security ir typed logic authorization protocol hyperproperty solver
 
-## LFP2-023 Connect Crypto IR ledger, protocol, finality, and arithmetic slices
+## LFP2-023 Connect Crypto IR base ledger, protocol, finality, and arithmetic slices
 
 - Status: todo
 - Completion: manual
@@ -742,14 +744,14 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Allow concurrent with: LFP2-022, LFP2-024, LFP2-025, LFP2-026, LFP2-027
 - Conflict policy: Own the Crypto IR v2 formalization slice and tests only.
 - Preconditions: Program/state/hyper translation edges and typed artifacts exist.
-- Effects: Connects ledger transitions, finality/reorg, consensus, authorization, symbolic protocol, privacy, bitvector, and finite-field obligations.
+- Effects: Connects ledger transitions, finality/reorg, consensus, authorization, symbolic protocol, privacy, and supported integer/bitvector obligations through base/common families; finite-field and ZK-constraint overlays attach in LFP2-044 after LFP2-042.
 - Evidence subset: crypto ledger consensus finality protocol arithmetic hyperproperty
 - Symbolic first: true
 - LLM context budget bytes: 42000
 - Acceptance: Network/chain model, arithmetic domain, adversary, trace, finality, and approximation assumptions are never implicit.
 - Embedding query: crypto currency network ir consensus finality protocol zkp logic
 
-## LFP2-024 Connect Intent IR goals, guards, workflows, policy, and BDI slices
+## LFP2-024 Connect Intent IR base goals, guards, workflows, and policy slices
 
 - Status: todo
 - Completion: manual
@@ -773,14 +775,14 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Allow concurrent with: LFP2-022, LFP2-023, LFP2-025, LFP2-026, LFP2-027
 - Conflict policy: Own the Intent IR v2 formalization slice and tests only.
 - Preconditions: Program, state, policy/modal, and kernel target translation paths exist.
-- Effects: Types goals, guards, skill effects, workflows, authorization, deontic/BDI intentions, and tool invocation constraints.
-- Evidence subset: intent skill prompt goal guard workflow authorization bdi
+- Effects: Types goals, guards, skill effects, workflows, existing policy/modal views, authorization, and tool invocation constraints through base/common families; normative and BDI/agency overlays attach in LFP2-044 after LFP2-037 and LFP2-040.
+- Evidence subset: intent skill prompt goal guard workflow authorization policy
 - Symbolic first: true
 - LLM context budget bytes: 40000
 - Acceptance: Safety/liveness remain properties and VC remains a view role; advisor confidence cannot establish intent correctness.
-- Embedding query: intent ir skill prompt bdi workflow policy typed logic
+- Embedding query: intent ir skill prompt goal guard workflow policy typed logic
 
-## LFP2-025 Connect Legal IR norms, exceptions, events, arguments, and ontology slices
+## LFP2-025 Connect Legal IR base norm, exception, event, and jurisdiction slices
 
 - Status: todo
 - Completion: manual
@@ -804,12 +806,12 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Allow concurrent with: LFP2-022, LFP2-023, LFP2-024, LFP2-026, LFP2-027
 - Conflict policy: Own Legal IR v2 adapter/tests; legacy legal parsers remain compatibility inputs.
 - Preconditions: Policy/modal/event translation and controlled kernel targets exist.
-- Effects: Joins norms, temporal events, exceptions, priorities, conflicts, arguments, jurisdictions, and ontology views to typed evidence paths.
-- Evidence subset: legal norm exception priority event argument ontology jurisdiction
+- Effects: Joins existing supported norm/policy views, temporal events, exceptions, priorities, conflicts, and jurisdictions through base/common typed evidence paths; new normative, argumentation, and description-logic overlays attach in LFP2-044 after LFP2-037 through LFP2-039.
+- Evidence subset: legal norm policy exception priority event conflict jurisdiction
 - Symbolic first: true
 - LLM context budget bytes: 42000
 - Acceptance: Deontic profile, temporal model, defeasibility, jurisdiction, priority, and authority are explicit; graph projection is not a family.
-- Embedding query: legal ir deontic defeasible event argument ontology theorem prover
+- Embedding query: legal ir norm policy exception priority event jurisdiction theorem prover
 
 ## LFP2-026 Maintain an exact-source-gated UI and accessibility logic adapter
 
@@ -842,7 +844,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Acceptance: Absent source yields typed source_missing/declaration_only without blocking other work; present source produces one content-addressed owner-scoped adapter gap.
 - Embedding query: ui ux ir accessibility interaction formal logic source gate
 
-## LFP2-027 Connect software verification and contract obligations end to end
+## LFP2-027 Connect base software-verification and contract obligations end to end
 
 - Status: todo
 - Completion: manual
@@ -866,7 +868,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Allow concurrent with: LFP2-022, LFP2-023, LFP2-024, LFP2-025, LFP2-026
 - Conflict policy: Own successor bridge/tests; retain rich software-verification IRs unchanged where possible.
 - Preconditions: Program/state/kernel translation paths are published.
-- Effects: Links contracts, VCs, separation, concurrency, refinement, protocols, temporal properties, counterexamples, and target theories.
+- Effects: Links contracts, VCs, program/state obligations, separation, concurrency, refinement, temporal properties, counterexamples, and target theories through base/common families; session/process overlays attach in LFP2-044 after LFP2-043.
 - Evidence subset: software verification contract vc separation concurrency refinement
 - Symbolic first: true
 - LLM context budget bytes: 40000
@@ -974,7 +976,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Review only: false
 - Priority: P0
 - Track: provider-execution
-- Depends on: LFP2-009, LFP2-014
+- Depends on: LFP2-009, LFP2-014, LFP2-021
 - Goal id: LFP2-G060
 - Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol/execution_v2.py, ipfs_datasets_py/tests/integration/logic_providers/test_protocol_execution_v2.py
 - Validation: cd ipfs_datasets_py && python -m pytest -q tests/integration/logic_providers/test_protocol_execution_v2.py
@@ -989,7 +991,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Interfaces: ProtocolProviderEvidence@2
 - Allow concurrent with: LFP2-028, LFP2-029, LFP2-030, LFP2-032, LFP2-033, LFP2-034, LFP2-035, LFP2-036
 - Conflict policy: Own neutral protocol execution/attack replay layer and test.
-- Preconditions: Protocol frontend and typed artifacts exist.
+- Preconditions: Protocol frontend, typed artifacts, and separate ProVerif/Tamarin protocol-target translation edges are published.
 - Effects: Preserves equations, roles/rules, channels, attacker, secrecy, reachability, correspondence/authentication, and tool-specific result identities.
 - Evidence subset: proverif tamarin protocol equational correspondence attack replay
 - Symbolic first: true
@@ -1369,7 +1371,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Acceptance: Linearity, duality, process scope, progress model, and refinement direction are checked; no resource duplication is silently normalized.
 - Embedding query: linear logic session type process calculus refinement
 
-## LFP2-044 Expand per-profile adversarial, round-trip, and fuzz evidence
+## LFP2-044 Publish Wave-2 family routes and expand per-profile adversarial, round-trip, and fuzz evidence
 
 - Status: todo
 - Completion: manual
@@ -1379,8 +1381,8 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Track: conformance
 - Depends on: LFP2-015, LFP2-021, LFP2-022, LFP2-023, LFP2-024, LFP2-025, LFP2-026, LFP2-027, LFP2-037, LFP2-038, LFP2-039, LFP2-040, LFP2-041, LFP2-042, LFP2-043
 - Goal id: LFP2-G080
-- Outputs: ipfs_datasets_py/tests/fixtures/logic_conformance_v2/profile_manifest.json, ipfs_datasets_py/tests/fuzz/logic/test_wave2_parser_properties.py
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/fuzz/logic/test_wave2_parser_properties.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/families/registry_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/profile_catalog_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/family_extensions.py, ipfs_datasets_py/ipfs_datasets_py/logic/conformance/domain_family_bindings_v2.py, ipfs_datasets_py/tests/conformance/logic/test_family_route_publication_v2.py, ipfs_datasets_py/tests/fixtures/logic_conformance_v2/profile_manifest.json, ipfs_datasets_py/tests/fuzz/logic/test_wave2_parser_properties.py
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/conformance/logic/test_family_route_publication_v2.py tests/fuzz/logic/test_wave2_parser_properties.py
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/conformance/corpus
 - Parallel lane: lfp2-evidence
@@ -1388,16 +1390,16 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Resource stage: validation
 - Estimated tokens: 26000
 - Implementation timeout seconds: 10800
-- Predicted files: ipfs_datasets_py/tests/fixtures/logic_conformance_v2/profile_manifest.json, ipfs_datasets_py/tests/fuzz/logic/test_wave2_parser_properties.py
-- Interfaces: LogicConformanceCorpus@2
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/families/registry_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/profile_catalog_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations/family_extensions.py, ipfs_datasets_py/ipfs_datasets_py/logic/conformance/domain_family_bindings_v2.py, ipfs_datasets_py/tests/conformance/logic/test_family_route_publication_v2.py, ipfs_datasets_py/tests/fixtures/logic_conformance_v2/profile_manifest.json, ipfs_datasets_py/tests/fuzz/logic/test_wave2_parser_properties.py
+- Interfaces: LogicConformanceCorpus@2, LogicFamilyRegistry@3, LogicProfileCatalog@3, FamilyRoutePublication@1
 - Allow concurrent with: LFP2-045, LFP2-046
-- Conflict policy: Own profile manifest and Wave-2 fuzz suite only.
-- Preconditions: Domain and family profiles publish stable feature identities.
-- Effects: Adds positive/negative/ambiguous/adversarial/round-trip/metamorphic fixtures and bounded parser/resource attacks per profile.
-- Evidence subset: conformance profile fuzz unicode recursion ambiguity roundtrip
+- Conflict policy: Own v3 family/profile publication, family-extension routes, domain overlay bindings, profile manifest, publication tests, and Wave-2 fuzz suite; family parser modules remain owned by LFP2-037 through LFP2-043.
+- Preconditions: Base domain slices and all seven family profiles publish stable feature identities and explicit executable or declaration-only dispositions.
+- Effects: Publishes reviewed family/profile descriptors, feature-compatible translation and domain-overlay routes, and positive/negative/ambiguous/adversarial/round-trip/metamorphic fixtures with bounded parser/resource attacks per profile.
+- Evidence subset: family registry profile catalog domain overlay route conformance fuzz unicode recursion ambiguity roundtrip
 - Symbolic first: true
 - LLM context budget bytes: 40000
-- Acceptance: Every executable profile has representative fixtures and every parser/resource limit fails closed deterministically.
+- Acceptance: Every family task has an exact registry/profile entry; every admitted new family-to-domain/provider route is reviewed, feature-compatible, and loss/authority receipted; registry presence alone never implies executability; every executable profile has representative fixtures and deterministic resource limits.
 - Embedding query: logic profile conformance adversarial roundtrip fuzz parser bomb
 
 ## LFP2-045 Add the pinned process-backed provider validation tier
@@ -1421,7 +1423,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Implementation timeout seconds: 14400
 - Predicted files: ipfs_datasets_py/tests/integration/logic_providers/manifest.json, ipfs_datasets_py/tests/integration/logic_providers/test_scheduled_provider_tier.py
 - Interfaces: ScheduledProviderTier@1
-- Allow concurrent with: LFP2-044, LFP2-046
+- Allow concurrent with: LFP2-044
 - Conflict policy: Own scheduled manifest/harness; provider-specific fixtures remain provider task outputs.
 - Preconditions: All listed provider execution adapters publish toolchain contracts.
 - Effects: Runs real pinned binaries when available and emits typed unavailable receipts otherwise; separates hermetic and scheduled evidence.
@@ -1431,7 +1433,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Acceptance: No metadata-only or mock run satisfies executable capability; exact command/environment/tool digest/output identity is recorded without secrets.
 - Embedding query: process backed solver test pinned toolchain provider validation
 
-## LFP2-046 Join differential alignment, witness replay, and proof reconstruction
+## LFP2-046 Join process-backed vertical slices, differential alignment, replay, and reconstruction
 
 - Status: todo
 - Completion: manual
@@ -1439,7 +1441,7 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Review only: false
 - Priority: P0
 - Track: conformance
-- Depends on: LFP2-022, LFP2-023, LFP2-024, LFP2-025, LFP2-026, LFP2-027, LFP2-028, LFP2-029, LFP2-030, LFP2-031, LFP2-032, LFP2-033, LFP2-034, LFP2-035, LFP2-036
+- Depends on: LFP2-022, LFP2-023, LFP2-024, LFP2-025, LFP2-026, LFP2-027, LFP2-028, LFP2-029, LFP2-030, LFP2-031, LFP2-032, LFP2-033, LFP2-034, LFP2-035, LFP2-036, LFP2-045
 - Goal id: LFP2-G080
 - Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/conformance/replay_v2.py, ipfs_datasets_py/tests/conformance/logic/test_replay_v2.py
 - Validation: cd ipfs_datasets_py && python -m pytest -q tests/conformance/logic/test_replay_v2.py
@@ -1451,15 +1453,15 @@ pinned `ipfs_datasets_py` worktree. The four initial tasks own disjoint files.
 - Estimated tokens: 30000
 - Implementation timeout seconds: 14400
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/conformance/replay_v2.py, ipfs_datasets_py/tests/conformance/logic/test_replay_v2.py
-- Interfaces: LogicEvidenceReplay@1
-- Allow concurrent with: LFP2-044, LFP2-045
+- Interfaces: LogicEvidenceReplay@1, ExecutableVerticalSliceReceipt@1
+- Allow concurrent with: LFP2-044
 - Conflict policy: Own evidence replay orchestrator/tests; never overwrite provider-native artifacts.
-- Preconditions: Domain slices and provider decoders expose stable evidence identities.
-- Effects: Matches semantic fragments for differential checks and replays models, cores, traces, attacks, witnesses, TSTP/proof certificates, and kernel candidates.
+- Preconditions: Domain slices and provider decoders expose stable evidence identities, and LFP2-045 supplies pinned process-backed provider receipts.
+- Effects: Emits a content-bound domain-source to parse to elaborate to translate to compile to real pinned-process to decode to replay/reconstruction receipt, then matches semantic fragments for differential checks and replays models, cores, traces, attacks, witnesses, TSTP/proof certificates, and kernel candidates.
 - Evidence subset: differential model core trace attack witness proof reconstruction replay
 - Symbolic first: true
 - LLM context budget bytes: 44000
-- Acceptance: Disagreement is preserved; every authority-bearing result has independent replay/reconstruction or a typed ceiling that forbids promotion.
+- Acceptance: Static or hermetic metadata cannot satisfy ExecutableVerticalSliceReceipt@1; disagreement is preserved; every authority-bearing result has independent replay/reconstruction or a typed ceiling that forbids promotion.
 - Embedding query: solver differential witness model trace attack proof replay
 
 ## LFP2-047 Seal the reachable conformance matrix and hard-zero floors

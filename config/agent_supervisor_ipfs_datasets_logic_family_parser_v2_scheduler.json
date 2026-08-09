@@ -17,6 +17,10 @@
     "predecessor_release_receipt_path": "ipfs_datasets_py/data/logic/conformance/logic_family_parser_release.json",
     "predecessor_release_receipt_sha256": "sha256:86412a60bfde9b8a13156ab097b44443a4a8f70a7b286f1c7a707366c93757ce"
   },
+  "predecessor_runtime_artifact_digests": {
+    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/fixed_point_receipt.json": "sha256:df389198f2f1a5982ede95ce775c468ad7a85abf8447f4d0cc51f8b6f5eddc2c",
+    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/gap_ledger.jsonl": "sha256:6258dc0a9070fd531b77f96d1044f840454d02517022aa1c9e0f3e7b8debbcac"
+  },
   "source_binding": {
     "accelerator_required_ancestor": "e162c19d087d4e6511f8eb97fd34ecb449777897",
     "accelerator_required_branch": "agent/logic-family-parser-v2-supervisor",
@@ -68,6 +72,7 @@
     "ipfs_datasets_py"
   ],
   "protected_paths": [
+    ".gitignore",
     "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_V2_PLAN.md",
     "docs/architecture/ipfs_datasets_logic_family_parser_v2.objectives.md",
     "docs/architecture/ipfs_datasets_logic_family_parser_v2.todo.md",

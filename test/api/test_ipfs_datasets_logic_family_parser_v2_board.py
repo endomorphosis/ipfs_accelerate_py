@@ -57,6 +57,32 @@ def test_seed_digest_normalizes_status_only() -> None:
     assert module._seed_digest(semantic_mutation) != module._seed_digest(source)
 
 
+def test_required_interface_owners_reject_missing_and_duplicate_owners() -> None:
+    module = _validator_module()
+    source = module.TODO_PATH.read_text(encoding="utf-8")
+
+    missing = source.replace("ParseArtifact@2", "ParseArtifact@999", 1)
+    missing_errors: list[str] = []
+    module._validate_tasks(missing, missing_errors)
+    assert (
+        "ParseArtifact@2 must be owned exactly by LFP2-006; got []"
+        in missing_errors
+    )
+
+    duplicate = source.replace(
+        "LogicObligation@2, BackendRequest@2",
+        "LogicObligation@2, BackendRequest@2, ParseArtifact@2",
+        1,
+    )
+    duplicate_errors: list[str] = []
+    module._validate_tasks(duplicate, duplicate_errors)
+    assert (
+        "ParseArtifact@2 must be owned exactly by LFP2-006; "
+        "got ['LFP2-006', 'LFP2-007']"
+        in duplicate_errors
+    )
+
+
 def test_launch_plan_is_dynamic_grok_first_and_static_goal_refill() -> None:
     board = load_configured_board(CONFIG_PATH, repo_root=REPO_ROOT)
     plan = configured_board_launch_plan(

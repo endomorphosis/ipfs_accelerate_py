@@ -11,7 +11,7 @@ Root goal: `LFP2-G000`
 Predecessor: completed `ipfs-datasets-logic-family-parser-v1`
 
 Target repository: the `ipfs_datasets_py` gitlink in the
-`agent/logic-family-parser-supervisor` accelerator branch
+`agent/logic-family-parser-v2-supervisor` accelerator branch
 
 Supervisor: `ipfs_accelerate_py.agent_supervisor`
 
@@ -198,6 +198,9 @@ Wave 2 grows the reviewed graph from two edges to useful domain routes:
   runtime monitors, bounded SMT, and HyperLTL where sound;
 - authorization, frame, and event-calculus views to Datalog/SecPAL, FOL, and
   ATP encodings;
+- neutral symbolic-protocol IR to ProVerif applied-pi and Tamarin
+  multiset-rewriting encodings, with dialect-specific assumption and loss
+  receipts;
 - modal, deontic, epistemic, intention, TDFOL, and DCEC formulas through
   explicit relational or reified encodings;
 - restricted HyperLTL self-composition with quantified-trace limits; and
@@ -221,6 +224,13 @@ present in the same registry.
 Every domain slice must preserve a source-span chain from the originating
 claim through `TypedExpression` and the exact backend request. Boolean
 `parsed=True` or `roundtrip=True` fields are insufficient evidence.
+
+`LFP2-023`, `LFP2-024`, `LFP2-025`, and `LFP2-027` first publish typed slices
+over the base/common families already available after frontend and translation
+convergence. Finite-field, BDI/agency, argumentation/description-logic, and
+session/process overlays are attached only by `LFP2-044` after the matching
+`G070` family profiles land. Base domain work therefore remains parallel with
+family expansion instead of claiming not-yet-published semantics.
 
 The pinned Wave-1 tree does not contain `ui_ux_ir`. Wave 2 must not invent,
 copy, or overwrite it. A source-gated adapter task may complete with a typed
@@ -304,14 +314,13 @@ rebased onto the latest accepted datasets revision before validation.
 Dependency waves are:
 
 ```text
-G010 evidence baseline
-  -> G020 shared typed contracts
-     -> G030 frontend convergence + G070 family expansions
-        -> G040 translation graph
-           -> G050 domain vertical slices + G060 provider execution
-              -> G080 validation
-                 -> G090 refill fixed point
-                    -> G100 release
+G010 evidence baseline -> G020 shared typed contracts -> G030 frontend convergence
+G030 -> G040 translation graph -> G050 base domain vertical slices
+                              -> G060 provider execution
+G030 -> G070 family expansions (parallel with G040/G050/G060)
+G050 + G060 + G070 -> G080 publication and validation
+                    -> G090 refill fixed point
+                       -> G100 release
 ```
 
 Tasks within each goal are split by owned modules and may run concurrently
@@ -319,10 +328,12 @@ after their shared prerequisite lands.
 
 ## Objective refill contract
 
-Static Wave-2 goals are immutable. The supervisor may append tasks, not mutate
-or invent seed goals. Refill is enabled when fewer than eight open tasks
-remain and is bounded to 24 findings per epoch, 48 open derived tasks, depth
-three, two unchanged retries, and a 3600-second cooldown.
+Static Wave-2 goals are immutable. Once `LFP2-048` publishes the validated
+scorer and admission contract, the supervisor may append tasks before the
+`LFP2-049` fixed point and `LFP2-050` release; it may not mutate seed tasks or
+invent seed goals. Refill is enabled when fewer than eight open tasks remain
+and is bounded to 24 findings per epoch, 48 open derived tasks, depth three,
+two unchanged retries, and a 3600-second cooldown.
 
 Admissible triggers include:
 

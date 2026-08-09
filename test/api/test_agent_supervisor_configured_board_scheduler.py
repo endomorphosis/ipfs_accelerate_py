@@ -694,6 +694,37 @@ def test_preflight_accepts_tracked_control_file_inside_submodule(
     assert report["valid"] is True, report["errors"]
 
 
+def test_preflight_rejects_untracked_control_file_inside_submodule(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    relative = "dependency/untracked-control.txt"
+    _write(repo / relative, "untracked nested control\n")
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["protected_paths"].append(relative)
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "declare untracked nested control file")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    present = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "control_files_present"
+    )
+    tracked = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "control_files_tracked"
+    )
+
+    assert report["valid"] is False
+    assert present["passed"] is True
+    assert tracked["passed"] is False
+    assert tracked["detail"] == [relative]
+
+
 def test_preflight_rejects_submodule_head_gitlink_mismatch(
     tmp_path: Path,
 ) -> None:

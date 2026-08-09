@@ -13303,6 +13303,20 @@ class PortalImplementationSupervisor:
             command.extend(
                 ["--merge-queue-dir", str(self.config.merge_queue_dir)]
             )
+        # Crash-fence and objective reconciliation run even when provider
+        # dispatch is disabled.  Keep their path identity identical to an
+        # implementing pass so a maintenance-only daemon can safely inspect
+        # worktrees and receipts created by the implementing daemon.
+        if self.config.worktree_root is not None:
+            command.extend(["--worktree-root", str(self.config.worktree_root)])
+        for relative in self.config.worktree_submodule_paths:
+            command.extend(["--worktree-submodule-path", relative])
+        if self.config.objective_path is not None:
+            command.extend(["--objective-path", str(self.config.objective_path)])
+        if self.config.objective_bundle_dir is not None:
+            command.extend(
+                ["--objective-bundle-dir", str(self.config.objective_bundle_dir)]
+            )
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
@@ -13319,14 +13333,6 @@ class PortalImplementationSupervisor:
                 )
             if not self.config.use_ephemeral_worktree:
                 command.append("--no-ephemeral-worktree")
-            if self.config.worktree_root is not None:
-                command.extend(["--worktree-root", str(self.config.worktree_root)])
-            for relative in self.config.worktree_submodule_paths:
-                command.extend(["--worktree-submodule-path", relative])
-            if self.config.objective_path is not None:
-                command.extend(["--objective-path", str(self.config.objective_path)])
-            if self.config.objective_bundle_dir is not None:
-                command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
         if self.config.objective_refill_enabled:
             command.extend(
                 [

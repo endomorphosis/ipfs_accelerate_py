@@ -85,7 +85,7 @@ Program invariants:
 - AST query: BackendRequest ParseArtifact TranslationReceipt ProviderCapabilityDescriptor
 - Conflict policy: Four seed tasks own distinct report, inventory, graph, and corpus modules and may run concurrently.
 
-## LFP2-G020 Enforce typed extension, request, artifact, capability, and migration contracts
+## LFP2-G020 Enforce typed syntax, formalization, request, evidence, capability, and migration contracts
 
 - Status: active
 - Review only: false
@@ -97,16 +97,16 @@ Program invariants:
 - Bundle: logic-family-parser-v2/contracts
 - Parallel lane: lfp2-contracts
 - Resource class: cpu-large
-- Goal: Eliminate arbitrary extension payloads, free-form backend family requests, raw target ingress, duplicated capability claims, and flag-day migration risk.
+- Goal: Eliminate arbitrary extension payloads, unversioned parse/elaboration/formalization/domain slices, free-form backend family requests, raw target or result ingress, duplicated capability claims, and flag-day migration risk.
 - Seed tasks: LFP2-005, LFP2-006, LFP2-007, LFP2-008, LFP2-009
-- Evidence: ExtensionSchemaRegistry@1, LogicObligation@2, BackendRequest@2, CompiledLogicArtifact@1, ParsedTargetArtifact@1, ProviderCapabilityMatrix@2, LogicContractMigration@1
-- Evidence criteria: Type/binder/scope hooks and stable codecs cover extensions; new requests and provider entries are canonical; legacy inputs emit explicit migration receipts.
+- Evidence: ExtensionSchemaRegistry@1, ParseArtifact@2, ElaborationArtifact@2, FormalizationArtifact@3, DomainLogicSlice@2, LogicObligation@2, BackendRequest@2, CompiledLogicArtifact@1, ParsedTargetArtifact@1, ProviderExecutionReceipt@2, EvidenceReplayReceipt@1, ProviderCapabilityMatrix@2, LogicContractMigration@1
+- Evidence criteria: Type/binder/scope hooks and stable codecs cover extensions and syntax artifacts; formalization, domain slices, requests, execution, replay, and provider entries are canonical; legacy inputs emit explicit migration receipts.
 - Evidence source policy: Contract tests and schema validation establish structure; they do not establish solver correctness.
-- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core, ipfs_datasets_py/ipfs_datasets_py/logic/backends, ipfs_datasets_py/ipfs_datasets_py/logic/families
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core, ipfs_datasets_py/ipfs_datasets_py/logic/backends, ipfs_datasets_py/ipfs_datasets_py/logic/families
-- Interfaces: ExtensionSchemaRegistry@1, BackendRequest@2, CompiledLogicArtifact@1, ProviderCapabilityMatrix@2
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/syntax_core tests/unit/logic/backends tests/unit/logic/families
-- Acceptance: No new arbitrary JSON extension, free-form family route, raw unreceipted target source, or hand-duplicated provider capability enters an executable path.
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core, ipfs_datasets_py/ipfs_datasets_py/logic/formalization, ipfs_datasets_py/ipfs_datasets_py/logic/backends, ipfs_datasets_py/ipfs_datasets_py/logic/families
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/syntax_core, ipfs_datasets_py/ipfs_datasets_py/logic/formalization, ipfs_datasets_py/ipfs_datasets_py/logic/backends, ipfs_datasets_py/ipfs_datasets_py/logic/families
+- Interfaces: ExtensionSchemaRegistry@1, ParseArtifact@2, ElaborationArtifact@2, FormalizationArtifact@3, DomainLogicSlice@2, BackendRequest@2, CompiledLogicArtifact@1, ProviderExecutionReceipt@2, EvidenceReplayReceipt@1, ProviderCapabilityMatrix@2
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/syntax_core tests/unit/logic/formalization tests/unit/logic/backends tests/unit/logic/families
+- Acceptance: No new arbitrary JSON extension, unversioned syntax/formalization slice, free-form family route, raw unreceipted target/result, or hand-duplicated provider capability enters an executable path.
 - Gap task: Repair one exact contract/schema/migration hole and add negative evidence for the previously admitted unsafe input.
 - Refinement: Preserve dual-read compatibility until consumer migration evidence is complete; canonical-write is immediate.
 - Embedding query: extension schema backend request compiled artifact provider capability migration
@@ -153,14 +153,14 @@ Program invariants:
 - Bundle: logic-family-parser-v2/translations
 - Parallel lane: lfp2-translations
 - Resource class: cpu-proof-solver
-- Goal: Add reviewed executable translations for program, state, authorization, modal/cognitive, hyperproperty, and composed routes.
+- Goal: Add reviewed executable translations for program, state, authorization, symbolic protocol, modal/cognitive, hyperproperty, and composed routes.
 - Seed tasks: LFP2-016, LFP2-017, LFP2-018, LFP2-019, LFP2-020, LFP2-021
-- Evidence: LogicTranslationGraph@3, TranslationPathPlanner@1, TranslationPathReceipt@1
+- Evidence: LogicTranslationGraph@3, TranslationPathPlanner@1, TranslationPathReceipt@1, ProtocolTargetTranslationEdges@1
 - Evidence criteria: Each edge and composed path binds feature preconditions, preservation, polarity, assumptions, losses, bounds, reconstruction, and authority ceiling.
 - Evidence source policy: Metamorphic/differential/reconstruction tests validate declared properties; no test promotes an approximation to equivalence.
 - Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/families/translations_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations, ipfs_datasets_py/tests/unit/logic/translations
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/families/translations_v3.py, ipfs_datasets_py/ipfs_datasets_py/logic/translations, ipfs_datasets_py/tests/unit/logic/translations
-- Interfaces: LogicTranslationGraph@3, TranslationPathReceipt@1, TranslationPathPlanner@1
+- Interfaces: LogicTranslationGraph@3, TranslationPathReceipt@1, TranslationPathPlanner@1, ProtocolTargetTranslationEdges@1
 - Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/translations tests/conformance/logic/test_translation_paths_v2.py
 - Acceptance: Every selected path is feature-compatible and loss-receipted; unsupported compositions fail before backend dispatch.
 - Gap task: Add one reachable missing edge/path with preservation and negative feature fixtures.
@@ -244,7 +244,7 @@ Program invariants:
 - Evidence source policy: Domain examples motivate profiles; formal contracts and provider validation establish only declared fragments.
 - Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/parsers, ipfs_datasets_py/ipfs_datasets_py/logic/families, ipfs_datasets_py/ipfs_datasets_py/logic/translations
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/parsers, ipfs_datasets_py/ipfs_datasets_py/logic/families, ipfs_datasets_py/ipfs_datasets_py/logic/translations
-- Interfaces: LogicFamilyRegistry@3, LogicProfileCatalog@3
+- Interfaces: NormativeLogicProfiles@2, ArgumentationLogic@1, DescriptionLogicProfiles@1, AgencyLogicProfiles@1, FixedPointLogicProfiles@1, FiniteFieldConstraintLogic@1, SessionProcessLogic@1
 - Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic/families tests/unit/logic/parsers tests/unit/logic/translations
 - Acceptance: New executable claims are profile-scoped and tested; remaining candidate families stay typed declaration-only with no provider claim.
 - Gap task: Add one domain-required family profile or executable edge with exact semantics and negative unsupported fixtures.
@@ -265,14 +265,14 @@ Program invariants:
 - Bundle: logic-family-parser-v2/conformance
 - Parallel lane: lfp2-conformance
 - Resource class: cpu-proof-solver
-- Goal: Validate positive, negative, ambiguous, adversarial, process-backed, replay, reconstruction, and reachable-matrix evidence across the whole architecture.
+- Goal: Publish reviewed family/profile/domain routes and validate positive, negative, ambiguous, adversarial, process-backed, executable-vertical-slice, replay, reconstruction, and reachable-matrix evidence across the whole architecture.
 - Seed tasks: LFP2-044, LFP2-045, LFP2-046, LFP2-047
-- Evidence: LogicConformanceCorpus@2, ScheduledProviderTier@1, LogicEvidenceReplay@1, ReachableConformanceMatrix@2
+- Evidence: LogicConformanceCorpus@2, LogicFamilyRegistry@3, LogicProfileCatalog@3, FamilyRoutePublication@1, ScheduledProviderTier@1, LogicEvidenceReplay@1, ExecutableVerticalSliceReceipt@1, ReachableConformanceMatrix@2
 - Evidence criteria: Every reachable executable claim has corpus fixtures and pinned execution/replay evidence; hard-zero safety floors are machine checked.
 - Evidence source policy: Hermetic tests prove contracts; scheduled pinned providers prove tool-specific execution; kernels prove only exact accepted theories.
-- Outputs: ipfs_datasets_py/tests/fixtures/logic_conformance_v2, ipfs_datasets_py/tests/integration/logic_providers, ipfs_datasets_py/tests/conformance/logic, ipfs_datasets_py/data/logic/conformance
-- Predicted files: ipfs_datasets_py/tests/fixtures/logic_conformance_v2, ipfs_datasets_py/tests/integration/logic_providers, ipfs_datasets_py/tests/conformance/logic, ipfs_datasets_py/data/logic/conformance
-- Interfaces: LogicConformanceReport@2, ReachableConformanceMatrix@2
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/families, ipfs_datasets_py/ipfs_datasets_py/logic/translations, ipfs_datasets_py/ipfs_datasets_py/logic/conformance, ipfs_datasets_py/tests/fixtures/logic_conformance_v2, ipfs_datasets_py/tests/integration/logic_providers, ipfs_datasets_py/tests/conformance/logic, ipfs_datasets_py/data/logic/conformance
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/families, ipfs_datasets_py/ipfs_datasets_py/logic/translations, ipfs_datasets_py/ipfs_datasets_py/logic/conformance, ipfs_datasets_py/tests/fixtures/logic_conformance_v2, ipfs_datasets_py/tests/integration/logic_providers, ipfs_datasets_py/tests/conformance/logic, ipfs_datasets_py/data/logic/conformance
+- Interfaces: LogicFamilyRegistry@3, LogicProfileCatalog@3, FamilyRoutePublication@1, ExecutableVerticalSliceReceipt@1, LogicConformanceReport@2, ReachableConformanceMatrix@2
 - Validation: cd ipfs_datasets_py && python -m pytest -q tests/conformance/logic tests/fuzz/logic
 - Acceptance: Zero silent loss, raw ingress, family drift, false capability, authority escalation, trust escape, unexplained reachable gap, or unreplayed authoritative evidence remains.
 - Gap task: Generate one content-addressed task for a failing reachable path, missing replay, or hard-zero violation.
@@ -336,4 +336,3 @@ Program invariants:
 - Embedding query: logic parser wave2 release receipt predecessor provider replay fixed point authority
 - AST query: LogicParserReleaseReceipt ReachableConformanceMatrix ObjectiveRefillFixedPoint
 - Conflict policy: Review/evidence aggregation only; no semantic implementation changes are allowed in the release task.
-
