@@ -6,6 +6,12 @@ bounded :class:`PortfolioRunner`; the router selects the reviewed portfolio,
 gates it against capability/conformance evidence when supplied, retains an
 attempt for every selected lane, and derives the only authoritative verdict.
 
+Interface: ``ProverPortfolio@1`` (with ``SolverReadiness@1`` capability
+evidence).  :class:`ProverCapabilityAdmission` admits only DCEC, TDFOL, SMT,
+theorem, and structural backends where declared fragments and self-tests
+match.  General LLM and remote nondeterministic providers are not
+representable.  Required missing, unsupported, or error backends fail closed.
+
 Solver and Hammer successes are candidates.  They can never promote
 themselves to a proof.  A configured model-checking authority (for example
 TLC for a state-machine property) or an independent Lean/Coq/Isabelle
@@ -38,9 +44,17 @@ from .prover_conformance import (
     gate_prover_path,
 )
 from .prover_matrix_registry import ProverMatrixEntry, ProverMatrixSnapshot
+from .solver_readiness import (
+    SolverBackendFamily,
+    SolverBackendReadiness,
+    SolverReadinessReport,
+    SolverReadinessStatus,
+)
 
 
 MULTI_PROVER_ROUTER_VERSION = 1
+PROVER_PORTFOLIO_INTERFACE = "ProverPortfolio@1"
+SOLVER_READINESS_INTERFACE = "SolverReadiness@1"
 PROPERTY_OBLIGATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/property-obligation@1"
 )
@@ -51,9 +65,137 @@ PORTFOLIO_ATTEMPT_SCHEMA = (
 PORTFOLIO_RESULT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prover-portfolio-result@1"
 )
+PROVER_CAPABILITY_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/prover-capability-admission@1"
+)
 DEFAULT_PORTFOLIO_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_PARALLEL_PROVERS = 8
 DEFAULT_MAX_EVIDENCE_BYTES = 256 * 1024
+
+# Closed deterministic backend families admitted by DCR-032.  General LLM and
+# remote nondeterministic providers are intentionally absent from this set.
+class DeterministicBackendKind(str, Enum):
+    """Capability-qualified deterministic prover families only."""
+
+    DCEC = "dcec"
+    TDFOL = "tdfol"
+    SMT = "smt"
+    THEOREM = "theorem"
+    STRUCTURAL = "structural"
+
+
+class CapabilityAdmissionStatus(str, Enum):
+    """Terminal admission decision for one backend/lane."""
+
+    ADMITTED = "admitted"
+    MISSING = "missing"
+    UNSUPPORTED = "unsupported"
+    ERROR = "error"
+    UNREPRESENTABLE = "unrepresentable"
+
+
+# Tokens that can never name a deterministic portfolio backend.  Matching any
+# of these means the provider is not representable in ProverCapabilityAdmission.
+_UNREPRESENTABLE_BACKEND_TOKENS: frozenset[str] = frozenset(
+    {
+        "llm",
+        "llm_inference",
+        "llm-proof-draft",
+        "leanstral",
+        "openai",
+        "anthropic",
+        "litellm",
+        "langchain",
+        "llama_cpp",
+        "transformers",
+        "groq",
+        "cohere",
+        "vertexai",
+        "gpt",
+        "grok",
+        "codex",
+        "chat",
+        "model",
+        "model_assistant",
+        "remote",
+        "remote_service",
+        "remote_prover",
+        "nondeterministic",
+        "cloud_llm",
+        "hosted_model",
+    }
+)
+
+_PROVER_ID_TO_BACKEND_KIND: Mapping[str, DeterministicBackendKind] = {
+    "dcec": DeterministicBackendKind.DCEC,
+    "cec": DeterministicBackendKind.DCEC,
+    "tdfol": DeterministicBackendKind.TDFOL,
+    "z3": DeterministicBackendKind.SMT,
+    "cvc5": DeterministicBackendKind.SMT,
+    "smt": DeterministicBackendKind.SMT,
+    "hammer": DeterministicBackendKind.THEOREM,
+    "vampire": DeterministicBackendKind.THEOREM,
+    "e": DeterministicBackendKind.THEOREM,
+    "lean": DeterministicBackendKind.THEOREM,
+    "coq": DeterministicBackendKind.THEOREM,
+    "isabelle": DeterministicBackendKind.THEOREM,
+    "tla_tlc": DeterministicBackendKind.STRUCTURAL,
+    "apalache": DeterministicBackendKind.STRUCTURAL,
+    "datalog_secpal": DeterministicBackendKind.STRUCTURAL,
+    "tamarin": DeterministicBackendKind.STRUCTURAL,
+    "proverif": DeterministicBackendKind.STRUCTURAL,
+    "hyperltl_autohyper_mchyper": DeterministicBackendKind.STRUCTURAL,
+    "runtime_mtl": DeterministicBackendKind.STRUCTURAL,
+}
+
+_SOLVER_FAMILY_TO_BACKEND_KIND: Mapping[SolverBackendFamily, DeterministicBackendKind] = {
+    SolverBackendFamily.DCEC: DeterministicBackendKind.DCEC,
+    SolverBackendFamily.CEC: DeterministicBackendKind.DCEC,
+    SolverBackendFamily.TDFOL: DeterministicBackendKind.TDFOL,
+    SolverBackendFamily.Z3: DeterministicBackendKind.SMT,
+    SolverBackendFamily.HAMMER: DeterministicBackendKind.THEOREM,
+}
+
+_BACKEND_KIND_TO_SOLVER_FAMILIES: Mapping[
+    DeterministicBackendKind, tuple[SolverBackendFamily, ...]
+] = {
+    DeterministicBackendKind.DCEC: (
+        SolverBackendFamily.DCEC,
+        SolverBackendFamily.CEC,
+    ),
+    DeterministicBackendKind.TDFOL: (SolverBackendFamily.TDFOL,),
+    DeterministicBackendKind.SMT: (SolverBackendFamily.Z3,),
+    DeterministicBackendKind.THEOREM: (SolverBackendFamily.HAMMER,),
+    DeterministicBackendKind.STRUCTURAL: (),
+}
+
+_LOGIC_FRAGMENT_TO_BACKEND_KINDS: Mapping[str, frozenset[DeterministicBackendKind]] = {
+    "dcec": frozenset({DeterministicBackendKind.DCEC, DeterministicBackendKind.THEOREM}),
+    "cec": frozenset({DeterministicBackendKind.DCEC, DeterministicBackendKind.THEOREM}),
+    "tdfol": frozenset({DeterministicBackendKind.TDFOL, DeterministicBackendKind.THEOREM}),
+    "smt": frozenset({DeterministicBackendKind.SMT, DeterministicBackendKind.THEOREM}),
+    "fol": frozenset({DeterministicBackendKind.THEOREM, DeterministicBackendKind.SMT}),
+    "theorem": frozenset({DeterministicBackendKind.THEOREM}),
+    "graph": frozenset({DeterministicBackendKind.STRUCTURAL}),
+    "schema": frozenset({DeterministicBackendKind.STRUCTURAL}),
+    "relation": frozenset({DeterministicBackendKind.STRUCTURAL}),
+    "deontic": frozenset(
+        {
+            DeterministicBackendKind.DCEC,
+            DeterministicBackendKind.TDFOL,
+            DeterministicBackendKind.THEOREM,
+        }
+    ),
+    "temporal": frozenset(
+        {
+            DeterministicBackendKind.DCEC,
+            DeterministicBackendKind.TDFOL,
+            DeterministicBackendKind.STRUCTURAL,
+            DeterministicBackendKind.THEOREM,
+        }
+    ),
+    "structural": frozenset({DeterministicBackendKind.STRUCTURAL}),
+}
 
 
 class PropertyKind(str, Enum):
@@ -446,6 +588,617 @@ class PropertyPolicy:
                     key=lambda item: item.value,
                 )
             ),
+        )
+
+
+def _normalize_backend_token(value: str) -> str:
+    return value.casefold().replace("-", "_").replace(" ", "_").strip(".:/")
+
+
+def backend_is_representable(prover_id: str) -> bool:
+    """Return whether *prover_id* can name a deterministic portfolio backend.
+
+    General LLM and remote nondeterministic providers are never representable.
+    """
+
+    try:
+        text = _text(prover_id, "prover_id")
+    except ContractValidationError:
+        return False
+    tokens = {
+        _normalize_backend_token(part)
+        for part in text.replace(":", "/").replace(".", "/").split("/")
+        if part
+    }
+    tokens.add(_normalize_backend_token(text))
+    if tokens & _UNREPRESENTABLE_BACKEND_TOKENS:
+        return False
+    if any(
+        token.startswith(prefix) or token.endswith(f"_{prefix}") or f"_{prefix}_" in token
+        for token in tokens
+        for prefix in ("llm", "leanstral", "remote", "gpt", "openai", "anthropic")
+    ):
+        return False
+    return True
+
+
+def classify_deterministic_backend(
+    prover_id: str,
+) -> DeterministicBackendKind:
+    """Map a prover id onto the closed deterministic backend vocabulary.
+
+    Raises :class:`ContractValidationError` when the id is unrepresentable or
+    outside the reviewed deterministic families.
+    """
+
+    text = _text(prover_id, "prover_id")
+    if not backend_is_representable(text):
+        raise ContractValidationError(
+            f"backend {text!r} is not representable as a deterministic prover "
+            "(general LLM and remote nondeterministic providers are excluded)"
+        )
+    key = _normalize_backend_token(text)
+    kind = _PROVER_ID_TO_BACKEND_KIND.get(key)
+    if kind is None:
+        # Allow dotted/provider-qualified ids such as "datasets:z3".
+        for suffix, mapped in _PROVER_ID_TO_BACKEND_KIND.items():
+            if key == suffix or key.endswith(f"_{suffix}") or key.endswith(f":{suffix}"):
+                kind = mapped
+                break
+    if kind is None:
+        raise ContractValidationError(
+            f"backend {text!r} is outside the deterministic portfolio vocabulary"
+        )
+    return kind
+
+
+@dataclass(frozen=True)
+class CapabilityAdmissionDecision:
+    """Fail-closed admission verdict for one backend or lane."""
+
+    prover_id: str
+    status: CapabilityAdmissionStatus
+    backend_kind: DeterministicBackendKind | None
+    detail: str
+    capability_receipt_id: str = ""
+    readiness_identity: str = ""
+    self_test_passed: bool = False
+    fragment_matched: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "prover_id", _text(self.prover_id, "prover_id"))
+        object.__setattr__(
+            self, "status", _enum(self.status, CapabilityAdmissionStatus, "status")
+        )
+        if self.backend_kind is not None:
+            object.__setattr__(
+                self,
+                "backend_kind",
+                _enum(self.backend_kind, DeterministicBackendKind, "backend_kind"),
+            )
+        object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
+        object.__setattr__(
+            self,
+            "capability_receipt_id",
+            _text(self.capability_receipt_id, "capability_receipt_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "readiness_identity",
+            _text(self.readiness_identity, "readiness_identity", required=False),
+        )
+        for name in ("self_test_passed", "fragment_matched"):
+            if not isinstance(getattr(self, name), bool):
+                raise ContractValidationError(f"{name} must be boolean")
+        if (
+            self.status is CapabilityAdmissionStatus.ADMITTED
+            and self.backend_kind is None
+        ):
+            raise ContractValidationError("admitted decision requires a backend kind")
+        if (
+            self.status is CapabilityAdmissionStatus.UNREPRESENTABLE
+            and self.backend_kind is not None
+        ):
+            raise ContractValidationError(
+                "unrepresentable backends cannot carry a deterministic kind"
+            )
+
+    @property
+    def admitted(self) -> bool:
+        return self.status is CapabilityAdmissionStatus.ADMITTED
+
+    @property
+    def attempt_outcome(self) -> AttemptOutcome:
+        if self.status is CapabilityAdmissionStatus.ADMITTED:
+            raise ContractValidationError("admitted backends have no gate outcome")
+        if self.status is CapabilityAdmissionStatus.MISSING:
+            return AttemptOutcome.UNAVAILABLE
+        if self.status is CapabilityAdmissionStatus.ERROR:
+            return AttemptOutcome.ERROR
+        if self.status is CapabilityAdmissionStatus.UNREPRESENTABLE:
+            return AttemptOutcome.UNSUPPORTED
+        return AttemptOutcome.UNSUPPORTED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROVER_CAPABILITY_ADMISSION_SCHEMA,
+            "prover_id": self.prover_id,
+            "status": self.status.value,
+            "backend_kind": (
+                self.backend_kind.value if self.backend_kind is not None else None
+            ),
+            "detail": self.detail,
+            "capability_receipt_id": self.capability_receipt_id,
+            "readiness_identity": self.readiness_identity,
+            "self_test_passed": self.self_test_passed,
+            "fragment_matched": self.fragment_matched,
+            "admitted": self.admitted,
+        }
+
+
+@dataclass(frozen=True)
+class RequiredBackendAdmission:
+    """Aggregate fail-closed result for one required backend identity."""
+
+    backend: str
+    decision: CapabilityAdmissionDecision
+
+    @property
+    def admitted(self) -> bool:
+        return self.decision.admitted
+
+
+class ProverCapabilityAdmission:
+    """Admit only capability-qualified deterministic provers into a portfolio.
+
+    Interface: ``ProverPortfolio@1`` with readiness evidence from
+    ``SolverReadiness@1``.
+
+    Selection is restricted to DCEC, TDFOL, SMT, theorem, and structural
+    backends.  General LLM and remote nondeterministic providers are not
+    representable: classification raises and admission returns
+    ``UNREPRESENTABLE`` rather than a runnable lane.  Required backends that
+    are missing, unsupported, or in error fail closed.
+    """
+
+    INTERFACE = PROVER_PORTFOLIO_INTERFACE
+    READINESS_INTERFACE = SOLVER_READINESS_INTERFACE
+
+    def __init__(
+        self,
+        *,
+        matrix: ProverMatrixSnapshot | None = None,
+        readiness: SolverReadinessReport | None = None,
+        require_self_test: bool = True,
+        require_capability_evidence: bool = True,
+        allowed_kinds: Iterable[DeterministicBackendKind | str] | None = None,
+        required_backends: Iterable[str] | None = None,
+        logic_fragment: str = "",
+    ) -> None:
+        if matrix is not None and not isinstance(matrix, ProverMatrixSnapshot):
+            raise ContractValidationError("matrix must be a ProverMatrixSnapshot")
+        if readiness is not None and not isinstance(readiness, SolverReadinessReport):
+            raise ContractValidationError(
+                "readiness must be a SolverReadinessReport (SolverReadiness@1)"
+            )
+        if not isinstance(require_self_test, bool):
+            raise ContractValidationError("require_self_test must be boolean")
+        if not isinstance(require_capability_evidence, bool):
+            raise ContractValidationError(
+                "require_capability_evidence must be boolean"
+            )
+        kinds: set[DeterministicBackendKind] = set()
+        if allowed_kinds is None:
+            kinds = set(DeterministicBackendKind)
+        else:
+            for item in allowed_kinds:
+                kinds.add(_enum(item, DeterministicBackendKind, "allowed_kinds"))
+        if not kinds:
+            raise ContractValidationError("allowed_kinds must not be empty")
+        self._matrix = matrix
+        self._matrix_entries = (
+            {entry.prover_id: entry for entry in matrix.entries} if matrix else {}
+        )
+        self._readiness = readiness
+        self._require_self_test = require_self_test
+        self._require_capability_evidence = require_capability_evidence
+        self._allowed_kinds = frozenset(kinds)
+        self._required_backends = _strings(required_backends, "required_backends")
+        self._logic_fragment = _text(
+            logic_fragment, "logic_fragment", required=False
+        ).casefold()
+
+    @property
+    def matrix(self) -> ProverMatrixSnapshot | None:
+        return self._matrix
+
+    @property
+    def readiness(self) -> SolverReadinessReport | None:
+        return self._readiness
+
+    @property
+    def required_backends(self) -> tuple[str, ...]:
+        return self._required_backends
+
+    @property
+    def allowed_kinds(self) -> frozenset[DeterministicBackendKind]:
+        return self._allowed_kinds
+
+    @property
+    def logic_fragment(self) -> str:
+        return self._logic_fragment
+
+    def classify(self, prover_id: str) -> DeterministicBackendKind:
+        """Classify *prover_id* or raise when it is unrepresentable."""
+
+        return classify_deterministic_backend(prover_id)
+
+    def is_representable(self, prover_id: str) -> bool:
+        return backend_is_representable(prover_id)
+
+    def _fragment_allows(self, kind: DeterministicBackendKind) -> bool:
+        if not self._logic_fragment:
+            return True
+        allowed = _LOGIC_FRAGMENT_TO_BACKEND_KINDS.get(self._logic_fragment)
+        if allowed is None:
+            # Unknown fragment never widens the portfolio.
+            return False
+        return kind in allowed
+
+    def _readiness_for(
+        self, prover_id: str, kind: DeterministicBackendKind
+    ) -> SolverBackendReadiness | None:
+        if self._readiness is None:
+            return None
+        # Prefer an exact provider_id match when present.
+        for item in self._readiness.backends:
+            if item.provider_id == prover_id:
+                return item
+        # Exact family-name match (for example prover_id "z3" -> family Z3).
+        try:
+            family = SolverBackendFamily(prover_id)
+        except ValueError:
+            family = None
+        if family is not None:
+            try:
+                return self._readiness.backend(family)
+            except KeyError:
+                return None
+        # Kind→family fallback only when the readiness row names this prover.
+        for family in _BACKEND_KIND_TO_SOLVER_FAMILIES.get(kind, ()):
+            try:
+                item = self._readiness.backend(family)
+            except KeyError:
+                continue
+            if item.provider_id == prover_id or item.family.value == prover_id:
+                return item
+        return None
+
+    def admit_backend(
+        self,
+        prover_id: str,
+        *,
+        role: ProverRole | str | None = None,
+        authority_capability: str = "",
+        required: bool = False,
+    ) -> CapabilityAdmissionDecision:
+        """Admit one backend id under the deterministic portfolio policy."""
+
+        text = _text(prover_id, "prover_id")
+        if not backend_is_representable(text):
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.UNREPRESENTABLE,
+                None,
+                (
+                    "general LLM and remote nondeterministic providers are not "
+                    "representable as deterministic portfolio backends"
+                ),
+            )
+        try:
+            kind = classify_deterministic_backend(text)
+        except ContractValidationError as exc:
+            status = (
+                CapabilityAdmissionStatus.UNREPRESENTABLE
+                if "not representable" in str(exc)
+                else CapabilityAdmissionStatus.UNSUPPORTED
+            )
+            return CapabilityAdmissionDecision(
+                text,
+                status,
+                None,
+                str(exc),
+            )
+        if kind not in self._allowed_kinds:
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.UNSUPPORTED,
+                kind,
+                f"backend kind {kind.value} is not allowed by admission policy",
+                fragment_matched=self._fragment_allows(kind),
+            )
+        fragment_ok = self._fragment_allows(kind)
+        if not fragment_ok:
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.UNSUPPORTED,
+                kind,
+                (
+                    f"backend kind {kind.value} does not match declared logic "
+                    f"fragment {self._logic_fragment!r}"
+                ),
+                fragment_matched=False,
+            )
+
+        normalized_role = (
+            None if role is None else _enum(role, ProverRole, "role")
+        )
+        if normalized_role is ProverRole.MODEL_ASSISTANT:
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.UNREPRESENTABLE,
+                None,
+                "model-assistant roles are not deterministic portfolio backends",
+                fragment_matched=True,
+            )
+
+        readiness = self._readiness_for(text, kind)
+        readiness_identity = readiness.readiness_identity if readiness else ""
+        readiness_ok = False
+        if readiness is not None:
+            reason_code = str(getattr(readiness, "reason_code", "") or "").casefold()
+            if reason_code in {
+                "error",
+                "probe_error",
+                "backend_error",
+                "readiness_error",
+            }:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.ERROR,
+                    kind,
+                    readiness.reason or "solver readiness reports backend error",
+                    readiness_identity=readiness_identity,
+                    self_test_passed=readiness.self_test_passed,
+                    fragment_matched=True,
+                )
+            if readiness.status is SolverReadinessStatus.UNSUPPORTED:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.MISSING
+                    if required
+                    else CapabilityAdmissionStatus.UNSUPPORTED,
+                    kind,
+                    readiness.reason or "solver readiness reports unsupported",
+                    readiness_identity=readiness_identity,
+                    self_test_passed=readiness.self_test_passed,
+                    fragment_matched=True,
+                )
+            if not readiness.supported:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.UNSUPPORTED,
+                    kind,
+                    readiness.reason or "solver readiness is not supported",
+                    readiness_identity=readiness_identity,
+                    self_test_passed=readiness.self_test_passed,
+                    fragment_matched=True,
+                )
+            if self._require_self_test and not readiness.self_test_passed:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.UNSUPPORTED,
+                    kind,
+                    "backend self-test has not passed",
+                    readiness_identity=readiness_identity,
+                    self_test_passed=False,
+                    fragment_matched=True,
+                )
+            readiness_ok = True
+
+        entry = self._matrix_entries.get(text)
+        if self._matrix is not None:
+            if entry is None:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.MISSING,
+                    kind,
+                    "prover is absent from the executable capability matrix",
+                    readiness_identity=readiness_identity,
+                    self_test_passed=bool(readiness and readiness.self_test_passed),
+                    fragment_matched=True,
+                )
+            receipt_id = entry.receipt.receipt_id if entry.receipt else ""
+            if not entry.discovered:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.MISSING,
+                    kind,
+                    entry.reason or "prover was not discovered",
+                    capability_receipt_id=receipt_id,
+                    readiness_identity=readiness_identity,
+                    fragment_matched=True,
+                )
+            if not entry.smoke_tested:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.UNSUPPORTED,
+                    kind,
+                    entry.reason or "prover capability is not smoke-tested",
+                    capability_receipt_id=receipt_id,
+                    readiness_identity=readiness_identity,
+                    fragment_matched=True,
+                )
+            if not entry.translation_conformant:
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.UNSUPPORTED,
+                    kind,
+                    "prover translation is not conformant",
+                    capability_receipt_id=receipt_id,
+                    readiness_identity=readiness_identity,
+                    self_test_passed=True,
+                    fragment_matched=True,
+                )
+            if (
+                normalized_role is ProverRole.KERNEL
+                and not entry.reconstruction_capable
+            ):
+                return CapabilityAdmissionDecision(
+                    text,
+                    CapabilityAdmissionStatus.UNSUPPORTED,
+                    kind,
+                    "kernel is not reconstruction-capable",
+                    capability_receipt_id=receipt_id,
+                    readiness_identity=readiness_identity,
+                    self_test_passed=True,
+                    fragment_matched=True,
+                )
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.ADMITTED,
+                kind,
+                "capability-qualified deterministic backend admitted",
+                capability_receipt_id=receipt_id,
+                readiness_identity=readiness_identity,
+                self_test_passed=True,
+                fragment_matched=True,
+            )
+
+        if readiness_ok:
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.ADMITTED,
+                kind,
+                "solver-readiness-qualified deterministic backend admitted",
+                readiness_identity=readiness_identity,
+                self_test_passed=bool(readiness and readiness.self_test_passed),
+                fragment_matched=True,
+            )
+
+        if self._require_capability_evidence:
+            return CapabilityAdmissionDecision(
+                text,
+                CapabilityAdmissionStatus.MISSING if required else CapabilityAdmissionStatus.UNSUPPORTED,
+                kind,
+                "capability evidence (matrix or SolverReadiness@1) is required",
+                readiness_identity=readiness_identity,
+                fragment_matched=True,
+            )
+
+        # No matrix/readiness evidence required: still only admit closed
+        # deterministic kinds after representability and fragment checks.
+        return CapabilityAdmissionDecision(
+            text,
+            CapabilityAdmissionStatus.ADMITTED,
+            kind,
+            "deterministic backend admitted without external capability matrix",
+            readiness_identity=readiness_identity,
+            self_test_passed=bool(readiness and readiness.self_test_passed),
+            fragment_matched=True,
+        )
+
+    def admit_lane(self, lane: ProverLane, *, required: bool = False) -> CapabilityAdmissionDecision:
+        if not isinstance(lane, ProverLane):
+            raise ContractValidationError("lane must be a ProverLane")
+        return self.admit_backend(
+            lane.prover_id,
+            role=lane.role,
+            authority_capability=lane.authority_capability,
+            required=required,
+        )
+
+    def admit_required_backends(
+        self,
+        required_backends: Iterable[str] | None = None,
+    ) -> tuple[RequiredBackendAdmission, ...]:
+        """Evaluate every required backend and retain fail-closed decisions."""
+
+        backends = (
+            _strings(required_backends, "required_backends")
+            if required_backends is not None
+            else self._required_backends
+        )
+        return tuple(
+            RequiredBackendAdmission(
+                backend=backend,
+                decision=self.admit_backend(backend, required=True),
+            )
+            for backend in backends
+        )
+
+    def required_backends_fail_closed(
+        self,
+        required_backends: Iterable[str] | None = None,
+    ) -> CapabilityAdmissionDecision | None:
+        """Return the first required-backend failure, else ``None``."""
+
+        for item in self.admit_required_backends(required_backends):
+            if not item.admitted:
+                return item.decision
+        return None
+
+    def filter_lanes(
+        self,
+        lanes: Sequence[ProverLane],
+        *,
+        required_backends: Iterable[str] | None = None,
+    ) -> tuple[tuple[ProverLane, CapabilityAdmissionDecision], ...]:
+        """Admit each planned lane; retain every decision for durable records."""
+
+        required = set(
+            _strings(required_backends, "required_backends")
+            if required_backends is not None
+            else self._required_backends
+        )
+        return tuple(
+            (
+                lane,
+                self.admit_lane(lane, required=lane.prover_id in required),
+            )
+            for lane in lanes
+        )
+
+    def with_obligation_context(
+        self,
+        obligation: "PropertyObligation | Mapping[str, Any]",
+    ) -> "ProverCapabilityAdmission":
+        """Derive fragment/required-backend context from an obligation."""
+
+        if isinstance(obligation, PropertyObligation):
+            metadata = dict(obligation.metadata)
+        elif isinstance(obligation, Mapping):
+            metadata = dict(obligation.get("metadata") or {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+        else:
+            raise ContractValidationError("obligation must provide metadata")
+        fragment = str(
+            metadata.get("logic_fragment")
+            or metadata.get("fragment")
+            or self._logic_fragment
+            or ""
+        )
+        if "required_backends" in metadata:
+            required = metadata.get("required_backends")
+        elif "required_backend" in metadata:
+            required = metadata.get("required_backend")
+        else:
+            required = None
+        if required is None:
+            required_backends = self._required_backends
+        elif isinstance(required, str):
+            required_backends = _strings((required,), "required_backends")
+        else:
+            required_backends = _strings(required, "required_backends")
+        return ProverCapabilityAdmission(
+            matrix=self._matrix,
+            readiness=self._readiness,
+            require_self_test=self._require_self_test,
+            require_capability_evidence=self._require_capability_evidence,
+            allowed_kinds=self._allowed_kinds,
+            required_backends=required_backends,
+            logic_fragment=fragment,
         )
 
 
@@ -960,7 +1713,15 @@ class _LaneGate:
 
 
 class MultiProverRouter:
-    """Plan and execute reviewed multi-prover portfolios."""
+    """Plan and execute reviewed multi-prover portfolios.
+
+    When a :class:`ProverCapabilityAdmission` is supplied, only capability-
+    qualified deterministic backends run.  Required missing, unsupported, or
+    error backends fail closed; general LLM and remote nondeterministic
+    providers are never admitted.
+    """
+
+    INTERFACE = PROVER_PORTFOLIO_INTERFACE
 
     def __init__(
         self,
@@ -969,6 +1730,9 @@ class MultiProverRouter:
         matrix: ProverMatrixSnapshot | None = None,
         conformance_reports: Mapping[str, ConformanceReport] | None = None,
         quarantine_registry: ProverQuarantineRegistry | None = None,
+        capability_admission: ProverCapabilityAdmission | None = None,
+        readiness: SolverReadinessReport | None = None,
+        require_deterministic_admission: bool = False,
         maximum_evidence_bytes: int = DEFAULT_MAX_EVIDENCE_BYTES,
         monotonic: Callable[[], float] | None = None,
     ) -> None:
@@ -998,6 +1762,31 @@ class MultiProverRouter:
                 "conformance_reports must map path ids to ConformanceReport values"
             )
         self._quarantine = quarantine_registry or ProverQuarantineRegistry()
+        if capability_admission is not None and not isinstance(
+            capability_admission, ProverCapabilityAdmission
+        ):
+            raise ContractValidationError(
+                "capability_admission must be a ProverCapabilityAdmission"
+            )
+        if readiness is not None and not isinstance(readiness, SolverReadinessReport):
+            raise ContractValidationError(
+                "readiness must be a SolverReadinessReport (SolverReadiness@1)"
+            )
+        if not isinstance(require_deterministic_admission, bool):
+            raise ContractValidationError(
+                "require_deterministic_admission must be boolean"
+            )
+        if capability_admission is not None:
+            self._capability_admission = capability_admission
+        elif require_deterministic_admission or readiness is not None:
+            self._capability_admission = ProverCapabilityAdmission(
+                matrix=matrix,
+                readiness=readiness,
+                require_capability_evidence=matrix is not None or readiness is not None,
+                require_self_test=True,
+            )
+        else:
+            self._capability_admission = None
         if (
             isinstance(maximum_evidence_bytes, bool)
             or not isinstance(maximum_evidence_bytes, int)
@@ -1010,6 +1799,10 @@ class MultiProverRouter:
     @property
     def policies(self) -> Mapping[PropertyKind, PropertyPolicy]:
         return dict(self._policies)
+
+    @property
+    def capability_admission(self) -> ProverCapabilityAdmission | None:
+        return self._capability_admission
 
     def policy_for(self, property_kind: PropertyKind | str) -> PropertyPolicy:
         kind = _enum(property_kind, PropertyKind, "property_kind")
@@ -1075,7 +1868,33 @@ class MultiProverRouter:
     route = plan
     route_obligation = plan
 
-    def _lane_gate(self, lane: ProverLane, policy: PropertyPolicy) -> _LaneGate:
+    def _admission_for(
+        self, obligation: PropertyObligation
+    ) -> ProverCapabilityAdmission | None:
+        if self._capability_admission is None:
+            return None
+        return self._capability_admission.with_obligation_context(obligation)
+
+    def _lane_gate(
+        self,
+        lane: ProverLane,
+        policy: PropertyPolicy,
+        *,
+        admission: ProverCapabilityAdmission | None = None,
+        required: bool = False,
+    ) -> _LaneGate:
+        active_admission = admission if admission is not None else self._capability_admission
+        if active_admission is not None:
+            decision = active_admission.admit_lane(lane, required=required)
+            if not decision.admitted:
+                return _LaneGate(
+                    False,
+                    False,
+                    decision.attempt_outcome,
+                    decision.detail,
+                    decision.capability_receipt_id,
+                )
+
         entry: ProverMatrixEntry | None = self._matrix_entries.get(lane.prover_id)
         if self._matrix is not None or policy.require_capability_evidence:
             if entry is None:
@@ -1136,12 +1955,18 @@ class MultiProverRouter:
                     or entry.reconstruction_capable
                 )
             )
+        receipt_id = ""
+        if entry is not None and entry.receipt is not None:
+            receipt_id = entry.receipt.receipt_id
+        elif active_admission is not None:
+            decision = active_admission.admit_lane(lane, required=required)
+            receipt_id = decision.capability_receipt_id
         return _LaneGate(
             True,
             authoritative,
             None,
             "",
-            entry.receipt.receipt_id if entry and entry.receipt else "",
+            receipt_id,
             gate,
         )
 
@@ -1244,9 +2069,56 @@ class MultiProverRouter:
             raise ContractValidationError("runner must be callable")
         plan = self.plan(obligation, property_kind=property_kind)
         policy = self.policy_for(plan.obligation.property_kind)
+        admission = self._admission_for(plan.obligation)
         started = self._monotonic()
         deadline = started + policy.timeout_seconds
-        gates = {lane.prover_id: self._lane_gate(lane, policy) for lane in plan.lanes}
+
+        # Required backends fail closed before any portfolio runner is invoked.
+        if admission is not None:
+            required_failure = admission.required_backends_fail_closed()
+            if required_failure is not None:
+                blocked = tuple(
+                    self._attempt_from_output(
+                        lane,
+                        _LaneGate(
+                            False,
+                            False,
+                            required_failure.attempt_outcome,
+                            (
+                                f"required backend {required_failure.prover_id!r} "
+                                f"failed closed: {required_failure.detail}"
+                            ),
+                            required_failure.capability_receipt_id,
+                        ),
+                        ProverOutput(
+                            required_failure.attempt_outcome,
+                            (
+                                f"required backend {required_failure.prover_id!r} "
+                                f"failed closed: {required_failure.detail}"
+                            ),
+                        ),
+                        0,
+                    )
+                    for lane in plan.lanes
+                )
+                return self._derive_result(
+                    plan,
+                    policy,
+                    blocked,
+                    "",
+                    max(0, round((self._monotonic() - started) * 1000)),
+                )
+
+        required_ids = set(admission.required_backends) if admission is not None else set()
+        gates = {
+            lane.prover_id: self._lane_gate(
+                lane,
+                policy,
+                admission=admission,
+                required=lane.prover_id in required_ids,
+            )
+            for lane in plan.lanes
+        }
         records: dict[str, PortfolioAttempt] = {}
         global_cancel = threading.Event()
         cancellation: dict[str, threading.Event] = {
@@ -1552,8 +2424,14 @@ __all__ = [
     "PORTFOLIO_PLAN_SCHEMA",
     "PORTFOLIO_RESULT_SCHEMA",
     "PROPERTY_OBLIGATION_SCHEMA",
+    "PROVER_CAPABILITY_ADMISSION_SCHEMA",
+    "PROVER_PORTFOLIO_INTERFACE",
+    "SOLVER_READINESS_INTERFACE",
     "AttemptOutcome",
     "AttemptRequest",
+    "CapabilityAdmissionDecision",
+    "CapabilityAdmissionStatus",
+    "DeterministicBackendKind",
     "MultiProverRouter",
     "ObligationProperty",
     "PortfolioAttempt",
@@ -1566,10 +2444,14 @@ __all__ = [
     "PropertyPolicy",
     "PropertySpecificMultiProverRouter",
     "PropertyType",
+    "ProverCapabilityAdmission",
     "ProverLane",
     "ProverOutput",
     "ProverRole",
+    "RequiredBackendAdmission",
     "RouteVerdict",
+    "backend_is_representable",
+    "classify_deterministic_backend",
     "classify_property_kind",
     "execute_portfolio",
     "route_obligation",
