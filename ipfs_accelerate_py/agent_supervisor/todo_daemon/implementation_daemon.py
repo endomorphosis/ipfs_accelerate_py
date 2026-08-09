@@ -100,6 +100,7 @@ from ..validation_commands import (
 )
 from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import (
+    ImpactValidationDAGReceipt,
     ValidationScheduler,
     build_declared_validation_plan_graph,
 )
@@ -202,6 +203,14 @@ DEFAULT_VALIDATION_MAX_WORKERS = 2
 MAX_MERGE_PROOF_METADATA_ITEMS = 256
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
+DUCKDB_POST_MERGE_EVIDENCE_INPUT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "duckdb-post-merge-evidence-input@1"
+)
+DUCKDB_MERGE_INTEGRATED_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "duckdb-merge-integrated-receipt@1"
+)
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
@@ -476,6 +485,7 @@ def _duckdb_compact_validation_proof_digest(
             "proof_gate",
             "proposal_gate",
             "scope_adjudication",
+            "post_merge_evidence_input",
         )
         if key in proof
     }
@@ -1544,6 +1554,275 @@ class DuckDBValidationExecutionReceipt:
         if payload.get("receipt_id") not in (None, "", result.receipt_id):
             raise ValueError("DuckDB validation execution receipt identity is forged")
         return result
+
+
+@dataclass(frozen=True)
+class DuckDBMergeIntegratedReceipt:
+    """Durable proof that one exact queue lease integrated one candidate.
+
+    This receipt is written immediately after the Git merge and before the
+    DuckDB task-status compare-and-set.  It therefore closes the otherwise
+    ambiguous crash window where the repository has advanced but the task
+    source has not.  Only an ordinary two-parent merge whose second parent is
+    the immutable queue candidate is admitted by this producer.
+    """
+
+    repository_id: str
+    target_branch: str
+    request_id: str
+    task_id: str
+    task_cid: str
+    task_source_identity_id: str
+    task_source_writer_id: str
+    task_source_fencing_token: int
+    candidate_commit: str
+    candidate_tree: str
+    merge_commit: str
+    merge_tree: str
+    merge_parents: tuple[str, str]
+    merge_consumer_id: str
+    lease_id: str
+    fencing_token: int
+    validation_receipt_ids: tuple[str, ...]
+    proposal_receipt_id: str
+    schema: str = DUCKDB_MERGE_INTEGRATED_RECEIPT_SCHEMA
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "target_branch",
+            "request_id",
+            "task_id",
+            "task_cid",
+            "task_source_identity_id",
+            "task_source_writer_id",
+            "merge_consumer_id",
+            "lease_id",
+            "proposal_receipt_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if (
+                not value
+                or any(character in value for character in ("\0", "\n", "\r"))
+                or len(value.encode("utf-8")) > 4096
+            ):
+                raise ValueError(f"{name} is required and must be bounded")
+            object.__setattr__(self, name, value)
+        for name in (
+            "candidate_commit",
+            "candidate_tree",
+            "merge_commit",
+            "merge_tree",
+        ):
+            value = str(getattr(self, name) or "").strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value):
+                raise ValueError(f"{name} must be a full Git object ID")
+            object.__setattr__(self, name, value)
+        parents = tuple(str(item or "").strip().lower() for item in self.merge_parents)
+        if (
+            len(parents) != 2
+            or any(
+                not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", item)
+                for item in parents
+            )
+            or parents[1] != self.candidate_commit
+        ):
+            raise ValueError(
+                "merge_parents must be the exact two-parent merge with the "
+                "candidate as its second parent"
+            )
+        object.__setattr__(self, "merge_parents", parents)
+        receipt_ids = tuple(
+            sorted(
+                {
+                    str(item or "").strip()
+                    for item in self.validation_receipt_ids
+                    if str(item or "").strip()
+                }
+            )
+        )
+        if not receipt_ids or len(receipt_ids) > MAX_MERGE_PROOF_METADATA_ITEMS:
+            raise ValueError("validation_receipt_ids must be non-empty and bounded")
+        object.__setattr__(self, "validation_receipt_ids", receipt_ids)
+        for name in ("fencing_token", "task_source_fencing_token"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.schema != DUCKDB_MERGE_INTEGRATED_RECEIPT_SCHEMA:
+            raise ValueError("merge-integrated receipt schema is unsupported")
+
+    def _content(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "repository_id": self.repository_id,
+            "target_branch": self.target_branch,
+            "request_id": self.request_id,
+            "task_id": self.task_id,
+            "task_cid": self.task_cid,
+            "task_source_identity_id": self.task_source_identity_id,
+            "task_source_writer_id": self.task_source_writer_id,
+            "task_source_fencing_token": self.task_source_fencing_token,
+            "candidate_commit": self.candidate_commit,
+            "candidate_tree": self.candidate_tree,
+            "merge_commit": self.merge_commit,
+            "merge_tree": self.merge_tree,
+            "merge_parents": list(self.merge_parents),
+            "merge_consumer_id": self.merge_consumer_id,
+            "lease_id": self.lease_id,
+            "fencing_token": self.fencing_token,
+            "validation_receipt_ids": list(self.validation_receipt_ids),
+            "proposal_receipt_id": self.proposal_receipt_id,
+        }
+
+    @property
+    def receipt_id(self) -> str:
+        digest = hashlib.sha256(canonical_json(self._content()).encode("utf-8"))
+        return "sha256:" + digest.hexdigest()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"receipt_id": self.receipt_id, **self._content()}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> DuckDBMergeIntegratedReceipt:
+        if not isinstance(payload, Mapping):
+            raise ValueError("merge-integrated receipt must be an object")
+        allowed = {
+            "schema",
+            "receipt_id",
+            "repository_id",
+            "target_branch",
+            "request_id",
+            "task_id",
+            "task_cid",
+            "task_source_identity_id",
+            "task_source_writer_id",
+            "task_source_fencing_token",
+            "candidate_commit",
+            "candidate_tree",
+            "merge_commit",
+            "merge_tree",
+            "merge_parents",
+            "merge_consumer_id",
+            "lease_id",
+            "fencing_token",
+            "validation_receipt_ids",
+            "proposal_receipt_id",
+        }
+        if set(payload) != allowed:
+            raise ValueError("merge-integrated receipt fields are not canonical")
+        result = cls(
+            schema=str(payload.get("schema") or ""),
+            repository_id=str(payload.get("repository_id") or ""),
+            target_branch=str(payload.get("target_branch") or ""),
+            request_id=str(payload.get("request_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
+            task_cid=str(payload.get("task_cid") or ""),
+            task_source_identity_id=str(
+                payload.get("task_source_identity_id") or ""
+            ),
+            task_source_writer_id=str(payload.get("task_source_writer_id") or ""),
+            task_source_fencing_token=int(
+                payload.get("task_source_fencing_token") or 0
+            ),
+            candidate_commit=str(payload.get("candidate_commit") or ""),
+            candidate_tree=str(payload.get("candidate_tree") or ""),
+            merge_commit=str(payload.get("merge_commit") or ""),
+            merge_tree=str(payload.get("merge_tree") or ""),
+            merge_parents=tuple(payload.get("merge_parents") or ()),
+            merge_consumer_id=str(payload.get("merge_consumer_id") or ""),
+            lease_id=str(payload.get("lease_id") or ""),
+            fencing_token=int(payload.get("fencing_token") or 0),
+            validation_receipt_ids=tuple(
+                payload.get("validation_receipt_ids") or ()
+            ),
+            proposal_receipt_id=str(payload.get("proposal_receipt_id") or ""),
+        )
+        if payload.get("receipt_id") != result.receipt_id:
+            raise ValueError("merge-integrated receipt identity is forged")
+        return result
+
+    @classmethod
+    def load_file(cls, path: Path) -> DuckDBMergeIntegratedReceipt:
+        """Strictly restore a regular canonical receipt artifact."""
+
+        selected = Path(path)
+        try:
+            path_stat = os.lstat(selected)
+        except OSError as exc:
+            raise ValueError("merge-integrated receipt is unavailable") from exc
+        if not stat_module.S_ISREG(path_stat.st_mode):
+            raise ValueError("merge-integrated receipt is not a regular file")
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(selected, flags)
+        try:
+            opened_stat = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISREG(opened_stat.st_mode)
+                or (opened_stat.st_dev, opened_stat.st_ino)
+                != (path_stat.st_dev, path_stat.st_ino)
+            ):
+                raise ValueError(
+                    "merge-integrated receipt changed while opening"
+                )
+            chunks: list[bytes] = []
+            observed = 0
+            while True:
+                chunk = os.read(descriptor, 65536)
+                if not chunk:
+                    break
+                observed += len(chunk)
+                if observed > 256 * 1024:
+                    raise ValueError(
+                        "merge-integrated receipt exceeds its byte bound"
+                    )
+                chunks.append(chunk)
+        finally:
+            os.close(descriptor)
+        encoded = b"".join(chunks)
+
+        def strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            restored: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in restored:
+                    raise ValueError(
+                        "merge-integrated receipt has duplicate fields"
+                    )
+                restored[key] = value
+            return restored
+
+        try:
+            payload = json.loads(
+                encoded.decode("utf-8"),
+                object_pairs_hook=strict_pairs,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "merge-integrated receipt is not strict JSON"
+            ) from exc
+        receipt = cls.from_dict(payload)
+        expected = (
+            json.dumps(
+                receipt.to_dict(),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        expected_name = (
+            "merge-integrated-"
+            + receipt.receipt_id.removeprefix("sha256:")
+            + ".json"
+        )
+        if encoded != expected or selected.name != expected_name:
+            raise ValueError(
+                "merge-integrated receipt artifact is not canonical"
+            )
+        return receipt
 
 
 @dataclass(frozen=True)
@@ -7329,6 +7608,157 @@ class PortalImplementationDaemon:
         return selected
 
     @staticmethod
+    def _duckdb_post_merge_evidence_input(
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Seal or restore the bounded inputs for exact-tree evidence.
+
+        The merge worker supplies the Git merge record itself.  All other
+        evidence must have been produced by the validation/proof pipeline and
+        content-bound into the queue claim before dequeue.
+        """
+
+        if not isinstance(value, Mapping):
+            raise ValueError("post-merge evidence input must be an object")
+        allowed = {
+            "schema",
+            "packet_id",
+            "policy_id",
+            "assembled_at",
+            "freshness_deadline",
+            "validation_report",
+            "validation_receipt",
+            "semantic_checks",
+            "protocol_checks",
+            "legal_logic_obligations",
+            "theorem_obligations",
+            "proof_receipts",
+            "criterion_coverage",
+            "merged_tree_records",
+        }
+        if set(value).difference(allowed):
+            raise ValueError("post-merge evidence input has unsupported fields")
+        body = {
+            "schema": str(
+                value.get("schema") or DUCKDB_POST_MERGE_EVIDENCE_INPUT_SCHEMA
+            ),
+            "policy_id": str(value.get("policy_id") or "").strip(),
+            "assembled_at": str(value.get("assembled_at") or "").strip(),
+            "freshness_deadline": str(
+                value.get("freshness_deadline") or ""
+            ).strip(),
+            "validation_report": value.get("validation_report"),
+            "validation_receipt": value.get("validation_receipt"),
+            "semantic_checks": value.get("semantic_checks"),
+            "protocol_checks": value.get("protocol_checks"),
+            "legal_logic_obligations": value.get("legal_logic_obligations"),
+            "theorem_obligations": value.get("theorem_obligations"),
+            "proof_receipts": value.get("proof_receipts"),
+            "criterion_coverage": value.get("criterion_coverage"),
+            "merged_tree_records": value.get("merged_tree_records"),
+        }
+
+        def reject_unsafe_fields(item: Any, *, depth: int = 0) -> None:
+            if depth > 32:
+                raise ValueError("post-merge evidence input nesting is excessive")
+            if isinstance(item, Mapping):
+                for raw_name, nested in item.items():
+                    name = str(raw_name or "").strip().lower().replace("-", "_")
+                    if (
+                        name in {
+                            "output",
+                            "outputs",
+                            "stdout",
+                            "stderr",
+                            "witness",
+                            "witnesses",
+                            "prompt",
+                            "prompts",
+                            "model_output",
+                            "provider_response",
+                            "raw_context",
+                            "raw_output",
+                            "raw_response",
+                        }
+                        or name.endswith("_witness")
+                        or name.endswith("_output")
+                    ):
+                        raise ValueError(
+                            "post-merge evidence input contains raw provider material"
+                        )
+                    reject_unsafe_fields(nested, depth=depth + 1)
+            elif isinstance(item, Sequence) and not isinstance(
+                item, (str, bytes, bytearray)
+            ):
+                if len(item) > MAX_MERGE_PROOF_METADATA_ITEMS:
+                    raise ValueError("post-merge evidence input sequence is too large")
+                for nested in item:
+                    reject_unsafe_fields(nested, depth=depth + 1)
+
+        reject_unsafe_fields(body)
+        try:
+            encoded = json.dumps(
+                body,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "post-merge evidence input is not canonical JSON"
+            ) from exc
+        if len(encoded.encode("utf-8")) > 2 * 1024 * 1024:
+            raise ValueError("post-merge evidence input exceeds its byte bound")
+        body = json.loads(encoded)
+        sequence_fields = (
+            "semantic_checks",
+            "protocol_checks",
+            "legal_logic_obligations",
+            "theorem_obligations",
+            "proof_receipts",
+            "criterion_coverage",
+        )
+        if (
+            body.get("schema") != DUCKDB_POST_MERGE_EVIDENCE_INPUT_SCHEMA
+            or not body.get("policy_id")
+            or not body.get("assembled_at")
+            or not body.get("freshness_deadline")
+            or not isinstance(body.get("validation_report"), Mapping)
+            or not isinstance(body.get("validation_receipt"), Mapping)
+            or not isinstance(body.get("merged_tree_records"), Mapping)
+            or any(
+                not isinstance(body.get(name), list) or not body.get(name)
+                for name in sequence_fields
+            )
+        ):
+            raise ValueError("post-merge evidence input is incomplete")
+        try:
+            restored_validation_receipt = (
+                ImpactValidationDAGReceipt.from_dict(
+                    body["validation_receipt"]
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "post-merge validation receipt is not content-bound"
+            ) from exc
+        if (
+            body["validation_receipt"].get("receipt_id")
+            != restored_validation_receipt.receipt_id
+        ):
+            raise ValueError(
+                "post-merge validation receipt identity is missing"
+            )
+        packet_id = "sha256:" + hashlib.sha256(
+            encoded.encode("utf-8")
+        ).hexdigest()
+        claimed = str(value.get("packet_id") or "").strip()
+        if claimed and claimed != packet_id:
+            raise ValueError("post-merge evidence input identity is forged")
+        return {"packet_id": packet_id, **body}
+
+    @staticmethod
     def _merge_completion_receipt_binding(
         metadata: Mapping[str, Any],
     ) -> tuple[tuple[str, ...], str]:
@@ -8771,6 +9201,7 @@ class PortalImplementationDaemon:
             "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@2",
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": self.merge_target_repository_id,
+            "repository_id": self.merge_target_repository_id,
             "target_branch": self.resolved_merge_target_branch,
             "baseline_ref": baseline_ref,
             "implementation_commit": implementation_commit,
@@ -8947,6 +9378,60 @@ class PortalImplementationDaemon:
                             field_name=gate_name,
                         )
                     )
+            raw_post_merge_input = validation_result.get(
+                "post_merge_evidence_input"
+            )
+            if raw_post_merge_input is not None:
+                post_merge_input = self._duckdb_post_merge_evidence_input(
+                    raw_post_merge_input
+                )
+                validation_proof["post_merge_evidence_input"] = (
+                    post_merge_input
+                )
+                input_validation_receipt = post_merge_input.get(
+                    "validation_receipt"
+                )
+                if isinstance(input_validation_receipt, Mapping):
+                    input_validation_receipt_id = str(
+                        input_validation_receipt.get("receipt_id") or ""
+                    ).strip()
+                    if input_validation_receipt_id:
+                        if (
+                            self.task_source is not None
+                            and self.task_source.source_kind == "duckdb"
+                        ):
+                            # Typed completion carries only receipts whose
+                            # identities were re-derived above.  The packet
+                            # digest binds all remaining proof inputs.
+                            validation_receipt_ids = {
+                                input_validation_receipt_id
+                            }
+                        else:
+                            validation_receipt_ids.add(
+                                input_validation_receipt_id
+                            )
+                    if isinstance(validation_dag_receipt, Mapping) and (
+                        json.dumps(
+                            validation_dag_receipt,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                        )
+                        != json.dumps(
+                            input_validation_receipt,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                        )
+                    ):
+                        raise ValueError(
+                            "queued validation receipts disagree"
+                        )
+                metadata["policy_id"] = str(
+                    post_merge_input.get("policy_id") or ""
+                )
             if (
                 self.task_source is not None
                 and self.task_source.source_kind == "duckdb"
@@ -9007,10 +9492,30 @@ class PortalImplementationDaemon:
                     )[:MAX_MERGE_PROOF_METADATA_ITEMS]
             metadata["validation_proof"] = validation_proof
         if self.formal_verification_policy is not None:
-            metadata["formal_verification_policy"] = _bounded_merge_proof_value(
+            policy_projection = _bounded_merge_proof_value(
                 self.formal_verification_policy,
                 field_name="formal_verification_policy",
             )
+            metadata["formal_verification_policy"] = policy_projection
+            formal_policy_id = str(
+                getattr(self.formal_verification_policy, "policy_id", "")
+                or (
+                    policy_projection.get("policy_id")
+                    if isinstance(policy_projection, Mapping)
+                    else ""
+                )
+                or ""
+            ).strip()
+            if (
+                metadata.get("policy_id")
+                and formal_policy_id
+                and metadata["policy_id"] != formal_policy_id
+            ):
+                raise ValueError(
+                    "post-merge evidence and formal verification policy differ"
+                )
+            if formal_policy_id:
+                metadata["policy_id"] = formal_policy_id
         if work_order is not None:
             metadata["bundle_work_order"] = work_order.to_dict()
         if worktree_pool_handoff:
@@ -9144,10 +9649,654 @@ class PortalImplementationDaemon:
             return "scope_adjudication_paths_mismatch"
         return ""
 
+    def _merge_train_preflight(
+        self,
+        request: Any,
+        *,
+        target_commit: str,
+        candidate_commit: str,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Admit only a merge tree carrying exact-tree evidence inputs."""
+
+        metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
+        if metadata.get("bundle_work_order") is not None:
+            return {
+                "passed": False,
+                "reason": "typed_bundle_completion_receipt_set_missing",
+                "retryable": False,
+                "target_sensitive": True,
+            }
+        changed_submodules = metadata.get("changed_submodule_paths")
+        if isinstance(changed_submodules, Sequence) and not isinstance(
+            changed_submodules, (str, bytes, bytearray)
+        ) and any(str(item or "").strip() for item in changed_submodules):
+            return {
+                "passed": False,
+                "reason": "typed_compound_integration_receipt_set_missing",
+                "retryable": False,
+                "target_sensitive": True,
+            }
+        validation_proof = metadata.get("validation_proof")
+        raw_input = (
+            validation_proof.get("post_merge_evidence_input")
+            if isinstance(validation_proof, Mapping)
+            else None
+        )
+        try:
+            evidence_input = self._duckdb_post_merge_evidence_input(raw_input)
+        except (TypeError, ValueError) as exc:
+            return {
+                "passed": False,
+                "reason": "post_merge_evidence_input_missing_or_invalid",
+                "error": f"{type(exc).__name__}: {exc}",
+                "retryable": False,
+                "target_sensitive": True,
+            }
+        command = self._run_git(
+            ["merge-tree", "--write-tree", target_commit, candidate_commit],
+            cwd=self.repo_root,
+        )
+        merge_tree = (
+            command.stdout.strip().splitlines()[0]
+            if command.returncode == 0 and command.stdout.strip()
+            else ""
+        )
+        expected_tree_id = f"git-tree:{merge_tree}" if merge_tree else ""
+        receipt = evidence_input.get("validation_receipt")
+        report = evidence_input.get("validation_report")
+        receipt_dag = receipt.get("dag") if isinstance(receipt, Mapping) else None
+        receipt_tree_id = str(
+            receipt_dag.get("repository_tree_id")
+            if isinstance(receipt_dag, Mapping)
+            else ""
+        ).strip()
+        report_tree_id = str(
+            report.get("target_tree_id")
+            or report.get("repository_tree_id")
+            or ""
+        ).strip() if isinstance(report, Mapping) else ""
+        embedded_receipt = (
+            report.get("impact_validation_receipt")
+            if isinstance(report, Mapping)
+            else None
+        )
+        passed = bool(
+            command.returncode == 0
+            and merge_tree
+            and receipt_tree_id == expected_tree_id
+            and report_tree_id == expected_tree_id
+            and isinstance(embedded_receipt, Mapping)
+            and json.dumps(
+                embedded_receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            == json.dumps(
+                receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+        )
+        return {
+            "passed": passed,
+            "reason": "" if passed else "post_merge_evidence_tree_mismatch",
+            "retryable": not passed,
+            "target_sensitive": True,
+            "kind": "git_merge_tree_with_evidence_binding",
+            "merge_tree": merge_tree,
+            "repository_tree_id": expected_tree_id,
+            "evidence_input_packet_id": str(
+                evidence_input.get("packet_id") or ""
+            ),
+            "returncode": command.returncode,
+            "stderr": command.stderr[-4000:],
+        }
+
+    @staticmethod
+    def _merge_train_callback_validation_adapter(
+        _request: Any, **_kwargs: Any
+    ) -> dict[str, Any]:
+        """The callback must return its own exact integrated-tree verdict."""
+
+        return {
+            "passed": False,
+            "reason": "callback_post_merge_validation_required",
+        }
+
+    @staticmethod
+    def _merge_train_callback_evidence_adapter(
+        _request: Any, **_kwargs: Any
+    ) -> dict[str, Any]:
+        """Marker enabling MergeTrain's independent receipt verification."""
+
+        return {
+            "passed": False,
+            "reason": "callback_post_merge_evidence_required",
+        }
+
+    @staticmethod
+    def _persist_merge_integrated_receipt(
+        queue_dir: Path,
+        receipt: DuckDBMergeIntegratedReceipt,
+    ) -> DuckDBMergeIntegratedReceipt:
+        """Create one immutable, fsynced content-addressed receipt.
+
+        This is intentionally narrower than the daemon's ordinary JSON
+        writer.  The receipt is pre-task-CAS crash authority, so it may never
+        follow a symlink or replace an existing artifact.  A same-name replay
+        is accepted only when the existing regular file is byte-for-byte the
+        canonical record.
+        """
+
+        root = Path(queue_dir)
+        try:
+            root_stat = os.lstat(root)
+        except OSError as exc:
+            raise ValueError("merge queue receipt root is unavailable") from exc
+        if not stat_module.S_ISDIR(root_stat.st_mode):
+            raise ValueError("merge queue receipt root must be a real directory")
+        directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        directory_flags |= getattr(os, "O_DIRECTORY", 0)
+        directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+        current_fd = os.open(root, directory_flags)
+        try:
+            for component in ("train", "receipts"):
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=current_fd)
+                    os.fsync(current_fd)
+                except FileExistsError:
+                    pass
+                next_fd = os.open(component, directory_flags, dir_fd=current_fd)
+                next_stat = os.fstat(next_fd)
+                if not stat_module.S_ISDIR(next_stat.st_mode):
+                    os.close(next_fd)
+                    raise ValueError(
+                        "merge receipt path contains a non-directory artifact"
+                    )
+                os.close(current_fd)
+                current_fd = next_fd
+
+            digest = receipt.receipt_id.removeprefix("sha256:")
+            filename = f"merge-integrated-{digest}.json"
+            payload = receipt.to_dict()
+            encoded = (
+                json.dumps(
+                    payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+                + "\n"
+            ).encode("utf-8")
+
+            def read_existing() -> bytes:
+                try:
+                    path_stat = os.stat(
+                        filename,
+                        dir_fd=current_fd,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    raise
+                if not stat_module.S_ISREG(path_stat.st_mode):
+                    raise ValueError(
+                        "merge-integrated receipt target is not a regular file"
+                    )
+                read_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+                read_flags |= getattr(os, "O_NOFOLLOW", 0)
+                read_fd = os.open(filename, read_flags, dir_fd=current_fd)
+                try:
+                    opened_stat = os.fstat(read_fd)
+                    if (
+                        not stat_module.S_ISREG(opened_stat.st_mode)
+                        or (opened_stat.st_dev, opened_stat.st_ino)
+                        != (path_stat.st_dev, path_stat.st_ino)
+                    ):
+                        raise ValueError(
+                            "merge-integrated receipt changed while opening"
+                        )
+                    chunks: list[bytes] = []
+                    observed = 0
+                    while True:
+                        chunk = os.read(read_fd, 65536)
+                        if not chunk:
+                            break
+                        observed += len(chunk)
+                        if observed > len(encoded):
+                            raise ValueError(
+                                "merge-integrated receipt has non-canonical bytes"
+                            )
+                        chunks.append(chunk)
+                    return b"".join(chunks)
+                finally:
+                    os.close(read_fd)
+
+            try:
+                existing = read_existing()
+            except FileNotFoundError:
+                temporary = f".{filename}.{os.getpid()}.{time.time_ns()}.tmp"
+                write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                write_flags |= getattr(os, "O_CLOEXEC", 0)
+                write_flags |= getattr(os, "O_NOFOLLOW", 0)
+                write_fd = os.open(
+                    temporary,
+                    write_flags,
+                    0o600,
+                    dir_fd=current_fd,
+                )
+                try:
+                    view = memoryview(encoded)
+                    while view:
+                        written = os.write(write_fd, view)
+                        if written < 1:
+                            raise OSError("short merge receipt write")
+                        view = view[written:]
+                    os.fsync(write_fd)
+                finally:
+                    os.close(write_fd)
+                try:
+                    try:
+                        os.link(
+                            temporary,
+                            filename,
+                            src_dir_fd=current_fd,
+                            dst_dir_fd=current_fd,
+                            follow_symlinks=False,
+                        )
+                    except FileExistsError:
+                        # A concurrent same-content replay is harmless; an
+                        # unsafe or different artifact is rejected below.
+                        pass
+                finally:
+                    os.unlink(temporary, dir_fd=current_fd)
+                os.fsync(current_fd)
+                existing = read_existing()
+            else:
+                # Persist an existing replay's directory entry as well.
+                os.fsync(current_fd)
+
+            if existing != encoded:
+                raise ValueError(
+                    "merge-integrated receipt has non-canonical bytes"
+                )
+
+            def strict_pairs(
+                pairs: list[tuple[str, Any]],
+            ) -> dict[str, Any]:
+                restored: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in restored:
+                        raise ValueError(
+                            "merge-integrated receipt has duplicate fields"
+                        )
+                    restored[key] = value
+                return restored
+
+            try:
+                decoded = json.loads(
+                    existing.decode("utf-8"),
+                    object_pairs_hook=strict_pairs,
+                )
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "merge-integrated receipt is not strict JSON"
+                ) from exc
+            persisted = DuckDBMergeIntegratedReceipt.from_dict(decoded)
+            if persisted != receipt:
+                raise ValueError("persisted merge-integrated receipt changed")
+            return persisted
+        finally:
+            os.close(current_fd)
+
+    def _verify_merge_integrated_receipt_current(
+        self,
+        request: Any,
+        task: PortalTask,
+        receipt: DuckDBMergeIntegratedReceipt,
+    ) -> None:
+        """Recheck the durable receipt against all live mutable authorities."""
+
+        get_request = getattr(self.merge_queue, "get", None)
+        owns_claim = getattr(self.merge_queue, "owns_claim", None)
+        if not callable(get_request) or not callable(owns_claim):
+            raise ValueError("merge queue cannot verify a current claim")
+        current = get_request(str(getattr(request, "request_id", "") or ""))
+        if current is None or not owns_claim(current):
+            raise ValueError("merge-integrated receipt queue claim is stale")
+        for field_name in (
+            "request_id",
+            "consumer_id",
+            "claim_token",
+            "claim_generation",
+            "commit_sha",
+            "canonical_task_id",
+        ):
+            if getattr(current, field_name, None) != getattr(
+                request, field_name, None
+            ):
+                raise ValueError(
+                    "merge-integrated receipt queue claim changed at reread"
+                )
+        metadata = (
+            current.metadata if isinstance(current.metadata, Mapping) else {}
+        )
+        source_identity = metadata.get("task_source_identity")
+        queued_writer = metadata.get("task_source_writer")
+        task_cid = str(metadata.get("canonical_task_cid") or "").strip()
+        if (
+            not isinstance(source_identity, Mapping)
+            or not isinstance(queued_writer, Mapping)
+            or not task_cid
+            or task_cid
+            != str(getattr(current, "canonical_task_id", "") or "").strip()
+        ):
+            raise ValueError("merge-integrated receipt source binding is missing")
+        if metadata.get("bundle_work_order") is not None:
+            raise ValueError("typed bundle completion receipt set is missing")
+        changed_submodules = metadata.get("changed_submodule_paths")
+        if isinstance(changed_submodules, Sequence) and not isinstance(
+            changed_submodules, (str, bytes, bytearray)
+        ) and any(str(item or "").strip() for item in changed_submodules):
+            raise ValueError("typed compound integration receipt set is missing")
+
+        current_identity_id = (
+            self.task_source.identity.identity_id
+            if self.task_source is not None
+            and self.task_source.source_kind == "duckdb"
+            else ""
+        )
+        writer_id, writer_fencing_token = self._duckdb_writer_binding()
+        validation_ids, proposal_id = self._merge_completion_receipt_binding(
+            metadata
+        )
+        expected = {
+            "repository_id": self.merge_target_repository_id,
+            "target_branch": self.resolved_merge_target_branch,
+            "request_id": str(current.request_id or ""),
+            "task_id": str(current.task_id or ""),
+            "task_cid": task_cid,
+            "task_source_identity_id": current_identity_id,
+            "task_source_writer_id": writer_id,
+            "task_source_fencing_token": writer_fencing_token,
+            "candidate_commit": str(current.commit_sha or "").lower(),
+            "merge_consumer_id": str(current.consumer_id or ""),
+            "lease_id": str(current.claim_token or ""),
+            "fencing_token": int(current.claim_generation or 0),
+            "validation_receipt_ids": validation_ids,
+            "proposal_receipt_id": proposal_id,
+        }
+        for field_name, expected_value in expected.items():
+            if getattr(receipt, field_name) != expected_value:
+                raise ValueError(
+                    f"merge-integrated receipt {field_name} binding is stale"
+                )
+        if task.task_id != receipt.task_id:
+            raise ValueError("merge-integrated receipt task binding is stale")
+        if (
+            str(source_identity.get("identity_id") or "")
+            != current_identity_id
+            or str(queued_writer.get("writer_id") or "") != writer_id
+            or int(queued_writer.get("fencing_token") or 0)
+            != writer_fencing_token
+        ):
+            raise ValueError("merge-integrated receipt current source fence is stale")
+
+        parent_result = self._run_git(
+            ["rev-list", "--parents", "-n", "1", receipt.merge_commit],
+            cwd=self.repo_root,
+        )
+        parent_fields = parent_result.stdout.strip().lower().split()
+        live_target = self._run_git(
+            ["rev-parse", self.resolved_merge_target_branch],
+            cwd=self.repo_root,
+        ).stdout.strip().lower()
+        if (
+            parent_result.returncode != 0
+            or tuple(parent_fields) != (
+                receipt.merge_commit,
+                *receipt.merge_parents,
+            )
+            or live_target != receipt.merge_commit
+            or self._candidate_repository_tree(receipt.candidate_commit).lower()
+            != receipt.candidate_tree
+            or self._candidate_repository_tree(receipt.merge_commit).lower()
+            != receipt.merge_tree
+        ):
+            raise ValueError("merge-integrated receipt Git binding is stale")
+
+    def _merge_integrated_receipt(
+        self,
+        request: Any,
+        merge_result: Mapping[str, Any],
+        task: PortalTask,
+    ) -> DuckDBMergeIntegratedReceipt:
+        """Build, persist, and restore one exact post-Git/pre-task receipt."""
+
+        owns_claim = getattr(self.merge_queue, "owns_claim", None)
+        if not callable(owns_claim) or not owns_claim(request):
+            raise ValueError("merge-integrated receipt requires a live queue claim")
+        metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
+        if metadata.get("bundle_work_order") is not None:
+            raise ValueError("typed bundle completion receipt set is missing")
+        changed_submodules = metadata.get("changed_submodule_paths")
+        if isinstance(changed_submodules, Sequence) and not isinstance(
+            changed_submodules, (str, bytes, bytearray)
+        ) and any(str(item or "").strip() for item in changed_submodules):
+            raise ValueError("typed compound integration receipt set is missing")
+        candidate = str(
+            getattr(request, "commit_sha", "")
+            or metadata.get("implementation_commit")
+            or ""
+        ).strip().lower()
+        merge_commit = str(
+            merge_result.get("merge_commit")
+            or merge_result.get("target_commit")
+            or ""
+        ).strip().lower()
+        parent_result = self._run_git(
+            ["rev-list", "--parents", "-n", "1", merge_commit],
+            cwd=self.repo_root,
+        )
+        parent_fields = parent_result.stdout.strip().split()
+        if (
+            parent_result.returncode != 0
+            or len(parent_fields) != 3
+            or parent_fields[0].lower() != merge_commit
+            or parent_fields[2].lower() != candidate
+        ):
+            raise ValueError(
+                "integrated commit is not an exact two-parent candidate merge"
+            )
+        live_target = self._run_git(
+            ["rev-parse", self.resolved_merge_target_branch],
+            cwd=self.repo_root,
+        ).stdout.strip().lower()
+        if live_target != merge_commit:
+            raise ValueError("integrated commit is not the current target")
+        candidate_tree = self._candidate_repository_tree(candidate).lower()
+        merge_tree = self._candidate_repository_tree(merge_commit).lower()
+        validation_receipt_ids, proposal_receipt_id = (
+            self._merge_completion_receipt_binding(metadata)
+        )
+        source_identity = metadata.get("task_source_identity")
+        writer = metadata.get("task_source_writer")
+        if not isinstance(source_identity, Mapping) or not isinstance(
+            writer, Mapping
+        ):
+            raise ValueError("merge-integrated source binding is missing")
+        task_cid = str(metadata.get("canonical_task_cid") or "").strip()
+        if (
+            not task_cid
+            or task_cid
+            != str(getattr(request, "canonical_task_id", "") or "").strip()
+        ):
+            raise ValueError("merge-integrated task CID binding is stale")
+        receipt = DuckDBMergeIntegratedReceipt(
+            repository_id=self.merge_target_repository_id,
+            target_branch=self.resolved_merge_target_branch,
+            request_id=str(getattr(request, "request_id", "") or ""),
+            task_id=task.task_id,
+            task_cid=task_cid,
+            task_source_identity_id=str(source_identity.get("identity_id") or ""),
+            task_source_writer_id=str(writer.get("writer_id") or ""),
+            task_source_fencing_token=int(writer.get("fencing_token") or 0),
+            candidate_commit=candidate,
+            candidate_tree=candidate_tree,
+            merge_commit=merge_commit,
+            merge_tree=merge_tree,
+            merge_parents=(parent_fields[1], parent_fields[2]),
+            merge_consumer_id=str(getattr(request, "consumer_id", "") or ""),
+            lease_id=str(getattr(request, "claim_token", "") or ""),
+            fencing_token=int(getattr(request, "claim_generation", 0) or 0),
+            validation_receipt_ids=validation_receipt_ids,
+            proposal_receipt_id=proposal_receipt_id,
+        )
+        persisted = self._persist_merge_integrated_receipt(
+            self.merge_queue_dir,
+            receipt,
+        )
+        self._verify_merge_integrated_receipt_current(
+            request,
+            task,
+            persisted,
+        )
+        self._record_event(
+            "merge_integrated",
+            {
+                "task_id": task.task_id,
+                "task_cid": receipt.task_cid,
+                "request_id": receipt.request_id,
+                "receipt_id": receipt.receipt_id,
+                "merge_commit": receipt.merge_commit,
+                "merge_tree": receipt.merge_tree,
+                "fencing_token": receipt.fencing_token,
+            },
+        )
+        return receipt
+
+    def _post_merge_evidence_for_integrated_claim(
+        self,
+        request: Any,
+        task: PortalTask,
+        integrated: DuckDBMergeIntegratedReceipt,
+    ) -> dict[str, Any]:
+        """Assemble authority solely from queue-bound, typed evidence inputs."""
+
+        metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
+        validation_proof = metadata.get("validation_proof")
+        raw_input = (
+            validation_proof.get("post_merge_evidence_input")
+            if isinstance(validation_proof, Mapping)
+            else None
+        )
+        evidence_input = self._duckdb_post_merge_evidence_input(raw_input)
+        policy_id = str(evidence_input.get("policy_id") or "")
+        if policy_id != str(metadata.get("policy_id") or ""):
+            raise ValueError("post-merge evidence policy binding is stale")
+        proposal = validation_proof.get("proposal_gate")
+        if (
+            not isinstance(proposal, Mapping)
+            or proposal.get("accepted") is not True
+            or not str(proposal.get("receipt_id") or "").strip()
+        ):
+            raise ValueError("post-merge evidence proposal admission is missing")
+        candidate_tree_id = f"git-tree:{integrated.candidate_tree}"
+        merged_tree_id = f"git-tree:{integrated.merge_tree}"
+        proposal_admission = {
+            "proposal_id": str(proposal.get("proposal_id") or ""),
+            "receipt_id": str(proposal.get("receipt_id") or ""),
+            "task_id": task.task_id,
+            "policy_id": policy_id,
+            "repository_tree_id": candidate_tree_id,
+            "accepted": True,
+        }
+        merge_record = {
+            "schema": DUCKDB_MERGE_INTEGRATED_RECEIPT_SCHEMA,
+            "merge_receipt_id": integrated.receipt_id,
+            "task_id": task.task_id,
+            "candidate_tree_id": candidate_tree_id,
+            "repository_tree_id": merged_tree_id,
+            "merged_tree_id": merged_tree_id,
+            "merge_commit_id": integrated.merge_commit,
+            "status": "merged",
+            "completion_status": "completed",
+            "freshness": "current",
+            "observed_at": str(evidence_input.get("assembled_at") or ""),
+        }
+        from ..code_evidence_graph import (
+            PostMergeEvidenceReceipt,
+            assemble_post_merge_evidence,
+        )
+
+        receipt = assemble_post_merge_evidence(
+            repository_id=integrated.repository_id,
+            task_id=task.task_id,
+            policy_id=policy_id,
+            candidate_tree_id=candidate_tree_id,
+            merged_tree_id=merged_tree_id,
+            merge_commit_id=integrated.merge_commit,
+            current_repository_tree_id=merged_tree_id,
+            proposal_admission=proposal_admission,
+            validation_report=evidence_input["validation_report"],
+            validation_receipt=evidence_input["validation_receipt"],
+            semantic_checks=evidence_input["semantic_checks"],
+            protocol_checks=evidence_input["protocol_checks"],
+            legal_logic_obligations=evidence_input["legal_logic_obligations"],
+            theorem_obligations=evidence_input["theorem_obligations"],
+            proof_receipts=evidence_input["proof_receipts"],
+            merge_record=merge_record,
+            criterion_coverage=evidence_input["criterion_coverage"],
+            merged_tree_records=evidence_input["merged_tree_records"],
+            assembled_at=evidence_input["assembled_at"],
+            verified_at=utc_now(),
+            freshness_deadline=evidence_input["freshness_deadline"],
+        )
+        restored = PostMergeEvidenceReceipt.from_dict(receipt.to_dict())
+        if restored != receipt or not receipt.accepted:
+            reasons = ",".join(receipt.reason_codes) or "not_authoritative"
+            raise ValueError(f"post-merge evidence rejected: {reasons}")
+        receipt_payload = receipt.to_dict()
+        wrapper = {
+            "passed": True,
+            "reason": "",
+            "reason_codes": [],
+            "receipt": receipt_payload,
+            "receipt_id": receipt.receipt_id,
+            "repository_tree_id": merged_tree_id,
+            "merge_commit": integrated.merge_commit,
+        }
+        validation = {
+            "passed": True,
+            "validated_commit": integrated.merge_commit,
+            "repository_tree_id": merged_tree_id,
+            "post_merge_evidence": wrapper,
+            "post_merge_evidence_receipt": receipt_payload,
+        }
+        from ..merge_train import MergeTrain
+
+        validation["validation_receipt_ids"] = list(
+            MergeTrain._validation_receipt_ids(validation)
+        )
+        return validation
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        validation_proof_record = metadata.get("validation_proof")
+        typed_merge_authority = bool(
+            isinstance(validation_proof_record, Mapping)
+            and isinstance(
+                validation_proof_record.get("post_merge_evidence_input"),
+                Mapping,
+            )
+        )
         actual_repository_id = str(
             getattr(request, "target_repository_id", "")
             or metadata.get("target_repository_id")
@@ -9178,6 +10327,25 @@ class PortalImplementationDaemon:
                 "actual_target_repository_id": actual_repository_id,
                 "actual_target_branch": actual_branch,
                 "actual_target_binding_schema": actual_schema,
+            }
+        if typed_merge_authority and metadata.get("bundle_work_order") is not None:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "typed_bundle_completion_receipt_set_missing",
+            }
+        raw_changed_submodules = metadata.get("changed_submodule_paths")
+        if typed_merge_authority and isinstance(
+            raw_changed_submodules, Sequence
+        ) and not isinstance(
+            raw_changed_submodules, (str, bytes, bytearray)
+        ) and any(str(item or "").strip() for item in raw_changed_submodules):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "typed_compound_integration_receipt_set_missing",
             }
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
@@ -9396,6 +10564,69 @@ class PortalImplementationDaemon:
                     },
                 }
             )
+        if result.get("merged") and typed_merge_authority:
+            try:
+                integrated_receipt = self._merge_integrated_receipt(
+                    request,
+                    result,
+                    task,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                result.update(
+                    {
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "merge_integrated_receipt_invalid",
+                        "merge_integrated": False,
+                        "merge_integrated_receipt_error": (
+                            f"{type(exc).__name__}: {exc}"
+                        )[-4000:],
+                    }
+                )
+            else:
+                # Preserve this marker even when subsequent evidence assembly
+                # fails.  The next claim must reconcile this exact commit and
+                # receipt; it must not treat the moved target as a pre-merge
+                # failure or attempt a different integration.
+                result.update(
+                    {
+                        "target_commit": integrated_receipt.merge_commit,
+                        "merge_integrated": True,
+                        "merge_integrated_receipt": (
+                            integrated_receipt.to_dict()
+                        ),
+                    }
+                )
+            if result.get("merged") and result.get("merge_integrated"):
+                try:
+                    integrated_receipt = DuckDBMergeIntegratedReceipt.from_dict(
+                        result["merge_integrated_receipt"]
+                    )
+                    self._verify_merge_integrated_receipt_current(
+                        request,
+                        task,
+                        integrated_receipt,
+                    )
+                    post_merge_validation = (
+                        self._post_merge_evidence_for_integrated_claim(
+                            request,
+                            task,
+                            integrated_receipt,
+                        )
+                    )
+                except (OSError, TypeError, ValueError) as exc:
+                    result.update(
+                        {
+                            "merged": False,
+                            "returncode": 2,
+                            "reason": "merge_integrated_evidence_pending",
+                            "post_merge_evidence_error": (
+                                f"{type(exc).__name__}: {exc}"
+                            )[-4000:],
+                        }
+                    )
+                else:
+                    result["post_merge_validation"] = post_merge_validation
         if branch_rehydration.get("rehydrated", False):
             result["branch_rehydration"] = branch_rehydration
         if result.get("merged"):
@@ -9690,12 +10921,31 @@ class PortalImplementationDaemon:
 
         from ..merge_train import MergeTrain
 
+        typed_merge_authority = bool(
+            self.task_source is not None
+            and self.task_source.source_kind == "duckdb"
+        )
+
         train = MergeTrain(
             repo_root=self.repo_root,
             queue=self.merge_queue,
             target_branch=self.resolved_merge_target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
+            preflight_callback=(
+                self._merge_train_preflight if typed_merge_authority else None
+            ),
+            preflight_target_sensitive=typed_merge_authority,
+            post_merge_validation=(
+                self._merge_train_callback_validation_adapter
+                if typed_merge_authority
+                else None
+            ),
+            post_merge_evidence=(
+                self._merge_train_callback_evidence_adapter
+                if typed_merge_authority
+                else None
+            ),
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
             proof_cache_dir=self.proof_cache_dir,

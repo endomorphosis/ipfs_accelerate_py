@@ -916,15 +916,11 @@ class MergeTrain:
             raise ValueError(
                 "post_merge_evidence requires post_merge_validation"
             )
-        if (
-            self.post_merge_evidence is not None
-            and self.merge_callback is not None
-        ):
-            raise ValueError(
-                "post_merge_evidence requires the built-in synthesized-commit "
-                "CAS path; merge_callback may mutate the target before "
-                "post-merge authority is established"
-            )
+        # A specialised callback may mutate the target only when it returns a
+        # complete post-merge validation and evidence packet.  The packet is
+        # independently restored and verified by ``_post_merge_accept`` before
+        # queue completion.  Callbacks which omit it fail closed there.  The
+        # built-in path continues to assemble the packet before its target CAS.
         self.preflight_workers = int(workers)
         self.preflight_target_sensitive = bool(preflight_target_sensitive)
         self.preflight_gate_id = (
@@ -2859,13 +2855,15 @@ class MergeTrain:
             )
         if not bool(publication_admission.get("admitted")):
             return dict(publication_admission)
-        canonical = str(getattr(request, "canonical_identity", "") or "") or _request_value(
+        canonical = _request_value(
             request,
             "canonical_task_id",
             "canonical_task_id",
-            "canonical_task_key",
+            "canonical_task_cid",
             "task_cid",
-        ) or _request_value(request, "task_id")
+        ) or str(getattr(request, "canonical_identity", "") or "") or _request_value(
+            request, "task_id"
+        )
         candidate = _request_value(
             request,
             "commit_sha",
@@ -3133,6 +3131,22 @@ class MergeTrain:
                 reason=callback_reason,
                 details={
                     "merge_result": callback_result,
+                    **(
+                        {
+                            "merge_integrated": True,
+                            "target_commit": str(
+                                callback_result.get("target_commit") or ""
+                            ),
+                            "merge_integrated_receipt": dict(
+                                callback_result.get(
+                                    "merge_integrated_receipt"
+                                )
+                                or {}
+                            ),
+                        }
+                        if callback_result.get("merge_integrated") is True
+                        else {}
+                    ),
                     **(
                         {
                             "proof_gate": proof_gate_receipt,
@@ -4306,8 +4320,14 @@ class MergeTrain:
             "acceptance_pending": False,
             "request_id": request.request_id,
             "task_id": _request_value(request, "task_id"),
-            "canonical_task_id": str(getattr(request, "canonical_identity", "") or "")
-            or _request_value(request, "canonical_task_id")
+            "canonical_task_id": _request_value(
+                request,
+                "canonical_task_id",
+                "canonical_task_id",
+                "canonical_task_cid",
+                "task_cid",
+            )
+            or str(getattr(request, "canonical_identity", "") or "")
             or _request_value(request, "task_id"),
             "commit_sha": _request_value(request, "commit_sha", "implementation_commit", "commit"),
             "target_branch": self.target_branch,
