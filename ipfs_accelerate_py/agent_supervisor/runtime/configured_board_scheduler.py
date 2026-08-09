@@ -25,8 +25,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .multi_supervisor_runner import (
+    AUTHORITY_MODE_LEGACY_MARKDOWN,
+    DATABASE_PROGRAM_CONFIG_INTERFACE,
+    DatabaseProgramConfig,
+    DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
+    parse_database_program_config,
     utc_run_stamp,
 )
 
@@ -226,6 +231,7 @@ class ConfiguredBoard:
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
+    database_program: DatabaseProgramConfig | None = None
 
     @property
     def task_header_prefix(self) -> str:
@@ -233,6 +239,41 @@ class ConfiguredBoard:
 
     def path(self, relative: str) -> Path:
         return _contained_path(self.repo_root, relative)
+
+    def resolved_database_program(self) -> DatabaseProgramConfig:
+        """Return the explicit database/task-source selection for this board.
+
+        Implicit legacy-Markdown defaults are deprecated. When no
+        ``database_program`` section is present the board still launches, but
+        only after constructing an *explicit* legacy selection from
+        ``source_binding.bootstrap_task_source`` or a labeled explicit-legacy
+        fallback.
+        """
+
+        if self.database_program is not None:
+            return self.database_program
+        source_binding = self.payload.get("source_binding")
+        bootstrap = ""
+        if isinstance(source_binding, Mapping):
+            bootstrap = str(
+                source_binding.get("bootstrap_task_source") or ""
+            ).strip().lower()
+        if bootstrap in {"", "legacy-markdown", "legacy_markdown", "markdown-legacy"}:
+            return DatabaseProgramConfig.explicit_legacy_markdown()
+        if bootstrap in {"markdown"}:
+            return DatabaseProgramConfig(
+                authority_mode=AUTHORITY_MODE_LEGACY_MARKDOWN,
+                task_source_kind="markdown",
+                explicit_legacy=True,
+            )
+        if bootstrap in {"duckdb", "quack"}:
+            raise ConfiguredBoardError(
+                "bootstrap_task_source requires a full database_program "
+                f"section when set to {bootstrap!r}"
+            )
+        raise ConfiguredBoardError(
+            f"unsupported bootstrap_task_source: {bootstrap!r}"
+        )
 
 
 def load_configured_board(
@@ -489,6 +530,20 @@ def load_configured_board(
     ):
         _positive_int(payload.get(field), field=field)
 
+    database_program: DatabaseProgramConfig | None = None
+    if "database_program" in payload:
+        raw_program = payload.get("database_program")
+        if not isinstance(raw_program, dict):
+            raise ConfiguredBoardError("database_program must be an object")
+        try:
+            # Inherit worktree root from runtime_paths when omitted.
+            program_payload = dict(raw_program)
+            if not program_payload.get("worktree_root"):
+                program_payload["worktree_root"] = runtime_paths["worktrees"]
+            database_program = parse_database_program_config(program_payload)
+        except DatabaseProgramConfigError as exc:
+            raise ConfiguredBoardError(str(exc)) from exc
+
     return ConfiguredBoard(
         config_path=path,
         repo_root=root,
@@ -505,6 +560,7 @@ def load_configured_board(
         worktree_submodule_paths=submodules,
         protected_paths=protected,
         runtime_paths=runtime_paths,
+        database_program=database_program,
     )
 
 
@@ -868,13 +924,19 @@ def configured_board_common_args(
     """Map scheduler policy to existing implementation-supervisor CLI args."""
 
     payload = board.payload
+    program = board.resolved_database_program()
+    worktree_root = (
+        str(board.path(program.worktree_root))
+        if program.worktree_root
+        else str(board.path(board.runtime_paths["worktrees"]))
+    )
     args: list[str] = [
         "--todo-path",
         str(board.path(board.taskboard_path)),
         "--task-prefix",
         board.task_header_prefix,
         "--worktree-root",
-        str(board.path(board.runtime_paths["worktrees"])),
+        worktree_root,
         "--merge-target-branch",
         board.merge_target_branch,
         "--merge-queue-dir",
@@ -909,6 +971,19 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
+    # Always emit an explicit task-source/authority selection so the managed
+    # daemon never relies on its deprecated implicit legacy-Markdown default.
+    program_args = program.cli_args()
+    skip_next = False
+    for item in program_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if item == "--worktree-root":
+            # Absolute worktree root already set above from runtime paths.
+            skip_next = True
+            continue
+        args.append(item)
     args.append("--implement" if implement else "--no-implement")
     if board.strict_task_sharding:
         args.append("--strict-task-sharding")
@@ -944,6 +1019,7 @@ def configured_board_launch_plan(
     state_dir = board.path(board.runtime_paths["state"])
     log_dir = board.path(board.runtime_paths["logs"])
     entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
+    program = board.resolved_database_program()
     runner = build_configured_multi_supervisor_cli_runner(
         repo_root=board.repo_root,
         duration_seconds=duration_seconds,
@@ -971,6 +1047,7 @@ def configured_board_launch_plan(
                 script_path=entry,
                 state_dir=state_dir,
                 state_prefix=_slug(board.task_prefix),
+                database_program=board.database_program,
             ),
         ),
         common_args=configured_board_common_args(
@@ -978,6 +1055,10 @@ def configured_board_launch_plan(
             implement=implement,
         ),
         detach=detach,
+        # Only pin runner-wide env/args when the sealed document declares a
+        # database_program section; bootstrap boards still pass explicit
+        # task-source CLI args via common_args.
+        database_program=board.database_program,
     )
     runner_args = [
         *runner.args(),
@@ -1017,6 +1098,12 @@ def configured_board_launch_plan(
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
+    # Non-secret database authority bindings reach every lane/child when an
+    # explicit database_program section is present. Bootstrap/legacy boards
+    # still emit explicit task-source CLI args without expanding the provider
+    # environment contract observed by existing launch tests.
+    if board.database_program is not None:
+        environment.update(program.environment())
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -1029,6 +1116,8 @@ def configured_board_launch_plan(
         "strict_task_sharding": board.strict_task_sharding,
         "argv": runner_args,
         "environment": environment,
+        "database_program": program.redacted_dict(),
+        "database_program_interface": DATABASE_PROGRAM_CONFIG_INTERFACE,
         "runtime_root": str(runtime_root),
         "master_pid_path": str(
             state_dir / "configured-board-master.pid"
