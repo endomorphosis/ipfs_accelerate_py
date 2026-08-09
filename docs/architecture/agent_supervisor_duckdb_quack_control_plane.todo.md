@@ -1163,7 +1163,7 @@ this bootstrap is active.
 
 ## DQP-037 Backfill legacy state and prove shadow decision parity
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
