@@ -946,7 +946,7 @@ this bootstrap is active.
 
 ## DQP-030 De-authoritize legacy files and add explicit compatibility modes
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
