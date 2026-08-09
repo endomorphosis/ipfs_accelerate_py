@@ -748,11 +748,18 @@ class DatabaseTaskSource:
         snap = self._intent.snapshot()
         revision = max(1, snap.event_watermark)
         offset = _cursor_decode(cursor, revision=revision) if cursor else 0
+        # Intent repository max page is MAX_QUERY_LIMIT; requesting limit+1 at
+        # the ceiling raises. Cap the probe and treat a full max page as more.
+        fetch_limit = min(limit + 1, MAX_QUERY_LIMIT)
         rows = self._intent.list_tasks(
-            status=status, limit=limit + 1, offset=offset
+            status=status, limit=fetch_limit, offset=offset
         )
-        has_more = len(rows) > limit
-        page_rows = rows[:limit]
+        if limit >= MAX_QUERY_LIMIT:
+            has_more = len(rows) >= MAX_QUERY_LIMIT
+            page_rows = rows[:limit]
+        else:
+            has_more = len(rows) > limit
+            page_rows = rows[:limit]
         tasks = tuple(_as_task_record(row) for row in page_rows)
         next_cursor = (
             _cursor_encode(revision, offset + len(tasks)) if has_more else ""
