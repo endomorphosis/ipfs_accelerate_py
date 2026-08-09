@@ -40,7 +40,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-001 Audit declared claims against current executable runtime evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
