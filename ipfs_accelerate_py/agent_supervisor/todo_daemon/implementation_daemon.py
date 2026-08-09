@@ -8092,7 +8092,30 @@ class PortalImplementationDaemon:
         if not changed_paths:
             raise ValueError("post-merge evidence requires changed implementation paths")
 
-        path_dependencies = {path: () for path in changed_paths}
+        workspace = Path(worktree_path)
+        # Prefer durable task outputs for tree records when they exist on disk.
+        # Selection "changed_files" can include ephemeral DuckDB/task-source
+        # lock and materialization artifacts that are not implementation
+        # products, and fixture tasks may declare outputs that the harness
+        # intentionally does not create.
+        product_paths = [
+            str(path or "").strip().lstrip("./")
+            for path in (getattr(task, "outputs", ()) or ())
+            if str(path or "").strip()
+        ]
+        durable_paths = [
+            path
+            for path in (product_paths or changed_paths)
+            if path and (workspace / path).exists()
+        ] or list(changed_paths)
+
+        path_dependencies = {path: () for path in durable_paths}
+        # Bind each declared unit command to the durable product paths so
+        # impact selection is path-local rather than repository-wide only.
+        validation_targets = {
+            f"declared-{index}": tuple(durable_paths)
+            for index, _command in enumerate(commands)
+        }
         checks = tuple(
             ImpactValidationCheck(
                 f"declared-{index}",
@@ -8102,33 +8125,160 @@ class PortalImplementationDaemon:
             )
             for index, command in enumerate(commands)
         )
-        report = self.validation_scheduler.run_impact_selected(
-            checks,
-            workspace_path=Path(worktree_path),
-            impact_index=CodeImpactIndex(
-                repository_tree_id=tree_id,
-                symbol_paths={},
-                symbol_dependencies={},
-                path_dependencies=path_dependencies,
-                validation_targets={},
-            ),
-            changed_paths=tuple(changed_paths),
-            repository_policy=RepositoryValidationPolicy(
-                required_kinds=(ImpactValidationKind.UNIT,),
-                kind_dependencies={},
-                require_acceptance_coverage=False,
-                require_transitive_validation=False,
-            ),
-            target_tree_id=tree_id,
-            runner=self._validation_command_runner,
-            hermetic_policy=HermeticValidationPolicy(
-                stability_runs=2,
-                complete_selected_dag=True,
-                required_techniques=(),
-            ),
+        hermetic_policy = HermeticValidationPolicy(
+            stability_runs=2,
+            complete_selected_dag=True,
+            required_techniques=(),
         )
+        repository_policy = RepositoryValidationPolicy(
+            required_kinds=(ImpactValidationKind.UNIT,),
+            kind_dependencies={},
+            require_acceptance_coverage=False,
+            require_transitive_validation=False,
+        )
+        impact_index = CodeImpactIndex(
+            repository_tree_id=tree_id,
+            symbol_paths={},
+            symbol_dependencies={},
+            path_dependencies=path_dependencies,
+            validation_targets=validation_targets,
+        )
+
+        def _impact_report_summary(value: Mapping[str, Any]) -> str:
+            results = value.get("results")
+            result_bits: list[str] = []
+            if isinstance(results, Sequence) and not isinstance(
+                results, (str, bytes, bytearray)
+            ):
+                for item in list(results)[:4]:
+                    if not isinstance(item, Mapping):
+                        continue
+                    result_bits.append(
+                        "rc={rc} outcome={outcome} stable={stable} "
+                        "auth={auth} error={error}".format(
+                            rc=item.get("returncode"),
+                            outcome=item.get("outcome") or "",
+                            stable=item.get("stable"),
+                            auth=item.get("authoritative"),
+                            error=str(item.get("error") or "")[:120],
+                        )
+                    )
+            uncovered = value.get("uncovered_impact") or ()
+            if isinstance(uncovered, Sequence) and not isinstance(
+                uncovered, (str, bytes, bytearray)
+            ):
+                uncovered_text = ",".join(str(item) for item in uncovered[:6])
+            else:
+                uncovered_text = str(uncovered or "")
+            return (
+                f"error={value.get('error') or ''} "
+                f"reason={value.get('reason') or ''} "
+                f"returncode={value.get('returncode')} "
+                f"uncovered={uncovered_text} "
+                f"results=[{'; '.join(result_bits)}]"
+            )
+
+        def _is_retriable_impact_report(value: Mapping[str, Any]) -> bool:
+            if value.get("passed") is True:
+                return False
+            error = str(value.get("error") or "")
+            reason = str(value.get("reason") or "")
+            if any(
+                token in error or token in reason
+                for token in (
+                    "resource_admission",
+                    "infrastructure",
+                    "scheduler_state_inconsistent",
+                )
+            ):
+                return True
+            results = value.get("results")
+            if not isinstance(results, Sequence) or isinstance(
+                results, (str, bytes, bytearray)
+            ):
+                # Empty results with a non-pass often mean admission/plan races.
+                return not results
+            for item in results:
+                if not isinstance(item, Mapping):
+                    continue
+                item_error = str(item.get("error") or "")
+                outcome = str(item.get("outcome") or "")
+                try:
+                    returncode = int(item.get("returncode") or 1)
+                except (TypeError, ValueError):
+                    returncode = 1
+                if (
+                    item.get("infrastructure_failure") is True
+                    or returncode in {75, 86}
+                    or outcome
+                    in {
+                        "infrastructure_failure",
+                        "flaky",
+                        "inconclusive",
+                        "timeout",
+                    }
+                    or item_error.startswith(
+                        ("resource_admission_", "hermetic_runtime_", "runner_failed:")
+                    )
+                ):
+                    return True
+            return False
+
+        # Use a private scheduler with headroom so concurrent lane validation
+        # does not starve the exact-tree hermetic re-run required for merge
+        # evidence.  Ordinary validation already passed; this re-run only
+        # seals hermetic stability against the candidate tree.
+        parent_scheduler = self.validation_scheduler
+        parent_cache_dir = getattr(parent_scheduler, "cache_dir", None)
+        if parent_cache_dir is None:
+            parent_cache = getattr(parent_scheduler, "cache", None)
+            parent_cache_dir = getattr(parent_cache, "cache_dir", None)
+        assemble_scheduler = ValidationScheduler(
+            cache_dir=parent_cache_dir or self.validation_cache_dir,
+            max_workers=1,
+            resource_budget=max(
+                8,
+                int(getattr(parent_scheduler, "resource_budget", 0) or 0) or 8,
+            ),
+            resource_admission_timeout_seconds=max(
+                30.0,
+                float(
+                    getattr(
+                        parent_scheduler,
+                        "resource_admission_timeout_seconds",
+                        0.0,
+                    )
+                    or 0.0
+                ),
+            ),
+            hermetic_policy=hermetic_policy,
+        )
+        report: dict[str, Any] = {}
+        max_attempts = 3
+        for attempt_number in range(1, max_attempts + 1):
+            report = assemble_scheduler.run_impact_selected(
+                checks,
+                workspace_path=workspace,
+                impact_index=impact_index,
+                changed_paths=tuple(durable_paths),
+                repository_policy=repository_policy,
+                target_tree_id=tree_id,
+                runner=self._validation_command_runner,
+                hermetic_policy=hermetic_policy,
+            )
+            if report.get("passed"):
+                break
+            if (
+                attempt_number >= max_attempts
+                or not _is_retriable_impact_report(report)
+            ):
+                break
+            time.sleep(min(2.0 * attempt_number, 5.0))
         if not report.get("passed"):
-            raise ValueError("declared post-merge impact validation did not pass")
+            raise ValueError(
+                "declared post-merge impact validation did not pass: "
+                + _impact_report_summary(report)
+            )
 
         def _strip_raw(value: Any) -> Any:
             if isinstance(value, Mapping):
@@ -8206,7 +8356,7 @@ class PortalImplementationDaemon:
                     repository_id=repository_id,
                     repository_tree_id=tree_id,
                     ast_scope_ids=tuple(
-                        f"path:{path}" for path in changed_paths[:16]
+                        f"path:{path}" for path in durable_paths[:16]
                     )
                     or ("path:repository",),
                     premise_ids=(),
@@ -8239,8 +8389,7 @@ class PortalImplementationDaemon:
             )
 
         tree_records: list[dict[str, Any]] = []
-        workspace = Path(worktree_path)
-        for path in changed_paths:
+        for path in durable_paths:
             absolute = workspace / path
             if absolute.is_file():
                 digest = (
@@ -8284,7 +8433,7 @@ class PortalImplementationDaemon:
                 {
                     "criterion": POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA[0],
                     "repository_tree_id": tree_id,
-                    "implementation": list(changed_paths),
+                    "implementation": list(durable_paths),
                     "receipt_ids": [
                         str(validation_receipt.get("receipt_id") or ""),
                         str(semantic.get("validation_receipt_id") or ""),
