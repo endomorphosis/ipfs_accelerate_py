@@ -489,15 +489,7 @@ function extractFacts(ts, sourceFile) {
   };
 }
 
-let request;
-try {
-  request = await readRequest();
-} catch (error) {
-  failure(error.reasonCode || "protocol_error", "invalid bounded JSON request");
-  process.exitCode = 2;
-}
-
-if (request !== undefined) {
+function processRequest(request, ts) {
   if (
     !request ||
     request.protocol_version !== PROTOCOL_VERSION ||
@@ -505,67 +497,167 @@ if (request !== undefined) {
     typeof request.language !== "string" ||
     typeof request.source_sha256 !== "string"
   ) {
-    failure("protocol_error", "request does not match extractor protocol");
-  } else if (!LANGUAGES.has(request.language)) {
-    failure("unsupported_language", `unsupported language ${request.language}`);
-  } else {
+    return {
+      protocol_version: PROTOCOL_VERSION,
+      ok: false,
+      error: {
+        code: "protocol_error",
+        type: "PolyglotASTExtractionError",
+        message: "request does not match extractor protocol",
+      },
+    };
+  }
+  if (!LANGUAGES.has(request.language)) {
+    return {
+      protocol_version: PROTOCOL_VERSION,
+      ok: false,
+      error: {
+        code: "unsupported_language",
+        type: "PolyglotASTExtractionError",
+        message: `unsupported language ${request.language}`,
+      },
+    };
+  }
+  if (!ts) {
+    return {
+      protocol_version: PROTOCOL_VERSION,
+      ok: false,
+      error: {
+        code: "compiler_unavailable",
+        type: "PolyglotASTExtractionError",
+        message: "the local TypeScript compiler API is unavailable",
+      },
+    };
+  }
+  try {
+    const sourceFile = ts.createSourceFile(
+      fixedFileName(request.language),
+      request.source,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKind(ts, request.language),
+    );
+    const diagnostics = [...(sourceFile.parseDiagnostics || [])].sort(
+      (left, right) =>
+        (left.start ?? -1) - (right.start ?? -1) ||
+        (left.code ?? -1) - (right.code ?? -1),
+    );
+    const parseError = diagnostics.length
+      ? `typescript_parse_error:${diagnostics
+          .slice(0, 20)
+          .map((item) => diagnosticText(ts, sourceFile, item))
+          .join("|")}`
+      : "";
+    return {
+      protocol_version: PROTOCOL_VERSION,
+      ok: true,
+      producer: "typescript-compiler-api",
+      producer_version: PRODUCER_VERSION,
+      compiler: { name: "typescript", version: ts.version },
+      language: request.language,
+      source_sha256: request.source_sha256,
+      parse_error: parseError,
+      facts: parseError
+        ? {
+            qualified_symbols: [],
+            imports: [],
+            calls: [],
+            state_transitions: [],
+            interfaces: [],
+            symbol_hashes: {},
+            symbol_lines: {},
+          }
+        : extractFacts(ts, sourceFile),
+    };
+  } catch (error) {
+    const errorName = stableText(error?.name || "Error");
+    const errorMessage = stableText(error?.message || "");
+    return {
+      protocol_version: PROTOCOL_VERSION,
+      ok: false,
+      error: {
+        code: "process_failed",
+        type: "PolyglotASTExtractionError",
+        message: `TypeScript compiler AST traversal failed: ${errorName}${
+          errorMessage ? `: ${errorMessage}` : ""
+        }`.slice(0, 1024),
+      },
+    };
+  }
+}
+
+function emitLine(value) {
+  process.stdout.write(`${JSON.stringify(value)}\n`);
+}
+
+const persistent =
+  process.env.POLYGLOT_AST_PERSISTENT === "1" ||
+  process.env.POLYGLOT_AST_PERSISTENT === "true";
+
+if (persistent) {
+  let ts = null;
+  try {
+    ts = loadTypeScript();
+  } catch {
+    ts = null;
+  }
+  let buffer = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    buffer += chunk;
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) {
+        let request;
+        try {
+          request = JSON.parse(line);
+        } catch (error) {
+          emitLine({
+            protocol_version: PROTOCOL_VERSION,
+            ok: false,
+            error: {
+              code: error.reasonCode || "protocol_error",
+              type: "PolyglotASTExtractionError",
+              message: "invalid bounded JSON request",
+            },
+          });
+          newline = buffer.indexOf("\n");
+          continue;
+        }
+        emitLine(processRequest(request, ts));
+      }
+      newline = buffer.indexOf("\n");
+    }
+  });
+  process.stdin.on("end", () => {
+    process.exitCode = 0;
+  });
+} else {
+  let request;
+  try {
+    request = await readRequest();
+  } catch (error) {
+    failure(error.reasonCode || "protocol_error", "invalid bounded JSON request");
+    process.exitCode = 2;
+  }
+
+  if (request !== undefined) {
     let ts;
     try {
       ts = loadTypeScript();
     } catch {
-      failure("compiler_unavailable", "the local TypeScript compiler API is unavailable");
+      ts = null;
     }
-    if (ts) {
-      try {
-        const sourceFile = ts.createSourceFile(
-          fixedFileName(request.language),
-          request.source,
-          ts.ScriptTarget.Latest,
-          true,
-          scriptKind(ts, request.language),
-        );
-        const diagnostics = [...(sourceFile.parseDiagnostics || [])].sort(
-          (left, right) =>
-            (left.start ?? -1) - (right.start ?? -1) ||
-            (left.code ?? -1) - (right.code ?? -1),
-        );
-        const parseError = diagnostics.length
-          ? `typescript_parse_error:${diagnostics
-              .slice(0, 20)
-              .map((item) => diagnosticText(ts, sourceFile, item))
-              .join("|")}`
-          : "";
-        emit({
-          protocol_version: PROTOCOL_VERSION,
-          ok: true,
-          producer: "typescript-compiler-api",
-          producer_version: PRODUCER_VERSION,
-          compiler: { name: "typescript", version: ts.version },
-          language: request.language,
-          source_sha256: request.source_sha256,
-          parse_error: parseError,
-          facts: parseError
-            ? {
-                qualified_symbols: [],
-                imports: [],
-                calls: [],
-                state_transitions: [],
-                interfaces: [],
-                symbol_hashes: {},
-                symbol_lines: {},
-              }
-            : extractFacts(ts, sourceFile),
-        });
-      } catch (error) {
-        const errorName = stableText(error?.name || "Error");
-        const errorMessage = stableText(error?.message || "");
-        failure(
-          "process_failed",
-          `TypeScript compiler AST traversal failed: ${errorName}${
-            errorMessage ? `: ${errorMessage}` : ""
-          }`,
-        );
-      }
+    const response = processRequest(request, ts);
+    if (response.ok) {
+      emit(response);
+    } else {
+      failure(
+        response.error?.code || "process_failed",
+        response.error?.message || "TypeScript extraction failed",
+      );
     }
   }
 }

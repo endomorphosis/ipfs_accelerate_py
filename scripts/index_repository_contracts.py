@@ -991,6 +991,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     requested_output_root = Path(args.output_root)
     output_root = requested_output_root
     indexer: RepositoryIndexer | None = None
+    provider: PolyglotASTProvider | None = None
     publication_staging: tempfile.TemporaryDirectory[str] | None = None
     try:
         validate_authoritative_publication_options(args)
@@ -1017,11 +1018,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         typescript_version = str(args.typescript_version or "").strip()
         if not typescript_version and typescript_path:
             typescript_version = DEFAULT_TYPESCRIPT_VERSION
+        # DCR-012 / SCA whole-scope scans parse TypeScript-family files through
+        # one bounded persistent worker rather than one Node process per file.
         provider = PolyglotASTProvider(
             limits,
             node_executable=args.node,
             typescript_path=typescript_path,
             expected_typescript_version=typescript_version,
+            persistent_typescript_worker=True,
         )
         thresholds = AnalyzerHealthThresholds(
             require_canaries=True,
@@ -1295,6 +1299,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if indexer is not None:
             indexer.close()
+        if provider is not None:
+            provider.close_typescript_worker()
         if publication_staging is not None:
             publication_staging.cleanup()
 

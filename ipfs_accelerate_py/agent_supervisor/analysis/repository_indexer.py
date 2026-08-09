@@ -103,7 +103,9 @@ REPOSITORY_INDEX_CACHE_SCHEMA: Final = "ast-blob-record@1"
 DEFAULT_MAX_COMPACT_ROW_BYTES: Final = 4_096
 HARD_MAX_COMPACT_ROW_BYTES: Final = 65_536
 DEFAULT_MAX_PARSE_ERROR_BYTES: Final = 1_024
-DEFAULT_MAX_PARSER_SOURCE_BYTES: Final = 16 * 1024 * 1024
+# Align parser admission with the repository snapshot 32 MiB file bound so
+# DCR-012 and later whole-scope indexes inspect large legitimate sources.
+DEFAULT_MAX_PARSER_SOURCE_BYTES: Final = 32 * 1024 * 1024
 DEFAULT_MAX_SOURCE_BYTES: Final = 64 * 1024 * 1024
 DEFAULT_MAX_INDEX_PATHS: Final = 100_000
 DEFAULT_CAS_MAX_BYTES: Final = 2 * 1024 * 1024 * 1024

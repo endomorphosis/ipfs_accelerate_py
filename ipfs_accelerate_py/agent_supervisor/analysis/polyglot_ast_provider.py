@@ -41,7 +41,9 @@ DEFAULT_PROCESS_TIMEOUT_SECONDS = 15.0
 DEFAULT_NODE_MEMORY_MIB = 256
 
 HARD_MAX_FILES = 10_000
-HARD_MAX_FILE_BYTES = 16 * 1024 * 1024
+# DCR-012 requires legitimate source/data blobs up to the 32 MiB snapshot bound
+# to be inspected directly rather than rejected by the older 16 MiB provider cap.
+HARD_MAX_FILE_BYTES = 32 * 1024 * 1024
 HARD_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 HARD_MAX_OUTPUT_BYTES = 32 * 1024 * 1024
 HARD_PROCESS_TIMEOUT_SECONDS = 120.0
@@ -567,6 +569,207 @@ def _schema_record(
     )
 
 
+class TypeScriptPersistentWorker:
+    """One long-lived Node process that parses many TypeScript-family files.
+
+    DCR-012 requires a bounded persistent worker rather than one process per
+    file.  Requests and responses are newline-delimited JSON documents.
+    """
+
+    def __init__(
+        self,
+        *,
+        node_executable: str,
+        extractor_path: Path,
+        typescript_path: str,
+        node_memory_mib: int,
+        max_output_bytes: int,
+        process_timeout_seconds: float,
+    ) -> None:
+        self._node_executable = node_executable
+        self._extractor_path = extractor_path
+        self._typescript_path = typescript_path
+        self._node_memory_mib = node_memory_mib
+        self._max_output_bytes = max_output_bytes
+        self._process_timeout_seconds = process_timeout_seconds
+        self._process: subprocess.Popen[bytes] | None = None
+        self._lock = __import__("threading").Lock()
+
+    def __enter__(self) -> "TypeScriptPersistentWorker":
+        self.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def start(self) -> None:
+        if self._process is not None and self._process.poll() is None:
+            return
+        node = shutil.which(self._node_executable)
+        if node is None:
+            raise PolyglotASTProviderError(
+                PolyglotASTReason.NODE_UNAVAILABLE,
+                f"Node executable {self._node_executable!r} was not found",
+            )
+        if not self._extractor_path.is_file():
+            raise PolyglotASTProviderError(
+                PolyglotASTReason.EXTRACTOR_UNAVAILABLE,
+                f"TypeScript extractor is missing: {self._extractor_path}",
+            )
+        environment = dict(os.environ)
+        environment["NO_COLOR"] = "1"
+        environment["POLYGLOT_AST_PERSISTENT"] = "1"
+        environment["POLYGLOT_AST_MAX_INPUT_BYTES"] = str(self._max_output_bytes)
+        if self._typescript_path:
+            environment["TYPESCRIPT_PATH"] = self._typescript_path
+        self._process = subprocess.Popen(
+            [
+                node,
+                f"--max-old-space-size={self._node_memory_mib}",
+                str(self._extractor_path),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            env=environment,
+        )
+
+    def close(self) -> None:
+        process = self._process
+        self._process = None
+        if process is None:
+            return
+        try:
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(process)
+            process.wait()
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+
+    def request(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        with self._lock:
+            self.start()
+            process = self._process
+            if (
+                process is None
+                or process.stdin is None
+                or process.stdout is None
+                or process.poll() is not None
+            ):
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROCESS_FAILED,
+                    "persistent TypeScript worker is not running",
+                )
+            encoded = _json_bytes(dict(payload)) + b"\n"
+            if len(encoded) > self._max_output_bytes:
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.FILE_BYTES_EXCEEDED,
+                    f"request exceeds {self._max_output_bytes} bytes",
+                )
+            try:
+                process.stdin.write(encoded)
+                process.stdin.flush()
+            except OSError as exc:
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROCESS_FAILED,
+                    "failed to write to the persistent TypeScript worker",
+                ) from exc
+            deadline = time.monotonic() + self._process_timeout_seconds
+            line = bytearray()
+            # Make stdout non-blocking so we can bound wall-clock time without
+            # reading one byte at a time for large fact payloads.
+            assert process.stdout is not None
+            os.set_blocking(process.stdout.fileno(), False)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _kill_process_tree(process)
+                    process.wait()
+                    self._process = None
+                    raise PolyglotASTProviderError(
+                        PolyglotASTReason.PROCESS_TIMEOUT,
+                        f"extractor exceeded {self._process_timeout_seconds:g} seconds",
+                    )
+                if process.poll() is not None and not line:
+                    stderr = b""
+                    if process.stderr is not None:
+                        try:
+                            stderr = process.stderr.read() or b""
+                        except OSError:
+                            stderr = b""
+                    self._process = None
+                    message = stderr.decode("utf-8", errors="replace").strip()[:512]
+                    raise PolyglotASTProviderError(
+                        PolyglotASTReason.PROCESS_FAILED,
+                        "persistent TypeScript worker exited"
+                        + (f": {message}" if message else ""),
+                    )
+                try:
+                    chunk = process.stdout.read(65_536)
+                except BlockingIOError:
+                    time.sleep(0.001)
+                    continue
+                except OSError as exc:
+                    raise PolyglotASTProviderError(
+                        PolyglotASTReason.PROCESS_FAILED,
+                        "failed to read from the persistent TypeScript worker",
+                    ) from exc
+                if not chunk:
+                    if process.poll() is not None:
+                        self._process = None
+                        raise PolyglotASTProviderError(
+                            PolyglotASTReason.PROCESS_FAILED,
+                            "persistent TypeScript worker closed stdout",
+                        )
+                    time.sleep(0.001)
+                    continue
+                newline_at = chunk.find(b"\n")
+                if newline_at < 0:
+                    line.extend(chunk)
+                else:
+                    line.extend(chunk[:newline_at])
+                    # A well-behaved worker emits one JSON object per line; any
+                    # trailing bytes would belong to the next response.
+                    if newline_at + 1 < len(chunk):
+                        raise PolyglotASTProviderError(
+                            PolyglotASTReason.PROTOCOL_ERROR,
+                            "persistent TypeScript worker returned multiple lines",
+                        )
+                    break
+                if len(line) > self._max_output_bytes:
+                    _kill_process_tree(process)
+                    process.wait()
+                    self._process = None
+                    raise PolyglotASTProviderError(
+                        PolyglotASTReason.OUTPUT_BYTES_EXCEEDED,
+                        f"extractor output exceeded {self._max_output_bytes} bytes",
+                    )
+            try:
+                response = json.loads(bytes(line).decode("utf-8", errors="strict"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROTOCOL_ERROR,
+                    "extractor did not return one valid UTF-8 JSON object",
+                ) from exc
+            if not isinstance(response, Mapping):
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROTOCOL_ERROR,
+                    "extractor response must be an object",
+                )
+            return response
+
+
 class PolyglotASTProvider:
     """Lazy ``PolyglotASTProvider@1`` implementation over canonical records."""
 
@@ -581,6 +784,7 @@ class PolyglotASTProvider:
         typescript_path: str | os.PathLike[str] | None = None,
         expected_typescript_version: str = "",
         process_runner: _ProcessRunner | None = None,
+        persistent_typescript_worker: bool = False,
     ) -> None:
         self.limits = limits or PolyglotASTLimits()
         self.node_executable = str(node_executable or "node")
@@ -598,6 +802,8 @@ class PolyglotASTProvider:
             expected_typescript_version or ""
         ).strip()
         self._process_runner = process_runner or _bounded_process_runner
+        self._persistent_typescript_worker = bool(persistent_typescript_worker)
+        self._typescript_worker: TypeScriptPersistentWorker | None = None
 
     def _bounded_source(self, source: str | bytes) -> tuple[str, int]:
         text = _source_text(source)
@@ -717,6 +923,27 @@ class PolyglotASTProvider:
     extract_source = extract
     build_ast_blob_record = extract
 
+    def open_typescript_worker(self) -> TypeScriptPersistentWorker:
+        """Start (or return) the bounded persistent TypeScript worker."""
+
+        if self._typescript_worker is None:
+            self._typescript_worker = TypeScriptPersistentWorker(
+                node_executable=self.node_executable,
+                extractor_path=self.extractor_path,
+                typescript_path=self.typescript_path,
+                node_memory_mib=self.limits.node_memory_mib,
+                max_output_bytes=self.limits.max_output_bytes,
+                process_timeout_seconds=self.limits.process_timeout_seconds,
+            )
+            self._typescript_worker.start()
+        return self._typescript_worker
+
+    def close_typescript_worker(self) -> None:
+        worker = self._typescript_worker
+        self._typescript_worker = None
+        if worker is not None:
+            worker.close()
+
     def _extract_typescript(
         self,
         source: str,
@@ -725,67 +952,70 @@ class PolyglotASTProvider:
         blob_identity: str,
         source_sha256: str,
     ) -> PolyglotASTExtraction:
-        node = shutil.which(self.node_executable)
-        if node is None:
-            raise PolyglotASTProviderError(
-                PolyglotASTReason.NODE_UNAVAILABLE,
-                f"Node executable {self.node_executable!r} was not found",
-            )
-        if not self.extractor_path.is_file():
-            raise PolyglotASTProviderError(
-                PolyglotASTReason.EXTRACTOR_UNAVAILABLE,
-                f"TypeScript extractor is missing: {self.extractor_path}",
-            )
-        request = _json_bytes(
-            {
-                "protocol_version": TYPESCRIPT_EXTRACTOR_PROTOCOL_VERSION,
-                "language": language,
-                "source": source,
-                "source_sha256": source_sha256,
-            }
-        )
-        environment = dict(os.environ)
-        environment["NO_COLOR"] = "1"
-        environment["POLYGLOT_AST_MAX_INPUT_BYTES"] = str(len(request))
-        if self.typescript_path:
-            environment["TYPESCRIPT_PATH"] = self.typescript_path
-        command = [
-            node,
-            f"--max-old-space-size={self.limits.node_memory_mib}",
-            str(self.extractor_path),
-        ]
-        try:
-            return_code, stdout, stderr = self._process_runner(
-                command,
-                request,
-                self.limits.process_timeout_seconds,
-                self.limits.max_output_bytes,
-                environment,
-            )
-        except PolyglotASTProviderError:
-            raise
-        except OSError as exc:
-            raise PolyglotASTProviderError(
-                PolyglotASTReason.PROCESS_FAILED,
-                "failed to start the TypeScript extractor",
-            ) from exc
-        try:
-            payload = json.loads(stdout.decode("utf-8", errors="strict"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            message = stderr.decode("utf-8", errors="replace").strip()[:512]
-            raise PolyglotASTProviderError(
-                PolyglotASTReason.PROCESS_FAILED
-                if return_code
-                else PolyglotASTReason.PROTOCOL_ERROR,
-                "extractor did not return one valid UTF-8 JSON object"
-                + (f": {message}" if message else ""),
-                details={"return_code": return_code},
-            ) from exc
-        if not isinstance(payload, Mapping):
-            raise PolyglotASTProviderError(
-                PolyglotASTReason.PROTOCOL_ERROR,
-                "extractor response must be an object",
-            )
+        request_body = {
+            "protocol_version": TYPESCRIPT_EXTRACTOR_PROTOCOL_VERSION,
+            "language": language,
+            "source": source,
+            "source_sha256": source_sha256,
+        }
+        if self._persistent_typescript_worker or self._typescript_worker is not None:
+            payload = self.open_typescript_worker().request(request_body)
+            return_code = 0
+        else:
+            node = shutil.which(self.node_executable)
+            if node is None:
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.NODE_UNAVAILABLE,
+                    f"Node executable {self.node_executable!r} was not found",
+                )
+            if not self.extractor_path.is_file():
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.EXTRACTOR_UNAVAILABLE,
+                    f"TypeScript extractor is missing: {self.extractor_path}",
+                )
+            request = _json_bytes(request_body)
+            environment = dict(os.environ)
+            environment["NO_COLOR"] = "1"
+            environment["POLYGLOT_AST_MAX_INPUT_BYTES"] = str(len(request))
+            if self.typescript_path:
+                environment["TYPESCRIPT_PATH"] = self.typescript_path
+            command = [
+                node,
+                f"--max-old-space-size={self.limits.node_memory_mib}",
+                str(self.extractor_path),
+            ]
+            try:
+                return_code, stdout, stderr = self._process_runner(
+                    command,
+                    request,
+                    self.limits.process_timeout_seconds,
+                    self.limits.max_output_bytes,
+                    environment,
+                )
+            except PolyglotASTProviderError:
+                raise
+            except OSError as exc:
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROCESS_FAILED,
+                    "failed to start the TypeScript extractor",
+                ) from exc
+            try:
+                payload = json.loads(stdout.decode("utf-8", errors="strict"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                message = stderr.decode("utf-8", errors="replace").strip()[:512]
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROCESS_FAILED
+                    if return_code
+                    else PolyglotASTReason.PROTOCOL_ERROR,
+                    "extractor did not return one valid UTF-8 JSON object"
+                    + (f": {message}" if message else ""),
+                    details={"return_code": return_code},
+                ) from exc
+            if not isinstance(payload, Mapping):
+                raise PolyglotASTProviderError(
+                    PolyglotASTReason.PROTOCOL_ERROR,
+                    "extractor response must be an object",
+                )
         if payload.get("protocol_version") != TYPESCRIPT_EXTRACTOR_PROTOCOL_VERSION:
             raise PolyglotASTProviderError(
                 PolyglotASTReason.PROTOCOL_ERROR,
@@ -1029,6 +1259,7 @@ __all__ = [
     "DEFAULT_MAX_OUTPUT_BYTES",
     "DEFAULT_MAX_TOTAL_BYTES",
     "DEFAULT_PROCESS_TIMEOUT_SECONDS",
+    "HARD_MAX_FILE_BYTES",
     "POLYGLOT_AST_PROVIDER_SCHEMA",
     "TYPESCRIPT_EXTRACTOR_PROTOCOL_VERSION",
     "TYPESCRIPT_EXTRACTOR_VERSION",
@@ -1038,6 +1269,7 @@ __all__ = [
     "PolyglotASTProvider",
     "PolyglotASTProviderError",
     "PolyglotASTReason",
+    "TypeScriptPersistentWorker",
     "build_polyglot_ast_blob_record",
     "build_structured_schema_ast_blob_record",
     "language_for_path",
