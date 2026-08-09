@@ -1,4 +1,4 @@
-"""Hermetic CID wire and accepted control-plane capsule closure tests."""
+"""Control-plane capsule identity and hermetic CID closure tests."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py.agent_supervisor.core import multiformats_identity
 from ipfs_accelerate_py.utils import cid_utils
 
 # Independently published multiformats vectors.  These literals must not be
@@ -27,6 +28,43 @@ KNOWN_HELLO_WORLD_RAW_CID = (
 )
 KNOWN_A_1_DAG_JSON_CID = (
     "baguqeeraafnl2724yv5c3wklowipaswybbbhhec64m7mltv6vzrco2ux7bra"
+)
+GENERIC_CID_VECTORS = (
+    (
+        "base16",
+        1,
+        "raw",
+        "sha2-256",
+        "f015512202d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+    ),
+    (
+        "base36",
+        1,
+        "dag-pb",
+        "sha2-512",
+        "kg8oiy6grkh9hu8pjn7d8rbjusizt3r2fp0socvrl4j83ldek8651wqvvj2j83a44jpul2wydhx88stzr7oph55wnxg6awgwikkjmniaq",
+    ),
+    (
+        "base58btc",
+        0,
+        "dag-pb",
+        "sha2-256",
+        "QmRQ353oFNqt8zfZ9X1HgRUszwv9RkEEwmMZZkbkYEsybn",
+    ),
+    (
+        "base64url",
+        1,
+        "dag-cbor",
+        "sha3-256",
+        "uAXEWIHQe-jEfl2hpVpRnWODZX3DxH_LaTy_rfFQxT0QTSsSf",
+    ),
+    (
+        "base32",
+        1,
+        "json",
+        "blake2b-256",
+        "bagaajiheaiqncyoxcfc2x3wf54k2xtyelhhmmcrhgipc6cwa555m4usu6wkei5q",
+    ),
 )
 
 
@@ -96,16 +134,144 @@ def _inert_required_payloads() -> dict[str, bytes]:
     }
 
 
-def _full_source_capsule(root: Path) -> llm_router.AgentImplementationControlPlanePin:
+def _git(repository: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=repository,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=True,
+    )
+    return completed.stdout.strip()
+
+
+def _clean_control_plane_source(root: Path) -> Path:
     source_root = Path(llm_router.__file__).resolve().parents[1]
     source_files = llm_router._agent_control_plane_source_files(
         source_root,
         verify_loaded_origins=False,
     )
-    payloads = {
-        str(path.relative_to(source_root)): path.read_bytes() for path in source_files
-    }
-    return _write_capsule(root, payloads)
+    for source in source_files:
+        destination = root / source.relative_to(source_root)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+        destination.chmod(0o644)
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "capsule-test@example.invalid")
+    _git(root, "config", "user.name", "Capsule Test")
+    _git(root, "config", "core.filemode", "true")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "accepted control plane")
+    assert not _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    return root
+
+
+def _add_unrelated_gitlink(root: Path) -> None:
+    relative = "ipfs_accelerate_py/mcplusplus"
+    target = root / relative
+    target.mkdir(parents=True)
+    head = _git(root, "rev-parse", "HEAD")
+    _git(
+        root,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{head},{relative}",
+    )
+    _git(root, "commit", "-qm", "add unrelated gitlink")
+    assert not _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+
+
+def _replace_selected_file_with_gitlink(root: Path, relative: str) -> None:
+    target = root / relative
+    target.unlink()
+    target.mkdir()
+    _git(target, "init", "-q")
+    _git(target, "config", "user.email", "gitlink-test@example.invalid")
+    _git(target, "config", "user.name", "Gitlink Test")
+    marker = target / "README"
+    marker.write_text("selected dependency replaced by gitlink\n")
+    _git(target, "add", "README")
+    _git(target, "commit", "-qm", "selected dependency gitlink")
+    gitlink_head = _git(target, "rev-parse", "HEAD")
+    _git(root, "fetch", "-q", str(target), gitlink_head)
+    _git(
+        root,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{gitlink_head},{relative}",
+    )
+    _git(root, "commit", "-qm", "replace selected dependency with gitlink")
+    assert not _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+
+
+def _replace_selected_file_with_symlink(root: Path, relative: str) -> None:
+    target = root / relative
+    target.unlink()
+    target.symlink_to("configured_board_scheduler.py")
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-qm", "replace selected dependency with symlink")
+    assert not _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+
+
+_MATERIALIZE_BOOTSTRAP = r"""
+import json
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).resolve(strict=True)
+parent = Path(sys.argv[2])
+sys.path.insert(0, str(source))
+from ipfs_accelerate_py import llm_router
+
+head, tree = llm_router.agent_implementation_control_plane_source_generation(source)
+pin = llm_router.materialize_agent_implementation_control_plane_capsule(
+    source_root=source,
+    capsule_parent=parent,
+    source_head=head,
+    source_tree=tree,
+)
+print(json.dumps(pin.as_dict(), sort_keys=True))
+"""
+
+
+def _run_real_materialize(
+    source: Path,
+    capsule_parent: Path,
+) -> subprocess.CompletedProcess[str]:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    return subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _MATERIALIZE_BOOTSTRAP,
+            str(source),
+            str(capsule_parent),
+        ],
+        cwd=source,
+        env=environment,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def _real_materialized_pin(
+    source: Path,
+    capsule_parent: Path,
+) -> llm_router.AgentImplementationControlPlanePin:
+    completed = _run_real_materialize(source, capsule_parent)
+    assert completed.returncode == 0, completed.stderr
+    return llm_router.AgentImplementationControlPlanePin(
+        **json.loads(completed.stdout)
+    )
 
 
 def test_dependency_free_known_vectors_and_digest_wrapping() -> None:
@@ -141,6 +307,80 @@ def test_dependency_free_codec_matches_optional_external_library() -> None:
         )
         assert external == known
         assert cid_utils.cid_for_bytes(payload, codec=codec) == external
+
+
+@pytest.mark.parametrize(
+    ("base", "version", "codec", "mh_type", "expected"),
+    GENERIC_CID_VECTORS,
+)
+def test_generic_public_cid_profile_compatibility_matrix(
+    base: str,
+    version: int,
+    codec: str,
+    mh_type: str,
+    expected: str,
+) -> None:
+    assert cid_utils.cid_for_bytes(
+        b"x",
+        base=base,
+        version=version,
+        codec=codec,
+        mh_type=mh_type,
+    ) == expected
+    assert cid_utils.validate_cid(
+        expected,
+        base=base,
+        version=version,
+        codecs=(codec,),
+        mh_type=mh_type,
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"hello world", bytearray(b"hello world"), memoryview(b"hello world")],
+)
+def test_public_closed_profile_retains_bytes_like_compatibility(
+    payload: bytes | bytearray | memoryview,
+) -> None:
+    assert cid_utils.cid_for_bytes(payload) == KNOWN_HELLO_WORLD_RAW_CID
+
+
+@pytest.mark.parametrize(
+    "base",
+    ["base16", "base36", "base58btc", "base64url"],
+)
+def test_documented_router_cache_cid_base_uses_generic_public_api(
+    monkeypatch: pytest.MonkeyPatch,
+    base: str,
+) -> None:
+    monkeypatch.setenv("ipfs_accelerate_py_ROUTER_CACHE_KEY", "cid")
+    monkeypatch.setenv("ipfs_accelerate_py_ROUTER_CACHE_CID_BASE", base)
+    key = llm_router._response_cache_key(
+        provider="local",
+        model_name="model",
+        prompt="prompt",
+        kwargs={"temperature": 0},
+    )
+    payload = {
+        "type": "llm_response",
+        "provider": "local",
+        "model": "model",
+        "prompt": "prompt",
+        "kwargs": {"temperature": 0},
+    }
+    assert key == "llm_response_cid::" + cid_utils.cid_for_obj(payload, base=base)
+
+
+def test_generic_public_delegation_preserves_provider_exception_types() -> None:
+    from multiformats import multibase, multicodec
+
+    with pytest.raises(multibase.MultibaseKeyError):
+        cid_utils.cid_for_bytes(b"x", base="not-a-base")
+    with pytest.raises(multicodec.MulticodecKeyError):
+        cid_utils.cid_for_bytes(b"x", codec="not-a-codec")
+    with pytest.raises(ValueError, match="CID versions 2 and 3"):
+        cid_utils.cid_for_bytes(b"x", version=2)
 
 
 @pytest.mark.parametrize(
@@ -184,16 +424,35 @@ def test_wire_decoder_rejects_noncanonical_base32(malformed: str) -> None:
 def test_dependency_free_surface_rejects_bool_nonbytes_and_repr() -> None:
     with pytest.raises(TypeError):
         cid_utils.cid_for_bytes(True)  # type: ignore[arg-type]
-    with pytest.raises(TypeError):
-        cid_utils.cid_for_bytes(bytearray(b"x"))  # type: ignore[arg-type]
-    with pytest.raises(ValueError):
-        cid_utils.cid_for_bytes(b"", version=True)
-    with pytest.raises(ValueError):
-        cid_utils.validate_cid(KNOWN_EMPTY_RAW_CID, version=True)
+    # Historical generic surface treats bool as int for the version argument;
+    # the supervisor bridge below imposes the stricter exact-int contract.
+    assert cid_utils.cid_for_bytes(b"", version=True) == KNOWN_EMPTY_RAW_CID
+    assert cid_utils.validate_cid(KNOWN_EMPTY_RAW_CID, version=True) == (
+        KNOWN_EMPTY_RAW_CID
+    )
     with pytest.raises(TypeError):
         cid_utils.cid_from_sha256_digest(True)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="not JSON serializable"):
         cid_utils.cid_for_dag_json({"opaque": object()})
+
+
+def test_supervisor_core_remains_exact_bytes_and_wraps_public_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(multiformats_identity.MultiformatsIdentityError):
+        multiformats_identity.cid_for_bytes(bytearray(b"x"))  # type: ignore[arg-type]
+    with pytest.raises(multiformats_identity.MultiformatsIdentityError):
+        multiformats_identity.cid_for_bytes(b"x", version=True)
+
+    def fail_public_helper(*_args: object, **_kwargs: object) -> str:
+        raise RuntimeError("generic provider escaped")
+
+    monkeypatch.setattr(cid_utils, "cid_for_bytes", fail_public_helper)
+    with pytest.raises(
+        multiformats_identity.MultiformatsIdentityError,
+        match="generic provider escaped",
+    ):
+        multiformats_identity.cid_for_bytes(b"x")
 
 
 def test_reviewed_capsule_manifest_closes_identity_dependencies() -> None:
@@ -302,7 +561,9 @@ print(json.dumps({"raw": raw, "dag": dag, "targets": targets}, sort_keys=True))
 def test_real_isolated_sealed_capsule_imports_control_plane_and_mints_cids(
     tmp_path: Path,
 ) -> None:
-    pin = _full_source_capsule(tmp_path / "accepted")
+    source = _clean_control_plane_source(tmp_path / "source")
+    _add_unrelated_gitlink(source)
+    pin = _real_materialized_pin(source, tmp_path / "capsules")
     sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
     hostile = tmp_path / "hostile"
     hostile_package = hostile / "ipfs_accelerate_py"
@@ -346,3 +607,35 @@ def test_real_isolated_sealed_capsule_imports_control_plane_and_mints_cids(
         assert not marker.exists()
     finally:
         os.close(sealed.descriptor)
+
+    substituted = Path(pin.capsule_root) / "ipfs_accelerate_py/utils/cid_utils.py"
+    substituted.chmod(0o600)
+    substituted.write_bytes(b"# substituted after real materialization\n")
+    substituted.chmod(0o400)
+    with pytest.raises(ValueError, match="content drifted"):
+        llm_router.build_agent_implementation_control_plane_pin(
+            runner_path=pin.runner_path,
+            capsule_root=pin.capsule_root,
+        )
+
+
+def test_real_materializer_denies_a_selected_gitlink(tmp_path: Path) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    _replace_selected_file_with_gitlink(
+        source,
+        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+    )
+    completed = _run_real_materialize(source, tmp_path / "capsules")
+    assert completed.returncode != 0
+    assert "Git dependency is invalid" in completed.stderr
+
+
+def test_real_materializer_denies_a_selected_symlink(tmp_path: Path) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    _replace_selected_file_with_symlink(
+        source,
+        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+    )
+    completed = _run_real_materialize(source, tmp_path / "capsules")
+    assert completed.returncode != 0
+    assert "Git dependency is invalid" in completed.stderr

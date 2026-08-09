@@ -120,7 +120,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from functools import lru_cache
 from html import unescape
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import (
     Callable,
     Dict,
@@ -6071,22 +6071,43 @@ def _agent_control_plane_head_payloads(
             relative = raw_path.decode("utf-8")
         except (UnicodeError, ValueError) as exc:
             raise ValueError("accepted control-plane Git tree is invalid") from exc
+        lexical = PurePosixPath(relative)
         if (
-            object_type != "blob"
-            or mode not in {"100644", "100755"}
+            not relative
+            or relative != lexical.as_posix()
+            or lexical.is_absolute()
+            or any(part in {"", ".", ".."} for part in lexical.parts)
+            or any(
+                ord(character) < 32 or ord(character) == 127
+                for character in relative
+            )
+            or "\\" in relative
             or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
-            or Path(relative).is_absolute()
-            or ".." in Path(relative).parts
         ):
             raise ValueError("accepted control-plane Git tree entry is invalid")
-        if (
+        selected = (
             relative in _AGENT_CONTROL_PLANE_RELATIVE_FILES
             or (
                 relative.startswith("ipfs_accelerate_py/agent_supervisor/")
                 and relative.endswith(".py")
             )
+        )
+        if not selected:
+            if (mode, object_type) not in {
+                ("100644", "blob"),
+                ("100755", "blob"),
+                ("120000", "blob"),
+                ("160000", "commit"),
+            }:
+                raise ValueError("accepted control-plane Git tree entry is invalid")
+            continue
+        if (
+            object_type != "blob"
+            or mode not in {"100644", "100755"}
+            or relative in blobs
         ):
-            blobs[relative] = object_id
+            raise ValueError("accepted control-plane Git dependency is invalid")
+        blobs[relative] = object_id
     required = set(_AGENT_CONTROL_PLANE_RELATIVE_FILES)
     if not required.issubset(blobs):
         raise ValueError("accepted control-plane HEAD is missing a dependency")
