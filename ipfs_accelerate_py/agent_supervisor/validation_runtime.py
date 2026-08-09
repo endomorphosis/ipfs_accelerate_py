@@ -694,6 +694,13 @@ def build_validation_environment(
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
         if key in source and source[key] is not None
     }
+    # Preserve the agent-validation interpreter binding when present.  Hermetic
+    # execution rebuilds the environment from an already-scrubbed child map;
+    # without this key, site adapters that re-check the sealed interpreter
+    # binding fail closed with infrastructure errors on the second build.
+    bound_validation_python = str(source.get(VALIDATION_PYTHON_ENV) or "").strip()
+    if bound_validation_python:
+        result[VALIDATION_PYTHON_ENV] = bound_validation_python
     result.update(
         {
             _CHILD_PYTHON_ENV: validation_python_executable(source),
