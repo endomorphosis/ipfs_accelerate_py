@@ -195,7 +195,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-006 Add schema-governed extensions and versioned parse/elaboration artifacts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
