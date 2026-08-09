@@ -9,13 +9,14 @@ import os
 import re
 import shlex
 import signal
+import stat
 import subprocess
 import sys
-import time
 import threading
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from hashlib import sha1
+from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -23,13 +24,23 @@ from ..control.manual_completion_seal import (
     ManualCompletionSealError,
     verify_manual_completion_seal,
 )
+from ..entrypoints.execution_plan import (
+    ConfiguredBoardExecutionSlices,
+    PlanBoundExecutionLease,
+    ProductionParallelPlanAdapter,
+    _load_plan_bound_execution_lease_locked,
+    _load_plan_revision_store_binding_locked,
+    _publish_plan_bound_execution_lease_locked,
+    _secure_store_active,
+    _secure_store_cas,
+    _secure_store_continuation,
+)
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
-    CheckoutMutationLease,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
+    CheckoutMutationLease,
     adopt_inactive_checkout_mutation_lease,
-    acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
@@ -39,11 +50,8 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
-from ..proof.formal_verification_contracts import content_identity
-from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
-from .implementation_supervisor_runner import (
-    persist_goal_completion_projection,
-    persist_supervisor_scan_receipt,
+from ..merge.checkout_lock import (
+    acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..objectives.scan_receipts import (
@@ -54,12 +62,16 @@ from ..objectives.scan_receipts import (
     scan_identity,
 )
 from ..prompt.prompt_workflow import RescueOperation, prompt_workflow_cid
+from ..proof.formal_verification_contracts import content_identity
 from ..rescue.rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
 from ..rescue.supervisor_watchdog import (
     AUTONOMOUS_UNSTALL_STATE_SCHEMA,
     AutonomousUnstallCoordinator,
     AutonomousUnstallPolicy,
 )
+from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from ..runtime.resource_scheduler import evaluate_capacity_drift
+from ..task_sources.plan_revision_store import PlanRevisionStore
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -87,6 +99,10 @@ from .implementation_daemon import (
     utc_now,
     write_json_atomic,
     write_text_atomic,
+)
+from .implementation_supervisor_runner import (
+    persist_goal_completion_projection,
+    persist_supervisor_scan_receipt,
 )
 from .supervisor import (
     SupervisorStatusContext,
@@ -205,6 +221,283 @@ ATOMIC_CHECKOUT_MUTATION_LEASE_OPERATIONS = frozenset(
 
 class SupervisorSchedulerConfigError(ValueError):
     """Raised when a scheduler profile cannot safely configure the supervisor."""
+
+
+class PlanBoundDispatchError(RuntimeError):
+    """A slice no longer matches the canonical active plan or source fence."""
+
+
+def _canonical_plan_bound_repo_root(path: Path | str) -> Path:
+    """Return one lexical, real-directory repository root without following links."""
+
+    root = Path(path)
+    if not root.is_absolute() or Path(os.path.abspath(root)) != root:
+        raise PlanBoundDispatchError(
+            "plan-bound repository root must be lexical absolute"
+        )
+    current = Path(root.anchor)
+    for part in root.parts[1:]:
+        current /= part
+        try:
+            observed = os.lstat(current)
+        except OSError as exc:
+            raise PlanBoundDispatchError(
+                f"cannot lstat plan-bound repository component: {current}"
+            ) from exc
+        if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(
+            observed.st_mode
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound repository component is not a real directory: "
+                f"{current}"
+            )
+    # Every component was inspected without following links.  This final
+    # equality rejects lexical aliases such as mount/path spellings that do
+    # not name the exact accepted root.
+    if root.resolve(strict=True) != root:
+        raise PlanBoundDispatchError(
+            "plan-bound repository root is not canonical"
+        )
+    return root
+
+
+def _plan_bound_contained_path(
+    repo_root: Path,
+    value: Path | str,
+    *,
+    field_name: str,
+    require_existing: bool = False,
+    require_regular: bool = False,
+    require_directory: bool = False,
+) -> Path:
+    """Validate one lexical repo path before any normalizing resolution/write."""
+
+    raw = Path(value)
+    if raw.is_absolute():
+        candidate = raw
+        if Path(os.path.abspath(candidate)) != candidate:
+            raise PlanBoundDispatchError(
+                f"plan-bound {field_name} must be lexical absolute"
+            )
+    else:
+        if not str(raw) or str(raw) in {".", ".."} or ".." in raw.parts:
+            raise PlanBoundDispatchError(
+                f"plan-bound {field_name} must be a safe repository path"
+            )
+        candidate = repo_root / raw
+    try:
+        relative = candidate.relative_to(repo_root)
+    except ValueError as exc:
+        raise PlanBoundDispatchError(
+            f"plan-bound {field_name} escapes the accepted repository"
+        ) from exc
+    if not relative.parts:
+        raise PlanBoundDispatchError(
+            f"plan-bound {field_name} cannot be the repository root"
+        )
+
+    current = repo_root
+    missing = False
+    for index, part in enumerate(relative.parts):
+        current /= part
+        final = index == len(relative.parts) - 1
+        if missing:
+            continue
+        try:
+            observed = os.lstat(current)
+        except FileNotFoundError:
+            missing = True
+            if require_existing:
+                raise PlanBoundDispatchError(
+                    f"plan-bound {field_name} is absent: {current}"
+                )
+            continue
+        except OSError as exc:
+            raise PlanBoundDispatchError(
+                f"cannot lstat plan-bound {field_name}: {current}"
+            ) from exc
+        if stat.S_ISLNK(observed.st_mode):
+            raise PlanBoundDispatchError(
+                f"plan-bound {field_name} contains a symbolic link: {current}"
+            )
+        if not final and not stat.S_ISDIR(observed.st_mode):
+            raise PlanBoundDispatchError(
+                f"plan-bound {field_name} parent is not a directory: {current}"
+            )
+        if final and require_regular and (
+            not stat.S_ISREG(observed.st_mode) or int(observed.st_nlink) != 1
+        ):
+            raise PlanBoundDispatchError(
+                f"plan-bound {field_name} is not a single-link regular file"
+            )
+        if final and require_directory and not stat.S_ISDIR(observed.st_mode):
+            raise PlanBoundDispatchError(
+                f"plan-bound {field_name} is not a real directory"
+            )
+    return candidate
+
+
+def _validated_plan_bound_authority_paths(
+    *,
+    repo_root: Path | str,
+    accepted_tree_root: Path | str,
+    state_dir: Path | str,
+    plan_revision_store_path: Path | str,
+    scheduler_config_path: Path | str | None = None,
+    todo_path: Path | str | None = None,
+    require_live_module_root: bool,
+) -> tuple[Path, Path, Path, Path | None, Path | None]:
+    """Bind plan state/store/config paths to one accepted lexical tree.
+
+    The store constructor creates directories, so callers must invoke this
+    helper before constructing ``PlanRevisionStore``.  Missing state/store
+    leaves are allowed, but every existing parent is inspected with ``lstat``
+    and the common runtime authority root must already be unambiguous.
+    """
+
+    root = _canonical_plan_bound_repo_root(repo_root)
+    accepted = _canonical_plan_bound_repo_root(accepted_tree_root)
+    if accepted != root:
+        raise PlanBoundDispatchError(
+            "plan-bound accepted tree differs from the repository root"
+        )
+    if require_live_module_root:
+        module_root = _canonical_plan_bound_repo_root(
+            Path(__file__).absolute().parents[3]
+        )
+        if accepted != module_root:
+            raise PlanBoundDispatchError(
+                "plan-bound accepted tree is not the live module root"
+            )
+
+    state = _plan_bound_contained_path(
+        root,
+        state_dir,
+        field_name="state directory",
+        require_directory=True,
+    )
+    store = _plan_bound_contained_path(
+        root,
+        plan_revision_store_path,
+        field_name="plan revision store",
+        require_directory=True,
+    )
+    if state.parent != store.parent or store.name != "plan-revision-store":
+        raise PlanBoundDispatchError(
+            "plan-bound state and store do not share the exact runtime state root"
+        )
+    config = (
+        _plan_bound_contained_path(
+            root,
+            scheduler_config_path,
+            field_name="scheduler config",
+            require_existing=True,
+            require_regular=True,
+        )
+        if scheduler_config_path is not None
+        else None
+    )
+    todo = (
+        _plan_bound_contained_path(
+            root,
+            todo_path,
+            field_name="task board",
+            require_existing=True,
+            require_regular=True,
+        )
+        if todo_path is not None
+        else None
+    )
+    return root, state, store, config, todo
+
+
+PLAN_BOUND_DAEMON_CHILD_MARKER = "--run-plan-bound-daemon-child"
+PLAN_BOUND_DAEMON_ENTRYPOINT = (
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+)
+
+
+class _PlanBoundRevisionStoreView:
+    """Read-through view that preserves and fences the store revision CID.
+
+    ``PlanRevision`` intentionally excludes its CAS key from ``to_dict()``.
+    The daemon's canonical binding loader consumes mapping-shaped values, so
+    this view joins that key back to the typed revision without persisting a
+    second projection or becoming mutable authority.
+    """
+
+    def __init__(
+        self,
+        store: PlanRevisionStore,
+        expected_revision_cid: str,
+        *,
+        slice_manifest_cid: str,
+        slice_id: str,
+        lane_id: str,
+        reassignment_cid: str,
+    ) -> None:
+        self._store = store
+        self._expected_revision_cid = str(expected_revision_cid).strip()
+        self._slice_manifest_cid = str(slice_manifest_cid).strip()
+        self._slice_id = str(slice_id).strip()
+        self._lane_id = str(lane_id).strip()
+        self._reassignment_cid = str(reassignment_cid or "").strip()
+        self._adapter = ProductionParallelPlanAdapter(store)
+
+    def is_quarantined(self) -> bool:
+        with self._store._thread_lock:  # noqa: SLF001
+            with self._store._guard():  # noqa: SLF001
+                active = _secure_store_active(self._store)
+                return active is not None and bool(active.quarantined)
+
+    def get_active(self) -> Any:
+        with self._store._thread_lock:  # noqa: SLF001
+            with self._store._guard():  # noqa: SLF001
+                active = _secure_store_active(self._store)
+                observed = str(
+                    getattr(active, "revision_cid", "") or ""
+                ).strip()
+                if active is None or observed != self._expected_revision_cid:
+                    raise PlanBoundDispatchError(
+                        "active plan revision crossed the plan-bound child fence"
+                    )
+                try:
+                    self._adapter._validate_slice_owner_locked(  # noqa: SLF001
+                        revision_cid=self._expected_revision_cid,
+                        slice_manifest_cid=self._slice_manifest_cid,
+                        slice_id=self._slice_id,
+                        lane_id=self._lane_id,
+                        reassignment_cid=self._reassignment_cid,
+                    )
+                except Exception as exc:
+                    raise PlanBoundDispatchError(
+                        "plan-bound child lost its canonical slice ownership"
+                    ) from exc
+        return active
+
+    def load_revision(self, revision_cid: str) -> Mapping[str, Any]:
+        if str(revision_cid).strip() != self._expected_revision_cid:
+            raise PlanBoundDispatchError(
+                "plan-bound child requested a foreign plan revision"
+            )
+        with self._store._thread_lock:  # noqa: SLF001
+            with self._store._guard():  # noqa: SLF001
+                from ..planning.plan_revision_contracts import PlanRevision
+
+                stored = _secure_store_cas(self._store, revision_cid)
+                revision = PlanRevision.from_dict(stored)
+                if revision.to_dict() != stored:
+                    raise PlanBoundDispatchError(
+                        "plan revision changed during typed decode"
+                    )
+        payload = revision.to_dict()
+        payload["revision_cid"] = revision.revision_cid
+        return payload
+
+    def get_cas(self, cid: str) -> Mapping[str, Any]:
+        with self._store._thread_lock:  # noqa: SLF001
+            with self._store._guard():  # noqa: SLF001
+                return _secure_store_cas(self._store, cid)
 
 
 def _scheduler_config_sequence(
@@ -1523,6 +1816,21 @@ class PortalSupervisorConfig:
     assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_cids: tuple[str, ...] = field(default_factory=tuple)
+    plan_bound_dispatch: bool = False
+    plan_revision_store_path: Path | None = None
+    plan_bound_revision_cid: str = ""
+    plan_bound_plan_root_cid: str = ""
+    plan_bound_execution_plan_cid: str = ""
+    plan_bound_capacity_snapshot_id: str = ""
+    plan_bound_slice_manifest_cid: str = ""
+    plan_bound_slice_id: str = ""
+    plan_bound_lane_id: str = ""
+    plan_bound_reassignment_cid: str = ""
+    plan_bound_source_head: str = ""
+    plan_bound_source_tree: str = ""
+    plan_bound_task_source_revision: str = ""
+    plan_bound_configuration_root: str = ""
+    plan_bound_accepted_tree_root: Path | None = None
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -1590,6 +1898,49 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        if self.plan_bound_dispatch:
+            if (
+                self.plan_bound_accepted_tree_root is None
+                or self.plan_revision_store_path is None
+                or self.scheduler_config_path is None
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound supervisor config is missing path authority"
+                )
+            (
+                root,
+                state_dir,
+                store_path,
+                scheduler_config,
+                todo_path,
+            ) = _validated_plan_bound_authority_paths(
+                repo_root=self.repo_root,
+                accepted_tree_root=self.plan_bound_accepted_tree_root,
+                state_dir=self.state_dir,
+                plan_revision_store_path=self.plan_revision_store_path,
+                scheduler_config_path=self.scheduler_config_path,
+                todo_path=self.todo_path,
+                require_live_module_root=False,
+            )
+            assert scheduler_config is not None
+            assert todo_path is not None
+            for field_name in ("state_path", "strategy_path", "events_path"):
+                authority_path = _plan_bound_contained_path(
+                    root,
+                    getattr(self, field_name),
+                    field_name=field_name,
+                )
+                if authority_path.parent != state_dir:
+                    raise PlanBoundDispatchError(
+                        f"plan-bound {field_name} escapes its lane state directory"
+                    )
+                setattr(self, field_name, authority_path)
+            self.repo_root = root
+            self.state_dir = state_dir
+            self.plan_revision_store_path = store_path
+            self.scheduler_config_path = scheduler_config
+            self.todo_path = todo_path
+            self.plan_bound_accepted_tree_root = root
         if (
             self.manual_completion_authority_revalidation_only
             and not self.manual_completion_authority_task_ids
@@ -3636,6 +3987,18 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
+        if (
+            self.config.plan_bound_dispatch
+            and not self.config.execution_slice_task_ids
+            and not self.config.execution_slice_task_cids
+        ):
+            self._record_event(
+                "plan_bound_empty_slice",
+                {"daemon_started": False},
+            )
+            return
+        if self.config.plan_bound_dispatch:
+            self._validated_plan_bound_slice()
         managed_daemon_guard = self.ensure_managed_daemon_pid_file()
         if managed_daemon_guard.get("blocked", False):
             self._record_event(
@@ -3648,18 +4011,30 @@ class PortalImplementationSupervisor:
                     or "managed_daemon_ownership_unproven"
                 )
             )
-        try:
-            preflight = self.run_once(include_refill=False)
-        except Exception as exc:
+        if self.config.plan_bound_dispatch:
+            # The canonical plan and task source were re-observed above.  Do
+            # not run broad supervisor maintenance between that fence and the
+            # exact daemon slice.
             self._record_event(
-                "supervisor_preflight_maintenance_failed",
+                "plan_bound_preflight_pass",
                 {
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
+                    "revision_cid": self.config.plan_bound_revision_cid,
+                    "slice_id": self.config.plan_bound_slice_id,
                 },
             )
-            raise
-        self._record_event("supervisor_preflight_maintenance_pass", preflight)
+        else:
+            try:
+                preflight = self.run_once(include_refill=False)
+            except Exception as exc:
+                self._record_event(
+                    "supervisor_preflight_maintenance_failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+                raise
+            self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
             loop = self.shared_supervisor_loop_class(
@@ -3679,6 +4054,8 @@ class PortalImplementationSupervisor:
                 "last_log_path": result.last_log_path,
             }
             self._record_event("supervisor_loop_finished", result_payload)
+            if self.config.plan_bound_dispatch:
+                return
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return
 
@@ -3796,7 +4173,11 @@ class PortalImplementationSupervisor:
             ),
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
-            max_restarts=max(0, int(self.config.max_restarts)),
+            max_restarts=(
+                0
+                if self.config.plan_bound_dispatch
+                else max(0, int(self.config.max_restarts))
+            ),
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -5592,7 +5973,10 @@ class PortalImplementationSupervisor:
         merge_head: str,
         unmerged_paths: list[str],
     ) -> dict[str, Any]:
-        from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
+        from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
+            build_merge_prompt,
+            invoke_llm_resolver,
+        )
 
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
@@ -11211,7 +11595,9 @@ class PortalImplementationSupervisor:
             )
             return disabled
 
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+            default_objective_path,
+        )
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             migrate_legacy_objective_goals,
         )
@@ -11327,14 +11713,18 @@ class PortalImplementationSupervisor:
             task_id_prefix,
             write_json,
         )
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+            default_objective_path,
+        )
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_task_janitor import (
             DEFAULT_MISSION_TERMS,
             reconcile_objective_task_strategy,
             registered_goal_ids_from_bundle_index,
         )
-        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+            parse_task_file,
+        )
 
         objective_path = self.config.objective_path or default_objective_path(self.config.repo_root)
         if not objective_path.exists() or not self.config.todo_path.exists():
@@ -11469,7 +11859,9 @@ class PortalImplementationSupervisor:
                 "error": str(exc),
             }
 
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import rewrite_goal_fields
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
+            rewrite_goal_fields,
+        )
 
         updates: dict[str, dict[str, str]] = {}
         for goal_id in sorted(effective_goal_ids):
@@ -11759,7 +12151,9 @@ class PortalImplementationSupervisor:
     def _objective_goals_for_finding_mapping(self) -> list[Any]:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+            default_objective_path,
+        )
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
 
         objective_path = self.config.objective_path or default_objective_path(
@@ -13255,9 +13649,380 @@ class PortalImplementationSupervisor:
             },
         )
 
+    def _validated_plan_bound_slice(self) -> None:
+        """Re-adopt one exact active store revision before every child start."""
+
+        if not self.config.plan_bound_dispatch:
+            return
+        task_ids = tuple(self.config.execution_slice_task_ids)
+        task_cids = tuple(self.config.execution_slice_task_cids)
+        if not task_ids and not task_cids:
+            raise PlanBoundDispatchError("plan_bound_empty_slice")
+        if (
+            len(task_ids) != len(task_cids)
+            or len(set(task_ids)) != len(task_ids)
+            or len(set(task_cids)) != len(task_cids)
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound task ID/CID populations must be exact and unique"
+            )
+        if (
+            int(self.config.task_shard_count) != 1
+            or int(self.config.task_shard_index) != 0
+            or bool(self.config.strict_task_sharding)
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound slices disable hash sharding and strict fallback"
+            )
+        store_path = self.config.plan_revision_store_path
+        expected = {
+            "revision_cid": self.config.plan_bound_revision_cid,
+            "plan_root_cid": self.config.plan_bound_plan_root_cid,
+            "execution_plan_cid": self.config.plan_bound_execution_plan_cid,
+            "capacity_snapshot_id": self.config.plan_bound_capacity_snapshot_id,
+            "slice_manifest_cid": self.config.plan_bound_slice_manifest_cid,
+            "slice_id": self.config.plan_bound_slice_id,
+            "lane_id": self.config.plan_bound_lane_id,
+            "source_head": self.config.plan_bound_source_head,
+            "source_tree": self.config.plan_bound_source_tree,
+            "task_source_revision": self.config.plan_bound_task_source_revision,
+            "configuration_root": self.config.plan_bound_configuration_root,
+            "accepted_tree_root": self.config.plan_bound_accepted_tree_root,
+        }
+        missing = [
+            name
+            for name, value in (("plan_revision_store_path", store_path), *expected.items())
+            if not str(value or "").strip()
+        ]
+        if missing:
+            raise PlanBoundDispatchError(
+                "plan-bound dispatch is partial: " + ", ".join(missing)
+            )
+
+        (
+            accepted_tree_root,
+            _state_dir,
+            validated_store_path,
+            _scheduler_config,
+            _todo_path,
+        ) = _validated_plan_bound_authority_paths(
+            repo_root=self.config.repo_root,
+            accepted_tree_root=expected["accepted_tree_root"],
+            state_dir=self.config.state_dir,
+            plan_revision_store_path=store_path,
+            scheduler_config_path=self.config.scheduler_config_path,
+            todo_path=self.config.todo_path,
+            require_live_module_root=True,
+        )
+        store = PlanRevisionStore(validated_store_path)
+        plan_adapter = ProductionParallelPlanAdapter(store)
+        birth_key = (
+            f"plan-bound-process-birth:{expected['revision_cid']}:"
+            f"{expected['slice_id']}:{expected['lane_id']}"
+        )
+        with store._thread_lock:  # noqa: SLF001 - canonical store transaction
+            with store._guard():  # noqa: SLF001 - canonical process guard
+                binding = _load_plan_revision_store_binding_locked(
+                    store,
+                    execution_slice_task_ids=task_ids,
+                    execution_slice_task_cids=task_cids,
+                )
+                from ..planning.plan_revision_contracts import PlanRevision
+
+                revision_payload = _secure_store_cas(
+                    store,
+                    binding.revision_cid,
+                )
+                revision = PlanRevision.from_dict(revision_payload)
+                if revision.to_dict() != revision_payload:
+                    raise PlanBoundDispatchError(
+                        "active revision changed during typed decode"
+                    )
+                manifest = ConfiguredBoardExecutionSlices.from_dict(
+                    _secure_store_cas(store, expected["slice_manifest_cid"])
+                )
+                try:
+                    execution_slice = plan_adapter._validate_slice_owner_locked(  # noqa: SLF001
+                        revision_cid=expected["revision_cid"],
+                        slice_manifest_cid=expected["slice_manifest_cid"],
+                        slice_id=expected["slice_id"],
+                        lane_id=expected["lane_id"],
+                        reassignment_cid=(
+                            self.config.plan_bound_reassignment_cid
+                        ),
+                    )
+                except Exception as exc:
+                    raise PlanBoundDispatchError(
+                        "configured child revision fence does not own the canonical slice"
+                    ) from exc
+                birth_pointer = _secure_store_continuation(store, birth_key)
+                if birth_pointer is not None and isinstance(
+                    birth_pointer.get("process_birth_cid"),
+                    str,
+                ):
+                    birth_record = _secure_store_cas(
+                        store,
+                        birth_pointer["process_birth_cid"],
+                    )
+                else:
+                    birth_record = None
+        observed_binding = {
+            "revision_cid": binding.revision_cid,
+            "plan_root_cid": binding.plan_root_cid,
+            "execution_plan_cid": binding.execution_plan_cid,
+            "capacity_snapshot_id": binding.capacity_snapshot_id,
+        }
+        for name, observed in observed_binding.items():
+            if observed != expected[name]:
+                raise PlanBoundDispatchError(
+                    f"plan-bound {name} fence changed: {observed!r}"
+                )
+
+        if revision.materialization_transaction_cid != expected["slice_manifest_cid"]:
+            raise PlanBoundDispatchError(
+                "active revision does not own the configured slice manifest"
+            )
+        manifest_binding = {
+            "plan_root_cid": manifest.plan_root_cid,
+            "capacity_snapshot_id": manifest.capacity_snapshot_id,
+            "source_head": manifest.source_head,
+            "source_tree": manifest.repository_tree_id,
+            "task_source_revision": manifest.task_source_revision,
+            "configuration_root": manifest.configuration_root,
+        }
+        for name, observed in manifest_binding.items():
+            if observed != expected[name]:
+                raise PlanBoundDispatchError(
+                    f"slice manifest {name} does not match the launch fence"
+                )
+        if manifest.compiler_plan_id != binding.plan_id:
+            raise PlanBoundDispatchError(
+                "slice manifest and active compiled plan identities disagree"
+            )
+        if revision.roots.configuration_root != expected["configuration_root"]:
+            raise PlanBoundDispatchError(
+                "active revision configuration root crossed the launch fence"
+            )
+        if execution_slice.task_ids != task_ids or execution_slice.task_cids != task_cids:
+            raise PlanBoundDispatchError(
+                "configured child population differs from its CAS slice"
+            )
+        if birth_pointer is None or set(birth_pointer) != {
+            "phase", "operation", "revision_cid", "slice_id", "lane_id",
+            "process_birth_cid",
+        }:
+            raise PlanBoundDispatchError(
+                "durable plan-bound process birth is absent or malformed"
+            )
+        if (
+            birth_pointer.get("phase") != "committed"
+            or birth_pointer.get("operation") != "plan_bound_process_birth"
+            or birth_pointer.get("revision_cid") != expected["revision_cid"]
+            or birth_pointer.get("slice_id") != expected["slice_id"]
+            or birth_pointer.get("lane_id") != expected["lane_id"]
+            or not isinstance(birth_pointer.get("process_birth_cid"), str)
+        ):
+            raise PlanBoundDispatchError(
+                "durable plan-bound process birth pointer is mixed"
+            )
+        if birth_record is None:
+            raise PlanBoundDispatchError(
+                "durable plan-bound process birth record is absent"
+            )
+        if set(birth_record) != {
+            "schema", "revision_cid", "plan_root_cid", "execution_plan_cid",
+            "capacity_snapshot_id", "slice_manifest_cid", "slice_id",
+            "lane_id", "task_ids", "task_cids", "configuration_root",
+            "accepted_tree_root", "profile", "process_birth",
+            "prior_process_birth_cid",
+        }:
+            raise PlanBoundDispatchError(
+                "durable plan-bound process birth record is malformed"
+            )
+        birth_expected = {
+            "revision_cid": expected["revision_cid"],
+            "plan_root_cid": expected["plan_root_cid"],
+            "execution_plan_cid": expected["execution_plan_cid"],
+            "capacity_snapshot_id": expected["capacity_snapshot_id"],
+            "slice_manifest_cid": expected["slice_manifest_cid"],
+            "slice_id": expected["slice_id"],
+            "lane_id": expected["lane_id"],
+            "configuration_root": expected["configuration_root"],
+            "accepted_tree_root": str(accepted_tree_root),
+        }
+        if (
+            birth_record.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/plan-bound-process-birth@1"
+            or any(
+                birth_record.get(name) != value
+                for name, value in birth_expected.items()
+            )
+            or birth_record.get("task_ids") != list(task_ids)
+            or birth_record.get("task_cids") != list(task_cids)
+        ):
+            raise PlanBoundDispatchError(
+                "durable plan-bound process birth differs from the slice"
+            )
+        try:
+            from ..control.lifecycle_orchestrator import (
+                LifecycleProfile,
+                LinuxProcessAdapter,
+                ProcessIdentity,
+            )
+
+            birth_profile = LifecycleProfile.from_dict(birth_record["profile"])
+            birth_identity = ProcessIdentity.from_dict(
+                birth_record["process_birth"]
+            )
+            if (
+                birth_profile.to_dict() != birth_record["profile"]
+                or birth_identity.to_dict() != birth_record["process_birth"]
+            ):
+                raise ValueError("birth lifecycle records normalized")
+            current_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
+                os.getpid(),
+                birth_profile,
+            )
+        except Exception as exc:
+            raise PlanBoundDispatchError(
+                "cannot revalidate durable plan-bound process birth"
+            ) from exc
+        stable_birth_fields = (
+            "pid", "start_time_ticks", "process_group_id", "session_id",
+            "boot_id", "run_id", "profile_id", "target_id",
+            "repository_root", "state_root", "run_root", "fencing_epoch",
+            "configuration_root",
+        )
+        if any(
+            getattr(current_identity, name) != getattr(birth_identity, name)
+            for name in stable_birth_fields
+        ):
+            raise PlanBoundDispatchError(
+                "current supervisor is not the persisted gated process birth"
+            )
+
+        try:
+            from ..runtime.configured_board_scheduler import (
+                _git_identity as configured_board_git_identity,
+            )
+            from ..runtime.configured_board_scheduler import (
+                _tracked_head_snapshot,
+                load_configured_board,
+            )
+
+            observed_head, observed_tree = configured_board_git_identity(
+                accepted_tree_root
+            )
+            current_board = load_configured_board(
+                self.config.scheduler_config_path,
+                repo_root=accepted_tree_root,
+            )
+            config_bytes, _config_revision = _tracked_head_snapshot(
+                repo_root=accepted_tree_root,
+                path=self.config.scheduler_config_path,
+                source_head=expected["source_head"],
+            )
+            _board_bytes, task_source_revision = _tracked_head_snapshot(
+                repo_root=accepted_tree_root,
+                path=self.config.todo_path,
+                source_head=expected["source_head"],
+            )
+            configured_state_root = _plan_bound_contained_path(
+                accepted_tree_root,
+                current_board.path(current_board.runtime_paths["state"]),
+                field_name="configured runtime state root",
+                require_directory=True,
+            )
+        except Exception as exc:
+            raise PlanBoundDispatchError(
+                "cannot re-observe tracked config/task authority"
+            ) from exc
+        if (
+            observed_head != expected["source_head"]
+            or observed_tree != expected["source_tree"]
+        ):
+            raise PlanBoundDispatchError(
+                "repository identity crossed the plan fence"
+            )
+        if (
+            self.config.state_dir.parent != configured_state_root
+            or validated_store_path
+            != configured_state_root / "plan-revision-store"
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound paths differ from configured runtime state authority"
+            )
+        if current_board.configuration_root != expected["configuration_root"]:
+            raise PlanBoundDispatchError(
+                "scheduler configuration crossed the plan fence"
+            )
+        if content_identity(
+            {"bytes_sha256": sha256(config_bytes).hexdigest()}
+        ) != expected["configuration_root"]:
+            raise PlanBoundDispatchError(
+                "tracked scheduler bytes differ from the configuration root"
+            )
+        if task_source_revision != expected["task_source_revision"]:
+            raise PlanBoundDispatchError("task source crossed the plan fence")
+
     def _build_daemon_command(self) -> list[str]:
+        self._validated_plan_bound_slice()
         daemon_script_path = self.config.daemon_script_path
-        if daemon_script_path is None:
+        if self.config.plan_bound_dispatch:
+            if daemon_script_path is not None:
+                raise PlanBoundDispatchError(
+                    "plan-bound dispatch forbids an uninspectable daemon script"
+                )
+            command = [
+                sys.executable,
+                "-P",
+                "-m",
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+                PLAN_BOUND_DAEMON_CHILD_MARKER,
+                "--daemon-entrypoint",
+                PLAN_BOUND_DAEMON_ENTRYPOINT,
+                "--scheduler-config",
+                str(self.config.scheduler_config_path or ""),
+                "--plan-revision-store-path",
+                str(self.config.plan_revision_store_path),
+                "--plan-bound-revision-cid",
+                self.config.plan_bound_revision_cid,
+                "--plan-bound-plan-root-cid",
+                self.config.plan_bound_plan_root_cid,
+                "--plan-bound-execution-plan-cid",
+                self.config.plan_bound_execution_plan_cid,
+                "--plan-bound-capacity-snapshot-id",
+                self.config.plan_bound_capacity_snapshot_id,
+                "--plan-bound-slice-manifest-cid",
+                self.config.plan_bound_slice_manifest_cid,
+                "--plan-bound-slice-id",
+                self.config.plan_bound_slice_id,
+                "--plan-bound-lane-id",
+                self.config.plan_bound_lane_id,
+                "--plan-bound-source-head",
+                self.config.plan_bound_source_head,
+                "--plan-bound-source-tree",
+                self.config.plan_bound_source_tree,
+                "--plan-bound-task-source-revision",
+                self.config.plan_bound_task_source_revision,
+                "--plan-bound-configuration-root",
+                self.config.plan_bound_configuration_root,
+                "--plan-bound-accepted-tree-root",
+                str(self.config.plan_bound_accepted_tree_root or ""),
+            ]
+            if self.config.plan_bound_reassignment_cid:
+                command.extend(
+                    [
+                        "--plan-bound-reassignment-cid",
+                        self.config.plan_bound_reassignment_cid,
+                    ]
+                )
+            for task_id in self.config.execution_slice_task_ids:
+                command.extend(["--plan-bound-task-id", str(task_id)])
+            for task_cid in self.config.execution_slice_task_cids:
+                command.extend(["--plan-bound-task-cid", str(task_cid)])
+            command.append("--")
+        elif daemon_script_path is None:
             # Safe-path mode prevents a stale nested checkout in the working
             # directory from shadowing the supervisor's configured package.
             command = [
@@ -13370,12 +14135,12 @@ class PortalImplementationSupervisor:
         command.extend(
             [
                 "--task-shard-count",
-                str(max(1, int(self.config.task_shard_count))),
+                str(1 if self.config.plan_bound_dispatch else max(1, int(self.config.task_shard_count))),
                 "--task-shard-index",
-                str(int(self.config.task_shard_index)),
+                str(0 if self.config.plan_bound_dispatch else int(self.config.task_shard_index)),
             ]
         )
-        if self.config.strict_task_sharding:
+        if self.config.strict_task_sharding and not self.config.plan_bound_dispatch:
             command.append("--strict-task-sharding")
         for path in self.config.external_reservation_manifest_paths:
             command.extend(["--external-reservation-manifest-path", str(path)])
@@ -13400,10 +14165,13 @@ class PortalImplementationSupervisor:
             command.append(
                 "--manual-completion-authority-revalidation-only"
             )
-        for task_id in self.config.execution_slice_task_ids:
-            command.extend(["--execution-slice-task-id", str(task_id)])
+        if not self.config.plan_bound_dispatch:
+            for task_id in self.config.execution_slice_task_ids:
+                command.extend(["--execution-slice-task-id", str(task_id)])
         for task_cid in self.config.execution_slice_task_cids:
             command.extend(["--execution-slice-task-cid", str(task_cid)])
+        if self.config.plan_bound_dispatch:
+            command.append("--once")
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -14162,7 +14930,10 @@ class PortalImplementationSupervisor:
             return False
         has_strict_task_sharding_flag = "--strict-task-sharding" in tokens
         if (
-            bool(self.config.strict_task_sharding)
+            bool(
+                self.config.strict_task_sharding
+                and not self.config.plan_bound_dispatch
+            )
             != has_strict_task_sharding_flag
         ):
             return False
@@ -14175,16 +14946,23 @@ class PortalImplementationSupervisor:
             }
 
         if option_values("--task-shard-count") != {
-            str(max(1, int(self.config.task_shard_count)))
+            str(
+                1
+                if self.config.plan_bound_dispatch
+                else max(1, int(self.config.task_shard_count))
+            )
         }:
             return False
         if option_values("--task-shard-index") != {
-            str(int(self.config.task_shard_index))
+            str(0 if self.config.plan_bound_dispatch else int(self.config.task_shard_index))
         }:
             return False
-        if option_values("--execution-slice-task-id") != set(
-            self.config.execution_slice_task_ids
-        ):
+        expected_slice_ids = (
+            set()
+            if self.config.plan_bound_dispatch
+            else set(self.config.execution_slice_task_ids)
+        )
+        if option_values("--execution-slice-task-id") != expected_slice_ids:
             return False
         if option_values("--manual-completion-authority-task-id") != set(
             self.config.manual_completion_authority_task_ids
@@ -14212,6 +14990,8 @@ class PortalImplementationSupervisor:
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
         ):
+            return False
+        if ("--once" in tokens) != bool(self.config.plan_bound_dispatch):
             return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
@@ -14607,6 +15387,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help="Repeatable canonical task CID this leased bundle lane is authorized to execute.",
     )
+    parser.add_argument(
+        "--plan-bound-dispatch",
+        action="store_true",
+        help="Use exact compiled lane slices and disable legacy hash sharding.",
+    )
+    parser.add_argument("--plan-revision-store-path", type=Path, default=None)
+    parser.add_argument("--plan-bound-revision-cid", default="")
+    parser.add_argument("--plan-bound-plan-root-cid", default="")
+    parser.add_argument("--plan-bound-execution-plan-cid", default="")
+    parser.add_argument("--plan-bound-capacity-snapshot-id", default="")
+    parser.add_argument("--plan-bound-slice-manifest-cid", default="")
+    parser.add_argument("--plan-bound-slice-id", default="")
+    parser.add_argument("--plan-bound-lane-id", default="")
+    parser.add_argument("--plan-bound-reassignment-cid", default="")
+    parser.add_argument("--plan-bound-source-head", default="")
+    parser.add_argument("--plan-bound-source-tree", default="")
+    parser.add_argument("--plan-bound-task-source-revision", default="")
+    parser.add_argument("--plan-bound-configuration-root", default="")
+    parser.add_argument("--plan-bound-accepted-tree-root", type=Path, default=None)
     parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
@@ -15038,7 +15837,90 @@ def supervisor_config_from_args(
         if implementation_protected_paths is None
         else implementation_protected_paths
     )
-    effective_repo_root = (repo_root or REPO_ROOT).resolve()
+    plan_bound_dispatch = bool(getattr(args, "plan_bound_dispatch", False))
+    raw_repo_root = Path(repo_root or REPO_ROOT)
+    if plan_bound_dispatch:
+        accepted_tree = getattr(args, "plan_bound_accepted_tree_root", None)
+        store_input = getattr(args, "plan_revision_store_path", None)
+        scheduler_input = getattr(args, "scheduler_config", None)
+        if accepted_tree is None or store_input is None or scheduler_input is None:
+            raise PlanBoundDispatchError(
+                "plan-bound configuration is missing accepted-tree/store/config authority"
+            )
+        (
+            effective_repo_root,
+            effective_state_dir,
+            effective_plan_store,
+            effective_scheduler_config,
+            effective_todo_path,
+        ) = _validated_plan_bound_authority_paths(
+            repo_root=raw_repo_root,
+            accepted_tree_root=accepted_tree,
+            state_dir=args.state_dir,
+            plan_revision_store_path=store_input,
+            scheduler_config_path=scheduler_input,
+            todo_path=args.todo_path,
+            require_live_module_root=True,
+        )
+
+        def state_artifact(
+            override: Path | None,
+            filename: str,
+            field_name: str,
+        ) -> Path:
+            candidate = override or effective_state_dir / filename
+            validated = _plan_bound_contained_path(
+                effective_repo_root,
+                candidate,
+                field_name=field_name,
+            )
+            if validated.parent != effective_state_dir:
+                raise PlanBoundDispatchError(
+                    f"plan-bound {field_name} escapes its lane state directory"
+                )
+            return validated
+
+        effective_state_path = state_artifact(
+            state_path,
+            f"{args.state_prefix}_task_state.json",
+            "task state",
+        )
+        effective_strategy_path = state_artifact(
+            strategy_path,
+            f"{args.state_prefix}_strategy.json",
+            "strategy state",
+        )
+        effective_events_path = state_artifact(
+            events_path,
+            f"{args.state_prefix}_supervisor_events.jsonl",
+            "event log",
+        )
+        assert effective_scheduler_config is not None
+        assert effective_todo_path is not None
+    else:
+        effective_repo_root = raw_repo_root.resolve()
+        effective_state_dir = args.state_dir
+        effective_plan_store = (
+            Path(args.plan_revision_store_path).resolve()
+            if getattr(args, "plan_revision_store_path", None) is not None
+            else None
+        )
+        effective_scheduler_config = (
+            Path(args.scheduler_config).resolve()
+            if getattr(args, "scheduler_config", None)
+            else None
+        )
+        effective_todo_path = args.todo_path
+        effective_state_path = (
+            state_path or args.state_dir / f"{args.state_prefix}_task_state.json"
+        )
+        effective_strategy_path = (
+            strategy_path or args.state_dir / f"{args.state_prefix}_strategy.json"
+        )
+        effective_events_path = (
+            events_path
+            or args.state_dir / f"{args.state_prefix}_supervisor_events.jsonl"
+        )
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
     llm_merge_resolver_command = normalize_llm_merge_resolver_command(
@@ -15047,11 +15929,11 @@ def supervisor_config_from_args(
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
     return PortalSupervisorConfig(
-        todo_path=args.todo_path,
-        state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
-        strategy_path=strategy_path or args.state_dir / f"{args.state_prefix}_strategy.json",
-        events_path=events_path or args.state_dir / f"{args.state_prefix}_supervisor_events.jsonl",
-        state_dir=args.state_dir,
+        todo_path=effective_todo_path,
+        state_path=effective_state_path,
+        strategy_path=effective_strategy_path,
+        events_path=effective_events_path,
+        state_dir=effective_state_dir,
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
@@ -15106,11 +15988,7 @@ def supervisor_config_from_args(
                 False,
             )
         ),
-        scheduler_config_path=(
-            Path(args.scheduler_config).resolve()
-            if getattr(args, "scheduler_config", None)
-            else None
-        ),
+        scheduler_config_path=effective_scheduler_config,
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
@@ -15131,6 +16009,47 @@ def supervisor_config_from_args(
         assumed_completed_task_ids=tuple(args.assume_completed_task_id or ()),
         execution_slice_task_ids=tuple(args.execution_slice_task_id or ()),
         execution_slice_task_cids=tuple(args.execution_slice_task_cid or ()),
+        plan_bound_dispatch=plan_bound_dispatch,
+        plan_revision_store_path=effective_plan_store,
+        plan_bound_revision_cid=str(
+            getattr(args, "plan_bound_revision_cid", "") or ""
+        ).strip(),
+        plan_bound_plan_root_cid=str(
+            getattr(args, "plan_bound_plan_root_cid", "") or ""
+        ).strip(),
+        plan_bound_execution_plan_cid=str(
+            getattr(args, "plan_bound_execution_plan_cid", "") or ""
+        ).strip(),
+        plan_bound_capacity_snapshot_id=str(
+            getattr(args, "plan_bound_capacity_snapshot_id", "") or ""
+        ).strip(),
+        plan_bound_slice_manifest_cid=str(
+            getattr(args, "plan_bound_slice_manifest_cid", "") or ""
+        ).strip(),
+        plan_bound_slice_id=str(
+            getattr(args, "plan_bound_slice_id", "") or ""
+        ).strip(),
+        plan_bound_lane_id=str(
+            getattr(args, "plan_bound_lane_id", "") or ""
+        ).strip(),
+        plan_bound_reassignment_cid=str(
+            getattr(args, "plan_bound_reassignment_cid", "") or ""
+        ).strip(),
+        plan_bound_source_head=str(
+            getattr(args, "plan_bound_source_head", "") or ""
+        ).strip(),
+        plan_bound_source_tree=str(
+            getattr(args, "plan_bound_source_tree", "") or ""
+        ).strip(),
+        plan_bound_task_source_revision=str(
+            getattr(args, "plan_bound_task_source_revision", "") or ""
+        ).strip(),
+        plan_bound_configuration_root=str(
+            getattr(args, "plan_bound_configuration_root", "") or ""
+        ).strip(),
+        plan_bound_accepted_tree_root=(
+            effective_repo_root if plan_bound_dispatch else None
+        ),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
@@ -15312,7 +16231,1113 @@ def _reconciliation_preflight_failure_reason(
     return ""
 
 
+def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
+    """Run the existing daemon with one canonical active-plan store binding.
+
+    The public daemon CLI predates its production ``plan_revision_store``
+    constructor contract.  This narrow bootstrap is used only by a validated
+    plan-bound supervisor child.  It injects the real store, immutable plan,
+    and original capacity evidence into that existing constructor, then
+    delegates the complete daemon lifecycle to its owning module.
+    """
+
+    try:
+        separator = tuple(argv).index("--")
+    except ValueError as exc:
+        raise PlanBoundDispatchError(
+            "plan-bound daemon child is missing its argument boundary"
+        ) from exc
+    binding_argv = list(argv[:separator])
+    daemon_argv = list(argv[separator + 1 :])
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--daemon-entrypoint", required=True)
+    parser.add_argument("--scheduler-config", type=Path, required=True)
+    parser.add_argument("--plan-revision-store-path", type=Path, required=True)
+    parser.add_argument("--plan-bound-revision-cid", required=True)
+    parser.add_argument("--plan-bound-plan-root-cid", required=True)
+    parser.add_argument("--plan-bound-execution-plan-cid", required=True)
+    parser.add_argument("--plan-bound-capacity-snapshot-id", required=True)
+    parser.add_argument("--plan-bound-slice-manifest-cid", required=True)
+    parser.add_argument("--plan-bound-slice-id", required=True)
+    parser.add_argument("--plan-bound-lane-id", required=True)
+    parser.add_argument("--plan-bound-reassignment-cid", default="")
+    parser.add_argument("--plan-bound-source-head", required=True)
+    parser.add_argument("--plan-bound-source-tree", required=True)
+    parser.add_argument("--plan-bound-task-source-revision", required=True)
+    parser.add_argument("--plan-bound-configuration-root", required=True)
+    parser.add_argument("--plan-bound-accepted-tree-root", type=Path, required=True)
+    parser.add_argument("--plan-bound-task-id", action="append", default=[])
+    parser.add_argument("--plan-bound-task-cid", action="append", default=[])
+    pinned = parser.parse_args(binding_argv)
+    if pinned.daemon_entrypoint != PLAN_BOUND_DAEMON_ENTRYPOINT:
+        raise PlanBoundDispatchError("plan-bound daemon entrypoint is foreign")
+    task_ids = tuple(str(value).strip() for value in pinned.plan_bound_task_id)
+    task_cids = tuple(str(value).strip() for value in pinned.plan_bound_task_cid)
+    if (
+        not task_ids
+        or len(task_ids) != len(task_cids)
+        or len(set(task_ids)) != len(task_ids)
+        or len(set(task_cids)) != len(task_cids)
+        or any(not value for value in (*task_ids, *task_cids))
+    ):
+        raise PlanBoundDispatchError(
+            "plan-bound daemon child requires one exact nonempty ID/CID slice"
+        )
+
+    from . import implementation_daemon as daemon_module
+
+    daemon_args = daemon_module.parse_args(daemon_argv)
+    if not daemon_args.once:
+        raise PlanBoundDispatchError("plan-bound daemon child must be bounded")
+    if (
+        int(daemon_args.task_shard_count) != 1
+        or int(daemon_args.task_shard_index) != 0
+        or bool(daemon_args.strict_task_sharding)
+        or tuple(daemon_args.execution_slice_task_id)
+        or tuple(daemon_args.execution_slice_task_cid) != task_cids
+    ):
+        raise PlanBoundDispatchError(
+            "daemon selection arguments differ from the plan-bound slice"
+        )
+
+    (
+        accepted_tree_root,
+        daemon_state_dir,
+        validated_store_path,
+        scheduler_config_path,
+        taskboard_path,
+    ) = _validated_plan_bound_authority_paths(
+        repo_root=daemon_module.REPO_ROOT,
+        accepted_tree_root=pinned.plan_bound_accepted_tree_root,
+        state_dir=daemon_args.state_dir,
+        plan_revision_store_path=pinned.plan_revision_store_path,
+        scheduler_config_path=pinned.scheduler_config,
+        todo_path=daemon_args.todo_path,
+        require_live_module_root=True,
+    )
+    assert scheduler_config_path is not None
+    assert taskboard_path is not None
+    try:
+        from ..runtime.configured_board_scheduler import (
+            _git_identity as configured_board_git_identity,
+        )
+        from ..runtime.configured_board_scheduler import (
+            _tracked_head_snapshot,
+            load_configured_board,
+        )
+
+        observed_head, observed_tree = configured_board_git_identity(
+            accepted_tree_root
+        )
+        configured_board = load_configured_board(
+            scheduler_config_path,
+            repo_root=accepted_tree_root,
+        )
+        config_bytes, _config_revision = _tracked_head_snapshot(
+            repo_root=accepted_tree_root,
+            path=scheduler_config_path,
+            source_head=pinned.plan_bound_source_head,
+        )
+        _board_bytes, observed_task_source_revision = _tracked_head_snapshot(
+            repo_root=accepted_tree_root,
+            path=taskboard_path,
+            source_head=pinned.plan_bound_source_head,
+        )
+        configured_state_root = _plan_bound_contained_path(
+            accepted_tree_root,
+            configured_board.path(configured_board.runtime_paths["state"]),
+            field_name="configured runtime state root",
+            require_directory=True,
+        )
+        configured_taskboard = _plan_bound_contained_path(
+            accepted_tree_root,
+            configured_board.path(configured_board.taskboard_path),
+            field_name="configured task board",
+            require_existing=True,
+            require_regular=True,
+        )
+    except Exception as exc:
+        raise PlanBoundDispatchError(
+            "cannot re-observe tracked plan-bound config/task authority"
+        ) from exc
+    if (
+        observed_head != pinned.plan_bound_source_head
+        or observed_tree != pinned.plan_bound_source_tree
+    ):
+        raise PlanBoundDispatchError(
+            "repository identity crossed the plan-bound child fence"
+        )
+    if (
+        daemon_state_dir.parent != configured_state_root
+        or validated_store_path
+        != configured_state_root / "plan-revision-store"
+        or taskboard_path != configured_taskboard
+    ):
+        raise PlanBoundDispatchError(
+            "plan-bound child paths differ from the configured runtime authority"
+        )
+    if configured_board.configuration_root != pinned.plan_bound_configuration_root:
+        raise PlanBoundDispatchError(
+            "scheduler configuration crossed the plan-bound child fence"
+        )
+    if content_identity(
+        {"bytes_sha256": sha256(config_bytes).hexdigest()}
+    ) != pinned.plan_bound_configuration_root:
+        raise PlanBoundDispatchError(
+            "tracked scheduler bytes differ from the child configuration root"
+        )
+    if observed_task_source_revision != pinned.plan_bound_task_source_revision:
+        raise PlanBoundDispatchError(
+            "task source crossed the plan-bound child fence"
+        )
+
+    store = PlanRevisionStore(validated_store_path)
+    plan_adapter = ProductionParallelPlanAdapter(store)
+    with store._thread_lock:  # noqa: SLF001 - canonical store transaction
+        with store._guard():  # noqa: SLF001 - canonical process guard
+            binding = _load_plan_revision_store_binding_locked(
+                store,
+                execution_slice_task_ids=task_ids,
+                execution_slice_task_cids=task_cids,
+            )
+            from ..planning.plan_revision_contracts import PlanRevision
+
+            revision_payload = _secure_store_cas(
+                store,
+                binding.revision_cid,
+            )
+            revision = PlanRevision.from_dict(revision_payload)
+            if revision.to_dict() != revision_payload:
+                raise PlanBoundDispatchError(
+                    "active revision changed during typed decode"
+                )
+            manifest = ConfiguredBoardExecutionSlices.from_dict(
+                _secure_store_cas(
+                    store,
+                    pinned.plan_bound_slice_manifest_cid,
+                )
+            )
+            try:
+                owned_slice = plan_adapter._validate_slice_owner_locked(  # noqa: SLF001
+                    revision_cid=pinned.plan_bound_revision_cid,
+                    slice_manifest_cid=pinned.plan_bound_slice_manifest_cid,
+                    slice_id=pinned.plan_bound_slice_id,
+                    lane_id=pinned.plan_bound_lane_id,
+                    reassignment_cid=pinned.plan_bound_reassignment_cid,
+                )
+            except Exception as exc:
+                raise PlanBoundDispatchError(
+                    "plan-bound daemon child does not own the canonical slice"
+                ) from exc
+    expected_binding = {
+        "revision_cid": pinned.plan_bound_revision_cid,
+        "plan_root_cid": pinned.plan_bound_plan_root_cid,
+        "execution_plan_cid": pinned.plan_bound_execution_plan_cid,
+        "capacity_snapshot_id": pinned.plan_bound_capacity_snapshot_id,
+    }
+    observed_binding = {
+        "revision_cid": binding.revision_cid,
+        "plan_root_cid": binding.plan_root_cid,
+        "execution_plan_cid": binding.execution_plan_cid,
+        "capacity_snapshot_id": binding.capacity_snapshot_id,
+    }
+    if observed_binding != expected_binding:
+        raise PlanBoundDispatchError(
+            "plan-bound daemon child observed a mixed active revision"
+        )
+    if (
+        revision.materialization_transaction_cid
+        != pinned.plan_bound_slice_manifest_cid
+    ):
+        raise PlanBoundDispatchError(
+            "active revision no longer owns the pinned slice manifest"
+        )
+    if (
+        owned_slice.task_ids != task_ids
+        or owned_slice.task_cids != task_cids
+        or manifest.configuration_root != pinned.plan_bound_configuration_root
+    ):
+        raise PlanBoundDispatchError(
+            "plan-bound daemon child slice differs from its CAS manifest"
+        )
+
+    plan_payload = dict(binding.execution_plan)
+    replay_request = plan_payload.get("replay_request")
+    capacity = (
+        replay_request.get("capacity_snapshot")
+        if isinstance(replay_request, Mapping)
+        else None
+    )
+    if not isinstance(capacity, Mapping):
+        raise PlanBoundDispatchError(
+            "active execution plan lacks its capacity observation"
+        )
+    host = capacity.get("host")
+    providers = capacity.get("providers")
+    if not isinstance(host, Mapping) or not isinstance(providers, Sequence):
+        raise PlanBoundDispatchError(
+            "active execution plan capacity observation is partial"
+        )
+    provider_records = tuple(
+        dict(item) for item in providers if isinstance(item, Mapping)
+    )
+    if len(provider_records) != len(providers) or not provider_records:
+        raise PlanBoundDispatchError(
+            "active execution plan provider capacity is partial"
+        )
+
+    # Re-observe capacity at the final accepted-tree daemon boundary.  The
+    # stored snapshot proves what was compiled; it is not live headroom and
+    # cannot by itself authorize a provider spawn after capacity changes.
+    from ..runtime.configured_board_scheduler import (
+        configured_board_capacity_observation,
+    )
+
+    try:
+        live_host, live_providers, live_now_ms = (
+            configured_board_capacity_observation(configured_board)
+        )
+    except Exception as exc:
+        raise PlanBoundDispatchError(
+            "fresh live capacity evidence is unavailable"
+        ) from exc
+    if configured_board.board_namespace != manifest.board_namespace:
+        raise PlanBoundDispatchError(
+            "scheduler profile and slice manifest namespaces disagree"
+        )
+
+    widths = plan_payload.get("widths")
+    widths = widths if isinstance(widths, Mapping) else {}
+    planned_width = int(
+        widths.get("admitted")
+        or widths.get("resource")
+        or widths.get("conflict")
+        or widths.get("graph")
+        or len(binding.ready_wave_task_ids)
+        or 1
+    )
+    candidate_task_ids = tuple(binding.ready_wave_task_ids) or tuple(
+        task_id for item in manifest.nonempty for task_id in item.task_ids
+    )
+    provider_requirement = str(
+        revision.provider_contract.provider_requirement or ""
+    ).strip()
+    relevant_live_providers = tuple(
+        item
+        for item in live_providers
+        if not provider_requirement
+        or str(item.get("provider_id") or "").strip()
+        == provider_requirement
+    )
+    stale_live_capacity = not relevant_live_providers or any(
+        item.get("healthy") is not True
+        or int(item.get("observed_at_ms") or 0) <= 0
+        or live_now_ms - int(item.get("observed_at_ms") or 0)
+        > int(item.get("max_age_ms") or 0)
+        for item in relevant_live_providers
+    )
+    live_capacity_id = content_identity(
+        {"host": live_host, "providers": list(live_providers)}
+    )
+    capacity_decision = evaluate_capacity_drift(
+        planned_width=planned_width,
+        planned_capacity_snapshot_id=binding.capacity_snapshot_id,
+        planned_capacity=host,
+        live_host=live_host,
+        live_providers=relevant_live_providers,
+        live_capacity_snapshot_id=live_capacity_id,
+        candidate_task_ids=candidate_task_ids,
+        provider_id=provider_requirement,
+        require_provider=True,
+        stale_capacity=stale_live_capacity,
+        current_time_ms=live_now_ms,
+    )
+    if (
+        not capacity_decision.may_dispatch
+        or not set(task_ids).issubset(capacity_decision.admitted_task_ids)
+    ):
+        raise PlanBoundDispatchError(
+            "live capacity drift fenced this slice for coordinator replan: "
+            + json.dumps(capacity_decision.to_dict(), sort_keys=True)
+        )
+
+    canonical_daemon_class = daemon_module.PortalImplementationDaemon
+    canonical_parse_task_file = daemon_module.parse_task_file
+    cid_by_id = dict(zip(task_ids, task_cids, strict=True))
+
+    def plan_bound_parse_task_file(*args: Any, **kwargs: Any) -> list[Any]:
+        """Attach the immutable ID/CID pairs after exact board-byte validation."""
+
+        tasks = canonical_parse_task_file(*args, **kwargs)
+        observed_ids = {task.task_id for task in tasks}
+        if not set(cid_by_id).issubset(observed_ids):
+            raise PlanBoundDispatchError(
+                "plan-bound daemon task IDs disappeared from the tracked board"
+            )
+        observed_pairs = {
+            task.task_id: str(task.canonical_task_cid or "").strip()
+            for task in tasks
+            if task.task_id in cid_by_id
+        }
+        if observed_pairs != cid_by_id:
+            raise PlanBoundDispatchError(
+                "plan-bound daemon task identity drifted from the immutable slice"
+            )
+        return [
+            replace(
+                task,
+                board_namespace=manifest.board_namespace,
+            )
+            if task.task_id in cid_by_id
+            else task
+            for task in tasks
+        ]
+    store_view = _PlanBoundRevisionStoreView(
+        store,
+        pinned.plan_bound_revision_cid,
+        slice_manifest_cid=pinned.plan_bound_slice_manifest_cid,
+        slice_id=pinned.plan_bound_slice_id,
+        lane_id=pinned.plan_bound_lane_id,
+        reassignment_cid=pinned.plan_bound_reassignment_cid,
+    )
+
+    def stable_effect_record(path: Path) -> tuple[dict[str, Any], str]:
+        """Read a canonical effect guard and bind its exact file bytes."""
+
+        from ..runtime.multi_supervisor_runner import (
+            _read_stable_regular_json,
+        )
+
+        try:
+            payload, evidence = _read_stable_regular_json(path)
+        except Exception as exc:
+            raise PlanBoundDispatchError(
+                f"cannot securely read plan-bound effect guard: {path}"
+            ) from exc
+        mode = stat.S_IMODE(int(evidence.get("mode") or 0))
+        if (
+            payload is None
+            or int(evidence.get("uid", -1)) != os.geteuid()
+            or mode != 0o600
+            or not isinstance(evidence.get("content_sha256"), str)
+            or not str(evidence["content_sha256"]).startswith("sha256:")
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound effect guard is absent, foreign-owned, or not "
+                f"exactly mode 0600: {path}"
+            )
+        return payload, str(evidence["content_sha256"])
+
+    def stable_effect_json(path: Path) -> dict[str, Any]:
+        """Read a canonical effect guard without following mutable names."""
+
+        return stable_effect_record(path)[0]
+
+    def seal_owned_effect_guard(path: Path) -> None:
+        """Tighten a newly acquired canonical claim before trusting it."""
+
+        artifact = Path(path)
+        try:
+            before = os.lstat(artifact)
+        except OSError as exc:
+            raise PlanBoundDispatchError(
+                "cannot inspect newly acquired canonical task claim"
+            ) from exc
+        if (
+            stat.S_ISLNK(before.st_mode)
+            or not stat.S_ISREG(before.st_mode)
+            or int(before.st_nlink) != 1
+            or int(before.st_uid) != os.geteuid()
+        ):
+            raise PlanBoundDispatchError(
+                "newly acquired canonical task claim has unsafe ownership"
+            )
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(artifact, flags)
+        try:
+            opened = os.fstat(descriptor)
+            if (
+                (opened.st_dev, opened.st_ino)
+                != (before.st_dev, before.st_ino)
+                or int(opened.st_nlink) != 1
+                or int(opened.st_uid) != os.geteuid()
+            ):
+                raise PlanBoundDispatchError(
+                    "canonical task claim changed before permission seal"
+                )
+            os.fchmod(descriptor, 0o600)
+            os.fsync(descriptor)
+            sealed = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        after = os.lstat(artifact)
+        if (
+            (after.st_dev, after.st_ino) != (sealed.st_dev, sealed.st_ino)
+            or stat.S_IMODE(after.st_mode) != 0o600
+            or int(after.st_nlink) != 1
+            or int(after.st_uid) != os.geteuid()
+        ):
+            raise PlanBoundDispatchError(
+                "canonical task claim permission seal was not stable"
+            )
+
+    class PlanBoundImplementationDaemon(canonical_daemon_class):
+        """Delegate daemon policy while joining its real fenced resources."""
+
+        def _restore_out_of_scope_workspace_paths(
+            self,
+            workspace_path: Path,
+            task: Any,
+            *,
+            baseline_ref: str,
+        ) -> list[str]:
+            """Preserve actual drift for the unchanged typed proposal gate.
+
+            The legacy daemon may discard incidental out-of-scope dirt before
+            proposal collection.  A plan-bound wave instead needs the existing
+            validator to observe every actual endpoint so a rejected diff can
+            fence the optimistic plan.  This grants no new path authority:
+            preserved drift can only make the canonical validator fail closed.
+            """
+
+            del workspace_path, task, baseline_ref
+            return []
+
+        def _load_execution_lease(
+            self,
+            *,
+            phases: Sequence[str],
+        ) -> tuple[str, PlanBoundExecutionLease]:
+            with store._thread_lock:  # noqa: SLF001 - canonical store order
+                with store._guard():  # noqa: SLF001 - canonical process guard
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed is None or observed[1].phase not in set(phases):
+                        raise PlanBoundDispatchError(
+                            "plan-bound execution lease is absent or in the wrong phase"
+                        )
+                    lease_cid, execution_lease = observed
+                    try:
+                        from ..control.lifecycle_orchestrator import (
+                            LinuxProcessAdapter as SupervisorProcessAdapter,
+                        )
+                        from ..control.lifecycle_orchestrator import (
+                            ProcessIdentity as SupervisorProcessIdentity,
+                        )
+
+                        supervisor_birth = SupervisorProcessIdentity.from_dict(
+                            execution_lease.process_birth
+                        )
+                        if (
+                            supervisor_birth.to_dict()
+                            != execution_lease.process_birth
+                            or not SupervisorProcessAdapter().identity_alive(
+                                supervisor_birth
+                            )
+                        ):
+                            raise ValueError("supervisor process birth is not live")
+                    except Exception as exc:
+                        raise PlanBoundDispatchError(
+                            "plan-bound execution lost its gated supervisor birth"
+                        ) from exc
+                    return lease_cid, execution_lease
+
+        @staticmethod
+        def _current_daemon_birth() -> dict[str, Any]:
+            from ..merge.worktree_lifecycle import current_process_birth
+
+            birth = current_process_birth()
+            if birth.pid != os.getpid() or birth.start_time_ticks <= 0:
+                raise PlanBoundDispatchError(
+                    "cannot capture exact plan-bound daemon process birth"
+                )
+            return birth.to_dict()
+
+        @staticmethod
+        def _require_compiled_claim_metadata(
+            execution_lease: PlanBoundExecutionLease,
+            metadata: Mapping[str, Any],
+        ) -> tuple[str, str, Mapping[str, Any]]:
+            task_id = str(metadata.get("task_id") or "")
+            task_cid = str(metadata.get("canonical_task_cid") or "")
+            assignment = execution_lease.assignment_for(task_id, task_cid)
+            expected = {
+                "plan_revision_cid": execution_lease.revision_cid,
+                "execution_plan_id": str(plan_payload.get("plan_id") or ""),
+                "compiled_lease_id": assignment["lease_id"],
+                "compiled_lease_scope": assignment["lease_scope"],
+                "compiled_worktree_id": assignment["worktree_id"],
+                "compiled_worktree_path": assignment["worktree_path"],
+                "compiled_fence_epoch": assignment["fence_epoch"],
+                "compiled_fence_token": assignment["fence_token"],
+                "compiled_affinity_key": assignment["affinity_key"],
+                "compiled_exclusive_group": assignment["exclusive_group"],
+                "compiled_exclusive_paths": assignment["exclusive_paths"],
+                "compiled_provider_id": assignment["provider_id"],
+                "compiled_resource_class": assignment["resource_class"],
+            }
+            if any(metadata.get(name) != value for name, value in expected.items()):
+                raise PlanBoundDispatchError(
+                    "canonical task claim differs from its compiled assignment"
+                )
+            if (
+                metadata.get("compiled_claim_acquired_before_publish") is not True
+                or metadata.get("lease_id") != assignment["lease_id"]
+                or metadata.get("pid") != os.getpid()
+            ):
+                raise PlanBoundDispatchError(
+                    "canonical task claim is not bound to the reserved lease"
+                )
+            return task_id, task_cid, assignment
+
+        @staticmethod
+        def _require_exact_claim(
+            *,
+            path: Path,
+            expected: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            observed = stable_effect_json(path)
+            if observed != dict(expected):
+                raise PlanBoundDispatchError(
+                    "canonical task claim changed at the execution boundary"
+                )
+            return observed
+
+        def _try_acquire_implementation_task_claim(
+            self,
+            lock_path: Path,
+            metadata: dict[str, Any],
+        ) -> tuple[bool, str, dict[str, Any] | None]:
+            before_cid, before = self._load_execution_lease(
+                phases=("reserved",)
+            )
+            task_id, task_cid, assignment = self._require_compiled_claim_metadata(
+                before,
+                metadata,
+            )
+            expected_claim_path = self._implementation_task_claim_path(
+                task_id,
+                canonical_task_cid=task_cid,
+            )
+            if Path(lock_path) != expected_claim_path:
+                raise PlanBoundDispatchError(
+                    "daemon requested a foreign canonical task claim path"
+                )
+            acquired, reason, existing = super()._try_acquire_implementation_task_claim(
+                lock_path,
+                metadata,
+            )
+            if not acquired:
+                return acquired, reason, existing
+            try:
+                daemon_birth = self._current_daemon_birth()
+                with store._thread_lock:  # noqa: SLF001
+                    with store._guard():  # noqa: SLF001
+                        current = _load_plan_bound_execution_lease_locked(
+                            store,
+                            revision_cid=pinned.plan_bound_revision_cid,
+                            slice_id=pinned.plan_bound_slice_id,
+                            lane_id=pinned.plan_bound_lane_id,
+                        )
+                        if (
+                            current is None
+                            or current[0] != before_cid
+                            or current[1] != before
+                        ):
+                            raise PlanBoundDispatchError(
+                                "execution lease changed during task claim acquisition"
+                            )
+                        with serialized_lock_update(lock_path):
+                            seal_owned_effect_guard(lock_path)
+                            claim = self._require_exact_claim(
+                                path=lock_path,
+                                expected=metadata,
+                            )
+                            self._require_compiled_claim_metadata(before, claim)
+                            claim_cid = content_identity(claim)
+                            claimed = replace(
+                                before,
+                                generation=before.generation + 1,
+                                phase="claimed",
+                                prior_execution_lease_cid=before_cid,
+                                active_task_id=task_id,
+                                active_task_cid=task_cid,
+                                daemon_process_birth=daemon_birth,
+                                canonical_claim_path=str(lock_path),
+                                canonical_claim_cid=claim_cid,
+                                canonical_claim_lease_id=str(assignment["lease_id"]),
+                            )
+                            _publish_plan_bound_execution_lease_locked(
+                                store,
+                                claimed,
+                                expected_current_cid=before_cid,
+                            )
+                            if content_identity(
+                                self._require_exact_claim(
+                                    path=lock_path,
+                                    expected=metadata,
+                                )
+                            ) != claim_cid:
+                                raise PlanBoundDispatchError(
+                                    "canonical task claim identity changed after binding"
+                                )
+            except BaseException:
+                super()._release_implementation_task_claim(lock_path, metadata)
+                raise
+            return acquired, reason, existing
+
+        def _require_bound_claim(
+            self,
+            execution_lease: PlanBoundExecutionLease,
+        ) -> dict[str, Any]:
+            claim_path = Path(execution_lease.canonical_claim_path)
+            claim = stable_effect_json(claim_path)
+            if (
+                content_identity(claim) != execution_lease.canonical_claim_cid
+                or claim.get("lease_id")
+                != execution_lease.canonical_claim_lease_id
+                or claim.get("task_id") != execution_lease.active_task_id
+                or claim.get("canonical_task_cid")
+                != execution_lease.active_task_cid
+                or claim.get("pid") != os.getpid()
+                or claim.get("compiled_fence_token")
+                != execution_lease.assignment_for(
+                    execution_lease.active_task_id,
+                    execution_lease.active_task_cid,
+                )["fence_token"]
+            ):
+                raise PlanBoundDispatchError(
+                    "canonical task claim no longer matches the execution lease"
+                )
+            return claim
+
+        def _read_exact_worktree_lifecycle(
+            self,
+            *,
+            execution_lease: PlanBoundExecutionLease,
+            workspace_path: Path,
+            required_state: str,
+        ) -> tuple[dict[str, Any], Path, str]:
+            from ..merge.worktree_lifecycle import WorkspaceLifecycleRecord
+
+            lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+                workspace_path
+            )
+            raw, raw_cid = stable_effect_record(lifecycle_path)
+            try:
+                lifecycle = WorkspaceLifecycleRecord.from_dict(raw)
+            except Exception as exc:
+                raise PlanBoundDispatchError(
+                    "worktree lifecycle record is malformed"
+                ) from exc
+            daemon_birth = self._current_daemon_birth()
+            if (
+                lifecycle.to_dict() != raw
+                or lifecycle.state.value != required_state
+                or lifecycle.task_id != execution_lease.active_task_id
+                or lifecycle.canonical_task_cid
+                != execution_lease.active_task_cid
+                or lifecycle.owner.to_dict() != daemon_birth
+                or lifecycle.workspace_path
+                != str(Path(workspace_path).resolve(strict=False))
+                or lifecycle.state_dir
+                != str(self.state_path.parent.resolve(strict=False))
+                or lifecycle.fence < 1
+                or not lifecycle.lease_id
+            ):
+                raise PlanBoundDispatchError(
+                    "worktree lifecycle differs from the canonical execution claim"
+                )
+            return raw, lifecycle_path, raw_cid
+
+        def _build_implementation_command(
+            self,
+            workspace_path: Path,
+            *,
+            task: Any | None = None,
+        ) -> list[str]:
+            current_cid, current = self._load_execution_lease(
+                phases=("claimed",)
+            )
+            task_id = str(getattr(task, "task_id", "") or "")
+            task_cid = str(self._canonical_ref(task) if task is not None else "")
+            if (task_id, task_cid) != (
+                current.active_task_id,
+                current.active_task_cid,
+            ):
+                raise PlanBoundDispatchError(
+                    "worktree preparation crossed the canonical task pair"
+                )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed is None or observed[0] != current_cid:
+                        raise PlanBoundDispatchError(
+                            "execution lease changed before worktree binding"
+                        )
+                    claim_path = Path(current.canonical_claim_path)
+                    lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+                        workspace_path
+                    )
+                    with serialized_lock_update(claim_path):
+                        self._require_bound_claim(current)
+                        with serialized_lock_update(lifecycle_path):
+                            lifecycle_raw, exact_lifecycle_path, lifecycle_cid = (
+                                self._read_exact_worktree_lifecycle(
+                                    execution_lease=current,
+                                    workspace_path=workspace_path,
+                                    required_state="preparing",
+                                )
+                            )
+                            prepared = replace(
+                                current,
+                                generation=current.generation + 1,
+                                phase="workspace_prepared",
+                                prior_execution_lease_cid=current_cid,
+                                workspace_lifecycle_path=str(exact_lifecycle_path),
+                                workspace_lifecycle_cid=lifecycle_cid,
+                                workspace_record_id=str(
+                                    lifecycle_raw.get("record_id") or ""
+                                ),
+                                workspace_path=str(
+                                    lifecycle_raw.get("workspace_path") or ""
+                                ),
+                                workspace_lease_id=str(
+                                    lifecycle_raw.get("lease_id") or ""
+                                ),
+                                workspace_fence=int(
+                                    lifecycle_raw.get("fence") or 0
+                                ),
+                            )
+                            _publish_plan_bound_execution_lease_locked(
+                                store,
+                                prepared,
+                                expected_current_cid=current_cid,
+                            )
+            return super()._build_implementation_command(
+                workspace_path,
+                task=task,
+            )
+
+        def _arm_provider_effect(self, payload: Mapping[str, Any]) -> None:
+            current_cid, current = self._load_execution_lease(
+                phases=("workspace_prepared",)
+            )
+            if (
+                payload.get("operation") != "implementation_provider"
+                or payload.get("task_id") != current.active_task_id
+                or payload.get("workspace_path") != current.workspace_path
+            ):
+                raise PlanBoundDispatchError(
+                    "provider mutation payload differs from the execution lease"
+                )
+            claim_path = Path(current.canonical_claim_path)
+            lifecycle_path = Path(current.workspace_lifecycle_path)
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed is None or observed[0] != current_cid:
+                        raise PlanBoundDispatchError(
+                            "execution lease changed before provider effect"
+                        )
+                    with serialized_lock_update(claim_path):
+                        claim = self._require_bound_claim(current)
+                        with serialized_lock_update(lifecycle_path):
+                            lifecycle_raw, observed_path, lifecycle_cid = (
+                                self._read_exact_worktree_lifecycle(
+                                    execution_lease=current,
+                                    workspace_path=Path(current.workspace_path),
+                                    required_state="active",
+                                )
+                            )
+                            if observed_path != lifecycle_path:
+                                raise PlanBoundDispatchError(
+                                    "worktree lifecycle path changed before provider"
+                                )
+                            if (
+                                str(lifecycle_raw.get("record_id") or "")
+                                != current.workspace_record_id
+                                or str(lifecycle_raw.get("lease_id") or "")
+                                != current.workspace_lease_id
+                                or int(lifecycle_raw.get("fence") or 0)
+                                != current.workspace_fence + 1
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "worktree lease or fence changed before provider"
+                                )
+                            armed = replace(
+                                current,
+                                generation=current.generation + 1,
+                                phase="provider_ready",
+                                prior_execution_lease_cid=current_cid,
+                                workspace_lifecycle_cid=lifecycle_cid,
+                                workspace_record_id=str(
+                                    lifecycle_raw.get("record_id") or ""
+                                ),
+                                workspace_lease_id=str(
+                                    lifecycle_raw.get("lease_id") or ""
+                                ),
+                                workspace_fence=int(
+                                    lifecycle_raw.get("fence") or 0
+                                ),
+                                provider_ready=True,
+                            )
+                            armed_cid = _publish_plan_bound_execution_lease_locked(
+                                store,
+                                armed,
+                                expected_current_cid=current_cid,
+                            )
+                            if (
+                                content_identity(self._require_bound_claim(armed))
+                                != content_identity(claim)
+                                or self._read_exact_worktree_lifecycle(
+                                    execution_lease=armed,
+                                    workspace_path=Path(armed.workspace_path),
+                                    required_state="active",
+                                )[2]
+                                != armed.workspace_lifecycle_cid
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "effect guards changed while arming provider"
+                                )
+                            final = _load_plan_bound_execution_lease_locked(
+                                store,
+                                revision_cid=pinned.plan_bound_revision_cid,
+                                slice_id=pinned.plan_bound_slice_id,
+                                lane_id=pinned.plan_bound_lane_id,
+                            )
+                            if final is None or final[0] != armed_cid:
+                                raise PlanBoundDispatchError(
+                                    "provider-ready execution lease did not persist"
+                                )
+
+        def _decision_runtime_mutation(
+            self,
+            boundary: str,
+            payload: Mapping[str, Any],
+            callback: Any,
+        ) -> Any:
+            if (
+                boundary != "command_invocation"
+                or payload.get("operation") != "implementation_provider"
+            ):
+                return super()._decision_runtime_mutation(
+                    boundary,
+                    payload,
+                    callback,
+                )
+
+            def guarded_provider_effect() -> Any:
+                self._arm_provider_effect(payload)
+                return callback()
+
+            return super()._decision_runtime_mutation(
+                boundary,
+                payload,
+                guarded_provider_effect,
+            )
+
+        def _validate_implementation_patch(
+            self,
+            workspace_path: Path,
+            task: Any,
+            **kwargs: Any,
+        ) -> Any:
+            """Project a real proposal scope rejection before merge admission."""
+
+            result = super()._validate_implementation_patch(
+                workspace_path,
+                task,
+                **kwargs,
+            )
+            reason_codes = tuple(
+                sorted(
+                    {
+                        str(getattr(finding.code, "value", finding.code))
+                        for finding in tuple(getattr(result, "findings", ()) or ())
+                    }
+                )
+            )
+            if (
+                bool(getattr(result, "accepted", False))
+                or "path_outside_scope" not in reason_codes
+            ):
+                return result
+
+            proposal = getattr(result, "proposal", None)
+            receipt = getattr(result, "receipt", None)
+            proposal_id = str(getattr(proposal, "proposal_id", "") or "")
+            receipt_id = str(getattr(receipt, "receipt_id", "") or "")
+            changed_paths = tuple(
+                sorted(
+                    {
+                        str(path).strip()
+                        for path in tuple(
+                            getattr(proposal, "changed_paths", ()) or ()
+                        )
+                        if str(path).strip()
+                    }
+                )
+            )
+            if not proposal_id or not receipt_id or not changed_paths:
+                raise PlanBoundDispatchError(
+                    "typed proposal scope rejection is missing canonical evidence"
+                )
+            current_cid, current = self._load_execution_lease(
+                phases=("provider_ready",)
+            )
+            task_pair = (
+                str(getattr(task, "task_id", "") or ""),
+                str(self._canonical_ref(task) or ""),
+            )
+            if task_pair != (current.active_task_id, current.active_task_cid):
+                raise PlanBoundDispatchError(
+                    "proposal scope rejection crossed the canonical task pair"
+                )
+            claim_path = Path(current.canonical_claim_path)
+            lifecycle_path = Path(current.workspace_lifecycle_path)
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed is None or observed[0] != current_cid:
+                        raise PlanBoundDispatchError(
+                            "execution lease changed before proposal rejection"
+                        )
+                    with serialized_lock_update(claim_path):
+                        self._require_bound_claim(current)
+                        with serialized_lock_update(lifecycle_path):
+                            lifecycle_raw, observed_path, lifecycle_cid = (
+                                self._read_exact_worktree_lifecycle(
+                                    execution_lease=current,
+                                    workspace_path=Path(current.workspace_path),
+                                    required_state="active",
+                                )
+                            )
+                            if (
+                                observed_path != lifecycle_path
+                                or str(lifecycle_raw.get("record_id") or "")
+                                != current.workspace_record_id
+                                or str(lifecycle_raw.get("lease_id") or "")
+                                != current.workspace_lease_id
+                                or int(lifecycle_raw.get("fence") or 0)
+                                != current.workspace_fence
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "effect guards changed before proposal rejection"
+                                )
+                            rejected = replace(
+                                current,
+                                generation=current.generation + 1,
+                                phase="scope_drift",
+                                prior_execution_lease_cid=current_cid,
+                                workspace_lifecycle_cid=lifecycle_cid,
+                                proposal_id=proposal_id,
+                                proposal_receipt_id=receipt_id,
+                                proposal_reason_codes=reason_codes,
+                                actual_changed_paths=changed_paths,
+                                merge_enqueue_reached=False,
+                            )
+                            _publish_plan_bound_execution_lease_locked(
+                                store,
+                                rejected,
+                                expected_current_cid=current_cid,
+                            )
+            raise PlanBoundDispatchError(
+                "actual candidate scope drift fenced before merge enqueue: "
+                f"proposal_id={proposal_id} receipt_id={receipt_id}"
+            )
+
+    def plan_bound_daemon_factory(**kwargs: Any) -> Any:
+        if (
+            tuple(kwargs.get("execution_slice_task_ids") or ())
+            or tuple(kwargs.get("execution_slice_task_cids") or ()) != task_cids
+        ):
+            raise PlanBoundDispatchError(
+                "daemon constructor slice differs from the plan-bound slice"
+            )
+        daemon = PlanBoundImplementationDaemon(
+            **kwargs,
+            plan_revision_store=store_view,
+            parallel_execution_plan=plan_payload,
+            require_active_plan_revision=True,
+            plan_capacity_snapshot=dict(live_host),
+            plan_provider_snapshots=tuple(live_providers),
+        )
+        canonical_ref = daemon._canonical_ref
+
+        def plan_bound_canonical_ref(task: Any) -> str:
+            """Keep daemon admission on the immutable board ID/CID pair."""
+
+            observed = str(canonical_ref(task) or "").strip()
+            task_id = str(getattr(task, "task_id", "") or "").strip()
+            expected = cid_by_id.get(task_id)
+            if expected is None:
+                return observed
+            if observed != expected:
+                raise PlanBoundDispatchError(
+                    "plan-bound daemon canonical task identity drifted from "
+                    "the immutable slice"
+                )
+            return expected
+
+        daemon._canonical_ref = plan_bound_canonical_ref
+        load_active_plan_binding = daemon._load_active_plan_binding
+
+        def plan_bound_load_active_binding(*, refresh: bool = False) -> Any:
+            """Bind compiled claims to IDs only after exact CID admission."""
+
+            binding = load_active_plan_binding(refresh=refresh)
+            if binding is None:
+                return None
+            if tuple(binding.execution_slice_task_cids) != task_cids:
+                raise PlanBoundDispatchError(
+                    "daemon runtime binding changed the immutable CID slice"
+                )
+            bound = replace(
+                binding,
+                execution_slice_task_ids=task_ids,
+                execution_slice_task_cids=task_cids,
+            )
+            daemon._active_plan_binding = bound
+            return bound
+
+        daemon._load_active_plan_binding = plan_bound_load_active_binding
+        return daemon
+
+    daemon_module.PortalImplementationDaemon = plan_bound_daemon_factory
+    daemon_module.parse_task_file = plan_bound_parse_task_file
+    try:
+        daemon_module.main(daemon_argv)
+    finally:
+        daemon_module.parse_task_file = canonical_parse_task_file
+        daemon_module.PortalImplementationDaemon = canonical_daemon_class
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == PLAN_BOUND_DAEMON_CHILD_MARKER:
+        return _run_plan_bound_daemon_child(raw_argv[1:])
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

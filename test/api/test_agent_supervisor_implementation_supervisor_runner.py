@@ -8,13 +8,23 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
+    RefillScanResult,
+    ScanTerminalReason,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+    parse_args,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ConfiguredSupervisorBootstrapRunner,
     ConfiguredSupervisorRuntime,
     ConfiguredSupervisorRuntimeExports,
-    ImplementationSupervisorRunContext,
     ImplementationSupervisorDefaults,
+    ImplementationSupervisorRunContext,
     ObjectiveRefillDefaults,
     SupervisorRunHook,
     apply_goal_completion_projection,
@@ -39,15 +49,28 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_r
     run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
-    RefillScanResult,
-    ScanTerminalReason,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
-    PortalImplementationSupervisor,
-    PortalSupervisorConfig,
-    parse_args,
-)
+
+
+def test_plan_bound_empty_wave_starts_no_supervisor_or_daemon(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def unexpected_start(*_args, **_kwargs):
+        raise AssertionError("an empty plan-bound wave must not start a track")
+
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "run_supervisor_tracks",
+        unexpected_start,
+    )
+
+    assert multi_supervisor_runner.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--plan-bound-wave",
+        ]
+    ) == 0
 
 
 def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(tmp_path: Path):
