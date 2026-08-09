@@ -849,9 +849,14 @@ def scan_for_secrets(
             break
 
     # Token-bearing keys with non-handle values are findings.
+    # ``credential_generation`` is a public integer counter (not a secret).
+    # ``secret_handle`` must remain an opaque handle: prefix, not raw material.
+    public_token_like_keys = frozenset({"credential_generation"})
     if isinstance(surface, Mapping):
         for key, value in surface.items():
             key_text = str(key)
+            if key_text in public_token_like_keys:
+                continue
             if _TOKEN_LIKE_RE.search(key_text):
                 value_text = str(value)
                 if value_text and not value_text.startswith("handle:"):

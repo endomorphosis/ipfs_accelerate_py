@@ -86,7 +86,9 @@ _PLACEHOLDER_RE: Final = re.compile(r"\?")
 # Reject attempts to smuggle multi-statement or comment-terminated SQL.
 _FORBIDDEN_SQL_FRAGMENT_RE: Final = re.compile(
     r";|--|/\*|\*/|\b(ATTACH|DETACH|COPY|INSTALL|LOAD|PRAGMA|CALL|EXPORT|"
-    r"IMPORT|DROP|ALTER|CREATE|TRUNCATE|VACUUM|FORCE)\b",
+    r"IMPORT|DROP|ALTER|CREATE|TRUNCATE|VACUUM|FORCE|"
+    r"READ_CSV(?:_AUTO)?|READ_JSON(?:_AUTO)?|READ_PARQUET|PYTHON_EVAL)\b|"
+    r"['\"]/|['\"]\.\./",
     re.IGNORECASE,
 )
 
