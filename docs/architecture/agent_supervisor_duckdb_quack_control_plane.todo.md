@@ -729,7 +729,7 @@ this bootstrap is active.
 
 ## DQP-023 Materialize symbol dependency, impact, and changed-neighborhood queries
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
