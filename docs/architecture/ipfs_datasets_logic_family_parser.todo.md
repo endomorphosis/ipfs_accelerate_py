@@ -1222,7 +1222,7 @@ validation and evidence contract.
 
 ## LFP-039 Bridge software_verification IRs through the shared syntax kernel
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
