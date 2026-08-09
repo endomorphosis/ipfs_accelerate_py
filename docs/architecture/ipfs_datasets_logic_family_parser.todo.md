@@ -819,7 +819,7 @@ validation and evidence contract.
 
 ## LFP-026 Bridge runtime MTL onto the shared temporal syntax
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
