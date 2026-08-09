@@ -226,7 +226,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-007 Introduce common formalization slices, LogicObligation, and BackendRequest v2
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
