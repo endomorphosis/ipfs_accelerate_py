@@ -90,7 +90,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-108 Add bounded platform doctor and capture performance/resource baselines
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
