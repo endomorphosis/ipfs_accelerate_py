@@ -1439,7 +1439,7 @@ validation and evidence contract.
 
 ## LFP-046 Run bounded objective refill to a current-tree fixed point
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
