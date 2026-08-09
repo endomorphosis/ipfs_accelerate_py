@@ -822,7 +822,7 @@ this bootstrap is active.
 
 ## DQP-026 Build bounded database context capsules and frontier views
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
