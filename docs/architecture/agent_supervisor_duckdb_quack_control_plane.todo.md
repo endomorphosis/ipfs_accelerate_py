@@ -1070,7 +1070,7 @@ this bootstrap is active.
 
 ## DQP-034 Prove Quack security, concurrency, conflict, and restart behavior
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
