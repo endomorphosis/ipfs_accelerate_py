@@ -4127,9 +4127,14 @@ class PortalImplementationDaemon:
                 raise TaskSourceIntegrityError(
                     "configured task source differs from the durable checkpoint"
                 )
-        self._runtime_last_source_digest = str(
-            self._runtime_checkpoint.get("source_digest") or ""
-        )
+        # A checkpoint may durably observe a new source head before the task
+        # projection which it caches has converged to that head. A newly
+        # constructed daemon also baselines filesystem watchers at current
+        # bytes, so no notification would expose that interrupted boundary.
+        # Keep the checkpoint for recovery evidence, but require this process
+        # to materialize one current reconciliation before using its unchanged
+        # fast path.
+        self._runtime_last_source_digest = ""
         cached_result = self._runtime_checkpoint.get("result")
         self._runtime_last_result = (
             dict(cached_result) if isinstance(cached_result, Mapping) else None
