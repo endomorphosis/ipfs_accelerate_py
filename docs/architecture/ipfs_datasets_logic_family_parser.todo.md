@@ -354,7 +354,7 @@ validation and evidence contract.
 
 ## LFP-011 Define source, token, CST, AST, diagnostic, and parse contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
