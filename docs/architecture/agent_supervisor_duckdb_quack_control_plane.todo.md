@@ -481,7 +481,7 @@ this bootstrap is active.
 
 ## DQP-015 Consolidate task, resource, merge, and maintenance leases with fencing
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
