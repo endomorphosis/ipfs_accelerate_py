@@ -36,6 +36,14 @@ from ...llm_router import (
     verify_agent_implementation_sealed_control_plane,
 )
 from ..control.lifecycle_orchestrator import (
+    CONFIGURATION_ROOT_ENV,
+    FENCING_EPOCH_ENV,
+    PROFILE_ID_ENV,
+    REPOSITORY_ROOT_ENV,
+    RUN_ID_ENV,
+    RUN_ROOT_ENV,
+    STATE_ROOT_ENV,
+    TARGET_ID_ENV,
     LifecycleProfile,
     LinuxProcessAdapter,
     ProcessIdentity,
@@ -47,6 +55,7 @@ from ..core.wrapper_utils import (
     env_str,
 )
 from ..merge.checkout_lock import serialized_lock_update
+from ..proof.formal_verification_contracts import content_identity
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 
 OutputFn = Callable[[str], None]
@@ -449,10 +458,10 @@ class PlanBoundSupervisorChild:
             )
         object.__setattr__(self, "state_dir", state_dir)
         object.__setattr__(self, "plan_revision_store_path", store_path)
-        if not self.task_ids or not self.task_cids:
-            raise ValueError("plan-bound children require a nonempty ID/CID slice")
-        if len(self.task_ids) != len(self.task_cids):
-            raise ValueError("plan-bound child ID/CID slice populations disagree")
+        if len(self.task_ids) != 1 or len(self.task_cids) != 1:
+            raise ValueError(
+                "plan-bound children require one exact ID/CID task pair"
+            )
         for field_name in (
             "name", "state_prefix", "revision_cid", "plan_root_cid",
             "execution_plan_cid", "capacity_snapshot_id", "slice_manifest_cid",
@@ -840,6 +849,132 @@ def _read_stable_regular_json(
     return dict(payload), evidence
 
 
+def _strict_plan_bound_process_fence_observation(
+    profile: LifecycleProfile,
+    process_identity: ProcessIdentity,
+    *,
+    max_scans: int = 3,
+) -> tuple[str, Any]:
+    """Return ALIVE/DEAD/UNKNOWN without collapsing ``/proc`` failures.
+
+    ``LinuxProcessAdapter`` intentionally offers a convenient boolean API for
+    ordinary cleanup.  Same-revision task transfer is an authority boundary:
+    an unreadable same-user process or an unstable marker scan must remain
+    UNKNOWN and can never be treated as proof of death.
+    """
+
+    from ..control.lifecycle_orchestrator import (
+        CONFIGURATION_ROOT_ENV,
+        PROFILE_ID_ENV,
+        REPOSITORY_ROOT_ENV,
+        RUN_ID_ENV,
+        RUN_ROOT_ENV,
+        STATE_ROOT_ENV,
+        TARGET_ID_ENV,
+        ProcessTreeSnapshot,
+    )
+
+    if (
+        isinstance(max_scans, bool)
+        or not isinstance(max_scans, int)
+        or not 2 <= max_scans <= 8
+    ):
+        raise ValueError("strict process observation scan bound is invalid")
+    adapter = LinuxProcessAdapter()
+    try:
+        _parent, _group, _session, started = adapter._stat(  # noqa: SLF001
+            process_identity.pid
+        )
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+    except (OSError, UnicodeError, ValueError):
+        return "unknown", None
+    else:
+        if started == process_identity.start_time_ticks:
+            return "alive", None
+
+    expected_markers = {
+        RUN_ID_ENV: profile.run_id,
+        PROFILE_ID_ENV: profile.profile_id,
+        TARGET_ID_ENV: profile.target_id,
+        REPOSITORY_ROOT_ENV: profile.repository_root,
+        STATE_ROOT_ENV: profile.state_root,
+        RUN_ROOT_ENV: profile.run_root,
+        CONFIGURATION_ROOT_ENV: profile.configuration_root,
+    }
+    stable_empty_scans = 0
+    for _scan in range(max_scans):
+        try:
+            entries = tuple(Path("/proc").iterdir())
+        except OSError:
+            return "unknown", None
+        members: list[ProcessIdentity] = []
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                metadata = os.stat(entry, follow_symlinks=False)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except OSError:
+                return "unknown", None
+            if int(metadata.st_uid) != os.geteuid():
+                continue
+            pid = int(entry.name)
+            try:
+                parent, group, session, _started = adapter._stat(  # noqa: SLF001
+                    pid
+                )
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except (OSError, UnicodeError, ValueError):
+                return "unknown", None
+            try:
+                environment = adapter._environ(pid)  # noqa: SLF001
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except (OSError, UnicodeError, ValueError):
+                if (
+                    parent == process_identity.pid
+                    or group == process_identity.process_group_id
+                    or session == process_identity.session_id
+                ):
+                    return "unknown", None
+                continue
+            if (
+                environment.get(RUN_ID_ENV) != profile.run_id
+                or environment.get(TARGET_ID_ENV) != profile.target_id
+            ):
+                continue
+            if any(
+                environment.get(name) != value
+                for name, value in expected_markers.items()
+            ):
+                return "unknown", None
+            try:
+                members.append(adapter._identity(pid, profile))  # noqa: SLF001
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except (OSError, UnicodeError, ValueError, ProcessIdentityMismatch):
+                return "unknown", None
+        if members:
+            return "alive", ProcessTreeSnapshot(
+                profile_id=profile.profile_id,
+                run_id=profile.run_id,
+                members=tuple(members),
+                captured_at_ms=int(time.time() * 1000),
+            )
+        stable_empty_scans += 1
+        if stable_empty_scans >= 2:
+            return "dead", ProcessTreeSnapshot(
+                profile_id=profile.profile_id,
+                run_id=profile.run_id,
+                members=(),
+                captured_at_ms=int(time.time() * 1000),
+            )
+    return "unknown", None
+
+
 def reassign_fenced_plan_bound_child(
     *,
     donor: PlanBoundSupervisorChild,
@@ -859,14 +994,18 @@ def reassign_fenced_plan_bound_child(
     """
 
     from ..entrypoints.execution_plan import (
-        MAX_SLICE_REASSIGNMENTS,
+        MAX_PLAN_BOUND_WAVE_TRANSFERS,
         ConfiguredBoardExecutionSlices,
         ExecutionClaimConflictError,
         ExecutionSliceViolationError,
         PlanSliceReassignment,
         ProductionParallelPlanAdapter,
+        _load_plan_bound_process_birth_chain_locked,
         _secure_store_active,
         _secure_store_cas,
+        _secure_store_continuation,
+        plan_bound_terminal_missing_key,
+        plan_bound_wave_diff_barrier_key,
     )
     from ..merge.checkout_lock import serialized_lock_update
     from ..task_sources.plan_revision_store import PlanRevisionStore
@@ -1009,8 +1148,6 @@ def reassign_fenced_plan_bound_child(
         )
     store = PlanRevisionStore(store_path)
     plan_adapter = ProductionParallelPlanAdapter(plan_revision_store=store)
-    lifecycle = LinuxProcessAdapter()
-
     # The real daemon method is the canonical filename relation.  A read-only
     # probe avoids constructing unrelated worktree/provider runtime state.
     claim_probe = object.__new__(daemon_module.PortalImplementationDaemon)
@@ -1019,6 +1156,27 @@ def reassign_fenced_plan_bound_child(
     with store._thread_lock:  # noqa: SLF001 - canonical store transaction
         with store._guard():  # noqa: SLF001 - canonical cross-process guard
             active = _secure_store_active(store)
+            terminal_barrier = _secure_store_continuation(
+                store,
+                plan_bound_wave_diff_barrier_key(
+                    donor.revision_cid,
+                    donor.slice_manifest_cid,
+                ),
+            )
+            if terminal_barrier is not None:
+                raise ExecutionClaimConflictError(
+                    "cannot reassign after the wave barrier terminalized"
+                )
+            if _secure_store_continuation(
+                store,
+                plan_bound_terminal_missing_key(
+                    donor.revision_cid,
+                    donor.slice_id,
+                ),
+            ) is not None:
+                raise ExecutionClaimConflictError(
+                    "cannot reassign a terminal-missing slice"
+                )
             if active is None or active.revision_cid != donor.revision_cid:
                 raise ExecutionClaimConflictError(
                     "slice reassignment requires the exact active revision"
@@ -1057,20 +1215,29 @@ def reassign_fenced_plan_bound_child(
                 raise ExecutionSliceViolationError(
                     "donor population differs from the immutable slice"
                 )
-            launch_birth = _secure_store_cas(store, launch_process_birth_cid)
+            launch_birth_binding = _load_plan_bound_process_birth_chain_locked(
+                store,
+                revision_cid=donor.revision_cid,
+                slice_id=donor.slice_id,
+                lane_id=donor.lane_id,
+            )
             if (
-                launch_birth.get("schema")
-                != "ipfs_accelerate_py/agent-supervisor/plan-bound-process-birth@1"
-                or launch_birth.get("revision_cid") != donor.revision_cid
-                or launch_birth.get("slice_manifest_cid")
-                != donor.slice_manifest_cid
-                or launch_birth.get("slice_id") != donor.slice_id
-                or launch_birth.get("lane_id") != donor.lane_id
-                or launch_birth.get("task_ids") != list(donor.task_ids)
-                or launch_birth.get("task_cids") != list(donor.task_cids)
-                or launch_birth.get("profile") != profile.to_dict()
-                or launch_birth.get("process_birth")
-                != process_identity.to_dict()
+                launch_birth_binding is None
+                or launch_birth_binding[0] != launch_process_birth_cid
+            ):
+                raise ExecutionClaimConflictError(
+                    "donor durable process birth is not the current chain head"
+                )
+            launch_birth = launch_birth_binding[1]
+            if (
+                launch_birth.revision_cid != donor.revision_cid
+                or launch_birth.slice_manifest_cid != donor.slice_manifest_cid
+                or launch_birth.slice_id != donor.slice_id
+                or launch_birth.lane_id != donor.lane_id
+                or launch_birth.task_ids != donor.task_ids
+                or launch_birth.task_cids != donor.task_cids
+                or launch_birth.profile != profile.to_dict()
+                or launch_birth.process_birth != process_identity.to_dict()
             ):
                 raise ExecutionClaimConflictError(
                     "donor durable process birth is mixed"
@@ -1094,19 +1261,64 @@ def reassign_fenced_plan_bound_child(
                 raise ExecutionSliceViolationError(
                     "declared donor no longer owns the slice"
                 )
-            if generation > MAX_SLICE_REASSIGNMENTS:
+            wave_transfer_budget = min(
+                MAX_PLAN_BOUND_WAVE_TRANSFERS,
+                max(1, len(manifest.nonempty)),
+            )
+            wave_transfer_count = 0
+            for manifest_slice in manifest.nonempty:
+                observed_reassignment = (
+                    plan_adapter._load_slice_reassignment_locked(  # noqa: SLF001
+                        revision_cid=donor.revision_cid,
+                        slice_id=manifest_slice.slice_id,
+                    )
+                )
+                if observed_reassignment is not None:
+                    wave_transfer_count += observed_reassignment[1].generation
+            if wave_transfer_count + 1 > wave_transfer_budget:
                 raise ExecutionClaimConflictError(
-                    "slice reassignment bound is exhausted"
+                    "wave reassignment budget is exhausted"
+                )
+            visited_lanes = {execution_slice.lane_id}
+            cursor = current[1] if current is not None else None
+            cursor_cids: set[str] = set()
+            while cursor is not None:
+                visited_lanes.update(
+                    {cursor.donor_lane_id, cursor.recipient_lane_id}
+                )
+                prior_cid = cursor.prior_reassignment_cid
+                if not prior_cid:
+                    break
+                if prior_cid in cursor_cids:
+                    raise ExecutionClaimConflictError(
+                        "slice reassignment chain cycles during recipient check"
+                    )
+                cursor_cids.add(prior_cid)
+                cursor = PlanSliceReassignment.from_dict(
+                    _secure_store_cas(store, prior_cid)
+                )
+            if recipient.lane_id in visited_lanes:
+                raise ExecutionClaimConflictError(
+                    "slice reassignment recipient already owned this slice"
                 )
 
             # Re-observe the exact captured birth while the CAS guard is held.
             # An empty marker-selected tree proves the root and all inherited
             # children were fenced, not merely that a numeric PID disappeared.
-            if lifecycle.identity_alive(process_identity):
+            process_state, fenced_tree = (
+                _strict_plan_bound_process_fence_observation(
+                    profile,
+                    process_identity,
+                )
+            )
+            if process_state == "alive":
                 raise ExecutionClaimConflictError(
                     "donor process birth remains alive"
                 )
-            fenced_tree = lifecycle.snapshot(profile)
+            if process_state != "dead" or fenced_tree is None:
+                raise ExecutionClaimConflictError(
+                    "donor process death is not provable"
+                )
             if fenced_tree.members:
                 raise ExecutionClaimConflictError(
                     "donor marker-bound process tree is not fenced"
@@ -2382,22 +2594,7 @@ def _reserve_owned_pid_projection(
 
     path = Path(pid_path)
     with serialized_lock_update(path):
-        try:
-            existing = os.lstat(path)
-        except FileNotFoundError:
-            existing = None
-        except OSError as exc:
-            raise ValueError("cannot inspect plan-bound PID projection") from exc
-        if existing is not None:
-            if stat.S_ISLNK(existing.st_mode):
-                kind = "symbolic link"
-            elif not stat.S_ISREG(existing.st_mode):
-                kind = "non-regular file"
-            elif int(existing.st_nlink) != 1:
-                kind = "hardlinked file"
-            else:
-                kind = "existing file"
-            raise ValueError(f"plan-bound PID projection is an unsafe {kind}")
+        _require_absent_pid_projection(path)
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         flags |= getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -2415,6 +2612,26 @@ def _reserve_owned_pid_projection(
             os.close(descriptor)
             raise ValueError("plan-bound PID reservation is not owner-only")
         return descriptor, (int(opened.st_dev), int(opened.st_ino))
+
+
+def _require_absent_pid_projection(pid_path: Path) -> None:
+    """Reject every existing PID projection before authority-bearing work."""
+
+    try:
+        existing = os.lstat(pid_path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ValueError("cannot inspect plan-bound PID projection") from exc
+    if stat.S_ISLNK(existing.st_mode):
+        kind = "symbolic link"
+    elif not stat.S_ISREG(existing.st_mode):
+        kind = "non-regular file"
+    elif int(existing.st_nlink) != 1:
+        kind = "hardlinked file"
+    else:
+        kind = "existing file"
+    raise ValueError(f"plan-bound PID projection is an unsafe {kind}")
 
 
 def _publish_reserved_pid_projection(
@@ -2750,9 +2967,13 @@ def _persist_plan_bound_process_birth(
     """Bind one gated process birth to the active immutable slice before release."""
 
     from ..entrypoints.execution_plan import (
+        MAX_PLAN_BOUND_WAVE_TRANSFERS,
         PlanBoundExecutionLease,
+        PlanBoundProcessBirth,
         ProductionParallelPlanAdapter,
         _load_plan_bound_execution_lease_locked,
+        _load_plan_bound_merge_terminal_failure_locked,
+        _load_plan_bound_process_birth_chain_locked,
         _load_plan_revision_store_binding_locked,
         _publish_plan_bound_execution_lease_locked,
         _secure_store_active,
@@ -2842,49 +3063,91 @@ def _persist_plan_bound_process_birth(
                 != option("--plan-bound-task-source-revision")
             ):
                 raise ValueError("plan-bound birth differs from immutable slice")
+            if _load_plan_bound_merge_terminal_failure_locked(
+                store,
+                revision_cid=revision_cid,
+                slice_id=slice_id,
+            ) is not None:
+                raise ValueError(
+                    "terminal merge failure forbids another plan-bound birth"
+                )
 
-            previous = _secure_store_continuation(store, continuation_key)
+            previous = _load_plan_bound_process_birth_chain_locked(
+                store,
+                revision_cid=revision_cid,
+                slice_id=slice_id,
+                lane_id=lane_id,
+            )
             prior_birth_cid = ""
+            birth_generation = 0
             if previous is not None:
-                if set(previous) != {
-                    "phase", "operation", "revision_cid", "slice_id",
-                    "lane_id", "process_birth_cid",
-                }:
-                    raise ValueError("prior plan-bound birth pointer is malformed")
-                prior_birth_cid = str(previous.get("process_birth_cid") or "")
-                prior = _secure_store_cas(store, prior_birth_cid)
-                if set(prior) != {
-                    "schema", "revision_cid", "plan_root_cid",
-                    "execution_plan_cid", "capacity_snapshot_id",
-                    "slice_manifest_cid", "slice_id", "lane_id", "task_ids",
-                    "task_cids", "configuration_root", "accepted_tree_root",
-                    "profile", "process_birth", "prior_process_birth_cid",
-                }:
-                    raise ValueError("prior plan-bound birth evidence is malformed")
-                prior_identity = ProcessIdentity.from_dict(prior["process_birth"])
-                if LinuxProcessAdapter().identity_alive(prior_identity):
-                    raise ValueError("prior plan-bound slice birth remains alive")
+                prior_birth_cid, prior, _prior_chain = previous
+                if (
+                    prior.plan_root_cid != plan_root_cid
+                    or prior.execution_plan_cid != execution_plan_cid
+                    or prior.capacity_snapshot_id != capacity_snapshot_id
+                    or prior.slice_manifest_cid != slice_manifest_cid
+                    or prior.task_ids != tuple(task_ids)
+                    or prior.task_cids != tuple(task_cids)
+                    or prior.configuration_root != configuration_root
+                    or prior.accepted_tree_root != str(accepted_tree_root)
+                ):
+                    raise ValueError(
+                        "prior plan-bound process-birth identity drifted"
+                    )
+                prior_identity = ProcessIdentity.from_dict(prior.process_birth)
+                prior_profile = LifecycleProfile.from_dict(prior.profile)
+                if (
+                    prior_identity.to_dict() == process_identity.to_dict()
+                    and prior_profile.to_dict() == profile.to_dict()
+                ):
+                    return prior_birth_cid
+                prior_state, prior_tree = (
+                    _strict_plan_bound_process_fence_observation(
+                        prior_profile,
+                        prior_identity,
+                    )
+                )
+                prior_tree_is_only_current_gate = (
+                    prior_state == "alive"
+                    and prior_tree is not None
+                    and prior_tree.members == (process_identity,)
+                )
+                if not (
+                    (
+                        prior_state == "dead"
+                        and prior_tree is not None
+                        and not prior_tree.members
+                    )
+                    or prior_tree_is_only_current_gate
+                ):
+                    raise ValueError(
+                        "prior plan-bound slice birth is not provably fenced"
+                    )
+                birth_generation = prior.generation + 1
+                if birth_generation > MAX_PLAN_BOUND_WAVE_TRANSFERS:
+                    raise ValueError(
+                        "plan-bound process-birth global budget is exhausted"
+                    )
 
-            record = {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "plan-bound-process-birth@1"
-                ),
-                "revision_cid": revision_cid,
-                "plan_root_cid": plan_root_cid,
-                "execution_plan_cid": execution_plan_cid,
-                "capacity_snapshot_id": capacity_snapshot_id,
-                "slice_manifest_cid": slice_manifest_cid,
-                "slice_id": slice_id,
-                "lane_id": lane_id,
-                "task_ids": list(task_ids),
-                "task_cids": list(task_cids),
-                "configuration_root": configuration_root,
-                "accepted_tree_root": str(accepted_tree_root),
-                "profile": profile.to_dict(),
-                "process_birth": process_identity.to_dict(),
-                "prior_process_birth_cid": prior_birth_cid,
-            }
+            record = PlanBoundProcessBirth(
+                revision_cid=revision_cid,
+                plan_root_cid=plan_root_cid,
+                execution_plan_cid=execution_plan_cid,
+                capacity_snapshot_id=capacity_snapshot_id,
+                slice_manifest_cid=slice_manifest_cid,
+                slice_id=slice_id,
+                lane_id=lane_id,
+                task_ids=tuple(task_ids),
+                task_cids=tuple(task_cids),
+                configuration_root=configuration_root,
+                accepted_tree_root=str(accepted_tree_root),
+                profile=profile.to_dict(),
+                process_birth=process_identity.to_dict(),
+                generation=birth_generation,
+                global_budget=MAX_PLAN_BOUND_WAVE_TRANSFERS,
+                prior_process_birth_cid=prior_birth_cid,
+            ).to_dict()
             process_birth_cid = store.put_cas(record)
             if _secure_store_cas(store, process_birth_cid) != record:
                 raise ValueError("plan-bound process birth failed CAS round trip")
@@ -2895,6 +3158,8 @@ def _persist_plan_bound_process_birth(
                 "slice_id": slice_id,
                 "lane_id": lane_id,
                 "process_birth_cid": process_birth_cid,
+                "generation": birth_generation,
+                "global_budget": MAX_PLAN_BOUND_WAVE_TRANSFERS,
             }
             store.put_continuation(
                 continuation_key,
@@ -2945,6 +3210,17 @@ def _persist_plan_bound_process_birth(
             if prior_execution is not None:
                 prior_execution_cid, prior_execution_record = prior_execution
                 if prior_execution_record.provider_ready:
+                    if prior_execution_record.phase in {
+                        "proposal_ready",
+                        "merge_enqueue_prepared",
+                        "merge_enqueue_confirmed",
+                    }:
+                        # The accepted child may resume only the durable
+                        # proposal/merge handoff.  Keep its original provider
+                        # effect lease immutable; the new process birth above
+                        # is separately bound and recovery never reselects or
+                        # redispatches a provider.
+                        return process_birth_cid
                     raise ValueError(
                         "prior plan-bound execution reached the provider boundary"
                     )
@@ -3019,6 +3295,7 @@ def start_track(
     plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
     gate_read_fd: int | None = None
     gate_write_fd: int | None = None
+    recovery_authorization_cid = ""
     accepted_tree_root = _canonical_accepted_tree_root(Path(repo_root))
     command = child_command
     if plan_bound_dispatch:
@@ -3042,9 +3319,34 @@ def start_track(
             resolved.extra_args,
             "--plan-bound-source-tree",
         )
+        revision_cids = _profile_option_values(
+            resolved.extra_args,
+            "--plan-bound-revision-cid",
+        )
+        slice_ids = _profile_option_values(
+            resolved.extra_args,
+            "--plan-bound-slice-id",
+        )
+        lane_ids = _profile_option_values(
+            resolved.extra_args,
+            "--plan-bound-lane-id",
+        )
         state_dirs = _profile_option_values(
             resolved.extra_args,
             "--state-dir",
+        )
+        state_prefixes = _profile_option_values(
+            resolved.extra_args,
+            "--state-prefix",
+        )
+        launch_args = (*common_args, *resolved.extra_args)
+        worktree_roots = _profile_option_values(
+            launch_args,
+            "--worktree-root",
+        )
+        merge_queue_roots = _profile_option_values(
+            launch_args,
+            "--merge-queue-dir",
         )
         canonical_repo_root = accepted_tree_root
         if (
@@ -3060,7 +3362,11 @@ def start_track(
             or len(store_paths) != 1
             or len(source_heads) != 1
             or len(source_trees) != 1
+            or len(revision_cids) != 1
+            or len(slice_ids) != 1
+            or len(lane_ids) != 1
             or len(state_dirs) != 1
+            or len(state_prefixes) != 1
         ):
             raise ValueError(
                 "plan-bound dispatch is not pinned to the accepted tree entry"
@@ -3080,18 +3386,16 @@ def start_track(
             raise ValueError(
                 "plan-bound slice differs from the accepted control-plane generation"
             )
-        _validate_plan_bound_accepted_tree(
-            accepted_tree_root=accepted_tree_root,
-            source_head=source_heads[0],
-            source_tree=source_trees[0],
-            control_plane_pin=accepted_control_plane_pin,
-        )
         plan_store = _resolve_path(repo_root, Path(store_paths[0]))
         state_dir = _resolve_path(repo_root, Path(state_dirs[0]))
         if state_dir.parent != plan_store.parent:
             raise ValueError(
                 "plan-bound state and store do not share the configured state root"
             )
+        # Validate the lexical authority paths before PlanRevisionStore may
+        # resolve or create anything.  In particular, a dangling/intermediate
+        # symlink supplied as the store path must not redirect the first
+        # recovery read or create a directory outside the configured root.
         for authority_path in (
             resolved.script_path,
             resolved.log_path,
@@ -3113,6 +3417,128 @@ def start_track(
                 raise ValueError(
                     "plan-bound runtime projection escapes its configured lane state"
                 )
+        # Reject a preplaced PID projection before PlanRevisionStore reads or
+        # Git identity probes can cross a subprocess boundary.  The later
+        # O_EXCL reservation repeats this under its update lock to close the
+        # check-to-create race.
+        with serialized_lock_update(resolved.supervisor_pid_path):
+            _require_absent_pid_projection(resolved.supervisor_pid_path)
+        from ..entrypoints.execution_plan import ProductionParallelPlanAdapter
+        from ..task_sources.plan_revision_store import PlanRevisionStore
+
+        plan_adapter = ProductionParallelPlanAdapter(
+            PlanRevisionStore(plan_store)
+        )
+        current_execution = plan_adapter.load_execution_lease(
+            revision_cid=revision_cids[0],
+            slice_id=slice_ids[0],
+            lane_id=lane_ids[0],
+        )
+        recovery_phase = (
+            current_execution is not None
+            and current_execution[1].phase
+            in {
+                "proposal_ready",
+                "merge_enqueue_prepared",
+                "merge_enqueue_confirmed",
+            }
+        )
+        repository_head, repository_tree = _plan_bound_repository_identity(
+            accepted_tree_root
+        )
+        recovery_decision = None
+        recovery_runtime_roots: tuple[Path, ...] = ()
+        recovery_owner_bound_artifacts: tuple[Path, ...] = ()
+        recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
+        if recovery_phase:
+            if len(worktree_roots) != 1 or len(merge_queue_roots) != 1:
+                raise ValueError(
+                    "plan-bound recovery lacks exact configured runtime roots"
+                )
+            worktree_root = _resolve_path(
+                canonical_repo_root,
+                Path(worktree_roots[0]),
+            )
+            merge_queue_root = _resolve_path(
+                canonical_repo_root,
+                Path(merge_queue_roots[0]),
+            )
+            recovery_runtime_roots = (
+                plan_store.parent,
+                worktree_root,
+                merge_queue_root,
+            )
+            recovery_runtime_bindings = plan_adapter.recovery_runtime_bindings(
+                revision_cid=revision_cids[0],
+                slice_manifest_cid=current_execution[1].slice_manifest_cid,
+            )
+            workspace_paths = tuple(
+                _resolve_path(canonical_repo_root, Path(path))
+                for path in plan_adapter.recovery_workspace_paths(
+                    revision_cid=revision_cids[0],
+                    slice_manifest_cid=current_execution[1].slice_manifest_cid,
+                )
+            )
+            implementation_lock = state_dir / "implementation.lock"
+            launch_owned_paths = (
+                resolved.log_path,
+                resolved.supervisor_pid_path,
+            )
+            recovery_owner_bound_artifacts = (
+                implementation_lock,
+                *workspace_paths,
+                resolved.supervisor_pid_path.with_name(
+                    f".{resolved.supervisor_pid_path.name}.update.lock"
+                ),
+                *launch_owned_paths,
+            )
+            recovery_artifacts = _snapshot_plan_bound_recovery_artifacts(
+                root=canonical_repo_root,
+                runtime_roots=(
+                    plan_store.parent,
+                    worktree_root,
+                    merge_queue_root,
+                ),
+                owner_bound_artifacts=recovery_owner_bound_artifacts,
+                runtime_bindings=recovery_runtime_bindings,
+                state_dir=state_dir,
+                state_prefix=state_prefixes[0],
+            )
+            recovery_authorization_cid, recovery_decision = (
+                plan_adapter.authorize_recovery_launch(
+                    revision_cid=revision_cids[0],
+                    slice_id=slice_ids[0],
+                    lane_id=lane_ids[0],
+                    source_head=source_heads[0],
+                    source_tree=source_trees[0],
+                    repository_head=repository_head,
+                    repository_tree=repository_tree,
+                    runtime_artifacts=recovery_artifacts,
+                    launch_artifact_paths=tuple(
+                        sorted(
+                            path.relative_to(canonical_repo_root).as_posix()
+                            for path in launch_owned_paths
+                        )
+                    ),
+                )
+            )
+        _validate_plan_bound_accepted_tree(
+            accepted_tree_root=accepted_tree_root,
+            source_head=source_heads[0],
+            source_tree=source_trees[0],
+            control_plane_pin=accepted_control_plane_pin,
+            recovery_repository_head=(
+                "" if recovery_decision is None else recovery_decision.repository_head
+            ),
+            recovery_repository_tree=(
+                "" if recovery_decision is None else recovery_decision.repository_tree
+            ),
+            recovery_runtime_roots=recovery_runtime_roots,
+            recovery_owner_bound_artifacts=(
+                recovery_owner_bound_artifacts
+            ),
+            recovery_artifacts=recovery_artifacts,
+        )
         # The accepted-tree gate process cannot exec the requested supervisor
         # until the parent captures its exact lifecycle birth and explicitly
         # releases one byte.  Thus even a /proc identity failure cannot race a
@@ -3142,6 +3568,7 @@ def start_track(
             str(accepted_tree_root),
             accepted_control_plane_pin_json(accepted_control_plane_pin),
             str(accepted_control_plane_descriptor),
+            recovery_authorization_cid or "-",
             "--",
             *child_command,
         ]
@@ -3204,10 +3631,39 @@ def start_track(
     launch_environment = profile.launch_environment(0)
     if plan_bound_dispatch:
         # Isolated absolute-script launch bootstraps only its own accepted
-        # repository root; no ambient Python import configuration survives.
-        for name in tuple(launch_environment):
-            if name.startswith("PYTHON"):
-                launch_environment.pop(name, None)
+        # repository root.  Build a positive environment in the parent before
+        # the interpreter is born; clearing loader knobs in the bootstrap
+        # would be too late for LD_PRELOAD.  The sealed native dependency's
+        # DT_NEEDED resolution is intentionally bounded to the host's default
+        # system ABI, not caller-provided loader/search configuration.
+        ambient_names = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+        lifecycle_names = {
+            RUN_ID_ENV,
+            PROFILE_ID_ENV,
+            TARGET_ID_ENV,
+            REPOSITORY_ROOT_ENV,
+            STATE_ROOT_ENV,
+            RUN_ROOT_ENV,
+            FENCING_EPOCH_ENV,
+            CONFIGURATION_ROOT_ENV,
+        }
+        route_names = {
+            *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+            *_ROUTE_AUTHORIZATION_ENV_NAMES,
+        }
+        explicit_profile = dict(profile.environment)
+        disallowed_profile_names = set(explicit_profile) - route_names
+        if disallowed_profile_names:
+            raise ValueError(
+                "plan-bound lifecycle profile contains non-route environment"
+            )
+        positive_names = ambient_names | lifecycle_names | route_names
+        launch_environment = {
+            name: value
+            for name, value in launch_environment.items()
+            if name in positive_names
+        }
+        launch_environment["PATH"] = "/usr/bin:/bin"
     try:
         try:
             process = subprocess.Popen(
@@ -3220,8 +3676,8 @@ def start_track(
                 start_new_session=True,
                 pass_fds=(
                     (gate_read_fd, accepted_control_plane_descriptor)
-                    if gate_read_fd is not None
-                    else (accepted_control_plane_descriptor,)
+                    if plan_bound_dispatch and gate_read_fd is not None
+                    else ()
                 ),
             )
         except BaseException:
@@ -3476,7 +3932,15 @@ def _plan_bound_git(
     input_bytes: bytes | None = None,
 ) -> subprocess.CompletedProcess[Any]:
     return subprocess.run(
-        ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *args],
+        [
+            "/usr/bin/git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            f"--work-tree={root}",
+            *args,
+        ],
         cwd=root,
         env=_plan_bound_git_environment(),
         input=input_bytes,
@@ -3487,14 +3951,619 @@ def _plan_bound_git(
     )
 
 
+def _plan_bound_repository_identity(root: Path) -> tuple[str, str]:
+    """Read one exact current Git HEAD/tree pair with the sanitized client."""
+
+    head = _plan_bound_git(root, "rev-parse", "HEAD")
+    tree = _plan_bound_git(root, "rev-parse", "HEAD^{tree}")
+    head_id = str(head.stdout).strip()
+    tree_id = str(tree.stdout).strip()
+    if (
+        head.returncode != 0
+        or tree.returncode != 0
+        or re.fullmatch(r"[0-9a-f]{40}", head_id) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree_id) is None
+    ):
+        raise ValueError("plan-bound repository identity is unavailable")
+    return head_id, tree_id
+
+
+def _plan_bound_recovery_artifact_evidence(
+    root: Path,
+    artifact: Path,
+    *,
+    workspace: bool,
+) -> dict[str, Any]:
+    """Return stable owner/mode/content evidence for one exact runtime path."""
+
+    relative = artifact.relative_to(root).as_posix()
+    if workspace:
+        observed = os.lstat(artifact)
+        if (
+            stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISDIR(observed.st_mode)
+            or int(observed.st_uid) != os.geteuid()
+            or bool(stat.S_IMODE(observed.st_mode) & 0o7000)
+            or bool(stat.S_IMODE(observed.st_mode) & 0o022)
+        ):
+            raise ValueError("recovery workspace directory custody is unsafe")
+        marker = artifact / ".git"
+        marker_bytes, marker_evidence = _read_stable_regular_bytes(
+            marker,
+            max_bytes=16_384,
+        )
+        if (
+            marker_bytes is None
+            or int(marker_evidence["uid"]) != os.geteuid()
+            or int(marker_evidence["link_count"]) != 1
+            or stat.S_IMODE(int(marker_evidence["mode"])) != 0o600
+        ):
+            raise ValueError("recovery workspace Git marker custody is unsafe")
+        try:
+            marker_text = marker_bytes.decode("utf-8").strip()
+        except UnicodeDecodeError as exc:
+            raise ValueError("recovery workspace Git marker is not text") from exc
+        if not marker_text.startswith("gitdir: "):
+            raise ValueError("recovery workspace Git marker is malformed")
+        git_dir = Path(marker_text[8:])
+        if not git_dir.is_absolute():
+            git_dir = artifact / git_dir
+        git_dir = Path(os.path.abspath(git_dir))
+        canonical_git_root = _lexical_contained_path(root, root / ".git")
+        if not git_dir.is_relative_to(canonical_git_root / "worktrees"):
+            raise ValueError("recovery workspace Git custody escapes the repository")
+        _lexical_contained_path(root, git_dir)
+        git_custody: list[bytes] = []
+        current_git_path = canonical_git_root
+        for part in git_dir.relative_to(canonical_git_root).parts:
+            try:
+                git_stat = os.lstat(current_git_path)
+            except OSError as exc:
+                raise ValueError(
+                    "recovery workspace Git custody is unreadable"
+                ) from exc
+            if (
+                not stat.S_ISDIR(git_stat.st_mode)
+                or stat.S_ISLNK(git_stat.st_mode)
+                or int(git_stat.st_uid) != os.geteuid()
+                or bool(stat.S_IMODE(git_stat.st_mode) & 0o7022)
+            ):
+                raise ValueError("recovery workspace Git custody is unsafe")
+            git_custody.append(
+                (
+                    f"{current_git_path.relative_to(root).as_posix()}:"
+                    f"{stat.S_IMODE(git_stat.st_mode)}:{git_stat.st_uid}:"
+                    f"{git_stat.st_nlink}"
+                ).encode("utf-8")
+            )
+            current_git_path /= part
+        git_stat = os.lstat(git_dir)
+        if (
+            not stat.S_ISDIR(git_stat.st_mode)
+            or stat.S_ISLNK(git_stat.st_mode)
+            or int(git_stat.st_uid) != os.geteuid()
+            or bool(stat.S_IMODE(git_stat.st_mode) & 0o7022)
+        ):
+            raise ValueError("recovery workspace Git custody is unsafe")
+        git_custody.append(
+            (
+                f"{git_dir.relative_to(root).as_posix()}:"
+                f"{stat.S_IMODE(git_stat.st_mode)}:{git_stat.st_uid}:"
+                f"{git_stat.st_nlink}"
+            ).encode("utf-8")
+        )
+        top = _plan_bound_git(artifact, "rev-parse", "--show-toplevel")
+        common = _plan_bound_git(artifact, "rev-parse", "--git-common-dir")
+        head = _plan_bound_git(artifact, "rev-parse", "HEAD")
+        if (
+            top.returncode != 0
+            or Path(str(top.stdout).strip()) != artifact
+            or common.returncode != 0
+            or Path(str(common.stdout).strip()).resolve(strict=True)
+            != canonical_git_root.resolve(strict=True)
+            or head.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", str(head.stdout).strip()) is None
+        ):
+            raise ValueError("recovery workspace lost canonical Git custody")
+        digest_payload = b"\0".join(
+            (
+                marker_bytes,
+                (
+                    f"marker:{stat.S_IMODE(int(marker_evidence['mode']))}:"
+                    f"{int(marker_evidence['uid'])}:"
+                    f"{int(marker_evidence['link_count'])}"
+                ).encode("ascii"),
+                str(head.stdout).strip().encode("ascii"),
+                git_dir.relative_to(root).as_posix().encode("utf-8"),
+                *git_custody,
+            )
+        )
+        return {
+            "path": relative,
+            "kind": "workspace",
+            "sha256": "sha256:" + hashlib.sha256(digest_payload).hexdigest(),
+            "mode": stat.S_IMODE(observed.st_mode),
+            "uid": int(observed.st_uid),
+            "nlink": int(observed.st_nlink),
+            "size": int(observed.st_size),
+        }
+
+    payload, evidence = _read_stable_regular_bytes(
+        artifact,
+        max_bytes=134_217_728,
+    )
+    if (
+        payload is None
+        or int(evidence["uid"]) != os.geteuid()
+        or int(evidence["link_count"]) != 1
+        or bool(stat.S_IMODE(int(evidence["mode"])) & 0o111)
+    ):
+        raise ValueError("recovery runtime artifact custody is unsafe")
+    return {
+        "path": relative,
+        "kind": "file",
+        "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        "mode": stat.S_IMODE(int(evidence["mode"])),
+        "uid": int(evidence["uid"]),
+        "nlink": int(evidence["link_count"]),
+        "size": int(evidence["size"]),
+    }
+
+
+def _plan_bound_safe_store_filename(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    cleaned = "".join(
+        character
+        if character.isalnum() or character in "._-@"
+        else "_"
+        for character in value
+    )[:96]
+    return f"{cleaned}.{digest[:16]}"
+
+
+def _validate_plan_bound_store_projection(
+    store_root: Path,
+    artifact: Path,
+) -> None:
+    """Accept only exact canonical PlanRevisionStore projection files."""
+
+    relative = artifact.relative_to(store_root)
+    parts = relative.parts
+    try:
+        projection_stat = os.lstat(artifact)
+    except OSError as exc:
+        raise ValueError("plan store projection custody is unreadable") from exc
+    if parts == (".plan-revision-store.lock",):
+        payload, evidence = _read_stable_regular_bytes(artifact, max_bytes=0)
+        if (
+            payload != b""
+            or int(evidence["uid"]) != os.geteuid()
+            or int(evidence["link_count"]) != 1
+            or bool(stat.S_IMODE(int(evidence["mode"])) & 0o111)
+        ):
+            raise ValueError("plan store lock projection is unsafe")
+        return
+    if (
+        not stat.S_ISREG(projection_stat.st_mode)
+        or stat.S_ISLNK(projection_stat.st_mode)
+        or int(projection_stat.st_uid) != os.geteuid()
+        or int(projection_stat.st_nlink) != 1
+        or stat.S_IMODE(projection_stat.st_mode) != 0o600
+    ):
+        raise ValueError("plan store projection custody is unsafe")
+
+    from ..task_sources.plan_revision_store import (
+        PLAN_REVISION_ACTIVE_SCHEMA,
+        PLAN_REVISION_APPLY_RECEIPT_SCHEMA,
+        PLAN_REVISION_CONTINUATION_SCHEMA,
+        PLAN_REVISION_EVENT_SCHEMA,
+        PLAN_REVISION_INDEX_SCHEMA,
+        PLAN_REVISION_INTENT_SCHEMA,
+        PLAN_REVISION_STORE_SCHEMA,
+        PLAN_REVISION_SUPERSESSION_SCHEMA,
+        PlanRevisionActiveProjection,
+        PlanRevisionIntent,
+    )
+
+    if parts == ("active.json",):
+        payload, _evidence = _read_stable_regular_json(artifact)
+        if payload is None or payload.get("schema") != PLAN_REVISION_ACTIVE_SCHEMA:
+            raise ValueError("plan store active projection is malformed")
+        active = PlanRevisionActiveProjection.from_dict(payload)
+        if active.to_dict() != payload:
+            raise ValueError("plan store active projection normalized")
+        return
+    if parts == ("index.json",):
+        payload, _evidence = _read_stable_regular_json(artifact)
+        if (
+            payload is None
+            or set(payload) != {
+                "schema",
+                "revisions",
+                "deltas",
+                "latest_revision_cid",
+                "latest_intent_cid",
+            }
+            or payload.get("schema") != PLAN_REVISION_INDEX_SCHEMA
+            or not isinstance(payload.get("revisions"), list)
+            or not isinstance(payload.get("deltas"), list)
+        ):
+            raise ValueError("plan store index projection is malformed")
+        return
+    if parts in {("events.jsonl",), ("supersessions.jsonl",)}:
+        payload, evidence = _read_stable_regular_bytes(artifact, max_bytes=8_388_608)
+        if payload is None or int(evidence["uid"]) != os.geteuid():
+            raise ValueError("plan store append-only projection is unsafe")
+        expected_schema = (
+            PLAN_REVISION_EVENT_SCHEMA
+            if parts == ("events.jsonl",)
+            else PLAN_REVISION_SUPERSESSION_SCHEMA
+        )
+        for raw_line in payload.splitlines():
+            if not raw_line:
+                continue
+            try:
+                record = json.loads(
+                    raw_line,
+                    object_pairs_hook=_reject_duplicate_json_keys,
+                )
+            except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("plan store append-only record is malformed") from exc
+            if not isinstance(record, Mapping) or record.get("schema") != expected_schema:
+                raise ValueError("plan store append-only record schema is mixed")
+        return
+    if len(parts) == 2 and parts[0] == "cas":
+        payload, _evidence = _read_stable_regular_json(artifact)
+        cas_payload = None if payload is None else payload.get("payload")
+        derived_cid = (
+            content_identity(cas_payload)
+            if payload is not None
+            else ""
+        )
+        if (
+            isinstance(cas_payload, Mapping)
+            and cas_payload.get("schema")
+            == PLAN_REVISION_APPLY_RECEIPT_SCHEMA
+        ):
+            receipt_fields = {
+                "schema",
+                "receipt_cid",
+                "intent_cid",
+                "state",
+                "revision_cid",
+                "plan_root_cid",
+                "delta_cid",
+                "markdown_projection_cid",
+                "duckdb_projection_cid",
+                "prior_active_cid",
+                "event_cursor",
+                "expected_effects",
+                "observed_effects",
+                "deferred_item_keys",
+                "activated_deferred_keys",
+                "resumed",
+                "quarantined",
+                "committed",
+                "reason_codes",
+                "markdown_path",
+                "duckdb_path",
+            }
+            if (
+                set(cas_payload) != receipt_fields
+                or cas_payload.get("receipt_cid") != parts[1]
+                or not isinstance(cas_payload.get("resumed"), bool)
+                or not isinstance(cas_payload.get("quarantined"), bool)
+                or not isinstance(cas_payload.get("committed"), bool)
+                or cas_payload.get("committed")
+                != (cas_payload.get("state") in {"committed", "replayed"})
+            ):
+                raise ValueError("plan store receipt CAS projection is malformed")
+            receipt_identity_body = {
+                name: value
+                for name, value in cas_payload.items()
+                if name not in {"receipt_cid", "resumed", "committed"}
+            }
+            derived_cid = content_identity(receipt_identity_body)
+        if (
+            payload is None
+            or set(payload) != {"schema", "cid", "media_type", "payload"}
+            or payload.get("schema") != PLAN_REVISION_STORE_SCHEMA
+            or payload.get("cid") != parts[1]
+            or derived_cid != parts[1]
+        ):
+            raise ValueError("plan store CAS projection is malformed or mixed")
+        return
+    if len(parts) == 2 and parts[0] == "continuations":
+        payload, _evidence = _read_stable_regular_json(artifact)
+        if (
+            payload is None
+            or set(payload) != {
+                "schema",
+                "idempotency_key",
+                "payload",
+                "updated_at_ns",
+                "continuation_cid",
+            }
+            or payload.get("schema") != PLAN_REVISION_CONTINUATION_SCHEMA
+            or not isinstance(payload.get("idempotency_key"), str)
+            or not isinstance(payload.get("payload"), Mapping)
+            or isinstance(payload.get("updated_at_ns"), bool)
+            or not isinstance(payload.get("updated_at_ns"), int)
+            or parts[1]
+            != _plan_bound_safe_store_filename(payload["idempotency_key"]) + ".json"
+        ):
+            raise ValueError("plan store continuation projection is malformed")
+        body = dict(payload)
+        continuation_cid = body.pop("continuation_cid")
+        if content_identity(body) != continuation_cid:
+            raise ValueError("plan store continuation content identity is mixed")
+        return
+    if len(parts) == 2 and parts[0] == "intents" and parts[1].endswith(".json"):
+        payload, _evidence = _read_stable_regular_json(artifact)
+        if payload is None or payload.get("schema") != PLAN_REVISION_INTENT_SCHEMA:
+            raise ValueError("plan store intent projection is malformed")
+        intent = PlanRevisionIntent.from_dict(payload)
+        if intent.to_dict() != payload or parts[1] != f"{intent.intent_cid}.json":
+            raise ValueError("plan store intent projection is mixed")
+        return
+    raise ValueError("plan store contains a noncanonical projection")
+
+
+def _plan_bound_recovery_runtime_kind(
+    artifact: Path,
+    *,
+    directory_projection: bool,
+    runtime_roots: tuple[Path, Path, Path],
+    owner_bound_artifacts: tuple[Path, ...],
+    runtime_bindings: tuple[Mapping[str, Any], ...],
+    state_dir: Path,
+    state_prefix: str,
+) -> str:
+    """Classify only paths derived from the active manifest and handoffs."""
+
+    state_root, worktree_root, merge_root = runtime_roots
+    workspace_paths = {
+        Path(str(binding.get("workspace_path") or ""))
+        for binding in runtime_bindings
+        if binding.get("workspace_path")
+    }
+    if artifact in owner_bound_artifacts:
+        expected_workspace = artifact in workspace_paths
+        if directory_projection != expected_workspace:
+            return ""
+        return "workspace" if expected_workspace else "file"
+    if artifact.is_relative_to(worktree_root):
+        relative = artifact.relative_to(worktree_root)
+        if directory_projection and artifact in workspace_paths:
+            return "workspace"
+        entry_ids = {
+            path.name.removeprefix("workspace-")
+            for path in workspace_paths
+            if path.name.startswith("workspace-")
+        }
+        if (
+            not directory_projection
+            and len(relative.parts) == 2
+            and relative.parts[0] == ".pool-state"
+            and (
+                (
+                    relative.stem in entry_ids
+                    and relative.suffix in {".json", ".lock"}
+                )
+                or relative.name
+                in {
+                    f".{entry_id}.lock.update.lock"
+                    for entry_id in entry_ids
+                }
+            )
+        ):
+            return "file"
+        return ""
+    if artifact.is_relative_to(merge_root):
+        relative = artifact.relative_to(merge_root)
+        request_ids = {
+            str(binding.get("merge_request_id") or "")
+            for binding in runtime_bindings
+            if binding.get("merge_request_id")
+        }
+        dedupe_keys = {
+            str(binding.get("merge_dedupe_key") or "")
+            for binding in runtime_bindings
+            if binding.get("merge_dedupe_key")
+        }
+        if directory_projection:
+            return ""
+        if relative.parts in {
+            (".merge_queue.duckdb.lock",),
+            ("merge_queue.duckdb",),
+            ("train", "consumer.lock"),
+        }:
+            return "file"
+        if (
+            len(relative.parts) == 2
+            and relative.parts[0] in {"pending", "processing", "completed", "failed"}
+            and relative.stem in request_ids
+            and relative.suffix == ".json"
+        ):
+            return "file"
+        if (
+            len(relative.parts) == 3
+            and relative.parts[:2] == ("train", "receipts")
+            and relative.stem in dedupe_keys
+            and relative.suffix == ".json"
+        ):
+            return "file"
+        return ""
+    if not artifact.is_relative_to(state_root):
+        return ""
+    relative = artifact.relative_to(state_root)
+    if relative.parts and relative.parts[0] == "plan-revision-store":
+        if directory_projection:
+            return ""
+        _validate_plan_bound_store_projection(
+            state_root / "plan-revision-store",
+            artifact,
+        )
+        return "store"
+    if directory_projection or len(relative.parts) < 2:
+        return ""
+    lane_name = relative.parts[0]
+    lane_match = re.fullmatch(r"lane-([0-9]+)", lane_name)
+    binding = None
+    if lane_match is not None:
+        lane_index = int(lane_match.group(1))
+        binding = next(
+            (
+                item
+                for item in runtime_bindings
+                if item.get("lane_index") == lane_index
+            ),
+            None,
+        )
+    elif state_dir.parent == state_root and artifact.is_relative_to(state_dir):
+        binding = next(
+            (
+                item
+                for item in runtime_bindings
+                if item.get("lane_id")
+                and str(item["lane_id"]) == state_dir.name
+            ),
+            None,
+        )
+    if binding is None:
+        return ""
+    lane_index = int(binding["lane_index"])
+    prefix_match = re.fullmatch(r"(.+)_lane_[0-9]+", state_prefix)
+    lane_prefix = (
+        f"{prefix_match.group(1)}_lane_{lane_index}"
+        if prefix_match is not None
+        else (state_prefix if artifact.is_relative_to(state_dir) else "")
+    )
+    if not lane_prefix:
+        return ""
+    lane_relative = PurePosixPath(*relative.parts[1:])
+    name = lane_relative.name
+    if len(lane_relative.parts) == 1 and name in {
+        "task_queue.json",
+        ".implementation.lock.update.lock",
+        f".{lane_prefix}_events.jsonl.lock",
+        f"{lane_prefix}_events.jsonl",
+        f"{lane_prefix}_events.jsonl.manifest.json",
+        f"{lane_prefix}_strategy.json",
+        f"{lane_prefix}_task_state.json",
+        f"{lane_prefix}_status.json",
+    }:
+        return "file"
+    if len(lane_relative.parts) != 2 or lane_relative.parts[0] != "implementation_logs":
+        return ""
+    active_task_id = str(binding.get("active_task_id") or "")
+    raw_attempt = binding.get("attempt")
+    if (
+        not active_task_id
+        or active_task_id not in binding.get("task_ids", ())
+        or isinstance(raw_attempt, bool)
+        or not isinstance(raw_attempt, int)
+        or raw_attempt < 1
+    ):
+        return ""
+    safe_task = (
+        re.sub(r"[^a-z0-9._-]+", "-", active_task_id.lower()).strip("-")
+        or "task"
+    )
+    attempt = int(raw_attempt)
+    if safe_task:
+        if name in {
+            f"{safe_task}-base-context-capsule.json",
+            f"{safe_task}-base-context-receipt.json",
+            f"{safe_task}-attempt-{attempt}-context-receipt.json",
+            f"{safe_task}-attempt-{attempt}-provider-receipt.json",
+            f"{safe_task}-attempt-{attempt}-task-execution-receipt.json",
+            f"{safe_task}-attempt-{attempt}-retry-capsule.json",
+            f"{safe_task}-attempt-{attempt}.log",
+        }:
+            return "file"
+    return ""
+
+
+def _snapshot_plan_bound_recovery_artifacts(
+    *,
+    root: Path,
+    runtime_roots: tuple[Path, Path, Path],
+    owner_bound_artifacts: tuple[Path, ...],
+    runtime_bindings: tuple[Mapping[str, Any], ...],
+    state_dir: Path,
+    state_prefix: str,
+) -> tuple[dict[str, Any], ...]:
+    """Validate and bind every pre-existing non-store untracked artifact."""
+
+    status = _plan_bound_git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignored=matching",
+        "--ignore-submodules=none",
+    )
+    if status.returncode != 0:
+        raise ValueError("plan-bound recovery repository status is unavailable")
+    evidence: list[dict[str, Any]] = []
+    for raw_entry in str(status.stdout).split("\0"):
+        if not raw_entry:
+            continue
+        if raw_entry[:3] not in {"?? ", "!! "}:
+            raise ValueError("plan-bound recovery repository has tracked changes")
+        relative_text = raw_entry[3:]
+        directory_projection = relative_text.endswith("/")
+        relative_text = relative_text[:-1] if directory_projection else relative_text
+        relative = PurePosixPath(relative_text)
+        if (
+            not relative_text
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or relative.as_posix() != relative_text
+        ):
+            raise ValueError("plan-bound recovery has an unsafe untracked path")
+        artifact = _lexical_contained_path(root, root / relative)
+        kind = _plan_bound_recovery_runtime_kind(
+            artifact,
+            directory_projection=directory_projection,
+            runtime_roots=runtime_roots,
+            owner_bound_artifacts=owner_bound_artifacts,
+            runtime_bindings=runtime_bindings,
+            state_dir=state_dir,
+            state_prefix=state_prefix,
+        )
+        if not kind:
+            raise ValueError(
+                "plan-bound recovery has a noncanonical runtime projection: "
+                f"{relative_text!r}"
+            )
+        if kind == "store":
+            continue
+        evidence.append(
+            _plan_bound_recovery_artifact_evidence(
+                root,
+                artifact,
+                workspace=kind == "workspace",
+            )
+        )
+    return tuple(sorted(evidence, key=lambda item: item["path"]))
+
+
 def _validate_plan_bound_accepted_tree(
     *,
     accepted_tree_root: Path,
     source_head: str,
     source_tree: str,
     control_plane_pin: AgentImplementationControlPlanePin | None = None,
+    recovery_repository_head: str = "",
+    recovery_repository_tree: str = "",
+    recovery_runtime_roots: tuple[Path, ...] = (),
+    recovery_owner_bound_artifacts: tuple[Path, ...] = (),
+    recovery_artifacts: tuple[Mapping[str, Any], ...] = (),
 ) -> None:
-    """Bind both executable plan-bound entries to one clean accepted HEAD."""
+    """Bind initial launches to HEAD and recovery to the sealed source object."""
 
     root = _canonical_accepted_tree_root(accepted_tree_root)
     if control_plane_pin is None:
@@ -3516,13 +4585,204 @@ def _validate_plan_bound_accepted_tree(
         raise ValueError("plan-bound source HEAD is not a Git object identity")
     if re.fullmatch(r"[0-9a-f]{40,64}", source_tree) is None:
         raise ValueError("plan-bound source tree is not a Git object identity")
+    if (
+        not isinstance(recovery_repository_head, str)
+        or not isinstance(recovery_repository_tree, str)
+        or bool(recovery_repository_head) != bool(recovery_repository_tree)
+    ):
+        raise ValueError("plan-bound recovery repository identity is partial")
+    if (
+        not isinstance(recovery_runtime_roots, tuple)
+        or any(not isinstance(path, Path) for path in recovery_runtime_roots)
+        or not isinstance(recovery_owner_bound_artifacts, tuple)
+        or any(
+            not isinstance(path, Path)
+            for path in recovery_owner_bound_artifacts
+        )
+        or not isinstance(recovery_artifacts, tuple)
+        or any(not isinstance(item, Mapping) for item in recovery_artifacts)
+    ):
+        raise ValueError("plan-bound recovery runtime authority is malformed")
+    source_object = _plan_bound_git(root, "rev-parse", f"{source_head}^{{tree}}")
+    if (
+        source_object.returncode != 0
+        or str(source_object.stdout).strip() != source_tree
+    ):
+        raise ValueError("plan-bound sealed source object is unavailable or mixed")
     head = _plan_bound_git(root, "rev-parse", "HEAD")
     tree = _plan_bound_git(root, "rev-parse", "HEAD^{tree}")
+    current_head = str(head.stdout).strip()
+    current_tree = str(tree.stdout).strip()
+    if recovery_repository_head:
+        if control_plane_pin is None:
+            raise ValueError(
+                "plan-bound repository advance requires a sealed control plane"
+            )
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", recovery_repository_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", recovery_repository_tree) is None
+            or head.returncode != 0
+            or tree.returncode != 0
+            or current_head != recovery_repository_head
+            or current_tree != recovery_repository_tree
+        ):
+            raise ValueError(
+                "plan-bound recovery repository identity changed"
+            )
+        ancestor = _plan_bound_git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            source_head,
+            recovery_repository_head,
+        )
+        status = _plan_bound_git(
+            root,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--ignored=matching",
+            "--ignore-submodules=none",
+        )
+        if (
+            ancestor.returncode != 0
+            or status.returncode != 0
+        ):
+            raise ValueError(
+                "plan-bound recovery repository is not a clean source descendant"
+            )
+        canonical_runtime_roots = tuple(
+            _lexical_contained_path(root, path)
+            for path in recovery_runtime_roots
+        )
+        if len(canonical_runtime_roots) != 3 or len(
+            set(canonical_runtime_roots)
+        ) != 3:
+            raise ValueError(
+                "plan-bound recovery runtime roots are absent or ambiguous"
+            )
+        canonical_owner_bound_artifacts = tuple(
+            _lexical_contained_path(root, path)
+            for path in recovery_owner_bound_artifacts
+        )
+        if (
+            not canonical_owner_bound_artifacts
+            or len(canonical_owner_bound_artifacts)
+            != len(set(canonical_owner_bound_artifacts))
+            or any(
+                not any(
+                    artifact.is_relative_to(runtime_root)
+                    for runtime_root in canonical_runtime_roots
+                )
+                for artifact in canonical_owner_bound_artifacts
+            )
+        ):
+            raise ValueError(
+                "plan-bound recovery owner-bound artifact is absent or foreign"
+            )
+
+        expected_artifacts = {
+            str(item.get("path") or ""): dict(item)
+            for item in recovery_artifacts
+        }
+        if (
+            not expected_artifacts
+            or "" in expected_artifacts
+            or len(expected_artifacts) != len(recovery_artifacts)
+        ):
+            raise ValueError(
+                "plan-bound recovery artifact evidence is absent or ambiguous"
+            )
+        observed_artifacts: set[str] = set()
+        for raw_entry in str(status.stdout).split("\0"):
+            if not raw_entry:
+                continue
+            if raw_entry[:3] not in {"?? ", "!! "}:
+                raise ValueError(
+                    "plan-bound recovery repository has tracked changes"
+                )
+            relative_text = raw_entry[3:]
+            directory_projection = relative_text.endswith("/")
+            normalized_relative_text = (
+                relative_text[:-1]
+                if directory_projection
+                else relative_text
+            )
+            relative = PurePosixPath(normalized_relative_text)
+            if (
+                not normalized_relative_text
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or relative.as_posix() != normalized_relative_text
+            ):
+                raise ValueError(
+                    "plan-bound recovery repository has an unsafe untracked path: "
+                    f"{relative_text!r}"
+                )
+            artifact = _lexical_contained_path(root, root / relative)
+            if not any(
+                artifact.is_relative_to(runtime_root)
+                for runtime_root in canonical_runtime_roots
+            ):
+                raise ValueError(
+                    "plan-bound recovery repository has a foreign untracked path"
+                )
+            state_relative = (
+                artifact.relative_to(canonical_runtime_roots[0])
+                if artifact.is_relative_to(canonical_runtime_roots[0])
+                else None
+            )
+            if (
+                state_relative is not None
+                and state_relative.parts[:1] == ("plan-revision-store",)
+            ):
+                if directory_projection:
+                    raise ValueError("plan store directory projection is ambiguous")
+                _validate_plan_bound_store_projection(
+                    canonical_runtime_roots[0] / "plan-revision-store",
+                    artifact,
+                )
+                continue
+            evidence = expected_artifacts.get(normalized_relative_text)
+            if evidence is None:
+                if artifact not in canonical_owner_bound_artifacts:
+                    raise ValueError(
+                        "plan-bound recovery found an unauthenticated runtime "
+                        f"artifact: {relative_text!r}"
+                    )
+                # These exact launch-owned paths may be created after the
+                # immutable recovery decision (PID reservation/log only).
+                # They are files, never workspace projections, and still
+                # receive no executable or link exception.
+                if directory_projection:
+                    raise ValueError(
+                        "plan-bound launch-owned artifact changed projection kind"
+                    )
+                _plan_bound_recovery_artifact_evidence(
+                    root,
+                    artifact,
+                    workspace=False,
+                )
+                continue
+            observed = _plan_bound_recovery_artifact_evidence(
+                root,
+                artifact,
+                workspace=directory_projection,
+            )
+            if observed != evidence:
+                raise ValueError(
+                    "plan-bound recovery runtime artifact content identity changed"
+                )
+            observed_artifacts.add(normalized_relative_text)
+        if observed_artifacts != set(expected_artifacts):
+            raise ValueError("plan-bound recovery runtime artifact set changed")
+        return
     if (
         head.returncode != 0
         or tree.returncode != 0
-        or str(head.stdout).strip() != source_head
-        or str(tree.stdout).strip() != source_tree
+        or current_head != source_head
+        or current_tree != source_tree
     ):
         raise ValueError("plan-bound accepted tree changed from the pinned source")
     for relative in (PLAN_BOUND_GATE_ENTRY_PATH, PLAN_BOUND_ACCEPTED_ENTRY_PATH):
@@ -3656,12 +4916,465 @@ def stop_tracks(
     }
 
 
+def _publish_plan_bound_terminal_missing(
+    child: PlanBoundSupervisorChild,
+    process: subprocess.Popen[bytes],
+    *,
+    repo_root: Path,
+    reason_codes: Sequence[str],
+) -> tuple[str, Any]:
+    """Fence one exited current owner and terminally deny its whole wave."""
+
+    from ..entrypoints.execution_plan import (
+        ExecutionClaimConflictError,
+        PlanBoundTerminalMissing,
+        ProductionParallelPlanAdapter,
+        _load_plan_bound_execution_lease_locked,
+        _load_plan_bound_proposal_disposition_locked,
+        _publish_plan_bound_terminal_missing_locked,
+        _secure_store_cas,
+    )
+    from ..task_sources.plan_revision_store import PlanRevisionStore
+
+    returncode = process.poll()
+    profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
+    process_identity = getattr(
+        process,
+        "_agent_supervisor_process_identity",
+        None,
+    )
+    process_birth_cid = getattr(
+        process,
+        "_agent_supervisor_process_birth_cid",
+        "",
+    )
+    if (
+        returncode is None
+        or not isinstance(profile, LifecycleProfile)
+        or not isinstance(process_identity, ProcessIdentity)
+        or not isinstance(process_birth_cid, str)
+        or not process_birth_cid
+    ):
+        raise ExecutionClaimConflictError(
+            "terminal-missing requires an exited durable process birth"
+        )
+    accepted_tree = _canonical_accepted_tree_root(Path(child.accepted_tree_root))
+    resolved_repo = _canonical_accepted_tree_root(repo_root)
+    if accepted_tree != resolved_repo:
+        raise ExecutionClaimConflictError(
+            "terminal-missing repository authority is mixed"
+        )
+    store_path = _lexical_contained_path(
+        resolved_repo,
+        _resolve_path(resolved_repo, Path(child.plan_revision_store_path)),
+    )
+    store = PlanRevisionStore(store_path)
+    adapter = ProductionParallelPlanAdapter(store)
+    with store._thread_lock:  # noqa: SLF001 - canonical one-winner transaction
+        with store._guard():  # noqa: SLF001 - canonical cross-process guard
+            if _load_plan_bound_proposal_disposition_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+            ) is not None:
+                raise ExecutionClaimConflictError(
+                    "terminal-missing conflicts with a proposal disposition"
+                )
+            execution_slice = adapter._validate_slice_owner_locked(  # noqa: SLF001
+                revision_cid=child.revision_cid,
+                slice_manifest_cid=child.slice_manifest_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+                reassignment_cid=child.reassignment_cid,
+            )
+            lease = _load_plan_bound_execution_lease_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+            )
+            if (
+                lease is None
+                or lease[1].process_birth_cid != process_birth_cid
+                or execution_slice.task_pairs
+                != tuple(zip(child.task_ids, child.task_cids, strict=True))
+            ):
+                raise ExecutionClaimConflictError(
+                    "terminal-missing lost its current execution lease"
+                )
+            process_state, fenced_tree = (
+                _strict_plan_bound_process_fence_observation(
+                    profile,
+                    process_identity,
+                )
+            )
+            if process_state != "dead" or fenced_tree is None:
+                raise ExecutionClaimConflictError(
+                    "terminal-missing process death is not provable"
+                )
+            observed_at_ms = int(time.time() * 1000)
+            fence_record = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "plan-bound-terminal-process-fence@1"
+                ),
+                "revision_cid": child.revision_cid,
+                "slice_manifest_cid": child.slice_manifest_cid,
+                "slice_id": child.slice_id,
+                "lane_id": child.lane_id,
+                "reassignment_cid": child.reassignment_cid,
+                "process_birth_cid": process_birth_cid,
+                "profile": profile.to_dict(),
+                "process_birth": process_identity.to_dict(),
+                "fenced_tree": fenced_tree.to_dict(),
+                "exit_code": int(returncode),
+                "observed_at_ms": observed_at_ms,
+            }
+            process_fence_cid = store.put_cas(fence_record)
+            if _secure_store_cas(store, process_fence_cid) != fence_record:
+                raise ExecutionClaimConflictError(
+                    "terminal-missing process fence failed CAS round trip"
+                )
+            terminal = PlanBoundTerminalMissing(
+                revision_cid=child.revision_cid,
+                plan_root_cid=child.plan_root_cid,
+                execution_plan_cid=child.execution_plan_cid,
+                capacity_snapshot_id=child.capacity_snapshot_id,
+                slice_manifest_cid=child.slice_manifest_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+                reassignment_cid=child.reassignment_cid,
+                task_id=child.task_ids[0],
+                task_cid=child.task_cids[0],
+                process_birth_cid=process_birth_cid,
+                process_fence_cid=process_fence_cid,
+                exit_code=int(returncode),
+                observed_at_ms=observed_at_ms,
+                reason_codes=tuple(reason_codes),
+            )
+            _publish_plan_bound_terminal_missing_locked(store, terminal)
+            assignment = lease[1].assignment_for(
+                child.task_ids[0],
+                child.task_cids[0],
+            )
+            timeout_ms = assignment.get("lease_duration_ms")
+            if (
+                isinstance(timeout_ms, bool)
+                or not isinstance(timeout_ms, int)
+                or not 50 <= timeout_ms <= 86_400_000
+            ):
+                raise ExecutionClaimConflictError(
+                    "terminal-missing compiled execution bound is invalid"
+                )
+            barrier = adapter._evaluate_wave_diff_barrier_locked(  # noqa: SLF001
+                revision_cid=child.revision_cid,
+                slice_manifest_cid=child.slice_manifest_cid,
+                timeout_ms=timeout_ms,
+                now_ms=observed_at_ms,
+            )
+            if barrier is None or barrier[1].decision != "missing":
+                raise ExecutionClaimConflictError(
+                    "terminal-missing did not deny the whole wave"
+                )
+            return barrier
+
+
+def _plan_bound_process_birth_budget_reached(
+    child: PlanBoundSupervisorChild,
+) -> bool:
+    """Return whether the current owner consumed its immutable birth budget."""
+
+    from ..entrypoints.execution_plan import (
+        MAX_PLAN_BOUND_WAVE_TRANSFERS,
+        ProductionParallelPlanAdapter,
+        _load_plan_bound_process_birth_chain_locked,
+    )
+    from ..task_sources.plan_revision_store import PlanRevisionStore
+
+    accepted_tree = _canonical_accepted_tree_root(Path(child.accepted_tree_root))
+    store_path = _lexical_contained_path(
+        accepted_tree,
+        _resolve_path(accepted_tree, Path(child.plan_revision_store_path)),
+    )
+    store = PlanRevisionStore(store_path)
+    adapter = ProductionParallelPlanAdapter(store)
+    with store._thread_lock:  # noqa: SLF001
+        with store._guard():  # noqa: SLF001
+            adapter._validate_slice_owner_locked(  # noqa: SLF001
+                revision_cid=child.revision_cid,
+                slice_manifest_cid=child.slice_manifest_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+                reassignment_cid=child.reassignment_cid,
+            )
+            binding = _load_plan_bound_process_birth_chain_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+            )
+            if binding is None:
+                raise ValueError("plan-bound recovery has no process-birth chain")
+            return binding[1].generation == MAX_PLAN_BOUND_WAVE_TRANSFERS
+
+
+def _publish_plan_bound_process_birth_exhausted(
+    child: PlanBoundSupervisorChild,
+    process: subprocess.Popen[bytes],
+    *,
+    repo_root: Path,
+) -> tuple[str, Any]:
+    """Fence the final recovery birth and durably require typed replanning."""
+
+    from ..entrypoints.execution_plan import (
+        MAX_PLAN_BOUND_WAVE_TRANSFERS,
+        ExecutionClaimConflictError,
+        PlanBoundProcessBirthExhausted,
+        ProductionParallelPlanAdapter,
+        _load_plan_bound_execution_lease_locked,
+        _load_plan_bound_process_birth_chain_locked,
+        _load_plan_bound_proposal_disposition_locked,
+        _publish_plan_bound_process_birth_exhausted_locked,
+        _secure_store_cas,
+    )
+    from ..task_sources.plan_revision_store import PlanRevisionStore
+
+    returncode = process.poll()
+    profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
+    process_identity = getattr(
+        process,
+        "_agent_supervisor_process_identity",
+        None,
+    )
+    process_birth_cid = getattr(
+        process,
+        "_agent_supervisor_process_birth_cid",
+        "",
+    )
+    if (
+        returncode is None
+        or not isinstance(profile, LifecycleProfile)
+        or not isinstance(process_identity, ProcessIdentity)
+        or not isinstance(process_birth_cid, str)
+        or not process_birth_cid
+    ):
+        raise ExecutionClaimConflictError(
+            "process-birth exhaustion requires an exited durable birth"
+        )
+    accepted_tree = _canonical_accepted_tree_root(Path(child.accepted_tree_root))
+    resolved_repo = _canonical_accepted_tree_root(repo_root)
+    if accepted_tree != resolved_repo:
+        raise ExecutionClaimConflictError(
+            "process-birth exhaustion repository authority is mixed"
+        )
+    store_path = _lexical_contained_path(
+        resolved_repo,
+        _resolve_path(resolved_repo, Path(child.plan_revision_store_path)),
+    )
+    store = PlanRevisionStore(store_path)
+    adapter = ProductionParallelPlanAdapter(store)
+    with store._thread_lock:  # noqa: SLF001 - canonical one-winner transaction
+        with store._guard():  # noqa: SLF001 - canonical cross-process guard
+            execution_slice = adapter._validate_slice_owner_locked(  # noqa: SLF001
+                revision_cid=child.revision_cid,
+                slice_manifest_cid=child.slice_manifest_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+                reassignment_cid=child.reassignment_cid,
+            )
+            birth_binding = _load_plan_bound_process_birth_chain_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+            )
+            if (
+                birth_binding is None
+                or birth_binding[0] != process_birth_cid
+                or birth_binding[1].generation
+                != MAX_PLAN_BOUND_WAVE_TRANSFERS
+                or birth_binding[1].global_budget
+                != MAX_PLAN_BOUND_WAVE_TRANSFERS
+                or birth_binding[1].profile != profile.to_dict()
+                or birth_binding[1].process_birth
+                != process_identity.to_dict()
+            ):
+                raise ExecutionClaimConflictError(
+                    "process-birth exhaustion lost the final chain head"
+                )
+            lease = _load_plan_bound_execution_lease_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+            )
+            disposition = _load_plan_bound_proposal_disposition_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+            )
+            if (
+                lease is None
+                or lease[1].phase
+                not in {
+                    "proposal_ready",
+                    "merge_enqueue_prepared",
+                    "merge_enqueue_confirmed",
+                }
+                or disposition is None
+                or disposition[1].outcome not in {"changed", "no_change"}
+                or execution_slice.task_pairs
+                != tuple(zip(child.task_ids, child.task_cids, strict=True))
+            ):
+                raise ExecutionClaimConflictError(
+                    "process-birth exhaustion lacks a recoverable disposition"
+                )
+            process_state, fenced_tree = (
+                _strict_plan_bound_process_fence_observation(
+                    profile,
+                    process_identity,
+                )
+            )
+            if (
+                process_state != "dead"
+                or fenced_tree is None
+                or fenced_tree.members
+            ):
+                raise ExecutionClaimConflictError(
+                    "process-birth exhaustion death is not provable"
+                )
+            observed_at_ms = int(time.time() * 1000)
+            fence_record = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "plan-bound-process-birth-exhausted-fence@1"
+                ),
+                "revision_cid": child.revision_cid,
+                "slice_manifest_cid": child.slice_manifest_cid,
+                "slice_id": child.slice_id,
+                "lane_id": child.lane_id,
+                "reassignment_cid": child.reassignment_cid,
+                "process_birth_cid": process_birth_cid,
+                "generation": birth_binding[1].generation,
+                "global_budget": birth_binding[1].global_budget,
+                "profile": profile.to_dict(),
+                "process_birth": process_identity.to_dict(),
+                "fenced_tree": fenced_tree.to_dict(),
+                "exit_code": int(returncode),
+                "observed_at_ms": observed_at_ms,
+            }
+            process_fence_cid = store.put_cas(fence_record)
+            if _secure_store_cas(store, process_fence_cid) != fence_record:
+                raise ExecutionClaimConflictError(
+                    "process-birth exhaustion fence failed CAS round trip"
+                )
+            terminal = PlanBoundProcessBirthExhausted(
+                revision_cid=child.revision_cid,
+                plan_root_cid=child.plan_root_cid,
+                execution_plan_cid=child.execution_plan_cid,
+                capacity_snapshot_id=child.capacity_snapshot_id,
+                slice_manifest_cid=child.slice_manifest_cid,
+                slice_id=child.slice_id,
+                lane_id=child.lane_id,
+                reassignment_cid=child.reassignment_cid,
+                task_id=disposition[1].task_id,
+                task_cid=disposition[1].task_cid,
+                execution_lease_cid=lease[0],
+                disposition_cid=disposition[0],
+                process_birth_cid=process_birth_cid,
+                process_fence_cid=process_fence_cid,
+                generation=birth_binding[1].generation,
+                global_budget=birth_binding[1].global_budget,
+                exit_code=int(returncode),
+                observed_at_ms=observed_at_ms,
+                reason_codes=("process_birth_budget_exhausted",),
+            )
+            terminal_cid = _publish_plan_bound_process_birth_exhausted_locked(
+                store,
+                terminal,
+            )
+            return terminal_cid, terminal
+
+
+def _plan_bound_child_has_disposition(
+    child: PlanBoundSupervisorChild,
+) -> bool:
+    """Return whether the current slice owner published its one-winner result."""
+
+    from ..entrypoints.execution_plan import (
+        _load_plan_bound_proposal_disposition_locked,
+    )
+    from ..task_sources.plan_revision_store import PlanRevisionStore
+
+    accepted_tree = _canonical_accepted_tree_root(Path(child.accepted_tree_root))
+    store_path = _lexical_contained_path(
+        accepted_tree,
+        _resolve_path(accepted_tree, Path(child.plan_revision_store_path)),
+    )
+    store = PlanRevisionStore(store_path)
+    with store._thread_lock:  # noqa: SLF001
+        with store._guard():  # noqa: SLF001
+            return _load_plan_bound_proposal_disposition_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+            ) is not None
+
+
+def _plan_bound_child_execution_phase(
+    child: PlanBoundSupervisorChild,
+) -> str:
+    """Load the current-owner execution phase through canonical authority."""
+
+    from ..entrypoints.execution_plan import (
+        ProductionParallelPlanAdapter,
+        _load_plan_bound_merge_terminal_failure_locked,
+        _load_plan_bound_process_birth_exhausted_locked,
+    )
+    from ..task_sources.plan_revision_store import PlanRevisionStore
+
+    accepted_tree = _canonical_accepted_tree_root(Path(child.accepted_tree_root))
+    store_path = _lexical_contained_path(
+        accepted_tree,
+        _resolve_path(accepted_tree, Path(child.plan_revision_store_path)),
+    )
+    store = PlanRevisionStore(store_path)
+    with store._thread_lock:  # noqa: SLF001
+        with store._guard():  # noqa: SLF001
+            if _load_plan_bound_process_birth_exhausted_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+            ) is not None:
+                return "process_birth_budget_exhausted"
+            if _load_plan_bound_merge_terminal_failure_locked(
+                store,
+                revision_cid=child.revision_cid,
+                slice_id=child.slice_id,
+            ) is not None:
+                return "merge_terminal_failure"
+    adapter = ProductionParallelPlanAdapter(store)
+    current = adapter.load_execution_lease(
+        revision_cid=child.revision_cid,
+        slice_id=child.slice_id,
+        lane_id=child.lane_id,
+    )
+    return "" if current is None else current[1].phase
+
+
 def _plan_bound_scope_drift_receipt(
     child: PlanBoundSupervisorChild,
 ) -> dict[str, Any] | None:
-    """Read one typed pre-merge scope rejection through canonical authority."""
+    """Read one typed pre-merge whole-wave denial through canonical authority."""
 
-    from ..entrypoints.execution_plan import ProductionParallelPlanAdapter
+    from ..entrypoints.execution_plan import (
+        ConfiguredBoardExecutionSlices,
+        ProductionParallelPlanAdapter,
+        _load_plan_bound_merge_terminal_failure_locked,
+        _load_plan_bound_process_birth_exhausted_locked,
+        _load_plan_bound_proposal_disposition_locked,
+        _secure_store_cas,
+    )
     from ..task_sources.plan_revision_store import PlanRevisionStore
 
     accepted_tree = _canonical_accepted_tree_root(
@@ -3671,9 +5384,176 @@ def _plan_bound_scope_drift_receipt(
         accepted_tree,
         accepted_tree / Path(child.plan_revision_store_path),
     )
-    execution_lease = ProductionParallelPlanAdapter(
-        PlanRevisionStore(store_path)
-    ).load_execution_lease(
+    store = PlanRevisionStore(store_path)
+    adapter = ProductionParallelPlanAdapter(store)
+    terminal_rows: list[tuple[str, Mapping[str, Any]]] = []
+    exhausted_rows: list[tuple[str, Any]] = []
+    disposition_rows: list[tuple[str, Any]] = []
+    with store._thread_lock:  # noqa: SLF001
+        with store._guard():  # noqa: SLF001
+            manifest = ConfiguredBoardExecutionSlices.from_dict(
+                _secure_store_cas(store, child.slice_manifest_cid)
+            )
+            if manifest.plan_root_cid != child.plan_root_cid:
+                raise ValueError(
+                    "plan-bound terminal scan observed a foreign manifest"
+                )
+            for execution_slice in manifest.nonempty:
+                terminal = _load_plan_bound_merge_terminal_failure_locked(
+                    store,
+                    revision_cid=child.revision_cid,
+                    slice_id=execution_slice.slice_id,
+                )
+                if terminal is not None:
+                    terminal_rows.append(terminal)
+                exhausted = _load_plan_bound_process_birth_exhausted_locked(
+                    store,
+                    revision_cid=child.revision_cid,
+                    slice_id=execution_slice.slice_id,
+                )
+                if exhausted is not None:
+                    exhausted_rows.append(exhausted)
+                disposition = _load_plan_bound_proposal_disposition_locked(
+                    store,
+                    revision_cid=child.revision_cid,
+                    slice_id=execution_slice.slice_id,
+                )
+                if disposition is not None:
+                    disposition_rows.append(disposition)
+    if exhausted_rows:
+        own = next(
+            (
+                record
+                for _cid, record in disposition_rows
+                if record.slice_id == child.slice_id
+            ),
+            None,
+        )
+        return {
+            "kind": "process_birth_budget_exhausted",
+            "decision": "missing",
+            "revision_cid": child.revision_cid,
+            "plan_root_cid": exhausted_rows[0][1].plan_root_cid,
+            "slice_manifest_cid": child.slice_manifest_cid,
+            "slice_id": child.slice_id,
+            "lane_id": child.lane_id,
+            "task_id": own.task_id if own is not None else child.task_ids[0],
+            "task_cid": own.task_cid if own is not None else child.task_cids[0],
+            "proposal_id": own.proposal_id if own is not None else "",
+            "proposal_receipt_id": (
+                own.proposal_receipt_id if own is not None else ""
+            ),
+            "reason_codes": ["process_birth_budget_exhausted"],
+            "changed_paths": sorted(
+                {
+                    path
+                    for _disposition_cid, disposition in disposition_rows
+                    for path in disposition.actual_changed_paths
+                }
+            ),
+            "merge_enqueue_reached": False,
+            "process_birth_exhausted_cids": sorted(
+                exhausted_cid for exhausted_cid, _record in exhausted_rows
+            ),
+        }
+    if terminal_rows:
+        own = next(
+            (
+                record
+                for _cid, record in disposition_rows
+                if record.slice_id == child.slice_id
+            ),
+            None,
+        )
+        return {
+            "kind": "merge_terminal_failure",
+            "decision": "merge_failed",
+            "revision_cid": child.revision_cid,
+            "plan_root_cid": terminal_rows[0][1]["plan_root_cid"],
+            "slice_manifest_cid": child.slice_manifest_cid,
+            "slice_id": child.slice_id,
+            "lane_id": child.lane_id,
+            "task_id": own.task_id if own is not None else child.task_ids[0],
+            "task_cid": own.task_cid if own is not None else child.task_cids[0],
+            "proposal_id": own.proposal_id if own is not None else "",
+            "proposal_receipt_id": (
+                own.proposal_receipt_id if own is not None else ""
+            ),
+            "reason_codes": sorted(
+                {
+                    reason
+                    for _failure_cid, failure in terminal_rows
+                    for reason in failure["reason_codes"]
+                }
+            ),
+            "changed_paths": sorted(
+                {
+                    path
+                    for _disposition_cid, disposition in disposition_rows
+                    for path in disposition.actual_changed_paths
+                }
+            ),
+            "merge_enqueue_reached": True,
+            "merge_terminal_failure_cids": sorted(
+                failure_cid for failure_cid, _failure in terminal_rows
+            ),
+        }
+    barrier = adapter.load_wave_diff_barrier(
+        revision_cid=child.revision_cid,
+        slice_manifest_cid=child.slice_manifest_cid,
+    )
+    if barrier is not None and barrier[1].decision != "released":
+        disposition_rows = []
+        with store._thread_lock:  # noqa: SLF001
+            with store._guard():  # noqa: SLF001
+                for row in barrier[1].dispositions:
+                    disposition = _load_plan_bound_proposal_disposition_locked(
+                        store,
+                        revision_cid=child.revision_cid,
+                        slice_id=row["slice_id"],
+                    )
+                    if (
+                        disposition is None
+                        or disposition[0] != row["disposition_cid"]
+                    ):
+                        raise ValueError(
+                            "wave barrier lost a disposition authority"
+                        )
+                    disposition_rows.append(disposition)
+        own = next(
+            (
+                record
+                for _cid, record in disposition_rows
+                if record.slice_id == child.slice_id
+            ),
+            None,
+        )
+        return {
+            "kind": "wave_diff_barrier",
+            "wave_barrier_cid": barrier[0],
+            "decision": barrier[1].decision,
+            "revision_cid": barrier[1].revision_cid,
+            "plan_root_cid": barrier[1].plan_root_cid,
+            "slice_manifest_cid": barrier[1].slice_manifest_cid,
+            "slice_id": child.slice_id,
+            "lane_id": child.lane_id,
+            "task_id": own.task_id if own is not None else child.task_ids[0],
+            "task_cid": own.task_cid if own is not None else child.task_cids[0],
+            "proposal_id": own.proposal_id if own is not None else "",
+            "proposal_receipt_id": (
+                own.proposal_receipt_id if own is not None else ""
+            ),
+            "reason_codes": list(barrier[1].reason_codes),
+            "changed_paths": sorted(
+                {
+                    path
+                    for _cid, record in disposition_rows
+                    for path in record.actual_changed_paths
+                }
+            ),
+            "merge_enqueue_reached": False,
+        }
+    execution_lease = adapter.load_execution_lease(
         revision_cid=child.revision_cid,
         slice_id=child.slice_id,
         lane_id=child.lane_id,
@@ -3682,6 +5562,7 @@ def _plan_bound_scope_drift_receipt(
         return None
     drift = execution_lease[1]
     return {
+        "kind": "legacy_scope_drift_lease",
         "execution_lease_cid": execution_lease[0],
         "revision_cid": drift.revision_cid,
         "plan_root_cid": drift.plan_root_cid,
@@ -3782,7 +5663,6 @@ def run_supervisor_tracks(
     blocked = ""
     terminal_quiescent = False
     bounded_finished_tracks: set[str] = set()
-    available_recipient_lanes: dict[str, PlanBoundSupervisorChild] = {}
     pending_failed_slices: list[
         tuple[PlanBoundSupervisorChild, subprocess.Popen[bytes]]
     ] = []
@@ -3792,28 +5672,51 @@ def run_supervisor_tracks(
     replan_required = False
     run_started_at = time.time()
 
+    def recovery_recipient(
+        donor: PlanBoundSupervisorChild,
+    ) -> PlanBoundSupervisorChild:
+        """Mint a fresh logical lane in the dead donor's freed process slot."""
+
+        from ..entrypoints.execution_plan import ProductionParallelPlanAdapter
+        from ..task_sources.plan_revision_store import PlanRevisionStore
+
+        store_path = _lexical_contained_path(
+            resolved_repo_root,
+            _resolve_path(
+                resolved_repo_root,
+                Path(donor.plan_revision_store_path),
+            ),
+        )
+        current = ProductionParallelPlanAdapter(
+            PlanRevisionStore(store_path)
+        ).load_slice_reassignment(
+            revision_cid=donor.revision_cid,
+            slice_id=donor.slice_id,
+        )
+        generation = current[1].generation + 1 if current is not None else 1
+        token = hashlib.sha256(
+            f"{donor.revision_cid}:{donor.slice_id}:{generation}".encode(
+                "utf-8"
+            )
+        ).hexdigest()[:12]
+        lane_id = f"recovery-{generation}-{token}"
+        state_parent = PurePosixPath(str(donor.state_dir)).parent
+        return replace(
+            donor,
+            name=f"recovery-{generation}-{token}",
+            state_dir=str(state_parent / lane_id),
+            state_prefix=f"recovery_{generation}_{token}",
+            lane_id=lane_id,
+            reassignment_cid=donor.reassignment_cid,
+        )
+
     def dispatch_pending_reassignments() -> None:
-        nonlocal reassignment_count
-        while pending_failed_slices and available_recipient_lanes:
-            selected_index = -1
+        nonlocal blocked, reassignment_count, replan_required
+        while pending_failed_slices:
+            donor, donor_process = pending_failed_slices.pop(0)
             selected_recipient: PlanBoundSupervisorChild | None = None
-            for index, (donor, _process) in enumerate(pending_failed_slices):
-                candidates = sorted(
-                    (
-                        child
-                        for lane_id, child in available_recipient_lanes.items()
-                        if lane_id != donor.lane_id
-                    ),
-                    key=lambda child: (child.lane_id, child.name),
-                )
-                if candidates:
-                    selected_index = index
-                    selected_recipient = candidates[0]
-                    break
-            if selected_index < 0 or selected_recipient is None:
-                return
-            donor, donor_process = pending_failed_slices.pop(selected_index)
             try:
+                selected_recipient = recovery_recipient(donor)
                 adopted = reassign_fenced_plan_bound_child(
                     donor=donor,
                     recipient=selected_recipient,
@@ -3825,7 +5728,6 @@ def run_supervisor_tracks(
                     raise ValueError("reassigned track name is not unique")
                 managed_tracks.append(adopted_track)
                 plan_children_by_name[adopted.name] = adopted
-                available_recipient_lanes.pop(selected_recipient.lane_id, None)
                 processes[adopted_track.name] = start_track(
                     adopted_track,
                     repo_root=resolved_repo_root,
@@ -3850,11 +5752,42 @@ def run_supervisor_tracks(
             except Exception as exc:  # noqa: BLE001 - typed fail-closed boundary
                 blocker = (
                     f"slice={donor.slice_id} donor_lane={donor.lane_id} "
-                    f"recipient_lane={selected_recipient.lane_id} "
+                    f"recipient_lane={getattr(selected_recipient, 'lane_id', '')} "
                     f"{type(exc).__name__}: {exc}"
                 )
                 reassignment_blockers.append(blocker)
                 _emit(output, f"plan-bound reassignment blocked: {blocker}")
+                try:
+                    _publish_plan_bound_terminal_missing(
+                        donor,
+                        donor_process,
+                        repo_root=resolved_repo_root,
+                        reason_codes=(
+                            "process_exited_without_disposition",
+                            "safe_reassignment_exhausted",
+                        ),
+                    )
+                    receipt = _plan_bound_scope_drift_receipt(donor)
+                    if receipt is None:
+                        raise ValueError(
+                            "terminal-missing barrier receipt is absent"
+                        )
+                    scope_drift_receipts.append(receipt)
+                    replan_required = True
+                    blocked = (
+                        "process-fenced missing slice requires a new plan revision"
+                    )
+                except Exception as terminal_exc:  # noqa: BLE001
+                    terminal_blocker = (
+                        f"slice={donor.slice_id} lane={donor.lane_id} "
+                        f"terminal-missing {type(terminal_exc).__name__}: "
+                        f"{terminal_exc}"
+                    )
+                    reassignment_blockers.append(terminal_blocker)
+                    _emit(
+                        output,
+                        f"plan-bound terminal-missing blocked: {terminal_blocker}",
+                    )
 
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
@@ -3960,11 +5893,11 @@ def run_supervisor_tracks(
                             raise SupervisorRunInterrupted(
                                 f"could not fence completed {track.name} descendants"
                             )
-                    bounded_finished_tracks.add(track.name)
-                    terminal_tracks.add(track.name)
                     plan_child = plan_children_by_name.get(track.name)
+                    recover_execution = False
                     if plan_child is not None and process is not None:
                         scope_drift = None
+                        authority_read_failed = False
                         try:
                             scope_drift = _plan_bound_scope_drift_receipt(
                                 plan_child
@@ -3978,23 +5911,196 @@ def run_supervisor_tracks(
                             )
                             reassignment_blockers.append(blocker)
                             blocked = blocker
-                        if (
-                            scope_drift is not None
-                        ):
+                            authority_read_failed = True
+                        if scope_drift is not None:
                             scope_drift_receipts.append(scope_drift)
                             replan_required = True
                             blocked = (
                                 "typed actual candidate scope drift requires "
                                 "a new serialized plan revision"
                             )
-                        elif returncode == 0 and not blocked:
-                            available_recipient_lanes[plan_child.lane_id] = (
-                                lane_templates.get(
-                                    plan_child.lane_id, plan_child
+                        elif not authority_read_failed:
+                            try:
+                                has_disposition = (
+                                    _plan_bound_child_has_disposition(plan_child)
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                blocker = (
+                                    "cannot prove completed plan-bound disposition: "
+                                    f"slice={plan_child.slice_id} "
+                                    f"lane={plan_child.lane_id} "
+                                    f"{type(exc).__name__}: {exc}"
+                                )
+                                reassignment_blockers.append(blocker)
+                                blocked = blocker
+                                authority_read_failed = True
+                            if not authority_read_failed and not has_disposition:
+                                if returncode not in (None, 0, 75):
+                                    pending_failed_slices.append(
+                                        (plan_child, process)
+                                    )
+                                else:
+                                    try:
+                                        _publish_plan_bound_terminal_missing(
+                                            plan_child,
+                                            process,
+                                            repo_root=resolved_repo_root,
+                                            reason_codes=(
+                                                "process_exited_without_disposition",
+                                            ),
+                                        )
+                                        receipt = _plan_bound_scope_drift_receipt(
+                                            plan_child
+                                        )
+                                        if receipt is None:
+                                            raise ValueError(
+                                                "terminal-missing receipt is absent"
+                                            )
+                                        scope_drift_receipts.append(receipt)
+                                        replan_required = True
+                                        blocked = (
+                                            "process-fenced missing slice requires "
+                                            "a new plan revision"
+                                        )
+                                    except Exception as exc:  # noqa: BLE001
+                                        blocker = (
+                                            "cannot terminalize missing plan slice: "
+                                            f"slice={plan_child.slice_id} "
+                                            f"lane={plan_child.lane_id} "
+                                            f"{type(exc).__name__}: {exc}"
+                                        )
+                                        reassignment_blockers.append(blocker)
+                                        blocked = blocker
+                            elif not authority_read_failed:
+                                try:
+                                    execution_phase = (
+                                        _plan_bound_child_execution_phase(
+                                            plan_child
+                                        )
+                                    )
+                                except Exception as exc:  # noqa: BLE001
+                                    blocker = (
+                                        "cannot classify completed plan-bound "
+                                        "handoff: "
+                                        f"slice={plan_child.slice_id} "
+                                        f"lane={plan_child.lane_id} "
+                                        f"{type(exc).__name__}: {exc}"
+                                    )
+                                    reassignment_blockers.append(blocker)
+                                    blocked = blocker
+                                    authority_read_failed = True
+                                else:
+                                    recover_execution = execution_phase in {
+                                        "proposal_ready",
+                                        "merge_enqueue_prepared",
+                                        "merge_enqueue_confirmed",
+                                    }
+                                    if (
+                                        not recover_execution
+                                        and execution_phase
+                                        != "merge_completed"
+                                    ):
+                                        blocker = (
+                                            "published disposition is not a "
+                                            "terminal or recoverable handoff: "
+                                            f"slice={plan_child.slice_id} "
+                                            f"lane={plan_child.lane_id} "
+                                            f"phase={execution_phase!r}"
+                                        )
+                                        reassignment_blockers.append(blocker)
+                                        blocked = blocker
+                    if (
+                        recover_execution
+                        and not blocked
+                        and plan_child is not None
+                        and process is not None
+                    ):
+                        try:
+                            birth_budget_reached = (
+                                _plan_bound_process_birth_budget_reached(
+                                    plan_child
                                 )
                             )
-                        elif not blocked:
-                            pending_failed_slices.append((plan_child, process))
+                        except Exception as exc:  # noqa: BLE001
+                            blocker = (
+                                "cannot validate recoverable process-birth budget: "
+                                f"slice={plan_child.slice_id} "
+                                f"lane={plan_child.lane_id} "
+                                f"{type(exc).__name__}: {exc}"
+                            )
+                            reassignment_blockers.append(blocker)
+                            blocked = blocker
+                            birth_budget_reached = False
+                        if birth_budget_reached and not blocked:
+                            try:
+                                _publish_plan_bound_process_birth_exhausted(
+                                    plan_child,
+                                    process,
+                                    repo_root=resolved_repo_root,
+                                )
+                                receipt = _plan_bound_scope_drift_receipt(
+                                    plan_child
+                                )
+                                if (
+                                    receipt is None
+                                    or receipt.get("kind")
+                                    != "process_birth_budget_exhausted"
+                                ):
+                                    raise ValueError(
+                                        "process-birth exhaustion receipt is absent"
+                                    )
+                                scope_drift_receipts.append(receipt)
+                                replan_required = True
+                                blocked = (
+                                    "bounded plan-bound recovery births were "
+                                    "exhausted; a new revision is required"
+                                )
+                                recover_execution = False
+                            except Exception as exc:  # noqa: BLE001
+                                blocker = (
+                                    "cannot terminalize process-birth exhaustion: "
+                                    f"slice={plan_child.slice_id} "
+                                    f"lane={plan_child.lane_id} "
+                                    f"{type(exc).__name__}: {exc}"
+                                )
+                                reassignment_blockers.append(blocker)
+                                blocked = blocker
+                    if recover_execution and not blocked:
+                        try:
+                            processes[track.name] = start_track(
+                                track,
+                                repo_root=resolved_repo_root,
+                                common_args=common_args,
+                                python_executable=python_executable,
+                                accepted_control_plane_pin=(
+                                    accepted_control_plane_pin
+                                ),
+                                accepted_control_plane_descriptor=(
+                                    accepted_control_plane_descriptor
+                                ),
+                                output=output,
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            blocker = (
+                                "cannot restart recoverable plan-bound handoff: "
+                                f"slice={getattr(plan_child, 'slice_id', '')} "
+                                f"lane={getattr(plan_child, 'lane_id', '')} "
+                                f"{type(exc).__name__}: {exc}"
+                            )
+                            reassignment_blockers.append(blocker)
+                            blocked = blocker
+                        else:
+                            _emit(
+                                output,
+                                (
+                                    f"recovering bounded {track.name} "
+                                    f"old_pid={old_pid or 'none'} "
+                                    f"returncode={returncode!r}"
+                                ),
+                            )
+                            continue
+                    bounded_finished_tracks.add(track.name)
+                    terminal_tracks.add(track.name)
                     _emit(
                         output,
                         (
@@ -4056,6 +6162,21 @@ def run_supervisor_tracks(
                         "all supervisor tracks reached fresh terminal quiescence",
                     )
                 break
+        if (
+            plan_children_by_name
+            and not terminal_quiescent
+            and not replan_required
+            and not blocked
+            and any(
+                name not in bounded_finished_tracks
+                for name in plan_children_by_name
+            )
+        ):
+            blocked = (
+                "plan-bound wave exceeded its finite run window before "
+                "every slice reached a terminal handoff"
+            )
+            _emit(output, f"blocked: {blocked}")
         if terminal_quiescent:
             _emit(output, "completed after terminal board drain")
         else:
@@ -4370,12 +6491,13 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     """Release exactly one accepted-tree child after parent birth capture."""
 
     tokens = tuple(str(item) for item in argv)
-    if len(tokens) < 7 or tokens[4] != "--":
+    if len(tokens) < 8 or tokens[5] != "--":
         return 78
     try:
         gate_fd = int(tokens[0])
         control_plane_pin = parse_accepted_control_plane_pin(tokens[2])
         control_plane_descriptor = int(tokens[3])
+        recovery_authorization_cid = tokens[4]
         verify_agent_implementation_sealed_control_plane(
             control_plane_pin,
             control_plane_descriptor,
@@ -4386,7 +6508,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
         accepted_tree_root = _canonical_accepted_tree_root(Path(tokens[1]))
     except ValueError:
         return 78
-    child_command = list(tokens[5:])
+    child_command = list(tokens[6:])
     try:
         expected_prefix = build_sealed_control_plane_module_command(
             python_executable=child_command[0],
@@ -4417,6 +6539,28 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             child_argv,
             "--plan-bound-accepted-tree-root",
         )
+        store_paths = _profile_option_values(
+            child_argv,
+            "--plan-revision-store-path",
+        )
+        revision_cids = _profile_option_values(
+            child_argv,
+            "--plan-bound-revision-cid",
+        )
+        slice_ids = _profile_option_values(
+            child_argv,
+            "--plan-bound-slice-id",
+        )
+        lane_ids = _profile_option_values(
+            child_argv,
+            "--plan-bound-lane-id",
+        )
+        state_dirs = _profile_option_values(child_argv, "--state-dir")
+        worktree_roots = _profile_option_values(child_argv, "--worktree-root")
+        merge_queue_roots = _profile_option_values(
+            child_argv,
+            "--merge-queue-dir",
+        )
     except ValueError:
         return 78
     if (
@@ -4425,8 +6569,13 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
         or gate_fd == control_plane_descriptor
         or "--plan-bound-dispatch" not in child_argv
         or child_roots != (str(accepted_tree_root),)
+        or len(store_paths) != 1
+        or len(revision_cids) != 1
+        or len(slice_ids) != 1
+        or len(lane_ids) != 1
         or len(source_heads) != 1
         or len(source_trees) != 1
+        or not recovery_authorization_cid
         or (
             source_heads[0],
             source_trees[0],
@@ -4454,13 +6603,103 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     if authorization != PLAN_BOUND_LAUNCH_GATE_SUCCESS:
         return 78
     try:
+        recovery_repository_head = ""
+        recovery_repository_tree = ""
+        recovery_runtime_roots: tuple[Path, ...] = ()
+        recovery_owner_bound_artifacts: tuple[Path, ...] = ()
+        recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
+        if recovery_authorization_cid != "-":
+            from ..entrypoints.execution_plan import (
+                ProductionParallelPlanAdapter,
+            )
+            from ..task_sources.plan_revision_store import PlanRevisionStore
+
+            store_path = _resolve_path(
+                accepted_tree_root,
+                Path(store_paths[0]),
+            )
+            _lexical_contained_path(accepted_tree_root, store_path)
+            if (
+                len(state_dirs) != 1
+                or len(worktree_roots) != 1
+                or len(merge_queue_roots) != 1
+            ):
+                return 78
+            state_dir = _resolve_path(
+                accepted_tree_root,
+                Path(state_dirs[0]),
+            )
+            if state_dir.parent != store_path.parent:
+                return 78
+            recovery_runtime_roots = (
+                store_path.parent,
+                _resolve_path(
+                    accepted_tree_root,
+                    Path(worktree_roots[0]),
+                ),
+                _resolve_path(
+                    accepted_tree_root,
+                    Path(merge_queue_roots[0]),
+                ),
+            )
+            plan_adapter = ProductionParallelPlanAdapter(
+                PlanRevisionStore(store_path)
+            )
+            recovery = plan_adapter.load_recovery_launch(
+                revision_cid=revision_cids[0],
+                slice_id=slice_ids[0],
+                lane_id=lane_ids[0],
+                authorization_cid=recovery_authorization_cid,
+            )
+            execution = plan_adapter.load_execution_lease(
+                revision_cid=revision_cids[0],
+                slice_id=slice_ids[0],
+                lane_id=lane_ids[0],
+            )
+            if (
+                recovery.source_head != source_heads[0]
+                or recovery.source_tree != source_trees[0]
+                or execution is None
+                or execution[0] != recovery.execution_lease_cid
+            ):
+                return 78
+            recovery_repository_head = recovery.repository_head
+            recovery_repository_tree = recovery.repository_tree
+            recovery_artifacts = recovery.runtime_artifacts
+            recovery_owner_bound_artifacts = (
+                state_dir / "implementation.lock",
+                *(
+                    _resolve_path(accepted_tree_root, Path(path))
+                    for path in plan_adapter.recovery_workspace_paths(
+                        revision_cid=revision_cids[0],
+                        slice_manifest_cid=recovery.slice_manifest_cid,
+                    )
+                ),
+                *(
+                    _resolve_path(accepted_tree_root, Path(path))
+                    for path in recovery.launch_artifact_paths
+                ),
+            )
         _validate_plan_bound_accepted_tree(
             accepted_tree_root=accepted_tree_root,
             source_head=source_heads[0],
             source_tree=source_trees[0],
             control_plane_pin=control_plane_pin,
+            recovery_repository_head=recovery_repository_head,
+            recovery_repository_tree=recovery_repository_tree,
+            recovery_runtime_roots=recovery_runtime_roots,
+            recovery_owner_bound_artifacts=(
+                recovery_owner_bound_artifacts
+            ),
+            recovery_artifacts=recovery_artifacts,
         )
-    except (OSError, UnicodeError, ValueError, subprocess.SubprocessError):
+    except (
+        OSError,
+        UnicodeError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ):
         return 78
     try:
         environment = {
