@@ -1140,6 +1140,20 @@ class DatabaseEventLog:
         )
         with self._lock:
             connection = self._require()
+            if selected_stream != DEFAULT_STREAM_ID:
+                known_stream = connection.execute(
+                    """
+                    SELECT 1 FROM stream_heads WHERE stream_id = ?
+                    UNION ALL
+                    SELECT 1 FROM domain_events WHERE stream_id = ?
+                    LIMIT 1
+                    """,
+                    [selected_stream, selected_stream],
+                ).fetchone()
+                if known_stream is None:
+                    raise CursorReplayError(
+                        "event cursor stream is not registered in this event log"
+                    )
             head = self._load_head(connection, selected_stream)
             earliest = self._earliest_sequence(connection, selected_stream)
             try:
