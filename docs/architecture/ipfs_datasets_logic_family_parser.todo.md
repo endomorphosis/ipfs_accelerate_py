@@ -1160,7 +1160,7 @@ validation and evidence contract.
 
 ## LFP-037 Migrate legal_ir views to canonical normative, temporal, rule, and event logic
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
