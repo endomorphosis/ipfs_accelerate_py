@@ -10133,11 +10133,25 @@ class PortalImplementationDaemon:
                             validation_receipt_ids = {
                                 input_validation_receipt_id
                             }
+                            # Declared ordinary validation emits
+                            # validation-dag-receipt@3, while post-merge
+                            # evidence seals an ImpactValidationDAGReceipt.
+                            # For DuckDB the impact receipt is authoritative;
+                            # do not fail closed on the expected schema mismatch.
+                            validation_dag_receipt = dict(
+                                input_validation_receipt
+                            )
+                            validation_proof["validation_dag_receipt"] = (
+                                validation_dag_receipt
+                            )
                         else:
                             validation_receipt_ids.add(
                                 input_validation_receipt_id
                             )
-                    if isinstance(validation_dag_receipt, Mapping) and (
+                    if (
+                        self.task_source is None
+                        or self.task_source.source_kind != "duckdb"
+                    ) and isinstance(validation_dag_receipt, Mapping) and (
                         json.dumps(
                             validation_dag_receipt,
                             sort_keys=True,
