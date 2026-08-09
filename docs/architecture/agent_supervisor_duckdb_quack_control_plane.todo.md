@@ -1101,7 +1101,7 @@ this bootstrap is active.
 
 ## DQP-035 Run the full multi-daemon, multi-worktree database-authoritative E2E
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
