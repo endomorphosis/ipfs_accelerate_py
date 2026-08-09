@@ -102,7 +102,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-003 Build the sparse reachable domain-to-provider capability graph
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
