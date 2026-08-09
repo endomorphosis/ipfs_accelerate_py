@@ -350,7 +350,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-011 Converge SMT-LIB2 on the shared artifact pipeline
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
