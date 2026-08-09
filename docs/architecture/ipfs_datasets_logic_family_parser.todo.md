@@ -757,7 +757,7 @@ validation and evidence contract.
 
 ## LFP-024 Implement unified LTL, LTLf, past-LTL, MTL, CTL, and CTL-star syntax
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
