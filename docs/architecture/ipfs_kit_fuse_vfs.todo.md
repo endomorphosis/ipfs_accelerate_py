@@ -30,7 +30,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-100 Select canonical VFS authority and compatibility disposition
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
