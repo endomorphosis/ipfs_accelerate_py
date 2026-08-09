@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from ..core.protected_acceptance_contracts import EvidenceHandle
 
-CLI_COMMANDS = ("inspect", "prepare-q", "advance-one-phase", "birth")
+CLI_COMMANDS = ("inspect", "readiness", "prepare-q", "advance-one-phase", "birth")
 
 
 def _evidence(value: str) -> EvidenceHandle:
@@ -31,6 +31,15 @@ def build_parser() -> argparse.ArgumentParser:
         "inspect", help="inspect immutable transition capability"
     )
     inspect.add_argument("--evidence", action="append", type=_evidence, default=[])
+    readiness = subcommands.add_parser(
+        "readiness",
+        help="report fail-closed Q construction readiness without creating Q",
+    )
+    readiness.add_argument(
+        "--repo-root",
+        default=".",
+        help="repository root to assess (default: cwd)",
+    )
     for name in ("prepare-q", "advance-one-phase", "birth"):
         command = subcommands.add_parser(name, help=f"perform exactly {name}")
         command.add_argument(
@@ -50,20 +59,29 @@ def main(
     | None = None,
 ) -> int:
     arguments = build_parser().parse_args(argv)
-    evidence = tuple(arguments.evidence)
+    evidence = tuple(getattr(arguments, "evidence", None) or ())
     if any(not isinstance(item, EvidenceHandle) for item in evidence):
         raise TypeError("CLI evidence was not fully transcoded")
     if handlers is None:
-        if arguments.command != "inspect":
+        if arguments.command == "readiness":
+            from .protected_acceptance_q_readiness import (
+                assess_prompt_v3_q_construction_readiness,
+            )
+
+            result = assess_prompt_v3_q_construction_readiness(
+                getattr(arguments, "repo_root", ".")
+            )
+        elif arguments.command != "inspect":
             build_parser().error(
                 "production command requires injected protected composition"
             )
-        result: Mapping[str, Any] = {
-            "commands": list(CLI_COMMANDS),
-            "run_all": False,
-            "raw_key_input": False,
-            "evidence_handles": [item.to_dict() for item in evidence],
-        }
+        else:
+            result = {
+                "commands": list(CLI_COMMANDS),
+                "run_all": False,
+                "raw_key_input": False,
+                "evidence_handles": [item.to_dict() for item in evidence],
+            }
     else:
         if set(handlers) - set(CLI_COMMANDS):
             raise ValueError("CLI handlers contain unsupported commands")

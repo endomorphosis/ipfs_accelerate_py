@@ -42,6 +42,9 @@ from ..merge.protected_acceptance_transition import (
     validate_phase_candidate,
 )
 
+from .protected_acceptance_q_readiness import (
+    assess_prompt_v3_q_construction_readiness,
+)
 ROOT_PIN_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.local-profile-lifecycle-root-pin@1"
 )
@@ -461,6 +464,7 @@ def load_verified_prompt_v3_runtime_launch_authority(
 
 
 __all__ = (
+    "assess_prompt_v3_q_construction_readiness",
     "build_prompt_v3_phase_candidate",
     "build_prompt_v3_provider_authorization",
     "build_prompt_v3_reload_authorization",
