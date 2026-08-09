@@ -50,6 +50,8 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_acceptance_transi
 from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_acceptance_transition_cli import (
     main as transition_cli_main,
 )
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 from ipfs_accelerate_py.agent_supervisor.merge.protected_acceptance_transition import (
     ProtectedTransitionGitError,
     ProtectedTransitionRace,
@@ -865,11 +867,19 @@ def test_cli_surface_is_bounded_and_has_no_run_all_or_raw_key(
     help_text = parser.format_help()
     assert all(
         name in help_text
-        for name in ("inspect", "prepare-q", "advance-one-phase", "birth")
+        for name in (
+            "inspect",
+            "readiness",
+            "prepare-q",
+            "advance-one-phase",
+            "birth",
+        )
     )
     assert "run-all" not in help_text and "raw-key" not in help_text
     assert transition_cli_main(["inspect"]) == 0
-    assert json.loads(capsys.readouterr().out)["run_all"] is False
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["run_all"] is False
+    assert "readiness" in payload["commands"]
     with pytest.raises(SystemExit):
         transition_cli_main(["birth", "--raw-key", "secret"])
 
@@ -890,3 +900,42 @@ def test_gitignore_anchors_root_core_without_ignoring_nested_module() -> None:
         == 0
     )
     assert stat.S_IMODE((repo / ".gitignore").stat().st_mode) == 0o644
+
+
+def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_acceptance_q_readiness import (
+        assess_prompt_v3_q_construction_readiness,
+    )
+
+    report = assess_prompt_v3_q_construction_readiness(REPO_ROOT)
+    assert report["schema"].endswith("prompt-v3-q-readiness@1")
+    assert report["ready_for_prepare_q"] is False
+    assert report["q_inventory_present"] is False
+    assert all(report["ase3_033_tooling"].values())
+    products = report["pre_q_products"]
+    assert set(products) == {
+        "ASE3-019",
+        "ASE3-023",
+        "ASE3-027",
+        "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
+    }
+    # ASE3-027 sealed generations reconstruct from git even while ready=False.
+    ase3027 = products["ASE3-027"]
+    assert ase3027["generation_count"] == 2
+    assert ase3027["generations"][0]["ok"] is True
+    assert ase3027["generations"][1]["ok"] is True
+    assert ase3027["final_blob_count"] == 5
+    assert ase3027["blob_errors"] == []
+    assert any("ASE3-019" in item for item in report["blockers"])
+    assert any("ASE3-027" in item for item in report["blockers"])
+
+
+def test_cli_readiness_command_is_available_without_injected_handlers(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert transition_cli_main(["readiness", "--repo-root", str(REPO_ROOT)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ready_for_prepare_q"] is False
+    assert payload["blocker_count"] >= 1
