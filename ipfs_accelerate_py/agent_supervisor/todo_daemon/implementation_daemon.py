@@ -26061,10 +26061,13 @@ class PortalImplementationDaemon:
                 if metadata.get(key):
                     blobs.append(str(metadata.get(key)))
         haystack = "\n".join(blobs)
+        known_pin_set = set(known_pins)
         for pin in known_pins:
             if pin in haystack:
                 found.add(pin)
         # PYTHONPATH=src:external/ipfs_accelerate:external/ipfs_kit:…
+        # Only accept paths that match the known monorepo pin set. Free-text
+        # prose such as "no external/untracked checkout" must not invent a pin.
         for match in re.finditer(
             r"(?:^|[\s:=])((?:external|swissknife|hallucinate_app|Mcp-Plus-Plus)"
             r"(?:/[A-Za-z0-9_.\-]+)+)",
@@ -26075,8 +26078,10 @@ class PortalImplementationDaemon:
             parts = relative.split("/")
             if parts[0] in {"external", "swissknife", "hallucinate_app", "Mcp-Plus-Plus"}:
                 if parts[0] == "external" and len(parts) >= 2:
-                    found.add(f"external/{parts[1]}")
-                elif parts[0] != "external":
+                    candidate = f"external/{parts[1]}"
+                    if candidate in known_pin_set:
+                        found.add(candidate)
+                elif parts[0] != "external" and parts[0] in known_pin_set:
                     found.add(parts[0])
         return tuple(
             sorted(
