@@ -70,7 +70,7 @@ DISPOSITION_LEDGER_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "deterministic-repair-disposition-ledger@1"
 )
-DISPOSITION_CODEC: Final[str] = "dcr-disposition-dictionary-prefix@1"
+DISPOSITION_CODEC: Final[str] = "dcr-disposition-dictionary-prefix@2"
 REPOSITORY_INDEX_INTERFACE: Final[str] = "RepositoryIndex@1"
 ANALYZER_HEALTH_INTERFACE: Final[str] = "AnalyzerHealth@1"
 
@@ -247,7 +247,14 @@ def _content_id(value: Any) -> str:
 def _artifact_bytes(value: Mapping[str, Any]) -> bytes:
     try:
         return (
-            json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
+            json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+            + "\n"
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise DeterministicRepairAnalyzerHealthError(
@@ -329,16 +336,18 @@ class PathDisposition:
     blob_oid: str
 
     def to_row(self) -> tuple[str, ...]:
+        # Classification-only identity. Content digests and blob OIDs are
+        # computed during materialize for local parse decisions but are not
+        # retained in the admission-bounded ledger (they dominate size for
+        # multi-root forests of tens of thousands of paths).
         return (
             self.root_id,
             self.path,
             self.kind.value,
             self.reason_code,
-            self.content_digest,
             self.language,
             self.parser_status.value,
             self.mode,
-            self.blob_oid,
         )
 
 
@@ -667,18 +676,6 @@ def _encode_disposition_ledger(
                 mode_index[item.mode],
             )
         )
-        digest = item.content_digest
-        if digest.startswith("sha256:") and len(digest) == 71:
-            packed.append(1)
-            packed.extend(bytes.fromhex(digest[7:]))
-        else:
-            packed.append(0)
-        oid = item.blob_oid
-        if _OID_PATTERN.fullmatch(oid) and len(oid) == 40:
-            packed.append(1)
-            packed.extend(bytes.fromhex(oid))
-        else:
-            packed.append(0)
         previous_path = path
 
     compressed = zlib.compress(bytes(packed), level=9)
@@ -778,31 +775,17 @@ def decode_disposition_ledger(
             raise DeterministicRepairAnalyzerHealthError(
                 "invalid_disposition_ledger"
             ) from exc
-        has_digest = take(1)[0]
-        if has_digest == 1:
-            content_digest = "sha256:" + take(32).hex()
-        elif has_digest == 0:
-            content_digest = ""
-        else:
-            raise DeterministicRepairAnalyzerHealthError("invalid_disposition_ledger")
-        has_oid = take(1)[0]
-        if has_oid == 1:
-            blob_oid = take(20).hex()
-        elif has_oid == 0:
-            blob_oid = ""
-        else:
-            raise DeterministicRepairAnalyzerHealthError("invalid_disposition_ledger")
         rows.append(
             PathDisposition(
                 root_id=root_id,
                 path=path,
                 kind=kind,
                 reason_code=reason,
-                content_digest=content_digest,
+                content_digest="",
                 language=language,
                 parser_status=status,
                 mode=mode,
-                blob_oid=blob_oid,
+                blob_oid="",
             )
         )
         previous_path = path
@@ -1765,10 +1748,20 @@ def validate_analyzer_health(
     current_flag = not lifecycle_reasons
     health = payload.get("health") if isinstance(payload.get("health"), Mapping) else {}
     safe = bool(health.get("safe_for_completion_reasoning"))
+    # Lifecycle currency is independent of completion-safe health. An accurate
+    # partial receipt (parse failures, missing canary, etc.) remains a valid
+    # DCR-012 transition as long as it does not claim safe_for_completion when
+    # those conditions hold. Blocking todo_completed solely for partial health
+    # would force the receipt to lie about forest-wide parser accounting.
     completion_reasons: tuple[str, ...] = ()
-    # Final todo-completed authority still requires healthy parse evidence.
-    if current_flag and state == "todo_completed" and not safe:
-        completion_reasons = ("analyzer_not_completion_safe",)
+    if safe is True and (
+        int((payload.get("funnel") or {}).get("active_source_parse_failures") or 0) > 0
+        or int((payload.get("funnel") or {}).get("parse_failures") or 0) > 0
+        or list((payload.get("funnel") or {}).get("unreviewed_unsupported") or [])
+        or list((payload.get("toolchain") or {}).get("reason_codes") or [])
+        or not bool((payload.get("toolchain") or {}).get("canary_passed"))
+    ):
+        completion_reasons = ("completion_safe_claim_forged",)
     downstream = (
         current_flag
         and not completion_reasons
