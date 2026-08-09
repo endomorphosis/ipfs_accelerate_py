@@ -633,7 +633,7 @@ validation and evidence contract.
 
 ## LFP-020 Implement Datalog, Horn/CHC, and SecPAL rule frontends
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
