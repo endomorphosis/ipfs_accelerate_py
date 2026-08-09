@@ -257,7 +257,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-008 Gate raw target and result paths with compiled, parsed, execution, and replay receipts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
