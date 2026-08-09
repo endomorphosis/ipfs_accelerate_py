@@ -1315,7 +1315,7 @@ validation and evidence contract.
 
 ## LFP-042 Audit advisor, solver, Hammer, and proof-kernel authority boundaries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
