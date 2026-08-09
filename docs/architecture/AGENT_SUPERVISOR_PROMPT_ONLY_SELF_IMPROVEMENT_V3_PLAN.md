@@ -472,6 +472,8 @@ Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
 Wave 3b repair (parallel): ASE3-027 production resolver composition
                            ASE3-019 operator-salvaged authority/provider repair
 Wave 3b identity:  ASE3-030 hermetic control-plane CID dependency closure
+Wave 3b native:    ASE3-031 sealed reviewed DuckDB extension
+Wave 3b database:  ASE3-032 configuration-locked DuckDB connection policy
 Wave 3b adaptive:  ASE3-023 production adaptive-scheduler acceptance
 Wave 3c gate:      ASE3-022 operator-owned provider-generation reload
 Wave 3d:           ASE3-029 neutral shared-contract lowering and import-DAG gate
@@ -489,6 +491,109 @@ Wave 7:            ASE3-012 black-box cross-transport/security/chaos gates
 Wave 8:            ASE3-013 fresh-state prompt-generated self-host canary
 Wave 9:            ASE3-014 canonical materialization and staged cutover
 ```
+
+### 10.1 ASE3-031/032 protected native DuckDB acceptance chain
+
+ASE3-031 and ASE3-032 close two separate native-state prerequisites without
+changing the protected ASE3-019/022/023/027 task blocks. They use a sequential
+acceptance design so every ordinary task dependency is satisfied on a strictly
+earlier committed manifest phase: ASE3-030 follows accepted ASE3-019, ASE3-031
+follows accepted ASE3-030, and ASE3-032 follows accepted ASE3-031. ASE3-031 owns
+only the reviewed two-path implementation in
+`ipfs_accelerate_py/llm_router.py` and
+`test/api/test_agent_supervisor_native_dependency_pin.py`; the reviewed
+candidate commit is
+`25fedf091dad928dad1f83c9f81a54c2d401eabe`, which is implementation evidence
+and not acceptance authority. That commit descends from and preserves the exact
+reviewed ASE3-030 product delta, and its path-free inspection pin binds the exact
+DuckDB distribution/engine version, extension filename, CPython cache tag and
+SOABI, platform and machine, Python executable digest, payload size and digest,
+ELF identity, ordered `DT_NEEDED`, and dependency content ID. Inspection is
+evidence only. Sealing requires both the independently reviewed expected pin
+and the exact accepted authorization ID; the resulting private executable
+memfd is bound by descriptor/stat/seal facts and is the only allowed `_duckdb`
+origin for the isolated preload. Ambient loader variables, source replacement,
+unsealed or rebound descriptors, malformed or ambient-loader ELF structures,
+second preload, and in-process retry after preload begins or fails are denied.
+
+The distinct signed P-phase artifact is
+`data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json`
+with schema
+`ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-launch-authorization@1`.
+It must be signed by an accepted local profile and bind the namespace, exact
+source HEAD/tree, accepted ASE3-030 receipt, exact native pin/dependency ID,
+Python/ABI/platform, purpose, expiry, nonce, and zero prior launch effects.
+Neither inspection nor a successful local test may mint it. Its
+`accepted_authorization_id` is equality-bound into the sealed launch JSON. The
+authorization is pre-launch authority only: it cannot claim that preload,
+process birth, a query, task acceptance, scheduler dispatch, or any other
+effect occurred.
+
+ASE3-032 starts only after the committed A031 status/manifest transition and owns exactly
+`ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py`,
+`ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py`,
+`ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py`, and
+`test/api/test_agent_supervisor_duckdb_connection_policy.py`.
+`connect_duckdb_with_policy` is the sole connection-birth helper in that scope.
+It supplies `autoinstall_known_extensions=false`,
+`autoload_known_extensions=false`, `enable_external_access=false`, and
+`allow_unsigned_extensions=false` atomically, applies only bounded `threads`
+and `memory_limit` tuning, inserts `lock_configuration=true` last, then verifies
+the exact five typed boolean settings and closes the connection on mismatch.
+DuckDBConnection (and therefore its MergeQueue/resolver consumers), the
+generated DuckDB task source, every LeaseCoordinator connection, and
+coordination compaction use that helper. Before replacement, compaction seals
+the complete persistent catalog inventory of schemas, tables, views,
+sequences, macros, custom types, and indexes. Production compaction contains
+zero `ATTACH` statements and preserves that catalog plus all live data and
+metadata under the existing locked atomic-replacement semantics. No caller may
+override protected settings, unlock policy, install or fetch extensions, load
+dynamic/external extension bytes, retain an ambient direct connection, or
+widen external access. A reviewed statically linked module may answer `LOAD`,
+and DuckDB may allow `ATTACH ':memory:'`; neither is evidence that external
+extension bytes or an `ATTACH`-based production compactor are allowed.
+
+ASE3-032 is deliberately bounded to those four product/test paths; it is not a
+claim that every historical raw connection in the repository is removed.
+ASE3-025 must route every generated-board and planning-reachable connection,
+including formal-plan compilation, through `connect_duckdb_with_policy`.
+ASE3-020 must do the same for run-registry and runtime-history connections.
+ASE3-012 then builds an installed-tree import/call graph plus AST inventory
+from every public prompt-product launch root and rejects any launch-reachable
+raw `duckdb.connect`. Any raw site that remains must be proven non-reachable
+from that product and explicitly classified as legacy or proof-only; a global
+source-count assertion cannot substitute for this reachability gate.
+
+The protected transition is `Q→R(root pin)→P019(witness+provider auth@2+manifest)→A019→A030→P031(native auth+manifest)→A031→A032→A023/027→L(ASE3-022 reload authorization)`.
+Each arrow is an exact parent/manifest transformation. A019 accepts the operator-salvaged
+ASE3-019; A030 adds the strict ASE3-030 validator, manifest binding, receipt,
+and status on a committed parent where ASE3-019 is already accepted. P031 then
+binds that committed A030 receipt into the strict signed native launch
+authorization validator, still-pre-effect artifact, and manifest binding. The
+P031 artifact is required before any ASE3-023 capsule/native subprocess
+end-to-end runtime effect used as acceptance evidence, while
+`authorization_may_claim_launch_effect: false` remains exact. A031 retains
+those exact P031 bytes and adds the strict validator, manifest binding, receipt,
+and status for ASE3-031. Its receipt is
+`data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json`
+with schema
+`ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-acceptance@1`;
+A032 has accepted A031 as its parent and adds the ASE3-032 A receipt
+`data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json`
+with schema
+`ipfs_accelerate_py.agent_supervisor.ase3-032-duckdb-connection-policy-acceptance@1`.
+A023/027 then accepts the two independent repair tasks together; neither has a
+same-phase dependency on the other. L follows both and owns only the ASE3-022
+reload authorization. No phase may treat a status it writes as a dependency it
+already read, and L cannot retroactively authorize P031 or any A phase. All
+three new paths remain absent, ASE3-030/031/032 remain `todo`, and the
+refill/monitor/activation flags remain dormant in this roadmap commit. ASE3-023
+implementation may proceed independently, but neither its acceptance nor the
+ASE3-022 transition is valid until the accepted ASE3-030, ASE3-031, and
+ASE3-032 receipts are all present, strictly validated, manifest-bound, and
+reachable through the exact sequential phase chain.
+
+### 10.2 Existing repair, transition, and downstream ordering
 
 Wave 3b starts only after the prospective operator authorization in
 `provider_fallback_policy_authorization_20260808.json` validates against its
@@ -581,27 +686,35 @@ interrupted ASE3-023/027 candidates require controlled acceptance or rejection.
 The next-wave readiness audit additionally found that ASE3-019's control-plane
 capsule omits a hermetic CID dependency closure: `utils/cid_utils.py` delegates
 to optional user-site `multiformats`, which `python -I` cannot load. Because the
-ASE3-019/022/023/027 task blocks are protected identity contracts, ASE3-030 is
-added without rewriting them. It depends on ASE3-019, and the scheduler config
-contains a separately sealed acceptance-prerequisite join preventing ASE3-023
+ASE3-019/022/023/027 task blocks are protected identity contracts, ASE3-030,
+ASE3-031, and ASE3-032 are added without rewriting them. Their ordinary status
+dependencies follow the committed acceptance sequence: ASE3-030 depends on
+ASE3-019, ASE3-031 depends on ASE3-030, and ASE3-032 depends on ASE3-031. The
+scheduler config contains a separately sealed
+acceptance-prerequisite join preventing ASE3-023
 acceptance or ASE3-022 transition until ASE3-030 proves that the Git-bound
 capsule recursively includes every in-tree dependency, imports every allowed
 module from its sealed fd, and mints/validates canonical CIDv1 lowercase-base32
 raw and DAG-JSON sha2-256 identities under `python -I` without user site or
-`PYTHONPATH`. The path
+`PYTHONPATH`. Because the protected task blocks cannot be rewritten, ASE3-031
+and ASE3-032 extend this prerequisite as new canonical tasks: the first seals
+the reviewed native dependency and the second locks every scoped DuckDB
+connection at birth. The path
 `data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json`
 is reserved and must remain absent while its schema
 `ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1`
 lacks a strict validator and convergence-manifest binding. ASE3-030 remains
 `todo` until an immediately preceding protected acceptance commit adds that
 validator, binds source HEAD/tree/blob/archive/root and suite digests, and
-atomically accepts the task. That commit joins ASE3-030 into the same protected
-Q→R→P→A fan-in before ASE3-022 completion. ASE3-023 implementation may be
-inspected in parallel, but cannot be accepted early.
+atomically accepts the task at A030. The following P031, A031, and A032 commits
+then authorize and accept the native dependency and connection policy in strict
+parent order before A023/027 and the ASE3-022 L reload authorization. ASE3-023
+implementation may be inspected independently, but cannot be accepted early.
 
 ASE3-022 keeps ASE3-021 machine-blocked until the operator-salvaged unchanged-
-CID ASE3-019, ASE3-030 hermetic identity closure, and the ASE3-023/027 repair
-chains are accepted and jointly revalidated. Its final receipt must bind the attempt-2 incident, operator
+CID ASE3-019, ASE3-030 hermetic identity closure, ASE3-031 sealed native
+dependency, ASE3-032 locked DuckDB policy, and the ASE3-023/027 repair chains
+are accepted and jointly revalidated. Its final receipt must bind the attempt-2 incident, operator
 salvage, accepted control plane, exact stopped generation, and transition
 daemon/scheduler blobs. The same namespace is then relaunched once from that
 completion commit. ASE3-029 then removes all eleven audited upward-import sites
@@ -666,6 +779,24 @@ The release candidate must prove:
   sealed fd, and mints/validates known raw and DAG-JSON CID vectors under
   `python -I` with user site and `PYTHONPATH` unavailable; missing, substituted,
   extra, or externally resolved members fail before effects;
+- the P-phase native launch authorization is signed and manifest-bound, is not
+  derivable from inspection, binds the exact reviewed DuckDB/Python/ABI/ELF
+  pin, and claims zero launch effects; a fresh `python -I` process exact-matches
+  that authorization ID, imports `_duckdb` only from the inherited sealed fd,
+  executes a real query, and cannot retry after preload begins or fails;
+- every ASE3-032-scoped DuckDB connection atomically disables extension
+  autoinstall/autoload, external access, and unsigned extensions, applies only
+  bounded threads/memory tuning before `lock_configuration=true`, verifies the
+  exact typed settings, closes on mismatch, blocks external extension bytes and
+  external-path access, and preserves schemas, tables, views, sequences,
+  macros, custom types, indexes, data, and metadata through production
+  compaction containing zero `ATTACH`; statically linked `LOAD` and
+  `ATTACH ':memory:'` observations grant no broader authority;
+- every prompt-product launch-reachable generated-board, planning,
+  run-registry, and runtime-history connection delegates to
+  `connect_duckdb_with_policy`; an installed-tree import/call-graph plus AST
+  gate rejects raw reachable `duckdb.connect` and explicitly classifies
+  surviving non-reachable legacy/proof-only sites;
 - a fresh generated arbitrary-namespace board, rather than this seed board or
   a wrapper, is committed authoritatively to DuckDB before projections and is
   consumed through a revision-fenced generated-source observer by genuine real
@@ -744,8 +875,13 @@ user work or treat cleanup as authorization to reset a checkout.
 
 Do not restart the old prompt-only scheduler and do not activate its staged
 rollout. Preserve the accepted ASE3-000 convergence base and complete the
-ASE3-019/027 recovery, ASE3-030 hermetic identity closure, ASE3-023 adaptive
-acceptance, and ASE3-022 operator transition first. Then execute
+ASE3-019/027 recovery, ASE3-030 hermetic identity closure, ASE3-031 sealed
+native dependency, ASE3-032 locked DuckDB connection policy, ASE3-023 adaptive
+acceptance, and ASE3-022 operator transition first. The exact protected order is
+Q -> R -> P019 -> A019 -> A030 -> P031 -> A031 -> A032 -> A023/027 -> L;
+every ordinary dependency is accepted on a strictly earlier committed phase,
+A023/027 has no internal dependency edge, and acceptance may not bypass the
+three-prerequisite join. Then execute
 ASE3-029 -> ASE3-028 -> ASE3-024 -> ASE3-025 -> ASE3-021 -> ASE3-020 ->
 ASE3-008. Keep refill and the detached monitor dormant until operator-owned
 ASE3-026 validates pre-effect authorization, one exact old+1 CAS/lease winner

@@ -159,6 +159,38 @@ HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH: Final = (
 HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1"
 )
+NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_FILENAME: Final = (
+    "native_dependency_launch_authorization.json"
+)
+NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    + NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_FILENAME
+)
+NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "ase3-031-native-dependency-launch-authorization@1"
+)
+NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_FILENAME: Final = (
+    "sealed_native_dependency_acceptance_receipt.json"
+)
+NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    + NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_FILENAME
+)
+NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-acceptance@1"
+)
+DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_FILENAME: Final = (
+    "duckdb_connection_policy_acceptance_receipt.json"
+)
+DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    + DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_FILENAME
+)
+DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "ase3-032-duckdb-connection-policy-acceptance@1"
+)
 DEFAULT_ARTIFACT_ROOT: Final = (
     DEFAULT_REPOSITORY_ROOT
     / "data"
@@ -210,6 +242,8 @@ _PROGRAM_CANONICAL_TASK_IDS: Final = (
     "ASE3-028",
     "ASE3-029",
     "ASE3-030",
+    "ASE3-031",
+    "ASE3-032",
 )
 _PROGRAM_NONCANONICAL_TASK_IDS: Final = (
     "ASE3-015",
@@ -217,6 +251,12 @@ _PROGRAM_NONCANONICAL_TASK_IDS: Final = (
     "ASE3-017",
     "ASE3-022",
 )
+_PROTECTED_TASK_BLOCK_SHA256S: Final = {
+    "ASE3-019": "9573c8545b5bd981760e9a5255d6287492b2d882905cb248107f8237711a5fed",
+    "ASE3-022": "e896f06b31aba2906eea41685f751349be4a266b0b5f1eb93f12acfe5dd3eb22",
+    "ASE3-023": "355ba4cc330301df57386516b5bb4d4f9fbeae4fabea0272bedcd583df3c7521",
+    "ASE3-027": "221f1cc85639b21931dc50497295117e44fd02530128c9e71a3cf25259543bdf",
+}
 _DISPOSITIONS: Final = frozenset({"port", "rewrite", "superseded", "discard"})
 _REQUIRED_CONTRADICTIONS: Final = frozenset(
     {
@@ -644,10 +684,10 @@ _PROGRAM_EXPANSION_TASKS: Final = {
             "runtime"
         ),
         "contract_sha256": (
-            "sha256:038598ffbd0a17d09486d43a3d4edd83c5d7e1419a9f63c786ff35febc1a0b93"
+            "sha256:7b71f4c298b8861687d1a03d0384b298430a50b2167fe0342c75fdb1f72fcd44"
         ),
         "canonical_task_cid": (
-            "baguqeerarcqpxaz2jt75eaipecwrybvvdryyhqyyoz7g4mlso3but63dxuoq"
+            "baguqeerauhje6jq6ejhsl5ocxk6vcnywg2pkurlkq5lftk3tgljnl6bjyouq"
         ),
         "goal id": "ASE3-G040",
         "depends on": ("ASE3-004", "ASE3-023", "ASE3-024"),
@@ -673,6 +713,11 @@ _PROGRAM_EXPANSION_TASKS: Final = {
             "test/api/test_agent_supervisor_markdown_task_source.py "
             "test/api/test_agent_supervisor_duckdb_task_source.py "
             "test/api/test_agent_supervisor_configured_board_scheduler.py -q"
+        ),
+        "requirements": (
+            "connect_duckdb_with_policy",
+            "every generated-board/planning-reachable connection",
+            "formal_plan_compiler",
         ),
     },
     "ASE3-028": {
@@ -762,13 +807,88 @@ _PROGRAM_EXPANSION_TASKS: Final = {
             "test/api/test_llm_router_agent_implementation_route.py -q"
         ),
     },
+    "ASE3-031": {
+        "title": (
+            "Seal the reviewed DuckDB native extension for isolated supervisor "
+            "launch"
+        ),
+        "contract_sha256": (
+            "sha256:e749edab95f0f359cb39ab69cfc9a7858490600f4e73622a64e4f6f099eda7ff"
+        ),
+        "canonical_task_cid": (
+            "baguqeeraxwgr3bpjg2efihsmv3id5fknng2oa5bapas3fdq4hwjklpa4lxdq"
+        ),
+        "goal id": "ASE3-G040",
+        "depends on": ("ASE3-030",),
+        "outputs": (
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_native_dependency_pin.py",
+        ),
+        "validation": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_native_dependency_pin.py -q"
+        ),
+        "requirements": (
+            "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+            "authorization_may_claim_launch_effect: false",
+            "before any ASE3-023 capsule/native subprocess end-to-end runtime effect",
+        ),
+    },
+    "ASE3-032": {
+        "title": (
+            "Enforce one configuration-locked DuckDB connection policy across "
+            "supervisor state"
+        ),
+        "contract_sha256": (
+            "sha256:b44b0a0c2853296def5276f1fb08219480d9b0bb2282f3b7d9587fafd1ec28be"
+        ),
+        "canonical_task_cid": (
+            "baguqeerarapsgz3yexowvp6ppcroujqmfymfgsmrapanyv5ggclalkyxicva"
+        ),
+        "goal id": "ASE3-G040",
+        "depends on": ("ASE3-031",),
+        "outputs": (
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+            "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+            "test/api/test_agent_supervisor_duckdb_connection_policy.py",
+        ),
+        "validation": (
+            "python -m pytest -q "
+            "test/api/test_agent_supervisor_duckdb_connection_policy.py "
+            "test/api/test_agent_supervisor_duckdb_state.py "
+            "test/api/test_agent_supervisor_duckdb_task_source.py "
+            "test/api/test_agent_supervisor_lease_coordination.py"
+        ),
+        "static validation commands json": (
+            '["python -m ruff check --select E9,F63,F7,F82,I '
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py "
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py "
+            "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py "
+            'test/api/test_agent_supervisor_duckdb_connection_policy.py", '
+            '"python -m py_compile '
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py "
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py "
+            "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py "
+            'test/api/test_agent_supervisor_duckdb_connection_policy.py", '
+            '"git diff --check"]'
+        ),
+        "requirements": (
+            "DUCKDB_CONNECTION_POLICY_SETTINGS",
+            "connect_duckdb_with_policy",
+            "schemas/tables/views/sequences/macros/custom types/indexes",
+            "statically linked LOAD",
+            "zero-`ATTACH` production-compaction",
+            "bounded coverage, not a global claim",
+        ),
+    },
 }
 _PROGRAM_AMENDED_TASK_CIDS: Final = {
     "ASE3-008": "baguqeerajytqcnamiixnkiekvawxnupxkdf2u2oeciswxhsrw3ylo5bjlr7q",
     "ASE3-009": "baguqeera7ly4s4ddus5vo5iyaobxuz5mmlmoi4g3ajcvcuycrpfihtzlbykq",
-    "ASE3-012": "baguqeerakpgeugpi6adjmmkv3vsqgaznlotedao7srb2fnynsco3rbgzjcpa",
+    "ASE3-012": "baguqeerazur2cegzialeuzvenwebarqg74hkysqi2fboswsewhv4mcs5tsgq",
     "ASE3-013": "baguqeerayddnpog5ef4uzdgh3ku67pm6nkm3kpyh75jjzc6oezr2nxiuxdva",
-    "ASE3-020": "baguqeerafvtiifgsb4yavhrq27rxbyw3ngymszm4znfwwboonfehggflkzia",
+    "ASE3-020": "baguqeerauzjczeaxx4l36beiqr3q5qvzr6ltlascqkchgdts7nrgddunv4rq",
     "ASE3-021": "baguqeeraheqxu3slnx5dhc73yitbn2zdtrpsqtwfpesdblth72qz23djw3ya",
 }
 _PROGRAM_AMENDED_TASK_CONTRACT_SHA256S: Final = {
@@ -779,13 +899,13 @@ _PROGRAM_AMENDED_TASK_CONTRACT_SHA256S: Final = {
         "sha256:82e0a373cc1423b6b2aa9dd1d750cb5f44e8955c20f4b2e25b12bb44b7ab1e5f"
     ),
     "ASE3-012": (
-        "sha256:0b35be7e0aacbb9eb3e0540610e0b564969f5888a13d409be33a406ed3430b30"
+        "sha256:3f36392550176ff016adc3bcbeefb0a7e2922c118997a6796eec66ebf7508477"
     ),
     "ASE3-013": (
         "sha256:1403cd1dc370787c31ab1c4943336c65e9403600f3ae614909c077fa1dbbf738"
     ),
     "ASE3-020": (
-        "sha256:58b759da5f8ba34ae8d7d460d64eba03c99de67cfcc76355306c9a41854757c0"
+        "sha256:49df73850a85c9a2e19574afd640ffc106c402176ce6b51e40bdd832dd7cd525"
     ),
     "ASE3-021": (
         "sha256:0067a1c53aa3d471bcabd3551991eded661d8e29da23ff861edb7a88fdbd6484"
@@ -838,7 +958,13 @@ _PROGRAM_AMENDED_TASK_REQUIREMENTS: Final = {
         "unknown external-effect outcomes are adopted",
     ),
     "ASE3-009": ("ProductionServiceCompositionManifest", "ASE3-026"),
-    "ASE3-012": ("black-box", "production composition CID"),
+    "ASE3-012": (
+        "black-box",
+        "production composition CID",
+        "PromptProductDuckDBConnectionAudit",
+        "no prompt-product launch-reachable path can call raw `duckdb.connect`",
+        "classified as legacy or proof-only",
+    ),
     "ASE3-013": (
         "no preseeded objective or taskboard",
         "non-sentinel",
@@ -856,6 +982,8 @@ _PROGRAM_AMENDED_TASK_REQUIREMENTS: Final = {
         "UnknownOutcomeAdoptionReceipt",
         "persist UNKNOWN, prohibit replay",
         "actual supervisor/daemon parsers",
+        "connect_duckdb_with_policy",
+        "Every prompt-product-reachable run-registry and runtime-history connection",
     ),
     "ASE3-021": (
         "DurableRefillSagaCursor",
@@ -893,13 +1021,13 @@ _PROTECTED_RUNTIME_ACTIVATION_REQUIREMENTS: Final = (
 )
 _MONITOR_STRATEGY_OBJECTIVE_CONTRACT_SHA256S: Final = {
     "ASE3-G000": (
-        "sha256:0020d994975637671f492b609e2042735de60d3a534499b61b32318d5d98dbce"
+        "sha256:e1468778ec6d4e5bb28787b780eb8df02aee7f63d78d342dcc459098ed368d73"
     ),
     "ASE3-G050": (
         "sha256:e3a3f34ac7693ec8cc99a1673a5c64a1dd845962f79beb662a8683937b77df93"
     ),
     "ASE3-G055": (
-        "sha256:0c72d637cd78301ec8969d1aaf0fa5a0c73cb991c229eb7089b8aebf91cf87e2"
+        "sha256:85c5856706de3795111957bf5159422562f057a94f26b53bbcc2679a0a45c635"
     ),
     "ASE3-G060": (
         "sha256:b14fa7c4449e1106525236d60a156ee23b7b6e642897ea0a26a8022518342d29"
@@ -907,6 +1035,49 @@ _MONITOR_STRATEGY_OBJECTIVE_CONTRACT_SHA256S: Final = {
     "ASE3-G080": (
         "sha256:44256fe901e73323fa5eab9cc7a57a6c755703777212a12b368ec36984677658"
     ),
+}
+_NATIVE_DUCKDB_OBJECTIVE_CONTRACT_SHA256S: Final = {
+    "ASE3-G040": (
+        "sha256:eb85c1ea89c47c947dc3a3c7250bb1ca593853295ec93c0c0e5d0226653ba844"
+    ),
+    "ASE3-G070": (
+        "sha256:5bd12c7f100336e81b239720b4499e2aa459f39fbacd52b3fc0c450f7c3be8a5"
+    ),
+}
+_NATIVE_DUCKDB_GATE_CONFIG_SHA256S: Final = {
+    "protected_native_dependency_launch_authorization": (
+        "sha256:ebedb3eca63414a5d1deb856d41eda3ae3fbd2b8fff135cbfef979956ac2df96"
+    ),
+    "protected_native_dependency_acceptance": (
+        "sha256:9dab4d24487f452b6a94e699ff6dac0f488a7555355aef253e7f7f25b9230d76"
+    ),
+    "protected_duckdb_connection_policy_acceptance": (
+        "sha256:a161e61bcf3eea8c6fb3a1760c8d347a5b53fd6a7ababea5834a5eba668c93f5"
+    ),
+    "protected_native_duckdb_acceptance_sequence": (
+        "sha256:426c8d2e90207cce053317358fac2c19cb1622b7ef5584b143ae7c12aaa656fd"
+    ),
+}
+_NATIVE_DUCKDB_ACCEPTANCE_SEQUENCE: Final = {
+    "status": "reserved",
+    "phases": [
+        {"phase": "Q", "task_ids": []},
+        {"phase": "R", "task_ids": []},
+        {"phase": "P019", "task_ids": []},
+        {"phase": "A019", "task_ids": ["ASE3-019"]},
+        {"phase": "A030", "task_ids": ["ASE3-030"]},
+        {"phase": "P031", "task_ids": []},
+        {"phase": "A031", "task_ids": ["ASE3-031"]},
+        {"phase": "A032", "task_ids": ["ASE3-032"]},
+        {"phase": "A023/027", "task_ids": ["ASE3-023", "ASE3-027"]},
+        {"phase": "L", "task_ids": ["ASE3-022"]},
+    ],
+    "root_pin_phase": "R",
+    "provider_preparation_phase": "P019",
+    "native_authorization_phase": "P031",
+    "manifest_parent_chain_required": True,
+    "same_phase_status_dependencies_forbidden": True,
+    "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
 }
 _PROTECTED_RUNTIME_ACTIVATION_CONFIG_SHA256: Final = (
     "sha256:f33ff19c7611fbfda288e5951515aa4feb12f1e2241866f84ee35a1e36c58d4b"
@@ -934,6 +1105,16 @@ _ASE3_026_PLAN_SECTION_HEADING: Final = (
 _ASE3_026_PLAN_SECTION_END_HEADING: Final = "## 10. Implementation waves"
 _ASE3_026_PLAN_SECTION_CONTRACT_SHA256: Final = (
     "sha256:23d6ab54a9f58b69c052b294113198ae9256b177287f099c3a9f7c647d5a6f78"
+)
+_NATIVE_DUCKDB_PLAN_CONTAINING_HEADING: Final = "## 10. Implementation waves"
+_NATIVE_DUCKDB_PLAN_SECTION_HEADING: Final = (
+    "### 10.1 ASE3-031/032 protected native DuckDB acceptance chain"
+)
+_NATIVE_DUCKDB_PLAN_SECTION_END_HEADING: Final = (
+    "### 10.2 Existing repair, transition, and downstream ordering"
+)
+_NATIVE_DUCKDB_PLAN_SECTION_CONTRACT_SHA256: Final = (
+    "sha256:1693ea6477822be1f65e60fe433a2011f50e0d028d2f7b20e0b1a91188debb86"
 )
 _ASE3_019_TITLE: Final = (
     "Seal signed provider authority, authentication lifecycle, and once-only fallback"
@@ -2585,6 +2766,30 @@ def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
     return _parse_taskboard_metadata(text)
 
 
+def _validate_protected_task_block_bytes(text: str) -> list[str]:
+    """Keep the four operator-protected task blocks byte-identical."""
+
+    errors: list[str] = []
+    prefix = "protected_task_block_bytes"
+    for task_id, expected_sha256 in _PROTECTED_TASK_BLOCK_SHA256S.items():
+        heading = f"## {task_id} "
+        if text.count(heading) != 1:
+            errors.append(f"{prefix}.{task_id}: expected exactly one heading")
+            continue
+        start = text.index(heading)
+        end = text.find("\n## ASE3-", start + len(heading))
+        if end < 0:
+            errors.append(f"{prefix}.{task_id}: missing following task boundary")
+            continue
+        raw_block = (text[start:end] + "\n").encode("utf-8")
+        observed_sha256 = hashlib.sha256(raw_block).hexdigest()
+        if observed_sha256 != expected_sha256:
+            errors.append(
+                f"{prefix}.{task_id}: protected task block bytes changed"
+            )
+    return errors
+
+
 def _parse_objective_metadata(text: str) -> dict[str, dict[str, str]]:
     """Parse bounded goal metadata while rejecting duplicate IDs and fields."""
 
@@ -3044,6 +3249,15 @@ def _validate_false_completion_repair_tasks(
                 )
         if task.get("validation") != expected["validation"]:
             errors.append(f"{prefix}.{task_id}.validation: exact command required")
+        expected_static_validation = expected.get("static validation commands json")
+        if (
+            expected_static_validation is not None
+            and task.get("static validation commands json")
+            != expected_static_validation
+        ):
+            errors.append(
+                f"{prefix}.{task_id}.static_validation: exact commands required"
+            )
         evidence = task.get("evidence subset", "")
         if str(expected["evidence_anchor"]) not in evidence:
             errors.append(
@@ -3076,7 +3290,7 @@ def _validate_program_plan_expansion(
     tasks: Mapping[str, Mapping[str, str]],
     artifact_root: Path,
 ) -> list[str]:
-    """Validate the canonical 27-task expansion and protected activation gate."""
+    """Validate the canonical 29-task expansion and protected activation gate."""
 
     errors: list[str] = []
     prefix = "program_plan_expansion"
@@ -3093,7 +3307,7 @@ def _validate_program_plan_expansion(
         if metadata.get("canonical board task", "true").strip().lower() != "false"
     }
     if observed_canonical != set(_PROGRAM_CANONICAL_TASK_IDS):
-        errors.append(f"{prefix}.canonical_tasks: expected exact 27-task population")
+        errors.append(f"{prefix}.canonical_tasks: expected exact 29-task population")
     for task_id in _PROGRAM_NONCANONICAL_TASK_IDS:
         task = tasks.get(task_id)
         if task is not None and task.get("canonical board task") != "false":
@@ -3135,6 +3349,12 @@ def _validate_program_plan_expansion(
                 )
         if task.get("validation") != expected["validation"]:
             errors.append(f"{prefix}.{task_id}.validation: exact command required")
+        searchable = " ".join(task.values())
+        for requirement in expected.get("requirements", ()):
+            if requirement not in searchable:
+                errors.append(
+                    f"{prefix}.{task_id}.contract: missing {requirement!r}"
+                )
         try:
             task_cid = _canonical_task_cid_from_metadata(task)
         except ValueError as exc:
@@ -3168,6 +3388,43 @@ def _validate_program_plan_expansion(
             f"{prefix}.ASE3-030.status: completion requires the strict reserved "
             "receipt validator and convergence-manifest binding"
         )
+
+    reserved_native_artifacts = (
+        (
+            "ASE3-031.launch_authorization",
+            NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_FILENAME,
+        ),
+        (
+            "ASE3-031.acceptance_receipt",
+            NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_FILENAME,
+        ),
+        (
+            "ASE3-032.acceptance_receipt",
+            DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_FILENAME,
+        ),
+    )
+    for label, filename in reserved_native_artifacts:
+        reserved_path = artifact_root / filename
+        try:
+            reserved_path.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            errors.append(
+                f"{prefix}.{label}: unable to inspect reserved path: {exc}"
+            )
+        else:
+            errors.append(
+                f"{prefix}.{label}: present without a strict schema validator "
+                "and convergence-manifest binding"
+            )
+    for task_id in ("ASE3-031", "ASE3-032"):
+        task = tasks.get(task_id)
+        if task is not None and task.get("status") == "completed":
+            errors.append(
+                f"{prefix}.{task_id}.status: completion requires the strict "
+                "reserved acceptance validator and convergence-manifest binding"
+            )
 
     for task_id, expected_cid in _PROGRAM_AMENDED_TASK_CIDS.items():
         task = tasks.get(task_id)
@@ -3342,6 +3599,8 @@ def _validate_program_plan_expansion(
     required_order = (
         "ASE3-019",
         "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
         "ASE3-023",
         "ASE3-022",
         "ASE3-029",
@@ -3356,7 +3615,7 @@ def _validate_program_plan_expansion(
     else:
         if positions != tuple(sorted(positions)):
             errors.append(
-                f"{prefix}.task_order: exact hermetic/transition/layering chain "
+                f"{prefix}.task_order: exact hermetic/native/transition/layering chain "
                 "required"
             )
     return errors
@@ -3393,6 +3652,8 @@ def _validate_program_scheduler_projection(
     else:
         required_waves = (
             "Wave 3b identity:  ASE3-030",
+            "Wave 3b native:    ASE3-031",
+            "Wave 3b database:  ASE3-032",
             "Wave 3b adaptive:  ASE3-023",
             "Wave 3c gate:      ASE3-022",
             "Wave 3d:           ASE3-029",
@@ -3441,6 +3702,26 @@ def _validate_program_scheduler_projection(
                     f"{prefix}.plan.ASE3-026.contract_sha256: exact normalized "
                     "protected activation section required"
                 )
+        try:
+            native_duckdb_section_hash = (
+                _normalized_markdown_section_contract_sha256(
+                    plan_text,
+                    section_heading=_NATIVE_DUCKDB_PLAN_SECTION_HEADING,
+                    containing_heading=_NATIVE_DUCKDB_PLAN_CONTAINING_HEADING,
+                    end_heading=_NATIVE_DUCKDB_PLAN_SECTION_END_HEADING,
+                )
+            )
+        except ValueError as exc:
+            errors.append(f"{prefix}.plan.ASE3-031-032.section: {exc}")
+        else:
+            if (
+                native_duckdb_section_hash
+                != _NATIVE_DUCKDB_PLAN_SECTION_CONTRACT_SHA256
+            ):
+                errors.append(
+                    f"{prefix}.plan.ASE3-031-032.contract_sha256: exact "
+                    "normalized native DuckDB gate section required"
+                )
         for field, fragment in {
             "hermetic_identity_acceptance_receipt": (
                 HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH
@@ -3448,7 +3729,32 @@ def _validate_program_scheduler_projection(
             "hermetic_identity_acceptance_schema": (
                 HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA
             ),
-            "hermetic_identity_acceptance_fan_in": "Q→R→P→A",
+            "native_duckdb_acceptance_sequence": (
+                "Q→R(root pin)→P019(witness+provider auth@2+manifest)→A019→"
+                "A030→P031(native auth+manifest)→A031→A032→A023/027→"
+                "L(ASE3-022 reload authorization)"
+            ),
+            "native_dependency_reviewed_commit": (
+                "25fedf091dad928dad1f83c9f81a54c2d401eabe"
+            ),
+            "native_dependency_launch_authorization": (
+                NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH
+            ),
+            "native_dependency_launch_authorization_schema": (
+                NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_SCHEMA
+            ),
+            "native_dependency_acceptance_receipt": (
+                NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH
+            ),
+            "native_dependency_acceptance_schema": (
+                NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_SCHEMA
+            ),
+            "duckdb_connection_policy_acceptance_receipt": (
+                DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH
+            ),
+            "duckdb_connection_policy_acceptance_schema": (
+                DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_SCHEMA
+            ),
         }.items():
             if fragment not in plan_text:
                 errors.append(f"{prefix}.plan.{field}: exact protected join required")
@@ -3457,8 +3763,8 @@ def _validate_program_scheduler_projection(
     if not isinstance(initial, Mapping):
         errors.append(f"{prefix}.initial_projection: expected object")
     else:
-        if initial.get("task_count") != 27:
-            errors.append(f"{prefix}.initial_projection.task_count: expected 27")
+        if initial.get("task_count") != 29:
+            errors.append(f"{prefix}.initial_projection.task_count: expected 29")
         if initial.get("canonical_task_ids") != list(_PROGRAM_CANONICAL_TASK_IDS):
             errors.append(
                 f"{prefix}.initial_projection.canonical_task_ids: exact population "
@@ -3490,7 +3796,7 @@ def _validate_program_scheduler_projection(
         if len(grouped) != len(set(grouped)):
             errors.append(f"{prefix}.task_groups: duplicate task membership")
         if set(grouped) != set(_PROGRAM_CANONICAL_TASK_IDS):
-            errors.append(f"{prefix}.task_groups: exact 27-task population required")
+            errors.append(f"{prefix}.task_groups: exact 29-task population required")
         expected_goal_ids = {"ASE3-G000", *(str(goal_id) for goal_id in groups)}
         if set(goals) != expected_goal_ids:
             errors.append(f"{prefix}.objectives.goal_ids: exact population required")
@@ -3525,6 +3831,20 @@ def _validate_program_scheduler_projection(
                     f"{prefix}.objectives.{goal_id}.contract_sha256: exact "
                     "monitor-strategy goal contract required"
                 )
+        for goal_id, expected_hash in (
+            _NATIVE_DUCKDB_OBJECTIVE_CONTRACT_SHA256S.items()
+        ):
+            goal = goals.get(goal_id)
+            if goal is None:
+                errors.append(
+                    f"{prefix}.objectives.{goal_id}: missing sealed native "
+                    "DuckDB goal"
+                )
+            elif _task_contract_sha256(goal) != expected_hash:
+                errors.append(
+                    f"{prefix}.objectives.{goal_id}.contract_sha256: exact "
+                    "native DuckDB goal contract required"
+                )
 
     dependencies = config.get("task_dependencies")
     if not isinstance(dependencies, Mapping):
@@ -3541,13 +3861,13 @@ def _validate_program_scheduler_projection(
                 )
 
     expected_acceptance_prerequisites = {
-        "ASE3-023": ["ASE3-030"],
-        "ASE3-022": ["ASE3-030"],
+        "ASE3-023": ["ASE3-030", "ASE3-031", "ASE3-032"],
+        "ASE3-022": ["ASE3-030", "ASE3-031", "ASE3-032"],
     }
     if config.get("acceptance_prerequisites") != expected_acceptance_prerequisites:
         errors.append(
-            f"{prefix}.acceptance_prerequisites: exact ASE3-030 fail-closed "
-            "acceptance join required"
+            f"{prefix}.acceptance_prerequisites: exact ASE3-030/031/032 "
+            "fail-closed acceptance join required"
         )
 
     expected_identity_acceptance = {
@@ -3555,6 +3875,8 @@ def _validate_program_scheduler_projection(
         "status": "reserved",
         "receipt_path": HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
         "receipt_schema": HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
+        "artifact_phase": "A",
+        "sequence_phase": "A030",
         "strict_validator_and_manifest_binding_required": True,
         "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
     }
@@ -3562,6 +3884,156 @@ def _validate_program_scheduler_projection(
         errors.append(
             f"{prefix}.protected_identity_acceptance: exact reserved ASE3-030 "
             "receipt contract required"
+        )
+
+    expected_native_gates = {
+        "protected_native_dependency_launch_authorization": {
+            "task_id": "ASE3-031",
+            "status": "reserved",
+            "authorization_path": (
+                NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH
+            ),
+            "authorization_schema": NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_SCHEMA,
+            "artifact_phase": "P",
+            "sequence_phase": "P031",
+            "signed_by_accepted_local_profile_required": True,
+            "accepted_authorization_id_exact_match_required": True,
+            "inspection_evidence_is_authority": False,
+            "authorization_may_claim_launch_effect": False,
+            "strict_validator_and_manifest_binding_required": True,
+            "required_before_task_acceptance": ["ASE3-031"],
+            "required_before_runtime_effects": ["ASE3-023"],
+        },
+        "protected_native_dependency_acceptance": {
+            "task_id": "ASE3-031",
+            "status": "reserved",
+            "receipt_path": NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+            "receipt_schema": NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_SCHEMA,
+            "artifact_phase": "A",
+            "sequence_phase": "A031",
+            "authorization_path": (
+                NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH
+            ),
+            "accepted_authorization_id_exact_match_required": True,
+            "strict_validator_and_manifest_binding_required": True,
+            "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
+        },
+        "protected_duckdb_connection_policy_acceptance": {
+            "task_id": "ASE3-032",
+            "status": "reserved",
+            "receipt_path": (
+                DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH
+            ),
+            "receipt_schema": DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_SCHEMA,
+            "artifact_phase": "A",
+            "sequence_phase": "A032",
+            "requires_prior_acceptance_tasks": ["ASE3-030", "ASE3-031"],
+            "strict_validator_and_manifest_binding_required": True,
+            "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
+        },
+    }
+    for section, expected_gate in expected_native_gates.items():
+        observed_gate = config.get(section)
+        if type(observed_gate) is not dict:
+            errors.append(f"{prefix}.{section}: expected exact JSON object")
+            continue
+        if not _exact_json_contract_value(observed_gate, expected_gate):
+            errors.append(f"{prefix}.{section}: exact typed reserved gate required")
+        try:
+            observed_gate_hash = _mapping_contract_sha256(observed_gate)
+        except (TypeError, ValueError):
+            errors.append(
+                f"{prefix}.{section}.contract_sha256: gate is not canonical JSON"
+            )
+        else:
+            if observed_gate_hash != _NATIVE_DUCKDB_GATE_CONFIG_SHA256S[section]:
+                errors.append(
+                    f"{prefix}.{section}.contract_sha256: exact parsed gate "
+                    "contract required"
+                )
+
+    observed_sequence = config.get("protected_native_duckdb_acceptance_sequence")
+    sequence_prefix = f"{prefix}.protected_native_duckdb_acceptance_sequence"
+    if type(observed_sequence) is not dict:
+        errors.append(f"{sequence_prefix}: expected exact JSON object")
+    else:
+        if not _exact_json_contract_value(
+            observed_sequence,
+            _NATIVE_DUCKDB_ACCEPTANCE_SEQUENCE,
+        ):
+            errors.append(f"{sequence_prefix}: exact sequential phase DAG required")
+        try:
+            sequence_hash = _mapping_contract_sha256(observed_sequence)
+        except (TypeError, ValueError):
+            errors.append(f"{sequence_prefix}.contract_sha256: noncanonical JSON")
+        else:
+            if sequence_hash != _NATIVE_DUCKDB_GATE_CONFIG_SHA256S[
+                "protected_native_duckdb_acceptance_sequence"
+            ]:
+                errors.append(
+                    f"{sequence_prefix}.contract_sha256: exact parsed phase DAG "
+                    "contract required"
+                )
+
+        phase_index_by_task: dict[str, int] = {}
+        for phase_index, phase_record in enumerate(
+            _NATIVE_DUCKDB_ACCEPTANCE_SEQUENCE["phases"]
+        ):
+            for task_id in phase_record["task_ids"]:
+                phase_index_by_task[task_id] = phase_index
+
+        phase_dependency_edges: list[tuple[str, str]] = []
+        if isinstance(dependencies, Mapping):
+            for task_id, raw_dependencies in dependencies.items():
+                if isinstance(raw_dependencies, list):
+                    phase_dependency_edges.extend(
+                        (str(task_id), str(dependency))
+                        for dependency in raw_dependencies
+                    )
+        reload_task = tasks.get("ASE3-022")
+        if reload_task is not None:
+            phase_dependency_edges.extend(
+                ("ASE3-022", dependency)
+                for dependency in _taskboard_csv(reload_task, "depends on")
+            )
+        observed_prerequisites = config.get("acceptance_prerequisites")
+        if isinstance(observed_prerequisites, Mapping):
+            for task_id, raw_prerequisites in observed_prerequisites.items():
+                if isinstance(raw_prerequisites, list):
+                    phase_dependency_edges.extend(
+                        (str(task_id), str(prerequisite))
+                        for prerequisite in raw_prerequisites
+                    )
+        for task_id, dependency in phase_dependency_edges:
+            task_phase = phase_index_by_task.get(task_id)
+            dependency_phase = phase_index_by_task.get(dependency)
+            if (
+                task_phase is not None
+                and dependency_phase is not None
+                and dependency_phase >= task_phase
+            ):
+                errors.append(
+                    f"{sequence_prefix}.phase_dependency_dag: {task_id} depends "
+                    f"on {dependency} without a strictly earlier committed "
+                    "acceptance phase"
+                )
+
+    required_protected_acceptance_paths = {
+        HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH,
+        NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+    }
+    protected_paths = config.get("protected_paths")
+    if (
+        type(protected_paths) is not list
+        or any(type(path) is not str for path in protected_paths)
+        or len(protected_paths) != len(set(protected_paths))
+        or not required_protected_acceptance_paths.issubset(set(protected_paths))
+    ):
+        errors.append(
+            f"{prefix}.protected_paths: all reserved native DuckDB acceptance "
+            "paths must be unique and protected"
         )
 
     expected_activation = {
@@ -5281,10 +5753,12 @@ def validate_convergence_artifacts(
         / PROMPT_V3_TASKBOARD_RELATIVE_PATH
     )
     try:
-        board_tasks = _load_taskboard_metadata(board_path)
+        board_text = _read_regular_bytes(board_path).decode("utf-8")
+        board_tasks = _parse_taskboard_metadata(board_text)
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         errors.append(f"taskboard_snapshot: {exc}")
     else:
+        errors.extend(_validate_protected_task_block_bytes(board_text))
         errors.extend(
             _validate_provider_attempt_reload_gate(
                 tasks=board_tasks,

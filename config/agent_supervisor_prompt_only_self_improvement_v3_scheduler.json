@@ -18,7 +18,7 @@
     "historical_ase_or_ase2_completion_is_authority": false
   },
   "initial_projection": {
-    "task_count": 27,
+    "task_count": 29,
     "goal_count": 10,
     "root_goal_id": "ASE3-G000",
     "bootstrap_task_id": "ASE3-000",
@@ -49,7 +49,9 @@
       "ASE3-027",
       "ASE3-028",
       "ASE3-029",
-      "ASE3-030"
+      "ASE3-030",
+      "ASE3-031",
+      "ASE3-032"
     ],
     "noncanonical_transition_task_ids": [
       "ASE3-022"
@@ -101,7 +103,11 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/self_host_seed_failure_ase3_019_attempt_2_20260808.json",
-    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json"
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
@@ -132,7 +138,7 @@
     "ASE3-G010": ["ASE3-000"],
     "ASE3-G020": ["ASE3-001", "ASE3-002", "ASE3-018", "ASE3-019", "ASE3-027", "ASE3-029", "ASE3-028"],
     "ASE3-G030": ["ASE3-004", "ASE3-024"],
-    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006", "ASE3-030", "ASE3-023", "ASE3-025"],
+    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006", "ASE3-030", "ASE3-031", "ASE3-032", "ASE3-023", "ASE3-025"],
     "ASE3-G050": ["ASE3-007", "ASE3-021"],
     "ASE3-G055": ["ASE3-020"],
     "ASE3-G060": ["ASE3-008", "ASE3-026"],
@@ -166,18 +172,81 @@
     "ASE3-027": ["ASE3-001", "ASE3-018"],
     "ASE3-028": ["ASE3-029"],
     "ASE3-029": ["ASE3-022"],
-    "ASE3-030": ["ASE3-019"]
+    "ASE3-030": ["ASE3-019"],
+    "ASE3-031": ["ASE3-030"],
+    "ASE3-032": ["ASE3-031"]
   },
   "acceptance_prerequisites": {
-    "ASE3-023": ["ASE3-030"],
-    "ASE3-022": ["ASE3-030"]
+    "ASE3-023": ["ASE3-030", "ASE3-031", "ASE3-032"],
+    "ASE3-022": ["ASE3-030", "ASE3-031", "ASE3-032"]
   },
   "protected_identity_acceptance": {
     "task_id": "ASE3-030",
     "status": "reserved",
     "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
     "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1",
+    "artifact_phase": "A",
+    "sequence_phase": "A030",
     "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": ["ASE3-023", "ASE3-022"]
+  },
+  "protected_native_dependency_launch_authorization": {
+    "task_id": "ASE3-031",
+    "status": "reserved",
+    "authorization_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+    "authorization_schema": "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-launch-authorization@1",
+    "artifact_phase": "P",
+    "sequence_phase": "P031",
+    "signed_by_accepted_local_profile_required": true,
+    "accepted_authorization_id_exact_match_required": true,
+    "inspection_evidence_is_authority": false,
+    "authorization_may_claim_launch_effect": false,
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": ["ASE3-031"],
+    "required_before_runtime_effects": ["ASE3-023"]
+  },
+  "protected_native_dependency_acceptance": {
+    "task_id": "ASE3-031",
+    "status": "reserved",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-acceptance@1",
+    "artifact_phase": "A",
+    "sequence_phase": "A031",
+    "authorization_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+    "accepted_authorization_id_exact_match_required": true,
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": ["ASE3-023", "ASE3-022"]
+  },
+  "protected_duckdb_connection_policy_acceptance": {
+    "task_id": "ASE3-032",
+    "status": "reserved",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-032-duckdb-connection-policy-acceptance@1",
+    "artifact_phase": "A",
+    "sequence_phase": "A032",
+    "requires_prior_acceptance_tasks": ["ASE3-030", "ASE3-031"],
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": ["ASE3-023", "ASE3-022"]
+  },
+  "protected_native_duckdb_acceptance_sequence": {
+    "status": "reserved",
+    "phases": [
+      {"phase": "Q", "task_ids": []},
+      {"phase": "R", "task_ids": []},
+      {"phase": "P019", "task_ids": []},
+      {"phase": "A019", "task_ids": ["ASE3-019"]},
+      {"phase": "A030", "task_ids": ["ASE3-030"]},
+      {"phase": "P031", "task_ids": []},
+      {"phase": "A031", "task_ids": ["ASE3-031"]},
+      {"phase": "A032", "task_ids": ["ASE3-032"]},
+      {"phase": "A023/027", "task_ids": ["ASE3-023", "ASE3-027"]},
+      {"phase": "L", "task_ids": ["ASE3-022"]}
+    ],
+    "root_pin_phase": "R",
+    "provider_preparation_phase": "P019",
+    "native_authorization_phase": "P031",
+    "manifest_parent_chain_required": true,
+    "same_phase_status_dependencies_forbidden": true,
     "required_before_task_acceptance": ["ASE3-023", "ASE3-022"]
   },
   "protected_runtime_activation": {

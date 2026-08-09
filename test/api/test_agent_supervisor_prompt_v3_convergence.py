@@ -23,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     ARTIFACT_FILENAMES,
     BOARD_NAMESPACE,
     DEFAULT_ARTIFACT_ROOT,
+    DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_FILENAME,
+    DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+    DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_SCHEMA,
     FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME,
     FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME,
     FAILED_VALIDATION_EVENT_019_FILENAME,
@@ -34,6 +37,12 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
     MANIFEST_FILENAME,
     MAX_EVIDENCE_SNAPSHOT_BYTES,
+    NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_FILENAME,
+    NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+    NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_SCHEMA,
+    NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_FILENAME,
+    NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH,
+    NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_SCHEMA,
     OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
     POST_WAVE3_RESIDUAL_FILENAME,
     PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
@@ -2093,6 +2102,12 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     groups = config["task_groups"]
     dependencies = config["task_dependencies"]
     identity_acceptance = config["protected_identity_acceptance"]
+    native_authorization = config["protected_native_dependency_launch_authorization"]
+    native_acceptance = config["protected_native_dependency_acceptance"]
+    duckdb_acceptance = config["protected_duckdb_connection_policy_acceptance"]
+    native_duckdb_sequence = config[
+        "protected_native_duckdb_acceptance_sequence"
+    ]
     activation = config["protected_runtime_activation"]
     refill = config["refill_policy"]
     monitor = config["monitor_policy"]
@@ -2100,35 +2115,93 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert isinstance(groups, dict)
     assert isinstance(dependencies, dict)
     assert isinstance(identity_acceptance, dict)
+    assert isinstance(native_authorization, dict)
+    assert isinstance(native_acceptance, dict)
+    assert isinstance(duckdb_acceptance, dict)
+    assert isinstance(native_duckdb_sequence, dict)
     assert isinstance(activation, dict)
     assert isinstance(refill, dict)
     assert isinstance(monitor, dict)
 
     canonical = initial["canonical_task_ids"]
-    assert initial["task_count"] == 27
+    assert initial["task_count"] == 29
     assert isinstance(canonical, list)
-    assert len(canonical) == len(set(canonical)) == 27
+    assert len(canonical) == len(set(canonical)) == 29
     assert initial["noncanonical_transition_task_ids"] == ["ASE3-022"]
     assert set(dependencies) == set(canonical)
     assert dependencies["ASE3-008"] == ["ASE3-006", "ASE3-020", "ASE3-021"]
     assert dependencies["ASE3-013"] == ["ASE3-008", "ASE3-012", "ASE3-026"]
+    assert dependencies["ASE3-031"] == ["ASE3-030"]
+    assert dependencies["ASE3-032"] == ["ASE3-031"]
     assert {
         task_id
         for task_ids in groups.values()
         for task_id in task_ids
     } == set(canonical)
     assert config["acceptance_prerequisites"] == {
-        "ASE3-023": ["ASE3-030"],
-        "ASE3-022": ["ASE3-030"],
+        "ASE3-023": ["ASE3-030", "ASE3-031", "ASE3-032"],
+        "ASE3-022": ["ASE3-030", "ASE3-031", "ASE3-032"],
     }
     assert identity_acceptance == {
         "task_id": "ASE3-030",
         "status": "reserved",
         "receipt_path": HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
         "receipt_schema": HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
+        "artifact_phase": "A",
+        "sequence_phase": "A030",
         "strict_validator_and_manifest_binding_required": True,
         "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
     }
+    assert native_authorization == {
+        "task_id": "ASE3-031",
+        "status": "reserved",
+        "authorization_path": NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH,
+        "authorization_schema": NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_SCHEMA,
+        "artifact_phase": "P",
+        "sequence_phase": "P031",
+        "signed_by_accepted_local_profile_required": True,
+        "accepted_authorization_id_exact_match_required": True,
+        "inspection_evidence_is_authority": False,
+        "authorization_may_claim_launch_effect": False,
+        "strict_validator_and_manifest_binding_required": True,
+        "required_before_task_acceptance": ["ASE3-031"],
+        "required_before_runtime_effects": ["ASE3-023"],
+    }
+    assert native_acceptance == {
+        "task_id": "ASE3-031",
+        "status": "reserved",
+        "receipt_path": NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        "receipt_schema": NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_SCHEMA,
+        "artifact_phase": "A",
+        "sequence_phase": "A031",
+        "authorization_path": NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH,
+        "accepted_authorization_id_exact_match_required": True,
+        "strict_validator_and_manifest_binding_required": True,
+        "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
+    }
+    assert duckdb_acceptance == {
+        "task_id": "ASE3-032",
+        "status": "reserved",
+        "receipt_path": DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        "receipt_schema": DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_SCHEMA,
+        "artifact_phase": "A",
+        "sequence_phase": "A032",
+        "requires_prior_acceptance_tasks": ["ASE3-030", "ASE3-031"],
+        "strict_validator_and_manifest_binding_required": True,
+        "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
+    }
+    assert native_duckdb_sequence == (
+        convergence_module._NATIVE_DUCKDB_ACCEPTANCE_SEQUENCE
+    )
+    protected_paths = config["protected_paths"]
+    assert isinstance(protected_paths, list)
+    for path in (
+        HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH,
+        NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+    ):
+        assert protected_paths.count(path) == 1
     assert activation == {
         "task_id": "ASE3-026",
         "status": "blocked",
@@ -2207,7 +2280,15 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
 
 @pytest.mark.parametrize(
     "task_id",
-    ("ASE3-024", "ASE3-025", "ASE3-028", "ASE3-029", "ASE3-030"),
+    (
+        "ASE3-024",
+        "ASE3-025",
+        "ASE3-028",
+        "ASE3-029",
+        "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
+    ),
 )
 def test_program_expansion_task_identity_tampering_fails_closed(
     tmp_path: Path,
@@ -2253,6 +2334,8 @@ def test_program_expansion_task_identity_tampering_fails_closed(
         "ASE3-028",
         "ASE3-029",
         "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
     ),
 )
 def test_required_program_task_cannot_complete_without_evidence(
@@ -2320,6 +2403,16 @@ def test_required_program_task_cannot_complete_without_evidence(
             "ASE3-030",
             "without importing `multiformats` or mutable repository/candidate code",
             "by importing user-site `multiformats` and mutable candidate code",
+        ),
+        (
+            "ASE3-031",
+            "Inspection is evidence only and must never mint launch authority.",
+            "Inspection mints launch authority.",
+        ),
+        (
+            "ASE3-032",
+            "insert `lock_configuration=true` last",
+            "leave configuration unlocked",
         ),
     ),
 )
@@ -2423,6 +2516,82 @@ def test_monitor_strategy_direct_dependency_tampering_fails_closed(
     ("task_id", "needle", "replacement"),
     (
         (
+            "ASE3-031",
+            "- Depends on: ASE3-030",
+            "- Depends on: ASE3-019",
+        ),
+        (
+            "ASE3-032",
+            "- Depends on: ASE3-031",
+            "- Depends on: ASE3-030",
+        ),
+    ),
+)
+def test_native_duckdb_direct_dependency_tampering_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+    needle: str,
+    replacement: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    start = text.index(f"## {task_id} ")
+    end = text.find("\n## ASE3-", start + 1)
+    assert end > start
+    block = text[start:end]
+    assert block.count(needle) == 1
+    taskboard.write_text(
+        text[:start] + block.replace(needle, replacement, 1) + text[end:],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert (
+        f"program_plan_expansion.{task_id}.depends_on: exact population required"
+        in report.errors
+    )
+
+
+@pytest.mark.parametrize("task_id", ("ASE3-019", "ASE3-022", "ASE3-023", "ASE3-027"))
+def test_operator_protected_task_block_byte_tampering_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    start = text.index(f"## {task_id} ")
+    end = text.find("\n## ASE3-", start + 1)
+    assert end > start
+    block = text[start:end]
+    assert "\n\n" in block
+    mutated_block = block.replace("\n\n", "\n \n", 1)
+    taskboard.write_text(
+        text[:start] + mutated_block + text[end:],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert (
+        f"protected_task_block_bytes.{task_id}: protected task block bytes changed"
+        in report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_id", "needle", "replacement"),
+    (
+        (
             "ASE3-008",
             "ReviewedHostNamespaceReconciler",
             "ClientOwnedMonitorGuardian",
@@ -2433,9 +2602,19 @@ def test_monitor_strategy_direct_dependency_tampering_fails_closed(
             "The 900-second clock begins before recovery",
         ),
         (
+            "ASE3-012",
+            "no prompt-product launch-reachable path can call raw `duckdb.connect`",
+            "prompt-product launch paths may call raw `duckdb.connect`",
+        ),
+        (
             "ASE3-020",
             "persist UNKNOWN, prohibit replay",
             "replay an unknown effect",
+        ),
+        (
+            "ASE3-020",
+            "Every prompt-product-reachable run-registry and runtime-history connection",
+            "Only selected run-registry connections",
         ),
         (
             "ASE3-021",
@@ -2450,9 +2629,27 @@ def test_monitor_strategy_direct_dependency_tampering_fails_closed(
             "authorization_effect_observed: false",
             "authorization_effect_observed: true",
         ),
+        (
+            "ASE3-025",
+            "every generated-board/planning-reachable connection",
+            "selected generated-board connections",
+        ),
+        (
+            "ASE3-031",
+            "authorization_may_claim_launch_effect: false",
+            "authorization_may_claim_launch_effect: true",
+        ),
+        (
+            "ASE3-032",
+            (
+                "persistent-catalog seal covering "
+                "schemas/tables/views/sequences/macros/custom types/indexes"
+            ),
+            "table-only catalog inventory",
+        ),
     ),
 )
-def test_monitor_strategy_task_contract_mutation_fails_closed(
+def test_sealed_program_task_contract_mutation_fails_closed(
     tmp_path: Path,
     task_id: str,
     needle: str,
@@ -2586,6 +2783,42 @@ def test_unvalidated_hermetic_identity_acceptance_receipt_is_reserved(
     )
 
 
+@pytest.mark.parametrize(
+    ("filename", "error_fragment"),
+    (
+        (
+            NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_FILENAME,
+            "ASE3-031.launch_authorization: present without a strict schema validator",
+        ),
+        (
+            NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_FILENAME,
+            "ASE3-031.acceptance_receipt: present without a strict schema validator",
+        ),
+        (
+            DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_FILENAME,
+            "ASE3-032.acceptance_receipt: present without a strict schema validator",
+        ),
+    ),
+)
+def test_unvalidated_native_duckdb_artifacts_are_reserved(
+    tmp_path: Path,
+    filename: str,
+    error_fragment: str,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    (root / filename).write_text("{}\n", encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(error_fragment in error for error in report.errors)
+
+
 def test_hermetic_identity_completion_requires_reserved_receipt_binding(
     tmp_path: Path,
 ) -> None:
@@ -2612,6 +2845,35 @@ def test_hermetic_identity_completion_requires_reserved_receipt_binding(
     assert (
         "program_plan_expansion.ASE3-030.status: completion requires the strict "
         "reserved receipt validator and convergence-manifest binding"
+    ) in report.errors
+
+
+@pytest.mark.parametrize("task_id", ("ASE3-031", "ASE3-032"))
+def test_native_duckdb_completion_requires_reserved_receipt_binding(
+    tmp_path: Path,
+    task_id: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    task_start = text.index(f"## {task_id} ")
+    status_start = text.index("- Status: todo\n", task_start)
+    taskboard.write_text(
+        text[:status_start]
+        + "- Status: completed\n"
+        + text[status_start + len("- Status: todo\n") :],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert (
+        f"program_plan_expansion.{task_id}.status: completion requires the strict "
+        "reserved acceptance validator and convergence-manifest binding"
     ) in report.errors
 
 
@@ -2932,7 +3194,7 @@ def test_monitor_strategy_objective_contract_mutation_fails_closed(
 
 
 @pytest.mark.parametrize("task_id", ("ASE3-023", "ASE3-022"))
-def test_hermetic_identity_acceptance_prerequisite_tampering_fails_closed(
+def test_native_duckdb_acceptance_prerequisite_tampering_fails_closed(
     tmp_path: Path,
     task_id: str,
 ) -> None:
@@ -2941,7 +3203,7 @@ def test_hermetic_identity_acceptance_prerequisite_tampering_fails_closed(
     config = _load(CONFIG_PATH)
     prerequisites = config["acceptance_prerequisites"]
     assert isinstance(prerequisites, dict)
-    prerequisites[task_id] = []
+    prerequisites[task_id] = ["ASE3-030", "ASE3-031"]
     _write(config_path, config)
     tasks = convergence_module._parse_taskboard_metadata(
         TASKBOARD_PATH.read_text(encoding="utf-8")
@@ -2953,8 +3215,8 @@ def test_hermetic_identity_acceptance_prerequisite_tampering_fails_closed(
     )
 
     assert (
-        "program_scheduler_projection.acceptance_prerequisites: exact ASE3-030 "
-        "fail-closed acceptance join required"
+        "program_scheduler_projection.acceptance_prerequisites: exact "
+        "ASE3-030/031/032 fail-closed acceptance join required"
     ) in errors
 
 
@@ -2980,6 +3242,175 @@ def test_hermetic_identity_protected_acceptance_tampering_fails_closed(
     assert (
         "program_scheduler_projection.protected_identity_acceptance: exact "
         "reserved ASE3-030 receipt contract required"
+    ) in errors
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    (
+        (
+            "protected_native_dependency_launch_authorization",
+            "authorization_schema",
+            "forged@1",
+        ),
+        (
+            "protected_native_dependency_launch_authorization",
+            "inspection_evidence_is_authority",
+            0,
+        ),
+        (
+            "protected_native_dependency_launch_authorization",
+            "authorization_may_claim_launch_effect",
+            True,
+        ),
+        (
+            "protected_native_dependency_launch_authorization",
+            "required_before_runtime_effects",
+            [],
+        ),
+        (
+            "protected_native_dependency_launch_authorization",
+            "sequence_phase",
+            "P019",
+        ),
+        (
+            "protected_native_dependency_acceptance",
+            "artifact_phase",
+            "P",
+        ),
+        (
+            "protected_native_dependency_acceptance",
+            "strict_validator_and_manifest_binding_required",
+            False,
+        ),
+        (
+            "protected_duckdb_connection_policy_acceptance",
+            "requires_prior_acceptance_tasks",
+            ["ASE3-031"],
+        ),
+        (
+            "protected_duckdb_connection_policy_acceptance",
+            "receipt_schema",
+            "forged@1",
+        ),
+    ),
+)
+def test_native_duckdb_gate_tampering_fails_closed(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    replacement: object,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    gate = config[section]
+    assert isinstance(gate, dict)
+    gate[field] = replacement
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert any(
+        f"program_scheduler_projection.{section}: exact typed reserved gate required"
+        in error
+        or f"program_scheduler_projection.{section}.contract_sha256" in error
+        for error in errors
+    )
+
+
+def test_native_duckdb_acceptance_phase_reordering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    sequence = config["protected_native_duckdb_acceptance_sequence"]
+    assert isinstance(sequence, dict)
+    phases = sequence["phases"]
+    assert isinstance(phases, list)
+    phases[6], phases[7] = phases[7], phases[6]
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection."
+        "protected_native_duckdb_acceptance_sequence: exact sequential phase "
+        "DAG required"
+    ) in errors
+
+
+@pytest.mark.parametrize(
+    ("task_id", "dependency"),
+    (
+        ("ASE3-031", "ASE3-032"),
+        ("ASE3-027", "ASE3-023"),
+    ),
+)
+def test_native_duckdb_same_or_later_phase_dependency_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+    dependency: str,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    dependencies = config["task_dependencies"]
+    assert isinstance(dependencies, dict)
+    dependencies[task_id] = [dependency]
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection."
+        "protected_native_duckdb_acceptance_sequence.phase_dependency_dag: "
+        f"{task_id} depends on {dependency} without a strictly earlier committed "
+        "acceptance phase"
+    ) in errors
+
+
+def test_reserved_native_duckdb_protected_path_removal_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    protected_paths = config["protected_paths"]
+    assert isinstance(protected_paths, list)
+    protected_paths.remove(NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH)
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.protected_paths: all reserved native "
+        "DuckDB acceptance paths must be unique and protected"
     ) in errors
 
 
@@ -3156,10 +3587,43 @@ def test_ase3_026_plan_semantic_contradiction_retaining_tokens_fails_closed(
             HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
             "hermetic_identity_acceptance_schema",
         ),
-        ("Q→R→P→A", "hermetic_identity_acceptance_fan_in"),
+        (
+            "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+            "native_dependency_reviewed_commit",
+        ),
+        (
+            NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_RELATIVE_PATH,
+            "native_dependency_launch_authorization",
+        ),
+        (
+            NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_SCHEMA,
+            "native_dependency_launch_authorization_schema",
+        ),
+        (
+            NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+            "native_dependency_acceptance_receipt",
+        ),
+        (
+            NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_SCHEMA,
+            "native_dependency_acceptance_schema",
+        ),
+        (
+            DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+            "duckdb_connection_policy_acceptance_receipt",
+        ),
+        (
+            DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_SCHEMA,
+            "duckdb_connection_policy_acceptance_schema",
+        ),
+        (
+            "Q→R(root pin)→P019(witness+provider auth@2+manifest)→A019→"
+            "A030→P031(native auth+manifest)→A031→A032→A023/027→"
+            "L(ASE3-022 reload authorization)",
+            "native_duckdb_acceptance_sequence",
+        ),
     ),
 )
-def test_plan_hermetic_identity_acceptance_contract_tampering_fails_closed(
+def test_plan_native_duckdb_acceptance_contract_tampering_fails_closed(
     tmp_path: Path,
     needle: str,
     field: str,
@@ -3190,6 +3654,43 @@ def test_plan_hermetic_identity_acceptance_contract_tampering_fails_closed(
         f"program_scheduler_projection.plan.{field}: exact protected join required"
         in errors
     )
+
+
+def test_native_duckdb_plan_semantic_contradiction_fails_full_section_seal(
+    tmp_path: Path,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    needle = (
+        "The\nauthorization is pre-launch authority only: it cannot claim that preload,"
+    )
+    replacement = (
+        "The\nauthorization is pre-launch authority and proves that preload occurred;"
+    )
+    assert text.count(needle) == 1
+    plan_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.plan.ASE3-031-032.contract_sha256: exact "
+        "normalized native DuckDB gate section required"
+    ) in errors
 
 
 def test_canary_task_cannot_shorten_signed_observation_window(
