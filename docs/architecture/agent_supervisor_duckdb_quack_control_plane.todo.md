@@ -698,7 +698,7 @@ this bootstrap is active.
 
 ## DQP-022 Record before and after code mutations with AST edit lineage
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
