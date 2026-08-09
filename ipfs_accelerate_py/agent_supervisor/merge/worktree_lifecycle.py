@@ -663,46 +663,57 @@ class WorktreeLifecycleStore:
             ):
                 return
             other_live = owner_liveness(other.owner, proc_root=self.proc_root)
-            if other_live in {OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN}:
+            expired = now >= float(other.expires_at)
+            # Expired claims are abandoned even when the recorded PID is still
+            # "alive" (long-lived daemon hosts). Reclaim so retries cannot stall.
+            if expired:
+                reclaimed = self.reclaim_stale(
+                    other.workspace_path,
+                    reason="expired_attempt_reclaim",
+                    now=now,
+                )
+                if reclaimed is not None:
+                    return
+                raise DuplicateAttemptError(
+                    "task/attempt expired reclaim refused"
+                )
+            if other_live is OwnerLiveness.UNKNOWN:
                 raise DuplicateAttemptError(
                     "task/attempt already has a nonterminal workspace claim"
                 )
-            # Owner is provably dead. Same-lane restarts must reclaim without
-            # waiting the full lease window (default 6h), otherwise daemon
-            # restarts thrash on implementation_retry_deferred forever.
+            if other_live is OwnerLiveness.ALIVE:
+                raise DuplicateAttemptError(
+                    "task/attempt already has a nonterminal workspace claim"
+                )
+            # Owner is provably dead but lease still unexpired. Same-lane
+            # restarts must reclaim without waiting the full lease window
+            # (default 6h), otherwise daemon restarts thrash forever.
             same_lane = bool(
                 state_dir
                 and other.state_dir
                 and normalize_workspace_path(state_dir)
                 == normalize_workspace_path(other.state_dir)
             )
-            if now < float(other.expires_at) and not same_lane:
+            if not same_lane:
                 raise DuplicateAttemptError(
                     "task/attempt claim lease has not expired"
                 )
             reclaimed = None
-            if other.state_dir and (
-                same_lane or now >= float(other.expires_at)
-            ):
+            if other.state_dir:
                 reclaimed = self.reclaim_dead_owner_for_controlled_restart(
                     other.workspace_path,
                     expected_state_dir=other.state_dir,
-                    reason=(
-                        "dead_owner_same_lane_attempt_reclaim"
-                        if same_lane
-                        else "dead_owner_expired_attempt_reclaim"
-                    ),
+                    reason="dead_owner_same_lane_attempt_reclaim",
                 )
-            if reclaimed is None and now >= float(other.expires_at):
+            if reclaimed is None:
                 reclaimed = self.reclaim_stale(
                     other.workspace_path,
-                    reason="dead_owner_expired_attempt_reclaim",
+                    reason="dead_owner_same_lane_attempt_reclaim",
+                    now=now,
                 )
             if reclaimed is None:
                 raise DuplicateAttemptError(
-                    "task/attempt claim lease has not expired"
-                    if now < float(other.expires_at)
-                    else "task/attempt dead-owner reclaim refused"
+                    "task/attempt dead-owner reclaim refused"
                 )
 
         # Serialize first on the stable task/attempt identity.  A losing lane
@@ -717,36 +728,40 @@ class WorktreeLifecycleStore:
                         existing.owner, proc_root=self.proc_root
                     )
                     expired = now >= float(existing.expires_at)
-                    if liveness is OwnerLiveness.ALIVE:
+                    if expired:
+                        # Abandoned claim (even if PID still "alive").
+                        next_fence = int(existing.fence) + 1
+                    elif liveness is OwnerLiveness.ALIVE:
                         raise DuplicateAttemptError(
                             "workspace already claimed by live owner "
                             f"pid={existing.owner.pid}"
                         )
-                    if liveness is OwnerLiveness.UNKNOWN:
+                    elif liveness is OwnerLiveness.UNKNOWN:
                         raise DuplicateAttemptError(
                             "workspace claim exists and process inspection is "
                             "unavailable"
                         )
-                    if not expired and not allow_replace_stale:
+                    elif not allow_replace_stale:
                         raise DuplicateAttemptError(
                             "workspace claim exists and lease has not expired"
                         )
-                    same_lane = bool(
-                        state_dir
-                        and existing.state_dir
-                        and normalize_workspace_path(state_dir)
-                        == normalize_workspace_path(existing.state_dir)
-                    )
-                    if not expired and not same_lane:
-                        # Dead peer-lane owner: keep lease-gated reclaim so
-                        # concurrent lanes cannot race while the record is
-                        # still within its advertised exclusivity window.
-                        raise DuplicateAttemptError(
-                            "workspace claim lease has not expired for stale "
-                            "owner"
+                    else:
+                        same_lane = bool(
+                            state_dir
+                            and existing.state_dir
+                            and normalize_workspace_path(state_dir)
+                            == normalize_workspace_path(existing.state_dir)
                         )
-                    # Dead + (expired or same-lane restart) → reclaim.
-                    next_fence = int(existing.fence) + 1
+                        if not same_lane:
+                            # Dead peer-lane owner: keep lease-gated reclaim so
+                            # concurrent lanes cannot race while the record is
+                            # still within its advertised exclusivity window.
+                            raise DuplicateAttemptError(
+                                "workspace claim lease has not expired for "
+                                "stale owner"
+                            )
+                        # Dead + same-lane restart → reclaim.
+                        next_fence = int(existing.fence) + 1
                 else:
                     next_fence = (
                         1 if existing is None else int(existing.fence) + 1
@@ -1170,10 +1185,14 @@ class WorktreeLifecycleStore:
         reason: str = "stale_reclamation",
         now: float | None = None,
     ) -> WorkspaceLifecycleRecord | None:
-        """Advance fence and mark terminal when owner is dead and lease expired.
+        """Advance fence and mark terminal when the lease has expired.
+
+        Expired claims are treated as abandoned even when the recorded owner
+        PID is still alive (common for long-lived supervisor daemons that outlive
+        a failed implementer). Unexpired claims are never reclaimed here.
 
         Returns the terminal record on success, or None if reclamation was
-        refused (live owner, unexpired lease, missing record, etc.).
+        refused (unexpired lease, missing record, etc.).
         """
 
         clock_now = float(self.clock() if now is None else now)
@@ -1184,9 +1203,6 @@ class WorktreeLifecycleStore:
                 return None
             if current.is_terminal:
                 return current
-            liveness = owner_liveness(current.owner, proc_root=self.proc_root)
-            if liveness is not OwnerLiveness.DEAD:
-                return None
             if clock_now < float(current.expires_at):
                 return None
             updated = replace(
@@ -1194,11 +1210,114 @@ class WorktreeLifecycleStore:
                 state=WorkspaceLifecycleState.TERMINAL,
                 fence=int(current.fence) + 1,
                 updated_at=clock_now,
+                expires_at=min(float(current.expires_at), clock_now),
                 terminal_reason=str(reason or "stale_reclamation"),
                 lease_id=reclaimer_lease_id or current.lease_id,
             )
             _atomic_write_json(record_path, updated.to_dict())
+            index_path = self.task_index_path_for(
+                canonical_task_cid=updated.canonical_task_cid,
+                task_id=updated.task_id,
+                attempt=updated.attempt,
+            )
+            _atomic_write_json(
+                index_path,
+                {
+                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                    "workspace_path": updated.workspace_path,
+                    "record_id": updated.record_id,
+                    "task_id": updated.task_id,
+                    "canonical_task_cid": updated.canonical_task_cid,
+                    "attempt": updated.attempt,
+                    "fence": updated.fence,
+                    "lease_id": updated.lease_id,
+                    "state": updated.state.value,
+                    "terminal_reason": updated.terminal_reason,
+                },
+            )
             return updated
+
+    def reclaim_expired_nonterminal(
+        self,
+        *,
+        reason: str = "expired_nonterminal_reclaim",
+        task_id_prefix: str = "",
+        now: float | None = None,
+    ) -> list[WorkspaceLifecycleRecord]:
+        """Bulk-reclaim every expired nonterminal workspace claim.
+
+        Optional ``task_id_prefix`` limits the scan (used by recovery sweeps).
+        Task indexes are reconciled after reclaims so advertisements cannot
+        keep advertising active ownership for terminal workspaces.
+        """
+
+        clock_now = float(self.clock() if now is None else now)
+        recovered: list[WorkspaceLifecycleRecord] = []
+        for record in list(self.iter_records()):
+            if record.is_terminal:
+                continue
+            if task_id_prefix and not str(record.task_id).startswith(
+                str(task_id_prefix)
+            ):
+                continue
+            if clock_now < float(record.expires_at):
+                continue
+            reclaimed = self.reclaim_stale(
+                record.workspace_path,
+                reason=reason,
+                now=clock_now,
+            )
+            if reclaimed is not None:
+                recovered.append(reclaimed)
+        self.reconcile_stale_task_indexes(task_id_prefix=task_id_prefix)
+        return recovered
+
+    def reconcile_stale_task_indexes(
+        self,
+        *,
+        task_id_prefix: str = "",
+    ) -> int:
+        """Repair task-index advertisements that disagree with workspace truth.
+
+        Returns the number of index files rewritten to terminal (or removed
+        when the workspace record is gone and the index was nonterminal).
+        """
+
+        assert self.store_dir is not None
+        if not self.store_dir.is_dir():
+            return 0
+        repaired = 0
+        for path in sorted(self.store_dir.glob("task-*.json")):
+            payload = _load_json_dict(path)
+            if payload is None:
+                continue
+            task_id = str(payload.get("task_id") or "")
+            if task_id_prefix and not task_id.startswith(str(task_id_prefix)):
+                continue
+            state = str(payload.get("state") or "")
+            if state == WorkspaceLifecycleState.TERMINAL.value:
+                continue
+            workspace = str(payload.get("workspace_path") or "")
+            record = self.load_workspace(workspace) if workspace else None
+            if record is not None and record.is_nonterminal:
+                # Authoritative workspace is still nonterminal; leave index.
+                if str(record.state.value) != state:
+                    payload["state"] = record.state.value
+                    payload["fence"] = int(record.fence)
+                    payload["lease_id"] = record.lease_id
+                    _atomic_write_json(path, payload)
+                    repaired += 1
+                continue
+            # Workspace missing or terminal → index must not advertise active.
+            payload["state"] = WorkspaceLifecycleState.TERMINAL.value
+            if record is not None:
+                payload["fence"] = int(record.fence)
+                payload["lease_id"] = record.lease_id
+                if record.terminal_reason:
+                    payload["terminal_reason"] = record.terminal_reason
+            _atomic_write_json(path, payload)
+            repaired += 1
+        return repaired
 
     def reclaim_dead_owner_for_controlled_restart(
         self,
