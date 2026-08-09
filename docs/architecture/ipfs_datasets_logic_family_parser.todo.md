@@ -726,7 +726,7 @@ validation and evidence contract.
 
 ## LFP-023 Implement modal, normative, epistemic, and intention profiles
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
