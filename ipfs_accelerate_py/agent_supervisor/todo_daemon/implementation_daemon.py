@@ -11729,6 +11729,50 @@ class PortalImplementationDaemon:
             worktree_path=worktree_path,
             branch_name=branch_name,
         )
+        # Seal DuckDB post-merge evidence while the validation worktree still
+        # holds the product files.  Pool handoff resets the checkout to the
+        # base tip, so assembling after release falls back to repo_root and
+        # fails hermetic re-runs with missing declared outputs.
+        sealed_validation_result = dict(validation_result)
+        if (
+            sealed_validation_result.get("post_merge_evidence_input") is None
+            and self.task_source is not None
+            and getattr(self.task_source, "source_kind", "") == "duckdb"
+            and sealed_validation_result.get("passed") is True
+        ):
+            candidate_tree = self._candidate_repository_tree(implementation_commit)
+            if candidate_tree:
+                proposal_for_policy = sealed_validation_result.get("proposal_gate")
+                policy_id = ""
+                if isinstance(proposal_for_policy, Mapping):
+                    policy_id = str(
+                        proposal_for_policy.get("policy_id") or ""
+                    ).strip()
+                if not policy_id and self.formal_verification_policy is not None:
+                    policy_id = str(
+                        getattr(
+                            self.formal_verification_policy, "policy_id", ""
+                        )
+                        or ""
+                    ).strip()
+                if not policy_id:
+                    policy_id = content_identity(
+                        {
+                            "schema": DUCKDB_POST_MERGE_EVIDENCE_INPUT_SCHEMA,
+                            "task_id": task.task_id,
+                            "candidate_tree": candidate_tree,
+                        }
+                    )
+                sealed_validation_result["post_merge_evidence_input"] = (
+                    self._assemble_duckdb_declared_post_merge_evidence_input(
+                        sealed_validation_result,
+                        task=task,
+                        worktree_path=Path(worktree_path),
+                        candidate_tree=candidate_tree,
+                        implementation_commit=implementation_commit,
+                        policy_id=policy_id,
+                    )
+                )
         pool_handoff = self._release_pooled_worktree_lease(
             worktree_path,
             reason="merge_queue_handoff",
@@ -11745,7 +11789,7 @@ class PortalImplementationDaemon:
             changed_submodule_paths=self._committed_submodule_paths(
                 commit_result.get("submodule_results") or []
             ),
-            validation_result=dict(validation_result),
+            validation_result=sealed_validation_result,
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
         )
         if pool_handoff.get("attempted", False):
