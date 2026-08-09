@@ -1185,10 +1185,8 @@ def test_nonce_route_nonzero_never_restores_provider_attempt(
     assert capacity["exhausted"] is False
     assert capacity["providers"] == []
     assert classifier_calls == []
-    if outcome_case == "valid":
-        assert capacity["route_outcome_id"] == outcome["outcome_id"]
-    else:
-        assert "route_outcome_id" not in capacity
+    assert route_plan.invocation_binding is None
+    assert "route_outcome_id" not in capacity
 
 
 def test_legacy_non_route_capacity_classification_remains_available(
@@ -1526,8 +1524,10 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
     prompt_path.write_text("repair", encoding="utf-8")
     close_calls: list[bool] = []
     create_kwargs: list[dict[str, object]] = []
+    create_commands: list[list[str]] = []
     popen_calls: list[bool] = []
     boundary_events: list[str] = []
+    created_container_id = "d" * 64
 
     class FakeHome:
         name = str(provider_home)
@@ -1558,8 +1558,30 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         def wait(self) -> int:
             return 0 if outcome == "success" else -15
 
-    def fake_popen(*_args, **_kwargs):
+    def fake_run(command, **_kwargs):
+        create_command = list(command)
+        create_commands.append(create_command)
+        boundary_events.append("create")
+        assert create_command == ["docker", "create"]
+        return subprocess.CompletedProcess(
+            create_command,
+            0,
+            stdout=(created_container_id + "\n").encode("ascii"),
+            stderr=b"",
+        )
+
+    def fake_popen(command, **_kwargs):
         boundary_events.append("popen")
+        assert list(command) == [
+            "/usr/bin/docker",
+            "--host=unix:///var/run/docker.sock",
+            "--config",
+            str(FakeLease.docker_config),
+            "start",
+            "--attach",
+            "--interactive",
+            created_container_id,
+        ]
         if outcome == "error":
             raise OSError("docker launch failed")
         popen_calls.append(True)
@@ -1599,7 +1621,7 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
     monkeypatch.setattr(
         grok_cli_runner,
         "_docker_codex_fallback_command",
-        lambda **_kwargs: ["docker", "run"],
+        lambda **_kwargs: ["docker", "create"],
     )
     validate_auth = grok_cli_runner._validated_codex_auth_path
 
@@ -1617,6 +1639,7 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         "_validated_codex_auth_path",
         record_and_validate_auth,
     )
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
     monkeypatch.setattr(grok_cli_runner.subprocess, "Popen", fake_popen)
 
     def invocation() -> int:
@@ -1651,9 +1674,18 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
     assert close_calls == [expected_finished]
     if outcome == "auth_swap":
         assert popen_calls == []
+        assert create_commands == []
         assert boundary_events == ["route", "auth-fail"]
     else:
-        assert boundary_events == ["route", "auth", "route", "popen"]
+        assert create_commands == [["docker", "create"]]
+        assert popen_calls == ([] if outcome == "error" else [True])
+        assert boundary_events == [
+            "route",
+            "auth",
+            "route",
+            "create",
+            "popen",
+        ]
     assert create_kwargs == [
         {
             "provider": "codex",
@@ -1684,17 +1716,153 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
     )
     if not image:
         pytest.skip("pinned local Docker image is unavailable")
+    assert image == grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
     child_env = grok_cli_runner._codex_task_container_environment()
+
+    def create_start_wait_and_cleanup(
+        create_command: list[str],
+        *,
+        container_name: str,
+        cidfile: Path,
+        timeout: float,
+    ) -> subprocess.CompletedProcess[str]:
+        assert create_command[4] == "create"
+        assert "run" not in create_command
+        assert "--rm" not in create_command
+        assert "--pull=never" in create_command
+        label_index = create_command.index("--label")
+        assert create_command[label_index + 1] == (
+            "ipfs_accelerate.codex_fallback_isolation=true"
+        )
+        assert create_command.index(image) > label_index
+        container_id = ""
+        try:
+            created = subprocess.run(
+                create_command,
+                cwd=workspace,
+                env=grok_cli_runner._docker_control_env(child_env),
+                input="",
+                text=True,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            assert created.returncode == 0, created.stderr
+            created_fields = created.stdout.split()
+            assert len(created_fields) == 1
+            container_id = created_fields[0]
+            assert re.fullmatch(r"[0-9a-f]{64}", container_id)
+            assert cidfile.read_text(encoding="ascii").strip() == container_id
+
+            inspected = subprocess.run(
+                [
+                    docker_bin,
+                    "--host=unix:///var/run/docker.sock",
+                    "--config",
+                    str(docker_config),
+                    "container",
+                    "inspect",
+                    container_id,
+                ],
+                env=grok_cli_runner._docker_control_env(child_env),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            assert inspected.returncode == 0, inspected.stderr
+            inspection = json.loads(inspected.stdout)
+            assert isinstance(inspection, list) and len(inspection) == 1
+            record = inspection[0]
+            assert record["Id"] == container_id
+            assert record["Name"] == "/" + container_name
+            assert record["Image"] == image
+            assert record["State"]["Status"] == "created"
+            assert record["Config"]["Labels"].get(
+                "ipfs_accelerate.codex_fallback_isolation"
+            ) == "true"
+
+            started = subprocess.run(
+                [
+                    docker_bin,
+                    "--host=unix:///var/run/docker.sock",
+                    "--config",
+                    str(docker_config),
+                    "start",
+                    "--attach",
+                    "--interactive",
+                    container_id,
+                ],
+                cwd=workspace,
+                env=grok_cli_runner._docker_control_env(child_env),
+                input="",
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+            waited = subprocess.run(
+                [
+                    docker_bin,
+                    "--host=unix:///var/run/docker.sock",
+                    "--config",
+                    str(docker_config),
+                    "container",
+                    "wait",
+                    container_id,
+                ],
+                env=grok_cli_runner._docker_control_env(child_env),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            assert waited.returncode == 0, waited.stderr
+            assert waited.stdout.split() == [str(started.returncode)]
+            return started
+        finally:
+            grok_cli_runner._remove_exact_docker_container(
+                docker_bin=docker_bin,
+                docker_config=docker_config,
+                container_name=container_name,
+                settle_for_creation=False,
+            )
+            absent = subprocess.run(
+                [
+                    docker_bin,
+                    "--host=unix:///var/run/docker.sock",
+                    "--config",
+                    str(docker_config),
+                    "container",
+                    "ls",
+                    "--all",
+                    "--no-trunc",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.Names}}",
+                ],
+                env=grok_cli_runner._docker_control_env(child_env),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            assert absent.returncode == 0, absent.stderr
+            assert absent.stdout.strip() == ""
+
+    version_container_name = (
+        f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
+    )
+    version_cidfile = tmp_path / "version-container.cid"
     command = grok_cli_runner._docker_codex_fallback_command(
         codex_command=_terra_fallback_command(codex, workspace),
         workspace=workspace,
         source_auth=source_auth,
         child_env=child_env,
         docker_config=docker_config,
-        container_name=(
-            f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
-        ),
-        cidfile=tmp_path / "version-container.cid",
+        container_name=version_container_name,
+        cidfile=version_cidfile,
         docker_bin=docker_bin,
         isolation_image=image,
     )
@@ -1702,31 +1870,29 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
     codex_index = command.index(codex, image_index + 1)
     probe_command = [*command[:codex_index], codex, "--version"]
 
-    completed = subprocess.run(
+    completed = create_start_wait_and_cleanup(
         probe_command,
-        cwd=workspace,
-        env=grok_cli_runner._docker_control_env(child_env),
-        input="",
-        text=True,
-        capture_output=True,
+        container_name=version_container_name,
+        cidfile=version_cidfile,
         timeout=30,
-        check=False,
     )
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.startswith("codex-cli ")
     assert "bwrap:" not in completed.stderr
 
+    validation_container_name = (
+        f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
+    )
+    validation_cidfile = tmp_path / "validation-container.cid"
     validation_command = grok_cli_runner._docker_codex_fallback_command(
         codex_command=_terra_fallback_command(codex, workspace),
         workspace=workspace,
         source_auth=source_auth,
         child_env=child_env,
         docker_config=docker_config,
-        container_name=(
-            f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
-        ),
-        cidfile=tmp_path / "validation-container.cid",
+        container_name=validation_container_name,
+        cidfile=validation_cidfile,
         docker_bin=docker_bin,
         isolation_image=image,
     )
@@ -1742,15 +1908,11 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
         "test/api/test_agent_supervisor_prompt_v3_convergence.py",
         "-q",
     ]
-    validation = subprocess.run(
+    validation = create_start_wait_and_cleanup(
         validation_command,
-        cwd=workspace,
-        env=grok_cli_runner._docker_control_env(child_env),
-        input="",
-        text=True,
-        capture_output=True,
+        container_name=validation_container_name,
+        cidfile=validation_cidfile,
         timeout=120,
-        check=False,
     )
 
     assert validation.returncode == 0, validation.stdout + validation.stderr
