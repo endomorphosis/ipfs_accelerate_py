@@ -38295,7 +38295,9 @@ class PortalImplementationDaemon:
                 max_item_bytes=16_384,
                 max_serialized_bytes=ABSOLUTE_MAX_CONTEXT_BYTES,
                 max_depth=12,
-                max_text_bytes=8_192,
+                # Complex sealed tasks (e.g. PTR-165 v9 reopen) carry multi-KB
+                # acceptance contracts; keep text bound equal to max_item_bytes.
+                max_text_bytes=16_384,
             )
         if isinstance(configured, ContextBudget):
             return configured
