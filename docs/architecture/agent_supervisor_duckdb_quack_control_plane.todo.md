@@ -264,7 +264,7 @@ this bootstrap is active.
 
 ## DQP-008 Join schema, server, client, and existing DuckDB stores behind repositories
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
