@@ -319,7 +319,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-010 Publish the common frontend and profile descriptor contract
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
