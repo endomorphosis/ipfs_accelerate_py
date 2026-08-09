@@ -24,7 +24,8 @@ import time
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from types import MappingProxyType
+from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
 from .. import implementation_timeout as _implementation_timeout
@@ -53339,6 +53340,1454 @@ class PortalImplementationDaemon:
         self._invalidate_event_cache()
 
 
+# ---------------------------------------------------------------------------
+# DatabaseImplementationDaemon@1 / DatabaseTaskAttempt@1 (DQP-018)
+# ---------------------------------------------------------------------------
+# Database-authoritative implementation cutover: claims, attempt phases,
+# provider/effect idempotency, completion, and retry/backoff live in DuckDB.
+# Markdown taskboards and JSON queue/status/events/PID projections are optional
+# non-authoritative projections only.
+
+DATABASE_IMPLEMENTATION_DAEMON_INTERFACE = "DatabaseImplementationDaemon@1"
+DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
+DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-implementation-daemon@1"
+)
+DATABASE_TASK_ATTEMPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
+)
+
+# Ordered execution phases. Crash/restart resumes after the last committed phase.
+ATTEMPT_PHASE_CLAIMED = "claimed"
+ATTEMPT_PHASE_CONTEXT = "context"
+ATTEMPT_PHASE_PROVIDER = "provider"
+ATTEMPT_PHASE_EFFECT = "effect"
+ATTEMPT_PHASE_VALIDATION = "validation"
+ATTEMPT_PHASE_COMPLETE = "complete"
+ATTEMPT_PHASE_FAILED = "failed"
+ATTEMPT_PHASE_BLOCKED = "blocked"
+
+_ATTEMPT_PHASE_ORDER: tuple[str, ...] = (
+    ATTEMPT_PHASE_CLAIMED,
+    ATTEMPT_PHASE_CONTEXT,
+    ATTEMPT_PHASE_PROVIDER,
+    ATTEMPT_PHASE_EFFECT,
+    ATTEMPT_PHASE_VALIDATION,
+    ATTEMPT_PHASE_COMPLETE,
+)
+
+_DATABASE_AUTHORITY_MODES = frozenset(
+    {"embedded", "embedded_exclusive", "quack"}
+)
+_DATABASE_TASK_SOURCE_KINDS = frozenset({"duckdb"})
+
+_DAEMON_EXECUTION_SQL = """
+CREATE TABLE IF NOT EXISTS daemon_execution_metadata (
+    key VARCHAR PRIMARY KEY,
+    value VARCHAR NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS database_task_attempts (
+    attempt_id VARCHAR PRIMARY KEY,
+    claim_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    task_alias VARCHAR NOT NULL DEFAULT '',
+    attempt_number BIGINT NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    fencing_token BIGINT NOT NULL,
+    fence_epoch BIGINT NOT NULL,
+    lease_id VARCHAR NOT NULL DEFAULT '',
+    committed_phase VARCHAR NOT NULL,
+    status VARCHAR NOT NULL,
+    started_at_ms BIGINT NOT NULL,
+    finished_at_ms BIGINT,
+    revision BIGINT NOT NULL DEFAULT 1,
+    body_json VARCHAR NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS database_task_attempts_task_idx
+    ON database_task_attempts(task_cid, attempt_number);
+CREATE INDEX IF NOT EXISTS database_task_attempts_owner_idx
+    ON database_task_attempts(owner_session_id, status);
+CREATE INDEX IF NOT EXISTS database_task_attempts_claim_idx
+    ON database_task_attempts(claim_id);
+
+CREATE TABLE IF NOT EXISTS attempt_phases (
+    attempt_id VARCHAR NOT NULL,
+    phase VARCHAR NOT NULL,
+    committed_at_ms BIGINT NOT NULL,
+    fencing_token BIGINT NOT NULL,
+    fence_epoch BIGINT NOT NULL,
+    revision BIGINT NOT NULL,
+    body_json VARCHAR NOT NULL DEFAULT '{}',
+    PRIMARY KEY (attempt_id, phase)
+);
+
+CREATE TABLE IF NOT EXISTS provider_invocations (
+    invocation_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    idempotency_key VARCHAR NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    recorded_at_ms BIGINT NOT NULL,
+    result_json VARCHAR NOT NULL DEFAULT '{}',
+    UNIQUE (attempt_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS effect_claims (
+    effect_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    effect_key VARCHAR NOT NULL,
+    idempotency_key VARCHAR NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    recorded_at_ms BIGINT NOT NULL,
+    result_json VARCHAR NOT NULL DEFAULT '{}',
+    UNIQUE (attempt_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS daemon_execution_events (
+    event_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL DEFAULT '',
+    task_cid VARCHAR NOT NULL DEFAULT '',
+    event_type VARCHAR NOT NULL,
+    recorded_at_ms BIGINT NOT NULL,
+    body_json VARCHAR NOT NULL DEFAULT '{}'
+);
+"""
+
+
+class DatabaseImplementationDaemonError(RuntimeError):
+    """Fail-closed error for database-authoritative implementation execution."""
+
+
+class DatabaseImplementationAuthorityError(DatabaseImplementationDaemonError):
+    """Raised when a database-authority path would mutate Markdown or file state."""
+
+
+class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
+    """Raised when a claim or phase transition conflicts with durable state."""
+
+
+def _database_daemon_json(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
+
+
+def _database_daemon_load_json(raw: Any) -> dict[str, Any]:
+    if raw is None or raw == "":
+        return {}
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    try:
+        payload = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _database_daemon_now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _database_daemon_new_id(prefix: str) -> str:
+    return f"{prefix}:{secrets.token_hex(12)}"
+
+
+def _phase_rank(phase: str) -> int:
+    try:
+        return _ATTEMPT_PHASE_ORDER.index(str(phase or "").strip())
+    except ValueError:
+        return -1
+
+
+def is_database_authority_mode(
+    *,
+    authority_mode: str = "",
+    task_source_kind: str = "",
+) -> bool:
+    """Return whether the daemon must use database-authoritative execution."""
+
+    mode = str(authority_mode or "").strip().lower().replace("-", "_")
+    kind = str(task_source_kind or "").strip().lower()
+    if mode in _DATABASE_AUTHORITY_MODES:
+        return True
+    if kind in _DATABASE_TASK_SOURCE_KINDS:
+        return True
+    return False
+
+
+@dataclass(frozen=True)
+class DatabaseTaskAttempt:
+    """Durable task attempt under DatabaseTaskAttempt@1.
+
+    Tracks the last committed phase so crash/restart resumes without
+    re-running provider or effect work that already committed.
+    """
+
+    INTERFACE: ClassVar[str] = DATABASE_TASK_ATTEMPT_INTERFACE
+    SCHEMA: ClassVar[str] = DATABASE_TASK_ATTEMPT_SCHEMA
+
+    attempt_id: str
+    claim_id: str
+    task_cid: str
+    attempt_number: int
+    owner_session_id: str
+    fencing_token: int
+    fence_epoch: int
+    committed_phase: str
+    status: str
+    started_at_ms: int
+    task_alias: str = ""
+    lease_id: str = ""
+    finished_at_ms: int | None = None
+    revision: int = 1
+    body: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "attempt_id": self.attempt_id,
+            "claim_id": self.claim_id,
+            "task_cid": self.task_cid,
+            "task_alias": self.task_alias,
+            "attempt_number": int(self.attempt_number),
+            "owner_session_id": self.owner_session_id,
+            "fencing_token": int(self.fencing_token),
+            "fence_epoch": int(self.fence_epoch),
+            "lease_id": self.lease_id,
+            "committed_phase": self.committed_phase,
+            "status": self.status,
+            "started_at_ms": int(self.started_at_ms),
+            "finished_at_ms": self.finished_at_ms,
+            "revision": int(self.revision),
+            "body": dict(self.body),
+        }
+
+    def phase_committed(self, phase: str) -> bool:
+        return _phase_rank(self.committed_phase) >= _phase_rank(phase)
+
+
+class DatabaseImplementationDaemon:
+    """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
+
+    Task selection, claims, attempt phases, provider calls, effect claims,
+    validation intent, completion, retry/backoff, heartbeats, and status are
+    database transitions. Legacy Markdown and JSON queue/status/events/PID
+    projections may be absent and never grant authority.
+    """
+
+    INTERFACE: ClassVar[str] = DATABASE_IMPLEMENTATION_DAEMON_INTERFACE
+    SCHEMA: ClassVar[str] = DATABASE_IMPLEMENTATION_DAEMON_SCHEMA
+
+    def __init__(
+        self,
+        *,
+        database_path: Path | str,
+        coordination_path: Path | str | None = None,
+        execution_path: Path | str | None = None,
+        owner_session_id: str = "",
+        authority_mode: str = "embedded",
+        task_source_kind: str = "duckdb",
+        markdown_path: Path | str | None = None,
+        state_path: Path | str | None = None,
+        strategy_path: Path | str | None = None,
+        events_path: Path | str | None = None,
+        pid_path: Path | str | None = None,
+        queue_path: Path | str | None = None,
+        lease_ms: int = 60_000,
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+        effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        clock_ms: Callable[[], int] | None = None,
+        task_source: Any = None,
+        coordinator: Any = None,
+        install_schema: bool = True,
+    ) -> None:
+        if not is_database_authority_mode(
+            authority_mode=authority_mode,
+            task_source_kind=task_source_kind,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "DatabaseImplementationDaemon requires database authority "
+                f"(authority_mode={authority_mode!r}, "
+                f"task_source_kind={task_source_kind!r})"
+            )
+        self.database_path = Path(database_path).absolute()
+        self.coordination_path = Path(
+            coordination_path
+            if coordination_path is not None
+            else self.database_path.with_name(
+                f"{self.database_path.stem}.coordination.duckdb"
+            )
+        ).absolute()
+        self.execution_path = Path(
+            execution_path
+            if execution_path is not None
+            else self.database_path.with_name(
+                f"{self.database_path.stem}.execution.duckdb"
+            )
+        ).absolute()
+        self.authority_mode = str(authority_mode or "embedded").strip().lower().replace(
+            "-", "_"
+        )
+        self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
+        self.owner_session_id = str(
+            owner_session_id or _database_daemon_new_id("session")
+        ).strip()
+        self.markdown_path = Path(markdown_path).absolute() if markdown_path else None
+        # Optional projections — never required under database authority.
+        self.state_path = Path(state_path).absolute() if state_path else None
+        self.strategy_path = Path(strategy_path).absolute() if strategy_path else None
+        self.events_path = Path(events_path).absolute() if events_path else None
+        self.pid_path = Path(pid_path).absolute() if pid_path else None
+        self.queue_path = Path(queue_path).absolute() if queue_path else None
+        self.lease_ms = int(lease_ms)
+        self._provider_fn = provider_fn
+        self._effect_fn = effect_fn
+        self._validation_fn = validation_fn
+        self._clock_ms = clock_ms or _database_daemon_now_ms
+        self._lock = threading.RLock()
+        self._connection: Any = None
+        self._owns_task_source = task_source is None
+        self._owns_coordinator = coordinator is None
+        self._task_source = task_source
+        self._coordinator = coordinator
+        self._markdown_status_writes = 0
+        self._closed = False
+        if install_schema:
+            self.open()
+
+    # -- lifecycle -----------------------------------------------------------
+
+    def open(self) -> "DatabaseImplementationDaemon":
+        """Open execution store and bind task-source / coordinator adapters."""
+
+        with self._lock:
+            if self._connection is not None:
+                return self
+            from ..task_sources.duckdb_state import open_duckdb_connection
+            from ..merge.database_coordination import open_database_coordinator
+            from ..task_sources.database_task_source import DatabaseTaskSource
+
+            self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+            self._connection = open_duckdb_connection(self.execution_path)
+            for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                self._connection.execute(statement)
+            for key, value in (
+                ("interface", self.INTERFACE),
+                ("schema", self.SCHEMA),
+                ("authority_mode", self.authority_mode),
+            ):
+                self._connection.execute(
+                    """
+                    INSERT OR REPLACE INTO daemon_execution_metadata(key, value)
+                    VALUES (?, ?)
+                    """,
+                    [key, value],
+                )
+            if self._task_source is None:
+                self._task_source = DatabaseTaskSource(
+                    self.database_path,
+                    owner_id=f"database-implementation-daemon:{self.owner_session_id}",
+                    install_schema=True,
+                )
+            if self._coordinator is None:
+                self._coordinator = open_database_coordinator(
+                    self.coordination_path,
+                    clock_ms=self._clock_ms,
+                    default_lease_ms=self.lease_ms,
+                )
+            self._closed = False
+            return self
+
+    def close(self) -> None:
+        with self._lock:
+            if self._owns_coordinator and self._coordinator is not None:
+                close = getattr(self._coordinator, "close", None)
+                if callable(close):
+                    close()
+                self._coordinator = None
+            if self._owns_task_source and self._task_source is not None:
+                close = getattr(self._task_source, "close", None)
+                if callable(close):
+                    close()
+                self._task_source = None
+            if self._connection is not None:
+                close = getattr(self._connection, "close", None)
+                if callable(close):
+                    close()
+            self._connection = None
+            self._closed = True
+
+    def __enter__(self) -> "DatabaseImplementationDaemon":
+        return self.open()
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    @property
+    def task_source(self) -> Any:
+        self.open()
+        return self._task_source
+
+    @property
+    def coordinator(self) -> Any:
+        self.open()
+        return self._coordinator
+
+    @property
+    def markdown_status_write_count(self) -> int:
+        return int(self._markdown_status_writes)
+
+    def projections_required(self) -> bool:
+        """JSON queue/status/events/PID projections are never required."""
+
+        return False
+
+    def _require_connection(self) -> Any:
+        self.open()
+        if self._connection is None:
+            raise DatabaseImplementationDaemonError("execution store is not open")
+        return self._connection
+
+    def _now_ms(self) -> int:
+        return int(self._clock_ms())
+
+    def _record_event(
+        self,
+        event_type: str,
+        *,
+        attempt_id: str = "",
+        task_cid: str = "",
+        body: Mapping[str, Any] | None = None,
+    ) -> None:
+        connection = self._require_connection()
+        connection.execute(
+            """
+            INSERT INTO daemon_execution_events(
+                event_id, attempt_id, task_cid, event_type, recorded_at_ms, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _database_daemon_new_id("event"),
+                attempt_id,
+                task_cid,
+                str(event_type),
+                self._now_ms(),
+                _database_daemon_json(dict(body or {})),
+            ],
+        )
+        # Optional JSONL projection only — never authority.
+        if self.events_path is not None:
+            try:
+                self.events_path.parent.mkdir(parents=True, exist_ok=True)
+                append_jsonl_event(
+                    self.events_path,
+                    event_type,
+                    {
+                        "attempt_id": attempt_id,
+                        "task_cid": task_cid,
+                        **dict(body or {}),
+                    },
+                )
+            except OSError:
+                pass
+
+    # -- materialize / register ---------------------------------------------
+
+    def materialize_population(
+        self,
+        population: Mapping[str, Any],
+        *,
+        repository_tree_id: str = "tree:database-implementation",
+        plan_root_cid: str = "",
+    ) -> Mapping[str, Any]:
+        """Ingest tasks into the intent repository and coordination registry."""
+
+        receipt = self.task_source.materialize(
+            population,
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+        )
+        registered: list[str] = []
+        for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
+            deps = tuple(str(dep) for dep in task.dependencies)
+            self.coordinator.register_task(
+                task_cid=task.task_cid,
+                task_id=task.task_alias or task.task_cid,
+                dependency_task_cids=deps,
+                body={
+                    "task_alias": task.task_alias,
+                    "status": task.status,
+                    "priority": task.priority,
+                },
+            )
+            registered.append(task.task_cid)
+        return MappingProxyType(
+            {
+                "task_source": dict(receipt) if isinstance(receipt, Mapping) else {},
+                "registered_task_cids": list(registered),
+            }
+        )
+
+    def sync_ready_tasks_into_coordination(self) -> list[str]:
+        """Ensure ready tasks from the intent repository are claimable."""
+
+        ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        registered: list[str] = []
+        for task in ready.tasks:
+            status = str(task.status or "").strip().lower()
+            if status in {"completed", "complete", "done", "skipped", "cancelled"}:
+                continue
+            self.coordinator.register_task(
+                task_cid=task.task_cid,
+                task_id=task.task_alias or task.task_cid,
+                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
+                body={"task_alias": task.task_alias, "status": task.status},
+            )
+            registered.append(task.task_cid)
+        return registered
+
+    # -- claim / attempt ----------------------------------------------------
+
+    def claim_next(
+        self,
+        *,
+        exclude_task_cids: Iterable[str] = (),
+        lease_ms: int | None = None,
+    ) -> DatabaseTaskAttempt | None:
+        """Claim one ready task for this session; four sessions never share work."""
+
+        self.sync_ready_tasks_into_coordination()
+        claim = self.coordinator.claim_ready_task(
+            owner_session_id=self.owner_session_id,
+            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+            exclude_task_cids=exclude_task_cids,
+            now_ms=self._now_ms(),
+        )
+        if claim is None:
+            return None
+        task = self.task_source.get(claim.task_cid)
+        task_alias = (
+            str(task.task_alias)
+            if task is not None and getattr(task, "task_alias", None)
+            else claim.task_cid
+        )
+        # Move durable task status through the database only (never Markdown).
+        if task is not None and str(task.status).lower() in {
+            "todo",
+            "ready",
+            "open",
+        }:
+            self._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="in_progress",
+                receipt={
+                    "operation": "database_claim",
+                    "claim_id": claim.claim_id,
+                    "attempt_id": claim.attempt_id,
+                    "owner_session_id": self.owner_session_id,
+                },
+            )
+        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
+        self._record_event(
+            "task_claimed",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body=attempt.to_dict(),
+        )
+        return attempt
+
+    def _insert_attempt_from_claim(
+        self,
+        claim: Any,
+        *,
+        task_alias: str,
+    ) -> DatabaseTaskAttempt:
+        now = self._now_ms()
+        attempt = DatabaseTaskAttempt(
+            attempt_id=str(claim.attempt_id),
+            claim_id=str(claim.claim_id),
+            task_cid=str(claim.task_cid),
+            task_alias=task_alias,
+            attempt_number=int(claim.attempt_number),
+            owner_session_id=str(claim.owner_session_id),
+            fencing_token=int(claim.fencing_token),
+            fence_epoch=int(claim.fence_epoch),
+            lease_id=str(getattr(claim, "lease_id", "") or ""),
+            committed_phase=ATTEMPT_PHASE_CLAIMED,
+            status="running",
+            started_at_ms=int(getattr(claim, "claimed_at_ms", now) or now),
+            revision=1,
+            body={"worktree_id": str(getattr(claim, "worktree_id", "") or "")},
+        )
+        connection = self._require_connection()
+        existing = connection.execute(
+            "SELECT attempt_id FROM database_task_attempts WHERE attempt_id = ?",
+            [attempt.attempt_id],
+        ).fetchone()
+        if existing is not None:
+            stored = self.get_attempt(attempt.attempt_id)
+            if stored is not None:
+                return stored
+        connection.execute(
+            """
+            INSERT INTO database_task_attempts(
+                attempt_id, claim_id, task_cid, task_alias, attempt_number,
+                owner_session_id, fencing_token, fence_epoch, lease_id,
+                committed_phase, status, started_at_ms, finished_at_ms,
+                revision, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+            """,
+            [
+                attempt.attempt_id,
+                attempt.claim_id,
+                attempt.task_cid,
+                attempt.task_alias,
+                int(attempt.attempt_number),
+                attempt.owner_session_id,
+                int(attempt.fencing_token),
+                int(attempt.fence_epoch),
+                attempt.lease_id,
+                attempt.committed_phase,
+                attempt.status,
+                int(attempt.started_at_ms),
+                int(attempt.revision),
+                _database_daemon_json(dict(attempt.body)),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO attempt_phases(
+                attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
+                revision, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                attempt.attempt_id,
+                ATTEMPT_PHASE_CLAIMED,
+                now,
+                int(attempt.fencing_token),
+                int(attempt.fence_epoch),
+                1,
+                "{}",
+            ],
+        )
+        return attempt
+
+    _ATTEMPT_SELECT = (
+        "attempt_id, claim_id, task_cid, task_alias, attempt_number, "
+        "owner_session_id, fencing_token, fence_epoch, lease_id, "
+        "committed_phase, status, started_at_ms, finished_at_ms, revision, body_json"
+    )
+
+    def get_attempt(self, attempt_id: str) -> DatabaseTaskAttempt | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            f"SELECT {self._ATTEMPT_SELECT} FROM database_task_attempts "
+            "WHERE attempt_id = ?",
+            [str(attempt_id)],
+        ).fetchone()
+        if row is None:
+            return None
+        return self._attempt_from_row(row)
+
+    def list_running_attempts(
+        self,
+        *,
+        owner_session_id: str | None = None,
+    ) -> list[DatabaseTaskAttempt]:
+        connection = self._require_connection()
+        owner = str(owner_session_id or self.owner_session_id)
+        rows = connection.execute(
+            f"""
+            SELECT {self._ATTEMPT_SELECT} FROM database_task_attempts
+            WHERE owner_session_id = ? AND status = 'running'
+            ORDER BY started_at_ms, attempt_id
+            """,
+            [owner],
+        ).fetchall()
+        return [self._attempt_from_row(row) for row in rows]
+
+    def _attempt_from_row(self, row: Any) -> DatabaseTaskAttempt:
+        finished = row[12]
+        return DatabaseTaskAttempt(
+            attempt_id=str(row[0] or ""),
+            claim_id=str(row[1] or ""),
+            task_cid=str(row[2] or ""),
+            task_alias=str(row[3] or ""),
+            attempt_number=int(row[4] or 1),
+            owner_session_id=str(row[5] or ""),
+            fencing_token=int(row[6] or 1),
+            fence_epoch=int(row[7] or 1),
+            lease_id=str(row[8] or ""),
+            committed_phase=str(row[9] or ATTEMPT_PHASE_CLAIMED),
+            status=str(row[10] or "running"),
+            started_at_ms=int(row[11] or 0),
+            finished_at_ms=None if finished is None else int(finished),
+            revision=int(row[13] or 1),
+            body=_database_daemon_load_json(row[14]),
+        )
+
+    def commit_phase(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        phase: str,
+        *,
+        body: Mapping[str, Any] | None = None,
+    ) -> DatabaseTaskAttempt:
+        """Commit an attempt phase durably (crash boundary)."""
+
+        phase_text = str(phase or "").strip().lower()
+        if phase_text not in {
+            *_ATTEMPT_PHASE_ORDER,
+            ATTEMPT_PHASE_FAILED,
+            ATTEMPT_PHASE_BLOCKED,
+        }:
+            raise DatabaseImplementationDaemonError(f"unknown attempt phase: {phase!r}")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        if current.status != "running" and phase_text not in {
+            ATTEMPT_PHASE_FAILED,
+            ATTEMPT_PHASE_BLOCKED,
+            ATTEMPT_PHASE_COMPLETE,
+        }:
+            raise DatabaseImplementationConflictError(
+                f"attempt {current.attempt_id} is not running"
+            )
+        if (
+            phase_text in _ATTEMPT_PHASE_ORDER
+            and _phase_rank(phase_text) < _phase_rank(current.committed_phase)
+        ):
+            # Idempotent: already past this phase.
+            return current
+        if (
+            phase_text in _ATTEMPT_PHASE_ORDER
+            and _phase_rank(phase_text) > _phase_rank(current.committed_phase) + 1
+            and phase_text != ATTEMPT_PHASE_COMPLETE
+        ):
+            # Allow COMPLETE from VALIDATION only; otherwise require sequential.
+            expected = _ATTEMPT_PHASE_ORDER[
+                min(
+                    _phase_rank(current.committed_phase) + 1,
+                    len(_ATTEMPT_PHASE_ORDER) - 1,
+                )
+            ]
+            if phase_text != expected and not (
+                phase_text == ATTEMPT_PHASE_COMPLETE
+                and current.committed_phase == ATTEMPT_PHASE_VALIDATION
+            ):
+                raise DatabaseImplementationConflictError(
+                    f"cannot commit phase {phase_text!r} from "
+                    f"{current.committed_phase!r}; expected {expected!r}"
+                )
+        now = self._now_ms()
+        connection = self._require_connection()
+        revision = int(current.revision) + 1
+        status = current.status
+        finished_at: int | None = current.finished_at_ms
+        if phase_text == ATTEMPT_PHASE_COMPLETE:
+            status = "succeeded"
+            finished_at = now
+        elif phase_text == ATTEMPT_PHASE_FAILED:
+            status = "failed"
+            finished_at = now
+        elif phase_text == ATTEMPT_PHASE_BLOCKED:
+            status = "blocked"
+            finished_at = now
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO attempt_phases(
+                attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
+                revision, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                current.attempt_id,
+                phase_text,
+                now,
+                int(current.fencing_token),
+                int(current.fence_epoch),
+                revision,
+                _database_daemon_json(dict(body or {})),
+            ],
+        )
+        connection.execute(
+            """
+            UPDATE database_task_attempts
+            SET committed_phase = ?, status = ?, finished_at_ms = ?, revision = ?
+            WHERE attempt_id = ? AND revision = ?
+            """,
+            [
+                phase_text
+                if phase_text in _ATTEMPT_PHASE_ORDER
+                or phase_text
+                in {ATTEMPT_PHASE_FAILED, ATTEMPT_PHASE_BLOCKED}
+                else current.committed_phase,
+                status,
+                finished_at,
+                revision,
+                current.attempt_id,
+                int(current.revision),
+            ],
+        )
+        updated = self.get_attempt(current.attempt_id)
+        if updated is None:
+            raise DatabaseImplementationDaemonError("attempt disappeared after phase commit")
+        self._record_event(
+            "attempt_phase_committed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"phase": phase_text, "revision": revision, **dict(body or {})},
+        )
+        return updated
+
+    def phase_history(self, attempt_id: str) -> list[dict[str, Any]]:
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT phase, committed_at_ms, fencing_token, fence_epoch, revision, body_json
+            FROM attempt_phases
+            WHERE attempt_id = ?
+            ORDER BY committed_at_ms, phase
+            """,
+            [str(attempt_id)],
+        ).fetchall()
+        history: list[dict[str, Any]] = []
+        for row in rows:
+            if isinstance(row, Mapping):
+                mapping = dict(row)
+            else:
+                mapping = {
+                    "phase": row[0],
+                    "committed_at_ms": row[1],
+                    "fencing_token": row[2],
+                    "fence_epoch": row[3],
+                    "revision": row[4],
+                    "body_json": row[5],
+                }
+            history.append(
+                {
+                    "phase": str(mapping.get("phase") or ""),
+                    "committed_at_ms": int(mapping.get("committed_at_ms") or 0),
+                    "fencing_token": int(mapping.get("fencing_token") or 0),
+                    "fence_epoch": int(mapping.get("fence_epoch") or 0),
+                    "revision": int(mapping.get("revision") or 0),
+                    "body": _database_daemon_load_json(mapping.get("body_json")),
+                }
+            )
+        return history
+
+    # -- provider / effect (idempotent) -------------------------------------
+
+    def provider_invocation_recorded(
+        self,
+        attempt_id: str,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT result_json FROM provider_invocations
+            WHERE attempt_id = ? AND idempotency_key = ?
+            """,
+            [str(attempt_id), str(idempotency_key)],
+        ).fetchone()
+        if row is None:
+            return None
+        raw = row[0] if not isinstance(row, Mapping) else row.get("result_json")
+        return _database_daemon_load_json(raw)
+
+    def effect_claim_recorded(
+        self,
+        attempt_id: str,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT result_json FROM effect_claims
+            WHERE attempt_id = ? AND idempotency_key = ?
+            """,
+            [str(attempt_id), str(idempotency_key)],
+        ).fetchone()
+        if row is None:
+            return None
+        raw = row[0] if not isinstance(row, Mapping) else row.get("result_json")
+        return _database_daemon_load_json(raw)
+
+    def run_provider(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str = "",
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Run provider work once per attempt idempotency key.
+
+        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
+        when a prior committed provider invocation was replayed.
+        """
+
+        key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
+        prior = self.provider_invocation_recorded(
+            attempt.attempt_id, idempotency_key=key
+        )
+        if prior is not None:
+            current = self.get_attempt(attempt.attempt_id) or attempt
+            if not current.phase_committed(ATTEMPT_PHASE_PROVIDER):
+                current = self.commit_phase(
+                    current,
+                    ATTEMPT_PHASE_PROVIDER,
+                    body={"replayed": True, "idempotency_key": key},
+                )
+            return current, prior, True
+        if attempt.phase_committed(ATTEMPT_PHASE_PROVIDER):
+            # Phase committed without a matching key — treat as already done.
+            return attempt, {"status": "already_committed"}, True
+        callback = provider_fn or self._provider_fn
+        if callback is None:
+            result: dict[str, Any] = {
+                "status": "noop",
+                "provider": "database-implementation-daemon",
+                "attempt_id": attempt.attempt_id,
+                "task_cid": attempt.task_cid,
+            }
+        else:
+            result = dict(callback(attempt))
+        connection = self._require_connection()
+        connection.execute(
+            """
+            INSERT INTO provider_invocations(
+                invocation_id, attempt_id, task_cid, idempotency_key,
+                owner_session_id, recorded_at_ms, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _database_daemon_new_id("provider"),
+                attempt.attempt_id,
+                attempt.task_cid,
+                key,
+                self.owner_session_id,
+                self._now_ms(),
+                _database_daemon_json(result),
+            ],
+        )
+        updated = self.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_PROVIDER,
+            body={"idempotency_key": key, "result": result},
+        )
+        self._record_event(
+            "provider_invocation_committed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"idempotency_key": key, "result": result},
+        )
+        return updated, result, False
+
+    def run_effect(
+        self,
+        attempt: DatabaseTaskAttempt,
+        provider_result: Mapping[str, Any],
+        *,
+        idempotency_key: str = "",
+        effect_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Apply effect work once per attempt idempotency key."""
+
+        key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
+        prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
+        if prior is not None:
+            current = self.get_attempt(attempt.attempt_id) or attempt
+            if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
+                current = self.commit_phase(
+                    current,
+                    ATTEMPT_PHASE_EFFECT,
+                    body={"replayed": True, "idempotency_key": key},
+                )
+            return current, prior, True
+        if attempt.phase_committed(ATTEMPT_PHASE_EFFECT):
+            return attempt, {"status": "already_committed"}, True
+        callback = effect_fn or self._effect_fn
+        if callback is None:
+            result: dict[str, Any] = {
+                "status": "noop",
+                "effect": "database-implementation-daemon",
+                "attempt_id": attempt.attempt_id,
+                "task_cid": attempt.task_cid,
+                "provider_result": dict(provider_result),
+            }
+        else:
+            result = dict(callback(attempt, provider_result))
+        connection = self._require_connection()
+        connection.execute(
+            """
+            INSERT INTO effect_claims(
+                effect_id, attempt_id, task_cid, effect_key, idempotency_key,
+                owner_session_id, recorded_at_ms, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _database_daemon_new_id("effect"),
+                attempt.attempt_id,
+                attempt.task_cid,
+                str(result.get("effect_key") or "default"),
+                key,
+                self.owner_session_id,
+                self._now_ms(),
+                _database_daemon_json(result),
+            ],
+        )
+        updated = self.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_EFFECT,
+            body={"idempotency_key": key, "result": result},
+        )
+        self._record_event(
+            "effect_claim_committed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"idempotency_key": key, "result": result},
+        )
+        return updated, result, False
+
+    # -- status / completion (database only) --------------------------------
+
+    def _forbid_markdown_status_write(self, *, operation: str) -> None:
+        self._markdown_status_writes += 1
+        raise DatabaseImplementationAuthorityError(
+            f"refusing Markdown task-status mutation under database authority "
+            f"(operation={operation!r}, authority_mode={self.authority_mode!r})"
+        )
+
+    def write_markdown_task_status(self, *args: Any, **kwargs: Any) -> None:
+        """Explicit Markdown status writes are forbidden under database authority."""
+
+        self._forbid_markdown_status_write(operation="write_markdown_task_status")
+
+    def _cas_task_status_database(
+        self,
+        task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+    ) -> Any:
+        # Never touch Markdown under database authority.
+        if self.markdown_path is not None and self.markdown_path.exists():
+            # Read-only observation is fine; mutation is not.
+            pass
+        cas = getattr(self.task_source, "compare_and_set_status", None) or getattr(
+            self.task_source, "cas_status", None
+        )
+        if not callable(cas):
+            raise DatabaseImplementationDaemonError(
+                "task source does not support compare_and_set_status"
+            )
+        return cas(
+            task_cid,
+            expected_revision=int(expected_revision),
+            status=new_status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def complete_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        evidence_digest: str = "",
+        validation_result: Mapping[str, Any] | None = None,
+    ) -> DatabaseTaskAttempt:
+        """Record validation evidence and complete the task in the database."""
+
+        current = self.get_attempt(attempt.attempt_id) or attempt
+        digest = str(
+            evidence_digest
+            or (validation_result or {}).get("evidence_digest")
+            or f"sha256:{secrets.token_hex(32)}"
+        )
+        self.task_source.record_validation_result(
+            task_cid=current.task_cid,
+            outcome=str((validation_result or {}).get("outcome") or "passed"),
+            evidence_digest=digest,
+            argv=list((validation_result or {}).get("argv") or ["database-validation"]),
+            body=dict(validation_result or {}),
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise KeyError(current.task_cid)
+        if str(task.status).lower() not in {
+            "completed",
+            "complete",
+            "done",
+            "skipped",
+        }:
+            self._cas_task_status_database(
+                current.task_cid,
+                expected_revision=int(task.revision),
+                new_status="completed",
+                receipt={
+                    "operation": "database_complete",
+                    "attempt_id": current.attempt_id,
+                    "claim_id": current.claim_id,
+                    "owner_session_id": self.owner_session_id,
+                    "validation": dict(validation_result or {}),
+                },
+                evidence_digests=[digest],
+            )
+        # Coordination readiness for dependents.
+        self.coordinator.mark_task_complete(
+            current.task_cid,
+            status="succeeded",
+            body={"attempt_id": current.attempt_id},
+            now_ms=self._now_ms(),
+        )
+        # Release the fenced claim when possible.
+        claim = self.coordinator.get_task_claim(current.claim_id)
+        if claim is not None:
+            release = getattr(self.coordinator, "release", None)
+            if callable(release):
+                try:
+                    lease = self.coordinator.get_lease(claim.lease_id)
+                    if lease is not None:
+                        release(lease, reason="attempt_complete")
+                except Exception:
+                    pass
+        updated = self.commit_phase(
+            current,
+            ATTEMPT_PHASE_COMPLETE,
+            body={"evidence_digest": digest},
+        )
+        self._record_event(
+            "attempt_completed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"evidence_digest": digest},
+        )
+        return updated
+
+    # -- resume / run_once --------------------------------------------------
+
+    def resume_attempt(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+        effect_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
+        validation_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
+    ) -> dict[str, Any]:
+        """Resume from the last committed phase without duplicating work."""
+
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        if current.status != "running":
+            return {
+                "resumed": False,
+                "reason": f"attempt_{current.status}",
+                "attempt": current.to_dict(),
+                "provider_duplicated": False,
+                "effect_duplicated": False,
+            }
+
+        provider_result: Mapping[str, Any] = {}
+        effect_result: Mapping[str, Any] = {}
+        provider_duplicated = False
+        effect_duplicated = False
+
+        if not current.phase_committed(ATTEMPT_PHASE_CONTEXT):
+            current = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_CONTEXT,
+                body={"resumed": True},
+            )
+
+        if not current.phase_committed(ATTEMPT_PHASE_PROVIDER):
+            current, provider_result, provider_duplicated = self.run_provider(
+                current,
+                provider_fn=provider_fn,
+            )
+        else:
+            prior = self.provider_invocation_recorded(
+                current.attempt_id,
+                idempotency_key=f"provider:{current.attempt_id}",
+            )
+            provider_result = prior or {"status": "already_committed"}
+            provider_duplicated = True
+
+        if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
+            current, effect_result, effect_duplicated = self.run_effect(
+                current,
+                provider_result,
+                effect_fn=effect_fn,
+            )
+        else:
+            prior_effect = self.effect_claim_recorded(
+                current.attempt_id,
+                idempotency_key=f"effect:{current.attempt_id}",
+            )
+            effect_result = prior_effect or {"status": "already_committed"}
+            effect_duplicated = True
+
+        if not current.phase_committed(ATTEMPT_PHASE_VALIDATION):
+            callback = validation_fn or self._validation_fn
+            if callback is None:
+                validation_result: Mapping[str, Any] = {
+                    "outcome": "passed",
+                    "evidence_digest": f"sha256:{secrets.token_hex(32)}",
+                    "argv": ["database-validation"],
+                }
+            else:
+                validation_result = dict(callback(current, effect_result))
+            current = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_VALIDATION,
+                body=dict(validation_result),
+            )
+        else:
+            validation_result = {"outcome": "passed", "replayed": True}
+
+        if not current.phase_committed(ATTEMPT_PHASE_COMPLETE):
+            current = self.complete_attempt(
+                current,
+                validation_result=validation_result,
+            )
+
+        return {
+            "resumed": True,
+            "attempt": current.to_dict(),
+            "provider_result": dict(provider_result),
+            "effect_result": dict(effect_result),
+            "provider_duplicated": bool(provider_duplicated),
+            "effect_duplicated": bool(effect_duplicated),
+            "committed_phase": current.committed_phase,
+            "status": current.status,
+        }
+
+    def run_once(self) -> dict[str, Any]:
+        """One database-authoritative pass: resume inflight or claim new work."""
+
+        # Prefer resume of this session's running attempts (crash recovery).
+        running = self.list_running_attempts()
+        if running:
+            result = self.resume_attempt(running[0])
+            return {
+                "unchanged": False,
+                "write_count": 1,
+                "active_task_id": running[0].task_alias or running[0].task_cid,
+                "implementation_result": result,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+            }
+
+        attempt = self.claim_next()
+        if attempt is None:
+            return {
+                "unchanged": True,
+                "write_count": 0,
+                "active_task_id": "",
+                "selection_idle_reason": "no_ready_tasks",
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+            }
+
+        result = self.resume_attempt(attempt)
+        return {
+            "unchanged": False,
+            "write_count": 1,
+            "active_task_id": attempt.task_alias or attempt.task_cid,
+            "implementation_result": result,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "markdown_status_writes": self._markdown_status_writes,
+            "projections_required": False,
+            "claimed_task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+        }
+
+    def wait_for_wake(self, timeout: float = 0.0) -> None:
+        """Bounded idle wait; database authority uses polling, not FS notify."""
+
+        if timeout and timeout > 0:
+            time.sleep(min(float(timeout), 1.0))
+
+    def close_event_runtime(self) -> None:
+        self.close()
+
+
+def _split_sql_statements(sql_text: str) -> list[str]:
+    statements: list[str] = []
+    for chunk in str(sql_text).split(";"):
+        text = chunk.strip()
+        if text:
+            statements.append(text)
+    return statements
+
+
+def database_program_from_daemon_namespace(
+    args: Any,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> Any | None:
+    """Resolve DatabaseProgramConfig from daemon CLI args and environment."""
+
+    from ..runtime.multi_supervisor_runner import (
+        AUTHORITY_MODE_LEGACY_MARKDOWN,
+        DATABASE_PROGRAM_JSON_ENV,
+        DatabaseProgramConfig,
+        DatabaseProgramConfigError,
+        TASK_SOURCE_LEGACY_MARKDOWN,
+        parse_database_program_config,
+    )
+
+    env = environ if environ is not None else os.environ
+    env_payload = str(env.get(DATABASE_PROGRAM_JSON_ENV, "") or "").strip()
+    env_program = None
+    if env_payload:
+        try:
+            payload = json.loads(env_payload)
+        except json.JSONDecodeError as exc:
+            raise DatabaseProgramConfigError(
+                "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON is not valid JSON"
+            ) from exc
+        env_program = parse_database_program_config(payload)
+
+    authority_mode = str(getattr(args, "authority_mode", "") or "").strip()
+    task_source_kind = str(getattr(args, "task_source_kind", "") or "").strip()
+    explicit_legacy = bool(getattr(args, "explicit_legacy_task_source", False))
+    if not authority_mode:
+        authority_mode = str(
+            env.get("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", "") or ""
+        ).strip()
+    if not task_source_kind:
+        task_source_kind = str(
+            env.get("IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND", "") or ""
+        ).strip()
+
+    if not authority_mode and not task_source_kind and env_program is None:
+        return None
+    if env_program is not None and not authority_mode and not task_source_kind:
+        return env_program
+
+    if not task_source_kind and env_program is not None:
+        task_source_kind = env_program.task_source_kind
+    if not authority_mode and env_program is not None:
+        authority_mode = env_program.authority_mode
+    if not task_source_kind:
+        if authority_mode or explicit_legacy:
+            raise DatabaseProgramConfigError(
+                "task_source_kind is required when authority options are set; "
+                "the implicit legacy-Markdown default is deprecated"
+            )
+        return env_program
+    if not authority_mode:
+        if task_source_kind in {TASK_SOURCE_LEGACY_MARKDOWN, "markdown"}:
+            authority_mode = AUTHORITY_MODE_LEGACY_MARKDOWN
+            explicit_legacy = True
+        elif task_source_kind == "duckdb":
+            authority_mode = "embedded"
+        else:
+            raise DatabaseProgramConfigError(
+                f"cannot infer authority_mode for task_source_kind "
+                f"{task_source_kind!r}"
+            )
+
+    payload = {
+        "authority_mode": authority_mode,
+        "task_source_kind": task_source_kind,
+        "endpoint_secret_handle": str(
+            getattr(args, "endpoint_secret_handle", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "")
+            or (env_program.endpoint_secret_handle if env_program else "")
+        ),
+        "store_id": str(
+            getattr(args, "state_store_id", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "")
+            or (env_program.store_id if env_program else "")
+        ),
+        "store_generation": str(
+            getattr(args, "state_store_generation", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "")
+            or (env_program.store_generation if env_program else "")
+        ),
+        "schema_revision": str(
+            getattr(args, "state_schema_revision", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "")
+            or (env_program.schema_revision if env_program else "")
+        ),
+        "event_store_path": str(
+            getattr(args, "event_store_path", "")
+            or env.get("IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH", "")
+            or (env_program.event_store_path if env_program else "")
+        ),
+        "runtime_registry_path": str(
+            getattr(args, "runtime_registry_path", "")
+            or env.get("IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", "")
+            or (env_program.runtime_registry_path if env_program else "")
+        ),
+        "worktree_root": str(
+            getattr(args, "worktree_root", "")
+            or (env_program.worktree_root if env_program else "")
+        ),
+        "export_profile": str(
+            getattr(args, "export_profile", "")
+            or env.get("IPFS_ACCELERATE_AGENT_EXPORT_PROFILE", "")
+            or (env_program.export_profile if env_program else "")
+        ),
+        "failover_policy": str(
+            getattr(args, "state_failover_policy", "")
+            or (env_program.failover_policy if env_program else "fail_closed")
+            or "fail_closed"
+        ),
+        "explicit_legacy": bool(
+            explicit_legacy
+            or (env_program.explicit_legacy if env_program else False)
+            or authority_mode == AUTHORITY_MODE_LEGACY_MARKDOWN
+        ),
+    }
+    return DatabaseProgramConfig.from_mapping(payload)
+
+
+def open_database_implementation_daemon(
+    database_path: Path | str,
+    **kwargs: Any,
+) -> DatabaseImplementationDaemon:
+    """Open a :class:`DatabaseImplementationDaemon` on ``database_path``."""
+
+    return DatabaseImplementationDaemon(database_path=database_path, **kwargs).open()
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the portal implementation backlog daemon")
     parser.add_argument("--once", action="store_true", help="Run one backlog pass and exit")
@@ -53358,6 +54807,81 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "existing heading parser; 'markdown' opens a canonical Markdown "
             "task source; 'duckdb' opens the database directly."
         ),
+    )
+    parser.add_argument(
+        "--authority-mode",
+        default="",
+        choices=("", "legacy_markdown", "embedded", "embedded_exclusive", "quack"),
+        help=(
+            "State authority mode. Database modes (embedded/quack) cut the "
+            "daemon over to DatabaseImplementationDaemon@1 execution."
+        ),
+    )
+    parser.add_argument(
+        "--endpoint-secret-handle",
+        default="",
+        help="Opaque Quack/state endpoint secret handle (never a raw token).",
+    )
+    parser.add_argument(
+        "--state-store-id",
+        default="",
+        help="Database store identity for Quack/embedded authority.",
+    )
+    parser.add_argument(
+        "--state-store-generation",
+        default="",
+        help="Database store generation token.",
+    )
+    parser.add_argument(
+        "--state-schema-revision",
+        default="",
+        help="Database schema revision identity.",
+    )
+    parser.add_argument(
+        "--state-failover-policy",
+        default="fail_closed",
+        choices=("fail_closed", "require_explicit_operator"),
+        help="Failover policy; Quack requires fail_closed.",
+    )
+    parser.add_argument(
+        "--event-store-path",
+        default="",
+        help="Optional database event-store path binding.",
+    )
+    parser.add_argument(
+        "--runtime-registry-path",
+        default="",
+        help="Optional daemon runtime-registry path binding.",
+    )
+    parser.add_argument(
+        "--export-profile",
+        default="",
+        help="Optional export profile identity.",
+    )
+    parser.add_argument(
+        "--explicit-legacy-task-source",
+        action="store_true",
+        help="Acknowledge explicit legacy-Markdown authority (not implicit default).",
+    )
+    parser.add_argument(
+        "--database-path",
+        type=Path,
+        default=None,
+        help=(
+            "DuckDB control-plane path for database-authoritative execution. "
+            "When set with --task-source-kind duckdb, JSON projections may be absent."
+        ),
+    )
+    parser.add_argument(
+        "--coordination-path",
+        type=Path,
+        default=None,
+        help="Optional DuckDB path for fenced task claims (defaults beside --database-path).",
+    )
+    parser.add_argument(
+        "--owner-session-id",
+        default="",
+        help="Daemon session identity used for fenced claims.",
     )
     parser.add_argument(
         "--expected-task-source-root",
@@ -53738,67 +55262,122 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
     if args.llm_merge_resolver_timeout_seconds is not None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
-    daemon = PortalImplementationDaemon(
-        todo_path=args.todo_path,
-        task_source=(
-            args.todo_path
-            if args.task_source_kind in {"markdown", "duckdb"}
-            else None
-        ),
-        task_source_kind=(
-            args.task_source_kind
-            if args.task_source_kind in {"markdown", "duckdb"}
-            else ""
-        ),
-        expected_task_source_root_id=args.expected_task_source_root,
-        expected_task_source_repository_root_id=(
-            args.expected_task_source_repository_root
-        ),
-        state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
-        strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
-        events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
-        repo_root=REPO_ROOT,
-        task_header_prefix=args.task_prefix,
-        implement=args.implement,
-        implementation_command=args.implementation_command or None,
-        implementation_timeout=args.implementation_timeout,
-        max_task_attempts=args.max_task_attempts,
-        use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
-        worktree_root=args.worktree_root,
-        merge_target_branch=args.merge_target_branch,
-        merge_queue_dir=args.merge_queue_dir,
-        worktree_submodule_paths=args.worktree_submodule_path or None,
-        implementation_protected_paths=args.implementation_protected_path,
-        manual_completion_authority_task_ids=(
-            args.manual_completion_authority_task_id
-        ),
-        manual_completion_authority_required_task_ids=(
-            args.manual_completion_authority_required_task_id
-        ),
-        manual_completion_authority_epoch_id=(
-            args.manual_completion_authority_epoch_id
-        ),
-        manual_completion_authority_revalidation_only=(
-            args.manual_completion_authority_revalidation_only
-        ),
-        objective_path=args.objective_path,
-        objective_bundle_dir=args.objective_bundle_dir,
-        generated_status_paths=args.generated_status_path,
-        external_reservation_manifest_paths=args.external_reservation_manifest_path,
-        assumed_completed_task_ids=args.assume_completed_task_id,
-        execution_slice_task_ids=args.execution_slice_task_id,
-        execution_slice_task_cids=args.execution_slice_task_cid,
-        llm_merge_resolver_command=args.llm_merge_resolver_command or None,
-        llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
-        merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
-        merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
-        task_shard_count=args.task_shard_count,
-        task_shard_index=args.task_shard_index,
-        strict_task_sharding=args.strict_task_sharding,
-        validation_max_workers=args.validation_max_workers,
-        validation_resource_budget=args.validation_resource_budget,
-        maintenance_interval_seconds=args.maintenance_interval_seconds,
+
+    program = database_program_from_daemon_namespace(args)
+    database_path = getattr(args, "database_path", None)
+    if database_path is None and program is not None and program.store_id:
+        candidate = Path(program.store_id)
+        if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
+            database_path = candidate
+    if database_path is None and str(getattr(args, "todo_path", "") or "").endswith(
+        (".duckdb", ".ddb")
+    ):
+        database_path = Path(args.todo_path)
+
+    use_database_daemon = (
+        program is not None
+        and is_database_authority_mode(
+            authority_mode=program.authority_mode,
+            task_source_kind=program.task_source_kind,
+        )
+        and database_path is not None
+    ) or (
+        database_path is not None
+        and is_database_authority_mode(
+            authority_mode=str(getattr(args, "authority_mode", "") or ""),
+            task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
+        )
     )
+
+    if use_database_daemon:
+        authority_mode = (
+            program.authority_mode
+            if program is not None
+            else str(getattr(args, "authority_mode", "") or "embedded")
+        )
+        task_source_kind = (
+            program.task_source_kind
+            if program is not None
+            else str(getattr(args, "task_source_kind", "") or "duckdb")
+        )
+        daemon: Any = DatabaseImplementationDaemon(
+            database_path=Path(database_path),
+            coordination_path=getattr(args, "coordination_path", None),
+            owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
+            authority_mode=authority_mode or "embedded",
+            task_source_kind=task_source_kind or "duckdb",
+            markdown_path=args.todo_path
+            if str(args.todo_path).endswith(".md")
+            else None,
+            # JSON projections optional under database authority.
+            state_path=None,
+            strategy_path=None,
+            events_path=None,
+            pid_path=None,
+            queue_path=None,
+        )
+    else:
+        daemon = PortalImplementationDaemon(
+            todo_path=args.todo_path,
+            task_source=(
+                args.todo_path
+                if args.task_source_kind in {"markdown", "duckdb"}
+                else None
+            ),
+            task_source_kind=(
+                args.task_source_kind
+                if args.task_source_kind in {"markdown", "duckdb"}
+                else ""
+            ),
+            expected_task_source_root_id=args.expected_task_source_root,
+            expected_task_source_repository_root_id=(
+                args.expected_task_source_repository_root
+            ),
+            state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
+            strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
+            events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
+            repo_root=REPO_ROOT,
+            task_header_prefix=args.task_prefix,
+            implement=args.implement,
+            implementation_command=args.implementation_command or None,
+            implementation_timeout=args.implementation_timeout,
+            max_task_attempts=args.max_task_attempts,
+            use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
+            worktree_root=args.worktree_root,
+            merge_target_branch=args.merge_target_branch,
+            merge_queue_dir=args.merge_queue_dir,
+            worktree_submodule_paths=args.worktree_submodule_path or None,
+            implementation_protected_paths=args.implementation_protected_path,
+            manual_completion_authority_task_ids=(
+                args.manual_completion_authority_task_id
+            ),
+            manual_completion_authority_required_task_ids=(
+                args.manual_completion_authority_required_task_id
+            ),
+            manual_completion_authority_epoch_id=(
+                args.manual_completion_authority_epoch_id
+            ),
+            manual_completion_authority_revalidation_only=(
+                args.manual_completion_authority_revalidation_only
+            ),
+            objective_path=args.objective_path,
+            objective_bundle_dir=args.objective_bundle_dir,
+            generated_status_paths=args.generated_status_path,
+            external_reservation_manifest_paths=args.external_reservation_manifest_path,
+            assumed_completed_task_ids=args.assume_completed_task_id,
+            execution_slice_task_ids=args.execution_slice_task_id,
+            execution_slice_task_cids=args.execution_slice_task_cid,
+            llm_merge_resolver_command=args.llm_merge_resolver_command or None,
+            llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+            merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+            merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
+            validation_max_workers=args.validation_max_workers,
+            validation_resource_budget=args.validation_resource_budget,
+            maintenance_interval_seconds=args.maintenance_interval_seconds,
+        )
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
@@ -53811,17 +55390,29 @@ def main(argv: list[str] | None = None) -> None:
         previous_int = signal.signal(signal.SIGINT, request_stop)
     try:
         if args.reset_manual_completion_authority_renewal_task_id:
-            result = (
-                daemon.reset_manual_completion_authority_renewal_quarantine(
-                    args.reset_manual_completion_authority_renewal_task_id
-                )
+            reset_fn = getattr(
+                daemon, "reset_manual_completion_authority_renewal_quarantine", None
             )
+            if not callable(reset_fn):
+                raise SystemExit(
+                    "manual-completion renewal reset requires legacy "
+                    "PortalImplementationDaemon"
+                )
+            result = reset_fn(args.reset_manual_completion_authority_renewal_task_id)
             print(json.dumps(result, indent=2, sort_keys=True))
             if not result.get("reset"):
                 raise SystemExit(2)
             return
         if args.clear_protected_path_incident:
-            result = daemon.clear_implementation_protected_path_incident(
+            clear_fn = getattr(
+                daemon, "clear_implementation_protected_path_incident", None
+            )
+            if not callable(clear_fn):
+                raise SystemExit(
+                    "protected-path incident clearance requires legacy "
+                    "PortalImplementationDaemon"
+                )
+            result = clear_fn(
                 approved_commits=args.approve_protected_path_commit,
                 operator_note=args.operator_clearance_note,
                 approve_disposed_ephemeral_workspace=(
@@ -53851,10 +55442,20 @@ def main(argv: list[str] | None = None) -> None:
                 last_idle_info_at = now
             if args.once:
                 break
-            daemon.wait_for_wake(timeout=args.interval)
+            wait_for_wake = getattr(daemon, "wait_for_wake", None)
+            if callable(wait_for_wake):
+                wait_for_wake(timeout=args.interval)
+            else:
+                time.sleep(args.interval)
     finally:
         try:
-            daemon.close_event_runtime()
+            close_event_runtime = getattr(daemon, "close_event_runtime", None)
+            if callable(close_event_runtime):
+                close_event_runtime()
+            else:
+                close = getattr(daemon, "close", None)
+                if callable(close):
+                    close()
         finally:
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
