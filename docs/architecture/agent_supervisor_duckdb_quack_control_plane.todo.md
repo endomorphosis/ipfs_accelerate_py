@@ -512,7 +512,7 @@ this bootstrap is active.
 
 ## DQP-016 Persist repositories, branches, worktrees, snapshots, and dirty overlays
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
