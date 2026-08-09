@@ -1592,7 +1592,7 @@ validation and evidence contract.
 
 ## LFP-051 Resolve validation retry-budget failure for LFP-044
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
