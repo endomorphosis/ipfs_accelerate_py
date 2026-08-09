@@ -385,7 +385,7 @@ validation and evidence contract.
 
 ## LFP-012 Implement typed core terms, formulas, binders, sorts, and signatures
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
