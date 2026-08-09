@@ -13365,7 +13365,13 @@ class PortalImplementationDaemon:
                 skip_task_ids=merge_skip_task_ids,
                 deprioritized_task_ids=strategy_deprioritized_task_ids,
             )
+            dead_owner_reclaim = self._reclaim_dead_same_lane_worktree_owners()
             merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
+            if isinstance(merged_worktree_cleanup, dict):
+                merged_worktree_cleanup = {
+                    **merged_worktree_cleanup,
+                    "dead_owner_reclaim": dead_owner_reclaim,
+                }
             self._periodic_maintenance()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
@@ -27907,12 +27913,14 @@ class PortalImplementationDaemon:
                 workspace_path=worktree_path,
                 branch=branch_name,
                 caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+                expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
             )
         elif phase == "claimed":
             decision = self.worktree_lifecycle.authorize_cleanup(
                 workspace_path=worktree_path,
                 branch=branch_name,
                 caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+                expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
             )
         else:
             return False, "unknown_reuse_authorization_phase"
@@ -42355,6 +42363,62 @@ class PortalImplementationDaemon:
         self._active_worktree_lifecycle = rebound
         return rebound
 
+    def _worktree_lifecycle_lane_state_dir(self) -> Path:
+        """Lane state directory used as the same-lane reclaim boundary."""
+
+        return self.state_path.parent.resolve()
+
+    def _reclaim_dead_same_lane_worktree_owners(self) -> dict[str, Any]:
+        """Terminalize provably dead same-lane lifecycle claims every pass.
+
+        Startup already reclaims once, but long-running daemons can orphan a
+        claim mid-flight (provider crash, SIGKILL after fence publish). Without
+        continuous reclaim, cleanup stays fenced on ``owner_dead_lease_unexpired``
+        for the full lease window and ready tasks stop dispatching.
+        """
+
+        if not _env_bool(WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV, True):
+            return {"attempted": False, "reason": "disabled"}
+        expected_state_dir = self._worktree_lifecycle_lane_state_dir()
+        try:
+            recovered = self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
+                expected_state_dir=expected_state_dir,
+                reason="periodic_dead_same_lane_owner_reclaim",
+            )
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "recovered_count": 0,
+                "error": f"{type(exc).__name__}: {exc}"[:500],
+                "expected_state_dir": str(expected_state_dir),
+            }
+        result = {
+            "attempted": True,
+            "recovered_count": len(recovered),
+            "expected_state_dir": str(expected_state_dir),
+            "recovered": [
+                {
+                    "task_id": item.task_id,
+                    "attempt": item.attempt,
+                    "workspace_path": item.workspace_path,
+                    "fence": item.fence,
+                    "terminal_reason": item.terminal_reason,
+                }
+                for item in recovered
+            ],
+        }
+        if recovered:
+            self._record_event(
+                "worktree_lifecycle_dead_owners_reclaimed",
+                result,
+            )
+            logger.warning(
+                "Reclaimed %d dead same-lane worktree lifecycle owner(s) for %s",
+                len(recovered),
+                expected_state_dir,
+            )
+        return result
+
     def _authorize_worktree_cleanup(
         self,
         worktree_path: Path | None,
@@ -42379,6 +42443,7 @@ class PortalImplementationDaemon:
             workspace_path=worktree_path,
             branch=branch_name,
             caller_lease_id=lease_id,
+            expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
         )
         payload = decision.to_dict()
         if not decision.allowed:
@@ -43116,6 +43181,12 @@ class PortalImplementationDaemon:
             "ran": True,
             "interval_seconds": self.maintenance_interval_seconds,
         }
+        try:
+            results["dead_owner_reclaim"] = (
+                self._reclaim_dead_same_lane_worktree_owners()
+            )
+        except Exception as exc:
+            results["dead_owner_reclaim"] = {"error": str(exc)}
         try:
             results["stale_worktrees"] = self._cleanup_stale_worktrees()
         except Exception as exc:
