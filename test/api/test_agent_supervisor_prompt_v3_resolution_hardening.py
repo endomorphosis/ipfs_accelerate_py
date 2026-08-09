@@ -9,6 +9,8 @@ import subprocess
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from ipfs_accelerate_py.agent_supervisor.multiformats_identity import cid_for_dag_json
+
 from ipfs_accelerate_py.agent_supervisor.entrypoints.capability_resolver import (
     FALLBACK_PROVIDER,
     PREFERRED_PROVIDER,
@@ -50,7 +52,6 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.target_resolver import (
     RepositoryTargetEvidence,
     resolve_repository_target,
 )
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import cid_for_dag_json
 from ipfs_accelerate_py.mcp_server.mcplusplus.delegation import (
     UcanCapability,
     UcanDelegation,
@@ -891,12 +892,14 @@ def test_installed_profile_tamper_revocation_and_symlink_fail_closed(tmp_path, m
         cwd=str(repository), allowlisted_roots=(str(repository),),
     ))
     assert target.binding is not None
+    revoked_profile_dir = tmp_path / "revoked-profile"
     initialize_local_profile(
         repository_cid=target.binding.repository_id,
         baseline_commit=target.binding.head_commit,
-        profile_dir=profile_dir, force=True,
+        profile_dir=revoked_profile_dir,
     )
-    revoke_local_profile(profile_dir=profile_dir)
+    monkeypatch.setenv(DEFAULT_PROFILE_DIR_ENV, str(revoked_profile_dir))
+    revoke_local_profile(profile_dir=revoked_profile_dir)
     assert not LocalInvocationContextFactory().create(cwd=str(repository)).authenticated
 
     replacement = tmp_path / "replacement-profile"
