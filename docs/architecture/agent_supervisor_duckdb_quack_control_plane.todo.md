@@ -419,7 +419,7 @@ this bootstrap is active.
 
 ## DQP-013 Replace JSONL event, audit, log, metric, and cursor authority
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
