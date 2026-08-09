@@ -1194,7 +1194,7 @@ this bootstrap is active.
 
 ## DQP-038 Implement staged canary, default cutover, rollback, and operator guide
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
