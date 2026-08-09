@@ -1284,7 +1284,7 @@ validation and evidence contract.
 
 ## LFP-041 Add fuzzing, parser-bomb, Unicode, and performance/resource gates
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
