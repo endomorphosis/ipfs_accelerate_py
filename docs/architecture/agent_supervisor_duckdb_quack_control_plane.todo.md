@@ -605,7 +605,7 @@ this bootstrap is active.
 
 ## DQP-019 Integrate validation, merge queue, reconciliation, and rescue transactions
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
