@@ -1152,6 +1152,8 @@ def build_portal_implementation_daemon_from_args(
     from .implementation_daemon import (
         DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         PortalImplementationDaemon,
+        database_program_from_cli_namespace,
+        is_database_authority_mode,
     )
 
     apply_merge_resolver_environment(parsed)
@@ -1166,8 +1168,31 @@ def build_portal_implementation_daemon_from_args(
         or default_implementation_protected_paths
         or None
     )
+    database_program = database_program_from_cli_namespace(parsed)
+    if database_program is not None and is_database_authority_mode(
+        database_program.authority_mode
+    ):
+        database_program.assert_quack_not_demoted(
+            candidate_mode=database_program.authority_mode
+        )
+    task_source_kind = str(getattr(parsed, "task_source_kind", "") or "")
     daemon = PortalImplementationDaemon(
         todo_path=parsed.todo_path,
+        task_source=(
+            parsed.todo_path
+            if task_source_kind in {"markdown", "duckdb"}
+            else None
+        ),
+        task_source_kind=(
+            task_source_kind if task_source_kind in {"markdown", "duckdb"} else ""
+        ),
+        database_program=database_program,
+        database_coordinator_path=getattr(
+            parsed, "database_coordinator_path", None
+        ),
+        database_session_id=str(
+            getattr(parsed, "database_session_id", "") or ""
+        ),
         state_path=state_paths["state_path"],
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
