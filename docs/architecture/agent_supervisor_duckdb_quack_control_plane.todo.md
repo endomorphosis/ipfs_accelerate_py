@@ -357,7 +357,7 @@ this bootstrap is active.
 
 ## DQP-011 Render deterministic Markdown, JSON, JSONL, CSV, and Parquet exports
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
