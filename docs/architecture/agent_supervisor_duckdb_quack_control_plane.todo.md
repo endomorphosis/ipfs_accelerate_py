@@ -1039,7 +1039,7 @@ this bootstrap is active.
 
 ## DQP-033 Implement checkpoint, backup, restore, retention, and generation rotation
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
