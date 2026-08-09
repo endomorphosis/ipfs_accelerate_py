@@ -645,18 +645,35 @@ def test_provider_never_receives_omitted_authority_or_credential() -> None:
     ):
         assert provider[key] is False
     assert provider["nomination_only"] is True
-    # Credential-shaped keys must not appear as values.
+    # Credential-shaped keys must not appear as values (nested dicts are
+    # walked; membership against a set only applies to hashable leaves).
+    forbidden_keys = {
+        "api_key",
+        "password",
+        "token",
+        "credential",
+        "credentials",
+        "quack_token",
+        "quack_credential",
+    }
+    forbidden_values = {"must_never_appear", "secret_material_value"}
+
+    def _walk(node, *, path: str = "") -> None:
+        if isinstance(node, dict):
+            for child_key, child_value in node.items():
+                assert child_key not in forbidden_keys, path
+                _walk(child_value, path=f"{path}.{child_key}")
+            return
+        if isinstance(node, (list, tuple)):
+            for index, child_value in enumerate(node):
+                _walk(child_value, path=f"{path}[{index}]")
+            return
+        if isinstance(node, (str, bytes, int, float, bool)) or node is None:
+            assert node not in forbidden_values, path
+
     for key, value in provider.items():
-        assert key not in {
-            "api_key",
-            "password",
-            "token",
-            "credential",
-            "credentials",
-            "quack_token",
-            "quack_credential",
-        }
-        assert value not in {"must_never_appear", "secret_material_value"}
+        assert key not in forbidden_keys
+        _walk(value, path=key)
 
     # Injecting authority into a raw reply path is rejected by binding.
     binding = bind_provider_reply(
