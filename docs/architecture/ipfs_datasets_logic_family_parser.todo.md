@@ -168,7 +168,7 @@ validation and evidence contract.
 
 ## LFP-005 Join and seal the current-state baseline
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
