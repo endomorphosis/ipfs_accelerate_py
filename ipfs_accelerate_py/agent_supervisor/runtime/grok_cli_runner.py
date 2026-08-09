@@ -35,8 +35,22 @@ from pathlib import Path
 from typing import TextIO
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
-if str(_PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PACKAGE_ROOT))
+# This file is launched by absolute path for scoped routes.  Put its accepted
+# package capsule first and remove the writable candidate cwd from import
+# search before importing any project module.  The candidate remains available
+# only through the explicit ``--workspace`` argument.
+_STARTUP_CWD = Path.cwd().resolve(strict=False)
+_accepted_root_text = str(_PACKAGE_ROOT)
+sys.path[:] = [
+    _accepted_root_text,
+    *[
+        entry
+        for entry in sys.path
+        if entry
+        and Path(entry).resolve(strict=False) != _STARTUP_CWD
+        and Path(entry).resolve(strict=False) != _PACKAGE_ROOT
+    ],
+]
 
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_binding import (
     ensure_provider_command_bindings,
@@ -65,6 +79,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
+)
+from ipfs_accelerate_py.llm_router import (
+    AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
+    AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
+    AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
+    AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS,
 )
 
 # Self-heal: if a static import is incomplete on an older pin or partial merge,
@@ -100,6 +120,11 @@ GROK_QUOTA_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/grok-quota-error@1"
 )
 MAX_GROK_ERROR_BYTES = 128 * 1024
+_SCOPED_ROUTE_MAX_AGE_MS = 5 * 60 * 1000
+
+
+def _agent_prompt_cid(prompt: str) -> str:
+    return "sha256:" + hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 _GROK_USAGE_LIMIT_PATTERN = re.compile(
     r"\A\s*(?:error:\s*)?you(?:'|\u2019)?ve\s+hit\s+your\s+usage\s+limit\.?"
     r"(?:\s*\n\s*try\s+again\s+at\s+[^\n]+\.?)?\s*\Z",
@@ -305,14 +330,10 @@ _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_AUTH_PATH = _CODEX_CONTAINER_HOME / "auth.json"
-_CODEX_TASK_TOOLCHAIN_IMAGE_ID = (
-    "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
-)
-
-
 class _AgentRouteEffectDenied(ValueError):
     """The canonical route lost authority before the provider effect."""
-_CODEX_TASK_TOOLCHAIN_IMAGE_LABEL = "2026-08-03-v2"
+_CODEX_TASK_TOOLCHAIN_IMAGE_ID = AGENT_IMPLEMENTATION_CODEX_IMAGE_ID
+_CODEX_TASK_TOOLCHAIN_IMAGE_LABEL = AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL
 _CODEX_TASK_TOOLCHAIN_SITE_PACKAGES = Path(
     "/opt/ipfs-validation-site-packages"
 )
@@ -336,6 +357,8 @@ _DOCKER_CONTAINER_NAME_RE = re.compile(
 )
 _DOCKER_ISOLATION_PROVIDERS = frozenset({"grok", "codex"})
 _DOCKER_CLEANUP_TIMEOUT_SECONDS = 8.0
+_DOCKER_CAS_ABSENT_GRACE_SECONDS = 120.0
+_DOCKER_INSPECTION_MAX_BYTES = 256 * 1024
 _SEALED_GROK_TOOLS = "read_file,search_replace,grep,list_dir,todo_write"
 _SEALED_GROK_DISALLOWED_TOOLS = (
     "run_terminal_cmd,run_terminal_command,web_search,web_fetch,search_tool,"
@@ -572,6 +595,7 @@ def build_grok_quota_routed_agent_command(
     ),
     enable_codex_fallback: bool = True,
     enable_internal_legacy_preflight: bool = False,
+    accepted_runner_path: str | Path = "",
 ) -> list[str]:
     """Build a sealed Grok-4.5 then typed-failure Terra route.
 
@@ -591,10 +615,17 @@ def build_grok_quota_routed_agent_command(
         if enable_codex_fallback
         else ""
     )
+    runner = str(accepted_runner_path or "").strip()
+    runner_argv = (
+        ["-I", runner]
+        if runner
+        else ["-m", "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"]
+    )
+    if runner and (not Path(runner).is_absolute() or not Path(runner).is_file()):
+        raise ValueError("accepted Grok runner must be an absolute file")
     command = [
         str(python_executable or sys.executable),
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        *runner_argv,
         "--workspace",
         workspace_text,
         "--model",
@@ -1459,9 +1490,34 @@ def _workspace_descendant_mountpoints(
 def _repository_head(workspace: Path) -> str:
     """Return the exact repository HEAD without accepting symbolic prose."""
 
+    git_environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GIT_")
+    }
+    git_environment.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "LC_ALL": "C",
+            "LANG": "C",
+        }
+    )
     completed = subprocess.run(
-        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+        [
+            "git",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "rev-parse",
+            "--verify",
+            "HEAD^{commit}",
+        ],
         cwd=workspace,
+        env=git_environment,
         stdin=subprocess.DEVNULL,
         text=True,
         capture_output=True,
@@ -1656,7 +1712,7 @@ def _docker_codex_task_toolchain_image_id(
                     '{{index .Config.Labels '
                     '"org.ipfs-accelerate.authority-validation"}}'
                 ),
-                _CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+                AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
             ],
             env=_docker_control_env(),
             stdin=subprocess.DEVNULL,
@@ -1668,11 +1724,11 @@ def _docker_codex_task_toolchain_image_id(
     except (OSError, subprocess.TimeoutExpired):
         return ""
     expected = (
-        f"{_CODEX_TASK_TOOLCHAIN_IMAGE_ID}|linux|arm64|"
-        f"{_CODEX_TASK_TOOLCHAIN_IMAGE_LABEL}"
+        f"{AGENT_IMPLEMENTATION_CODEX_IMAGE_ID}|linux|arm64|"
+        f"{AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL}"
     )
     return (
-        _CODEX_TASK_TOOLCHAIN_IMAGE_ID
+        AGENT_IMPLEMENTATION_CODEX_IMAGE_ID
         if completed.returncode == 0 and completed.stdout.strip() == expected
         else ""
     )
@@ -1736,6 +1792,70 @@ def _docker_control_env(
     environment.setdefault("PATH", "/usr/bin:/bin")
     environment.setdefault("HOME", "/nonexistent")
     return environment
+
+
+def _effect_receipt_identity(value: object) -> str:
+    return "sha256:" + hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _runner_process_start_ticks(pid: int) -> int:
+    """Return one Linux process birth identity without trusting its argv."""
+
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        raise ValueError("process identity is invalid")
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text(
+            encoding="ascii"
+        ).split()
+        ticks = int(fields[21])
+    except (OSError, IndexError, UnicodeError, ValueError) as exc:
+        raise ValueError("process identity is unavailable") from exc
+    if ticks < 0:
+        raise ValueError("process identity is invalid")
+    return ticks
+
+
+def _runner_process_identity_alive(pid: int, start_ticks: int) -> bool:
+    try:
+        return _runner_process_start_ticks(pid) == start_ticks
+    except ValueError:
+        return False
+
+
+def _docker_runtime_receipt_identity(docker_bin: str) -> str:
+    return _effect_receipt_identity(_docker_runtime_receipt(docker_bin))
+
+
+def _docker_runtime_receipt(docker_bin: str) -> dict[str, object]:
+    """Return the full stable identity behind a Docker runtime digest."""
+
+    runtime_path = Path(docker_bin).resolve(strict=True)
+    runtime_stat = runtime_path.stat()
+    if (
+        runtime_path
+        not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
+        or runtime_stat.st_uid != 0
+        or runtime_stat.st_mode & 0o022
+    ):
+        raise ValueError("Docker runtime identity is not trusted")
+    return {
+        "path": str(runtime_path),
+        "device": runtime_stat.st_dev,
+        "inode": runtime_stat.st_ino,
+        "mode": runtime_stat.st_mode,
+        "uid": runtime_stat.st_uid,
+        "size": runtime_stat.st_size,
+        "mtime_ns": runtime_stat.st_mtime_ns,
+        "ctime_ns": runtime_stat.st_ctime_ns,
+    }
 
 
 def _select_grok_isolation_backend(*, require_container_boundary: bool = False) -> str:
@@ -1845,9 +1965,46 @@ def _remove_exact_docker_container(
                 return
         except (OSError, subprocess.TimeoutExpired):
             pass
+        # ``docker rm`` also returns nonzero when the exact container is
+        # already absent.  Prove that benign/idempotent case with a separate
+        # bounded exact-name listing; a Docker control-plane failure must not
+        # be mistaken for successful cleanup.
+        try:
+            observed = subprocess.run(
+                [
+                    docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(docker_config),
+                    "container",
+                    "ls",
+                    "--all",
+                    "--no-trunc",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.Names}}",
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
+            )
+            if (
+                observed.returncode == 0
+                and len(observed.stdout) <= _DOCKER_INSPECTION_MAX_BYTES
+                and not observed.stdout.strip()
+            ):
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
         now = time.monotonic()
         if now >= deadline or not settle_for_creation:
-            return
+            raise ValueError(
+                "exact Docker container cleanup could not be verified"
+            )
         time.sleep(0.1)
 
 
@@ -1916,6 +2073,8 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     cidfile = args.cidfile.absolute()
     provider_home = args.provider_home.absolute()
     prompt_path = args.prompt_path.absolute()
+    cas_marker = lease_root / "cas-owned"
+    terminal_marker = lease_root / "cas-terminal"
     temporary_root = Path(tempfile.gettempdir()).resolve()
     expected_container_prefix = f"ipfs-accelerate-{args.provider}-"
     if (
@@ -1945,56 +2104,129 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     # defensive idempotent action.  Empty input means the runner was killed;
     # retry briefly to cover a daemon-side container-creation race.
     cleanup_started = False
+    cleanup_succeeded = False
+    cleanup_failed = False
 
-    def cleanup(*, settle_for_creation: bool) -> None:
-        nonlocal cleanup_started
-        if cleanup_started:
-            return
-        cleanup_started = True
-        _remove_exact_docker_container(
-            docker_bin=str(docker_path),
-            docker_config=docker_config,
-            container_name=args.container_name,
-            settle_for_creation=settle_for_creation,
+    def cas_owned() -> bool:
+        try:
+            metadata = os.lstat(cas_marker)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True
+        return bool(
+            stat.S_ISREG(metadata.st_mode)
+            and metadata.st_uid == os.geteuid()
+            and metadata.st_nlink == 1
+            and stat.S_IMODE(metadata.st_mode) == 0o600
         )
+
+    def cas_terminal() -> bool:
+        try:
+            metadata = os.lstat(terminal_marker)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return False
+        return bool(
+            stat.S_ISREG(metadata.st_mode)
+            and metadata.st_uid == os.geteuid()
+            and metadata.st_nlink == 1
+            and stat.S_IMODE(metadata.st_mode) == 0o600
+        )
+
+    def cleanup(*, settle_for_creation: bool) -> bool:
+        nonlocal cleanup_started, cleanup_succeeded, cleanup_failed
+        if cleanup_started:
+            return cleanup_succeeded
+        cleanup_started = True
+        try:
+            _remove_exact_docker_container(
+                docker_bin=str(docker_path),
+                docker_config=docker_config,
+                container_name=args.container_name,
+                settle_for_creation=settle_for_creation,
+            )
+        except ValueError:
+            cleanup_failed = True
+            return False
+        cleanup_succeeded = True
+        return True
 
     def terminate_watchdog(signum: int, _frame: object) -> None:
         # The supervisor deliberately terminates separately owned descendant
         # process groups before the runner group.  Reap synchronously here so
         # that ordering cannot strand the runner-owned workspace mount.
-        cleanup(settle_for_creation=True)
+        if cas_owned() and not cas_terminal():
+            # Recovery owns every path needed to inspect/start the inert or
+            # running exact container.  Supervisor shutdown must not delete
+            # those bind/config inputs before a durable terminal transition.
+            return
+        # A terminal marker is durable accounting authority.  Reap the exact
+        # container synchronously *before* finally removes the Docker config
+        # and bind sources.  This covers marker->SIGTERM interleavings where
+        # the polling loop has not observed the terminal transition yet.
+        if not cleanup(settle_for_creation=True):
+            raise SystemExit(125)
         raise SystemExit(128 + signum)
 
     try:
         signal.signal(signal.SIGTERM, terminate_watchdog)
         signal.signal(signal.SIGINT, terminate_watchdog)
-        clean_exit = sys.stdin.buffer.read(1) == b"C"
-        cleanup(settle_for_creation=not clean_exit)
+        markers = sys.stdin.buffer.read(16)
+        clean_exit = b"C" in markers
+        if not cas_owned():
+            cleanup(settle_for_creation=not clean_exit)
+        elif cas_terminal():
+            cleanup(settle_for_creation=False)
+        else:
+            # A durable effect_started claim transfers cleanup priority to
+            # recovery.  Container absence or exit is not proof that the
+            # provider effect never ran, so the watchdog must preserve the
+            # exact container until the CAS terminal record has been written.
+            while True:
+                if cas_terminal():
+                    cleanup(settle_for_creation=True)
+                    break
+                time.sleep(1.0)
     finally:
-        try:
-            prompt_path.unlink()
-        except FileNotFoundError:
-            pass
-        mask_root = lease_root / "provider-masks"
-        _restore_mask_permissions(mask_root)
-        try:
-            shutil.rmtree(mask_root)
-        except FileNotFoundError:
-            pass
-        _robust_remove_runner_temp_tree(provider_home)
-        try:
-            cidfile.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            docker_config.rmdir()
-        except (FileNotFoundError, OSError):
-            pass
-        try:
-            lease_root.rmdir()
-        except (FileNotFoundError, OSError):
-            pass
-    return 0
+        # Never destroy the inputs required for a later exact retry unless
+        # absence/removal of the receipt-bound container was proven.  A dead
+        # reaper with preserved private inputs is recoverable; deleting those
+        # inputs after an unverified rm is not.
+        if cleanup_succeeded:
+            try:
+                prompt_path.unlink()
+            except FileNotFoundError:
+                pass
+            mask_root = lease_root / "provider-masks"
+            _restore_mask_permissions(mask_root)
+            try:
+                shutil.rmtree(mask_root)
+            except FileNotFoundError:
+                pass
+            _robust_remove_runner_temp_tree(provider_home)
+            try:
+                cidfile.unlink()
+            except FileNotFoundError:
+                pass
+            try:
+                cas_marker.unlink()
+            except FileNotFoundError:
+                pass
+            try:
+                terminal_marker.unlink()
+            except FileNotFoundError:
+                pass
+            try:
+                docker_config.rmdir()
+            except (FileNotFoundError, OSError):
+                pass
+            try:
+                lease_root.rmdir()
+            except (FileNotFoundError, OSError):
+                pass
+    return 125 if cleanup_failed or not cleanup_succeeded else 0
 
 
 class _DockerContainerLease:
@@ -2008,6 +2240,8 @@ class _DockerContainerLease:
         lease_root: Path,
         docker_config: Path,
         cidfile: Path,
+        provider_home: Path,
+        prompt_path: Path,
         write_fd: int,
         watchdog: subprocess.Popen[bytes],
     ) -> None:
@@ -2016,9 +2250,14 @@ class _DockerContainerLease:
         self.lease_root = lease_root
         self.docker_config = docker_config
         self.cidfile = cidfile
+        self.provider_home = provider_home
+        self.prompt_path = prompt_path
         self._write_fd = write_fd
         self._watchdog = watchdog
         self._closed = False
+        self._cas_owned = False
+        self._cas_terminal = False
+        self.preserve_for_recovery = False
 
     @classmethod
     def create(
@@ -2050,11 +2289,26 @@ class _DockerContainerLease:
             f"ipfs-accelerate-{provider}-{os.getpid()}-{uuid.uuid4().hex}"
         )
         read_fd, write_fd = os.pipe()
+        sealed_match = re.fullmatch(
+            r"/proc/self/fd/([0-9]+)",
+            str(sys.argv[0]),
+        )
+        runner_entry = (
+            str(sys.argv[0])
+            if sealed_match is not None
+            else str(Path(__file__).resolve())
+        )
+        inherited_control_plane = (
+            (int(sealed_match.group(1)),)
+            if sealed_match is not None
+            else ()
+        )
         try:
             watchdog = subprocess.Popen(
                 [
                     sys.executable,
-                    str(Path(__file__).resolve()),
+                    "-I",
+                    runner_entry,
                     _DOCKER_CLEANUP_WATCHDOG_ARG,
                     "--provider",
                     provider,
@@ -2074,8 +2328,11 @@ class _DockerContainerLease:
                 stdin=read_fd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                cwd="/",
+                env=_docker_control_env(),
                 start_new_session=True,
                 close_fds=True,
+                pass_fds=inherited_control_plane,
             )
         except Exception:
             os.close(read_fd)
@@ -2095,9 +2352,69 @@ class _DockerContainerLease:
             lease_root=lease_root,
             docker_config=docker_config,
             cidfile=cidfile,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
             write_fd=write_fd,
             watchdog=watchdog,
         )
+
+    def mark_cas_owned(self) -> None:
+        if self._cas_owned:
+            return
+        marker = self.lease_root / "cas-owned"
+        descriptor = os.open(
+            marker,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(descriptor, self.container_name.encode("ascii"))
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        self._cas_owned = True
+        try:
+            os.write(self._write_fd, b"A")
+        except OSError as exc:
+            raise ValueError("Docker CAS watchdog marker failed") from exc
+
+    def mark_cas_terminal(self) -> None:
+        """Release cleanup only after the durable CAS terminal write."""
+
+        if not self._cas_owned:
+            raise ValueError("Docker CAS terminal marker precedes effect claim")
+        if self._cas_terminal:
+            return
+        marker = self.lease_root / "cas-terminal"
+        descriptor = os.open(
+            marker,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            payload = self.container_name.encode("ascii")
+            offset = 0
+            while offset < len(payload):
+                written = os.write(descriptor, payload[offset:])
+                if written <= 0:
+                    raise ValueError("Docker CAS terminal marker write failed")
+                offset += written
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        self._cas_terminal = True
+        try:
+            os.write(self._write_fd, b"T")
+        except OSError as exc:
+            raise ValueError("Docker CAS terminal watchdog marker failed") from exc
 
     def close(self, *, docker_run_finished: bool) -> None:
         if self._closed:
@@ -2113,21 +2430,47 @@ class _DockerContainerLease:
                 os.close(self._write_fd)
             except OSError:
                 pass
+        if self._cas_owned and not self._cas_terminal:
+            # The runner may have died after the provider effect but before
+            # durable completion.  Recovery owns both the container evidence
+            # and its private Docker configuration from this point onward.
+            self.preserve_for_recovery = True
+            return
         try:
             self._watchdog.wait(timeout=_DOCKER_CLEANUP_TIMEOUT_SECONDS + 2)
         except subprocess.TimeoutExpired:
-            _remove_exact_docker_container(
-                docker_bin=self.docker_bin,
-                docker_config=self.docker_config,
-                container_name=self.container_name,
-                settle_for_creation=False,
-            )
+            try:
+                _remove_exact_docker_container(
+                    docker_bin=self.docker_bin,
+                    docker_config=self.docker_config,
+                    container_name=self.container_name,
+                    settle_for_creation=False,
+                )
+            except ValueError:
+                # Preserve the exact private cleanup inputs.  A later sealed
+                # recovery can retry; destroying them here would make the
+                # still-possible container unaccountable.
+                self.preserve_for_recovery = True
+                return
             self._watchdog.terminate()
             try:
                 self._watchdog.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 self._watchdog.kill()
                 self._watchdog.wait(timeout=2)
+        if self.lease_root.exists():
+            # The watchdog can exit between receiving its marker and proving
+            # cleanup.  Do not infer success merely from process death.
+            try:
+                _remove_exact_docker_container(
+                    docker_bin=self.docker_bin,
+                    docker_config=self.docker_config,
+                    container_name=self.container_name,
+                    settle_for_creation=False,
+                )
+            except ValueError:
+                self.preserve_for_recovery = True
+                return
         try:
             self.cidfile.unlink()
         except FileNotFoundError:
@@ -2136,6 +2479,14 @@ class _DockerContainerLease:
         _restore_mask_permissions(mask_root)
         try:
             shutil.rmtree(mask_root)
+        except FileNotFoundError:
+            pass
+        try:
+            (self.lease_root / "cas-owned").unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            (self.lease_root / "cas-terminal").unlink()
         except FileNotFoundError:
             pass
         try:
@@ -2204,9 +2555,8 @@ def _docker_grok_command(
         f"--host={_DOCKER_LOCAL_HOST}",
         "--config",
         str(docker_config),
-        "run",
+        "create",
         "--pull=never",
-        "--rm",
         "--interactive",
         "--read-only",
         "--tmpfs",
@@ -2316,7 +2666,7 @@ def _docker_codex_fallback_command(
 
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    if not docker or image != _CODEX_TASK_TOOLCHAIN_IMAGE_ID:
+    if not docker or image != AGENT_IMPLEMENTATION_CODEX_IMAGE_ID:
         raise ValueError(
             "Codex fallback requires the exact pinned task-toolchain image"
         )
@@ -2356,9 +2706,8 @@ def _docker_codex_fallback_command(
         f"--host={_DOCKER_LOCAL_HOST}",
         "--config",
         str(docker_config),
-        "run",
+        "create",
         "--pull=never",
-        "--rm",
         "--interactive",
         "--read-only",
         "--network=bridge",
@@ -2443,6 +2792,8 @@ def _run_codex_quota_fallback_in_docker(
     prompt_path: Path,
     base_env: dict[str, str],
     pre_effect_validator: Callable[[], None] | None = None,
+    effect_claim: Callable[[Mapping[str, object]], None] | None = None,
+    effect_terminal: Callable[[int], None] | None = None,
 ) -> int:
     """Run Codex only inside the available pinned external sandbox."""
 
@@ -2506,10 +2857,126 @@ def _run_codex_quota_fallback_in_docker(
             # and this route check form the narrowest fail-closed boundary
             # available to the path-based Docker CLI handoff.
             pre_effect_validator()
+        docker_environment = _docker_control_env(child_env)
+        try:
+            created = subprocess.run(
+                command,
+                cwd=workspace,
+                env=docker_environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=120.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError("Codex fallback container creation timed out") from exc
+        if (
+            created.returncode != 0
+            or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+            or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+        ):
+            raise ValueError("Codex fallback container could not be created")
+        created_fields = created.stdout.decode("ascii", errors="strict").split()
+        if (
+            len(created_fields) != 1
+            or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
+        ):
+            raise ValueError("Codex fallback container identity is invalid")
+        container_id = "sha256:" + created_fields[0]
+        start_command = [
+            docker_bin,
+            f"--host={_DOCKER_LOCAL_HOST}",
+            "--config",
+            str(docker_lease.docker_config),
+            "start",
+            "--attach",
+            "--interactive",
+            created_fields[0],
+        ]
+        # Container creation is inert.  Only after its immutable identity is
+        # known do we durably claim the exact logical effect and release the
+        # start gate.  A crash can therefore adopt this same container; no
+        # later Docker child can materialize an as-yet-unrecorded name.
+        if effect_claim is not None:
+            mount_arguments = [
+                command[index + 1]
+                for index, item in enumerate(command[:-1])
+                if item in {"--mount", "--volume", "-v"}
+            ]
+            runtime_receipt = _docker_runtime_receipt(docker_bin)
+            command_receipt = {
+                "create_argv": list(command),
+                "start_argv": list(start_command),
+                "provider_argv": [str(item) for item in codex_command],
+            }
+            mount_receipt = list(mount_arguments)
+            environment_receipt = {
+                "docker_cli": dict(sorted(docker_environment.items())),
+                "container": dict(
+                    sorted(_codex_task_container_environment().items())
+                ),
+            }
+            image_receipt = {
+                "image_id": isolation_image,
+                "image_label": AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
+            }
+            cleanup_receipt: dict[str, object] = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "provider-effect-cleanup@1"
+                ),
+                "lease_root": str(docker_lease.lease_root),
+                "docker_config": str(docker_lease.docker_config),
+                "cidfile": str(docker_lease.cidfile),
+                "provider_home": str(docker_lease.provider_home),
+                "prompt_path": str(docker_lease.prompt_path),
+                "watchdog_pid": docker_lease._watchdog.pid,
+                "watchdog_start_ticks": _runner_process_start_ticks(
+                    docker_lease._watchdog.pid
+                ),
+            }
+            cleanup_receipt["receipt_id"] = _effect_receipt_identity(
+                cleanup_receipt
+            )
+            launch_context = {
+                "provider_id": "codex",
+                "command_id": _effect_receipt_identity(command_receipt),
+                "runtime_id": _effect_receipt_identity(runtime_receipt),
+                "image_id": isolation_image,
+                "mount_id": _effect_receipt_identity(mount_receipt),
+                "environment_id": _effect_receipt_identity(
+                    environment_receipt
+                ),
+                "cleanup_id": cleanup_receipt["receipt_id"],
+                "container_name": docker_lease.container_name,
+                "container_id": container_id,
+                "runtime_receipt": runtime_receipt,
+                "image_receipt": image_receipt,
+                "command_receipt": command_receipt,
+                "mount_receipt": mount_receipt,
+                "environment_receipt": environment_receipt,
+                "cleanup_receipt": cleanup_receipt,
+            }
+            _validated_codex_auth_path(
+                source_auth=source_auth,
+                workspace=workspace,
+            )
+            if pre_effect_validator is not None:
+                # Docker creation may block for the full timeout.  Revalidate
+                # freshness, lifecycle, HEAD, and the router decision only
+                # after the exact inert container exists and immediately
+                # before the once-only CAS/start boundary.
+                pre_effect_validator()
+            effect_claim(launch_context)
+            # A concurrent loser must remain an ordinary inert lease so its
+            # own container is removed.  Cleanup ownership transfers only
+            # after this process has won the durable effect_started CAS.
+            docker_lease.mark_cas_owned()
         process = subprocess.Popen(
-            command,
+            start_command,
             cwd=workspace,
-            env=_docker_control_env(child_env),
+            env=docker_environment,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -2540,14 +3007,548 @@ def _run_codex_quota_fallback_in_docker(
         returncode = int(process.wait())
         stdout_thread.join()
         stderr_thread.join()
+        if effect_terminal is not None:
+            # Persist the exact terminal outcome while Docker still retains
+            # inspectable exit evidence.  Cleanup is released only after the
+            # durable CAS transition succeeds.
+            effect_terminal(returncode)
+            if effect_claim is not None:
+                docker_lease.mark_cas_terminal()
         docker_run_finished = True
         return returncode
     finally:
         if docker_lease is not None:
             docker_lease.close(docker_run_finished=docker_run_finished)
-        if isolated_home is not None:
+        if isolated_home is not None and not bool(
+            getattr(docker_lease, "preserve_for_recovery", False)
+        ):
             _robust_remove_runner_temp_tree(Path(isolated_home.name))
             isolated_home.cleanup()
+
+
+def _bounded_docker_query(
+    command: Sequence[str],
+    *,
+    timeout: float = 15.0,
+) -> tuple[int, bytes, bytes]:
+    try:
+        completed = subprocess.run(
+            list(command),
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("recorded Docker effect inspection failed") from exc
+    if (
+        len(completed.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(completed.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("recorded Docker effect inspection was oversized")
+    return int(completed.returncode), completed.stdout, completed.stderr
+
+
+def _recorded_codex_lease_root(
+    launch_receipt: Mapping[str, object],
+) -> tuple[Path, Path, str]:
+    """Recover the winner's private watchdog lease from its exact argv."""
+
+    command = launch_receipt.get("command_receipt")
+    if not isinstance(command, Mapping):
+        raise ValueError("recorded Docker cleanup command is unavailable")
+    create_argv = command.get("create_argv")
+    if not isinstance(create_argv, list) or any(
+        not isinstance(item, str) for item in create_argv
+    ):
+        raise ValueError("recorded Docker cleanup command is invalid")
+    try:
+        config_index = create_argv.index("--config") + 1
+        cidfile_index = create_argv.index("--cidfile") + 1
+        config_path = Path(create_argv[config_index])
+        cidfile_path = Path(create_argv[cidfile_index])
+    except (IndexError, ValueError) as exc:
+        raise ValueError("recorded Docker cleanup lease is invalid") from exc
+    container_name = str(launch_receipt.get("container_name") or "")
+    lease_root = config_path.parent
+    if (
+        not config_path.is_absolute()
+        or config_path.name != "docker-config"
+        or cidfile_path != lease_root / "container.cid"
+        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
+        or not lease_root.name.startswith("asref-codex-container-")
+        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or container_name not in create_argv
+    ):
+        raise ValueError("recorded Docker cleanup lease identity is invalid")
+    cursor = Path(lease_root.anchor)
+    for component in lease_root.parts[1:]:
+        cursor /= component
+        metadata = os.lstat(cursor)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError("recorded Docker cleanup lease contains a symlink")
+    root_stat = os.lstat(lease_root)
+    config_stat = os.lstat(config_path)
+    if (
+        not stat.S_ISDIR(root_stat.st_mode)
+        or root_stat.st_uid != os.geteuid()
+        or stat.S_IMODE(root_stat.st_mode) != 0o700
+        or not stat.S_ISDIR(config_stat.st_mode)
+        or config_stat.st_uid != os.geteuid()
+        or stat.S_IMODE(config_stat.st_mode) != 0o700
+    ):
+        raise ValueError("recorded Docker cleanup lease is not private")
+    return lease_root, config_path, container_name
+
+
+def _release_recorded_codex_effect_cleanup(
+    launch_receipt: Mapping[str, object],
+) -> None:
+    """Idempotently reap exact receipt-bound resources after CAS terminal."""
+
+    cleanup = launch_receipt.get("cleanup_receipt")
+    if not isinstance(cleanup, Mapping) or set(cleanup) != {
+        "schema",
+        "lease_root",
+        "docker_config",
+        "cidfile",
+        "provider_home",
+        "prompt_path",
+        "watchdog_pid",
+        "watchdog_start_ticks",
+        "receipt_id",
+    }:
+        raise ValueError("recorded Docker cleanup receipt is invalid")
+    cleanup_body = {
+        key: item for key, item in cleanup.items() if key != "receipt_id"
+    }
+    if (
+        cleanup.get("schema")
+        != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
+        or cleanup.get("receipt_id") != _effect_receipt_identity(cleanup_body)
+        or launch_receipt.get("cleanup_id") != cleanup.get("receipt_id")
+    ):
+        raise ValueError("recorded Docker cleanup receipt drifted")
+    lease_root = Path(str(cleanup.get("lease_root") or ""))
+    docker_config = Path(str(cleanup.get("docker_config") or ""))
+    cidfile = Path(str(cleanup.get("cidfile") or ""))
+    provider_home = Path(str(cleanup.get("provider_home") or ""))
+    prompt_path = Path(str(cleanup.get("prompt_path") or ""))
+    watchdog_pid = cleanup.get("watchdog_pid")
+    watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
+    temporary_root = Path(tempfile.gettempdir()).resolve()
+    if (
+        lease_root.parent != temporary_root
+        or not lease_root.name.startswith("asref-codex-container-")
+        or docker_config != lease_root / "docker-config"
+        or cidfile != lease_root / "container.cid"
+        or provider_home.parent != temporary_root
+        or not provider_home.name.startswith("asref-codex-home-")
+        or prompt_path.parent != temporary_root
+        or not prompt_path.name.startswith("asref-grok-prompt-")
+        or isinstance(watchdog_pid, bool)
+        or not isinstance(watchdog_pid, int)
+        or watchdog_pid <= 0
+        or isinstance(watchdog_start_ticks, bool)
+        or not isinstance(watchdog_start_ticks, int)
+        or watchdog_start_ticks < 0
+    ):
+        raise ValueError("recorded Docker cleanup paths are invalid")
+    container_name = str(launch_receipt.get("container_name") or "")
+    if not lease_root.exists():
+        if provider_home.exists() or prompt_path.exists():
+            raise ValueError("recorded Docker cleanup is partially missing")
+        return
+    observed_root, observed_config, observed_name = (
+        _recorded_codex_lease_root(launch_receipt)
+    )
+    if (
+        observed_root != lease_root
+        or observed_config != docker_config
+        or observed_name != container_name
+    ):
+        raise ValueError("recorded Docker cleanup lease drifted")
+    marker = lease_root / "cas-terminal"
+    payload = container_name.encode("ascii")
+    try:
+        descriptor = os.open(
+            marker,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+    except FileExistsError:
+        descriptor = os.open(
+            marker,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            observed = os.read(descriptor, len(payload) + 1)
+        finally:
+            os.close(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or observed != payload
+        ):
+            raise ValueError("recorded Docker terminal marker drifted")
+    else:
+        try:
+            offset = 0
+            while offset < len(payload):
+                written = os.write(descriptor, payload[offset:])
+                if written <= 0:
+                    raise ValueError("recorded Docker terminal marker write failed")
+                offset += written
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    directory = os.open(
+        lease_root,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    if _runner_process_identity_alive(watchdog_pid, watchdog_start_ticks):
+        try:
+            os.kill(watchdog_pid, signal.SIGTERM)
+        except OSError:
+            pass
+        for _ in range(20):
+            if not _runner_process_identity_alive(
+                watchdog_pid, watchdog_start_ticks
+            ):
+                break
+            time.sleep(0.05)
+    if _runner_process_identity_alive(watchdog_pid, watchdog_start_ticks):
+        # A verified live watchdog owns the same exact receipt and will
+        # consume the durable marker.  A later terminal replay retries if it
+        # dies before cleanup.
+        return
+    # A terminal-aware watchdog performs Docker rm before deleting its
+    # private inputs.  Recheck after its process has exited so a successful
+    # synchronous signal-handler cleanup is not followed by an impossible
+    # retry through a now-removed Docker config.
+    if not lease_root.exists():
+        if provider_home.exists() or prompt_path.exists():
+            raise ValueError("recorded Docker cleanup is partially missing")
+        return
+    observed_root, observed_config, observed_name = (
+        _recorded_codex_lease_root(launch_receipt)
+    )
+    if (
+        observed_root != lease_root
+        or observed_config != docker_config
+        or observed_name != container_name
+    ):
+        raise ValueError("recorded Docker cleanup lease drifted")
+    runtime = launch_receipt.get("runtime_receipt")
+    docker_bin = str(runtime.get("path") or "") if isinstance(runtime, Mapping) else ""
+    if docker_bin not in {"/usr/bin/docker", "/usr/local/bin/docker"}:
+        raise ValueError("recorded Docker cleanup runtime is invalid")
+    _remove_exact_docker_container(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        settle_for_creation=False,
+    )
+    try:
+        prompt_path.unlink()
+    except FileNotFoundError:
+        pass
+    _robust_remove_runner_temp_tree(provider_home)
+    for candidate in (
+        cidfile,
+        lease_root / "cas-owned",
+        marker,
+    ):
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            pass
+    _robust_remove_runner_temp_tree(docker_config)
+    try:
+        lease_root.rmdir()
+    except FileNotFoundError:
+        pass
+
+
+def _inspect_recorded_codex_effect(
+    launch_receipt: Mapping[str, object],
+    observed_at_ms: int,
+) -> Mapping[str, object]:
+    """Inspect only the CAS winner's exact Docker container and runtime."""
+
+    container_name = str(launch_receipt.get("container_name") or "")
+    recorded_container_id = str(launch_receipt.get("container_id") or "")
+    if (
+        _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or not container_name.startswith("ipfs-accelerate-codex-")
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", recorded_container_id
+        ) is None
+        or isinstance(observed_at_ms, bool)
+        or not isinstance(observed_at_ms, int)
+        or observed_at_ms <= 0
+    ):
+        raise ValueError("recorded Docker effect identity is invalid")
+    docker_bin = _docker_isolation_binary()
+    if not docker_bin:
+        raise ValueError("recorded Docker runtime is unavailable")
+    runtime_id = _docker_runtime_receipt_identity(docker_bin)
+    if runtime_id != launch_receipt.get("runtime_id"):
+        raise ValueError("recorded Docker runtime identity drifted")
+    semantic_inspection = {
+        "runtime_id": runtime_id,
+        "host": _DOCKER_LOCAL_HOST,
+        "operation": "container_inspect",
+        "container_name": container_name,
+        "container_id": recorded_container_id,
+    }
+    inspection_command_id = _effect_receipt_identity(semantic_inspection)
+    with tempfile.TemporaryDirectory(
+        prefix="asref-codex-adoption-docker-config-"
+    ) as config_root:
+        inspect_command = [
+            docker_bin,
+            f"--host={_DOCKER_LOCAL_HOST}",
+            "--config",
+            config_root,
+            "container",
+            "inspect",
+            recorded_container_id.removeprefix("sha256:"),
+        ]
+        returncode, stdout, _stderr = _bounded_docker_query(inspect_command)
+        if returncode != 0:
+            list_command = [
+                docker_bin,
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                config_root,
+                "container",
+                "ls",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                f"name=^{container_name}$",
+                "--format",
+                "{{.ID}}",
+            ]
+            list_returncode, listed, _list_stderr = _bounded_docker_query(
+                list_command
+            )
+            if list_returncode != 0 or listed.strip():
+                raise ValueError(
+                    "recorded Docker container could not be inspected"
+                )
+            status_value = "absent"
+            container_id = ""
+            container_returncode: int | None = None
+        else:
+            try:
+                decoded = json.loads(stdout.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "recorded Docker inspection is malformed"
+                ) from exc
+            if (
+                not isinstance(decoded, list)
+                or len(decoded) != 1
+                or not isinstance(decoded[0], Mapping)
+            ):
+                raise ValueError("recorded Docker inspection is ambiguous")
+            record = decoded[0]
+            state = record.get("State")
+            raw_container_id = str(record.get("Id") or "")
+            if (
+                record.get("Name") != "/" + container_name
+                or record.get("Image") != launch_receipt.get("image_id")
+                or not isinstance(state, Mapping)
+                or re.fullmatch(r"[0-9a-f]{64}", raw_container_id) is None
+            ):
+                raise ValueError(
+                    "recorded Docker container identity does not match"
+                )
+            container_id = "sha256:" + raw_container_id
+            if container_id != launch_receipt.get("container_id"):
+                raise ValueError(
+                    "recorded Docker container identity drifted"
+                )
+            running = state.get("Running")
+            if running is True:
+                status_value = "running"
+                container_returncode = None
+            elif running is False and state.get("Status") == "created":
+                status_value = "created"
+                container_returncode = None
+            elif running is False and state.get("Status") in {"exited", "dead"}:
+                exit_code = state.get("ExitCode")
+                if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+                    raise ValueError(
+                        "recorded Docker exit status is invalid"
+                    )
+                status_value = "exited"
+                container_returncode = exit_code
+            else:
+                raise ValueError(
+                    "recorded Docker container is not adoptable"
+                )
+    return {
+        "status": status_value,
+        "inspection_runtime_id": runtime_id,
+        "inspection_command_id": inspection_command_id,
+        "observed_at_ms": observed_at_ms,
+        "provider_id": launch_receipt.get("provider_id"),
+        "command_id": launch_receipt.get("command_id"),
+        "runtime_id": launch_receipt.get("runtime_id"),
+        "image_id": launch_receipt.get("image_id"),
+        "mount_id": launch_receipt.get("mount_id"),
+        "environment_id": launch_receipt.get("environment_id"),
+        "container_name": container_name,
+        "container_id": container_id,
+        "returncode": container_returncode,
+    }
+
+
+def _wait_for_recorded_codex_effect(
+    launch_receipt: Mapping[str, object],
+) -> int:
+    """Attach to the exact adopted effect; this path never creates it."""
+
+    docker_bin = _docker_isolation_binary()
+    if (
+        not docker_bin
+        or _docker_runtime_receipt_identity(docker_bin)
+        != launch_receipt.get("runtime_id")
+    ):
+        raise ValueError("recorded Docker runtime identity drifted")
+    container_name = str(launch_receipt.get("container_name") or "")
+    container_id = str(launch_receipt.get("container_id") or "")
+    if (
+        _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", container_id) is None
+    ):
+        raise ValueError("recorded Docker container name is invalid")
+    with tempfile.TemporaryDirectory(
+        prefix="asref-codex-adoption-docker-config-"
+    ) as config_root:
+        wait_command = [
+            docker_bin,
+            f"--host={_DOCKER_LOCAL_HOST}",
+            "--config",
+            config_root,
+            "container",
+            "wait",
+            container_id.removeprefix("sha256:"),
+        ]
+        returncode, stdout, _stderr = _bounded_docker_query(
+            wait_command,
+            timeout=7200.0,
+        )
+        fields = stdout.decode("ascii", errors="strict").split()
+        if returncode != 0 or len(fields) != 1:
+            raise ValueError("recorded Docker effect wait failed")
+        try:
+            effect_returncode = int(fields[0])
+        except ValueError as exc:
+            raise ValueError("recorded Docker effect exit is invalid") from exc
+        if not -(2**31) <= effect_returncode < 2**31:
+            raise ValueError("recorded Docker effect exit is invalid")
+        return effect_returncode
+
+
+def _start_recorded_codex_effect(
+    launch_receipt: Mapping[str, object],
+    *,
+    prompt: str,
+) -> int:
+    """Start/attach exactly the inert container named in the CAS receipt."""
+
+    docker_bin = _docker_isolation_binary()
+    if (
+        not docker_bin
+        or _docker_runtime_receipt_identity(docker_bin)
+        != launch_receipt.get("runtime_id")
+    ):
+        raise ValueError("recorded Docker runtime identity drifted")
+    container_name = str(launch_receipt.get("container_name") or "")
+    container_id = str(launch_receipt.get("container_id") or "")
+    if (
+        _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", container_id) is None
+    ):
+        raise ValueError("recorded Docker container name is invalid")
+    command_receipt = launch_receipt.get("command_receipt")
+    command = (
+        command_receipt.get("start_argv")
+        if isinstance(command_receipt, Mapping)
+        else None
+    )
+    if (
+        not isinstance(command, list)
+        or any(not isinstance(item, str) for item in command)
+        or command
+        != [
+            docker_bin,
+            f"--host={_DOCKER_LOCAL_HOST}",
+            "--config",
+            str(_recorded_codex_lease_root(launch_receipt)[1]),
+            "start",
+            "--attach",
+            "--interactive",
+            container_id.removeprefix("sha256:"),
+        ]
+    ):
+        raise ValueError("recorded Docker start command drifted")
+    process = subprocess.Popen(
+        list(command),
+        env=_docker_control_env(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    if process.stdin is None or process.stdout is None or process.stderr is None:
+        raise ValueError("recorded Docker start pipes were not created")
+    stdout_thread = threading.Thread(
+        target=_stream_provider_pipe_without_reserved_records,
+        args=(process.stdout, sys.stdout),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_stream_provider_pipe_without_reserved_records,
+        args=(process.stderr, sys.stderr),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    try:
+        process.stdin.write(prompt)
+        process.stdin.close()
+    except BrokenPipeError:
+        pass
+    returncode = int(process.wait())
+    stdout_thread.join()
+    stderr_thread.join()
+    return returncode
 
 
 def _parse_codex_fallback_command(raw: str) -> list[str]:
@@ -2648,7 +3649,10 @@ def _validate_codex_quota_fallback_command(
         resolved_executable = executable.resolve(strict=True)
     except OSError as exc:
         raise ValueError("Codex quota fallback executable does not exist") from exc
-    if not executable.is_file() or not os.access(executable, os.X_OK):
+    # ``os.access(..., X_OK)`` is false on a noexec test mount even for a
+    # correctly pinned executable.  The Docker boundary executes the pinned
+    # image command, so verify immutable executable mode here instead.
+    if not executable.is_file() or not (resolved_executable.stat().st_mode & 0o111):
         raise ValueError("Codex quota fallback executable is not executable")
     if workspace is not None and (
         executable.is_relative_to(workspace)
@@ -2668,10 +3672,7 @@ def _validate_codex_quota_fallback_command(
                 "Codex quota fallback contains an unauthorized or duplicate config"
             )
         configs[key] = value
-    if configs.get("model_reasoning_effort") not in {
-        '"medium"',
-        '"high"',
-    }:
+    if configs.get("model_reasoning_effort") not in {'"medium"', '"high"'}:
         raise ValueError("Codex fallback reasoning is not medium or high")
     if required_reasoning_effort is not None and configs.get(
         "model_reasoning_effort"
@@ -2809,16 +3810,72 @@ def _stream_provider_pipe_without_reserved_records(
 ) -> None:
     """Tee provider output while escaping runner-reserved record prefixes."""
 
-    reserved = (GROK_FAILURE_RECEIPT_PREFIX, GROK_ROUTE_OUTCOME_PREFIX)
+    reserved = (
+        GROK_FAILURE_RECEIPT_PREFIX,
+        GROK_ROUTE_OUTCOME_PREFIX,
+        AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
+    )
+    maximum_prefix = max(map(len, reserved))
+    prefix_buffer = ""
     at_line_start = True
-    while True:
-        chunk = source.readline(16 * 1024)
-        if not chunk:
+
+    def sanitized(value: str) -> str:
+        # The authority parser is LF-framed.  Remove every other character
+        # Python's splitlines() could reinterpret as a record boundary.
+        replacements = {
+            "\0": "[provider-child-control-00]",
+            "\r": "[provider-child-control-0d]",
+            "\v": "[provider-child-control-0b]",
+            "\f": "[provider-child-control-0c]",
+            "\x1c": "[provider-child-control-1c]",
+            "\x1d": "[provider-child-control-1d]",
+            "\x1e": "[provider-child-control-1e]",
+            "\x85": "[provider-child-control-85]",
+            "\u2028": "[provider-child-control-2028]",
+            "\u2029": "[provider-child-control-2029]",
+        }
+        return "".join(replacements.get(character, character) for character in value)
+
+    def flush_prefix(*, line_complete: bool) -> None:
+        nonlocal prefix_buffer, at_line_start
+        if not prefix_buffer and not line_complete:
             return
-        if at_line_start and chunk.startswith(reserved):
-            chunk = "[provider-child-output-escaped] " + chunk
-        at_line_start = chunk.endswith("\n")
-        destination.write(chunk)
+        still_possible = any(
+            item.startswith(prefix_buffer) for item in reserved
+        )
+        if (
+            not line_complete
+            and len(prefix_buffer) < maximum_prefix
+            and still_possible
+        ):
+            return
+        output = prefix_buffer
+        if output.startswith(reserved):
+            output = "[provider-child-output-escaped] " + output
+        destination.write(output)
+        prefix_buffer = ""
+        at_line_start = False
+
+    while True:
+        chunk = source.read(16 * 1024)
+        if not chunk:
+            if prefix_buffer:
+                flush_prefix(line_complete=True)
+            destination.flush()
+            return
+        parts = sanitized(chunk).split("\n")
+        for index, piece in enumerate(parts):
+            line_complete = index < len(parts) - 1
+            if at_line_start:
+                prefix_buffer += piece
+                flush_prefix(line_complete=line_complete)
+            else:
+                destination.write(piece)
+            if line_complete:
+                if prefix_buffer:
+                    flush_prefix(line_complete=True)
+                destination.write("\n")
+                at_line_start = True
         destination.flush()
 
 
@@ -2859,11 +3916,130 @@ def _run_grok_with_typed_failure_capture(
     return returncode
 
 
+def _validate_quota_evidence_in_accepted_child(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_returncode: int,
+    failure_receipt: Mapping[str, object],
+    invocation_binding: object,
+    verifier_command: list[str],
+    verifier_workspace: Path,
+    verifier_prompt_path: Path,
+    observed_at_ms: int,
+) -> object:
+    """Sign native evidence in a separate fork of the accepted runner.
+
+    Forking preserves the already-validated sealed generation without a new
+    path-based Python import.  The parent accepts only the bounded signed JSON
+    emitted by the exact child PID and independently re-verifies it.
+    """
+
+    if not hasattr(os, "fork"):
+        return ""
+    read_fd, write_fd = os.pipe()
+    child_pid = os.fork()
+    if child_pid == 0:
+        try:
+            os.close(read_fd)
+            from ipfs_accelerate_py.llm_router import (
+                validate_agent_implementation_quota_evidence,
+            )
+
+            evidence = validate_agent_implementation_quota_evidence(
+                grok_home=grok_home,
+                expected_session_id=expected_session_id,
+                verifier_returncode=verifier_returncode,
+                failure_receipt=failure_receipt,
+                invocation_binding=invocation_binding,
+                verifier_command=verifier_command,
+                verifier_workspace=verifier_workspace,
+                verifier_prompt_path=verifier_prompt_path,
+                observed_at_ms=observed_at_ms,
+                max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
+            )
+            if evidence is None:
+                os._exit(2)
+            raw = json.dumps(
+                evidence.audit_dict(),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+            if not raw or len(raw) > 256 * 1024:
+                os._exit(3)
+            offset = 0
+            while offset < len(raw):
+                written = os.write(write_fd, raw[offset:])
+                if written <= 0:
+                    os._exit(4)
+                offset += written
+            os.close(write_fd)
+            os._exit(0)
+        except BaseException:
+            os._exit(5)
+    os.close(write_fd)
+    try:
+        chunks: list[bytes] = []
+        remaining = 256 * 1024 + 1
+        while remaining:
+            chunk = os.read(read_fd, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+    finally:
+        os.close(read_fd)
+    _waited_pid, status = os.waitpid(child_pid, 0)
+    raw = b"".join(chunks)
+    if (
+        not os.WIFEXITED(status)
+        or os.WEXITSTATUS(status) != 0
+        or not raw
+        or len(raw) > 256 * 1024
+    ):
+        return ""
+
+    def unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        decoded: dict[str, object] = {}
+        for key, value in pairs:
+            if key in decoded:
+                raise ValueError("duplicate quota evidence field")
+            decoded[key] = value
+        return decoded
+
+    try:
+        payload = json.loads(raw, object_pairs_hook=unique)
+    except (UnicodeError, ValueError, json.JSONDecodeError):
+        return ""
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("signer_process_pid") != child_pid
+        or payload.get("signer_parent_pid") != os.getpid()
+    ):
+        return ""
+    from ipfs_accelerate_py.llm_router import (
+        parse_agent_implementation_quota_evidence,
+    )
+
+    return parse_agent_implementation_quota_evidence(
+        payload,
+        failure_receipt=failure_receipt,
+        invocation_binding=invocation_binding,
+        now_ms=observed_at_ms,
+        max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
+        expected_signer_parent_pid=os.getpid(),
+        expected_signer_process_pid=child_pid,
+    ) or ""
+
+
 def _independently_verify_grok_quota(
     *,
     grok_bin: str,
     base_env: dict[str, str],
     failure_receipt: Mapping[str, object],
+    invocation_binding: object | None = None,
 ) -> object:
     """Confirm quota with a fresh pinned, tool-free Grok-4.5 invocation."""
 
@@ -2916,7 +4092,7 @@ def _independently_verify_grok_quota(
                 "--session-id",
                 verifier_session_id,
                 "--disallowed-tools",
-                _SEALED_GROK_DISALLOWED_TOOLS,
+                AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS,
             ]
         )
         output_index = command.index("--output-format") + 1
@@ -2936,15 +4112,27 @@ def _independently_verify_grok_quota(
             return ""
         if completed.returncode == 0:
             return ""
-        from ipfs_accelerate_py.llm_router import (
-            validate_agent_implementation_quota_evidence,
-        )
+        if invocation_binding is None:
+            from ipfs_accelerate_py.llm_router import (
+                validate_agent_implementation_quota_evidence,
+            )
 
-        return validate_agent_implementation_quota_evidence(
+            return validate_agent_implementation_quota_evidence(
+                grok_home=verifier_home,
+                expected_session_id=verifier_session_id,
+                verifier_returncode=int(completed.returncode),
+                failure_receipt=failure_receipt,
+            )
+        return _validate_quota_evidence_in_accepted_child(
             grok_home=verifier_home,
             expected_session_id=verifier_session_id,
             verifier_returncode=int(completed.returncode),
             failure_receipt=failure_receipt,
+            invocation_binding=invocation_binding,
+            verifier_command=command,
+            verifier_workspace=verifier_workspace,
+            verifier_prompt_path=prompt_path,
+            observed_at_ms=int(time.time() * 1000),
         )
     finally:
         if isolated_home is not None:
@@ -3170,16 +4358,311 @@ def _write_private_receipt(descriptor: int, receipt: dict[str, object]) -> bool:
     return True
 
 
+_PROTECTED_EFFECT_RECOVERY_LOCATOR_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "provider-effect-recovery-locator@1"
+)
+
+
+def _parse_protected_effect_recovery_locator(
+    raw: str,
+    *,
+    workspace: Path,
+) -> dict[str, object]:
+    """Decode the daemon's narrow non-dispatch CAS recovery locator."""
+
+    if not isinstance(raw, str) or not raw or len(raw.encode("utf-8")) > 16 * 1024:
+        raise ValueError("protected effect recovery locator is invalid")
+
+    def unique(pairs):
+        decoded = {}
+        for key, value in pairs:
+            if key in decoded:
+                raise ValueError("protected effect recovery locator has duplicate keys")
+            decoded[key] = value
+        return decoded
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique)
+    except json.JSONDecodeError as exc:
+        raise ValueError("protected effect recovery locator is invalid JSON") from exc
+    expected = {
+        "schema",
+        "task_id",
+        "attempt",
+        "task_revision_cid",
+        "board_namespace",
+        "logical_attempt_id",
+        "worktree_id",
+        "prompt_cid",
+        "workspace_path",
+        "provider_attempt_store",
+        "provider_attempt_store_identity",
+        "locator_id",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != expected
+        or value.get("schema") != _PROTECTED_EFFECT_RECOVERY_LOCATOR_SCHEMA
+        or any(
+            not isinstance(value.get(name), str) or not value.get(name)
+            for name in expected - {"attempt", "locator_id"}
+        )
+        or isinstance(value.get("attempt"), bool)
+        or not isinstance(value.get("attempt"), int)
+        or int(value.get("attempt") or 0) < 1
+        or value.get("workspace_path") != str(workspace)
+        or value.get("locator_id")
+        != _effect_receipt_identity(
+            {key: item for key, item in value.items() if key != "locator_id"}
+        )
+    ):
+        raise ValueError("protected effect recovery locator fields are invalid")
+    return value
+
+
+def _run_protected_effect_recovery(
+    *,
+    raw_locator: str,
+    workspace: Path,
+) -> int:
+    """Account one existing protected effect without dispatching a provider."""
+
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.provider_attempt_store import (
+        DurableProviderAttemptCAS,
+        ProviderAttemptStoreError,
+    )
+    from ipfs_accelerate_py.llm_router import (
+        build_agent_implementation_route_outcome,
+        parse_agent_implementation_effect_authorization_context,
+        render_agent_implementation_route_outcome,
+        valid_agent_implementation_route_outcome,
+        verify_agent_implementation_sealed_control_plane,
+    )
+
+    try:
+        locator = _parse_protected_effect_recovery_locator(
+            raw_locator,
+            workspace=workspace,
+        )
+        prompt = sys.stdin.read()
+        if (
+            not prompt.strip()
+            or _agent_prompt_cid(prompt) != locator.get("prompt_cid")
+        ):
+            raise ValueError("protected effect recovery prompt identity drifted")
+        store = DurableProviderAttemptCAS(
+            str(locator["provider_attempt_store"]),
+            expected_directory_identity=str(
+                locator["provider_attempt_store_identity"]
+            ),
+        )
+        reservation = store.read(str(locator["logical_attempt_id"]))
+        if reservation is None or reservation.state not in {
+            "effect_started",
+            "quarantined",
+            "terminal",
+        }:
+            raise ValueError("protected effect recovery CAS is unavailable")
+        launch_owner_pid = reservation.effect_launch_receipt.get(
+            "effect_owner_pid"
+        )
+        if (
+            isinstance(launch_owner_pid, bool)
+            or not isinstance(launch_owner_pid, int)
+            or launch_owner_pid <= 0
+            or reservation.effect_started_at_ms is None
+        ):
+            raise ValueError("protected effect recovery launch authority is invalid")
+        context = parse_agent_implementation_effect_authorization_context(
+            reservation.authorization_context,
+            repo_root=workspace,
+            effect_started_at_ms=reservation.effect_started_at_ms,
+            expected_signer_parent_pid=launch_owner_pid,
+            max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
+        )
+        if context is None or context.route.invocation_binding is None:
+            raise ValueError("protected effect historical authority is invalid")
+        invocation = context.route.invocation_binding
+        exact_locator = {
+            "task_id": invocation.task_id,
+            "attempt": invocation.attempt,
+            "task_revision_cid": invocation.task_revision_cid,
+            "logical_attempt_id": invocation.logical_attempt_id,
+            "worktree_id": invocation.worktree_id,
+            "prompt_cid": invocation.prompt_cid,
+            "workspace_path": invocation.workspace_path,
+            "provider_attempt_store": invocation.provider_attempt_store,
+            "provider_attempt_store_identity": (
+                invocation.provider_attempt_store_identity
+            ),
+        }
+        if (
+            any(locator.get(name) != item for name, item in exact_locator.items())
+            or reservation.task_id != invocation.task_id
+            or reservation.worktree_id != invocation.worktree_id
+            or reservation.route_id != invocation.route_id
+            or reservation.decision_id != context.decision.content_id
+        ):
+            raise ValueError("protected effect recovery identity drifted")
+        sealed_match = re.fullmatch(r"/proc/self/fd/([0-9]+)", str(sys.argv[0]))
+        if sealed_match is None or verify_agent_implementation_sealed_control_plane(
+            invocation.control_plane,
+            int(sealed_match.group(1)),
+        ) != str(sys.argv[0]):
+            raise ValueError("protected effect recovery is not sealed")
+
+        if reservation.terminal:
+            outcome = reservation.terminal_outcome
+            returncode = reservation.terminal_returncode
+            if (
+                not isinstance(outcome, Mapping)
+                or isinstance(returncode, bool)
+                or not isinstance(returncode, int)
+                or outcome.get("decision_id") != reservation.decision_id
+                or outcome.get("reservation_id") != reservation.reservation_id
+                or outcome.get("effect_launch_receipt")
+                != reservation.effect_launch_receipt
+                or outcome.get("effect_adoption_receipt")
+                != reservation.effect_adoption_receipt
+                or outcome.get("effect_quarantine_receipt")
+                != reservation.quarantine_receipt
+                or outcome.get(
+                    "effect_quarantine_terminalization_receipt"
+                )
+                != reservation.quarantine_terminalization_receipt
+                or outcome.get("fallback_returncode") != returncode
+                or not valid_agent_implementation_route_outcome(
+                    outcome,
+                    receipt=context.failure_receipt,
+                    route=context.route,
+                    runner_returncode=returncode,
+                )
+            ):
+                raise ValueError("protected terminal recovery outcome is invalid")
+            _release_recorded_codex_effect_cleanup(
+                reservation.effect_launch_receipt
+            )
+            print(render_agent_implementation_route_outcome(outcome), file=sys.stderr)
+            return returncode
+
+        quarantined_repair = reservation.state == "quarantined"
+        adopted = (
+            store.claim_quarantined_terminalization(reservation)
+            if quarantined_repair
+            else store.adopt_effect(reservation)
+        )
+        if not adopted.adoption_authorized:
+            raise ProviderAttemptStoreError(
+                (
+                    "quarantined effect remains created/running; exact "
+                    "operator reinspection is required"
+                    if quarantined_repair
+                    else "protected effect recovery owner transfer was denied"
+                )
+            )
+        active = adopted.reservation
+        inspection_receipt = (
+            active.quarantine_terminalization_receipt
+            if quarantined_repair
+            else active.effect_adoption_receipt
+        )
+        status_value = inspection_receipt.get("inspection_status")
+        if status_value == "absent":
+            returncode = 125
+            outcome_decision = "effect_not_created"
+            dispatched = False
+        elif status_value == "created":
+            if quarantined_repair:
+                raise ProviderAttemptStoreError(
+                    "quarantined created effect cannot be started"
+                )
+            returncode = _start_recorded_codex_effect(
+                active.effect_launch_receipt,
+                prompt=prompt,
+            )
+            outcome_decision = (
+                "fallback_succeeded" if returncode == 0 else "fallback_failed"
+            )
+            dispatched = True
+        elif status_value == "exited":
+            returncode = inspection_receipt.get("container_returncode")
+            if isinstance(returncode, bool) or not isinstance(returncode, int):
+                raise ValueError("protected effect recovery exit is invalid")
+            outcome_decision = (
+                "fallback_succeeded" if returncode == 0 else "fallback_failed"
+            )
+            dispatched = True
+        elif status_value == "running":
+            if quarantined_repair:
+                raise ProviderAttemptStoreError(
+                    "quarantined running effect requires later reinspection"
+                )
+            returncode = _wait_for_recorded_codex_effect(
+                active.effect_launch_receipt
+            )
+            outcome_decision = (
+                "fallback_succeeded" if returncode == 0 else "fallback_failed"
+            )
+            dispatched = True
+        else:
+            raise ValueError("protected effect recovery inspection is invalid")
+        outcome = build_agent_implementation_route_outcome(
+            receipt=context.failure_receipt,
+            route=context.route,
+            decision=outcome_decision,
+            verifier_status=context.decision.verifier_status,
+            fallback_dispatched=dispatched,
+            fallback_returncode=returncode,
+            decision_id=context.decision.content_id,
+            quota_evidence=context.quota_evidence,
+            reservation_id=active.reservation_id,
+            effect_launch_receipt=active.effect_launch_receipt,
+            effect_adoption_receipt=active.effect_adoption_receipt,
+            effect_quarantine_receipt=(
+                active.quarantine_receipt if quarantined_repair else None
+            ),
+            effect_quarantine_terminalization_receipt=(
+                active.quarantine_terminalization_receipt
+                if quarantined_repair
+                else None
+            ),
+        )
+        terminal = store.complete(
+            active,
+            returncode=returncode,
+            outcome=outcome,
+            completion_capability=adopted.completion_capability,
+        )
+        _release_recorded_codex_effect_cleanup(terminal.effect_launch_receipt)
+        print(render_agent_implementation_route_outcome(outcome), file=sys.stderr)
+        return returncode
+    except (OSError, TypeError, ValueError, ProviderAttemptStoreError) as exc:
+        print(f"protected effect recovery denied: {exc}", file=sys.stderr)
+        return 125
+
+
 def _run(args: argparse.Namespace, receipt_fd: int) -> int:
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.provider_attempt_store import (
+        DurableProviderAttemptCAS,
+        ProviderAttemptReservation,
+        ProviderAttemptStoreError,
+    )
     from ipfs_accelerate_py.llm_router import (
         LLMRouterError,
+        build_agent_implementation_effect_authorization_context,
+        build_agent_implementation_route_outcome,
         build_grok_cli_command,
         build_grok_cli_env,
         create_legacy_agent_implementation_route_invocation,
         decide_agent_implementation_fallback,
         find_grok_cli,
+        parse_agent_implementation_effect_authorization_context,
+        render_agent_implementation_route_outcome,
         resolve_agent_implementation_route,
         resolve_agent_implementation_route_binding,
+        valid_agent_implementation_route_outcome,
+        verify_agent_implementation_sealed_control_plane,
     )
 
     try:
@@ -3212,6 +4695,30 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     if not workspace.is_dir():
         print(f"workspace is not a directory: {workspace}", file=sys.stderr)
         return 2
+    recovery_locator_raw = str(
+        args.agent_implementation_recovery_json or ""
+    ).strip()
+    if recovery_locator_raw:
+        if (
+            codex_fallback_command
+            or str(args.grok_failure_receipt_nonce or "").strip()
+            or str(args.agent_implementation_route_json or "").strip()
+            or bool(args.canonical_legacy_preflight_route)
+            or str(args.grok_bin or "").strip()
+            or str(args.model or "").strip()
+            or args.require_command
+        ):
+            print(
+                "protected effect recovery forbids provider dispatch options",
+                file=sys.stderr,
+            )
+            return 2
+        return _run_protected_effect_recovery(
+            raw_locator=recovery_locator_raw,
+            workspace=workspace,
+        )
+    protected_recovery_reservation: ProviderAttemptReservation | None = None
+    protected_recovery_context = None
     if codex_fallback_command:
         route_repository_head = ""
         preflight_nonce = str(args.grok_failure_receipt_nonce or "").strip()
@@ -3260,7 +4767,139 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 route_plan = resolve_agent_implementation_route_binding(
                     route_binding,
                     repo_root=workspace,
+                    now_ms=int(time.time() * 1000),
+                    max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
                 )
+                invocation = route_plan.invocation_binding
+                sealed_match = re.fullmatch(
+                    r"/proc/self/fd/([0-9]+)",
+                    str(sys.argv[0]),
+                )
+                if invocation is not None:
+                    if sealed_match is None:
+                        raise ValueError(
+                            "protected route requires the sealed accepted-generation archive"
+                        )
+                    sealed_descriptor = int(sealed_match.group(1))
+                    if verify_agent_implementation_sealed_control_plane(
+                        invocation.control_plane,
+                        sealed_descriptor,
+                    ) != str(sys.argv[0]):
+                        raise ValueError(
+                            "protected route sealed archive identity drifted"
+                        )
+                    recovery_store = DurableProviderAttemptCAS(
+                        invocation.provider_attempt_store,
+                        expected_directory_identity=(
+                            invocation.provider_attempt_store_identity
+                        ),
+                    )
+                    existing = recovery_store.read(
+                        invocation.logical_attempt_id
+                    )
+                    if existing is not None and existing.state in {
+                        "effect_started",
+                        "terminal",
+                    }:
+                        launch_owner_pid = existing.effect_launch_receipt.get(
+                            "effect_owner_pid"
+                        )
+                        if (
+                            isinstance(launch_owner_pid, bool)
+                            or not isinstance(launch_owner_pid, int)
+                            or launch_owner_pid <= 0
+                            or existing.effect_started_at_ms is None
+                        ):
+                            raise ValueError(
+                                "protected recovery effect authority is invalid"
+                            )
+                        protected_recovery_context = (
+                            parse_agent_implementation_effect_authorization_context(
+                                existing.authorization_context,
+                                repo_root=workspace,
+                                effect_started_at_ms=(
+                                    existing.effect_started_at_ms
+                                ),
+                                expected_signer_parent_pid=launch_owner_pid,
+                                max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
+                            )
+                        )
+                        if protected_recovery_context is None:
+                            raise ValueError(
+                                "protected recovery authority could not be verified"
+                            )
+                        if (
+                            protected_recovery_context.route.invocation_binding
+                            is None
+                            or protected_recovery_context.route.invocation_binding.logical_attempt_id
+                            != invocation.logical_attempt_id
+                            or protected_recovery_context.decision.content_id
+                            != existing.decision_id
+                        ):
+                            raise ValueError(
+                                "protected recovery authority changed logical attempt"
+                            )
+                        historical_route = protected_recovery_context.route
+                        if existing.terminal:
+                            terminal_outcome = existing.terminal_outcome
+                            terminal_returncode = existing.terminal_returncode
+                            if (
+                                not isinstance(terminal_outcome, Mapping)
+                                or isinstance(terminal_returncode, bool)
+                                or not isinstance(terminal_returncode, int)
+                                or terminal_outcome.get("decision_id")
+                                != existing.decision_id
+                                or terminal_outcome.get("reservation_id")
+                                != existing.reservation_id
+                                or terminal_outcome.get("effect_launch_receipt")
+                                != existing.effect_launch_receipt
+                                or terminal_outcome.get("effect_adoption_receipt")
+                                != existing.effect_adoption_receipt
+                                or terminal_outcome.get(
+                                    "effect_quarantine_receipt"
+                                )
+                                != existing.quarantine_receipt
+                                or terminal_outcome.get(
+                                    "effect_quarantine_terminalization_receipt"
+                                )
+                                != existing.quarantine_terminalization_receipt
+                                or terminal_outcome.get("fallback_returncode")
+                                != terminal_returncode
+                                or not valid_agent_implementation_route_outcome(
+                                    terminal_outcome,
+                                    receipt=(
+                                        protected_recovery_context.failure_receipt
+                                    ),
+                                    route=historical_route,
+                                    runner_returncode=terminal_returncode,
+                                )
+                            ):
+                                raise ValueError(
+                                    "protected terminal recovery outcome is invalid"
+                                )
+                            try:
+                                _release_recorded_codex_effect_cleanup(
+                                    existing.effect_launch_receipt
+                                )
+                            except FileNotFoundError:
+                                pass
+                            print(
+                                render_agent_implementation_route_outcome(
+                                    terminal_outcome
+                                ),
+                                file=sys.stderr,
+                            )
+                            return terminal_returncode
+                        route_plan = historical_route
+                        protected_recovery_reservation = existing
+                    elif existing is not None:
+                        # A pre-effect reservation never authorizes a provider
+                        # restart.  Keep the logical attempt latched until its
+                        # exact original authority can be resumed or abandoned
+                        # by a dedicated reserved-only transition.
+                        raise ValueError(
+                            "protected recovery reservation is incomplete"
+                        )
                 route_repository_head = _repository_head(workspace)
             except (json.JSONDecodeError, OSError, ValueError) as exc:
                 print(str(exc), file=sys.stderr)
@@ -3285,6 +4924,82 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 route_plan = resolve_agent_implementation_route(
                     default_route="legacy"
                 )
+
+        def route_outcome_record(
+            *,
+            active_route,
+            receipt: Mapping[str, object],
+            quota_evidence_id: str,
+            decision: str,
+            verifier_status: str,
+            fallback_dispatched: bool,
+            fallback_returncode: int | None,
+            decision_id: str = "",
+            reservation: ProviderAttemptReservation | None = None,
+        ) -> dict[str, object]:
+            if active_route.invocation_binding is not None:
+                return build_agent_implementation_route_outcome(
+                    receipt=receipt,
+                    route=active_route,
+                    decision=decision,
+                    verifier_status=verifier_status,
+                    fallback_dispatched=fallback_dispatched,
+                    fallback_returncode=fallback_returncode,
+                    decision_id=(
+                        reservation.decision_id
+                        if reservation is not None
+                        else decision_id or preflight_decision_id
+                    ),
+                    quota_evidence=(
+                        preflight_quota_evidence
+                        if verifier_status == "confirmed_quota"
+                        else None
+                    ),
+                    reservation_id=(
+                        reservation.reservation_id if reservation else ""
+                    ),
+                    effect_launch_receipt=(
+                        reservation.effect_launch_receipt if reservation else {}
+                    ),
+                    effect_adoption_receipt=(
+                        getattr(reservation, "effect_adoption_receipt", {})
+                        if reservation
+                        else {}
+                    ),
+                    effect_quarantine_receipt=(
+                        getattr(reservation, "quarantine_receipt", {})
+                        if reservation
+                        else {}
+                    ),
+                    effect_quarantine_terminalization_receipt=(
+                        getattr(
+                            reservation,
+                            "quarantine_terminalization_receipt",
+                            {},
+                        )
+                        if reservation
+                        else {}
+                    ),
+                )
+            return build_grok_route_outcome(
+                receipt=receipt,
+                route_plan=active_route.as_outcome_dict(),
+                quota_evidence_id=quota_evidence_id,
+                decision=decision,
+                verifier_status=verifier_status,
+                fallback_dispatched=fallback_dispatched,
+                fallback_returncode=fallback_returncode,
+            )
+
+        def render_route_outcome_record(
+            outcome: Mapping[str, object],
+        ) -> str:
+            if outcome.get("schema") == (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-route-outcome@1"
+            ):
+                return render_agent_implementation_route_outcome(outcome)
+            return render_grok_route_outcome(outcome)
         try:
             _validate_codex_quota_fallback_command(
                 codex_fallback_command,
@@ -3311,11 +5026,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
             return 2
 
-    grok_bin = str(args.grok_bin).strip() or find_grok_cli() or ""
-    if not grok_bin:
+    grok_bin = (
+        ""
+        if protected_recovery_reservation is not None
+        else str(args.grok_bin).strip() or find_grok_cli() or ""
+    )
+    if not grok_bin and protected_recovery_reservation is None:
         print("grok CLI not found on PATH", file=sys.stderr)
         return 127
-    if codex_fallback_command:
+    if codex_fallback_command and protected_recovery_reservation is None:
         grok_bin = _resolve_trusted_grok_bin(
             configured=grok_bin,
             workspace=workspace,
@@ -3335,6 +5054,13 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or DEFAULT_GROK_MODEL
     )
+    if protected_recovery_context is not None:
+        model = str(
+            protected_recovery_reservation.authorization_context.get(
+                "expected_model"
+            )
+            or ""
+        )
     if codex_fallback_command and model != DEFAULT_GROK_MODEL:
         print(
             "Default Grok/Codex route requires primary model grok-4.5",
@@ -3372,13 +5098,39 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     preflight_receipt: dict[str, object] = {}
     preflight_verifier_status = "not_run"
     preflight_quota_evidence: object | None = None
+    preflight_decision_id = ""
     if codex_fallback_command:
-        try:
-            workspace_baseline = _workspace_content_fingerprint(workspace)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-        if preflight_nonce:
+        if protected_recovery_context is not None:
+            preflight_receipt = dict(
+                protected_recovery_context.failure_receipt
+            )
+            preflight_quota_evidence = (
+                protected_recovery_context.quota_evidence
+            )
+            preflight_verifier_status = (
+                protected_recovery_context.decision.verifier_status
+            )
+            preflight_decision_id = (
+                protected_recovery_context.decision.content_id
+            )
+            preflight_returncode = int(
+                protected_recovery_reservation.authorization_context.get(
+                    "expected_probe_returncode"
+                )
+            )
+            preflight_nonce = str(
+                protected_recovery_reservation.authorization_context.get(
+                    "expected_nonce"
+                )
+            )
+            preflight_fallback_reason = "recovering a claimed provider effect"
+        if protected_recovery_context is None:
+            try:
+                workspace_baseline = _workspace_content_fingerprint(workspace)
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+        if preflight_nonce and protected_recovery_context is None:
             try:
                 (
                     preflight_returncode,
@@ -3410,13 +5162,24 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     expected_nonce=preflight_nonce,
                     expected_model=model,
                     expected_probe_returncode=preflight_returncode,
+                    expected_invocation_binding=(
+                        route_plan.invocation_binding.signed_payload()
+                        if route_plan.invocation_binding is not None
+                        else None
+                    ),
+                    now_ms=int(time.time() * 1000),
+                    max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
                 )
+                preflight_decision_id = decision.content_id
                 if decision.requires_independent_quota_verification:
                     preflight_quota_evidence = (
                         _independently_verify_grok_quota(
                             grok_bin=grok_bin,
                             base_env=os.environ.copy(),
                             failure_receipt=preflight_receipt,
+                            invocation_binding=(
+                                route_plan.invocation_binding
+                            ),
                         )
                     )
                     decision = decide_agent_implementation_fallback(
@@ -3429,7 +5192,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         independent_quota_evidence=(
                             preflight_quota_evidence
                         ),
+                        expected_invocation_binding=(
+                            route_plan.invocation_binding.signed_payload()
+                            if route_plan.invocation_binding is not None
+                            else None
+                        ),
+                        now_ms=int(time.time() * 1000),
+                        max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
                     )
+                    preflight_decision_id = decision.content_id
                 preflight_verifier_status = decision.verifier_status
                 if not decision.authorized:
                     print(
@@ -3439,10 +5210,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                     if preflight_receipt:
                         print(
-                            render_grok_route_outcome(
-                                build_grok_route_outcome(
+                            render_route_outcome_record(
+                                route_outcome_record(
+                                    active_route=route_plan,
                                     receipt=preflight_receipt,
-                                    route_plan=route_plan.as_binding_dict(),
                                     quota_evidence_id=str(
                                         getattr(
                                             preflight_quota_evidence,
@@ -3475,10 +5246,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         file=sys.stderr,
                     )
                     print(
-                        render_grok_route_outcome(
-                            build_grok_route_outcome(
+                        render_route_outcome_record(
+                            route_outcome_record(
+                                active_route=route_plan,
                                 receipt=preflight_receipt,
-                                route_plan=route_plan.as_binding_dict(),
                                 quota_evidence_id=str(
                                     getattr(
                                         preflight_quota_evidence,
@@ -3510,9 +5281,42 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
 
         outcome_route = route_plan
         effect_verifier_status = preflight_verifier_status
+        effect_decision = None
+        attempt_store: DurableProviderAttemptCAS | None = None
+        attempt_reservation: ProviderAttemptReservation | None = None
+        completion_capability = ""
+        completed_terminal_outcome: dict[str, object] | None = None
+
+        invocation_binding = route_plan.invocation_binding
+        if invocation_binding is not None:
+            if (
+                _agent_prompt_cid(prompt) != invocation_binding.prompt_cid
+                or str(workspace) != invocation_binding.workspace_path
+                or (
+                    protected_recovery_reservation is None
+                    and _repository_head(workspace)
+                    != invocation_binding.baseline_commit
+                )
+            ):
+                print(
+                    "Signed invocation does not match task prompt/workspace baseline; "
+                    "Codex fallback is forbidden",
+                    file=sys.stderr,
+                )
+                return preflight_returncode
+            try:
+                attempt_store = DurableProviderAttemptCAS(
+                    invocation_binding.provider_attempt_store,
+                    expected_directory_identity=(
+                        invocation_binding.provider_attempt_store_identity
+                    ),
+                )
+            except ProviderAttemptStoreError as exc:
+                print(f"provider attempt CAS is unavailable: {exc}", file=sys.stderr)
+                return preflight_returncode
 
         def validate_effect_boundary() -> None:
-            nonlocal outcome_route, effect_verifier_status
+            nonlocal outcome_route, effect_verifier_status, effect_decision
             try:
                 hardlink_violations = _workspace_regular_file_hardlinks(
                     workspace
@@ -3540,6 +5344,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 fresh_route = resolve_agent_implementation_route_binding(
                     route_plan.as_binding_dict(),
                     repo_root=workspace,
+                    now_ms=int(time.time() * 1000),
+                    max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
                 )
                 if _repository_head(workspace) != route_repository_head:
                     raise _AgentRouteEffectDenied(
@@ -3553,11 +5359,22 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     expected_model=model,
                     expected_probe_returncode=preflight_returncode,
                     independent_quota_evidence=preflight_quota_evidence,
+                    expected_invocation_binding=(
+                        invocation_binding.signed_payload()
+                        if invocation_binding is not None
+                        else None
+                    ),
+                    now_ms=int(time.time() * 1000),
+                    max_age_ms=_SCOPED_ROUTE_MAX_AGE_MS,
                 )
                 if not effect_decision.authorized:
                     raise _AgentRouteEffectDenied(
                         "canonical typed fallback decision is no longer "
                         "authorized"
+                    )
+                if effect_decision.content_id != preflight_decision_id:
+                    raise _AgentRouteEffectDenied(
+                        "canonical typed fallback decision identity drifted"
                     )
                 _validate_codex_quota_fallback_command(
                     codex_fallback_command,
@@ -3573,6 +5390,239 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             outcome_route = fresh_route
             effect_verifier_status = effect_decision.verifier_status
 
+        def claim_provider_effect(
+            launch_context: Mapping[str, object],
+        ) -> None:
+            nonlocal attempt_reservation, completion_capability
+            if attempt_store is None:
+                return
+            if invocation_binding is None or effect_decision is None:
+                raise _AgentRouteEffectDenied(
+                    "provider effect lacks a fresh signed route decision"
+                )
+            # The reservation and effect_started CAS are intentionally
+            # adjacent and occur only after inert Docker creation plus the
+            # final router/lifecycle/freshness validation.  A failed post-
+            # create validation therefore cannot poison this logical attempt
+            # with a stale reserved decision.
+            authorization_context = (
+                build_agent_implementation_effect_authorization_context(
+                    route=outcome_route,
+                    repo_root=workspace,
+                    failure_receipt=preflight_receipt,
+                    decision=effect_decision,
+                    expected_nonce=preflight_nonce,
+                    expected_model=model,
+                    expected_probe_returncode=preflight_returncode,
+                    quota_evidence=(
+                        preflight_quota_evidence
+                        if effect_decision.verifier_status
+                        == "confirmed_quota"
+                        else None
+                    ),
+                )
+            )
+            reserved = attempt_store.reserve_or_adopt(
+                logical_attempt_id=invocation_binding.logical_attempt_id,
+                route_id=route_plan.route_id,
+                decision_id=effect_decision.content_id,
+                task_id=invocation_binding.task_id,
+                worktree_id=invocation_binding.worktree_id,
+                authorized=effect_decision.authorized,
+                authorization_context=authorization_context,
+                launch_context=launch_context,
+            )
+            attempt_reservation = reserved.reservation
+            completion_capability = reserved.completion_capability
+            if not reserved.launch_authorized:
+                raise _AgentRouteEffectDenied(
+                    "provider attempt was already claimed by another process"
+                )
+
+        def complete_provider_effect(returncode: int) -> None:
+            """Persist the terminal route record before Docker cleanup."""
+
+            nonlocal attempt_reservation, completed_terminal_outcome
+            if attempt_store is None:
+                return
+            if attempt_reservation is None or not completion_capability:
+                raise ProviderAttemptStoreError(
+                    "provider effect terminal completion lacks the CAS winner"
+                )
+            terminal_outcome = route_outcome_record(
+                active_route=outcome_route,
+                receipt=preflight_receipt,
+                quota_evidence_id=str(
+                    getattr(preflight_quota_evidence, "evidence_id", "")
+                ),
+                decision=(
+                    "fallback_succeeded" if returncode == 0 else "fallback_failed"
+                ),
+                verifier_status=effect_verifier_status,
+                fallback_dispatched=True,
+                fallback_returncode=returncode,
+                reservation=attempt_reservation,
+            )
+            attempt_reservation = attempt_store.complete(
+                attempt_reservation,
+                returncode=returncode,
+                outcome=terminal_outcome,
+                completion_capability=completion_capability,
+            )
+            completed_terminal_outcome = terminal_outcome
+
+        def adopt_started_effect(
+            reservation: ProviderAttemptReservation,
+            *,
+            winner_capability: str = "",
+        ) -> int:
+            """Adopt/terminalize the exact winner without starting Docker."""
+
+            nonlocal attempt_reservation, completion_capability
+            assert attempt_store is not None
+            adopted = attempt_store.adopt_effect(
+                reservation,
+                completion_capability=winner_capability,
+            )
+            if not adopted.adoption_authorized:
+                if adopted.reservation.terminal:
+                    terminal = adopted.reservation
+                    if terminal.terminal_outcome:
+                        print(
+                            render_route_outcome_record(
+                                terminal.terminal_outcome
+                            ),
+                            file=sys.stderr,
+                        )
+                    return int(terminal.terminal_returncode or 0)
+                raise ProviderAttemptStoreError(
+                    "provider effect adoption was not authorized"
+                )
+            attempt_reservation = adopted.reservation
+            completion_capability = adopted.completion_capability
+            adoption_receipt = attempt_reservation.effect_adoption_receipt
+            inspection_status = adoption_receipt.get("inspection_status")
+            if inspection_status == "absent":
+                fallback_returncode = 125
+                decision = "effect_not_created"
+                fallback_dispatched = False
+            elif inspection_status == "created":
+                fallback_returncode = _start_recorded_codex_effect(
+                    attempt_reservation.effect_launch_receipt,
+                    prompt=prompt,
+                )
+                decision = (
+                    "fallback_succeeded"
+                    if fallback_returncode == 0
+                    else "fallback_failed"
+                )
+                fallback_dispatched = True
+            elif inspection_status == "exited":
+                recorded_returncode = adoption_receipt.get(
+                    "container_returncode"
+                )
+                if (
+                    isinstance(recorded_returncode, bool)
+                    or not isinstance(recorded_returncode, int)
+                ):
+                    raise ProviderAttemptStoreError(
+                        "adopted Docker exit is invalid"
+                    )
+                fallback_returncode = recorded_returncode
+                decision = (
+                    "fallback_succeeded"
+                    if fallback_returncode == 0
+                    else "fallback_failed"
+                )
+                fallback_dispatched = True
+            elif inspection_status == "running":
+                while True:
+                    try:
+                        fallback_returncode = (
+                            _wait_for_recorded_codex_effect(
+                                attempt_reservation.effect_launch_receipt
+                            )
+                        )
+                        break
+                    except ValueError:
+                        # A transient wait error is not permission to replay
+                        # or fabricate completion. Re-inspect the same exact
+                        # container; only an observed terminal/absence can end
+                        # this owner generation.
+                        latest = _inspect_recorded_codex_effect(
+                            attempt_reservation.effect_launch_receipt,
+                            int(time.time() * 1000),
+                        )
+                        if latest.get("status") == "exited":
+                            fallback_returncode = int(
+                                latest.get("returncode")
+                            )
+                            break
+                        if latest.get("status") == "absent":
+                            raise ProviderAttemptStoreError(
+                                "running Docker effect disappeared without "
+                                "an exact terminal returncode"
+                            )
+                        time.sleep(1.0)
+                decision = (
+                    "fallback_succeeded"
+                    if fallback_returncode == 0
+                    else "fallback_failed"
+                )
+                fallback_dispatched = True
+            else:
+                raise ProviderAttemptStoreError(
+                    "effect adoption receipt is invalid"
+                )
+            terminal_outcome = route_outcome_record(
+                active_route=outcome_route,
+                receipt=preflight_receipt,
+                quota_evidence_id=str(
+                    getattr(preflight_quota_evidence, "evidence_id", "")
+                ),
+                decision=decision,
+                verifier_status=effect_verifier_status,
+                fallback_dispatched=fallback_dispatched,
+                fallback_returncode=fallback_returncode,
+                reservation=attempt_reservation,
+            )
+            attempt_reservation = attempt_store.complete(
+                attempt_reservation,
+                returncode=fallback_returncode,
+                outcome=terminal_outcome,
+                completion_capability=completion_capability,
+            )
+            _release_recorded_codex_effect_cleanup(
+                attempt_reservation.effect_launch_receipt
+            )
+            print(
+                render_route_outcome_record(terminal_outcome),
+                file=sys.stderr,
+            )
+            return fallback_returncode
+
+        if protected_recovery_reservation is not None:
+            attempt_reservation = protected_recovery_reservation
+            if attempt_reservation.state != "effect_started":
+                print(
+                    "protected provider recovery state cannot dispatch",
+                    file=sys.stderr,
+                )
+                return 125
+            print(
+                "Adopted an effect-started provider attempt before provider "
+                "preflight; replay is forbidden",
+                file=sys.stderr,
+            )
+            try:
+                return adopt_started_effect(attempt_reservation)
+            except (OSError, ProviderAttemptStoreError, ValueError) as exc:
+                print(
+                    f"unable to adopt exact provider effect: {exc}",
+                    file=sys.stderr,
+                )
+                return 125
+
         try:
             validate_effect_boundary()
         except _AgentRouteEffectDenied as exc:
@@ -3582,10 +5632,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 file=sys.stderr,
             )
             print(
-                render_grok_route_outcome(
-                    build_grok_route_outcome(
+                render_route_outcome_record(
+                    route_outcome_record(
+                        active_route=outcome_route,
                         receipt=preflight_receipt,
-                        route_plan=outcome_route.as_binding_dict(),
                         quota_evidence_id=str(
                             getattr(
                                 preflight_quota_evidence,
@@ -3603,6 +5653,43 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
             return preflight_returncode
 
+        if invocation_binding is not None:
+            assert attempt_store is not None
+            assert effect_decision is not None
+            try:
+                existing_reservation = attempt_store.read(
+                    invocation_binding.logical_attempt_id
+                )
+            except ProviderAttemptStoreError as exc:
+                print(f"provider attempt recovery denied: {exc}", file=sys.stderr)
+                return preflight_returncode
+            attempt_reservation = existing_reservation
+            if attempt_reservation is not None and attempt_reservation.terminal:
+                if attempt_reservation.terminal_outcome:
+                    print(
+                        render_route_outcome_record(
+                            attempt_reservation.terminal_outcome
+                        ),
+                        file=sys.stderr,
+                    )
+                return int(attempt_reservation.terminal_returncode or 0)
+            if (
+                attempt_reservation is not None
+                and attempt_reservation.state == "effect_started"
+            ):
+                print(
+                    "Adopted an effect-started provider attempt; Docker replay is forbidden",
+                    file=sys.stderr,
+                )
+                try:
+                    return adopt_started_effect(attempt_reservation)
+                except (OSError, ProviderAttemptStoreError, ValueError) as exc:
+                    print(
+                        f"unable to adopt exact provider effect: {exc}",
+                        file=sys.stderr,
+                    )
+                    return 125
+
         print(
             "Grok "
             + preflight_fallback_reason
@@ -3617,29 +5704,31 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 prompt_path=prompt_file,
                 base_env=os.environ.copy(),
                 pre_effect_validator=validate_effect_boundary,
+                effect_claim=claim_provider_effect,
+                effect_terminal=(
+                    complete_provider_effect
+                    if invocation_binding is not None
+                    else None
+                ),
+            )
+            terminal_outcome = completed_terminal_outcome or route_outcome_record(
+                active_route=outcome_route,
+                receipt=preflight_receipt,
+                quota_evidence_id=str(
+                    getattr(preflight_quota_evidence, "evidence_id", "")
+                ),
+                decision=(
+                    "fallback_succeeded"
+                    if fallback_returncode == 0
+                    else "fallback_failed"
+                ),
+                verifier_status=effect_verifier_status,
+                fallback_dispatched=True,
+                fallback_returncode=fallback_returncode,
+                reservation=attempt_reservation,
             )
             print(
-                render_grok_route_outcome(
-                    build_grok_route_outcome(
-                        receipt=preflight_receipt,
-                        route_plan=outcome_route.as_binding_dict(),
-                        quota_evidence_id=str(
-                            getattr(
-                                preflight_quota_evidence,
-                                "evidence_id",
-                                "",
-                            )
-                        ),
-                        decision=(
-                            "fallback_succeeded"
-                            if fallback_returncode == 0
-                            else "fallback_failed"
-                        ),
-                        verifier_status=effect_verifier_status,
-                        fallback_dispatched=True,
-                        fallback_returncode=fallback_returncode,
-                    )
-                ),
+                render_route_outcome_record(terminal_outcome),
                 file=sys.stderr,
             )
             return fallback_returncode
@@ -3650,10 +5739,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 file=sys.stderr,
             )
             print(
-                render_grok_route_outcome(
-                    build_grok_route_outcome(
+                render_route_outcome_record(
+                    route_outcome_record(
+                        active_route=outcome_route,
                         receipt=preflight_receipt,
-                        route_plan=outcome_route.as_binding_dict(),
                         quota_evidence_id=str(
                             getattr(
                                 preflight_quota_evidence,
@@ -3672,11 +5761,36 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             return preflight_returncode
         except (OSError, ValueError) as exc:
             print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
+            if (
+                attempt_store is not None
+                and attempt_reservation is not None
+                and attempt_reservation.state == "effect_started"
+                and completion_capability
+            ):
+                try:
+                    # The CAS winner must reconcile the exact container.  It
+                    # may not disguise a post-claim failure as an unlaunched
+                    # generic route error.
+                    return adopt_started_effect(
+                        attempt_reservation,
+                        winner_capability=completion_capability,
+                    )
+                except (
+                    OSError,
+                    ProviderAttemptStoreError,
+                    ValueError,
+                ) as reconciliation_error:
+                    print(
+                        "unable to reconcile claimed provider effect: "
+                        f"{reconciliation_error}",
+                        file=sys.stderr,
+                    )
+                    return 125
             print(
-                render_grok_route_outcome(
-                    build_grok_route_outcome(
+                render_route_outcome_record(
+                    route_outcome_record(
+                        active_route=outcome_route,
                         receipt=preflight_receipt,
-                        route_plan=outcome_route.as_binding_dict(),
                         quota_evidence_id=str(
                             getattr(
                                 preflight_quota_evidence,
@@ -3684,15 +5798,25 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                                 "",
                             )
                         ),
-                        decision="fallback_failed",
+                        decision=(
+                            "denied"
+                            if invocation_binding is not None
+                            else "fallback_failed"
+                        ),
                         verifier_status=effect_verifier_status,
                         fallback_dispatched=False,
-                        fallback_returncode=127,
+                        fallback_returncode=(
+                            None if invocation_binding is not None else 127
+                        ),
                     )
                 ),
                 file=sys.stderr,
             )
-            return 127
+            return (
+                preflight_returncode
+                if invocation_binding is not None
+                else 127
+            )
 
     prompt = sys.stdin.read()
     if not prompt.strip():
@@ -4109,6 +6233,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--agent-implementation-route-json",
         default="",
         help="Internal frozen llm_router side-effecting route binding.",
+    )
+    parser.add_argument(
+        "--agent-implementation-recovery-json",
+        default="",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG,
