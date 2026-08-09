@@ -7,6 +7,7 @@ import inspect
 from pathlib import Path
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.entrypoints import execution_plan
 from ipfs_accelerate_py.agent_supervisor.entrypoints.contracts import (
     InvocationBudget as CanonicalInvocationBudget,

@@ -29,8 +29,11 @@ if __package__ in {None, ""}:
     __package__ = "ipfs_accelerate_py.agent_supervisor.runtime"
 
 from ...llm_router import (
+    AgentImplementationControlPlanePin,
+    build_agent_implementation_control_plane_pin,
     load_agent_implementation_route_authorization,
     resolve_agent_implementation_route,
+    verify_agent_implementation_sealed_control_plane,
 )
 from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
@@ -38,7 +41,12 @@ from ..control.lifecycle_orchestrator import (
     ProcessIdentity,
     ProcessIdentityMismatch,
 )
-from ..core.wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
+from ..core.wrapper_utils import (
+    AgentSupervisorNamespacePaths,
+    apply_env_defaults,
+    env_str,
+)
+from ..merge.checkout_lock import serialized_lock_update
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 
 OutputFn = Callable[[str], None]
@@ -57,6 +65,86 @@ PLAN_BOUND_GATE_ENTRY_PATH = (
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
 )
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
+SEALED_CONTROL_PLANE_MODULES = frozenset(
+    {
+        "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+    }
+)
+SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import fcntl,hashlib,json,os,stat,sys
+def _pairs(items):
+    result={}
+    for key,value in items:
+        if key in result: raise SystemExit(78)
+        result[key]=value
+    return result
+try:
+    fd=int(sys.argv.pop(1)); pin=json.loads(sys.argv.pop(1),object_pairs_hook=_pairs)
+    module=sys.argv.pop(1); expected_bootstrap=sys.argv.pop(1); expected_python=sys.argv.pop(1)
+    if fd<3 or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: raise SystemExit(78)
+    if any(type(value) is not str or not value for value in pin.values()): raise SystemExit(78)
+    if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': raise SystemExit(78)
+    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: raise SystemExit(78)
+    command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
+    code_index=command_line.index(b'-c')+1
+    if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
+    executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
+    try:
+        executable_hash=hashlib.sha256()
+        while True:
+            block=os.read(executable,65536)
+            if not block: break
+            executable_hash.update(block)
+    finally: os.close(executable)
+    if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
+    required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
+    metadata=os.fstat(fd)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+    archive_hash=hashlib.sha256(); offset=0
+    while offset<metadata.st_size:
+        block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
+        if not block: break
+        archive_hash.update(block); offset+=len(block)
+    if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
+    archive='/proc/self/fd/'+str(fd)
+    path_metadata=os.stat(archive)
+    if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): raise SystemExit(78)
+    sys.path.insert(0,archive)
+    import importlib,importlib.machinery,runpy,types
+    import ipfs_accelerate_py as accepted_root
+    prefix=archive+'/'
+    root_origin=getattr(accepted_root,'__file__',None)
+    if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
+    package_name='ipfs_accelerate_py.agent_supervisor'; package_path=archive+'/ipfs_accelerate_py/agent_supervisor'
+    if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
+    package_file=package_path+'/__init__.py'; package_spec=importlib.machinery.ModuleSpec(package_name,loader=None,origin=package_file,is_package=True); package_spec.submodule_search_locations=[package_path]
+    package=types.ModuleType(package_name); package.__file__=package_file; package.__package__=package_name; package.__path__=[package_path]; package.__spec__=package_spec
+    sys.modules[package_name]=package; setattr(accepted_root,'agent_supervisor',package)
+    if module in sys.modules or package.__path__!=[package_path] or package.__spec__.origin!=package_file: raise SystemExit(78)
+    if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor':
+        timeout_name=package_name+'.todo_daemon.implementation_timeout'; timeout_alias=package_name+'.implementation_timeout'
+        timeout_module=importlib.import_module(timeout_name); timeout_origin=getattr(timeout_module,'__file__',None)
+        if type(timeout_origin) is not str or not timeout_origin.startswith(prefix): raise SystemExit(78)
+        sys.modules[timeout_alias]=timeout_module; setattr(package,'implementation_timeout',timeout_module)
+    namespace=runpy.run_module(module,run_name=module,alter_sys=True)
+    if module in sys.modules: raise SystemExit(78)
+    target_origin=namespace.get('__file__')
+    if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
+    for name,loaded in tuple(sys.modules.items()):
+        if name=='ipfs_accelerate_py' or name=='ipfs_accelerate_py.llm_router' or name.startswith('ipfs_accelerate_py.agent_supervisor'):
+            origin=getattr(loaded,'__file__',None)
+            if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
+    main=namespace.get('main')
+    if not callable(main): raise SystemExit(78)
+    raise SystemExit(main())
+except SystemExit: raise
+except BaseException: raise SystemExit(78)
+'''
+SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
+    "sha256:"
+    + hashlib.sha256(SEALED_CONTROL_PLANE_BOOTSTRAP.encode("utf-8")).hexdigest()
+)
 
 ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
     resolve_agent_implementation_route(default_route="legacy").as_environment()
@@ -75,6 +163,140 @@ _ROUTE_AUTHORIZATION_ENV_NAMES = (
 
 class _SupportsFileno(Protocol):
     def fileno(self) -> int: ...
+
+
+def _reject_duplicate_json_keys(
+    pairs: Sequence[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def parse_accepted_control_plane_pin(
+    value: str | Mapping[str, object],
+) -> AgentImplementationControlPlanePin:
+    """Strictly decode and revalidate one public control-plane pin DTO."""
+
+    if isinstance(value, str):
+        try:
+            payload = json.loads(
+                value,
+                object_pairs_hook=_reject_duplicate_json_keys,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("accepted control-plane pin is invalid JSON") from exc
+    elif type(value) is dict:
+        payload = dict(value)
+    else:
+        raise ValueError("accepted control-plane pin must be an exact object")
+    expected = {
+        "schema",
+        "runner_path",
+        "runner_sha256",
+        "capsule_root",
+        "capsule_id",
+        "source_head",
+        "source_tree",
+        "archive_sha256",
+    }
+    if (
+        type(payload) is not dict
+        or set(payload) != expected
+        or any(type(payload[name]) is not str or not payload[name] for name in expected)
+    ):
+        raise ValueError("accepted control-plane pin fields are not exact")
+    pin = AgentImplementationControlPlanePin(**payload)
+    verified = build_agent_implementation_control_plane_pin(
+        runner_path=pin.runner_path,
+        capsule_root=pin.capsule_root,
+    )
+    if verified != pin:
+        raise ValueError("accepted control-plane pin changed during decode")
+    return pin
+
+
+def accepted_control_plane_pin_json(
+    pin: AgentImplementationControlPlanePin,
+) -> str:
+    return json.dumps(
+        pin.as_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
+    executable = Path(python_executable).resolve(strict=True)
+    metadata = os.stat(executable, follow_symlinks=False)
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError("sealed control-plane Python executable is not regular")
+    digest = hashlib.sha256()
+    descriptor = os.open(
+        executable,
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        before = os.fstat(descriptor)
+        while True:
+            block = os.read(descriptor, 65_536)
+            if not block:
+                break
+            digest.update(block)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if identity(before) != identity(after) or identity(before) != identity(metadata):
+        raise ValueError("sealed control-plane Python executable changed")
+    return str(executable), "sha256:" + digest.hexdigest()
+
+
+def build_sealed_control_plane_module_command(
+    *,
+    python_executable: str,
+    pin: AgentImplementationControlPlanePin,
+    descriptor: int,
+    module_name: str,
+    argv: Sequence[str],
+) -> list[str]:
+    """Build one isolated, sealed-fd module launch with self-verifying bytes."""
+
+    if module_name not in SEALED_CONTROL_PLANE_MODULES:
+        raise ValueError("sealed control-plane target module is not allowed")
+    verified_path = verify_agent_implementation_sealed_control_plane(
+        pin,
+        descriptor,
+    )
+    if verified_path != f"/proc/self/fd/{descriptor}":
+        raise ValueError("sealed control-plane descriptor path drifted")
+    executable, executable_sha256 = _python_executable_sha256(python_executable)
+    return [
+        executable,
+        "-I",
+        "-c",
+        SEALED_CONTROL_PLANE_BOOTSTRAP,
+        str(descriptor),
+        accepted_control_plane_pin_json(pin),
+        module_name,
+        SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256,
+        executable_sha256,
+        *[str(item) for item in argv],
+    ]
 
 
 def _env_int(name: str, default: int) -> int:
@@ -1962,8 +2184,13 @@ def build_repo_implementation_multi_supervisor_launcher(
 ) -> ConfiguredMultiSupervisorLauncher:
     """Build a repo-local implementation multi-supervisor launcher."""
 
-    from ..core.wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
-    from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
+    from ..core.wrapper_utils import (
+        build_repo_runtime_environment_callbacks,
+        repo_script_command,
+    )
+    from ..integrations.llm_merge_resolver_fallback import (
+        llm_merge_resolver_fallback_command,
+    )
 
     llm_merge_resolver_command = implementation_supervisor_llm_merge_resolver_command
     if not llm_merge_resolver_command and resolver_script_path:
@@ -2122,9 +2349,124 @@ def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
     retains its projection.
     """
 
-    if read_pid_file(pid_path) != expected_pid:
+    try:
+        with serialized_lock_update(pid_path):
+            payload, evidence = _read_stable_regular_bytes(
+                pid_path,
+                max_bytes=32,
+            )
+            if payload != f"{int(expected_pid)}\n".encode("ascii"):
+                return False
+            observed = os.lstat(pid_path)
+            if (
+                evidence.get("state") != "present"
+                or int(evidence.get("device", -1)) != int(observed.st_dev)
+                or int(evidence.get("inode", -1)) != int(observed.st_ino)
+                or stat.S_ISLNK(observed.st_mode)
+                or not stat.S_ISREG(observed.st_mode)
+                or int(observed.st_nlink) != 1
+                or int(observed.st_uid) != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) & 0o022
+            ):
+                return False
+            pid_path.unlink()
+            return True
+    except (_StableArtifactReadError, OSError, UnicodeError, ValueError):
         return False
-    return remove_runtime_marker(pid_path)
+
+
+def _reserve_owned_pid_projection(
+    pid_path: Path,
+) -> tuple[int, tuple[int, int]]:
+    """Reserve a no-follow, owner-only PID projection before process birth."""
+
+    path = Path(pid_path)
+    with serialized_lock_update(path):
+        try:
+            existing = os.lstat(path)
+        except FileNotFoundError:
+            existing = None
+        except OSError as exc:
+            raise ValueError("cannot inspect plan-bound PID projection") from exc
+        if existing is not None:
+            if stat.S_ISLNK(existing.st_mode):
+                kind = "symbolic link"
+            elif not stat.S_ISREG(existing.st_mode):
+                kind = "non-regular file"
+            elif int(existing.st_nlink) != 1:
+                kind = "hardlinked file"
+            else:
+                kind = "existing file"
+            raise ValueError(f"plan-bound PID projection is an unsafe {kind}")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags, 0o600)
+        except OSError as exc:
+            raise ValueError("cannot reserve plan-bound PID projection") from exc
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or int(opened.st_nlink) != 1
+            or int(opened.st_uid) != os.geteuid()
+            or stat.S_IMODE(opened.st_mode) != 0o600
+        ):
+            os.close(descriptor)
+            raise ValueError("plan-bound PID reservation is not owner-only")
+        return descriptor, (int(opened.st_dev), int(opened.st_ino))
+
+
+def _publish_reserved_pid_projection(
+    pid_path: Path,
+    descriptor: int,
+    identity: tuple[int, int],
+    pid: int,
+) -> None:
+    """Publish a PID only while fd and pathname retain the reservation."""
+
+    payload = f"{int(pid)}\n".encode("ascii")
+    written = 0
+    while written < len(payload):
+        count = os.write(descriptor, payload[written:])
+        if count <= 0:
+            raise ValueError("plan-bound PID projection write was incomplete")
+        written += count
+    os.fsync(descriptor)
+    opened = os.fstat(descriptor)
+    observed = os.lstat(pid_path)
+    if (
+        (int(opened.st_dev), int(opened.st_ino)) != identity
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+        or stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or int(observed.st_nlink) != 1
+        or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or int(observed.st_size) != len(payload)
+    ):
+        raise ValueError("plan-bound PID projection changed during publication")
+
+
+def _discard_reserved_pid_projection(
+    pid_path: Path,
+    identity: tuple[int, int],
+) -> None:
+    """Remove only the pathname that still owns a failed reservation."""
+
+    with serialized_lock_update(pid_path):
+        try:
+            observed = os.lstat(pid_path)
+        except FileNotFoundError:
+            return
+        if (
+            (int(observed.st_dev), int(observed.st_ino)) == identity
+            and stat.S_ISREG(observed.st_mode)
+            and int(observed.st_nlink) == 1
+            and int(observed.st_uid) == os.geteuid()
+            and stat.S_IMODE(observed.st_mode) == 0o600
+        ):
+            pid_path.unlink()
 
 
 def daemon_pid_health_fields(
@@ -2657,6 +2999,8 @@ def start_track(
     repo_root: Path,
     common_args: Sequence[str],
     python_executable: str = "python3",
+    accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
+    accepted_control_plane_descriptor: int = -1,
     output: OutputFn = _default_output,
 ) -> subprocess.Popen[bytes]:
     """Start one marker-bound supervisor tree and write its PID projection.
@@ -2675,7 +3019,7 @@ def start_track(
     plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
     gate_read_fd: int | None = None
     gate_write_fd: int | None = None
-    accepted_tree_root = Path(__file__).absolute().parents[3]
+    accepted_tree_root = _canonical_accepted_tree_root(Path(repo_root))
     command = child_command
     if plan_bound_dispatch:
         accepted_roots = _profile_option_values(
@@ -2702,12 +3046,11 @@ def start_track(
             resolved.extra_args,
             "--state-dir",
         )
-        canonical_repo_root = _canonical_accepted_tree_root(Path(repo_root))
+        canonical_repo_root = accepted_tree_root
         if (
             resolved.module_name
             or len(accepted_roots) != 1
             or Path(accepted_roots[0]) != canonical_repo_root
-            or canonical_repo_root != accepted_tree_root
             or Path(python_executable).resolve(strict=False)
             != Path(sys.executable).resolve(strict=False)
             or resolved.script_path
@@ -2722,10 +3065,26 @@ def start_track(
             raise ValueError(
                 "plan-bound dispatch is not pinned to the accepted tree entry"
             )
+        if accepted_control_plane_pin is None:
+            raise ValueError(
+                "plan-bound dispatch requires a sealed accepted control plane"
+            )
+        verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            accepted_control_plane_descriptor,
+        )
+        if (
+            accepted_control_plane_pin.source_head != source_heads[0]
+            or accepted_control_plane_pin.source_tree != source_trees[0]
+        ):
+            raise ValueError(
+                "plan-bound slice differs from the accepted control-plane generation"
+            )
         _validate_plan_bound_accepted_tree(
             accepted_tree_root=accepted_tree_root,
             source_head=source_heads[0],
             source_tree=source_trees[0],
+            control_plane_pin=accepted_control_plane_pin,
         )
         plan_store = _resolve_path(repo_root, Path(store_paths[0]))
         state_dir = _resolve_path(repo_root, Path(state_dirs[0]))
@@ -2759,25 +3118,49 @@ def start_track(
         # releases one byte.  Thus even a /proc identity failure cannot race a
         # daemon preclaim or provider effect.
         gate_read_fd, gate_write_fd = os.pipe()
-        child_command = [
-            python_executable,
-            "-I",
-            str(resolved.script_path),
+        supervisor_argv = [
             *common_args,
             *resolved.extra_args,
+            "--accepted-control-plane-pin-json",
+            accepted_control_plane_pin_json(accepted_control_plane_pin),
+            "--accepted-control-plane-fd",
+            str(accepted_control_plane_descriptor),
         ]
-        command = [
-            python_executable,
-            "-I",
-            str(accepted_tree_root / PLAN_BOUND_GATE_ENTRY_PATH),
+        child_command = build_sealed_control_plane_module_command(
+            python_executable=python_executable,
+            pin=accepted_control_plane_pin,
+            descriptor=accepted_control_plane_descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=supervisor_argv,
+        )
+        gate_argv = [
             PLAN_BOUND_LAUNCH_GATE_MARKER,
             str(gate_read_fd),
             str(accepted_tree_root),
+            accepted_control_plane_pin_json(accepted_control_plane_pin),
+            str(accepted_control_plane_descriptor),
             "--",
             *child_command,
         ]
+        command = build_sealed_control_plane_module_command(
+            python_executable=python_executable,
+            pin=accepted_control_plane_pin,
+            descriptor=accepted_control_plane_descriptor,
+            module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
+            argv=gate_argv,
+        )
     resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
     resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_reservation_fd: int | None = None
+    pid_reservation_identity: tuple[int, int] | None = None
+    if plan_bound_dispatch:
+        (
+            pid_reservation_fd,
+            pid_reservation_identity,
+        ) = _reserve_owned_pid_projection(resolved.supervisor_pid_path)
     configuration_root = "sha256:" + hashlib.sha256(
         json.dumps(
             command, separators=(",", ":"), ensure_ascii=False
@@ -2807,7 +3190,17 @@ def start_track(
             else ""
         ),
     )
-    out_handle = resolved.log_path.open("ab")
+    try:
+        out_handle = resolved.log_path.open("ab")
+    except BaseException:
+        if pid_reservation_fd is not None:
+            os.close(pid_reservation_fd)
+        if pid_reservation_identity is not None:
+            _discard_reserved_pid_projection(
+                resolved.supervisor_pid_path,
+                pid_reservation_identity,
+            )
+        raise
     launch_environment = profile.launch_environment(0)
     if plan_bound_dispatch:
         # Isolated absolute-script launch bootstraps only its own accepted
@@ -2825,13 +3218,24 @@ def start_track(
                 stdout=out_handle,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(gate_read_fd,) if gate_read_fd is not None else (),
+                pass_fds=(
+                    (gate_read_fd, accepted_control_plane_descriptor)
+                    if gate_read_fd is not None
+                    else (accepted_control_plane_descriptor,)
+                ),
             )
         except BaseException:
             if gate_read_fd is not None:
                 os.close(gate_read_fd)
             if gate_write_fd is not None:
                 os.close(gate_write_fd)
+            if pid_reservation_fd is not None:
+                os.close(pid_reservation_fd)
+            if pid_reservation_identity is not None:
+                _discard_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_identity,
+                )
             raise
     finally:
         out_handle.close()
@@ -2868,9 +3272,21 @@ def start_track(
                 "_agent_supervisor_process_birth_cid",
                 birth_cid,
             )
-            resolved.supervisor_pid_path.write_text(
-                f"{process.pid}\n", encoding="utf-8"
+            if (
+                pid_reservation_fd is None
+                or pid_reservation_identity is None
+            ):
+                raise AssertionError(
+                    "plan-bound PID projection was not reserved"
+                )
+            _publish_reserved_pid_projection(
+                resolved.supervisor_pid_path,
+                pid_reservation_fd,
+                pid_reservation_identity,
+                int(process.pid),
             )
+            os.close(pid_reservation_fd)
+            pid_reservation_fd = None
             if os.write(
                 gate_write_fd, PLAN_BOUND_LAUNCH_GATE_SUCCESS
             ) != len(PLAN_BOUND_LAUNCH_GATE_SUCCESS):
@@ -2882,10 +3298,17 @@ def start_track(
                 pass
             gate_write_fd = None
             all_trees_fenced = _fence_unreleased_plan_bound_process(process)
-            _remove_owned_pid_projection(
-                resolved.supervisor_pid_path,
-                int(process.pid),
-            )
+            if pid_reservation_fd is not None:
+                try:
+                    os.close(pid_reservation_fd)
+                except OSError:
+                    pass
+                pid_reservation_fd = None
+            if pid_reservation_identity is not None:
+                _discard_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_identity,
+                )
             raise PlanBoundProcessBirthError(
                 "plan-bound process birth capture failed; launch remained gated",
                 pid=int(process.pid),
@@ -3069,13 +3492,26 @@ def _validate_plan_bound_accepted_tree(
     accepted_tree_root: Path,
     source_head: str,
     source_tree: str,
+    control_plane_pin: AgentImplementationControlPlanePin | None = None,
 ) -> None:
     """Bind both executable plan-bound entries to one clean accepted HEAD."""
 
     root = _canonical_accepted_tree_root(accepted_tree_root)
-    module_root = _canonical_accepted_tree_root(Path(__file__).absolute().parents[3])
-    if root != module_root:
-        raise ValueError("plan-bound accepted tree is not the live module root")
+    if control_plane_pin is None:
+        module_root = _canonical_accepted_tree_root(
+            Path(__file__).absolute().parents[3]
+        )
+        if root != module_root:
+            raise ValueError(
+                "plan-bound accepted tree is not the live module root"
+            )
+    elif (
+        control_plane_pin.source_head != source_head
+        or control_plane_pin.source_tree != source_tree
+    ):
+        raise ValueError(
+            "plan-bound accepted tree differs from the sealed control plane"
+        )
     if re.fullmatch(r"[0-9a-f]{40,64}", source_head) is None:
         raise ValueError("plan-bound source HEAD is not a Git object identity")
     if re.fullmatch(r"[0-9a-f]{40,64}", source_tree) is None:
@@ -3276,6 +3712,8 @@ def run_supervisor_tracks(
     label: str = "multi-supervisor",
     exit_when_all_tracks_terminal: bool = False,
     plan_bound_children: Sequence[PlanBoundSupervisorChild] = (),
+    accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
+    accepted_control_plane_descriptor: int = -1,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
@@ -3287,6 +3725,15 @@ def run_supervisor_tracks(
     }
     if len(plan_children_by_name) != len(tuple(plan_bound_children)):
         raise ValueError("plan-bound child names must be unique")
+    if plan_bound_children:
+        if accepted_control_plane_pin is None:
+            raise ValueError(
+                "plan-bound wave requires a sealed accepted control plane"
+            )
+        verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            accepted_control_plane_descriptor,
+        )
     initial_track_names = {track.name for track in managed_tracks}
     if not set(plan_children_by_name).issubset(initial_track_names):
         raise ValueError("every plan-bound child must own one launched track")
@@ -3299,7 +3746,29 @@ def run_supervisor_tracks(
     if master_pid_path is not None:
         resolved_master_pid = _resolve_path(resolved_repo_root, master_pid_path)
         resolved_master_pid.parent.mkdir(parents=True, exist_ok=True)
-        resolved_master_pid.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        if plan_bound_children:
+            master_descriptor, master_identity = (
+                _reserve_owned_pid_projection(resolved_master_pid)
+            )
+            try:
+                _publish_reserved_pid_projection(
+                    resolved_master_pid,
+                    master_descriptor,
+                    master_identity,
+                    os.getpid(),
+                )
+            except BaseException:
+                _discard_reserved_pid_projection(
+                    resolved_master_pid,
+                    master_identity,
+                )
+                raise
+            finally:
+                os.close(master_descriptor)
+        else:
+            resolved_master_pid.write_text(
+                f"{os.getpid()}\n", encoding="utf-8"
+            )
     processes: dict[str, subprocess.Popen[bytes]] = {}
 
     def _handle_signal(signum: int, _frame: object) -> None:
@@ -3362,6 +3831,10 @@ def run_supervisor_tracks(
                     repo_root=resolved_repo_root,
                     common_args=common_args,
                     python_executable=python_executable,
+                    accepted_control_plane_pin=accepted_control_plane_pin,
+                    accepted_control_plane_descriptor=(
+                        accepted_control_plane_descriptor
+                    ),
                     output=output,
                 )
                 reassignment_count += 1
@@ -3391,6 +3864,10 @@ def run_supervisor_tracks(
                 repo_root=resolved_repo_root,
                 common_args=common_args,
                 python_executable=python_executable,
+                accepted_control_plane_pin=accepted_control_plane_pin,
+                accepted_control_plane_descriptor=(
+                    accepted_control_plane_descriptor
+                ),
                 output=output,
             )
 
@@ -3456,6 +3933,10 @@ def run_supervisor_tracks(
                             repo_root=resolved_repo_root,
                             common_args=common_args,
                             python_executable=python_executable,
+                            accepted_control_plane_pin=accepted_control_plane_pin,
+                            accepted_control_plane_descriptor=(
+                                accepted_control_plane_descriptor
+                            ),
                             output=output,
                         )
                     elif exit_when_all_tracks_terminal:
@@ -3538,6 +4019,10 @@ def run_supervisor_tracks(
                     repo_root=resolved_repo_root,
                     common_args=common_args,
                     python_executable=python_executable,
+                    accepted_control_plane_pin=accepted_control_plane_pin,
+                    accepted_control_plane_descriptor=(
+                        accepted_control_plane_descriptor
+                    ),
                     output=output,
                 )
             dispatch_pending_reassignments()
@@ -3659,6 +4144,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--plan-bound-wave",
         action="store_true",
         help="Run only the published nonempty slices, then return for coordinator replan.",
+    )
+    parser.add_argument(
+        "--accepted-control-plane-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--accepted-control-plane-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--common-arg", action="append", default=[])
     parser.add_argument(
@@ -3874,48 +4370,71 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     """Release exactly one accepted-tree child after parent birth capture."""
 
     tokens = tuple(str(item) for item in argv)
-    if len(tokens) < 5 or tokens[2] != "--":
+    if len(tokens) < 7 or tokens[4] != "--":
         return 78
     try:
         gate_fd = int(tokens[0])
+        control_plane_pin = parse_accepted_control_plane_pin(tokens[2])
+        control_plane_descriptor = int(tokens[3])
+        verify_agent_implementation_sealed_control_plane(
+            control_plane_pin,
+            control_plane_descriptor,
+        )
     except ValueError:
         return 78
     try:
         accepted_tree_root = _canonical_accepted_tree_root(Path(tokens[1]))
-        expected_tree_root = _canonical_accepted_tree_root(
-            Path(__file__).absolute().parents[3]
-        )
     except ValueError:
         return 78
-    child_command = list(tokens[3:])
+    child_command = list(tokens[5:])
+    try:
+        expected_prefix = build_sealed_control_plane_module_command(
+            python_executable=child_command[0],
+            pin=control_plane_pin,
+            descriptor=control_plane_descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=(),
+        )
+    except (IndexError, OSError, ValueError):
+        return 78
+    prefix_length = len(expected_prefix)
+    if child_command[:prefix_length] != expected_prefix:
+        return 78
+    child_argv = child_command[prefix_length:]
     try:
         source_heads = _profile_option_values(
-            child_command,
+            child_argv,
             "--plan-bound-source-head",
         )
         source_trees = _profile_option_values(
-            child_command,
+            child_argv,
             "--plan-bound-source-tree",
         )
         child_roots = _profile_option_values(
-            child_command,
+            child_argv,
             "--plan-bound-accepted-tree-root",
         )
     except ValueError:
         return 78
     if (
         gate_fd < 3
-        or accepted_tree_root != expected_tree_root
-        or "--plan-bound-dispatch" not in child_command
-        or len(child_command) < 4
-        or Path(child_command[0]).resolve(strict=False)
-        != Path(sys.executable).resolve(strict=False)
-        or child_command[1] != "-I"
-        or Path(child_command[2]).resolve(strict=False)
-        != expected_tree_root / PLAN_BOUND_ACCEPTED_ENTRY_PATH
-        or child_roots != (str(expected_tree_root),)
+        or control_plane_descriptor < 3
+        or gate_fd == control_plane_descriptor
+        or "--plan-bound-dispatch" not in child_argv
+        or child_roots != (str(accepted_tree_root),)
         or len(source_heads) != 1
         or len(source_trees) != 1
+        or (
+            source_heads[0],
+            source_trees[0],
+        )
+        != (
+            control_plane_pin.source_head,
+            control_plane_pin.source_tree,
+        )
     ):
         return 78
     try:
@@ -3939,11 +4458,18 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             accepted_tree_root=accepted_tree_root,
             source_head=source_heads[0],
             source_tree=source_trees[0],
+            control_plane_pin=control_plane_pin,
         )
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError):
         return 78
     try:
-        os.execvpe(child_command[0], child_command, dict(os.environ))
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+        }
+        environment["PATH"] = "/usr/bin:/bin"
+        os.execvpe(child_command[0], child_command, environment)
     except OSError:
         return 78
     return 78
@@ -4007,6 +4533,31 @@ def main(argv: list[str] | None = None) -> int:
         PlanBoundSupervisorChild.from_cli_record(record)
         for record in getattr(args, "implementation_plan_bound_track", ())
     )
+    accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
+    if plan_bound_children:
+        try:
+            accepted_control_plane_pin = parse_accepted_control_plane_pin(
+                args.accepted_control_plane_pin_json
+            )
+            verify_agent_implementation_sealed_control_plane(
+                accepted_control_plane_pin,
+                args.accepted_control_plane_fd,
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(f"sealed accepted control plane is invalid: {exc}")
+        generations = {
+            (child.source_head, child.source_tree)
+            for child in plan_bound_children
+        }
+        if generations != {
+            (
+                accepted_control_plane_pin.source_head,
+                accepted_control_plane_pin.source_tree,
+            )
+        }:
+            parser.error(
+                "plan-bound slices differ from the accepted control-plane generation"
+            )
     tracks = tracks_from_parsed_args(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
@@ -4033,6 +4584,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.exit_when_all_tracks_terminal or args.plan_bound_wave
             ),
             plan_bound_children=plan_bound_children,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            accepted_control_plane_descriptor=args.accepted_control_plane_fd,
             output=output,
         )
     if (
