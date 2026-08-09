@@ -921,15 +921,20 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
         "ASE3-031",
         "ASE3-032",
     }
-    # ASE3-027 sealed generations reconstruct from git even while ready=False.
+    # ASE3-027 final blob freeze is sealed; generations and blobs verify.
     ase3027 = products["ASE3-027"]
+    assert ase3027["sealed_ready_flag"] is True
     assert ase3027["generation_count"] == 2
     assert ase3027["generations"][0]["ok"] is True
     assert ase3027["generations"][1]["ok"] is True
     assert ase3027["final_blob_count"] == 5
     assert ase3027["blob_errors"] == []
+    # Still blocked for Q: product-generation@1 needs independent replay role.
     assert any("ASE3-019" in item for item in report["blockers"])
-    assert any("ASE3-027" in item for item in report["blockers"])
+    assert any(
+        "ASE3-027" in item and "product-generation@1" in item
+        for item in report["blockers"]
+    )
 
 
 def test_cli_readiness_command_is_available_without_injected_handlers(
