@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -25,6 +27,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 CURRENT_MAIN_BASELINE_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.prompt-v3-current-main-baseline@1"
@@ -41,6 +46,9 @@ CLEAN_WORKTREE_RECEIPT_SCHEMA: Final = (
 CONVERGENCE_MANIFEST_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@1"
 )
+ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2"
+)
 CONVERGENCE_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-report@1"
 )
@@ -53,6 +61,30 @@ FALSE_COMPLETION_RECOVERY_SCHEMA: Final = (
 )
 PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@1"
+)
+PROVIDER_FALLBACK_POLICY_AUTHORIZATION_V2_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@2"
+)
+PROVIDER_FALLBACK_POLICY_REVIEW_V2_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-review@2"
+)
+LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.local-profile-lifecycle-root-pin@1"
+)
+LOCAL_PROFILE_LIFECYCLE_WITNESS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/local-profile-lifecycle-witness@1"
+)
+LOCAL_DEV_PROFILE_V5_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/local-dev-profile@5"
+)
+LOCAL_PROFILE_LIFECYCLE_ANCHOR_V3_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/local-profile-lifecycle-anchor@3"
+)
+LOCAL_PROFILE_ROOT_REGISTRY_V2_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/local-profile-root-registry@2"
+)
+LOCAL_PROFILE_DID_STATE_V1_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/local-profile-did-state@1"
 )
 ASE3_019_ATTEMPT2_SELF_HOST_INCIDENT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.ase3-019-attempt2-self-host-incident@1"
@@ -89,6 +121,23 @@ SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME: Final = (
 )
 OPERATOR_SALVAGE_RECEIPT_019_FILENAME: Final = (
     "operator_salvage_receipt_ase3_019_20260808.json"
+)
+OPERATOR_ACCEPTANCE_RECEIPT_023_FILENAME: Final = (
+    "operator_acceptance_receipt_ase3_023_20260808.json"
+)
+OPERATOR_ACCEPTANCE_RECEIPT_027_FILENAME: Final = (
+    "operator_acceptance_receipt_ase3_027_20260808.json"
+)
+OPERATOR_SALVAGE_RECEIPT_019_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.ase3-019-operator-salvage@1"
+)
+OPERATOR_REPAIR_ACCEPTANCE_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.operator-repair-acceptance@1"
+)
+OPERATOR_ACCEPTANCE_RECEIPT_FILENAMES: Final = (
+    OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
+    OPERATOR_ACCEPTANCE_RECEIPT_023_FILENAME,
+    OPERATOR_ACCEPTANCE_RECEIPT_027_FILENAME,
 )
 JSON_ARTIFACT_FILENAMES: Final = (
     "current_main_baseline.json",
@@ -134,6 +183,34 @@ PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH: Final = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     + PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
 )
+_CONVERGENCE_RELATIVE_ROOT: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence"
+)
+LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME: Final = (
+    "local_profile_lifecycle_root_pin_20260808.json"
+)
+LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME: Final = (
+    "local_operator_lifecycle_witness.json"
+)
+LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH: Final = (
+    f"{_CONVERGENCE_RELATIVE_ROOT}/{LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME}"
+)
+LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH: Final = (
+    f"{_CONVERGENCE_RELATIVE_ROOT}/{LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME}"
+)
+PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH: Final = (
+    f"{_CONVERGENCE_RELATIVE_ROOT}/"
+    f"{PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME}"
+)
+OPERATOR_ACCEPTANCE_RECEIPT_RELATIVE_PATHS: Final = tuple(
+    f"{_CONVERGENCE_RELATIVE_ROOT}/{filename}"
+    for filename in OPERATOR_ACCEPTANCE_RECEIPT_FILENAMES
+)
+ACCEPTANCE_CHILD_CHANGED_PATHS: Final = (
+    *OPERATOR_ACCEPTANCE_RECEIPT_RELATIVE_PATHS,
+    f"{_CONVERGENCE_RELATIVE_ROOT}/{MANIFEST_FILENAME}",
+    PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix(),
+)
 DEFAULT_ARTIFACT_ROOT: Final = (
     DEFAULT_REPOSITORY_ROOT
     / "data"
@@ -142,7 +219,14 @@ DEFAULT_ARTIFACT_ROOT: Final = (
     / "convergence"
 )
 MAX_EVIDENCE_SNAPSHOT_BYTES: Final[int] = 1_048_576
+MAX_OPERATOR_ACCEPTANCE_RECEIPT_BYTES: Final[int] = 256 * 1024
+MAX_PROVIDER_FALLBACK_AUTHORIZATION_BYTES: Final[int] = 128 * 1024
+MAX_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_BYTES: Final[int] = 32 * 1024
+MAX_LOCAL_OPERATOR_LIFECYCLE_WITNESS_BYTES: Final[int] = 128 * 1024
 _EVIDENCE_SNAPSHOT_BYTE_BOUNDS: Final = {
+    PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME: (
+        MAX_PROVIDER_FALLBACK_AUTHORIZATION_BYTES
+    ),
     FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME: 64 * 1024,
     FAILED_PRE_DISPATCH_LOG_019_ATTEMPT_2_FILENAME: 8 * 1024,
     SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME: 32 * 1024,
@@ -154,6 +238,7 @@ _TASK_IDENTITY_SCHEMA: Final = (
 )
 
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _TASK_IDS: Final = frozenset(f"ASE3-{index:03d}" for index in range(15))
@@ -836,6 +921,14 @@ _PROVIDER_FALLBACK_BOOTSTRAP_GUARANTEES: Final = {
     "durable_cross_process_restart_reservation_present": False,
     "full_signed_field_equality_present": False,
 }
+_PROVIDER_FALLBACK_AUTHORIZATION_V2_OWNERSHIP_CONTRACT: Final = {
+    "canonical_route_plan_owner": "ipfs_accelerate_py.llm_router",
+    "typed_fallback_decision_owner": "ipfs_accelerate_py.llm_router",
+    "duplicate_route_policy_or_failure_classification_outside_router_allowed": False,
+}
+_PROVIDER_FALLBACK_AUTHORIZATION_V2_BOOTSTRAP_GUARANTEES: Final = {
+    "explicit_codex_review_conflict_denied": True,
+}
 _PROVIDER_FALLBACK_ASE3_019_REQUIREMENTS: Final = {
     "typed_failure_evidence_required": True,
     "quota_evidence_must_be_independently_verified": True,
@@ -977,6 +1070,552 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
     "evidence rather than being rewritten or reclassified."
 )
 
+# Acceptance phase constants are deliberately gathered here.  ASE3-027 has
+# already landed and therefore has fully reconstructable Git identities.  The
+# ASE3-019 and ASE3-023 product generations are still being prepared; their
+# sentinels must be replaced in the protected preparation commit before an
+# acceptance receipt can validate.  Keeping those values fail-closed and in a
+# single table prevents a receipt from choosing its own provenance.
+#
+# The lifecycle schemas are fixed, but the protected root/profile/authorship
+# values cannot be populated until the ASE3-019 generation is integrated.
+# These deliberately malformed sentinels keep every portable acceptance path
+# closed without letting a receipt select its own lifecycle root or profile.
+_FINAL_VALUE_PENDING_019: Final = "FILL_AFTER_ASE3_019_PRODUCT_INTEGRATION"
+_FINAL_VALUE_PENDING_023: Final = "FILL_AFTER_ASE3_023_PRODUCT_INTEGRATION"
+_FINAL_LIFECYCLE_ROOT_DID_PENDING: Final = (
+    "FILL_AFTER_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN"
+)
+_FINAL_REVIEWER_DID_PENDING: Final = "FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+_FINAL_REVIEWER_PROFILE_ID_PENDING: Final = (
+    "FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+)
+_FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING: Final = (
+    "sha256:FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+)
+_FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING: Final = (
+    "FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+)
+_FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING: Final = (
+    "sha256:FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+)
+_FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING: Final = -1
+
+_LIFECYCLE_ROOT_PIN_REQUIRED_FIELDS: Final = (
+    "schema",
+    "board_namespace",
+    "base_head",
+    "base_tree",
+    "root_identity_did",
+    "pinned_at_ms",
+    "pin_id",
+)
+_LOCAL_PROFILE_V5_REQUIRED_FIELDS: Final = (
+    "schema",
+    "repository_cid",
+    "baseline_commit",
+    "capabilities",
+    "created_at",
+    "profile_id",
+    "identity_did",
+    "revoked",
+    "lifecycle_generation",
+    "lifecycle_anchor_id",
+    "lifecycle_root_path",
+    "effect_bounds",
+    "budget_cid",
+    "resource_cid",
+    "route_id",
+    "reviewer_identity",
+    "reviewer_provider",
+    "fallback_provider_id",
+    "fallback_model_id",
+    "fallback_reasoning_effort",
+)
+_LOCAL_PROFILE_ANCHOR_V3_REQUIRED_FIELDS: Final = (
+    "schema",
+    "anchor_id",
+    "generation",
+    "status",
+    "repository_cid",
+    "profile_id",
+    "profile_content_id",
+    "identity_did",
+    "did_state_id",
+    "did_status",
+    "previous_profile_id",
+    "previous_profile_content_id",
+    "previous_identity_did",
+    "previous_anchor_digest",
+    "updated_at_ns",
+    "root_identity_did",
+    "root_signature",
+)
+_LOCAL_PROFILE_DID_STATE_V1_REQUIRED_FIELDS: Final = (
+    "schema",
+    "identity_did",
+    "status",
+    "profile_path",
+    "profile_id",
+    "profile_content_id",
+    "anchor_id",
+    "generation",
+    "previous_identity_did",
+    "updated_at_ns",
+    "root_identity_did",
+    "root_signature",
+    "state_id",
+)
+_LOCAL_PROFILE_REGISTRY_V2_REQUIRED_FIELDS: Final = (
+    "schema",
+    "profile_path",
+    "lifecycle_root",
+    "root_identity_did",
+    "registry_id",
+)
+_LOCAL_OPERATOR_LIFECYCLE_WITNESS_REQUIRED_FIELDS: Final = (
+    "schema",
+    "board_namespace",
+    "base_head",
+    "base_tree",
+    "observed_at_ms",
+    "expires_at_ms",
+    "nonce",
+    "profile",
+    "profile_content_id",
+    "profile_signature",
+    "anchor",
+    "anchor_digest",
+    "registry",
+    "did_state",
+    "did_state_digest",
+    "root_identity_did",
+    "active_key_signature",
+    "root_signature",
+    "witness_id",
+)
+_LOCAL_OPERATOR_LIFECYCLE_WITNESS_BODY_FIELDS: Final = (
+    "schema",
+    "board_namespace",
+    "base_head",
+    "base_tree",
+    "observed_at_ms",
+    "expires_at_ms",
+    "nonce",
+    "profile",
+    "profile_content_id",
+    "profile_signature",
+    "anchor",
+    "anchor_digest",
+    "registry",
+    "did_state",
+    "did_state_digest",
+    "root_identity_did",
+)
+_PROVIDER_FALLBACK_AUTHORIZATION_V1_REQUIRED_FIELDS: Final = (
+    "schema",
+    "created_at",
+    "board_namespace",
+    "authorization_source",
+    "route",
+    "ownership_contract",
+    "bootstrap_route_guarantees",
+    "ase3_019_completion_requirements",
+    "external_docker_boundary",
+    "denials",
+    "historical_evidence",
+)
+_PROVIDER_FALLBACK_AUTHORIZATION_V2_REQUIRED_FIELDS: Final = (
+    "schema",
+    "board_namespace",
+    "authorization_source",
+    "route",
+    "ownership_contract",
+    "bootstrap_route_guarantees",
+    "reviewer",
+    "authority_bounds",
+    "fallback_implementer_identity",
+    "lifecycle_root_identity_did",
+    "lifecycle_witness_nonce",
+    "lifecycle_root_pin_path",
+    "lifecycle_root_pin_sha256",
+    "authorized_at_ms",
+)
+_PROVIDER_FALLBACK_AUTHORIZATION_V2_REVIEWER_FIELDS: Final = (
+    "identity",
+    "provider",
+    "profile_id",
+    "profile_content_id",
+    "lifecycle_anchor_id",
+    "generation",
+    "witness_path",
+    "witness_sha256",
+    "signature",
+)
+_PROVIDER_FALLBACK_AUTHORIZATION_V2_AUTHORITY_BOUNDS_FIELDS: Final = (
+    "repository_cid",
+    "baseline_commit",
+    "effects",
+    "budget_cid",
+    "resource_cid",
+    "authority_cid",
+)
+_PROVIDER_FALLBACK_AUTHORIZATION_V2_EFFECTS: Final = (
+    "edit",
+    "isolated_worktree",
+    "test",
+)
+
+_OPERATOR_REPAIR_ACCEPTANCE_REQUIRED_FIELDS: Final = (
+    "schema",
+    "created_at",
+    "board_namespace",
+    "task",
+    "recovery",
+    "implementation",
+    "acceptance_parent",
+    "validation",
+    "review",
+    "denials",
+)
+_ACCEPTANCE_TASK_REQUIRED_FIELDS: Final = (
+    "task_id",
+    "canonical_task_cid",
+    "goal_id",
+    "repairs_task",
+    "todo_contract_sha256",
+    "completed_contract_sha256",
+    "status_before",
+    "status_after",
+)
+_ACCEPTANCE_RECOVERY_REQUIRED_FIELDS: Final = (
+    "artifact",
+    "pointer",
+    "historical_completion_authority",
+    "branch_local_completion_authority",
+    "repair_required",
+)
+_ACCEPTANCE_IMPLEMENTATION_REQUIRED_FIELDS: Final = (
+    "generations",
+    "final_blobs",
+)
+_ACCEPTANCE_GENERATION_REQUIRED_FIELDS: Final = (
+    "role",
+    "source_commit",
+    "source_parent",
+    "source_tree",
+    "integrated_commit",
+    "integrated_parent",
+    "integrated_tree",
+    "binary_full_index_patch_sha256",
+    "changed_paths",
+)
+_ACCEPTANCE_PARENT_REQUIRED_FIELDS: Final = (
+    "head",
+    "tree",
+    "branch",
+    "manifest_schema",
+    "receipt_paths_absent",
+    "task_statuses",
+    "reload_gate_status",
+)
+_ACCEPTANCE_VALIDATION_REQUIRED_FIELDS: Final = (
+    "command",
+    "exit_code",
+    "passed",
+    "passed_count",
+    "failed_count",
+    "validated_head",
+    "validated_tree",
+)
+_ACCEPTANCE_REVIEW_REQUIRED_FIELDS: Final = (
+    "reviewer_identity",
+    "reviewer_provider",
+    "profile_id",
+    "profile_content_id",
+    "lifecycle_anchor_id",
+    "lifecycle_anchor_digest",
+    "lifecycle_generation",
+    "lifecycle_witness_path",
+    "lifecycle_witness_sha256",
+    "lifecycle_witness_id",
+    "lifecycle_witness_nonce",
+    "lifecycle_root_pin_path",
+    "lifecycle_root_pin_sha256",
+    "lifecycle_root_identity_did",
+    "fallback_authorization_id",
+    "fallback_authorization_sha256",
+    "implementer_identity",
+    "implementer_provider",
+    "algorithm",
+    "signed_at",
+    "signature",
+)
+_ACCEPTANCE_REVIEW_AUTHORITY_FIELDS: Final = (
+    "reviewer_identity",
+    "reviewer_provider",
+    "profile_id",
+    "profile_content_id",
+    "lifecycle_anchor_id",
+    "lifecycle_anchor_digest",
+    "lifecycle_generation",
+    "lifecycle_witness_path",
+    "lifecycle_witness_sha256",
+    "lifecycle_witness_id",
+    "lifecycle_witness_nonce",
+    "lifecycle_root_pin_path",
+    "lifecycle_root_pin_sha256",
+    "lifecycle_root_identity_did",
+    "fallback_authorization_id",
+    "fallback_authorization_sha256",
+)
+_REPAIR_ACCEPTANCE_DENIALS: Final = {
+    "historical_completion_authority": False,
+    "branch_local_completion_authority": False,
+    "self_review_allowed": False,
+    "codex_or_openai_reviewer_allowed": False,
+    "attempt_counter_mutation_authorized": False,
+    "runtime_state_mutation_authorized": False,
+}
+_SALVAGE_ACCEPTANCE_DENIALS: Final = {
+    "self_review_allowed": False,
+    "codex_or_openai_reviewer_allowed": False,
+    "arbitrary_failure_fallback_allowed": False,
+    "post_effect_fallback_allowed": False,
+    "attempt_counter_mutation_authorized": False,
+    "provider_capacity_attempt_restoration_allowed": False,
+    "objective_refill_authorized": False,
+    "codebase_refill_authorized": False,
+}
+_ACCEPTANCE_TASK_CONTRACTS: Final = {
+    "ASE3-019": {
+        "filename": OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
+        "schema": OPERATOR_SALVAGE_RECEIPT_019_SCHEMA,
+        "canonical_task_cid": _ASE3_019_ATTEMPT2_TASK_CID,
+        "goal_id": "ASE3-G020",
+        "repairs_task": "ASE3-019-attempt-2",
+        "todo_contract_sha256": _ASE3_019_CONTRACT_SHA256,
+        "completed_contract_sha256": (
+            "sha256:1be44352e66949dcf7789ea22e67c5d821e6d93b47177f81476bd318737e041c"
+        ),
+    },
+    "ASE3-023": {
+        "filename": OPERATOR_ACCEPTANCE_RECEIPT_023_FILENAME,
+        "schema": OPERATOR_REPAIR_ACCEPTANCE_RECEIPT_SCHEMA,
+        "canonical_task_cid": (
+            "baguqeerazljo4lkewfr3e6obxky2dydxuqzrczxwz74sjzfz32bwdvf4qvla"
+        ),
+        "goal_id": "ASE3-G040",
+        "repairs_task": "ASE3-006",
+        "todo_contract_sha256": (
+            "sha256:c13240a72521f3f7f71b39e5d404daa5825581b1606e707a5dad8e693af73f25"
+        ),
+        "completed_contract_sha256": (
+            "sha256:cb8ee6d5381dbbf8c1c46523d106e2bdc665fe8fcddc2f86b0248082eeb5d477"
+        ),
+    },
+    "ASE3-027": {
+        "filename": OPERATOR_ACCEPTANCE_RECEIPT_027_FILENAME,
+        "schema": OPERATOR_REPAIR_ACCEPTANCE_RECEIPT_SCHEMA,
+        "canonical_task_cid": (
+            "baguqeerarq7rlvae2dqoqdctzibxe5fuvte4mxptjcn45ri75c4hp742lb6q"
+        ),
+        "goal_id": "ASE3-G020",
+        "repairs_task": "ASE3-018",
+        "todo_contract_sha256": (
+            "sha256:69853f7f6174a9bd118b4fca13d5ba8e897e962def801d7fb012d9e4969f7d8c"
+        ),
+        "completed_contract_sha256": (
+            "sha256:49ac9f26bef2d2b71d8afe9e45a06a500902f79091f1b125731e41ecbe4cdadd"
+        ),
+    },
+}
+_ACCEPTANCE_REVIEWER_FINAL_VALUES: Final = {
+    "reviewer_identity": _FINAL_REVIEWER_DID_PENDING,
+    "profile_id": _FINAL_REVIEWER_PROFILE_ID_PENDING,
+    "profile_content_id": _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING,
+    "lifecycle_anchor_id": _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
+    "lifecycle_anchor_digest": (
+        _FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING
+    ),
+    "lifecycle_generation": _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
+}
+_ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
+    "ASE3-019": {
+        "ready": False,
+        "pending": _FINAL_VALUE_PENDING_019,
+        "source_candidate": {
+            "source_commit": _FINAL_VALUE_PENDING_019,
+            "source_tree": _FINAL_VALUE_PENDING_019,
+        },
+        "salvage_base": {
+            "head": _FINAL_VALUE_PENDING_019,
+            "tree": _FINAL_VALUE_PENDING_019,
+            "branch": _FINAL_VALUE_PENDING_019,
+        },
+        "generations": (),
+        "final_blobs": {},
+        "validation_passed_count": -1,
+    },
+    "ASE3-023": {
+        "ready": False,
+        "pending": _FINAL_VALUE_PENDING_023,
+        "generations": (),
+        "final_blobs": {},
+        "validation_passed_count": -1,
+    },
+    "ASE3-027": {
+        "ready": True,
+        "generations": (
+            {
+                "role": "product",
+                "source_commit": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "source_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "source_tree": "323f14dbcd9b15b09046cd3a481eb8588a6ede2a",
+                "integrated_commit": "6a0047436f9515281127c17913132a23cecfe56c",
+                "integrated_parent": "0321fd148bf7c5dc6e91251d119dc25f853e546f",
+                "integrated_tree": "ec240271c204fc8befcddef6b7ca2bcad124dc3b",
+                "binary_full_index_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+                    "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+                ),
+            },
+            {
+                "role": "test-contract-correction",
+                "source_commit": "bd93ae76c277ae8761cd2abe0df79685d0b1b8ef",
+                "source_parent": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "source_tree": "043677ccb5216204b3142bb8e2b7f71d4ca74bd9",
+                "integrated_commit": "d32415e4308a8462e96b4d04f807338f0a2d8b53",
+                "integrated_parent": "6a0047436f9515281127c17913132a23cecfe56c",
+                "integrated_tree": "87191ce65498a637c7b9500d72d434cadb8efbef",
+                "binary_full_index_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "changed_paths": (
+                    "test/api/test_agent_supervisor_inference_runtime.py",
+                    "test/api/test_agent_supervisor_prompt_v3_resolution.py",
+                ),
+            },
+        ),
+        "final_blobs": {
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py": (
+                "61cddc9adabb431fbf2aa98a300072d88be8088b"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py": (
+                "4671f417029bf7f9a3f7b578b9db65c3633f4242"
+            ),
+            "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py": (
+                "d2736d0af243995977f8a10050ec89fab4dc9785"
+            ),
+            "test/api/test_agent_supervisor_prompt_v3_resolution.py": (
+                "5b8d0087ec4f92e7e3f7f942a71d378fa3d37a3f"
+            ),
+            "test/api/test_agent_supervisor_inference_runtime.py": (
+                "dde3e01a95ef430d87d7e879c579c7d4d6fbac1d"
+            ),
+        },
+        "validation_passed_count": 174,
+    },
+}
+_ASE3_019_ACCEPTED_CONTROL_PLANE: Final = {
+    "schema": (
+        "ipfs_accelerate_py.agent_supervisor."
+        "operator-accepted-control-plane-contract@1"
+    ),
+    "canonical_route_owner": "ipfs_accelerate_py.llm_router",
+    "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_reasoning_effort": "high",
+    "allowed_trigger_classes": [
+        "grok_authentication_unavailable",
+        "grok_hard_quota_exhausted",
+    ],
+    "public_api": {
+        "route_plan_type": "AgentImplementationRoutePlan",
+        "fallback_decision_type": "AgentImplementationFallbackDecision",
+        "capacity_projection_api": (
+            "project_agent_implementation_route_capacity"
+        ),
+        "control_plane_pin_type": "AgentImplementationControlPlanePin",
+        "sealed_control_plane_type": (
+            "AgentImplementationSealedControlPlane"
+        ),
+        "source_generation_api": (
+            "agent_implementation_control_plane_source_generation"
+        ),
+        "materialize_api": (
+            "materialize_agent_implementation_control_plane_capsule"
+        ),
+        "build_pin_api": "build_agent_implementation_control_plane_pin",
+        "seal_api": "seal_agent_implementation_control_plane_capsule",
+        "verify_sealed_api": (
+            "verify_agent_implementation_sealed_control_plane"
+        ),
+        "pin_schema": (
+            "ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2"
+        ),
+        "manifest_schema": (
+            "ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1"
+        ),
+        "terminal_outcome_field": "accepted_control_plane",
+    },
+    "portable_acceptance_evidence": {
+        "source_head_required": True,
+        "source_tree_required": True,
+        "package_module_blob_manifest_required": True,
+        "sealed_control_plane_digest_required": True,
+        "isolated_argv_origin_proof_required": True,
+        "candidate_workspace_identity_required": True,
+        "shadow_regression_receipt_required": True,
+        "machine_local_capsule_path_forbidden": True,
+        "machine_local_memfd_path_forbidden": True,
+    },
+    "immutable_generation_capsule_required": True,
+    "current_profile_rechecked_at_effect": True,
+    "native_signed_hard_quota_required": True,
+    "durable_cas_states": ["reserved", "effect_started", "terminal"],
+    "crash_adopts_winning_effect_receipt": True,
+    "same_logical_attempt": True,
+    "docker_runtime": "runc",
+    "docker_image_id": _PROVIDER_FALLBACK_DOCKER_BOUNDARY["image_id"],
+    "attempt_counter_mutation_authorized": False,
+    "provider_capacity_attempt_restoration_allowed": False,
+}
+_ACCEPTANCE_MANIFEST_REQUIRED_FIELDS: Final = (
+    "phase",
+    "preparation_head",
+    "preparation_tree",
+    "receipts",
+    "tasks",
+    "reload_gate_completed",
+)
+_CONVERGENCE_MANIFEST_V1_TOP_LEVEL_FIELDS: Final = (
+    "schema",
+    "board_namespace",
+    "task_id",
+    "goal_id",
+    "created_at",
+    "integration_seed_commit",
+    "integration_seed_tree",
+    "historical_completion_authority",
+    "rescue_bulk_merge_allowed",
+    "components",
+    "population",
+    "completion_rules",
+    "downstream_rules",
+)
+_CONVERGENCE_MANIFEST_V2_TOP_LEVEL_FIELDS: Final = (
+    *_CONVERGENCE_MANIFEST_V1_TOP_LEVEL_FIELDS,
+    "acceptance",
+)
+
 
 def _reject_duplicate_keys(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
     payload: dict[str, Any] = {}
@@ -991,24 +1630,84 @@ def _file_snapshot(status: os.stat_result) -> tuple[int, ...]:
     return (
         int(status.st_dev),
         int(status.st_ino),
-        int(stat.S_IFMT(status.st_mode)),
+        int(status.st_mode),
         int(status.st_nlink),
+        int(status.st_uid),
         int(status.st_size),
         int(status.st_mtime_ns),
         int(status.st_ctime_ns),
     )
 
 
-def _read_regular_bytes(
+def _directory_snapshot(status: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(status.st_dev),
+        int(status.st_ino),
+        int(status.st_mode),
+        int(status.st_nlink),
+        int(status.st_uid),
+    )
+
+
+def _lexical_absolute_path(path: Path) -> Path:
+    if ".." in path.parts:
+        raise ValueError(f"{path.name}: parent traversal is forbidden")
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _open_nofollow_parent(path: Path) -> tuple[int, tuple[tuple[int, ...], ...]]:
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_flag is None:
+        raise ValueError(f"{path.name}: no-follow directory reads are unavailable")
+    flags = (
+        os.O_RDONLY
+        | directory_flag
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    descriptors: list[int] = []
+    try:
+        parent_descriptor = os.open(path.anchor, flags)
+        descriptors.append(parent_descriptor)
+        identities = [_directory_snapshot(os.fstat(parent_descriptor))]
+        for component in path.parts[1:-1]:
+            child_descriptor = os.open(
+                component,
+                flags,
+                dir_fd=parent_descriptor,
+            )
+            descriptors.append(child_descriptor)
+            parent_descriptor = child_descriptor
+            identities.append(_directory_snapshot(os.fstat(parent_descriptor)))
+    except OSError as exc:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+        raise ValueError(f"{path.name}: path contains a symlink or non-directory") from exc
+    for descriptor in descriptors[:-1]:
+        os.close(descriptor)
+    return descriptors[-1], tuple(identities)
+
+
+@dataclass(frozen=True)
+class _RegularFileSnapshot:
+    raw: bytes
+    path: Path
+    uid: int
+    mode: int
+
+
+def _read_regular_snapshot(
     path: Path,
     *,
     maximum_bytes: int = MAX_EVIDENCE_SNAPSHOT_BYTES,
-) -> bytes:
+) -> _RegularFileSnapshot:
     """Read one bounded, single-link, stable evidence-file snapshot."""
 
     if maximum_bytes < 0:
         raise ValueError(f"{path.name}: invalid evidence snapshot byte bound")
-    initial = path.lstat()
+    lexical = _lexical_absolute_path(path)
+    initial = lexical.lstat()
     if not stat.S_ISREG(initial.st_mode):
         raise ValueError(f"{path.name}: expected a regular nonsymlink file")
     if initial.st_nlink != 1:
@@ -1018,13 +1717,23 @@ def _read_regular_bytes(
             f"{path.name}: exceeds {maximum_bytes}-byte evidence snapshot bound"
         )
 
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_BINARY", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
-    descriptor = os.open(path, flags)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ValueError(f"{path.name}: no-follow evidence reads are unavailable")
+    parent_descriptor, parent_identities = _open_nofollow_parent(lexical)
+    try:
+        descriptor = os.open(
+            lexical.name,
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | nofollow,
+            dir_fd=parent_descriptor,
+        )
+    except OSError as exc:
+        os.close(parent_descriptor)
+        raise ValueError(f"{path.name}: expected a regular nonsymlink file") from exc
     try:
         opened = os.fstat(descriptor)
         if (
@@ -1062,19 +1771,71 @@ def _read_regular_bytes(
                 )
 
         final_descriptor = os.fstat(descriptor)
-        final_path = path.lstat()
+        final_path = os.stat(
+            lexical.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        final_lexical_path = lexical.lstat()
+        final_parent_descriptor, final_parent_identities = _open_nofollow_parent(
+            lexical
+        )
+        os.close(final_parent_descriptor)
         payload = b"".join(chunks)
         if (
             len(payload) != opened.st_size
             or _file_snapshot(final_descriptor) != _file_snapshot(opened)
             or _file_snapshot(final_path) != _file_snapshot(opened)
+            or _file_snapshot(final_lexical_path) != _file_snapshot(opened)
+            or final_parent_identities != parent_identities
         ):
             raise ValueError(
                 f"{path.name}: evidence file changed during bounded read"
             )
-        return payload
+        return _RegularFileSnapshot(
+            raw=payload,
+            path=lexical,
+            uid=int(opened.st_uid),
+            mode=stat.S_IMODE(opened.st_mode),
+        )
     finally:
         os.close(descriptor)
+        os.close(parent_descriptor)
+
+
+def _read_regular_bytes(
+    path: Path,
+    *,
+    maximum_bytes: int = MAX_EVIDENCE_SNAPSHOT_BYTES,
+) -> bytes:
+    return _read_regular_snapshot(path, maximum_bytes=maximum_bytes).raw
+
+
+def _require_authority_file_snapshot(
+    snapshot: _RegularFileSnapshot,
+    *,
+    repository_root: Path | None = None,
+    expected_relative_path: str | None = None,
+) -> None:
+    if snapshot.uid not in {0, os.geteuid()}:
+        raise ValueError(f"{snapshot.path.name}: authority file owner mismatch")
+    if snapshot.mode & 0o022:
+        raise ValueError(
+            f"{snapshot.path.name}: authority file is group-or-other writable"
+        )
+    if (repository_root is None) != (expected_relative_path is None):
+        raise ValueError(
+            f"{snapshot.path.name}: repository authority path is incomplete"
+        )
+    if repository_root is not None and expected_relative_path is not None:
+        expected = _lexical_absolute_path(repository_root) / Path(
+            expected_relative_path
+        )
+        if snapshot.path != expected:
+            raise ValueError(
+                f"{snapshot.path.name}: authority file must use its lexical "
+                "repository path"
+            )
 
 
 def _load_json_bytes(raw: bytes, *, name: str) -> Mapping[str, Any]:
@@ -1082,20 +1843,40 @@ def _load_json_bytes(raw: bytes, *, name: str) -> Mapping[str, Any]:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError(f"{name}: expected UTF-8 JSON") from exc
-    payload = json.loads(
-        text,
-        object_pairs_hook=_reject_duplicate_keys,
-        parse_constant=lambda value: (_ for _ in ()).throw(
-            ValueError(f"{name}: non-finite JSON constant {value!r}")
-        ),
-    )
+    try:
+        payload = json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"{name}: non-finite JSON constant {value!r}")
+            ),
+        )
+    except RecursionError as exc:
+        raise ValueError(f"{name}: JSON nesting exceeds parser bound") from exc
     if not isinstance(payload, Mapping):
-        raise ValueError(f"{name}: root must be a JSON object")
+        # Malformed JSON evidence is a value error at this trust boundary.
+        raise ValueError(f"{name}: root must be a JSON object")  # noqa: TRY004
     return payload
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
     return _load_json_bytes(_read_regular_bytes(path), name=path.name)
+
+
+def _canonical_json_bytes(payload: Mapping[str, Any]) -> bytes:
+    """Match the canonical JSON projection used by the ASE3-019 lifecycle API."""
+
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")
+
+
+def _canonical_sha256(payload: Mapping[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
 
 
 def _sha256_file(path: Path) -> str:
@@ -1174,6 +1955,2468 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _git_bytes(
+    repo_root: Path,
+    *args: str,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+    )
+
+
+def _require_exact_keys(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+    expected: Sequence[str],
+) -> Mapping[str, Any] | None:
+    if not isinstance(value, Mapping):
+        errors.append(f"{prefix}: expected object")
+        return None
+    if set(value) != set(expected):
+        errors.append(f"{prefix}: exact key population required")
+    return value
+
+
+def _require_bounded_string(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+    maximum: int = 4096,
+    allow_empty: bool = False,
+) -> str:
+    if (
+        not isinstance(value, str)
+        or (not allow_empty and not value)
+        or len(value.encode("utf-8")) > maximum
+    ):
+        qualifier = "possibly-empty" if allow_empty else "nonempty"
+        errors.append(
+            f"{prefix}: expected {qualifier} UTF-8 string bounded to {maximum} bytes"
+        )
+        return ""
+    return value
+
+
+def _require_exact_integer(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+    minimum: int = 0,
+    maximum: int = 1_000_000,
+) -> int | None:
+    if type(value) is not int or not minimum <= value <= maximum:
+        errors.append(
+            f"{prefix}: expected integer in inclusive range {minimum}..{maximum}"
+        )
+        return None
+    return value
+
+
+def _require_positive_finite_number(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+) -> float | None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        errors.append(f"{prefix}: expected positive finite JSON number")
+        return None
+    return float(value)
+
+
+def _require_trimmed_string(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+    maximum: int = 4096,
+    allow_empty: bool = False,
+) -> str:
+    text = _require_bounded_string(
+        errors,
+        prefix=prefix,
+        value=value,
+        maximum=maximum,
+        allow_empty=allow_empty,
+    )
+    if text and (text != text.strip() or any(char in text for char in "\x00\r\n")):
+        errors.append(f"{prefix}: expected trimmed single-line text")
+        return ""
+    return text
+
+
+def _require_sorted_unique_string_array(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+    maximum_items: int = 128,
+) -> tuple[str, ...]:
+    if not isinstance(value, list) or not 0 < len(value) <= maximum_items:
+        errors.append(
+            f"{prefix}: expected nonempty array bounded to {maximum_items} items"
+        )
+        return ()
+    observed = tuple(
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}[{index}]",
+            value=item,
+        )
+        for index, item in enumerate(value)
+    )
+    if observed != tuple(sorted(set(observed))):
+        errors.append(f"{prefix}: expected sorted unique string population")
+    return observed
+
+
+def _require_exact_string_array(
+    errors: list[str],
+    *,
+    prefix: str,
+    value: Any,
+    maximum_items: int,
+    safe_paths: bool = False,
+) -> tuple[str, ...]:
+    if not isinstance(value, list) or not 0 < len(value) <= maximum_items:
+        errors.append(
+            f"{prefix}: expected nonempty array bounded to {maximum_items} items"
+        )
+        return ()
+    observed: list[str] = []
+    for index, item in enumerate(value):
+        text = _require_bounded_string(
+            errors,
+            prefix=f"{prefix}[{index}]",
+            value=item,
+        )
+        if safe_paths and text and not _is_safe_relative_path(text):
+            errors.append(f"{prefix}[{index}]: unsafe relative path")
+        observed.append(text)
+    if len(set(observed)) != len(observed):
+        errors.append(f"{prefix}: duplicate entries forbidden")
+    return tuple(observed)
+
+
+def _base58btc_decode(value: str) -> bytes:
+    alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    indexes = {character: index for index, character in enumerate(alphabet)}
+    if not value:
+        raise ValueError("empty base58btc payload")
+    accumulator = 0
+    for character in value:
+        try:
+            digit = indexes[character]
+        except KeyError as exc:
+            raise ValueError("invalid base58btc character") from exc
+        accumulator = accumulator * 58 + digit
+    body = (
+        accumulator.to_bytes((accumulator.bit_length() + 7) // 8, "big")
+        if accumulator
+        else b""
+    )
+    leading_zeroes = len(value) - len(value.lstrip("1"))
+    return (b"\x00" * leading_zeroes) + body
+
+
+def _ed25519_public_key_from_did_key(value: Any) -> bytes:
+    if not isinstance(value, str) or not value.startswith("did:key:z"):
+        raise ValueError("reviewer identity must be an Ed25519 did:key:z identity")
+    decoded = _base58btc_decode(value.removeprefix("did:key:z"))
+    if len(decoded) != 34 or decoded[:2] != b"\xed\x01":
+        raise ValueError("reviewer did:key must contain one Ed25519 public key")
+    return decoded[2:]
+
+
+def _verify_standard_ed25519_signature(
+    errors: list[str],
+    *,
+    prefix: str,
+    signer_identity_did: Any,
+    signature_token: Any,
+    message: bytes,
+) -> None:
+    """Verify one canonical standard-base64 Ed25519 signature."""
+
+    try:
+        public_key = _ed25519_public_key_from_did_key(signer_identity_did)
+    except ValueError as exc:
+        errors.append(f"{prefix}.signer: {exc}")
+        return
+    if not isinstance(signature_token, str) or not signature_token:
+        errors.append(f"{prefix}: expected standard-base64 Ed25519 signature")
+        return
+    try:
+        signature = base64.b64decode(signature_token, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        errors.append(f"{prefix}: invalid standard base64: {exc}")
+        return
+    if (
+        len(signature) != 64
+        or base64.b64encode(signature).decode("ascii") != signature_token
+    ):
+        errors.append(f"{prefix}: noncanonical Ed25519 signature")
+        return
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(signature, message)
+    except (InvalidSignature, ValueError):
+        errors.append(f"{prefix}: cryptographic verification failed")
+
+
+@dataclass(frozen=True)
+class LocalProfileLifecycleRootPinSnapshot:
+    """One fixed-root pin loaded from bounded duplicate-safe bytes."""
+
+    payload: Mapping[str, Any]
+    raw: bytes
+    sha256: str
+
+    @property
+    def root_identity_did(self) -> str:
+        return str(self.payload.get("root_identity_did", ""))
+
+
+def validate_local_profile_lifecycle_root_pin(
+    payload: Mapping[str, Any],
+    *,
+    expected_root_identity_did: str | None = None,
+) -> tuple[str, ...]:
+    """Validate the protected root pin without accepting a receipt-selected root."""
+
+    errors: list[str] = []
+    prefix = "local_profile_lifecycle_root_pin"
+    _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_LIFECYCLE_ROOT_PIN_REQUIRED_FIELDS,
+    )
+    expected_root = (
+        _FINAL_LIFECYCLE_ROOT_DID_PENDING
+        if expected_root_identity_did is None
+        else expected_root_identity_did
+    )
+    if payload.get("schema") != LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_SCHEMA:
+        errors.append(f"{prefix}.schema: unsupported schema")
+    if payload.get("board_namespace") != BOARD_NAMESPACE:
+        errors.append(f"{prefix}.board_namespace: mismatch")
+    _require_hex40(errors, f"{prefix}.base_head", payload.get("base_head"))
+    _require_hex40(errors, f"{prefix}.base_tree", payload.get("base_tree"))
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.pinned_at_ms",
+        value=payload.get("pinned_at_ms"),
+        minimum=1,
+        maximum=10**16,
+    )
+    pin_without_id = dict(payload)
+    pin_id = pin_without_id.pop("pin_id", None)
+    _require_sha256(errors, f"{prefix}.pin_id", pin_id)
+    if pin_id != _canonical_sha256(pin_without_id):
+        errors.append(f"{prefix}.pin_id: canonical root-pin identity mismatch")
+    if expected_root == _FINAL_LIFECYCLE_ROOT_DID_PENDING:
+        errors.append(f"{prefix}.root_identity_did: final root pin is not populated")
+    elif payload.get("root_identity_did") != expected_root:
+        errors.append(f"{prefix}.root_identity_did: fixed root mismatch")
+    try:
+        _ed25519_public_key_from_did_key(payload.get("root_identity_did"))
+    except ValueError as exc:
+        errors.append(f"{prefix}.root_identity_did: {exc}")
+    return tuple(errors)
+
+
+def load_local_profile_lifecycle_root_pin(
+    path: Path | str,
+    *,
+    repository_root: Path | str | None = None,
+) -> LocalProfileLifecycleRootPinSnapshot:
+    pin_path = Path(path)
+    if pin_path.name != LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME:
+        raise ValueError("local-profile lifecycle root-pin filename mismatch")
+    file_snapshot = _read_regular_snapshot(
+        pin_path,
+        maximum_bytes=MAX_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_BYTES,
+    )
+    _require_authority_file_snapshot(
+        file_snapshot,
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
+        expected_relative_path=(
+            LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH
+            if repository_root is not None
+            else None
+        ),
+    )
+    raw = file_snapshot.raw
+    payload = _load_json_bytes(raw, name=pin_path.name)
+    if set(payload) != set(_LIFECYCLE_ROOT_PIN_REQUIRED_FIELDS):
+        raise ValueError("local-profile lifecycle root pin requires exact fields")
+    return LocalProfileLifecycleRootPinSnapshot(
+        payload=payload,
+        raw=raw,
+        sha256="sha256:" + hashlib.sha256(raw).hexdigest(),
+    )
+
+
+def _validate_local_dev_profile_v5(
+    errors: list[str],
+    *,
+    profile: Any,
+    profile_content_id: Any,
+    profile_signature: Any,
+    expected_final_values: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    prefix = "local_operator_lifecycle_witness.profile"
+    record = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=profile,
+        expected=_LOCAL_PROFILE_V5_REQUIRED_FIELDS,
+    )
+    if record is None:
+        return None
+    if record.get("schema") != LOCAL_DEV_PROFILE_V5_SCHEMA:
+        errors.append(f"{prefix}.schema: expected local-dev-profile@5")
+    _require_trimmed_string(
+        errors,
+        prefix=f"{prefix}.repository_cid",
+        value=record.get("repository_cid"),
+    )
+    _require_hex40(errors, f"{prefix}.baseline_commit", record.get("baseline_commit"))
+    capabilities = _require_sorted_unique_string_array(
+        errors,
+        prefix=f"{prefix}.capabilities",
+        value=record.get("capabilities"),
+    )
+    _require_positive_finite_number(
+        errors,
+        prefix=f"{prefix}.created_at",
+        value=record.get("created_at"),
+    )
+    for field in (
+        "profile_id",
+        "lifecycle_root_path",
+        "budget_cid",
+        "resource_cid",
+        "route_id",
+        "reviewer_identity",
+        "reviewer_provider",
+        "fallback_provider_id",
+        "fallback_model_id",
+        "fallback_reasoning_effort",
+    ):
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.{field}",
+            value=record.get(field),
+        )
+    try:
+        _ed25519_public_key_from_did_key(record.get("identity_did"))
+    except ValueError as exc:
+        errors.append(f"{prefix}.identity_did: {exc}")
+    if record.get("revoked") is not False:
+        errors.append(f"{prefix}.revoked: active non-revoked profile required")
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.lifecycle_generation",
+        value=record.get("lifecycle_generation"),
+        minimum=1,
+    )
+    anchor_id = record.get("lifecycle_anchor_id")
+    if not isinstance(anchor_id, str) or _HEX64.fullmatch(anchor_id) is None:
+        errors.append(f"{prefix}.lifecycle_anchor_id: expected lowercase 64-hex")
+    effect_bounds = _require_sorted_unique_string_array(
+        errors,
+        prefix=f"{prefix}.effect_bounds",
+        value=record.get("effect_bounds"),
+    )
+    if not set(effect_bounds).issubset(capabilities):
+        errors.append(f"{prefix}.effect_bounds: must be a capability subset")
+    exact_policy = {
+        "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
+        "reviewer_provider": "local_operator",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+    }
+    for field, expected in exact_policy.items():
+        if record.get(field) != expected:
+            errors.append(f"{prefix}.{field}: expected {expected!r}")
+    if record.get("reviewer_identity") != record.get("identity_did"):
+        errors.append(f"{prefix}.reviewer_identity: active profile DID mismatch")
+
+    computed_content_id = _canonical_sha256(record)
+    _require_sha256(errors, f"{prefix}_content_id", profile_content_id)
+    if profile_content_id != computed_content_id:
+        errors.append(f"{prefix}_content_id: canonical profile digest mismatch")
+    _verify_standard_ed25519_signature(
+        errors,
+        prefix=f"{prefix}_signature",
+        signer_identity_did=record.get("identity_did"),
+        signature_token=profile_signature,
+        message=_canonical_json_bytes(record),
+    )
+
+    final_checks = {
+        "identity_did": "reviewer_identity",
+        "profile_id": "profile_id",
+        "lifecycle_anchor_id": "lifecycle_anchor_id",
+        "lifecycle_generation": "lifecycle_generation",
+    }
+    for profile_field, final_field in final_checks.items():
+        expected = expected_final_values.get(final_field)
+        if expected in {
+            _FINAL_REVIEWER_DID_PENDING,
+            _FINAL_REVIEWER_PROFILE_ID_PENDING,
+            _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
+            _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
+        }:
+            errors.append(f"{prefix}.{profile_field}: final pin is not populated")
+        elif record.get(profile_field) != expected:
+            errors.append(f"{prefix}.{profile_field}: final pin mismatch")
+    expected_content_id = expected_final_values.get("profile_content_id")
+    if expected_content_id == _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING:
+        errors.append(f"{prefix}_content_id: final pin is not populated")
+    elif profile_content_id != expected_content_id:
+        errors.append(f"{prefix}_content_id: final pin mismatch")
+    return record
+
+
+def _validate_local_profile_anchor_v3(
+    errors: list[str],
+    *,
+    anchor: Any,
+    anchor_digest: Any,
+    root_identity_did: str,
+) -> Mapping[str, Any] | None:
+    prefix = "local_operator_lifecycle_witness.anchor"
+    record = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=anchor,
+        expected=_LOCAL_PROFILE_ANCHOR_V3_REQUIRED_FIELDS,
+    )
+    if record is None:
+        return None
+    if record.get("schema") != LOCAL_PROFILE_LIFECYCLE_ANCHOR_V3_SCHEMA:
+        errors.append(f"{prefix}.schema: expected lifecycle anchor@3")
+    anchor_id = record.get("anchor_id")
+    if not isinstance(anchor_id, str) or _HEX64.fullmatch(anchor_id) is None:
+        errors.append(f"{prefix}.anchor_id: expected lowercase 64-hex")
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.generation",
+        value=record.get("generation"),
+        minimum=1,
+    )
+    if record.get("status") != "active":
+        errors.append(f"{prefix}.status: expected 'active'")
+    if record.get("did_status") != "active":
+        errors.append(f"{prefix}.did_status: expected 'active'")
+    for field in ("repository_cid", "profile_id"):
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.{field}",
+            value=record.get(field),
+        )
+    _require_sha256(errors, f"{prefix}.did_state_id", record.get("did_state_id"))
+    _require_sha256(errors, f"{prefix}.profile_content_id", record.get("profile_content_id"))
+    for field in (
+        "identity_did",
+        "root_identity_did",
+    ):
+        try:
+            _ed25519_public_key_from_did_key(record.get(field))
+        except ValueError as exc:
+            errors.append(f"{prefix}.{field}: {exc}")
+    for field in (
+        "previous_profile_id",
+        "previous_profile_content_id",
+        "previous_identity_did",
+        "previous_anchor_digest",
+    ):
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.{field}",
+            value=record.get(field),
+            allow_empty=True,
+        )
+    for field in ("previous_profile_content_id", "previous_anchor_digest"):
+        value = record.get(field)
+        if value not in {"", None}:
+            _require_sha256(errors, f"{prefix}.{field}", value)
+    previous_did = record.get("previous_identity_did")
+    if previous_did not in {"", None}:
+        try:
+            _ed25519_public_key_from_did_key(previous_did)
+        except ValueError as exc:
+            errors.append(f"{prefix}.previous_identity_did: {exc}")
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.updated_at_ns",
+        value=record.get("updated_at_ns"),
+        minimum=1,
+        maximum=10**21,
+    )
+    generation = record.get("generation")
+    if type(generation) is int:
+        prior_values = {
+            field: record.get(field)
+            for field in (
+                "previous_profile_id",
+                "previous_profile_content_id",
+                "previous_identity_did",
+                "previous_anchor_digest",
+            )
+        }
+        if generation == 1 and any(value != "" for value in prior_values.values()):
+            errors.append(f"{prefix}: generation 1 must not claim predecessor state")
+        elif generation > 1:
+            if not prior_values["previous_profile_id"]:
+                errors.append(f"{prefix}.previous_profile_id: required after generation 1")
+            for field in (
+                "previous_profile_content_id",
+                "previous_anchor_digest",
+            ):
+                _require_sha256(errors, f"{prefix}.{field}", prior_values[field])
+            if not prior_values["previous_identity_did"]:
+                errors.append(
+                    f"{prefix}.previous_identity_did: required after generation 1"
+                )
+    if record.get("root_identity_did") != root_identity_did:
+        errors.append(f"{prefix}.root_identity_did: root-pin mismatch")
+    unsigned = dict(record)
+    signature = unsigned.pop("root_signature", None)
+    _verify_standard_ed25519_signature(
+        errors,
+        prefix=f"{prefix}.root_signature",
+        signer_identity_did=root_identity_did,
+        signature_token=signature,
+        message=_canonical_json_bytes(unsigned),
+    )
+    _require_sha256(errors, "local_operator_lifecycle_witness.anchor_digest", anchor_digest)
+    computed_digest = _canonical_sha256(record)
+    if anchor_digest != computed_digest:
+        errors.append(
+            "local_operator_lifecycle_witness.anchor_digest: canonical anchor "
+            "digest mismatch"
+        )
+    return record
+
+
+def _validate_local_profile_did_state_v1(
+    errors: list[str],
+    *,
+    did_state: Any,
+    did_state_digest: Any,
+    root_identity_did: str,
+) -> Mapping[str, Any] | None:
+    prefix = "local_operator_lifecycle_witness.did_state"
+    record = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=did_state,
+        expected=_LOCAL_PROFILE_DID_STATE_V1_REQUIRED_FIELDS,
+    )
+    if record is None:
+        return None
+    if record.get("schema") != LOCAL_PROFILE_DID_STATE_V1_SCHEMA:
+        errors.append(f"{prefix}.schema: expected DID-state@1")
+    if record.get("status") != "active":
+        errors.append(f"{prefix}.status: expected 'active'")
+    for field in ("profile_path", "profile_id"):
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.{field}",
+            value=record.get(field),
+        )
+    anchor_id = record.get("anchor_id")
+    if not isinstance(anchor_id, str) or _HEX64.fullmatch(anchor_id) is None:
+        errors.append(f"{prefix}.anchor_id: expected lowercase 64-hex")
+    _require_sha256(errors, f"{prefix}.profile_content_id", record.get("profile_content_id"))
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.generation",
+        value=record.get("generation"),
+        minimum=1,
+    )
+    _require_trimmed_string(
+        errors,
+        prefix=f"{prefix}.previous_identity_did",
+        value=record.get("previous_identity_did"),
+        allow_empty=True,
+    )
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.updated_at_ns",
+        value=record.get("updated_at_ns"),
+        minimum=1,
+        maximum=10**21,
+    )
+    for field in ("identity_did", "root_identity_did"):
+        try:
+            _ed25519_public_key_from_did_key(record.get(field))
+        except ValueError as exc:
+            errors.append(f"{prefix}.{field}: {exc}")
+    previous_did = record.get("previous_identity_did")
+    if previous_did not in {"", None}:
+        try:
+            _ed25519_public_key_from_did_key(previous_did)
+        except ValueError as exc:
+            errors.append(f"{prefix}.previous_identity_did: {exc}")
+    if record.get("root_identity_did") != root_identity_did:
+        errors.append(f"{prefix}.root_identity_did: root-pin mismatch")
+
+    unsigned = dict(record)
+    state_id = unsigned.pop("state_id", None)
+    signature = unsigned.pop("root_signature", None)
+    _verify_standard_ed25519_signature(
+        errors,
+        prefix=f"{prefix}.root_signature",
+        signer_identity_did=root_identity_did,
+        signature_token=signature,
+        message=_canonical_json_bytes(unsigned),
+    )
+    signed_state = dict(unsigned)
+    signed_state["root_signature"] = signature
+    _require_sha256(errors, f"{prefix}.state_id", state_id)
+    if state_id != _canonical_sha256(signed_state):
+        errors.append(f"{prefix}.state_id: canonical DID-state identity mismatch")
+    _require_sha256(
+        errors,
+        "local_operator_lifecycle_witness.did_state_digest",
+        did_state_digest,
+    )
+    if did_state_digest != _canonical_sha256(record):
+        errors.append(
+            "local_operator_lifecycle_witness.did_state_digest: canonical "
+            "DID-state digest mismatch"
+        )
+    return record
+
+
+def _validate_local_profile_registry_v2(
+    errors: list[str],
+    *,
+    registry: Any,
+    root_identity_did: str,
+) -> Mapping[str, Any] | None:
+    prefix = "local_operator_lifecycle_witness.registry"
+    record = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=registry,
+        expected=_LOCAL_PROFILE_REGISTRY_V2_REQUIRED_FIELDS,
+    )
+    if record is None:
+        return None
+    if record.get("schema") != LOCAL_PROFILE_ROOT_REGISTRY_V2_SCHEMA:
+        errors.append(f"{prefix}.schema: expected root registry@2")
+    for field in ("profile_path", "lifecycle_root"):
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.{field}",
+            value=record.get(field),
+        )
+    try:
+        _ed25519_public_key_from_did_key(record.get("root_identity_did"))
+    except ValueError as exc:
+        errors.append(f"{prefix}.root_identity_did: {exc}")
+    if record.get("root_identity_did") != root_identity_did:
+        errors.append(f"{prefix}.root_identity_did: root-pin mismatch")
+    unsigned = dict(record)
+    registry_id = unsigned.pop("registry_id", None)
+    _require_sha256(errors, f"{prefix}.registry_id", registry_id)
+    if registry_id != _canonical_sha256(unsigned):
+        errors.append(f"{prefix}.registry_id: canonical registry identity mismatch")
+    return record
+
+
+@dataclass(frozen=True)
+class LocalOperatorLifecycleWitnessSnapshot:
+    """One bounded local-operator lifecycle witness and its raw digest."""
+
+    payload: Mapping[str, Any]
+    raw: bytes
+    sha256: str
+
+    @property
+    def witness_id(self) -> str:
+        return str(self.payload.get("witness_id", ""))
+
+    @property
+    def reviewer_identity(self) -> str:
+        profile = self.payload.get("profile")
+        return str(profile.get("identity_did", "")) if isinstance(profile, Mapping) else ""
+
+
+def load_local_operator_lifecycle_witness(
+    path: Path | str,
+    *,
+    repository_root: Path | str | None = None,
+) -> LocalOperatorLifecycleWitnessSnapshot:
+    witness_path = Path(path)
+    if witness_path.name != LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME:
+        raise ValueError("local-operator lifecycle witness filename mismatch")
+    file_snapshot = _read_regular_snapshot(
+        witness_path,
+        maximum_bytes=MAX_LOCAL_OPERATOR_LIFECYCLE_WITNESS_BYTES,
+    )
+    _require_authority_file_snapshot(
+        file_snapshot,
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
+        expected_relative_path=(
+            LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH
+            if repository_root is not None
+            else None
+        ),
+    )
+    raw = file_snapshot.raw
+    payload = _load_json_bytes(raw, name=witness_path.name)
+    if set(payload) != set(_LOCAL_OPERATOR_LIFECYCLE_WITNESS_REQUIRED_FIELDS):
+        raise ValueError("local-operator lifecycle witness requires exact fields")
+    return LocalOperatorLifecycleWitnessSnapshot(
+        payload=payload,
+        raw=raw,
+        sha256="sha256:" + hashlib.sha256(raw).hexdigest(),
+    )
+
+
+def validate_local_operator_lifecycle_witness(
+    payload: Mapping[str, Any],
+    *,
+    root_identity_did: str,
+    expected_base_head: str | None = None,
+    expected_base_tree: str | None = None,
+    reference_time_ms: int | None = None,
+    earliest_observed_at_ms: int | None = None,
+    expected_final_values: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Verify one portable witness without consulting the current wall clock."""
+
+    errors: list[str] = []
+    prefix = "local_operator_lifecycle_witness"
+    _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_LOCAL_OPERATOR_LIFECYCLE_WITNESS_REQUIRED_FIELDS,
+    )
+    if payload.get("schema") != LOCAL_PROFILE_LIFECYCLE_WITNESS_SCHEMA:
+        errors.append(f"{prefix}.schema: expected lifecycle witness@1")
+    if payload.get("board_namespace") != BOARD_NAMESPACE:
+        errors.append(f"{prefix}.board_namespace: mismatch")
+    _require_hex40(errors, f"{prefix}.base_head", payload.get("base_head"))
+    _require_hex40(errors, f"{prefix}.base_tree", payload.get("base_tree"))
+    if expected_base_head is not None and payload.get("base_head") != expected_base_head:
+        errors.append(f"{prefix}.base_head: signed base mismatch")
+    if expected_base_tree is not None and payload.get("base_tree") != expected_base_tree:
+        errors.append(f"{prefix}.base_tree: signed base mismatch")
+    observed = _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.observed_at_ms",
+        value=payload.get("observed_at_ms"),
+        minimum=1,
+        maximum=10**16,
+    )
+    expires = _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.expires_at_ms",
+        value=payload.get("expires_at_ms"),
+        minimum=1,
+        maximum=10**16,
+    )
+    if observed is not None and expires is not None:
+        if observed >= expires:
+            errors.append(f"{prefix}: observed_at_ms must precede expires_at_ms")
+        if expires - observed > 600_000:
+            errors.append(f"{prefix}: witness lifetime exceeds 600000ms")
+        if earliest_observed_at_ms is not None and observed < earliest_observed_at_ms:
+            errors.append(f"{prefix}.observed_at_ms: predates root-pin commit")
+        if reference_time_ms is not None and not observed <= reference_time_ms <= expires:
+            errors.append(f"{prefix}: deterministic reference time is outside witness")
+        if reference_time_ms is not None and reference_time_ms - observed > 600_000:
+            errors.append(f"{prefix}: witness exceeds deterministic maximum age")
+    _require_trimmed_string(
+        errors,
+        prefix=f"{prefix}.nonce",
+        value=payload.get("nonce"),
+        maximum=512,
+    )
+    try:
+        _ed25519_public_key_from_did_key(payload.get("root_identity_did"))
+    except ValueError as exc:
+        errors.append(f"{prefix}.root_identity_did: {exc}")
+    if payload.get("root_identity_did") != root_identity_did:
+        errors.append(f"{prefix}.root_identity_did: fixed root-pin mismatch")
+
+    final_values = (
+        _ACCEPTANCE_REVIEWER_FINAL_VALUES
+        if expected_final_values is None
+        else expected_final_values
+    )
+    profile = _validate_local_dev_profile_v5(
+        errors,
+        profile=payload.get("profile"),
+        profile_content_id=payload.get("profile_content_id"),
+        profile_signature=payload.get("profile_signature"),
+        expected_final_values=final_values,
+    )
+    anchor = _validate_local_profile_anchor_v3(
+        errors,
+        anchor=payload.get("anchor"),
+        anchor_digest=payload.get("anchor_digest"),
+        root_identity_did=root_identity_did,
+    )
+    did_state = _validate_local_profile_did_state_v1(
+        errors,
+        did_state=payload.get("did_state"),
+        did_state_digest=payload.get("did_state_digest"),
+        root_identity_did=root_identity_did,
+    )
+    registry = _validate_local_profile_registry_v2(
+        errors,
+        registry=payload.get("registry"),
+        root_identity_did=root_identity_did,
+    )
+    if profile is not None and profile.get("baseline_commit") != payload.get(
+        "base_head"
+    ):
+        errors.append(f"{prefix}: profile baseline does not match signed base")
+    if profile is not None and anchor is not None:
+        equalities = (
+            ("repository_cid", "repository_cid"),
+            ("profile_id", "profile_id"),
+            ("identity_did", "identity_did"),
+            ("lifecycle_generation", "generation"),
+            ("lifecycle_anchor_id", "anchor_id"),
+        )
+        for profile_field, anchor_field in equalities:
+            if profile.get(profile_field) != anchor.get(anchor_field):
+                errors.append(
+                    f"{prefix}: profile.{profile_field} != anchor.{anchor_field}"
+                )
+        if payload.get("profile_content_id") != anchor.get("profile_content_id"):
+            errors.append(f"{prefix}: profile content does not match anchor")
+    if profile is not None and did_state is not None:
+        equalities = (
+            ("profile_id", "profile_id"),
+            ("identity_did", "identity_did"),
+            ("lifecycle_generation", "generation"),
+            ("lifecycle_anchor_id", "anchor_id"),
+        )
+        for profile_field, state_field in equalities:
+            if profile.get(profile_field) != did_state.get(state_field):
+                errors.append(
+                    f"{prefix}: profile.{profile_field} != did_state.{state_field}"
+                )
+        if payload.get("profile_content_id") != did_state.get("profile_content_id"):
+            errors.append(f"{prefix}: profile content does not match DID state")
+    if anchor is not None and did_state is not None:
+        if anchor.get("did_state_id") != did_state.get("state_id"):
+            errors.append(f"{prefix}: anchor DID-state identity mismatch")
+        if anchor.get("did_status") != did_state.get("status"):
+            errors.append(f"{prefix}: anchor DID status mismatch")
+    if (
+        profile is not None
+        and registry is not None
+        and profile.get("lifecycle_root_path") != registry.get("lifecycle_root")
+    ):
+        errors.append(f"{prefix}: profile lifecycle root != registry root")
+    if (
+        did_state is not None
+        and registry is not None
+        and did_state.get("profile_path") != registry.get("profile_path")
+    ):
+        errors.append(f"{prefix}: DID-state profile path != registry profile path")
+    if anchor is not None and registry is not None:
+        profile_path = registry.get("profile_path")
+        expected_anchor_id = (
+            hashlib.sha256(profile_path.encode("utf-8")).hexdigest()
+            if isinstance(profile_path, str)
+            else ""
+        )
+        if anchor.get("anchor_id") != expected_anchor_id:
+            errors.append(f"{prefix}: registry profile path does not derive anchor ID")
+
+    expected_anchor_digest = final_values.get("lifecycle_anchor_digest")
+    if expected_anchor_digest == _FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING:
+        errors.append(f"{prefix}.anchor_digest: final pin is not populated")
+    elif payload.get("anchor_digest") != expected_anchor_digest:
+        errors.append(f"{prefix}.anchor_digest: final pin mismatch")
+
+    body = {
+        field: payload.get(field)
+        for field in _LOCAL_OPERATOR_LIFECYCLE_WITNESS_BODY_FIELDS
+    }
+    profile_identity = profile.get("identity_did") if profile is not None else None
+    _verify_standard_ed25519_signature(
+        errors,
+        prefix=f"{prefix}.active_key_signature",
+        signer_identity_did=profile_identity,
+        signature_token=payload.get("active_key_signature"),
+        message=_canonical_json_bytes(body),
+    )
+    root_signed = dict(body)
+    root_signed["active_key_signature"] = payload.get("active_key_signature")
+    _verify_standard_ed25519_signature(
+        errors,
+        prefix=f"{prefix}.root_signature",
+        signer_identity_did=root_identity_did,
+        signature_token=payload.get("root_signature"),
+        message=_canonical_json_bytes(root_signed),
+    )
+    witness_without_id = dict(payload)
+    witness_id = witness_without_id.pop("witness_id", None)
+    _require_sha256(errors, f"{prefix}.witness_id", witness_id)
+    if witness_id != _canonical_sha256(witness_without_id):
+        errors.append(f"{prefix}.witness_id: canonical witness identity mismatch")
+    return tuple(errors)
+
+
+def canonical_operator_acceptance_review_bytes(
+    payload: Mapping[str, Any],
+) -> bytes:
+    """Canonical receipt bytes covered by the operator review signature.
+
+    The only excluded value is ``review.signature``.  In particular, no
+    receipt-selected digest or partial projection can narrow the signed
+    authority surface.
+    """
+
+    review = payload.get("review")
+    if not isinstance(review, Mapping) or "signature" not in review:
+        raise ValueError("review.signature is required")
+    unsigned = dict(payload)
+    unsigned_review = dict(review)
+    unsigned_review.pop("signature")
+    unsigned["review"] = unsigned_review
+    return json.dumps(
+        unsigned,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def validate_operator_acceptance_signature(
+    payload: Mapping[str, Any],
+    *,
+    expected_authority: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Verify a non-self review bound to P's lifecycle witness and auth @2."""
+
+    errors: list[str] = []
+    prefix = "operator_acceptance.review"
+    review = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload.get("review"),
+        expected=_ACCEPTANCE_REVIEW_REQUIRED_FIELDS,
+    )
+    if review is None:
+        return tuple(errors)
+    reviewer = _require_bounded_string(
+        errors,
+        prefix=f"{prefix}.reviewer_identity",
+        value=review.get("reviewer_identity"),
+        maximum=256,
+    )
+    reviewer_provider = _require_bounded_string(
+        errors,
+        prefix=f"{prefix}.reviewer_provider",
+        value=review.get("reviewer_provider"),
+        maximum=64,
+    )
+    for field in (
+        "profile_id",
+        "lifecycle_witness_id",
+        "lifecycle_witness_nonce",
+    ):
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.{field}",
+            value=review.get(field),
+        )
+    for field in (
+        "profile_content_id",
+        "lifecycle_anchor_digest",
+        "lifecycle_witness_sha256",
+        "lifecycle_root_pin_sha256",
+        "fallback_authorization_id",
+        "fallback_authorization_sha256",
+    ):
+        _require_sha256(errors, f"{prefix}.{field}", review.get(field))
+    anchor_id = review.get("lifecycle_anchor_id")
+    if not isinstance(anchor_id, str) or _HEX64.fullmatch(anchor_id) is None:
+        errors.append(f"{prefix}.lifecycle_anchor_id: expected lowercase 64-hex")
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.lifecycle_generation",
+        value=review.get("lifecycle_generation"),
+        minimum=1,
+    )
+    if review.get("lifecycle_witness_path") != (
+        LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH
+    ):
+        errors.append(f"{prefix}.lifecycle_witness_path: protected path mismatch")
+    if review.get("lifecycle_root_pin_path") != (
+        LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH
+    ):
+        errors.append(f"{prefix}.lifecycle_root_pin_path: protected path mismatch")
+    try:
+        _ed25519_public_key_from_did_key(review.get("lifecycle_root_identity_did"))
+    except ValueError as exc:
+        errors.append(f"{prefix}.lifecycle_root_identity_did: {exc}")
+    implementer = _require_bounded_string(
+        errors,
+        prefix=f"{prefix}.implementer_identity",
+        value=review.get("implementer_identity"),
+        maximum=256,
+    )
+    implementer_provider = _require_bounded_string(
+        errors,
+        prefix=f"{prefix}.implementer_provider",
+        value=review.get("implementer_provider"),
+        maximum=64,
+    )
+    if reviewer_provider != "local_operator":
+        errors.append(f"{prefix}.reviewer_provider: expected 'local_operator'")
+    if reviewer_provider.casefold() in {"codex", "openai"}:
+        errors.append(f"{prefix}.reviewer_provider: Codex/OpenAI review is denied")
+    if reviewer and implementer and reviewer.casefold() == implementer.casefold():
+        errors.append(f"{prefix}: self-review is denied")
+    if (
+        reviewer_provider
+        and implementer_provider
+        and reviewer_provider.casefold() == implementer_provider.casefold()
+    ):
+        errors.append(f"{prefix}: reviewer and implementer providers must differ")
+    if review.get("algorithm") != "Ed25519":
+        errors.append(f"{prefix}.algorithm: expected 'Ed25519'")
+    signed_at = review.get("signed_at")
+    if not isinstance(signed_at, str) or _UTC_TIMESTAMP.fullmatch(signed_at) is None:
+        errors.append(f"{prefix}.signed_at: expected UTC timestamp")
+    if payload.get("created_at") != signed_at:
+        errors.append(f"{prefix}.signed_at: must equal receipt created_at")
+
+    if expected_authority is None:
+        errors.append(f"{prefix}: verified lifecycle authority is required")
+    else:
+        authority = {
+            field: review.get(field) for field in _ACCEPTANCE_REVIEW_AUTHORITY_FIELDS
+        }
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.authority",
+            actual=authority,
+            expected={
+                field: expected_authority.get(field)
+                for field in _ACCEPTANCE_REVIEW_AUTHORITY_FIELDS
+            },
+        )
+
+    try:
+        public_key = _ed25519_public_key_from_did_key(reviewer)
+    except ValueError as exc:
+        errors.append(f"{prefix}.reviewer_identity: {exc}")
+        return tuple(errors)
+    signature_token = review.get("signature")
+    if not isinstance(signature_token, str) or not signature_token.startswith(
+        "ed25519:"
+    ):
+        errors.append(f"{prefix}.signature: expected ed25519:<base64url>")
+        return tuple(errors)
+    encoded_signature = signature_token.removeprefix("ed25519:")
+    try:
+        signature = base64.b64decode(
+            encoded_signature + ("=" * (-len(encoded_signature) % 4)),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (binascii.Error, ValueError) as exc:
+        errors.append(f"{prefix}.signature: invalid base64url encoding: {exc}")
+        return tuple(errors)
+    if (
+        len(signature) != 64
+        or base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+        != encoded_signature
+    ):
+        errors.append(f"{prefix}.signature: noncanonical Ed25519 signature")
+        return tuple(errors)
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            signature,
+            canonical_operator_acceptance_review_bytes(payload),
+        )
+    except (InvalidSignature, ValueError):
+        errors.append(f"{prefix}.signature: cryptographic verification failed")
+    return tuple(errors)
+
+
+@dataclass(frozen=True)
+class OperatorAcceptanceReceiptSnapshot:
+    """One bounded, stable, duplicate-key-safe acceptance receipt snapshot."""
+
+    filename: str
+    payload: Mapping[str, Any]
+    sha256: str
+    raw: bytes
+
+
+def load_operator_acceptance_receipt(
+    path: Path | str,
+    *,
+    task_id: str,
+) -> OperatorAcceptanceReceiptSnapshot:
+    """Load an eventual operator receipt without following or trusting links."""
+
+    receipt_path = Path(path)
+    expected = _ACCEPTANCE_TASK_CONTRACTS.get(task_id)
+    if expected is None:
+        raise ValueError(f"unsupported operator acceptance task: {task_id}")
+    if receipt_path.name != expected["filename"]:
+        raise ValueError(f"{task_id}: receipt filename mismatch")
+    raw = _read_regular_bytes(
+        receipt_path,
+        maximum_bytes=MAX_OPERATOR_ACCEPTANCE_RECEIPT_BYTES,
+    )
+    payload = _load_json_bytes(raw, name=receipt_path.name)
+    required_fields = (
+        _ASE3_019_OPERATOR_SALVAGE_REQUIRED_FIELDS
+        if task_id == "ASE3-019"
+        else _OPERATOR_REPAIR_ACCEPTANCE_REQUIRED_FIELDS
+    )
+    if set(payload) != set(required_fields):
+        raise ValueError(f"{task_id}: exact top-level receipt fields required")
+    if payload.get("schema") != expected["schema"]:
+        raise ValueError(f"{task_id}: receipt schema mismatch")
+    task = payload.get("task")
+    if not isinstance(task, Mapping) or task.get("task_id") != task_id:
+        raise ValueError(f"{task_id}: receipt task identity mismatch")
+    return OperatorAcceptanceReceiptSnapshot(
+        filename=receipt_path.name,
+        payload=payload,
+        sha256="sha256:" + hashlib.sha256(raw).hexdigest(),
+        raw=raw,
+    )
+
+
+def _validate_acceptance_task(
+    *,
+    payload: Mapping[str, Any],
+    task_id: str,
+) -> list[str]:
+    errors: list[str] = []
+    prefix = f"operator_acceptance.{task_id}.task"
+    task = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload.get("task"),
+        expected=_ACCEPTANCE_TASK_REQUIRED_FIELDS,
+    )
+    if task is None:
+        return errors
+    expected = _ACCEPTANCE_TASK_CONTRACTS[task_id]
+    expected_values = {
+        "task_id": task_id,
+        "canonical_task_cid": expected["canonical_task_cid"],
+        "goal_id": expected["goal_id"],
+        "repairs_task": expected["repairs_task"],
+        "todo_contract_sha256": expected["todo_contract_sha256"],
+        "completed_contract_sha256": expected["completed_contract_sha256"],
+        "status_before": "todo",
+        "status_after": "completed",
+    }
+    _validate_exact_structure(
+        errors,
+        prefix=prefix,
+        actual=task,
+        expected=expected_values,
+    )
+    return errors
+
+
+def _validate_acceptance_parent(
+    *,
+    payload: Mapping[str, Any],
+    prefix: str,
+) -> list[str]:
+    errors: list[str] = []
+    parent = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_ACCEPTANCE_PARENT_REQUIRED_FIELDS,
+    )
+    if parent is None:
+        return errors
+    _require_hex40(errors, f"{prefix}.head", parent.get("head"))
+    _require_hex40(errors, f"{prefix}.tree", parent.get("tree"))
+    if parent.get("branch") != "agent/prompt-self-improvement-v3":
+        errors.append(f"{prefix}.branch: integration branch mismatch")
+    if parent.get("manifest_schema") != CONVERGENCE_MANIFEST_SCHEMA:
+        errors.append(f"{prefix}.manifest_schema: preparation @1 required")
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.receipt_paths_absent",
+        actual=parent.get("receipt_paths_absent"),
+        expected=list(OPERATOR_ACCEPTANCE_RECEIPT_RELATIVE_PATHS),
+    )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.task_statuses",
+        actual=parent.get("task_statuses"),
+        expected={task_id: "todo" for task_id in _ACCEPTANCE_TASK_CONTRACTS},
+    )
+    if parent.get("reload_gate_status") != "blocked":
+        errors.append(f"{prefix}.reload_gate_status: expected 'blocked'")
+    return errors
+
+
+def _validate_acceptance_validation(
+    *,
+    payload: Mapping[str, Any],
+    task_id: str,
+    acceptance_parent: Mapping[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    prefix = f"operator_acceptance.{task_id}.validation"
+    validation = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_ACCEPTANCE_VALIDATION_REQUIRED_FIELDS,
+    )
+    if validation is None:
+        return errors
+    expected_command = (
+        _ASE3_019_REQUIRED_VALIDATION
+        if task_id == "ASE3-019"
+        else str(_FALSE_COMPLETION_REPAIR_TASKS[task_id]["validation"])
+    )
+    if validation.get("command") != expected_command:
+        errors.append(f"{prefix}.command: exact declared command required")
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.exit_code",
+        value=validation.get("exit_code"),
+        minimum=0,
+        maximum=0,
+    )
+    if validation.get("passed") is not True:
+        errors.append(f"{prefix}.passed: expected true")
+    passed_count = _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.passed_count",
+        value=validation.get("passed_count"),
+        minimum=1,
+    )
+    _require_exact_integer(
+        errors,
+        prefix=f"{prefix}.failed_count",
+        value=validation.get("failed_count"),
+        minimum=0,
+        maximum=0,
+    )
+    final_values = _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[task_id]
+    if not final_values["ready"]:
+        errors.append(
+            f"{prefix}: final {task_id} product validation values are not populated"
+        )
+    elif passed_count != final_values["validation_passed_count"]:
+        errors.append(f"{prefix}.passed_count: exact accepted count mismatch")
+    if validation.get("validated_head") != acceptance_parent.get("head"):
+        errors.append(f"{prefix}.validated_head: acceptance parent mismatch")
+    if validation.get("validated_tree") != acceptance_parent.get("tree"):
+        errors.append(f"{prefix}.validated_tree: acceptance parent mismatch")
+    return errors
+
+
+def validate_git_generation_provenance(
+    *,
+    repo_root: Path | str,
+    generation: Mapping[str, Any],
+    acceptance_parent_head: str,
+    prefix: str = "operator_acceptance.implementation.generation",
+) -> tuple[str, ...]:
+    """Reconstruct one source/integrated patch generation from Git objects."""
+
+    errors: list[str] = []
+    repo = Path(repo_root)
+    record = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=generation,
+        expected=_ACCEPTANCE_GENERATION_REQUIRED_FIELDS,
+    )
+    if record is None:
+        return tuple(errors)
+    _require_bounded_string(
+        errors,
+        prefix=f"{prefix}.role",
+        value=record.get("role"),
+        maximum=128,
+    )
+    for field in (
+        "source_commit",
+        "source_parent",
+        "source_tree",
+        "integrated_commit",
+        "integrated_parent",
+        "integrated_tree",
+    ):
+        _require_hex40(errors, f"{prefix}.{field}", record.get(field))
+    _require_sha256(
+        errors,
+        f"{prefix}.binary_full_index_patch_sha256",
+        record.get("binary_full_index_patch_sha256"),
+    )
+    paths = _require_exact_string_array(
+        errors,
+        prefix=f"{prefix}.changed_paths",
+        value=record.get("changed_paths"),
+        maximum_items=64,
+        safe_paths=True,
+    )
+    if errors:
+        return tuple(errors)
+
+    for kind in ("source", "integrated"):
+        commit = str(record[f"{kind}_commit"])
+        parent = str(record[f"{kind}_parent"])
+        tree = str(record[f"{kind}_tree"])
+        identity = _git(repo, "rev-list", "--parents", "-n", "1", commit)
+        if identity.returncode != 0 or identity.stdout.strip().split() != [
+            commit,
+            parent,
+        ]:
+            errors.append(f"{prefix}.{kind}_commit: exact single parent mismatch")
+        actual_tree = _git(repo, "rev-parse", "--verify", f"{commit}^{{tree}}")
+        if actual_tree.returncode != 0 or actual_tree.stdout.strip() != tree:
+            errors.append(f"{prefix}.{kind}_tree: Git tree mismatch")
+        changed = _git(
+            repo,
+            "diff",
+            "--name-only",
+            "--no-renames",
+            parent,
+            commit,
+        )
+        if changed.returncode != 0 or tuple(changed.stdout.splitlines()) != paths:
+            errors.append(f"{prefix}.{kind}_changed_paths: exact population mismatch")
+
+    expected_patch = str(record["binary_full_index_patch_sha256"])
+    for kind in ("source", "integrated"):
+        patch = _git_bytes(
+            repo,
+            "diff",
+            "--binary",
+            "--full-index",
+            str(record[f"{kind}_parent"]),
+            str(record[f"{kind}_commit"]),
+        )
+        digest = ""
+        if patch.returncode == 0:
+            digest = "sha256:" + hashlib.sha256(patch.stdout).hexdigest()
+        if patch.returncode != 0 or digest != expected_patch:
+            errors.append(f"{prefix}.{kind}_patch: exact binary patch mismatch")
+
+    source_ancestor = _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        str(record["source_commit"]),
+        acceptance_parent_head,
+    )
+    if source_ancestor.returncode != 1:
+        errors.append(f"{prefix}.source_commit: must not be integration ancestor")
+    integrated_ancestor = _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        str(record["integrated_commit"]),
+        acceptance_parent_head,
+    )
+    if integrated_ancestor.returncode != 0:
+        errors.append(f"{prefix}.integrated_commit: must be integration ancestor")
+    return tuple(errors)
+
+
+def _validate_acceptance_implementation(
+    *,
+    payload: Mapping[str, Any],
+    task_id: str,
+    acceptance_parent_head: str,
+    repo_root: Path | None,
+) -> list[str]:
+    errors: list[str] = []
+    prefix = f"operator_acceptance.{task_id}.implementation"
+    implementation = _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_ACCEPTANCE_IMPLEMENTATION_REQUIRED_FIELDS,
+    )
+    if implementation is None:
+        return errors
+    final_values = _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[task_id]
+    if not final_values["ready"]:
+        errors.append(
+            f"{prefix}: final product values are not populated "
+            f"({final_values['pending']})"
+        )
+        return errors
+    generations = implementation.get("generations")
+    expected_generations = final_values["generations"]
+    if not isinstance(generations, list) or len(generations) != len(
+        expected_generations
+    ):
+        errors.append(f"{prefix}.generations: exact population required")
+        generations = []
+    for index, expected_generation in enumerate(expected_generations):
+        if index >= len(generations):
+            break
+        generation = generations[index]
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.generations[{index}]",
+            actual=generation,
+            expected={
+                key: list(value) if key == "changed_paths" else value
+                for key, value in expected_generation.items()
+            },
+        )
+        if repo_root is not None and isinstance(generation, Mapping):
+            errors.extend(
+                validate_git_generation_provenance(
+                    repo_root=repo_root,
+                    generation=generation,
+                    acceptance_parent_head=acceptance_parent_head,
+                    prefix=f"{prefix}.generations[{index}]",
+                )
+            )
+    final_blobs = implementation.get("final_blobs")
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.final_blobs",
+        actual=final_blobs,
+        expected=final_values["final_blobs"],
+    )
+    if repo_root is not None and isinstance(final_blobs, Mapping):
+        for relative_path, expected_blob in final_values["final_blobs"].items():
+            blob = _git(
+                repo_root,
+                "rev-parse",
+                "--verify",
+                f"{acceptance_parent_head}:{relative_path}",
+            )
+            if blob.returncode != 0 or blob.stdout.strip() != expected_blob:
+                errors.append(f"{prefix}.final_blobs.{relative_path}: Git blob mismatch")
+    return errors
+
+
+def validate_operator_repair_acceptance_receipt(
+    payload: Mapping[str, Any],
+    *,
+    task_id: str,
+    repo_root: Path | str | None = None,
+    lifecycle_authority: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Validate one strict @1 ASE3-023 or ASE3-027 repair receipt."""
+
+    if task_id not in {"ASE3-023", "ASE3-027"}:
+        return (f"operator_acceptance.{task_id}: unsupported repair task",)
+    errors: list[str] = []
+    prefix = f"operator_acceptance.{task_id}"
+    _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_OPERATOR_REPAIR_ACCEPTANCE_REQUIRED_FIELDS,
+    )
+    if payload.get("schema") != OPERATOR_REPAIR_ACCEPTANCE_RECEIPT_SCHEMA:
+        errors.append(f"{prefix}.schema: unsupported schema")
+    if payload.get("board_namespace") != BOARD_NAMESPACE:
+        errors.append(f"{prefix}.board_namespace: mismatch")
+    created_at = payload.get("created_at")
+    if not isinstance(created_at, str) or _UTC_TIMESTAMP.fullmatch(created_at) is None:
+        errors.append(f"{prefix}.created_at: expected UTC timestamp")
+    errors.extend(_validate_acceptance_task(payload=payload, task_id=task_id))
+
+    recovery_prefix = f"{prefix}.recovery"
+    recovery = _require_exact_keys(
+        errors,
+        prefix=recovery_prefix,
+        value=payload.get("recovery"),
+        expected=_ACCEPTANCE_RECOVERY_REQUIRED_FIELDS,
+    )
+    if recovery is not None:
+        evidence_anchor = str(
+            _FALSE_COMPLETION_REPAIR_TASKS[task_id]["evidence_anchor"]
+        )
+        artifact, pointer = evidence_anchor.split("#", 1)
+        _validate_exact_structure(
+            errors,
+            prefix=recovery_prefix,
+            actual=recovery,
+            expected={
+                "artifact": artifact,
+                "pointer": pointer,
+                "historical_completion_authority": False,
+                "branch_local_completion_authority": False,
+                "repair_required": True,
+            },
+        )
+
+    parent = payload.get("acceptance_parent")
+    errors.extend(
+        _validate_acceptance_parent(
+            payload=parent if isinstance(parent, Mapping) else {},
+            prefix=f"{prefix}.acceptance_parent",
+        )
+    )
+    parent_head = str(parent.get("head", "")) if isinstance(parent, Mapping) else ""
+    errors.extend(
+        _validate_acceptance_implementation(
+            payload=(
+                payload.get("implementation")
+                if isinstance(payload.get("implementation"), Mapping)
+                else {}
+            ),
+            task_id=task_id,
+            acceptance_parent_head=parent_head,
+            repo_root=Path(repo_root) if repo_root is not None else None,
+        )
+    )
+    errors.extend(
+        _validate_acceptance_validation(
+            payload=(
+                payload.get("validation")
+                if isinstance(payload.get("validation"), Mapping)
+                else {}
+            ),
+            task_id=task_id,
+            acceptance_parent=parent if isinstance(parent, Mapping) else {},
+        )
+    )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.denials",
+        actual=payload.get("denials"),
+        expected=_REPAIR_ACCEPTANCE_DENIALS,
+    )
+    errors.extend(
+        validate_operator_acceptance_signature(
+            payload,
+            expected_authority=lifecycle_authority,
+        )
+    )
+    return tuple(errors)
+
+
+_SALVAGE_INCIDENT_REQUIRED_FIELDS: Final = (
+    "artifact",
+    "artifact_sha256",
+    "attempt",
+    "event_snapshot",
+    "event_snapshot_sha256",
+    "attempts_exhausted",
+    "attempt_counter_mutation_authorized",
+)
+_SALVAGE_AUTHORITY_REQUIRED_FIELDS: Final = (
+    "authorization_artifact",
+    "authorization_artifact_sha256",
+    "prospective_only",
+    "route_id",
+    "canonical_route_owner",
+)
+_SALVAGE_SOURCE_CANDIDATE_REQUIRED_FIELDS: Final = (
+    "branch",
+    "source_attempt",
+    "source_commit",
+    "source_tree",
+    "replayed_paths",
+    "candidate_blobs",
+)
+_SALVAGE_BASE_REQUIRED_FIELDS: Final = ("head", "tree", "branch")
+_SALVAGE_MERGE_REQUIRED_FIELDS: Final = (
+    "acceptance_parent_head",
+    "acceptance_parent_tree",
+    "source_commits_are_acceptance_parent_ancestors",
+    "integrated_commits_are_acceptance_parent_ancestors",
+)
+
+
+def validate_ase3_019_accepted_control_plane(
+    payload: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Pin the accepted router/effect/accounting boundary for ASE3-019."""
+
+    errors: list[str] = []
+    for machine_local_field in (
+        "runner_path",
+        "capsule_root",
+        "descriptor",
+        "executable_path",
+    ):
+        if machine_local_field in payload:
+            errors.append(
+                "operator_acceptance.ASE3-019.accepted_control_plane."
+                f"{machine_local_field}: machine-local evidence is forbidden"
+            )
+    _validate_exact_structure(
+        errors,
+        prefix="operator_acceptance.ASE3-019.accepted_control_plane",
+        actual=payload,
+        expected=_ASE3_019_ACCEPTED_CONTROL_PLANE,
+    )
+    return tuple(errors)
+
+
+def validate_operator_salvage_receipt_019(
+    payload: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+    lifecycle_authority: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Validate the strict eventual @1 ASE3-019 operator salvage receipt."""
+
+    errors: list[str] = []
+    prefix = "operator_acceptance.ASE3-019"
+    _require_exact_keys(
+        errors,
+        prefix=prefix,
+        value=payload,
+        expected=_ASE3_019_OPERATOR_SALVAGE_REQUIRED_FIELDS,
+    )
+    if payload.get("schema") != OPERATOR_SALVAGE_RECEIPT_019_SCHEMA:
+        errors.append(f"{prefix}.schema: unsupported schema")
+    if payload.get("board_namespace") != BOARD_NAMESPACE:
+        errors.append(f"{prefix}.board_namespace: mismatch")
+    created_at = payload.get("created_at")
+    if not isinstance(created_at, str) or _UTC_TIMESTAMP.fullmatch(created_at) is None:
+        errors.append(f"{prefix}.created_at: expected UTC timestamp")
+    errors.extend(_validate_acceptance_task(payload=payload, task_id="ASE3-019"))
+
+    incident = _require_exact_keys(
+        errors,
+        prefix=f"{prefix}.incident",
+        value=payload.get("incident"),
+        expected=_SALVAGE_INCIDENT_REQUIRED_FIELDS,
+    )
+    if incident is not None:
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.incident",
+            actual=incident,
+            expected={
+                "artifact": SELF_HOST_SEED_FAILURE_019_ATTEMPT_2_FILENAME,
+                "artifact_sha256": _ASE3_019_ATTEMPT2_INCIDENT_SHA256,
+                "attempt": 2,
+                "event_snapshot": FAILED_PRE_DISPATCH_EVENT_019_ATTEMPT_2_FILENAME,
+                "event_snapshot_sha256": _ASE3_019_ATTEMPT2_EVENT_SHA256,
+                "attempts_exhausted": True,
+                "attempt_counter_mutation_authorized": False,
+            },
+        )
+    authority = _require_exact_keys(
+        errors,
+        prefix=f"{prefix}.authority",
+        value=payload.get("authority"),
+        expected=_SALVAGE_AUTHORITY_REQUIRED_FIELDS,
+    )
+    if authority is not None:
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.authority",
+            actual=authority,
+            expected={
+                "authorization_artifact": (
+                    PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME
+                ),
+                "authorization_artifact_sha256": (
+                    "sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2"
+                ),
+                "prospective_only": True,
+                "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
+                "canonical_route_owner": "ipfs_accelerate_py.llm_router",
+            },
+        )
+    source_candidate = _require_exact_keys(
+        errors,
+        prefix=f"{prefix}.source_candidate",
+        value=payload.get("source_candidate"),
+        expected=_SALVAGE_SOURCE_CANDIDATE_REQUIRED_FIELDS,
+    )
+    if source_candidate is not None:
+        if source_candidate.get("branch") != _ASE3_019_ATTEMPT2_BRANCH:
+            errors.append(f"{prefix}.source_candidate.branch: incident branch mismatch")
+        for field in ("source_commit", "source_tree"):
+            _require_hex40(
+                errors,
+                f"{prefix}.source_candidate.{field}",
+                source_candidate.get(field),
+            )
+        _require_exact_integer(
+            errors,
+            prefix=f"{prefix}.source_candidate.source_attempt",
+            value=source_candidate.get("source_attempt"),
+            minimum=2,
+            maximum=2,
+        )
+        replayed_paths = _require_exact_string_array(
+            errors,
+            prefix=f"{prefix}.source_candidate.replayed_paths",
+            value=source_candidate.get("replayed_paths"),
+            maximum_items=32,
+            safe_paths=True,
+        )
+        if replayed_paths != _ASE3_019_ATTEMPT2_REPLAYED_PATHS:
+            errors.append(
+                f"{prefix}.source_candidate.replayed_paths: incident population mismatch"
+            )
+        candidate_blobs = source_candidate.get("candidate_blobs")
+        if (
+            not isinstance(candidate_blobs, Mapping)
+            or not candidate_blobs
+            or len(candidate_blobs) > 32
+        ):
+            errors.append(f"{prefix}.source_candidate.candidate_blobs: expected object")
+        else:
+            for relative_path, blob in candidate_blobs.items():
+                if not isinstance(relative_path, str) or not _is_safe_relative_path(
+                    relative_path
+                ):
+                    errors.append(
+                        f"{prefix}.source_candidate.candidate_blobs: unsafe path"
+                    )
+                _require_hex40(
+                    errors,
+                    f"{prefix}.source_candidate.candidate_blobs.{relative_path}",
+                    blob,
+                )
+            _validate_exact_structure(
+                errors,
+                prefix=f"{prefix}.source_candidate.candidate_blobs",
+                actual=candidate_blobs,
+                expected=_ASE3_019_ATTEMPT2_CANDIDATE_BLOBS,
+            )
+        final_019 = _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES["ASE3-019"]
+        if final_019["ready"]:
+            for field, expected_value in final_019["source_candidate"].items():
+                if source_candidate.get(field) != expected_value:
+                    errors.append(
+                        f"{prefix}.source_candidate.{field}: final value mismatch"
+                    )
+    salvage_base = _require_exact_keys(
+        errors,
+        prefix=f"{prefix}.salvage_base",
+        value=payload.get("salvage_base"),
+        expected=_SALVAGE_BASE_REQUIRED_FIELDS,
+    )
+    if salvage_base is not None:
+        _require_hex40(errors, f"{prefix}.salvage_base.head", salvage_base.get("head"))
+        _require_hex40(errors, f"{prefix}.salvage_base.tree", salvage_base.get("tree"))
+        _require_bounded_string(
+            errors,
+            prefix=f"{prefix}.salvage_base.branch",
+            value=salvage_base.get("branch"),
+            maximum=256,
+        )
+        final_019 = _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES["ASE3-019"]
+        if final_019["ready"]:
+            _validate_exact_structure(
+                errors,
+                prefix=f"{prefix}.salvage_base",
+                actual=salvage_base,
+                expected=final_019["salvage_base"],
+            )
+    merge = _require_exact_keys(
+        errors,
+        prefix=f"{prefix}.merge",
+        value=payload.get("merge"),
+        expected=_SALVAGE_MERGE_REQUIRED_FIELDS,
+    )
+    parent_head = ""
+    if merge is not None:
+        parent_head = str(merge.get("acceptance_parent_head", ""))
+        _require_hex40(errors, f"{prefix}.merge.acceptance_parent_head", parent_head)
+        _require_hex40(
+            errors,
+            f"{prefix}.merge.acceptance_parent_tree",
+            merge.get("acceptance_parent_tree"),
+        )
+        if merge.get("source_commits_are_acceptance_parent_ancestors") is not False:
+            errors.append(f"{prefix}.merge: source commits must be non-ancestors")
+        if merge.get("integrated_commits_are_acceptance_parent_ancestors") is not True:
+            errors.append(f"{prefix}.merge: integrated commits must be ancestors")
+    errors.extend(
+        _validate_acceptance_implementation(
+            payload=(
+                payload.get("implementation")
+                if isinstance(payload.get("implementation"), Mapping)
+                else {}
+            ),
+            task_id="ASE3-019",
+            acceptance_parent_head=parent_head,
+            repo_root=Path(repo_root) if repo_root is not None else None,
+        )
+    )
+    errors.extend(
+        _validate_acceptance_validation(
+            payload=(
+                payload.get("validation")
+                if isinstance(payload.get("validation"), Mapping)
+                else {}
+            ),
+            task_id="ASE3-019",
+            acceptance_parent={
+                "head": parent_head,
+                "tree": merge.get("acceptance_parent_tree", "")
+                if merge is not None
+                else "",
+            },
+        )
+    )
+    errors.extend(
+        validate_ase3_019_accepted_control_plane(
+            payload.get("accepted_control_plane")
+            if isinstance(payload.get("accepted_control_plane"), Mapping)
+            else {}
+        )
+    )
+    _validate_exact_structure(
+        errors,
+        prefix=f"{prefix}.denials",
+        actual=payload.get("denials"),
+        expected=_SALVAGE_ACCEPTANCE_DENIALS,
+    )
+    errors.extend(
+        validate_operator_acceptance_signature(
+            payload,
+            expected_authority=lifecycle_authority,
+        )
+    )
+    return tuple(errors)
+
+
+def _status_only_acceptance_board(parent_raw: bytes) -> bytes:
+    try:
+        text = parent_raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("preparation taskboard is not UTF-8") from exc
+    target_ids = set(_ACCEPTANCE_TASK_CONTRACTS)
+    replaced: set[str] = set()
+    current_task = ""
+    output: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.startswith("## "):
+            current_task = line[3:].strip().split(" ", 1)[0]
+        if current_task in target_ids and line.rstrip("\r\n") == "- Status: todo":
+            newline = line[len(line.rstrip("\r\n")) :]
+            line = f"- Status: completed{newline}"
+            replaced.add(current_task)
+        output.append(line)
+    if replaced != target_ids:
+        raise ValueError("preparation taskboard lacks exact todo status lines")
+    return "".join(output).encode("utf-8")
+
+
+def validate_acceptance_child_transition(
+    *,
+    repo_root: Path | str,
+    acceptance_head: str,
+    preparation_head: str,
+    preparation_tree: str,
+    consumed_acceptance_blobs: Mapping[str, bytes] | None = None,
+    lifecycle_root_pin_raw: bytes | None = None,
+    lifecycle_witness_raw: bytes | None = None,
+    fallback_authorization_raw: bytes | None = None,
+    expected_root_identity_did: str | None = None,
+    expected_final_values: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Require one semantic preparation-to-acceptance Git transition."""
+
+    errors: list[str] = []
+    prefix = "operator_acceptance.transition"
+    repo = Path(repo_root)
+    for label, value in (
+        ("acceptance_head", acceptance_head),
+        ("preparation_head", preparation_head),
+        ("preparation_tree", preparation_tree),
+    ):
+        if _HEX40.fullmatch(value) is None:
+            errors.append(f"{prefix}.{label}: expected lowercase 40-hex")
+    if errors:
+        return tuple(errors)
+    preparation_identity = _git(
+        repo,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        preparation_head,
+    )
+    preparation_lineage = preparation_identity.stdout.strip().split()
+    root_pin_head = ""
+    root_pin_tree = ""
+    if preparation_identity.returncode != 0 or len(preparation_lineage) != 2:
+        errors.append(
+            f"{prefix}.preparation: preparation must directly follow root-pin commit"
+        )
+    else:
+        root_pin_head = preparation_lineage[1]
+        root_tree_result = _git(
+            repo,
+            "rev-parse",
+            "--verify",
+            f"{root_pin_head}^{{tree}}",
+        )
+        if root_tree_result.returncode != 0:
+            errors.append(f"{prefix}.root_pin_commit: unable to resolve Git tree")
+        else:
+            root_pin_tree = root_tree_result.stdout.strip()
+    parents = _git(repo, "rev-list", "--parents", "-n", "1", acceptance_head)
+    if parents.returncode != 0 or parents.stdout.strip().split() != [
+        acceptance_head,
+        preparation_head,
+    ]:
+        errors.append(f"{prefix}: acceptance must be a direct single-parent child")
+    actual_parent_tree = _git(
+        repo,
+        "rev-parse",
+        "--verify",
+        f"{preparation_head}^{{tree}}",
+    )
+    if (
+        actual_parent_tree.returncode != 0
+        or actual_parent_tree.stdout.strip() != preparation_tree
+    ):
+        errors.append(f"{prefix}.preparation_tree: Git tree mismatch")
+    changed = _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "--no-renames",
+        "-r",
+        preparation_head,
+        acceptance_head,
+    )
+    if changed.returncode != 0 or set(changed.stdout.splitlines()) != set(
+        ACCEPTANCE_CHILD_CHANGED_PATHS
+    ) or len(changed.stdout.splitlines()) != len(ACCEPTANCE_CHILD_CHANGED_PATHS):
+        errors.append(f"{prefix}.changed_paths: exact five-path population required")
+
+    for relative_path in OPERATOR_ACCEPTANCE_RECEIPT_RELATIVE_PATHS:
+        absent = _git(repo, "cat-file", "-e", f"{preparation_head}:{relative_path}")
+        if absent.returncode == 0:
+            errors.append(f"{prefix}.preparation.{relative_path}: receipt must be absent")
+        present = _git(repo, "cat-file", "-e", f"{acceptance_head}:{relative_path}")
+        if present.returncode != 0:
+            errors.append(f"{prefix}.acceptance.{relative_path}: receipt must be present")
+    reload_present = _git(
+        repo,
+        "cat-file",
+        "-e",
+        f"{acceptance_head}:{PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH}",
+    )
+    if reload_present.returncode == 0:
+        errors.append(f"{prefix}: provider reload receipt must remain absent")
+
+    board_path = PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix()
+    parent_board = _git_bytes(repo, "show", f"{preparation_head}:{board_path}")
+    child_board = _git_bytes(repo, "show", f"{acceptance_head}:{board_path}")
+    if parent_board.returncode != 0 or child_board.returncode != 0:
+        errors.append(f"{prefix}.taskboard: unable to read Git blobs")
+    else:
+        try:
+            expected_child_board = _status_only_acceptance_board(parent_board.stdout)
+        except ValueError as exc:
+            errors.append(f"{prefix}.taskboard: {exc}")
+        else:
+            if child_board.stdout != expected_child_board:
+                errors.append(
+                    f"{prefix}.taskboard: only three todo-to-completed edits allowed"
+                )
+    manifest_path = f"{_CONVERGENCE_RELATIVE_ROOT}/{MANIFEST_FILENAME}"
+    manifests: dict[str, Mapping[str, Any]] = {}
+    for head, schema, label in (
+        (preparation_head, CONVERGENCE_MANIFEST_SCHEMA, "preparation"),
+        (acceptance_head, ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA, "acceptance"),
+    ):
+        manifest_blob = _git_bytes(repo, "show", f"{head}:{manifest_path}")
+        if manifest_blob.returncode != 0 or len(manifest_blob.stdout) > (
+            MAX_EVIDENCE_SNAPSHOT_BYTES
+        ):
+            errors.append(f"{prefix}.{label}_manifest: unavailable or oversized")
+            continue
+        try:
+            manifest_payload = _load_json_bytes(
+                manifest_blob.stdout,
+                name=f"{label}-{MANIFEST_FILENAME}",
+            )
+        except (ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"{prefix}.{label}_manifest: {exc}")
+        else:
+            if manifest_payload.get("schema") != schema:
+                errors.append(f"{prefix}.{label}_manifest: schema mismatch")
+            manifests[label] = manifest_payload
+
+    preparation_manifest = manifests.get("preparation")
+    acceptance_manifest = manifests.get("acceptance")
+    baseline: CurrentMainBaseline | None = None
+    baseline_path = f"{_CONVERGENCE_RELATIVE_ROOT}/current_main_baseline.json"
+    baseline_blob = _git_bytes(repo, "show", f"{preparation_head}:{baseline_path}")
+    if baseline_blob.returncode != 0 or len(baseline_blob.stdout) > (
+        MAX_EVIDENCE_SNAPSHOT_BYTES
+    ):
+        errors.append(f"{prefix}.preparation_baseline: unavailable or oversized")
+    else:
+        try:
+            baseline_payload = _load_json_bytes(
+                baseline_blob.stdout,
+                name="preparation-current_main_baseline.json",
+            )
+        except (ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"{prefix}.preparation_baseline: {exc}")
+        else:
+            baseline = CurrentMainBaseline.from_dict(baseline_payload)
+            errors.extend(
+                f"{prefix}.preparation_baseline.{error}"
+                for error in baseline.validate()
+            )
+
+    if preparation_manifest is not None and baseline is not None:
+        errors.extend(
+            f"{prefix}.preparation_manifest.{error}"
+            for error in ConvergenceManifest.from_dict(
+                preparation_manifest
+            ).validate(baseline)
+        )
+        components = preparation_manifest.get("components")
+        if isinstance(components, Mapping):
+            for filename in ARTIFACT_FILENAMES:
+                component_path = f"{_CONVERGENCE_RELATIVE_ROOT}/{filename}"
+                component_blob = _git_bytes(
+                    repo,
+                    "show",
+                    f"{preparation_head}:{component_path}",
+                )
+                maximum_bytes = _EVIDENCE_SNAPSHOT_BYTE_BOUNDS.get(
+                    filename,
+                    MAX_EVIDENCE_SNAPSHOT_BYTES,
+                )
+                if (
+                    component_blob.returncode != 0
+                    or len(component_blob.stdout) > maximum_bytes
+                ):
+                    errors.append(
+                        f"{prefix}.preparation_components.{filename}: "
+                        "Git blob unavailable or oversized"
+                    )
+                    continue
+                actual_digest = (
+                    "sha256:" + hashlib.sha256(component_blob.stdout).hexdigest()
+                )
+                if components.get(filename) != actual_digest:
+                    errors.append(
+                        f"{prefix}.preparation_components.{filename}: "
+                        "Git blob digest mismatch"
+                    )
+
+    if acceptance_manifest is not None and baseline is not None:
+        errors.extend(
+            f"{prefix}.acceptance_manifest.{error}"
+            for error in ConvergenceManifest.from_dict(
+                acceptance_manifest
+            ).validate(baseline)
+        )
+    if preparation_manifest is not None and acceptance_manifest is not None:
+        expected_acceptance_manifest = dict(preparation_manifest)
+        expected_acceptance_manifest["schema"] = (
+            ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA
+        )
+        expected_acceptance_manifest["created_at"] = acceptance_manifest.get(
+            "created_at"
+        )
+        expected_acceptance_manifest["acceptance"] = acceptance_manifest.get(
+            "acceptance"
+        )
+        _validate_exact_structure(
+            errors,
+            prefix=f"{prefix}.manifest_transformation",
+            actual=acceptance_manifest,
+            expected=expected_acceptance_manifest,
+        )
+        acceptance = acceptance_manifest.get("acceptance")
+        if isinstance(acceptance, Mapping):
+            if acceptance.get("preparation_head") != preparation_head:
+                errors.append(
+                    f"{prefix}.acceptance_manifest.acceptance.preparation_head: "
+                    "transition parent mismatch"
+                )
+            if acceptance.get("preparation_tree") != preparation_tree:
+                errors.append(
+                    f"{prefix}.acceptance_manifest.acceptance.preparation_tree: "
+                    "transition tree mismatch"
+                )
+
+    root_pin_snapshot: LocalProfileLifecycleRootPinSnapshot | None = None
+    witness_snapshot: LocalOperatorLifecycleWitnessSnapshot | None = None
+    fallback_authorization: ProviderFallbackPolicyAuthorization | None = None
+    lifecycle_inputs = (
+        ("root_pin", lifecycle_root_pin_raw),
+        ("witness", lifecycle_witness_raw),
+        ("fallback_authorization", fallback_authorization_raw),
+    )
+    for label, raw in lifecycle_inputs:
+        if not isinstance(raw, bytes):
+            errors.append(f"{prefix}.{label}: consumed raw bytes are required")
+
+    if root_pin_head and root_pin_tree:
+        root_pin_blobs: dict[str, bytes] = {}
+        for label, head in (
+            ("root_pin_commit", root_pin_head),
+            ("preparation", preparation_head),
+            ("acceptance", acceptance_head),
+        ):
+            blob = _git_bytes(
+                repo,
+                "show",
+                f"{head}:{LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH}",
+            )
+            if (
+                blob.returncode != 0
+                or len(blob.stdout) > MAX_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_BYTES
+            ):
+                errors.append(f"{prefix}.{label}.root_pin: unavailable or oversized")
+            else:
+                root_pin_blobs[label] = blob.stdout
+        root_parent = _git(
+            repo,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            root_pin_head,
+        )
+        root_lineage = root_parent.stdout.strip().split()
+        root_base_head = ""
+        root_base_tree = ""
+        if root_parent.returncode != 0 or len(root_lineage) != 2:
+            errors.append(
+                f"{prefix}.root_pin_commit: exact single-parent history required"
+            )
+        else:
+            root_base_head = root_lineage[1]
+            root_base_tree_result = _git(
+                repo,
+                "rev-parse",
+                "--verify",
+                f"{root_base_head}^{{tree}}",
+            )
+            if root_base_tree_result.returncode != 0:
+                errors.append(f"{prefix}.root_pin_commit: base tree unavailable")
+            else:
+                root_base_tree = root_base_tree_result.stdout.strip()
+            premature_pin = _git(
+                repo,
+                "cat-file",
+                "-e",
+                f"{root_base_head}:{LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH}",
+            )
+            if premature_pin.returncode == 0:
+                errors.append(
+                    f"{prefix}.root_pin_commit: root pin must be introduced by P^"
+                )
+        if root_pin_blobs and len(set(root_pin_blobs.values())) != 1:
+            errors.append(f"{prefix}.root_pin: must remain byte-exact R-to-P-to-A")
+        if (
+            isinstance(lifecycle_root_pin_raw, bytes)
+            and root_pin_blobs.get("preparation") != lifecycle_root_pin_raw
+        ):
+            errors.append(f"{prefix}.root_pin: consumed bytes do not match P")
+        if isinstance(lifecycle_root_pin_raw, bytes):
+            try:
+                pin_payload = _load_json_bytes(
+                    lifecycle_root_pin_raw,
+                    name=LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME,
+                )
+            except (ValueError, json.JSONDecodeError) as exc:
+                errors.append(f"{prefix}.root_pin: {exc}")
+            else:
+                root_pin_snapshot = LocalProfileLifecycleRootPinSnapshot(
+                    payload=pin_payload,
+                    raw=lifecycle_root_pin_raw,
+                    sha256=(
+                        "sha256:" + hashlib.sha256(lifecycle_root_pin_raw).hexdigest()
+                    ),
+                )
+                errors.extend(
+                    f"{prefix}.root_pin.{error}"
+                    for error in validate_local_profile_lifecycle_root_pin(
+                        pin_payload,
+                        expected_root_identity_did=expected_root_identity_did,
+                    )
+                )
+                if pin_payload.get("base_head") != root_base_head:
+                    errors.append(f"{prefix}.root_pin.base_head: R parent mismatch")
+                if pin_payload.get("base_tree") != root_base_tree:
+                    errors.append(f"{prefix}.root_pin.base_tree: R parent tree mismatch")
+
+        witness_absent = _git(
+            repo,
+            "cat-file",
+            "-e",
+            f"{root_pin_head}:{LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH}",
+        )
+        if witness_absent.returncode == 0:
+            errors.append(f"{prefix}.witness: must be introduced by P, not R")
+        witness_blobs: dict[str, bytes] = {}
+        for label, head in (
+            ("preparation", preparation_head),
+            ("acceptance", acceptance_head),
+        ):
+            blob = _git_bytes(
+                repo,
+                "show",
+                f"{head}:{LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH}",
+            )
+            if (
+                blob.returncode != 0
+                or len(blob.stdout) > MAX_LOCAL_OPERATOR_LIFECYCLE_WITNESS_BYTES
+            ):
+                errors.append(f"{prefix}.{label}.witness: unavailable or oversized")
+            else:
+                witness_blobs[label] = blob.stdout
+        if witness_blobs and len(set(witness_blobs.values())) != 1:
+            errors.append(f"{prefix}.witness: P witness must remain unchanged in A")
+        if (
+            isinstance(lifecycle_witness_raw, bytes)
+            and witness_blobs.get("preparation") != lifecycle_witness_raw
+        ):
+            errors.append(f"{prefix}.witness: consumed bytes do not match P")
+        if isinstance(lifecycle_witness_raw, bytes):
+            try:
+                witness_payload = _load_json_bytes(
+                    lifecycle_witness_raw,
+                    name=LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME,
+                )
+            except (ValueError, json.JSONDecodeError) as exc:
+                errors.append(f"{prefix}.witness: {exc}")
+            else:
+                witness_snapshot = LocalOperatorLifecycleWitnessSnapshot(
+                    payload=witness_payload,
+                    raw=lifecycle_witness_raw,
+                    sha256=(
+                        "sha256:" + hashlib.sha256(lifecycle_witness_raw).hexdigest()
+                    ),
+                )
+
+        authorization_path = (
+            f"{_CONVERGENCE_RELATIVE_ROOT}/"
+            f"{PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME}"
+        )
+        authorization_blobs: dict[str, bytes] = {}
+        for label, head in (
+            ("root_pin_commit", root_pin_head),
+            ("preparation", preparation_head),
+            ("acceptance", acceptance_head),
+        ):
+            blob = _git_bytes(repo, "show", f"{head}:{authorization_path}")
+            if (
+                blob.returncode != 0
+                or len(blob.stdout) > MAX_PROVIDER_FALLBACK_AUTHORIZATION_BYTES
+            ):
+                errors.append(
+                    f"{prefix}.{label}.fallback_authorization: unavailable or oversized"
+                )
+            else:
+                authorization_blobs[label] = blob.stdout
+        root_authorization = authorization_blobs.get("root_pin_commit")
+        if root_authorization is not None:
+            try:
+                root_authorization_payload = _load_json_bytes(
+                    root_authorization,
+                    name="root-provider-fallback-authorization.json",
+                )
+            except (ValueError, json.JSONDecodeError) as exc:
+                errors.append(f"{prefix}.root_pin_commit.fallback_authorization: {exc}")
+            else:
+                if root_authorization_payload.get("schema") != (
+                    PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA
+                ):
+                    errors.append(
+                        f"{prefix}.root_pin_commit.fallback_authorization: @1 required"
+                    )
+        if (
+            authorization_blobs.get("preparation")
+            != authorization_blobs.get("acceptance")
+        ):
+            errors.append(
+                f"{prefix}.fallback_authorization: P auth @2 must remain unchanged in A"
+            )
+        if (
+            isinstance(fallback_authorization_raw, bytes)
+            and authorization_blobs.get("preparation")
+            != fallback_authorization_raw
+        ):
+            errors.append(
+                f"{prefix}.fallback_authorization: consumed bytes do not match P"
+            )
+        if isinstance(fallback_authorization_raw, bytes):
+            try:
+                authorization_payload = _load_json_bytes(
+                    fallback_authorization_raw,
+                    name=PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
+                )
+            except (ValueError, json.JSONDecodeError) as exc:
+                errors.append(f"{prefix}.fallback_authorization: {exc}")
+            else:
+                fallback_authorization = ProviderFallbackPolicyAuthorization.from_dict(
+                    authorization_payload
+                )
+                if authorization_payload.get("schema") != (
+                    PROVIDER_FALLBACK_POLICY_AUTHORIZATION_V2_SCHEMA
+                ):
+                    errors.append(f"{prefix}.fallback_authorization: @2 required in P")
+
+        root_base_commit_time = _git(
+            repo,
+            "show",
+            "-s",
+            "--format=%ct",
+            root_base_head,
+        )
+        root_commit_time = _git(
+            repo,
+            "show",
+            "-s",
+            "--format=%ct",
+            root_pin_head,
+        )
+        preparation_commit_time = _git(
+            repo,
+            "show",
+            "-s",
+            "--format=%ct",
+            preparation_head,
+        )
+        root_base_time_ms: int | None = None
+        root_time_ms: int | None = None
+        preparation_time_ms: int | None = None
+        try:
+            if root_base_commit_time.returncode == 0:
+                root_base_time_ms = int(root_base_commit_time.stdout.strip()) * 1000
+            if root_commit_time.returncode == 0:
+                root_time_ms = int(root_commit_time.stdout.strip()) * 1000
+            if preparation_commit_time.returncode == 0:
+                preparation_time_ms = (
+                    int(preparation_commit_time.stdout.strip()) * 1000
+                )
+        except ValueError:
+            errors.append(f"{prefix}.lifecycle_timing: invalid Git commit time")
+        if root_pin_snapshot is not None:
+            pinned_at = root_pin_snapshot.payload.get("pinned_at_ms")
+            if (
+                type(pinned_at) is int
+                and root_base_time_ms is not None
+                and root_time_ms is not None
+                and not root_base_time_ms <= pinned_at <= root_time_ms + 999
+            ):
+                errors.append(
+                    f"{prefix}.root_pin.pinned_at_ms: outside R commit interval"
+                )
+        if root_pin_snapshot is not None and witness_snapshot is not None:
+            portable_reference_time = (
+                fallback_authorization.payload.get("authorized_at_ms")
+                if fallback_authorization is not None
+                and type(
+                    fallback_authorization.payload.get("authorized_at_ms")
+                )
+                is int
+                else None
+            )
+            errors.extend(
+                f"{prefix}.witness.{error}"
+                for error in validate_local_operator_lifecycle_witness(
+                    witness_snapshot.payload,
+                    root_identity_did=root_pin_snapshot.root_identity_did,
+                    expected_base_head=root_pin_head,
+                    expected_base_tree=root_pin_tree,
+                    reference_time_ms=portable_reference_time,
+                    earliest_observed_at_ms=root_time_ms,
+                    expected_final_values=expected_final_values,
+                )
+            )
+        if (
+            fallback_authorization is not None
+            and root_pin_snapshot is not None
+            and witness_snapshot is not None
+        ):
+            errors.extend(
+                f"{prefix}.fallback_authorization.{error}"
+                for error in fallback_authorization.validate(
+                    lifecycle_witness=witness_snapshot,
+                    root_pin=root_pin_snapshot,
+                    expected_source_head=root_pin_head,
+                    expected_source_tree=root_pin_tree,
+                    expected_final_values=expected_final_values,
+                )
+            )
+            authorized_at = fallback_authorization.payload.get("authorized_at_ms")
+            if (
+                type(authorized_at) is int
+                and preparation_time_ms is not None
+                and authorized_at > preparation_time_ms + 999
+            ):
+                errors.append(
+                    f"{prefix}.fallback_authorization.authorized_at_ms: postdates P"
+                )
+
+    if consumed_acceptance_blobs is not None:
+        if set(consumed_acceptance_blobs) != set(ACCEPTANCE_CHILD_CHANGED_PATHS):
+            errors.append(
+                f"{prefix}.consumed_blobs: exact five-path population required"
+            )
+        for relative_path in ACCEPTANCE_CHILD_CHANGED_PATHS:
+            consumed = consumed_acceptance_blobs.get(relative_path)
+            if not isinstance(consumed, bytes):
+                errors.append(
+                    f"{prefix}.consumed_blobs.{relative_path}: bytes unavailable"
+                )
+                continue
+            committed = _git_bytes(
+                repo,
+                "show",
+                f"{acceptance_head}:{relative_path}",
+            )
+            if committed.returncode != 0 or committed.stdout != consumed:
+                errors.append(
+                    f"{prefix}.consumed_blobs.{relative_path}: "
+                    "does not match acceptance HEAD"
+                )
+    return tuple(errors)
 
 
 @dataclass(frozen=True)
@@ -2135,25 +5378,40 @@ class ProviderFallbackPolicyAuthorization:
         source = self.payload.get("authorization_source", {})
         return str(source.get("source_tree", "")) if isinstance(source, Mapping) else ""
 
-    def validate(self) -> tuple[str, ...]:
+    def validate(
+        self,
+        *,
+        lifecycle_witness: LocalOperatorLifecycleWitnessSnapshot | None = None,
+        root_pin: LocalProfileLifecycleRootPinSnapshot | None = None,
+        expected_source_head: str | None = None,
+        expected_source_tree: str | None = None,
+        expected_final_values: Mapping[str, Any] | None = None,
+    ) -> tuple[str, ...]:
         errors: list[str] = []
         prefix = "provider_fallback_policy_authorization"
-        expected_fields = {
-            "schema",
-            "created_at",
-            "board_namespace",
-            "authorization_source",
-            "route",
-            "ownership_contract",
-            "bootstrap_route_guarantees",
-            "ase3_019_completion_requirements",
-            "external_docker_boundary",
-            "denials",
-            "historical_evidence",
-        }
-        if set(self.payload) != expected_fields:
+        schema = self.payload.get("schema")
+        if schema == PROVIDER_FALLBACK_POLICY_AUTHORIZATION_V2_SCHEMA:
+            if set(self.payload) != set(
+                _PROVIDER_FALLBACK_AUTHORIZATION_V2_REQUIRED_FIELDS
+            ):
+                errors.append(f"{prefix}: field population mismatch")
+            if self.payload.get("board_namespace") != BOARD_NAMESPACE:
+                errors.append(f"{prefix}.board_namespace: mismatch")
+            errors.extend(
+                self._validate_v2(
+                    lifecycle_witness=lifecycle_witness,
+                    root_pin=root_pin,
+                    expected_source_head=expected_source_head,
+                    expected_source_tree=expected_source_tree,
+                    expected_final_values=expected_final_values,
+                )
+            )
+            return tuple(errors)
+
+        expected_fields = _PROVIDER_FALLBACK_AUTHORIZATION_V1_REQUIRED_FIELDS
+        if set(self.payload) != set(expected_fields):
             errors.append(f"{prefix}: field population mismatch")
-        if self.payload.get("schema") != PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA:
+        if schema != PROVIDER_FALLBACK_POLICY_AUTHORIZATION_SCHEMA:
             errors.append(f"{prefix}.schema: unsupported schema")
         if self.payload.get("board_namespace") != BOARD_NAMESPACE:
             errors.append(f"{prefix}.board_namespace: mismatch")
@@ -2169,10 +5427,7 @@ class ProviderFallbackPolicyAuthorization:
             )
 
         sections = (
-            (
-                "authorization_source",
-                _PROVIDER_FALLBACK_AUTHORIZATION_SOURCE,
-            ),
+            ("authorization_source", _PROVIDER_FALLBACK_AUTHORIZATION_SOURCE),
             ("route", _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE),
             ("ownership_contract", _PROVIDER_FALLBACK_OWNERSHIP_CONTRACT),
             (
@@ -2208,6 +5463,393 @@ class ProviderFallbackPolicyAuthorization:
             _require_sha256(errors, f"{prefix}.historical_evidence.incident_log_sha256", historical.get("incident_log_sha256"))
         return tuple(errors)
 
+    def _validate_v2(
+        self,
+        *,
+        lifecycle_witness: LocalOperatorLifecycleWitnessSnapshot | None,
+        root_pin: LocalProfileLifecycleRootPinSnapshot | None,
+        expected_source_head: str | None,
+        expected_source_tree: str | None,
+        expected_final_values: Mapping[str, Any] | None,
+    ) -> tuple[str, ...]:
+        errors: list[str] = []
+        prefix = "provider_fallback_policy_authorization"
+        expected_source = dict(_PROVIDER_FALLBACK_AUTHORIZATION_SOURCE)
+        expected_source["source_head"] = (
+            self.source_head if expected_source_head is None else expected_source_head
+        )
+        expected_source["source_tree"] = (
+            self.source_tree if expected_source_tree is None else expected_source_tree
+        )
+        for field, expected in (
+            ("authorization_source", expected_source),
+            ("route", _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE),
+            (
+                "ownership_contract",
+                _PROVIDER_FALLBACK_AUTHORIZATION_V2_OWNERSHIP_CONTRACT,
+            ),
+            (
+                "bootstrap_route_guarantees",
+                _PROVIDER_FALLBACK_AUTHORIZATION_V2_BOOTSTRAP_GUARANTEES,
+            ),
+        ):
+            _validate_exact_policy_object(
+                errors,
+                prefix=f"{prefix}.{field}",
+                actual=self.payload.get(field),
+                expected=expected,
+            )
+
+        reviewer = _require_exact_keys(
+            errors,
+            prefix=f"{prefix}.reviewer",
+            value=self.payload.get("reviewer"),
+            expected=_PROVIDER_FALLBACK_AUTHORIZATION_V2_REVIEWER_FIELDS,
+        )
+        reviewer_identity: Any = None
+        if reviewer is not None:
+            reviewer_identity = reviewer.get("identity")
+            try:
+                _ed25519_public_key_from_did_key(reviewer_identity)
+            except ValueError as exc:
+                errors.append(f"{prefix}.reviewer.identity: {exc}")
+            if reviewer.get("provider") != "local_operator":
+                errors.append(
+                    f"{prefix}.reviewer.provider: expected 'local_operator'"
+                )
+            _require_trimmed_string(
+                errors,
+                prefix=f"{prefix}.reviewer.profile_id",
+                value=reviewer.get("profile_id"),
+            )
+            _require_sha256(
+                errors,
+                f"{prefix}.reviewer.profile_content_id",
+                reviewer.get("profile_content_id"),
+            )
+            anchor_id = reviewer.get("lifecycle_anchor_id")
+            if not isinstance(anchor_id, str) or _HEX64.fullmatch(anchor_id) is None:
+                errors.append(
+                    f"{prefix}.reviewer.lifecycle_anchor_id: expected lowercase 64-hex"
+                )
+            _require_exact_integer(
+                errors,
+                prefix=f"{prefix}.reviewer.generation",
+                value=reviewer.get("generation"),
+                minimum=1,
+            )
+            if reviewer.get("witness_path") != (
+                LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH
+            ):
+                errors.append(
+                    f"{prefix}.reviewer.witness_path: protected path mismatch"
+                )
+            _require_sha256(
+                errors,
+                f"{prefix}.reviewer.witness_sha256",
+                reviewer.get("witness_sha256"),
+            )
+
+        bounds = _require_exact_keys(
+            errors,
+            prefix=f"{prefix}.authority_bounds",
+            value=self.payload.get("authority_bounds"),
+            expected=_PROVIDER_FALLBACK_AUTHORIZATION_V2_AUTHORITY_BOUNDS_FIELDS,
+        )
+        if bounds is not None:
+            for field in (
+                "repository_cid",
+                "budget_cid",
+                "resource_cid",
+                "authority_cid",
+            ):
+                _require_trimmed_string(
+                    errors,
+                    prefix=f"{prefix}.authority_bounds.{field}",
+                    value=bounds.get(field),
+                )
+            _require_hex40(
+                errors,
+                f"{prefix}.authority_bounds.baseline_commit",
+                bounds.get("baseline_commit"),
+            )
+            effects = _require_sorted_unique_string_array(
+                errors,
+                prefix=f"{prefix}.authority_bounds.effects",
+                value=bounds.get("effects"),
+            )
+            if effects != _PROVIDER_FALLBACK_AUTHORIZATION_V2_EFFECTS:
+                errors.append(
+                    f"{prefix}.authority_bounds.effects: exact scoped effects required"
+                )
+            if bounds.get("baseline_commit") != expected_source["source_head"]:
+                errors.append(
+                    f"{prefix}.authority_bounds.baseline_commit: "
+                    "authorization source mismatch"
+                )
+        if self.payload.get("fallback_implementer_identity") != "codex":
+            errors.append(
+                f"{prefix}.fallback_implementer_identity: expected 'codex'"
+            )
+        if self.payload.get("lifecycle_root_pin_path") != (
+            LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH
+        ):
+            errors.append(f"{prefix}.lifecycle_root_pin_path: protected path mismatch")
+        _require_sha256(
+            errors,
+            f"{prefix}.lifecycle_root_pin_sha256",
+            self.payload.get("lifecycle_root_pin_sha256"),
+        )
+        _require_trimmed_string(
+            errors,
+            prefix=f"{prefix}.lifecycle_witness_nonce",
+            value=self.payload.get("lifecycle_witness_nonce"),
+            maximum=512,
+        )
+        try:
+            _ed25519_public_key_from_did_key(
+                self.payload.get("lifecycle_root_identity_did")
+            )
+        except ValueError as exc:
+            errors.append(f"{prefix}.lifecycle_root_identity_did: {exc}")
+        authorized_at = _require_exact_integer(
+            errors,
+            prefix=f"{prefix}.authorized_at_ms",
+            value=self.payload.get("authorized_at_ms"),
+            minimum=1,
+            maximum=10**16,
+        )
+
+        final_values = (
+            _ACCEPTANCE_REVIEWER_FINAL_VALUES
+            if expected_final_values is None
+            else expected_final_values
+        )
+        final_equalities = {
+            "identity": "reviewer_identity",
+            "profile_id": "profile_id",
+            "profile_content_id": "profile_content_id",
+            "lifecycle_anchor_id": "lifecycle_anchor_id",
+            "generation": "lifecycle_generation",
+        }
+        pending_values = {
+            _FINAL_REVIEWER_DID_PENDING,
+            _FINAL_REVIEWER_PROFILE_ID_PENDING,
+            _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING,
+            _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
+            _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
+        }
+        for reviewer_field, final_field in final_equalities.items():
+            expected = final_values.get(final_field)
+            if expected in pending_values:
+                errors.append(
+                    f"{prefix}.reviewer.{reviewer_field}: final pin is not populated"
+                )
+            elif reviewer is not None and reviewer.get(reviewer_field) != expected:
+                errors.append(
+                    f"{prefix}.reviewer.{reviewer_field}: final pin mismatch"
+                )
+
+        if lifecycle_witness is not None:
+            witness = lifecycle_witness.payload
+            profile = witness.get("profile")
+            anchor = witness.get("anchor")
+            if not isinstance(profile, Mapping) or not isinstance(anchor, Mapping):
+                errors.append(f"{prefix}: lifecycle witness projections unavailable")
+            else:
+                witness_equalities = {
+                    "identity": profile.get("identity_did"),
+                    "profile_id": profile.get("profile_id"),
+                    "profile_content_id": witness.get("profile_content_id"),
+                    "lifecycle_anchor_id": anchor.get("anchor_id"),
+                    "generation": profile.get("lifecycle_generation"),
+                    "witness_sha256": lifecycle_witness.sha256,
+                }
+                for field, expected in witness_equalities.items():
+                    if reviewer is not None and reviewer.get(field) != expected:
+                        errors.append(
+                            f"{prefix}.reviewer.{field}: witness equality mismatch"
+                        )
+                top_equalities = {
+                    "lifecycle_witness_nonce": witness.get("nonce"),
+                    "lifecycle_root_identity_did": witness.get(
+                        "root_identity_did"
+                    ),
+                }
+                for field, expected in top_equalities.items():
+                    if self.payload.get(field) != expected:
+                        errors.append(f"{prefix}.{field}: witness equality mismatch")
+                if bounds is not None:
+                    profile_bounds = {
+                        "repository_cid": profile.get("repository_cid"),
+                        "baseline_commit": profile.get("baseline_commit"),
+                        "effects": profile.get("effect_bounds"),
+                        "budget_cid": profile.get("budget_cid"),
+                        "resource_cid": profile.get("resource_cid"),
+                        "authority_cid": witness.get("profile_content_id"),
+                    }
+                    for field, expected in profile_bounds.items():
+                        if bounds.get(field) != expected:
+                            errors.append(
+                                f"{prefix}.authority_bounds.{field}: "
+                                "profile equality mismatch"
+                            )
+                observed = witness.get("observed_at_ms")
+                expires = witness.get("expires_at_ms")
+                if (
+                    authorized_at is not None
+                    and type(observed) is int
+                    and type(expires) is int
+                    and not observed <= authorized_at <= expires
+                ):
+                    errors.append(
+                        f"{prefix}.authorized_at_ms: outside witness validity"
+                    )
+        if root_pin is not None:
+            root_equalities = {
+                "lifecycle_root_identity_did": root_pin.root_identity_did,
+                "lifecycle_root_pin_sha256": root_pin.sha256,
+            }
+            for field, expected in root_equalities.items():
+                if self.payload.get(field) != expected:
+                    errors.append(f"{prefix}.{field}: root-pin equality mismatch")
+
+        source = self.payload.get("authorization_source")
+        route = self.payload.get("route")
+        if reviewer is not None and isinstance(source, Mapping) and isinstance(
+            route, Mapping
+        ) and bounds is not None:
+            review_payload = {
+                "schema": PROVIDER_FALLBACK_POLICY_REVIEW_V2_SCHEMA,
+                "board_namespace": BOARD_NAMESPACE,
+                "authorization_source": {
+                    field: source.get(field)
+                    for field in ("kind", "source_head", "source_tree")
+                },
+                "route": dict(route),
+                "authority_bounds": dict(bounds),
+                "reviewer": {
+                    field: reviewer.get(field)
+                    for field in _PROVIDER_FALLBACK_AUTHORIZATION_V2_REVIEWER_FIELDS
+                    if field != "signature"
+                },
+                "lifecycle_root_identity_did": self.payload.get(
+                    "lifecycle_root_identity_did"
+                ),
+                "lifecycle_witness_nonce": self.payload.get(
+                    "lifecycle_witness_nonce"
+                ),
+                "lifecycle_root_pin_path": self.payload.get(
+                    "lifecycle_root_pin_path"
+                ),
+                "lifecycle_root_pin_sha256": self.payload.get(
+                    "lifecycle_root_pin_sha256"
+                ),
+                "authorized_at_ms": self.payload.get("authorized_at_ms"),
+                "fallback_implementer_identity": self.payload.get(
+                    "fallback_implementer_identity"
+                ),
+            }
+            _verify_standard_ed25519_signature(
+                errors,
+                prefix=f"{prefix}.reviewer.signature",
+                signer_identity_did=reviewer_identity,
+                signature_token=reviewer.get("signature"),
+                message=_canonical_json_bytes(review_payload),
+            )
+        return tuple(errors)
+
+    def authorization_id(self, *, raw_sha256: str) -> str:
+        source = self.payload.get("authorization_source")
+        reviewer = self.payload.get("reviewer")
+        bounds = self.payload.get("authority_bounds")
+        if not all(isinstance(item, Mapping) for item in (source, reviewer, bounds)):
+            return ""
+        assert isinstance(source, Mapping)
+        assert isinstance(reviewer, Mapping)
+        assert isinstance(bounds, Mapping)
+        material = {
+            "schema": PROVIDER_FALLBACK_POLICY_AUTHORIZATION_V2_SCHEMA,
+            "board_namespace": self.payload.get("board_namespace"),
+            "artifact_path": PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH,
+            "artifact_sha256": raw_sha256,
+            "authorization_kind": source.get("kind"),
+            "source_head": source.get("source_head"),
+            "source_tree": source.get("source_tree"),
+            "reviewer_identity": reviewer.get("identity"),
+            "reviewer_provider": reviewer.get("provider"),
+            "reviewer_signature": reviewer.get("signature"),
+            "reviewer_profile_id": reviewer.get("profile_id"),
+            "reviewer_profile_content_id": reviewer.get("profile_content_id"),
+            "reviewer_lifecycle_anchor_id": reviewer.get("lifecycle_anchor_id"),
+            "reviewer_lifecycle_generation": reviewer.get("generation"),
+            "reviewer_witness_path": reviewer.get("witness_path"),
+            "reviewer_witness_sha256": reviewer.get("witness_sha256"),
+            "lifecycle_root_identity_did": self.payload.get(
+                "lifecycle_root_identity_did"
+            ),
+            "lifecycle_witness_nonce": self.payload.get(
+                "lifecycle_witness_nonce"
+            ),
+            "lifecycle_root_pin_path": self.payload.get(
+                "lifecycle_root_pin_path"
+            ),
+            "lifecycle_root_pin_sha256": self.payload.get(
+                "lifecycle_root_pin_sha256"
+            ),
+            "authorized_at_ms": self.payload.get("authorized_at_ms"),
+            "fallback_implementer_identity": self.payload.get(
+                "fallback_implementer_identity"
+            ),
+            "authority_bounds": dict(bounds),
+            "authorization_id": "",
+        }
+        encoded = json.dumps(
+            material,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def acceptance_review_authority(
+        self,
+        *,
+        raw_sha256: str,
+        lifecycle_witness: LocalOperatorLifecycleWitnessSnapshot,
+        root_pin: LocalProfileLifecycleRootPinSnapshot,
+    ) -> Mapping[str, Any]:
+        reviewer = self.payload.get("reviewer")
+        if not isinstance(reviewer, Mapping):
+            return {}
+        return {
+            "reviewer_identity": reviewer.get("identity"),
+            "reviewer_provider": reviewer.get("provider"),
+            "profile_id": reviewer.get("profile_id"),
+            "profile_content_id": reviewer.get("profile_content_id"),
+            "lifecycle_anchor_id": reviewer.get("lifecycle_anchor_id"),
+            "lifecycle_anchor_digest": lifecycle_witness.payload.get(
+                "anchor_digest"
+            ),
+            "lifecycle_generation": reviewer.get("generation"),
+            "lifecycle_witness_path": (
+                LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH
+            ),
+            "lifecycle_witness_sha256": lifecycle_witness.sha256,
+            "lifecycle_witness_id": lifecycle_witness.witness_id,
+            "lifecycle_witness_nonce": lifecycle_witness.payload.get("nonce"),
+            "lifecycle_root_pin_path": (
+                LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_RELATIVE_PATH
+            ),
+            "lifecycle_root_pin_sha256": root_pin.sha256,
+            "lifecycle_root_identity_did": root_pin.root_identity_did,
+            "fallback_authorization_id": self.authorization_id(
+                raw_sha256=raw_sha256
+            ),
+            "fallback_authorization_sha256": raw_sha256,
+        }
+
 
 @dataclass(frozen=True)
 class ConvergenceManifest:
@@ -2221,8 +5863,23 @@ class ConvergenceManifest:
 
     def validate(self, baseline: CurrentMainBaseline) -> tuple[str, ...]:
         errors: list[str] = []
-        if self.payload.get("schema") != CONVERGENCE_MANIFEST_SCHEMA:
+        manifest_schema = self.payload.get("schema")
+        if manifest_schema not in {
+            CONVERGENCE_MANIFEST_SCHEMA,
+            ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA,
+        }:
             errors.append("convergence_manifest.schema: unsupported schema")
+        elif manifest_schema == CONVERGENCE_MANIFEST_SCHEMA:
+            if set(self.payload) != set(
+                _CONVERGENCE_MANIFEST_V1_TOP_LEVEL_FIELDS
+            ):
+                errors.append(
+                    "convergence_manifest: exact @1 top-level population required"
+                )
+        elif set(self.payload) != set(_CONVERGENCE_MANIFEST_V2_TOP_LEVEL_FIELDS):
+            errors.append(
+                "convergence_manifest: exact @2 top-level population required"
+            )
         if self.payload.get("board_namespace") != BOARD_NAMESPACE:
             errors.append("convergence_manifest.board_namespace: mismatch")
         if self.payload.get("task_id") != "ASE3-000":
@@ -2230,10 +5887,11 @@ class ConvergenceManifest:
         if self.payload.get("goal_id") != "ASE3-G010":
             errors.append("convergence_manifest.goal_id: expected ASE3-G010")
         created_at = self.payload.get("created_at")
-        if (
-            not isinstance(created_at, str)
-            or _UTC_TIMESTAMP.fullmatch(created_at) is None
-            or created_at != CONVERGENCE_MANIFEST_CREATED_AT
+        if not isinstance(created_at, str) or _UTC_TIMESTAMP.fullmatch(created_at) is None:
+            errors.append("convergence_manifest.created_at: expected UTC timestamp")
+        elif (
+            manifest_schema == CONVERGENCE_MANIFEST_SCHEMA
+            and created_at != CONVERGENCE_MANIFEST_CREATED_AT
         ):
             errors.append(
                 "convergence_manifest.created_at: expected UTC timestamp "
@@ -2324,6 +5982,66 @@ class ConvergenceManifest:
                     errors.append(
                         f"convergence_manifest.downstream_rules.{field}: expected {expected!r}"
                     )
+        if manifest_schema == ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA:
+            acceptance = _require_exact_keys(
+                errors,
+                prefix="convergence_manifest.acceptance",
+                value=self.payload.get("acceptance"),
+                expected=_ACCEPTANCE_MANIFEST_REQUIRED_FIELDS,
+            )
+            if acceptance is not None:
+                if acceptance.get("phase") != "operator_acceptance":
+                    errors.append(
+                        "convergence_manifest.acceptance.phase: exact phase required"
+                    )
+                _require_hex40(
+                    errors,
+                    "convergence_manifest.acceptance.preparation_head",
+                    acceptance.get("preparation_head"),
+                )
+                _require_hex40(
+                    errors,
+                    "convergence_manifest.acceptance.preparation_tree",
+                    acceptance.get("preparation_tree"),
+                )
+                receipt_bindings = acceptance.get("receipts")
+                if not isinstance(receipt_bindings, Mapping) or set(
+                    receipt_bindings
+                ) != set(OPERATOR_ACCEPTANCE_RECEIPT_FILENAMES):
+                    errors.append(
+                        "convergence_manifest.acceptance.receipts: exact population required"
+                    )
+                elif isinstance(receipt_bindings, Mapping):
+                    for filename, digest in receipt_bindings.items():
+                        _require_sha256(
+                            errors,
+                            f"convergence_manifest.acceptance.receipts.{filename}",
+                            digest,
+                        )
+                task_bindings = acceptance.get("tasks")
+                expected_task_bindings = {
+                    task_id: {
+                        "canonical_task_cid": expected["canonical_task_cid"],
+                        "todo_contract_sha256": expected["todo_contract_sha256"],
+                        "completed_contract_sha256": expected[
+                            "completed_contract_sha256"
+                        ],
+                    }
+                    for task_id, expected in _ACCEPTANCE_TASK_CONTRACTS.items()
+                }
+                _validate_exact_structure(
+                    errors,
+                    prefix="convergence_manifest.acceptance.tasks",
+                    actual=task_bindings,
+                    expected=expected_task_bindings,
+                )
+                if acceptance.get("reload_gate_completed") is not False:
+                    errors.append(
+                        "convergence_manifest.acceptance.reload_gate_completed: "
+                        "must be false"
+                    )
+        elif "acceptance" in self.payload:
+            errors.append("convergence_manifest.acceptance: forbidden in preparation @1")
         return tuple(errors)
 
 
@@ -2397,15 +6115,23 @@ def _parse_taskboard_metadata(text: str) -> dict[str, dict[str, str]]:
     return tasks
 
 
-def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
-    """Read one regular nonsymlink board snapshot and reject malformed UTF-8."""
+def _load_taskboard_snapshot(
+    taskboard_path: Path,
+) -> tuple[bytes, dict[str, dict[str, str]]]:
+    """Read and parse one stable regular nonsymlink board snapshot."""
 
     raw = _read_regular_bytes(taskboard_path)
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError(f"{taskboard_path.name}: expected UTF-8 Markdown") from exc
-    return _parse_taskboard_metadata(text)
+    return raw, _parse_taskboard_metadata(text)
+
+
+def _load_taskboard_metadata(taskboard_path: Path) -> dict[str, dict[str, str]]:
+    """Read one regular nonsymlink board snapshot and reject malformed UTF-8."""
+
+    return _load_taskboard_snapshot(taskboard_path)[1]
 
 
 def _parse_objective_metadata(text: str) -> dict[str, dict[str, str]]:
@@ -2570,10 +6296,306 @@ def _canonical_task_cid_from_metadata(metadata: Mapping[str, str]) -> str:
     return "b" + base64.b32encode(raw_cid).decode("ascii").rstrip("=").lower()
 
 
+def _operator_acceptance_phase(
+    *,
+    tasks: Mapping[str, Mapping[str, str]],
+    artifact_root: Path,
+    manifest: ConvergenceManifest,
+) -> tuple[str, list[str]]:
+    """Classify only the complete preparation or atomic acceptance state."""
+
+    errors: list[str] = []
+    prefix = "operator_acceptance.phase"
+    present: dict[str, bool] = {}
+    for filename in OPERATOR_ACCEPTANCE_RECEIPT_FILENAMES:
+        try:
+            (artifact_root / filename).lstat()
+        except FileNotFoundError:
+            present[filename] = False
+        except OSError as exc:
+            errors.append(f"{prefix}.{filename}: unable to inspect reserved path: {exc}")
+            present[filename] = True
+        else:
+            present[filename] = True
+    statuses = {
+        task_id: str(tasks.get(task_id, {}).get("status", "")).strip().lower()
+        for task_id in _ACCEPTANCE_TASK_CONTRACTS
+    }
+    manifest_schema = manifest.payload.get("schema")
+    if not any(present.values()):
+        if manifest_schema != CONVERGENCE_MANIFEST_SCHEMA:
+            errors.append(f"{prefix}: preparation requires convergence manifest @1")
+        for task_id, status in statuses.items():
+            if status != "todo":
+                errors.append(f"{prefix}.{task_id}.status: preparation requires todo")
+        return "preparation", errors
+    if not all(present.values()):
+        population = ",".join(
+            filename for filename, exists in present.items() if exists
+        )
+        errors.append(
+            f"{prefix}.receipts: partial population forbidden (present={population})"
+        )
+        for task_id, status in statuses.items():
+            if status != "todo":
+                errors.append(
+                    f"{prefix}.{task_id}.status: partial status transition forbidden"
+                )
+        return "invalid", errors
+    if manifest_schema != ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA:
+        errors.append(f"{prefix}: populated receipts require convergence manifest @2")
+    for task_id, status in statuses.items():
+        if status != "completed":
+            errors.append(
+                f"{prefix}.{task_id}.status: populated receipts require completed"
+            )
+    return ("acceptance" if not errors else "invalid"), errors
+
+
+def _receipt_acceptance_parent(
+    task_id: str,
+    payload: Mapping[str, Any],
+) -> tuple[str, str]:
+    if task_id == "ASE3-019":
+        parent = payload.get("merge")
+        if not isinstance(parent, Mapping):
+            return "", ""
+        return (
+            str(parent.get("acceptance_parent_head", "")),
+            str(parent.get("acceptance_parent_tree", "")),
+        )
+    parent = payload.get("acceptance_parent")
+    if not isinstance(parent, Mapping):
+        return "", ""
+    return str(parent.get("head", "")), str(parent.get("tree", ""))
+
+
+def _validate_operator_acceptance_packet(
+    *,
+    artifact_root: Path,
+    manifest: ConvergenceManifest,
+    repo_root: Path | None,
+    fallback_authorization: ProviderFallbackPolicyAuthorization | None = None,
+    fallback_authorization_raw: bytes | None = None,
+    manifest_raw: bytes | None = None,
+    taskboard_raw: bytes | None = None,
+    expected_root_identity_did: str | None = None,
+    expected_final_values: Mapping[str, Any] | None = None,
+) -> tuple[list[str], tuple[str, ...]]:
+    errors: list[str] = []
+    checked: list[str] = [
+        LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME,
+        LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME,
+    ]
+    root_pin: LocalProfileLifecycleRootPinSnapshot | None = None
+    lifecycle_witness: LocalOperatorLifecycleWitnessSnapshot | None = None
+    lifecycle_authority: Mapping[str, Any] | None = None
+    if repo_root is None:
+        errors.append(
+            "operator_acceptance.authority_paths: lexical repository root required"
+        )
+    if manifest_raw is None:
+        errors.append("convergence_manifest: raw snapshot required")
+    else:
+        try:
+            manifest_snapshot_payload = _load_json_bytes(
+                manifest_raw,
+                name=MANIFEST_FILENAME,
+            )
+        except ValueError as exc:
+            errors.append(f"convergence_manifest.raw_snapshot: {exc}")
+        else:
+            if manifest_snapshot_payload != manifest.payload:
+                errors.append(
+                    "convergence_manifest: payload/raw snapshot mismatch"
+                )
+    try:
+        root_pin = load_local_profile_lifecycle_root_pin(
+            artifact_root / LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME,
+            repository_root=repo_root,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"{LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_FILENAME}: {exc}")
+    else:
+        errors.extend(
+            validate_local_profile_lifecycle_root_pin(
+                root_pin.payload,
+                expected_root_identity_did=expected_root_identity_did,
+            )
+        )
+    try:
+        lifecycle_witness = load_local_operator_lifecycle_witness(
+            artifact_root / LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME,
+            repository_root=repo_root,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"{LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME}: {exc}")
+    else:
+        auth_payload = (
+            fallback_authorization.payload
+            if fallback_authorization is not None
+            else {}
+        )
+        errors.extend(
+            validate_local_operator_lifecycle_witness(
+                lifecycle_witness.payload,
+                root_identity_did=(
+                    root_pin.root_identity_did if root_pin is not None else ""
+                ),
+                expected_base_head=(
+                    fallback_authorization.source_head
+                    if fallback_authorization is not None
+                    else None
+                ),
+                expected_base_tree=(
+                    fallback_authorization.source_tree
+                    if fallback_authorization is not None
+                    else None
+                ),
+                reference_time_ms=(
+                    auth_payload.get("authorized_at_ms")
+                    if type(auth_payload.get("authorized_at_ms")) is int
+                    else None
+                ),
+                expected_final_values=expected_final_values,
+            )
+        )
+    if fallback_authorization is None or fallback_authorization_raw is None:
+        errors.append(
+            "provider_fallback_policy_authorization: @2 raw snapshot required"
+        )
+    else:
+        try:
+            authorization_snapshot_payload = _load_json_bytes(
+                fallback_authorization_raw,
+                name=PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
+            )
+        except ValueError as exc:
+            errors.append(
+                f"provider_fallback_policy_authorization.raw_snapshot: {exc}"
+            )
+        else:
+            if authorization_snapshot_payload != fallback_authorization.payload:
+                errors.append(
+                    "provider_fallback_policy_authorization: "
+                    "payload/raw snapshot mismatch"
+                )
+        errors.extend(
+            fallback_authorization.validate(
+                lifecycle_witness=lifecycle_witness,
+                root_pin=root_pin,
+                expected_source_head=fallback_authorization.source_head,
+                expected_source_tree=fallback_authorization.source_tree,
+                expected_final_values=expected_final_values,
+            )
+        )
+        if root_pin is not None and lifecycle_witness is not None:
+            lifecycle_authority = fallback_authorization.acceptance_review_authority(
+                raw_sha256=(
+                    "sha256:" + hashlib.sha256(fallback_authorization_raw).hexdigest()
+                ),
+                lifecycle_witness=lifecycle_witness,
+                root_pin=root_pin,
+            )
+
+    snapshots: dict[str, OperatorAcceptanceReceiptSnapshot] = {}
+    for task_id, expected in _ACCEPTANCE_TASK_CONTRACTS.items():
+        filename = str(expected["filename"])
+        checked.append(filename)
+        try:
+            snapshot = load_operator_acceptance_receipt(
+                artifact_root / filename,
+                task_id=task_id,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"{filename}: {exc}")
+            continue
+        snapshots[task_id] = snapshot
+        if task_id == "ASE3-019":
+            errors.extend(
+                validate_operator_salvage_receipt_019(
+                    snapshot.payload,
+                    repo_root=repo_root,
+                    lifecycle_authority=lifecycle_authority,
+                )
+            )
+        else:
+            errors.extend(
+                validate_operator_repair_acceptance_receipt(
+                    snapshot.payload,
+                    task_id=task_id,
+                    repo_root=repo_root,
+                    lifecycle_authority=lifecycle_authority,
+                )
+            )
+    acceptance = manifest.payload.get("acceptance")
+    if not isinstance(acceptance, Mapping):
+        errors.append("convergence_manifest.acceptance: expected object")
+        return errors, tuple(checked)
+    manifest_head = str(acceptance.get("preparation_head", ""))
+    manifest_tree = str(acceptance.get("preparation_tree", ""))
+    receipt_bindings = acceptance.get("receipts")
+    if isinstance(receipt_bindings, Mapping):
+        for task_id, snapshot in snapshots.items():
+            if receipt_bindings.get(snapshot.filename) != snapshot.sha256:
+                errors.append(
+                    f"convergence_manifest.acceptance.receipts.{snapshot.filename}: "
+                    "digest mismatch"
+                )
+            receipt_head, receipt_tree = _receipt_acceptance_parent(
+                task_id,
+                snapshot.payload,
+            )
+            if receipt_head != manifest_head or receipt_tree != manifest_tree:
+                errors.append(
+                    f"operator_acceptance.{task_id}: common preparation parent mismatch"
+                )
+    if repo_root is not None and _HEX40.fullmatch(manifest_head):
+        head = _git(repo_root, "rev-parse", "--verify", "HEAD")
+        if head.returncode != 0:
+            errors.append("operator_acceptance.transition: unable to resolve HEAD")
+        else:
+            consumed_blobs: dict[str, bytes] = {
+                f"{_CONVERGENCE_RELATIVE_ROOT}/{snapshot.filename}": snapshot.raw
+                for task_id in _ACCEPTANCE_TASK_CONTRACTS
+                if (snapshot := snapshots.get(task_id)) is not None
+            }
+            if manifest_raw is not None:
+                consumed_blobs[
+                    f"{_CONVERGENCE_RELATIVE_ROOT}/{MANIFEST_FILENAME}"
+                ] = manifest_raw
+            if taskboard_raw is not None:
+                consumed_blobs[
+                    PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix()
+                ] = taskboard_raw
+            errors.extend(
+                validate_acceptance_child_transition(
+                    repo_root=repo_root,
+                    acceptance_head=head.stdout.strip(),
+                    preparation_head=manifest_head,
+                    preparation_tree=manifest_tree,
+                    consumed_acceptance_blobs=consumed_blobs,
+                    lifecycle_root_pin_raw=(
+                        root_pin.raw if root_pin is not None else None
+                    ),
+                    lifecycle_witness_raw=(
+                        lifecycle_witness.raw
+                        if lifecycle_witness is not None
+                        else None
+                    ),
+                    fallback_authorization_raw=fallback_authorization_raw,
+                    expected_root_identity_did=expected_root_identity_did,
+                    expected_final_values=expected_final_values,
+                )
+            )
+    return errors, tuple(checked)
+
+
 def _validate_provider_attempt_reload_gate(
     *,
     tasks: Mapping[str, Mapping[str, str]],
     artifact_root: Path,
+    acceptance_phase: bool = False,
 ) -> list[str]:
     """Validate the initial noncanonical reload gate.
 
@@ -2588,9 +6610,10 @@ def _validate_provider_attempt_reload_gate(
     prefix = "provider_attempt_reload_gate"
     reserved_receipts = (
         (PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME, "receipt"),
-        (
-            OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
-            OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
+        *(
+            ()
+            if acceptance_phase
+            else tuple((filename, filename) for filename in OPERATOR_ACCEPTANCE_RECEIPT_FILENAMES)
         ),
     )
     for receipt_filename, receipt_label in reserved_receipts:
@@ -2692,10 +6715,13 @@ def _validate_provider_attempt_reload_gate(
     provider_task = tasks.get("ASE3-019")
     if provider_task is None:
         errors.append(f"{prefix}.ASE3-019: expected exactly one task")
-    elif provider_task.get("status") != "todo":
+    elif provider_task.get("status") != (
+        "completed" if acceptance_phase else "todo"
+    ):
+        required_status = "completed" if acceptance_phase else "todo"
         errors.append(
-            f"{prefix}.ASE3-019.status: must remain todo until the tracked "
-            "operator-salvage receipt is strictly validated and bound"
+            f"{prefix}.ASE3-019.status: expected {required_status} for the "
+            "current operator-acceptance phase"
         )
     return errors
 
@@ -2703,6 +6729,7 @@ def _validate_provider_attempt_reload_gate(
 def _validate_provider_fallback_task_contract(
     *,
     tasks: Mapping[str, Mapping[str, str]],
+    expected_status: str = "todo",
 ) -> list[str]:
     """Keep ASE3-019 aligned with the prospective fallback authorization."""
 
@@ -2714,9 +6741,18 @@ def _validate_provider_fallback_task_contract(
         return errors
     if task.get(_TASK_TITLE_KEY) != _ASE3_019_TITLE:
         errors.append(f"{prefix}.ASE3-019.title: exact title required")
-    if _task_contract_sha256(task) != _ASE3_019_CONTRACT_SHA256:
+    expected_contract = _ACCEPTANCE_TASK_CONTRACTS["ASE3-019"][
+        "completed_contract_sha256"
+        if expected_status == "completed"
+        else "todo_contract_sha256"
+    ]
+    if _task_contract_sha256(task) != expected_contract:
         errors.append(
             f"{prefix}.ASE3-019.contract_sha256: exact metadata/prose required"
+        )
+    if task.get("status") != expected_status:
+        errors.append(
+            f"{prefix}.ASE3-019.status: expected {expected_status!r}"
         )
     try:
         current_cid = _canonical_task_cid_from_metadata(task)
@@ -2765,6 +6801,7 @@ def _validate_provider_fallback_task_contract(
 def _validate_false_completion_repair_tasks(
     *,
     tasks: Mapping[str, Mapping[str, str]],
+    expected_status: str = "todo",
 ) -> list[str]:
     """Pin the two replacement tasks without rewriting historical receipts."""
 
@@ -2778,13 +6815,18 @@ def _validate_false_completion_repair_tasks(
             continue
         if task.get(_TASK_TITLE_KEY) != expected["title"]:
             errors.append(f"{prefix}.{task_id}.title: exact title required")
-        if _task_contract_sha256(task) != expected["contract_sha256"]:
+        expected_contract = _ACCEPTANCE_TASK_CONTRACTS[task_id][
+            "completed_contract_sha256"
+            if expected_status == "completed"
+            else "todo_contract_sha256"
+        ]
+        if _task_contract_sha256(task) != expected_contract:
             errors.append(
                 f"{prefix}.{task_id}.contract_sha256: "
                 "exact metadata/prose required"
             )
         for field, expected_value in {
-            "status": "todo",
+            "status": expected_status,
             "completion": "manual",
             "is schedulable": "true",
             "review only": "false",
@@ -3816,8 +7858,10 @@ def _validate_attempt2_failed_log_snapshot(*, raw: bytes, digest: str) -> list[s
         errors.append(f"{prefix}: expected UTF-8 text")
         return errors
     required_fragments = (
-        "Task: ASE3-019 Seal signed provider authority, authentication lifecycle, "
-        "and once-only fallback\n",
+        (
+            "Task: ASE3-019 Seal signed provider authority, authentication lifecycle, "
+            "and once-only fallback\n"
+        ),
         f"Branch: {_ASE3_019_ATTEMPT2_BRANCH}\n",
         f"Baseline: {_ASE3_019_ATTEMPT2_LAUNCH['launch_head']}\n",
         " -m ipfs_accelerate_py.agent_supervisor.grok_cli_runner ",
@@ -4673,6 +8717,7 @@ def validate_convergence_artifacts(
     checked: list[str] = []
     payloads: dict[str, Mapping[str, Any]] = {}
     raw_artifacts: dict[str, bytes] = {}
+    file_snapshots: dict[str, _RegularFileSnapshot] = {}
     artifact_digests: dict[str, str] = {}
     try:
         root_status = root.lstat()
@@ -4692,13 +8737,15 @@ def validate_convergence_artifacts(
         path = root / filename
         checked.append(filename)
         try:
-            raw = _read_regular_bytes(
+            file_snapshot = _read_regular_snapshot(
                 path,
                 maximum_bytes=_EVIDENCE_SNAPSHOT_BYTE_BOUNDS.get(
                     filename,
                     MAX_EVIDENCE_SNAPSHOT_BYTES,
                 ),
             )
+            raw = file_snapshot.raw
+            file_snapshots[filename] = file_snapshot
             raw_artifacts[filename] = raw
             if filename in (*JSON_ARTIFACT_FILENAMES, MANIFEST_FILENAME):
                 payloads[filename] = _load_json_bytes(raw, name=filename)
@@ -4709,6 +8756,42 @@ def validate_convergence_artifacts(
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{filename}: {exc}")
+    if errors:
+        return ConvergenceValidationReport(False, tuple(errors), tuple(checked))
+
+    authority_specs: list[tuple[str, str]] = []
+    if payloads[PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME].get(
+        "schema"
+    ) == PROVIDER_FALLBACK_POLICY_AUTHORIZATION_V2_SCHEMA:
+        authority_specs.append(
+            (
+                PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
+                PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH,
+            )
+        )
+    if payloads[MANIFEST_FILENAME].get("schema") == (
+        ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA
+    ):
+        authority_specs.append(
+            (
+                MANIFEST_FILENAME,
+                f"{_CONVERGENCE_RELATIVE_ROOT}/{MANIFEST_FILENAME}",
+            )
+        )
+    for filename, relative_path in authority_specs:
+        if repo_root is None:
+            errors.append(
+                f"{filename}: repository root is required for authority files"
+            )
+            continue
+        try:
+            _require_authority_file_snapshot(
+                file_snapshots[filename],
+                repository_root=Path(repo_root),
+                expected_relative_path=relative_path,
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
     if errors:
         return ConvergenceValidationReport(False, tuple(errors), tuple(checked))
 
@@ -4761,18 +8844,37 @@ def validate_convergence_artifacts(
         / PROMPT_V3_TASKBOARD_RELATIVE_PATH
     )
     try:
-        board_tasks = _load_taskboard_metadata(board_path)
+        board_raw, board_tasks = _load_taskboard_snapshot(board_path)
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         errors.append(f"taskboard_snapshot: {exc}")
     else:
+        acceptance_phase, phase_errors = _operator_acceptance_phase(
+            tasks=board_tasks,
+            artifact_root=root,
+            manifest=manifest,
+        )
+        errors.extend(phase_errors)
+        is_acceptance = acceptance_phase == "acceptance"
         errors.extend(
             _validate_provider_attempt_reload_gate(
                 tasks=board_tasks,
                 artifact_root=root,
+                acceptance_phase=is_acceptance,
             )
         )
-        errors.extend(_validate_provider_fallback_task_contract(tasks=board_tasks))
-        errors.extend(_validate_false_completion_repair_tasks(tasks=board_tasks))
+        expected_status = "completed" if is_acceptance else "todo"
+        errors.extend(
+            _validate_provider_fallback_task_contract(
+                tasks=board_tasks,
+                expected_status=expected_status,
+            )
+        )
+        errors.extend(
+            _validate_false_completion_repair_tasks(
+                tasks=board_tasks,
+                expected_status=expected_status,
+            )
+        )
         errors.extend(
             _validate_program_plan_expansion(
                 tasks=board_tasks,
@@ -4786,6 +8888,26 @@ def validate_convergence_artifacts(
                     tasks=board_tasks,
                 )
             )
+        if is_acceptance:
+            acceptance_errors, acceptance_checked = (
+                _validate_operator_acceptance_packet(
+                    artifact_root=root,
+                    manifest=manifest,
+                    repo_root=(
+                        Path(repo_root)
+                        if check_repository and repo_root is not None
+                        else None
+                    ),
+                    fallback_authorization=fallback_authorization,
+                    fallback_authorization_raw=raw_artifacts[
+                        PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME
+                    ],
+                    manifest_raw=raw_artifacts[MANIFEST_FILENAME],
+                    taskboard_raw=board_raw,
+                )
+            )
+            errors.extend(acceptance_errors)
+            checked.extend(acceptance_checked)
 
     components = manifest.payload.get("components", {})
     if isinstance(components, Mapping):

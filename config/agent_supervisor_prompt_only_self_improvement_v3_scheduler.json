@@ -99,7 +99,13 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/self_host_seed_failure_ase3_019_attempt_2_20260808.json",
-    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json"
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
