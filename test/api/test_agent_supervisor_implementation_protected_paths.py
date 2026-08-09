@@ -1392,6 +1392,31 @@ def test_quiesced_shutdown_releases_exact_dead_canonical_claim_from_clean_state(
     assert not claim_path.exists()
 
 
+def test_quiesced_shutdown_releases_legacy_claim_without_worktree_root(
+    tmp_path: Path,
+) -> None:
+    daemon, _task, _state, claim_path, claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    legacy_claim = dict(claim)
+    legacy_claim["worktree_root"] = ""
+    claim_path.write_text(
+        json.dumps(legacy_claim, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "quiesced_task_claim_released"
+    receipt = json.loads(
+        Path(release["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["claim"]["legacy_worktree_root_missing"] is True
+    assert not claim_path.exists()
+
+
 def test_supervisor_startup_preflight_releases_quiesced_dead_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

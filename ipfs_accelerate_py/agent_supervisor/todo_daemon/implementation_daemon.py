@@ -8135,9 +8135,11 @@ class PortalImplementationDaemon:
                 != expected_state_path
                 or not claim_repository_id
                 or claim_repository_id != self.merge_target_repository_id
-                or not claim_worktree_root
-                or normalize_workspace_path(claim_worktree_root)
-                != normalize_workspace_path(self.repo_root)
+                or (
+                    claim_worktree_root
+                    and normalize_workspace_path(claim_worktree_root)
+                    != normalize_workspace_path(self.repo_root)
+                )
                 or shard_count != self.task_shard_count
                 or shard_index != self.task_shard_index
                 or (
@@ -8202,6 +8204,9 @@ class PortalImplementationDaemon:
                     "owner_pid": pid,
                     "state_dir": expected_state_dir,
                     "state_path": expected_state_path,
+                    "legacy_worktree_root_missing": not bool(
+                        claim_worktree_root
+                    ),
                 },
                 "worktree_lifecycle": {
                     "record_id": record.record_id,
