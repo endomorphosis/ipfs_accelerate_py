@@ -509,7 +509,7 @@ validation and evidence contract.
 
 ## LFP-016 Publish syntax core and bridge shared formalization contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
