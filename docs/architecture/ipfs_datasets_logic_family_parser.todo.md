@@ -664,7 +664,7 @@ validation and evidence contract.
 
 ## LFP-021 Implement the controlled F-logic and ErgoAI frontend
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
