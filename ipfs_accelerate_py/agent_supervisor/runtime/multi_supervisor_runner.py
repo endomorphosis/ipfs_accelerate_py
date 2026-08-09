@@ -6,15 +6,16 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, Mapping, MutableMapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, MutableMapping, Protocol, Sequence
 
 from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
@@ -50,6 +51,612 @@ _COMPATIBLE_GROK_PRIMARY_ALIASES = frozenset(
         "xai-cli",
     }
 )
+
+# ---------------------------------------------------------------------------
+# DatabaseProgramConfig@1 / DatabaseImplementationTrack@1
+# ---------------------------------------------------------------------------
+# Propagates explicit DuckDB/Quack task-source and authority selection through
+# multi-runner tracks, supervisors, and managed daemons without silent file
+# or local-DuckDB fallback under Quack authority.
+
+DATABASE_PROGRAM_CONFIG_INTERFACE = "DatabaseProgramConfig@1"
+DATABASE_IMPLEMENTATION_TRACK_INTERFACE = "DatabaseImplementationTrack@1"
+DATABASE_PROGRAM_CONFIG_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-program-config@1"
+)
+
+STATE_AUTHORITY_MODES = frozenset(
+    {
+        "legacy-markdown",
+        "embedded",
+        "embedded-exclusive",
+        "quack",
+    }
+)
+TASK_SOURCE_KINDS = frozenset(
+    {
+        "legacy-markdown",
+        "markdown",
+        "duckdb",
+        "quack",
+    }
+)
+FAILOVER_POLICIES = frozenset(
+    {
+        "fail-closed",
+        "require-recovery",
+    }
+)
+# Policies that would silently replace Quack with a weaker authority.
+FORBIDDEN_QUACK_FAILOVER_POLICIES = frozenset(
+    {
+        "local-duckdb",
+        "embedded",
+        "embedded-exclusive",
+        "file",
+        "legacy-markdown",
+        "markdown",
+        "silent-local",
+        "fallback-local",
+    }
+)
+EXPORT_PROFILES = frozenset(
+    {
+        "none",
+        "markdown-taskboard",
+        "json-status",
+        "jsonl-audit",
+        "csv-analysis",
+        "release-bundle",
+    }
+)
+SECRET_HANDLE_PREFIXES = (
+    "env://",
+    "vault://",
+    "handle:",
+    "secret-handle:",
+)
+QUACK_ENDPOINT_RE = re.compile(
+    r"^quack:(?://)?(?:\[[0-9a-fA-F:]+\]|[0-9A-Za-z._-]+):\d{1,5}$"
+)
+
+# Child environment bindings that carry control-plane selection.  Opaque
+# secret handles only — never raw Quack tokens.  Provider subprocesses must
+# not inherit these names.
+STATE_CREDENTIAL_ENV_NAMES: tuple[str, ...] = (
+    "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE",
+    "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT",
+    "IPFS_ACCELERATE_AGENT_STATE_SECRET_HANDLE",
+    "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+    "IPFS_ACCELERATE_AGENT_STATE_GENERATION",
+    "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+    "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND",
+    "IPFS_ACCELERATE_AGENT_EXPECTED_TASK_SOURCE_ROOT",
+    "IPFS_ACCELERATE_AGENT_EXPECTED_TASK_SOURCE_REPOSITORY_ROOT",
+    "IPFS_ACCELERATE_AGENT_EVENT_STORE",
+    "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY",
+    "IPFS_ACCELERATE_AGENT_EXPORT_PROFILE",
+    "IPFS_ACCELERATE_AGENT_FAILOVER_POLICY",
+    "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
+)
+# Extra names that may hold raw tokens if an operator misconfigures the host.
+STATE_RAW_SECRET_ENV_NAMES: tuple[str, ...] = (
+    "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+    "IPFS_ACCELERATE_QUACK_TOKEN",
+    "QUACK_TOKEN",
+    "DUCKDB_QUACK_TOKEN",
+)
+
+
+class DatabaseProgramConfigError(ValueError):
+    """Fail-closed rejection of an inadmissible database program selection."""
+
+
+def is_opaque_secret_handle(value: str) -> bool:
+    """Return whether ``value`` is an opaque secret handle, not secret bytes."""
+
+    text = str(value or "").strip()
+    return any(text.startswith(prefix) for prefix in SECRET_HANDLE_PREFIXES)
+
+
+def _looks_like_raw_secret(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if is_opaque_secret_handle(text):
+        return False
+    if text.startswith("quack:"):
+        return False
+    # High-entropy bare tokens are never admissible on the wire.
+    if len(text) >= 16 and re.fullmatch(r"[A-Za-z0-9+/=_-]+", text):
+        return True
+    return False
+
+
+@dataclass(frozen=True)
+class DatabaseProgramConfig:
+    """Sealed DatabaseProgramConfig@1 selection for one program/run.
+
+    Authority mode is always explicit.  Quack authority never silently becomes
+    local DuckDB or file authority; failover is fail-closed or recovery-only.
+    Secret material is carried only as opaque handles.
+    """
+
+    INTERFACE = DATABASE_PROGRAM_CONFIG_INTERFACE
+    SCHEMA = DATABASE_PROGRAM_CONFIG_SCHEMA
+
+    authority_mode: str
+    task_source_kind: str
+    endpoint: str = ""
+    secret_handle: str = ""
+    store_id: str = ""
+    generation: int = 0
+    schema_revision: int = 0
+    expected_task_source_root: str = ""
+    expected_task_source_repository_root: str = ""
+    event_store: str = ""
+    runtime_registry: str = ""
+    worktree_root: str = ""
+    export_profile: str = "none"
+    failover_policy: str = "fail-closed"
+    explicit: bool = True
+    deprecated_implicit_legacy: bool = False
+
+    def __post_init__(self) -> None:
+        mode = str(self.authority_mode or "").strip().lower()
+        if mode not in STATE_AUTHORITY_MODES:
+            raise DatabaseProgramConfigError(
+                f"unsupported state authority mode: {self.authority_mode!r}"
+            )
+        object.__setattr__(self, "authority_mode", mode)
+
+        kind = str(self.task_source_kind or "").strip().lower()
+        if kind not in TASK_SOURCE_KINDS:
+            raise DatabaseProgramConfigError(
+                f"unsupported task source kind: {self.task_source_kind!r}"
+            )
+        object.__setattr__(self, "task_source_kind", kind)
+
+        endpoint = str(self.endpoint or "").strip()
+        secret_handle = str(self.secret_handle or "").strip()
+        store_id = str(self.store_id or "").strip()
+        event_store = str(self.event_store or "").strip()
+        runtime_registry = str(self.runtime_registry or "").strip()
+        worktree_root = str(self.worktree_root or "").strip()
+        export_profile = str(self.export_profile or "none").strip().lower()
+        failover_policy = str(
+            self.failover_policy or "fail-closed"
+        ).strip().lower()
+        expected_root = str(self.expected_task_source_root or "").strip()
+        expected_repo = str(
+            self.expected_task_source_repository_root or ""
+        ).strip()
+
+        if export_profile not in EXPORT_PROFILES:
+            raise DatabaseProgramConfigError(
+                f"unsupported export profile: {self.export_profile!r}"
+            )
+        if failover_policy in FORBIDDEN_QUACK_FAILOVER_POLICIES:
+            raise DatabaseProgramConfigError(
+                "failover policy would silently demote authority: "
+                f"{failover_policy!r}"
+            )
+        if failover_policy not in FAILOVER_POLICIES:
+            raise DatabaseProgramConfigError(
+                f"unsupported failover policy: {self.failover_policy!r}"
+            )
+
+        try:
+            generation = int(self.generation)
+            schema_revision = int(self.schema_revision)
+        except (TypeError, ValueError) as exc:
+            raise DatabaseProgramConfigError(
+                "generation and schema_revision must be integers"
+            ) from exc
+        if generation < 0 or schema_revision < 0:
+            raise DatabaseProgramConfigError(
+                "generation and schema_revision must be nonnegative"
+            )
+
+        if secret_handle:
+            if not is_opaque_secret_handle(secret_handle):
+                raise DatabaseProgramConfigError(
+                    "state secret must be an opaque handle, not raw credential"
+                )
+            if _looks_like_raw_secret(secret_handle):
+                raise DatabaseProgramConfigError(
+                    "state secret must be an opaque handle, not raw credential"
+                )
+
+        if mode == "quack":
+            if not endpoint:
+                raise DatabaseProgramConfigError(
+                    "quack authority requires a state endpoint"
+                )
+            if QUACK_ENDPOINT_RE.fullmatch(endpoint) is None:
+                raise DatabaseProgramConfigError(
+                    "quack authority requires a quack:host:port endpoint; "
+                    "local DuckDB/file targets are rejected"
+                )
+            if not secret_handle:
+                raise DatabaseProgramConfigError(
+                    "quack authority requires an opaque endpoint secret handle"
+                )
+            if kind in {"legacy-markdown", "markdown"}:
+                raise DatabaseProgramConfigError(
+                    "quack authority cannot use a markdown/file task source"
+                )
+            if kind == "duckdb":
+                # Transport is Quack; storage contract remains DuckDB-shaped.
+                pass
+            if failover_policy not in FAILOVER_POLICIES:
+                raise DatabaseProgramConfigError(
+                    "quack authority forbids local/file failover"
+                )
+        elif mode in {"embedded", "embedded-exclusive"}:
+            if not endpoint:
+                raise DatabaseProgramConfigError(
+                    f"{mode} authority requires a database endpoint path"
+                )
+            if endpoint.startswith("quack:"):
+                raise DatabaseProgramConfigError(
+                    f"{mode} authority cannot use a quack endpoint"
+                )
+            if kind in {"legacy-markdown", "markdown", "quack"}:
+                raise DatabaseProgramConfigError(
+                    f"{mode} authority requires a duckdb task source"
+                )
+        elif mode == "legacy-markdown":
+            if kind not in {"legacy-markdown", "markdown"}:
+                raise DatabaseProgramConfigError(
+                    "legacy-markdown authority requires a markdown task source"
+                )
+            if endpoint.startswith("quack:"):
+                raise DatabaseProgramConfigError(
+                    "legacy-markdown authority cannot use a quack endpoint"
+                )
+
+        for field_name, value in (
+            ("endpoint", endpoint),
+            ("secret_handle", secret_handle),
+            ("store_id", store_id),
+            ("event_store", event_store),
+            ("runtime_registry", runtime_registry),
+            ("worktree_root", worktree_root),
+            ("expected_task_source_root", expected_root),
+            ("expected_task_source_repository_root", expected_repo),
+        ):
+            if "\x00" in value or "\n" in value or "\r" in value:
+                raise DatabaseProgramConfigError(
+                    f"{field_name} must be a single-line string"
+                )
+
+        object.__setattr__(self, "endpoint", endpoint)
+        object.__setattr__(self, "secret_handle", secret_handle)
+        object.__setattr__(self, "store_id", store_id)
+        object.__setattr__(self, "generation", generation)
+        object.__setattr__(self, "schema_revision", schema_revision)
+        object.__setattr__(self, "event_store", event_store)
+        object.__setattr__(self, "runtime_registry", runtime_registry)
+        object.__setattr__(self, "worktree_root", worktree_root)
+        object.__setattr__(self, "export_profile", export_profile)
+        object.__setattr__(self, "failover_policy", failover_policy)
+        object.__setattr__(self, "expected_task_source_root", expected_root)
+        object.__setattr__(
+            self,
+            "expected_task_source_repository_root",
+            expected_repo,
+        )
+        object.__setattr__(self, "explicit", bool(self.explicit))
+        object.__setattr__(
+            self,
+            "deprecated_implicit_legacy",
+            bool(self.deprecated_implicit_legacy),
+        )
+
+    @classmethod
+    def explicit_legacy_markdown(
+        cls,
+        *,
+        worktree_root: str = "",
+        deprecated_implicit: bool = False,
+    ) -> "DatabaseProgramConfig":
+        """Return an explicit legacy-Markdown selection (never silent)."""
+
+        return cls(
+            authority_mode="legacy-markdown",
+            task_source_kind="legacy-markdown",
+            worktree_root=worktree_root,
+            export_profile="none",
+            failover_policy="fail-closed",
+            explicit=True,
+            deprecated_implicit_legacy=bool(deprecated_implicit),
+        )
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any] | None) -> "DatabaseProgramConfig":
+        """Parse a sealed database_program object from scheduler JSON."""
+
+        if payload is None:
+            return cls.explicit_legacy_markdown(deprecated_implicit=True)
+        if not isinstance(payload, Mapping):
+            raise DatabaseProgramConfigError(
+                "database_program must be an object"
+            )
+        raw = dict(payload)
+        mode = str(
+            raw.get("authority_mode")
+            or raw.get("state_authority_mode")
+            or ""
+        ).strip()
+        if not mode:
+            raise DatabaseProgramConfigError(
+                "database_program.authority_mode is required "
+                "(implicit legacy-Markdown is deprecated)"
+            )
+        kind = str(
+            raw.get("task_source_kind")
+            or raw.get("task_source")
+            or ""
+        ).strip()
+        if not kind:
+            if mode == "legacy-markdown":
+                kind = "legacy-markdown"
+            elif mode == "quack":
+                kind = "quack"
+            elif mode in {"embedded", "embedded-exclusive"}:
+                kind = "duckdb"
+            else:
+                raise DatabaseProgramConfigError(
+                    "database_program.task_source_kind is required"
+                )
+        return cls(
+            authority_mode=mode,
+            task_source_kind=kind,
+            endpoint=str(
+                raw.get("endpoint")
+                or raw.get("state_endpoint")
+                or raw.get("quack_endpoint")
+                or ""
+            ),
+            secret_handle=str(
+                raw.get("secret_handle")
+                or raw.get("endpoint_secret_handle")
+                or ""
+            ),
+            store_id=str(raw.get("store_id") or ""),
+            generation=raw.get("generation", 0) or 0,
+            schema_revision=raw.get("schema_revision", 0) or 0,
+            expected_task_source_root=str(
+                raw.get("expected_task_source_root") or ""
+            ),
+            expected_task_source_repository_root=str(
+                raw.get("expected_task_source_repository_root") or ""
+            ),
+            event_store=str(raw.get("event_store") or ""),
+            runtime_registry=str(raw.get("runtime_registry") or ""),
+            worktree_root=str(raw.get("worktree_root") or ""),
+            export_profile=str(raw.get("export_profile") or "none"),
+            failover_policy=str(raw.get("failover_policy") or "fail-closed"),
+            explicit=True,
+            deprecated_implicit_legacy=False,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "endpoint": self.endpoint,
+            "secret_handle": self.secret_handle,
+            "store_id": self.store_id,
+            "generation": int(self.generation),
+            "schema_revision": int(self.schema_revision),
+            "expected_task_source_root": self.expected_task_source_root,
+            "expected_task_source_repository_root": (
+                self.expected_task_source_repository_root
+            ),
+            "event_store": self.event_store,
+            "runtime_registry": self.runtime_registry,
+            "worktree_root": self.worktree_root,
+            "export_profile": self.export_profile,
+            "failover_policy": self.failover_policy,
+            "explicit": bool(self.explicit),
+            "deprecated_implicit_legacy": bool(
+                self.deprecated_implicit_legacy
+            ),
+        }
+
+    def redacted_dict(self) -> dict[str, Any]:
+        """Return a log-safe projection that never includes raw secrets."""
+
+        payload = self.to_dict()
+        if self.secret_handle:
+            payload["secret_handle"] = self.secret_handle
+        return payload
+
+    def supervisor_cli_args(self) -> tuple[str, ...]:
+        """CLI flags understood by the implementation supervisor."""
+
+        args: list[str] = [
+            "--state-authority-mode",
+            self.authority_mode,
+            "--task-source-kind",
+            self.task_source_kind,
+            "--failover-policy",
+            self.failover_policy,
+            "--export-profile",
+            self.export_profile,
+        ]
+        if self.endpoint:
+            args.extend(["--state-endpoint", self.endpoint])
+        if self.secret_handle:
+            args.extend(["--state-secret-handle", self.secret_handle])
+        if self.store_id:
+            args.extend(["--state-store-id", self.store_id])
+        if self.generation:
+            args.extend(["--state-generation", str(int(self.generation))])
+        if self.schema_revision:
+            args.extend(
+                ["--state-schema-revision", str(int(self.schema_revision))]
+            )
+        if self.expected_task_source_root:
+            args.extend(
+                [
+                    "--expected-task-source-root",
+                    self.expected_task_source_root,
+                ]
+            )
+        if self.expected_task_source_repository_root:
+            args.extend(
+                [
+                    "--expected-task-source-repository-root",
+                    self.expected_task_source_repository_root,
+                ]
+            )
+        if self.event_store:
+            args.extend(["--event-store", self.event_store])
+        if self.runtime_registry:
+            args.extend(["--runtime-registry", self.runtime_registry])
+        if self.worktree_root:
+            args.extend(["--worktree-root", self.worktree_root])
+        return tuple(args)
+
+    def daemon_cli_args(self) -> tuple[str, ...]:
+        """CLI flags the current implementation daemon already accepts.
+
+        Broader DatabaseProgramConfig fields travel via
+        :meth:`child_environment` until DQP-018 extends the daemon parser.
+        """
+
+        # Map Quack transport onto the daemon's existing duckdb storage kind
+        # while keeping authority_mode=quack on the supervisor/env path.
+        kind = self.task_source_kind
+        if kind == "quack":
+            kind = "duckdb"
+        args: list[str] = ["--task-source-kind", kind]
+        if self.expected_task_source_root:
+            args.extend(
+                [
+                    "--expected-task-source-root",
+                    self.expected_task_source_root,
+                ]
+            )
+        if self.expected_task_source_repository_root:
+            args.extend(
+                [
+                    "--expected-task-source-repository-root",
+                    self.expected_task_source_repository_root,
+                ]
+            )
+        return tuple(args)
+
+    def child_environment(self) -> dict[str, str]:
+        """Environment bindings for supervisor/daemon children (handles only)."""
+
+        env = {
+            "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE": self.authority_mode,
+            "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND": self.task_source_kind,
+            "IPFS_ACCELERATE_AGENT_EXPORT_PROFILE": self.export_profile,
+            "IPFS_ACCELERATE_AGENT_FAILOVER_POLICY": self.failover_policy,
+            "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON": json.dumps(
+                self.redacted_dict(),
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        }
+        if self.endpoint:
+            env["IPFS_ACCELERATE_AGENT_STATE_ENDPOINT"] = self.endpoint
+        if self.secret_handle:
+            env["IPFS_ACCELERATE_AGENT_STATE_SECRET_HANDLE"] = self.secret_handle
+        if self.store_id:
+            env["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] = self.store_id
+        if self.generation:
+            env["IPFS_ACCELERATE_AGENT_STATE_GENERATION"] = str(
+                int(self.generation)
+            )
+        if self.schema_revision:
+            env["IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"] = str(
+                int(self.schema_revision)
+            )
+        if self.expected_task_source_root:
+            env["IPFS_ACCELERATE_AGENT_EXPECTED_TASK_SOURCE_ROOT"] = (
+                self.expected_task_source_root
+            )
+        if self.expected_task_source_repository_root:
+            env[
+                "IPFS_ACCELERATE_AGENT_EXPECTED_TASK_SOURCE_REPOSITORY_ROOT"
+            ] = self.expected_task_source_repository_root
+        if self.event_store:
+            env["IPFS_ACCELERATE_AGENT_EVENT_STORE"] = self.event_store
+        if self.runtime_registry:
+            env["IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY"] = (
+                self.runtime_registry
+            )
+        return env
+
+
+def scrub_state_credentials_from_environment(
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return an environment safe for implementation-provider subprocesses.
+
+    Removes control-plane selection bindings and any raw Quack/token names so
+    provider subprocesses never receive state credentials.
+    """
+
+    source = os.environ if environment is None else environment
+    blocked = set(STATE_CREDENTIAL_ENV_NAMES) | set(STATE_RAW_SECRET_ENV_NAMES)
+    result: dict[str, str] = {}
+    for key, value in source.items():
+        name = str(key)
+        if name in blocked:
+            continue
+        upper = name.upper()
+        if any(
+            token in upper
+            for token in (
+                "QUACK_TOKEN",
+                "STATE_SECRET",
+                "STATE_CREDENTIAL",
+                "DUCKDB_TOKEN",
+            )
+        ):
+            continue
+        result[name] = str(value)
+    return result
+
+
+def redact_database_program_argv(argv: Sequence[str]) -> list[str]:
+    """Redact secret-handle values from argv for logs and diagnostics."""
+
+    redacted: list[str] = []
+    hide_next = False
+    secret_flags = {
+        "--state-secret-handle",
+        "--endpoint-secret-handle",
+    }
+    for item in argv:
+        text = str(item)
+        if hide_next:
+            redacted.append("<redacted-secret-handle>")
+            hide_next = False
+            continue
+        if text in secret_flags:
+            redacted.append(text)
+            hide_next = True
+            continue
+        matched = False
+        for flag in secret_flags:
+            prefix = f"{flag}="
+            if text.startswith(prefix):
+                redacted.append(f"{prefix}<redacted-secret-handle>")
+                matched = True
+                break
+        if not matched:
+            redacted.append(text)
+    return redacted
 
 
 class _SupportsFileno(Protocol):
@@ -98,12 +705,21 @@ class SupervisorTrack:
 
 @dataclass(frozen=True)
 class ImplementationSupervisorTrackConfig:
-    """Structured inputs for one implementation-supervisor track."""
+    """Structured inputs for one implementation-supervisor track.
+
+    Interface projection: DatabaseImplementationTrack@1.  Optional
+    ``database_program`` is expanded into supervisor CLI args on every lane
+    so database selection is never dropped between multi-runner and child.
+    """
+
+    INTERFACE = DATABASE_IMPLEMENTATION_TRACK_INTERFACE
 
     name: str
     script_path: Path | str
     state_dir: Path | str
     state_prefix: str
+    database_program: DatabaseProgramConfig | None = None
+    extra_args: tuple[str, ...] = field(default_factory=tuple)
 
     def compact_spec(self) -> str:
         """Return the compact CLI ``--implementation-track`` spec."""
@@ -124,6 +740,14 @@ class ImplementationSupervisorTrackConfig:
             state_dir=self.state_dir,
             state_prefix=self.state_prefix,
         )
+
+    def database_cli_args(self) -> tuple[str, ...]:
+        if self.database_program is None:
+            return ()
+        return self.database_program.supervisor_cli_args()
+
+    def resolved_extra_args(self) -> tuple[str, ...]:
+        return (*self.database_cli_args(), *self.extra_args)
 
 
 @dataclass(frozen=True)
@@ -371,7 +995,13 @@ def implementation_supervisor_compact_track_specs(
     return tuple(specs)
 
 
-def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
+def parse_implementation_track_spec(
+    spec: str,
+    *,
+    stamp: str = "",
+    database_program: DatabaseProgramConfig | None = None,
+    extra_args: Sequence[str] = (),
+) -> SupervisorTrack:
     """Parse ``NAME|SCRIPT|STATE_DIR|STATE_PREFIX`` implementation-track specs."""
 
     parts = [part.strip() for part in spec.split("|")]
@@ -387,6 +1017,11 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
         ),
         stamp=stamp,
     )
+    database_args = (
+        database_program.supervisor_cli_args()
+        if database_program is not None
+        else ()
+    )
     return SupervisorTrack(
         name=track.name,
         script_path=track.script_path,
@@ -399,16 +1034,36 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
             str(state_dir),
             "--state-prefix",
             str(state_prefix),
+            *database_args,
+            *tuple(str(item) for item in extra_args),
         ),
     )
 
 
-def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_track: int = 1) -> list[SupervisorTrack]:
-    """Return one or more deterministic shard lanes for an implementation-track spec."""
+def expand_implementation_track_lanes(
+    spec: str,
+    *,
+    stamp: str = "",
+    lanes_per_track: int = 1,
+    database_program: DatabaseProgramConfig | None = None,
+    extra_args: Sequence[str] = (),
+) -> list[SupervisorTrack]:
+    """Return one or more deterministic shard lanes for an implementation-track spec.
+
+    Every lane receives the same ``database_program`` selection so Quack/DuckDB
+    authority is never dropped under multi-lane sharding.
+    """
 
     lanes = max(1, int(lanes_per_track))
     if lanes == 1:
-        return [parse_implementation_track_spec(spec, stamp=stamp)]
+        return [
+            parse_implementation_track_spec(
+                spec,
+                stamp=stamp,
+                database_program=database_program,
+                extra_args=extra_args,
+            )
+        ]
 
     parts = [part.strip() for part in spec.split("|")]
     if len(parts) != 4 or not parts[0]:
@@ -426,6 +1081,8 @@ def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_t
                 state_prefix=lane_state_prefix,
             ),
             stamp=stamp,
+            database_program=database_program,
+            extra_args=extra_args,
         )
         tracks.append(
             SupervisorTrack(
@@ -445,6 +1102,23 @@ def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_t
             )
         )
     return tracks
+
+
+def expand_implementation_track_config_lanes(
+    config: ImplementationSupervisorTrackConfig,
+    *,
+    stamp: str = "",
+    lanes_per_track: int = 1,
+) -> list[SupervisorTrack]:
+    """Expand a structured track config, preserving database program selection."""
+
+    return expand_implementation_track_lanes(
+        config.compact_spec(),
+        stamp=stamp,
+        lanes_per_track=lanes_per_track,
+        database_program=config.database_program,
+        extra_args=config.extra_args,
+    )
 
 
 def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
@@ -670,9 +1344,21 @@ def build_configured_multi_supervisor_cli_runner(
         argv.extend(["--track", str(track)])
     for track in implementation_tracks:
         argv.extend(["--implementation-track", str(track)])
-    for track in implementation_supervisor_compact_track_specs(implementation_track_configs):
+    merged_common_args = [str(arg) for arg in common_args]
+    for track in implementation_track_configs:
+        if not isinstance(track, ImplementationSupervisorTrackConfig):
+            continue
+        # Shared DatabaseProgramConfig@1 selection rides as common args so
+        # every expanded lane inherits the sealed authority without loss.
+        for arg in track.database_cli_args():
+            text = str(arg)
+            if text not in merged_common_args:
+                merged_common_args.append(text)
+    for track in implementation_supervisor_compact_track_specs(
+        implementation_track_configs
+    ):
         argv.extend(["--implementation-track", str(track)])
-    for arg in common_args:
+    for arg in merged_common_args:
         argv.append(f"--common-arg={arg}")
     if detach:
         argv.append("--detach")

@@ -25,8 +25,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .multi_supervisor_runner import (
+    DatabaseProgramConfig,
+    DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
+    scrub_state_credentials_from_environment,
     utc_run_stamp,
 )
 
@@ -226,6 +229,7 @@ class ConfiguredBoard:
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
+    database_program: DatabaseProgramConfig
 
     @property
     def task_header_prefix(self) -> str:
@@ -489,6 +493,11 @@ def load_configured_board(
     ):
         _positive_int(payload.get(field), field=field)
 
+    database_program = _load_database_program(
+        payload,
+        worktree_root=runtime_paths["worktrees"],
+    )
+
     return ConfiguredBoard(
         config_path=path,
         repo_root=root,
@@ -505,7 +514,62 @@ def load_configured_board(
         worktree_submodule_paths=submodules,
         protected_paths=protected,
         runtime_paths=runtime_paths,
+        database_program=database_program,
     )
+
+
+def _load_database_program(
+    payload: Mapping[str, Any],
+    *,
+    worktree_root: str,
+) -> DatabaseProgramConfig:
+    """Load explicit database/task-source authority from a scheduler profile.
+
+    Implicit legacy-Markdown remains temporarily admitted for existing sealed
+    boards, but the resulting selection is always reified as an explicit
+    ``DatabaseProgramConfig@1`` so no runner can treat the default as silent.
+    """
+
+    raw = payload.get("database_program")
+    if raw is None and "state_authority" in payload:
+        raw = payload.get("state_authority")
+    try:
+        if raw is None:
+            source_binding = payload.get("source_binding")
+            bootstrap = ""
+            if isinstance(source_binding, Mapping):
+                bootstrap = str(
+                    source_binding.get("bootstrap_task_source") or ""
+                ).strip().lower()
+            if bootstrap in {"legacy-markdown", "markdown"}:
+                # Explicit bootstrap selection in source_binding — still not a
+                # DatabaseProgramConfig@1 block, but not a silent default.
+                return DatabaseProgramConfig(
+                    authority_mode="legacy-markdown",
+                    task_source_kind=(
+                        "legacy-markdown"
+                        if bootstrap == "legacy-markdown"
+                        else "markdown"
+                    ),
+                    worktree_root=worktree_root,
+                    export_profile="none",
+                    failover_policy="fail-closed",
+                    explicit=True,
+                    deprecated_implicit_legacy=False,
+                )
+            # Deprecated path: no database_program block and no bootstrap pin.
+            return DatabaseProgramConfig.explicit_legacy_markdown(
+                worktree_root=worktree_root,
+                deprecated_implicit=True,
+            )
+        if not isinstance(raw, Mapping):
+            raise ConfiguredBoardError("database_program must be an object")
+        program_payload = dict(raw)
+        if not str(program_payload.get("worktree_root") or "").strip():
+            program_payload["worktree_root"] = worktree_root
+        return DatabaseProgramConfig.from_mapping(program_payload)
+    except DatabaseProgramConfigError as exc:
+        raise ConfiguredBoardError(str(exc)) from exc
 
 
 def _run(
@@ -926,6 +990,18 @@ def configured_board_common_args(
         )
     if payload.get("codebase_refill_enabled") is True:
         args.append("--codebase-refill-scan")
+    # Always emit an explicit DatabaseProgramConfig@1 selection so the
+    # multi-runner, supervisor, and daemon never inherit a silent default.
+    # worktree-root is already emitted above from runtime_paths.
+    skip_next = False
+    for item in board.database_program.supervisor_cli_args():
+        if skip_next:
+            skip_next = False
+            continue
+        if item == "--worktree-root":
+            skip_next = True
+            continue
+        args.append(item)
     return tuple(args)
 
 
@@ -971,6 +1047,7 @@ def configured_board_launch_plan(
                 script_path=entry,
                 state_dir=state_dir,
                 state_prefix=_slug(board.task_prefix),
+                database_program=board.database_program,
             ),
         ),
         common_args=configured_board_common_args(
@@ -1017,6 +1094,14 @@ def configured_board_launch_plan(
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
+    # Control-plane selection rides as opaque handles / non-secret identity in
+    # a dedicated mapping so the provider route environment keeps its existing
+    # contract. Raw Quack tokens are never placed in either mapping.
+    state_environment = board.database_program.child_environment()
+    combined_environment = {**environment, **state_environment}
+    provider_safe_environment = scrub_state_credentials_from_environment(
+        combined_environment
+    )
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -1029,6 +1114,9 @@ def configured_board_launch_plan(
         "strict_task_sharding": board.strict_task_sharding,
         "argv": runner_args,
         "environment": environment,
+        "state_environment": state_environment,
+        "provider_safe_environment": provider_safe_environment,
+        "database_program": board.database_program.redacted_dict(),
         "runtime_root": str(runtime_root),
         "master_pid_path": str(
             state_dir / "configured-board-master.pid"
@@ -1125,6 +1213,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             os.environ.pop(name, None)
     for name, value in plan["environment"].items():
         os.environ[name] = value
+    for name, value in dict(plan.get("state_environment") or {}).items():
+        os.environ[str(name)] = str(value)
     from .multi_supervisor_runner import main as multi_supervisor_main
 
     return int(multi_supervisor_main(plan["argv"]))
@@ -1133,9 +1223,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = (
     "ConfiguredBoard",
     "ConfiguredBoardError",
+    "DatabaseProgramConfig",
+    "DatabaseProgramConfigError",
     "configured_board_common_args",
     "configured_board_launch_plan",
     "load_configured_board",
     "main",
     "preflight_configured_board",
+    "scrub_state_credentials_from_environment",
 )

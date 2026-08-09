@@ -1478,6 +1478,21 @@ class PortalSupervisorConfig:
     )
     manual_completion_authority_epoch_id: str = ""
     manual_completion_authority_revalidation_only: bool = False
+    # DatabaseProgramConfig@1 selection.  Always explicit when set so Quack
+    # authority never silently demotes to local DuckDB or file authority.
+    state_authority_mode: str = ""
+    task_source_kind: str = ""
+    state_endpoint: str = ""
+    state_secret_handle: str = ""
+    state_store_id: str = ""
+    state_generation: int = 0
+    state_schema_revision: int = 0
+    expected_task_source_root: str = ""
+    expected_task_source_repository_root: str = ""
+    event_store: str = ""
+    runtime_registry: str = ""
+    export_profile: str = ""
+    failover_policy: str = ""
     # Optional sealed scheduler profile path.  When set, each supervisor
     # pass may run delegated operator completion for seal-gated manuals.
     scheduler_config_path: Path | None = None
@@ -1606,6 +1621,98 @@ class PortalSupervisorConfig:
                 "manual completion authority revalidation-only mode requires "
                 "implementation execution to be enabled"
             )
+        # Normalize optional database selection fields.
+        self.state_authority_mode = str(self.state_authority_mode or "").strip()
+        self.task_source_kind = str(self.task_source_kind or "").strip()
+        self.state_endpoint = str(self.state_endpoint or "").strip()
+        self.state_secret_handle = str(self.state_secret_handle or "").strip()
+        self.state_store_id = str(self.state_store_id or "").strip()
+        self.expected_task_source_root = str(
+            self.expected_task_source_root or ""
+        ).strip()
+        self.expected_task_source_repository_root = str(
+            self.expected_task_source_repository_root or ""
+        ).strip()
+        self.event_store = str(self.event_store or "").strip()
+        self.runtime_registry = str(self.runtime_registry or "").strip()
+        self.export_profile = str(self.export_profile or "").strip()
+        self.failover_policy = str(self.failover_policy or "").strip()
+        try:
+            self.state_generation = int(self.state_generation or 0)
+            self.state_schema_revision = int(self.state_schema_revision or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "state_generation and state_schema_revision must be integers"
+            ) from exc
+
+    def database_program_config(self) -> Any:
+        """Return the sealed DatabaseProgramConfig@1 for this supervisor.
+
+        Implicit legacy-Markdown is deprecated: when no authority mode is
+        supplied the selection is reified as an explicit legacy config with
+        ``deprecated_implicit_legacy=True`` so downstream runners never treat
+        the default as silent.
+        """
+
+        from ..runtime.multi_supervisor_runner import (
+            DatabaseProgramConfig,
+            DatabaseProgramConfigError,
+        )
+
+        worktree = (
+            str(self.worktree_root)
+            if self.worktree_root is not None
+            else ""
+        )
+        mode = self.state_authority_mode
+        kind = self.task_source_kind
+        if not mode and not kind and not self.state_endpoint:
+            return DatabaseProgramConfig.explicit_legacy_markdown(
+                worktree_root=worktree,
+                deprecated_implicit=True,
+            )
+        if not mode:
+            if kind in {"legacy-markdown", "markdown"}:
+                mode = "legacy-markdown"
+            elif kind == "quack":
+                mode = "quack"
+            elif kind == "duckdb":
+                mode = "embedded"
+            else:
+                raise ValueError(
+                    "state authority mode is required when database options "
+                    "are supplied (implicit legacy-Markdown is deprecated)"
+                )
+        if not kind:
+            if mode == "legacy-markdown":
+                kind = "legacy-markdown"
+            elif mode == "quack":
+                kind = "quack"
+            else:
+                kind = "duckdb"
+        try:
+            return DatabaseProgramConfig(
+                authority_mode=mode,
+                task_source_kind=kind,
+                endpoint=self.state_endpoint,
+                secret_handle=self.state_secret_handle,
+                store_id=self.state_store_id,
+                generation=self.state_generation,
+                schema_revision=self.state_schema_revision,
+                expected_task_source_root=self.expected_task_source_root,
+                expected_task_source_repository_root=(
+                    self.expected_task_source_repository_root
+                ),
+                event_store=self.event_store,
+                runtime_registry=self.runtime_registry,
+                worktree_root=worktree,
+                export_profile=self.export_profile or "none",
+                failover_policy=self.failover_policy or "fail-closed",
+                explicit=True,
+                deprecated_implicit_legacy=False,
+            )
+        except DatabaseProgramConfigError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class AdoptedManagedDaemonProcess:
@@ -3756,6 +3863,8 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        # Opaque handle / identity bindings only — never raw Quack tokens.
+        child_env.update(self.config.database_program_config().child_environment())
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -13229,6 +13338,7 @@ class PortalImplementationSupervisor:
         command = self._build_daemon_command()
         child_env = dict(os.environ)
         child_env.update(_managed_daemon_child_environment())
+        child_env.update(self.config.database_program_config().child_environment())
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
@@ -13445,6 +13555,11 @@ class PortalImplementationSupervisor:
             command.extend(["--execution-slice-task-id", str(task_id)])
         for task_cid in self.config.execution_slice_task_cids:
             command.extend(["--execution-slice-task-cid", str(task_cid)])
+        # Propagate DatabaseProgramConfig@1 selection.  Daemon-accepted CLI
+        # flags go on argv; broader Quack/store identity rides in child env
+        # (opaque handles only) until DQP-018 extends the daemon parser.
+        program = self.config.database_program_config()
+        command.extend(list(program.daemon_cli_args()))
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -14312,6 +14427,117 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Machine-readable markdown backlog",
     )
     parser.add_argument(
+        "--state-authority-mode",
+        default="",
+        choices=(
+            "",
+            "legacy-markdown",
+            "embedded",
+            "embedded-exclusive",
+            "quack",
+        ),
+        help=(
+            "Explicit DatabaseProgramConfig@1 authority mode. Implicit "
+            "legacy-Markdown is deprecated; supply this flag (or "
+            "--task-source-kind) to select the control-plane authority. "
+            "Quack never silently falls back to local DuckDB or files."
+        ),
+    )
+    parser.add_argument(
+        "--task-source-kind",
+        default="",
+        choices=(
+            "",
+            "legacy-markdown",
+            "markdown",
+            "duckdb",
+            "quack",
+        ),
+        help=(
+            "Explicit task-source kind propagated to the managed daemon. "
+            "Empty retains the deprecated implicit legacy-Markdown path."
+        ),
+    )
+    parser.add_argument(
+        "--state-endpoint",
+        default="",
+        help=(
+            "Control-plane endpoint: quack:host:port for Quack authority, or "
+            "a database path for embedded modes."
+        ),
+    )
+    parser.add_argument(
+        "--state-secret-handle",
+        default="",
+        help=(
+            "Opaque secret handle for the state endpoint "
+            "(env://, vault://, handle:, or secret-handle:). Raw tokens are "
+            "rejected and never forwarded to provider subprocesses."
+        ),
+    )
+    parser.add_argument(
+        "--state-store-id",
+        default="",
+        help="Durable control-plane store identity.",
+    )
+    parser.add_argument(
+        "--state-generation",
+        type=int,
+        default=0,
+        help="Expected control-plane store generation.",
+    )
+    parser.add_argument(
+        "--state-schema-revision",
+        type=int,
+        default=0,
+        help="Expected control-plane schema revision.",
+    )
+    parser.add_argument(
+        "--expected-task-source-root",
+        default="",
+        help="Optional canonical plan root the configured source must match.",
+    )
+    parser.add_argument(
+        "--expected-task-source-repository-root",
+        default="",
+        help=(
+            "Optional repository tree identity the configured source must match."
+        ),
+    )
+    parser.add_argument(
+        "--event-store",
+        default="",
+        help="Event store locator for database-authoritative programs.",
+    )
+    parser.add_argument(
+        "--runtime-registry",
+        default="",
+        help="Runtime registry locator for database-authoritative programs.",
+    )
+    parser.add_argument(
+        "--export-profile",
+        default="",
+        choices=(
+            "",
+            "none",
+            "markdown-taskboard",
+            "json-status",
+            "jsonl-audit",
+            "csv-analysis",
+            "release-bundle",
+        ),
+        help="Non-authoritative export profile name.",
+    )
+    parser.add_argument(
+        "--failover-policy",
+        default="",
+        choices=("", "fail-closed", "require-recovery"),
+        help=(
+            "Failover policy when the selected authority is unavailable. "
+            "Local DuckDB/file demotion is never admitted under Quack."
+        ),
+    )
+    parser.add_argument(
         "--state-dir",
         type=Path,
         default=Path("data/portal_implementation/state"),
@@ -15147,6 +15373,35 @@ def supervisor_config_from_args(
                 False,
             )
         ),
+        state_authority_mode=str(
+            getattr(args, "state_authority_mode", "") or ""
+        ).strip(),
+        task_source_kind=str(
+            getattr(args, "task_source_kind", "") or ""
+        ).strip(),
+        state_endpoint=str(getattr(args, "state_endpoint", "") or "").strip(),
+        state_secret_handle=str(
+            getattr(args, "state_secret_handle", "") or ""
+        ).strip(),
+        state_store_id=str(getattr(args, "state_store_id", "") or "").strip(),
+        state_generation=int(getattr(args, "state_generation", 0) or 0),
+        state_schema_revision=int(
+            getattr(args, "state_schema_revision", 0) or 0
+        ),
+        expected_task_source_root=str(
+            getattr(args, "expected_task_source_root", "") or ""
+        ).strip(),
+        expected_task_source_repository_root=str(
+            getattr(args, "expected_task_source_repository_root", "") or ""
+        ).strip(),
+        event_store=str(getattr(args, "event_store", "") or "").strip(),
+        runtime_registry=str(
+            getattr(args, "runtime_registry", "") or ""
+        ).strip(),
+        export_profile=str(getattr(args, "export_profile", "") or "").strip(),
+        failover_policy=str(
+            getattr(args, "failover_policy", "") or ""
+        ).strip(),
         scheduler_config_path=(
             Path(args.scheduler_config).resolve()
             if getattr(args, "scheduler_config", None)
