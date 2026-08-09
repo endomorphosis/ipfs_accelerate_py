@@ -529,7 +529,7 @@ def _parent_prepared(
     ).hexdigest()
     timestamp = datetime.fromtimestamp(NOW / 1_000, timezone.utc).isoformat()
     stored_master = {
-        "schema": "ipfs_datasets_py/duckdb-quack-master-identity@2",
+        "schema": "ipfs_datasets_py/duckdb-quack-master-identity@3",
         "program_id": "ipfs-datasets-duckdb-quack-v1",
         "repository_root": request.repository_root,
         "master_root": str((state_root / "master").resolve()),
@@ -540,6 +540,7 @@ def _parent_prepared(
         "execution_slice_task_count": 1,
         "authorization_held_set_sha256": sha,
         "authorization_held_task_count": 0,
+        "bootstrap_completion_evidence_id": "",
         "lane_count": len(binding.lanes),
         "created_at": timestamp,
         "python_environment_sha256": sha,
@@ -2010,7 +2011,9 @@ def test_prepared_execution_intent_rejects_changed_task_and_conflicting_event(
 def test_execution_intent_rejects_forged_parent_and_event_envelope(
     tmp_path: Path,
 ) -> None:
-    for index, field in enumerate(("checkout", "environment", "master", "owner")):
+    for index, field in enumerate(
+        ("checkout", "environment", "master", "bootstrap", "owner")
+    ):
         _source_db, request, policy, owner, state_root = _fixture(
             tmp_path / f"parent-{index}", lanes=1
         )
@@ -2022,6 +2025,10 @@ def test_execution_intent_rejects_forged_parent_and_event_envelope(
             forged["environment"]["receipt_sha256"] = "sha256:" + "f" * 64
         elif field == "master":
             forged["old_master"]["actual"]["cmdline_sha256"] = "sha256:" + "f" * 64
+        elif field == "bootstrap":
+            forged["old_master"]["stored"][
+                "bootstrap_completion_evidence_id"
+            ] = "baguqeera" + "a" * 52
         else:
             forged["lifecycle_owners"][-1]["pid"] += 1
         forged["intent_cid"] = retry_reset._parent_intent_cid(forged)

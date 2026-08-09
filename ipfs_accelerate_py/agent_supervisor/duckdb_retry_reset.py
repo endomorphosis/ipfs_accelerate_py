@@ -1786,6 +1786,7 @@ _MASTER_STORED_FIELDS: Final = frozenset(
         "execution_slice_task_count",
         "authorization_held_set_sha256",
         "authorization_held_task_count",
+        "bootstrap_completion_evidence_id",
         "lane_count",
         "created_at",
         "python_environment_sha256",
@@ -1891,6 +1892,39 @@ def _master_execution_slice(argv: Sequence[str]) -> list[str]:
             "parent PREPARED master execution slice is duplicated"
         )
     return aliases
+
+
+def _master_bootstrap_completion_evidence_id(argv: Sequence[str]) -> str:
+    marker = "--common-arg=--duckdb-bootstrap-completion-evidence-id"
+    prefix = "--common-arg="
+    if any(str(item).startswith(marker + "=") for item in argv):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master bootstrap evidence uses an unsupported form"
+        )
+    values: list[str] = []
+    for index, item in enumerate(argv):
+        if item != marker:
+            continue
+        if index + 1 >= len(argv):
+            raise DuckDBRetryResetAuthorizationError(
+                "parent PREPARED master bootstrap evidence is malformed"
+            )
+        selected = argv[index + 1]
+        if not selected.startswith(prefix) or not selected[len(prefix) :]:
+            raise DuckDBRetryResetAuthorizationError(
+                "parent PREPARED master bootstrap evidence is malformed"
+            )
+        values.append(selected[len(prefix) :])
+    if len(values) > 1:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master bootstrap evidence is duplicated"
+        )
+    value = values[0] if values else ""
+    if value and not re.fullmatch(r"baguqeera[a-z2-7]{52}", value):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master bootstrap evidence is not a canonical CIDv1"
+        )
+    return value
 
 
 def _live_process_identity(pid: int) -> dict[str, Any] | None:
@@ -2200,6 +2234,9 @@ def _validate_parent_prepared(
         ) from exc
     actual_argv = actual_master["argv"]
     derived_execution_slice = _master_execution_slice(actual_argv)
+    derived_bootstrap_completion_evidence_id = (
+        _master_bootstrap_completion_evidence_id(actual_argv)
+    )
     try:
         derived_lane_count = int(
             _argv_option(
@@ -2238,7 +2275,7 @@ def _validate_parent_prepared(
             for name in ("pid", "boot_id", "start_ticks", "cmdline_sha256")
         )
         or stored_master.get("schema")
-        != "ipfs_datasets_py/duckdb-quack-master-identity@2"
+        != "ipfs_datasets_py/duckdb-quack-master-identity@3"
         or stored_master.get("program_id") != _PARENT_PROGRAM_ID
         or stored_master.get("repository_root") != request.repository_root
         or stored_master.get("master_root")
@@ -2250,6 +2287,8 @@ def _validate_parent_prepared(
         != binding.task_source_repository_tree_id
         or stored_master.get("lane_count") != len(binding.lanes)
         or stored_master.get("execution_slice_task_count") != len(execution_slice)
+        or stored_master.get("bootstrap_completion_evidence_id")
+        != derived_bootstrap_completion_evidence_id
         or not isinstance(stored_master.get("authorization_held_task_count"), int)
         or isinstance(stored_master.get("authorization_held_task_count"), bool)
         or stored_master.get("authorization_held_task_count", -1) < 0

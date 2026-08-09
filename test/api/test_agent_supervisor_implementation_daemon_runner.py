@@ -159,6 +159,41 @@ def test_supervisor_propagates_canonical_duckdb_task_source_contract(
     assert supervisor._managed_daemon_matches_command_line(" ".join(command))
 
 
+def test_supervisor_binds_exact_duckdb_bootstrap_completion_evidence(
+    tmp_path: Path,
+) -> None:
+    evidence_id = "baguqeera" + "a" * 52
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "control.duckdb"),
+            "--task-source-kind",
+            "duckdb",
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--duckdb-bootstrap-completion-evidence-id",
+            evidence_id,
+        ]
+    )
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+    option = "--duckdb-bootstrap-completion-evidence-id"
+
+    assert command[command.index(option) + 1] == evidence_id
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join([*command, option, evidence_id])
+    )
+    altered = list(command)
+    altered[altered.index(option) + 1] = "baguqeera" + "b" * 52
+    assert not supervisor._managed_daemon_matches_command_line(" ".join(altered))
+    inline = list(command)
+    option_index = inline.index(option)
+    inline[option_index : option_index + 2] = [f"{option}={evidence_id}"]
+    assert not supervisor._managed_daemon_matches_command_line(" ".join(inline))
+
+
 def test_supervisor_defaults_to_legacy_markdown_task_source(tmp_path: Path) -> None:
     parsed = parse_supervisor_args(
         [

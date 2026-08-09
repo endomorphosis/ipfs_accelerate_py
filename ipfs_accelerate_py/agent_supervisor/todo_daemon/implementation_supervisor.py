@@ -57,11 +57,13 @@ from .implementation_daemon import (
     consume_stale_active_attempt,
     load_json_dict,
     normalize_focus_tracks,
+    normalize_duckdb_bootstrap_completion_evidence_id,
     normalize_implementation_protected_paths,
     normalize_relative_path_list,
     parse_timestamp,
     process_command_line,
     process_is_running,
+    single_duckdb_bootstrap_completion_evidence_id,
     state_file_repair_reason,
     utc_now,
     write_json_atomic,
@@ -291,6 +293,7 @@ class PortalSupervisorConfig:
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
     external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
+    duckdb_bootstrap_completion_evidence_id: str = ""
     assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_cids: tuple[str, ...] = field(default_factory=tuple)
@@ -414,6 +417,15 @@ class PortalImplementationSupervisor:
     autonomous_unstall_rescue_execution_request_factory: Any = None
 
     def __init__(self, config: PortalSupervisorConfig) -> None:
+        evidence_id = normalize_duckdb_bootstrap_completion_evidence_id(
+            config.duckdb_bootstrap_completion_evidence_id
+        )
+        if evidence_id != config.duckdb_bootstrap_completion_evidence_id:
+            raise ValueError("DuckDB bootstrap completion evidence ID is noncanonical")
+        if evidence_id and config.task_source_kind != "duckdb":
+            raise ValueError(
+                "DuckDB bootstrap completion evidence requires a DuckDB task source"
+            )
         self.config = config
         self.restart_count = 0
         self.last_start_at: float | None = None
@@ -7190,6 +7202,13 @@ class PortalImplementationSupervisor:
         )
         for path in self.config.external_reservation_manifest_paths:
             command.extend(["--external-reservation-manifest-path", str(path)])
+        if self.config.duckdb_bootstrap_completion_evidence_id:
+            command.extend(
+                [
+                    "--duckdb-bootstrap-completion-evidence-id",
+                    self.config.duckdb_bootstrap_completion_evidence_id,
+                ]
+            )
         for task_id in self.config.assumed_completed_task_ids:
             command.extend(["--assume-completed-task-id", str(task_id)])
         for task_id in self.config.execution_slice_task_ids:
@@ -7462,6 +7481,24 @@ class PortalImplementationSupervisor:
             option_values("--expected-task-source-repository-root")
             != expected_repository_roots
         ):
+            return False
+        bootstrap_option = "--duckdb-bootstrap-completion-evidence-id"
+        bootstrap_indexes = [
+            index for index, token in enumerate(tokens) if token == bootstrap_option
+        ]
+        if any(
+            token.startswith(bootstrap_option + "=") for token in tokens
+        ) or any(index + 1 >= len(tokens) for index in bootstrap_indexes):
+            return False
+        bootstrap_evidence_values = [
+            tokens[index + 1] for index in bootstrap_indexes
+        ]
+        expected_bootstrap_evidence_values = (
+            [self.config.duckdb_bootstrap_completion_evidence_id]
+            if self.config.duckdb_bootstrap_completion_evidence_id
+            else []
+        )
+        if bootstrap_evidence_values != expected_bootstrap_evidence_values:
             return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
@@ -7781,6 +7818,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         help="Repeatable bundle scheduler manifest whose running execution slices reserve tasks.",
+    )
+    parser.add_argument(
+        "--duckdb-bootstrap-completion-evidence-id",
+        action="append",
+        type=normalize_duckdb_bootstrap_completion_evidence_id,
+        default=[],
+        help=(
+            "One canonical evidence CID for the exact historical DQK-007 "
+            "DuckDB completion event. Repetition is rejected."
+        ),
     )
     parser.add_argument(
         "--assume-completed-task-id",
@@ -8282,6 +8329,11 @@ def supervisor_config_from_args(
         task_shard_index=args.task_shard_index,
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()
+        ),
+        duckdb_bootstrap_completion_evidence_id=(
+            single_duckdb_bootstrap_completion_evidence_id(
+                args.duckdb_bootstrap_completion_evidence_id
+            )
         ),
         assumed_completed_task_ids=tuple(args.assume_completed_task_id or ()),
         execution_slice_task_ids=tuple(args.execution_slice_task_id or ()),

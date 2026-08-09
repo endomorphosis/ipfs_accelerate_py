@@ -27,6 +27,8 @@ from ipfs_accelerate_py.agent_supervisor.task_source import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    duckdb_bootstrap_completion_evidence,
+    single_duckdb_bootstrap_completion_evidence_id,
 )
 from test.api.test_agent_supervisor_prompt_plan_admission import _graph_fixture
 
@@ -104,6 +106,53 @@ def _sources(tmp_path: Path):
     duckdb_backend = DuckDBTaskSource(tmp_path / "fixture.duckdb")
     duckdb_backend.materialize(graph, repository_tree_id=tree_id)
     return open_task_source(markdown_backend), open_task_source(duckdb_backend)
+
+
+def _bootstrap_source(tmp_path: Path):
+    graph, _admission, _aliases, tree_id = _canonical_fixture()
+    first_template = next(
+        task for task in graph.tasks if not task.dependency_task_cids
+    )
+    second_template = next(
+        task for task in graph.tasks if task.dependency_task_cids
+    )
+    first = replace(first_template, task_key="DQK-007")
+    second = replace(
+        second_template,
+        task_key="DQK-008",
+        dependency_task_cids=(first.task_cid,),
+    )
+    backend = DuckDBTaskSource(tmp_path / "bootstrap.duckdb")
+    backend.materialize(
+        replace(graph, tasks=(first, second)),
+        repository_tree_id=tree_id,
+    )
+    source = open_task_source(backend)
+    current = source.get("DQK-007")
+    assert current is not None
+    completed = source.compare_and_swap_status(
+        current.task_id,
+        expected_status=current.status,
+        new_status="completed",
+        expected_revision=current.revision,
+        receipt={"fixture": "historical bootstrap completion"},
+    )
+    events = backend.events(cursor=0, limit=10).events
+    event = next(
+        item
+        for item in events
+        if item["task_cid"] == completed.task.task_cid
+        and item["body"]["status"] == "completed"
+    )
+    evidence = duckdb_bootstrap_completion_evidence(
+        task_id=completed.task.task_id,
+        task_cid=completed.task.task_cid,
+        task_status=completed.task.status,
+        task_revision=completed.task.revision,
+        event=event,
+        task_source_identity=source.pinned_identity,
+    )
+    return source, evidence, event
 
 
 def _canonical_graph(source) -> list[tuple[str, str, tuple[str, ...]]]:
@@ -190,7 +239,13 @@ def _exercise_lifecycle(source):
     }
 
 
-def _daemon(tmp_path: Path, source) -> PortalImplementationDaemon:
+def _daemon(
+    tmp_path: Path,
+    source,
+    *,
+    assumed_completed_task_ids=(),
+    duckdb_bootstrap_completion_evidence_id="",
+) -> PortalImplementationDaemon:
     tmp_path.mkdir(parents=True, exist_ok=True)
     daemon = PortalImplementationDaemon(
         task_source=source,
@@ -201,6 +256,10 @@ def _daemon(tmp_path: Path, source) -> PortalImplementationDaemon:
         worktree_pool_enabled=False,
         validation_cache_dir=tmp_path / "validation-cache",
         merge_queue_dir=tmp_path / "merge-queue",
+        duckdb_bootstrap_completion_evidence_id=(
+            duckdb_bootstrap_completion_evidence_id
+        ),
+        assumed_completed_task_ids=assumed_completed_task_ids,
     )
     daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
     daemon._reconcile_failed_merges = lambda **_kwargs: []  # type: ignore[method-assign]
@@ -275,6 +334,141 @@ def test_daemon_consumes_either_source_and_receipts_bind_source_identity(
     assert replay.get("completion_receipts") in (None, [])
     assert restart._completion_receipts_for_task_ids(["FIX-001"]) == []
     assert not list(tmp_path.rglob("*duckdb*.md"))
+
+
+def test_duckdb_restart_admits_exact_bootstrap_completion_evidence_only(
+    tmp_path: Path,
+) -> None:
+    database, evidence, _event = _bootstrap_source(tmp_path)
+    daemon = _daemon(
+        tmp_path / "exact-evidence",
+        database,
+        duckdb_bootstrap_completion_evidence_id=evidence["evidence_id"],
+    )
+
+    assert [task.task_id for task in daemon._load_tasks()] == [
+        "DQK-007",
+        "DQK-008",
+    ]
+    result = daemon.run_once()
+    assert result["active_task_id"] == "DQK-008"
+    assert result["assumed_completed_task_ids"] == []
+    assert result["duckdb_bootstrap_completion_evidence_id"] == evidence["evidence_id"]
+    replay = daemon._mark_task_completed_in_todo("DQK-007")
+    assert replay["reason"] == "completion_evidence_required"
+
+
+def test_bootstrap_completion_evidence_rejects_alias_cid_duplicate_and_mismatch(
+    tmp_path: Path,
+) -> None:
+    database, evidence, event = _bootstrap_source(tmp_path)
+    bootstrap = database.get("DQK-007")
+    assert bootstrap is not None
+    with pytest.raises(ValueError, match="canonical CIDv1"):
+        _daemon(
+            tmp_path / "alias-only",
+            database,
+            duckdb_bootstrap_completion_evidence_id=bootstrap.task_id,
+        )
+    cid_only = _daemon(
+        tmp_path / "cid-only",
+        database,
+        duckdb_bootstrap_completion_evidence_id=bootstrap.task_cid,
+    )
+    with pytest.raises(TaskSourceIntegrityError, match="does not match"):
+        cid_only._load_tasks()
+    with pytest.raises(ValueError, match="cannot be repeated"):
+        single_duckdb_bootstrap_completion_evidence_id(
+            (evidence["evidence_id"], evidence["evidence_id"])
+        )
+    forged_id = evidence["evidence_id"][:-1] + (
+        "a" if evidence["evidence_id"][-1] != "a" else "b"
+    )
+    mismatched = _daemon(
+        tmp_path / "mismatched",
+        database,
+        duckdb_bootstrap_completion_evidence_id=forged_id,
+    )
+    with pytest.raises(TaskSourceIntegrityError, match="does not match"):
+        mismatched._load_tasks()
+
+    forged_event = {**event, "body": {**event["body"], "unexpected": True}}
+    with pytest.raises(ValueError, match="body shape is not canonical"):
+        duckdb_bootstrap_completion_evidence(
+            task_id=bootstrap.task_id,
+            task_cid=bootstrap.task_cid,
+            task_status=bootstrap.status,
+            task_revision=bootstrap.revision,
+            event=forged_event,
+            task_source_identity=database.pinned_identity,
+        )
+
+
+def test_bootstrap_evidence_does_not_exempt_another_completed_task(
+    tmp_path: Path,
+) -> None:
+    database, evidence, _event = _bootstrap_source(tmp_path)
+    other = database.get("DQK-008")
+    assert other is not None
+    database.compare_and_swap_status(
+        other.task_id,
+        expected_status=other.status,
+        new_status="completed",
+        expected_revision=other.revision,
+        receipt={"fixture": "unqualified other completion"},
+    )
+    daemon = _daemon(
+        tmp_path / "other-completed",
+        database,
+        duckdb_bootstrap_completion_evidence_id=evidence["evidence_id"],
+    )
+    with pytest.raises(TaskSourceIntegrityError, match=r"evidence: DQK-008$"):
+        daemon._load_tasks()
+
+
+def test_bootstrap_evidence_rejects_old_event_but_tolerates_later_global_events(
+    tmp_path: Path,
+) -> None:
+    database, evidence, _event = _bootstrap_source(tmp_path)
+    other = database.get("DQK-008")
+    assert other is not None
+    database.compare_and_swap_status(
+        other.task_id,
+        expected_status=other.status,
+        new_status="in_progress",
+        expected_revision=other.revision,
+        receipt={"fixture": "later unrelated global event"},
+    )
+    current = _daemon(
+        tmp_path / "later-global-event",
+        database,
+        duckdb_bootstrap_completion_evidence_id=evidence["evidence_id"],
+    )
+    assert any(task.task_id == "DQK-007" for task in current._load_tasks())
+
+    bootstrap = database.get("DQK-007")
+    assert bootstrap is not None
+    reopened = database.compare_and_swap_status(
+        bootstrap.task_id,
+        expected_status=bootstrap.status,
+        new_status="ready",
+        expected_revision=bootstrap.revision,
+        receipt={"fixture": "reopen bootstrap"},
+    )
+    database.compare_and_swap_status(
+        reopened.task.task_id,
+        expected_status=reopened.task.status,
+        new_status="completed",
+        expected_revision=reopened.task.revision,
+        receipt={"fixture": "replacement bootstrap completion"},
+    )
+    stale = _daemon(
+        tmp_path / "stale-event",
+        database,
+        duckdb_bootstrap_completion_evidence_id=evidence["evidence_id"],
+    )
+    with pytest.raises(TaskSourceIntegrityError, match="does not match"):
+        stale._load_tasks()
 
 
 def test_stale_revision_cursor_corruption_foreign_root_and_swap_fail_closed(

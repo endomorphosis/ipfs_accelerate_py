@@ -37,6 +37,7 @@ from ..context_compiler import (
     render_retry_context,
 )
 from ..context_contracts import ContextBudget, ContextCapsule
+from ..duckdb_task_source import TASK_SOURCE_CAS_SCHEMA
 from ..formal_verification_contracts import canonical_json, content_identity
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
@@ -114,6 +115,11 @@ REPO_ROOT = Path.cwd()
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon")
 
 TASK_HEADER_PREFIX = "## PORTAL-"
+DUCKDB_BOOTSTRAP_COMPLETION_TASK_ID = "DQK-007"
+DUCKDB_BOOTSTRAP_COMPLETION_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "duckdb-bootstrap-completion-evidence@1"
+)
 DEFAULT_TRACKS = [
     "launch",
     "platform",
@@ -180,6 +186,134 @@ PROOF_WORKFLOW_OPTION_KEYS = frozenset(
         "fallback_plan",
     }
 )
+
+
+def normalize_duckdb_bootstrap_completion_evidence_id(value: Any) -> str:
+    """Return one exact CIDv1 evidence ID or reject non-digest trust input."""
+
+    selected = str(value or "").strip()
+    if selected and re.fullmatch(r"baguqeera[a-z2-7]{52}", selected) is None:
+        raise ValueError(
+            "DuckDB bootstrap completion evidence ID must be one canonical "
+            "CIDv1 DAG-JSON/sha2-256 identity"
+        )
+    return selected
+
+
+def single_duckdb_bootstrap_completion_evidence_id(
+    values: Sequence[Any],
+) -> str:
+    selected = tuple(values or ())
+    if len(selected) > 1:
+        raise ValueError(
+            "DuckDB bootstrap completion evidence ID cannot be repeated"
+        )
+    return normalize_duckdb_bootstrap_completion_evidence_id(
+        selected[0] if selected else ""
+    )
+
+
+def _record_mapping(value: Any, *, noun: str) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        selected = to_dict()
+        if isinstance(selected, Mapping):
+            return dict(selected)
+    raise ValueError(f"{noun} must be an inspectable record")
+
+
+def duckdb_bootstrap_completion_evidence(
+    *,
+    task_id: str,
+    task_cid: str,
+    task_status: str,
+    task_revision: int,
+    event: Mapping[str, Any],
+    task_source_identity: Mapping[str, Any] | TaskSourceIdentity,
+) -> dict[str, Any]:
+    """Rebuild the sole historical completion exemption from canonical facts."""
+
+    if task_id != DUCKDB_BOOTSTRAP_COMPLETION_TASK_ID:
+        raise ValueError("bootstrap completion evidence names a foreign task")
+    if not task_cid or task_status != "completed":
+        raise ValueError("bootstrap completion evidence requires the completed row")
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 2
+    ):
+        raise ValueError("bootstrap completion task revision is invalid")
+
+    identity_record = _record_mapping(
+        task_source_identity,
+        noun="task-source identity",
+    )
+    identity = TaskSourceIdentity.from_dict(identity_record)
+    if identity.source_kind != "duckdb" or identity_record != identity.to_dict():
+        raise ValueError("bootstrap completion task-source identity is noncanonical")
+
+    event_record = _record_mapping(event, noun="bootstrap completion event")
+    event_body = _record_mapping(
+        event_record.get("body"),
+        noun="bootstrap completion event body",
+    )
+    if set(event_body) != {
+        "schema",
+        "task_cid",
+        "previous_status",
+        "status",
+        "task_revision",
+        "revision",
+        "receipt",
+    }:
+        raise ValueError("bootstrap completion event body shape is not canonical")
+    event_cid = content_identity(event_body)
+    stored_event_cid = str(event_record.get("event_cid") or "")
+    event_type = str(event_record.get("event_type") or "")
+    event_task_cid = str(event_record.get("task_cid") or "")
+    event_sequence = event_record.get("sequence")
+    event_revision = event_record.get("revision")
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 1
+        for value in (event_sequence, event_revision)
+    ):
+        raise ValueError("bootstrap completion event sequence/revision is invalid")
+    if (
+        event_body.get("schema") != TASK_SOURCE_CAS_SCHEMA
+        or event_type != "status_changed"
+        or event_task_cid != task_cid
+        or event_body.get("task_cid") != task_cid
+        or not isinstance(event_body.get("previous_status"), str)
+        or not event_body.get("previous_status")
+        or event_body.get("previous_status") == "completed"
+        or event_body.get("status") != "completed"
+        or event_body.get("task_revision") != task_revision
+        or event_body.get("revision") != event_revision
+        or event_revision != event_sequence + 1
+        or stored_event_cid != event_cid
+    ):
+        raise ValueError("bootstrap completed event identity is stale or forged")
+    receipt = _record_mapping(
+        event_body.get("receipt"),
+        noun="bootstrap task-status receipt",
+    )
+    receipt_record = {
+        "namespace": "task-status-receipt",
+        "event_cid": event_cid,
+        "receipt": receipt,
+    }
+    evidence = {
+        "schema": DUCKDB_BOOTSTRAP_COMPLETION_EVIDENCE_SCHEMA,
+        "task_id": task_id,
+        "task_cid": task_cid,
+        "task_source_identity_id": identity.identity_id,
+        "event_cid": event_cid,
+        "task_source_receipt_id": content_identity(receipt_record),
+    }
+    evidence["evidence_id"] = content_identity(evidence)
+    return evidence
 UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS = ("--ignoreConfig",)
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
@@ -2628,6 +2762,7 @@ class PortalImplementationDaemon:
         objective_bundle_dir: Path | None = None,
         generated_status_paths: Sequence[Path | str] = (),
         external_reservation_manifest_paths: Sequence[Path | str] = (),
+        duckdb_bootstrap_completion_evidence_id: str = "",
         assumed_completed_task_ids: Sequence[str] = (),
         execution_slice_task_ids: Sequence[str] = (),
         execution_slice_task_cids: Sequence[str] = (),
@@ -2829,6 +2964,17 @@ class PortalImplementationDaemon:
         self.external_reservation_manifest_paths = tuple(
             Path(path).resolve() for path in external_reservation_manifest_paths
         )
+        self.duckdb_bootstrap_completion_evidence_id = (
+            normalize_duckdb_bootstrap_completion_evidence_id(
+                duckdb_bootstrap_completion_evidence_id
+            )
+        )
+        if self.duckdb_bootstrap_completion_evidence_id and (
+            self.task_source is None or self.task_source.source_kind != "duckdb"
+        ):
+            raise ValueError(
+                "DuckDB bootstrap completion evidence requires a DuckDB task source"
+            )
         self.assumed_completed_task_ids = frozenset(
             str(task_id).strip()
             for task_id in assumed_completed_task_ids
@@ -3142,6 +3288,94 @@ class PortalImplementationDaemon:
             board_namespace=task.board_namespace,
         )
 
+    def _duckdb_bootstrap_completion_exempt_task_cid(
+        self,
+        records: Sequence[TaskSourceTask],
+    ) -> str:
+        evidence_id = self.duckdb_bootstrap_completion_evidence_id
+        if not evidence_id:
+            return ""
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            raise TaskSourceIntegrityError(
+                "bootstrap completion evidence requires a DuckDB task source"
+            )
+        matching_tasks = [
+            task
+            for task in records
+            if task.task_id == DUCKDB_BOOTSTRAP_COMPLETION_TASK_ID
+        ]
+        if len(matching_tasks) != 1:
+            raise TaskSourceIntegrityError(
+                "bootstrap completion evidence requires one exact DQK-007 row"
+            )
+        task = matching_tasks[0]
+        if normalize_status(task.status) != "completed":
+            raise TaskSourceIntegrityError(
+                "bootstrap completion evidence is stale for a non-completed row"
+            )
+
+        events_method = getattr(self.task_source.backend, "events", None)
+        if not callable(events_method):
+            raise TaskSourceIntegrityError(
+                "DuckDB task source does not expose bootstrap event history"
+            )
+        cursor = 0
+        scanned = 0
+        candidates: list[dict[str, Any]] = []
+        while scanned < 100_000:
+            page = events_method(cursor=cursor, limit=1_000)
+            events = tuple(getattr(page, "events", ()) or ())
+            if not events:
+                break
+            for raw_event in events:
+                scanned += 1
+                event = dict(raw_event)
+                body = event.get("body")
+                if (
+                    event.get("event_type") == "status_changed"
+                    and event.get("task_cid") == task.task_cid
+                    and isinstance(body, Mapping)
+                    and body.get("status") == "completed"
+                    and body.get("task_revision") == task.revision
+                ):
+                    candidates.append(event)
+            next_cursor = int(getattr(page, "cursor", cursor) or cursor)
+            if next_cursor <= cursor:
+                raise TaskSourceIntegrityError(
+                    "DuckDB bootstrap event cursor did not advance"
+                )
+            cursor = next_cursor
+            if len(events) < 1_000:
+                break
+        if scanned >= 100_000:
+            trailing = events_method(cursor=cursor, limit=1)
+            if tuple(getattr(trailing, "events", ()) or ()):
+                raise TaskSourceIntegrityError(
+                    "DuckDB bootstrap event history exceeds its admission bound"
+                )
+        if len(candidates) != 1:
+            raise TaskSourceIntegrityError(
+                "bootstrap completion evidence event is missing or duplicated"
+            )
+        try:
+            evidence = duckdb_bootstrap_completion_evidence(
+                task_id=task.task_id,
+                task_cid=task.task_cid,
+                task_status=normalize_status(task.status),
+                task_revision=int(task.revision),
+                event=candidates[0],
+                task_source_identity=self.task_source.pinned_identity,
+            )
+        except (TaskSourceError, TypeError, ValueError) as exc:
+            raise TaskSourceIntegrityError(
+                f"bootstrap completion evidence is invalid: {exc}"
+            ) from exc
+        if evidence.get("evidence_id") != evidence_id:
+            raise TaskSourceIntegrityError(
+                "bootstrap completion evidence ID does not match canonical history"
+            )
+        return task.task_cid
+
     def _load_tasks(self) -> list[PortalTask]:
         if self.task_source is None:
             return parse_task_file(self.todo_path, self.task_header_prefix)
@@ -3163,11 +3397,15 @@ class PortalImplementationDaemon:
                 for task in records
                 if normalize_status(task.status) == "completed"
             ]
+            exempt_task_cid = self._duckdb_bootstrap_completion_exempt_task_cid(
+                records
+            )
             qualifying = self._duckdb_completion_records_for_tasks(completed)
             unqualified = sorted(
                 task.task_id
                 for task in completed
                 if task.task_cid not in qualifying
+                and task.task_cid != exempt_task_cid
             )
             if unqualified:
                 raise TaskSourceIntegrityError(
@@ -6533,6 +6771,9 @@ class PortalImplementationDaemon:
             "active_task_claims": sorted(active_task_claims),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
+            "duckdb_bootstrap_completion_evidence_id": (
+                self.duckdb_bootstrap_completion_evidence_id
+            ),
             "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
             "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
@@ -24091,6 +24332,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Repeatable bundle scheduler manifest whose running execution slices reserve tasks.",
     )
     parser.add_argument(
+        "--duckdb-bootstrap-completion-evidence-id",
+        action="append",
+        type=normalize_duckdb_bootstrap_completion_evidence_id,
+        default=[],
+        help=(
+            "One canonical evidence CID for the exact historical DQK-007 "
+            "DuckDB completion event. Repetition is rejected."
+        ),
+    )
+    parser.add_argument(
         "--assume-completed-task-id",
         action="append",
         default=[],
@@ -24167,6 +24418,11 @@ def main(argv: list[str] | None = None) -> None:
         objective_bundle_dir=args.objective_bundle_dir,
         generated_status_paths=args.generated_status_path,
         external_reservation_manifest_paths=args.external_reservation_manifest_path,
+        duckdb_bootstrap_completion_evidence_id=(
+            single_duckdb_bootstrap_completion_evidence_id(
+                args.duckdb_bootstrap_completion_evidence_id
+            )
+        ),
         assumed_completed_task_ids=args.assume_completed_task_id,
         execution_slice_task_ids=args.execution_slice_task_id,
         execution_slice_task_cids=args.execution_slice_task_cid,
