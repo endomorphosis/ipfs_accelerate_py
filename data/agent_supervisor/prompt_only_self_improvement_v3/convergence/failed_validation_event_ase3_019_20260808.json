@@ -1,0 +1,779 @@
+{
+  "attempt": 1,
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "branch": "implementation/ase3-019-b75326e8a50d-attempt-1-1786206062",
+  "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+  "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+  "cleanup_result": {
+    "branch": "implementation/ase3-019-b75326e8a50d-attempt-1-1786206062",
+    "cleaned": true,
+    "deleted_branch": true,
+    "finished_at": "2026-08-08T16:32:20.592128+00:00",
+    "lifecycle_finalize": {
+      "fence": 5,
+      "finalized": true,
+      "reason": "pool_release_cleaned",
+      "state": "terminal"
+    },
+    "pool_release": {
+      "base_commit": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+      "base_ref": "agent/prompt-self-improvement-v3",
+      "branch": "implementation/ase3-019-b75326e8a50d-attempt-1-1786206062",
+      "cache_hit": false,
+      "cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+      "dependency_paths": [],
+      "entry_id": "c0fbd6dd1474-2666beb0a954",
+      "estimated_seconds_saved": 0.0,
+      "invalidation_reason": "",
+      "invalidation_reasons": [],
+      "pooled": true,
+      "reason": "clean_prepared_workspace",
+      "released": true,
+      "reused": false,
+      "setup_seconds": 5.720079,
+      "setup_time_saved_seconds": 0.0,
+      "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-c0fbd6dd1474-2666beb0a954"
+    },
+    "pooled": true,
+    "removed_worktree": false,
+    "started_at": "2026-08-08T16:32:20.457852+00:00",
+    "submodule_cleanup": [],
+    "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-c0fbd6dd1474-2666beb0a954"
+  },
+  "commit_result": {
+    "commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+    "committed": true,
+    "status": "M  ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py\nA  ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py\nM  ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py\nM  ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py\nM  ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py\nM  ipfs_accelerate_py/llm_router.py\nA  test/api/test_agent_supervisor_prompt_v3_authority_hardening.py\nA  test/api/test_llm_router_agent_supervisor_fallback_route.py"
+  },
+  "event_id": "sha256:6b6482b68fef226ab3bc631cb722de49ccfb863cc5350fdf91a79ac1e34cfce4",
+  "finished_at": "2026-08-08T16:32:20.609829+00:00",
+  "implementation_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+  "preserved": true,
+  "preserved_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+  "previous_event_id": "sha256:675830de60f2008c7c1cc99a9067f2c35ba6a1c505df3b78b7f8c27b0dd71017",
+  "pruned_seeded_context": [],
+  "rescue_branch": "rescue/ase3-019-b75326e8a50d-attempt-1-1786206062-failed-validation",
+  "sequence": 118,
+  "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+  "started_at": "2026-08-08T16:32:19.294375+00:00",
+  "stream_id": "event-log:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+  "task_id": "ASE3-019",
+  "timestamp": "2026-08-08T16:32:20.610180+00:00",
+  "type": "failed_validation_worktree_preserved",
+  "validation_result": {
+    "affected_paths": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/llm_router.py",
+      "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+      "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+      "test/api/test_agent_supervisor_prompt_v3_authority.py",
+      "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+      "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+      "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+    ],
+    "ast_import_companion_paths": [
+      "ipfs_accelerate_py/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "ipfs_accelerate_py/agent_supervisor/integrations/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py",
+      "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+      "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/ipfs_kit_integration.py",
+      "ipfs_accelerate_py/llm/llm_interface.py",
+      "ipfs_accelerate_py/llm/llm_router_interface.py",
+      "ipfs_accelerate_py/llm_router.py",
+      "ipfs_accelerate_py/mcplusplus_module/p2p/libp2p_runtime.py",
+      "ipfs_accelerate_py/model_manager.py",
+      "ipfs_accelerate_py/p2p_tasks/client.py",
+      "ipfs_accelerate_py/p2p_tasks/protocol.py",
+      "ipfs_accelerate_py/p2p_tasks/task_queue.py",
+      "ipfs_accelerate_py/utils/llama_cpp.py"
+    ],
+    "attempted": true,
+    "authoritative": false,
+    "authority_gates": [
+      {
+        "depends_on": [
+          "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+        ],
+        "disposition": "blocked",
+        "gate": "completion",
+        "reason": "validation_dag_failed"
+      },
+      {
+        "depends_on": [
+          "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+        ],
+        "disposition": "blocked",
+        "gate": "freshness",
+        "reason": "validation_dag_failed"
+      },
+      {
+        "depends_on": [
+          "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+        ],
+        "disposition": "blocked",
+        "gate": "merge",
+        "reason": "validation_dag_failed"
+      },
+      {
+        "depends_on": [
+          "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+        ],
+        "disposition": "blocked",
+        "gate": "proof",
+        "reason": "validation_dag_failed"
+      },
+      {
+        "depends_on": [
+          "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+        ],
+        "disposition": "blocked",
+        "gate": "semantic",
+        "reason": "validation_dag_failed"
+      }
+    ],
+    "cache_hits": 0,
+    "cache_misses": 1,
+    "code_proof_authoritative": false,
+    "completion_authoritative": false,
+    "coverage_errors": [],
+    "dependency_state": {
+      "candidate_content_sha256": "1b921843bb225f9cb88ad26f4177d6b1cb32d30280bc3b615e5b507d46807fd2",
+      "changed_files": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "gitlinks": [
+        "-1d932cc778a24cc0bf46fc4baad8306d4fed9c4b docs/fastmcp",
+        "-0da9a074d09267a927d72faa58c26d828f0f8edb docs/mcp-python-sdk",
+        "-15c1816d6c63a2b11edd505704f6a04a9abc6167 ipfs_accelerate_py/mcplusplus",
+        "-a2f5400b7cb89c8481819379a1b7b9959fe81d45 ipfs_datasets_py",
+        "-e164bb21c7a73b722a83aea7623e5677391bce54 ipfs_kit_py",
+        "-f6151d2113f42e75ea7d83a1b2362fc97e55e44d ipfs_model_manager_py",
+        "-b397988ed9e3e656475c1cf4417b84efdb95daf3 ipfs_transformers_py",
+        "-6108e850ae1cf2f71bb0815a600bcd50c39abfa7 test/doc-builder",
+        "-6108e850ae1cf2f71bb0815a600bcd50c39abfa7 test/huggingface_doc_builder",
+        "-44752c8dd99f3fb0da23006dc4fde4a07d9c417f test/huggingface_transformers"
+      ],
+      "manifest_hashes": {
+        ".gitmodules": "9b5856970fc61b9c18f7d272c1ed5b9322e5e7df08a8f74a100da2e33852bf90",
+        "config/agent_supervisor_vfs_generalization_sources.lock.json": "adede09ca8735f35fa1e7981863741789a62f677874bfc6da024051c1670a2f2",
+        "config/formal_verification_toolchains.lock.json": "80f1590ab0382126962e1ea11468f1b531cd073b3404cb5dae466b193003aa7c",
+        "config/formal_verification_zkp_deployment.lock.json": "81cce061e67681e63835954768c1eadac8ff1bd9d47855e2d043af3b20cb1d17",
+        "install/requirements_apple.txt": "e9fe86ba7279f4b1eb8fed287e643e2165070b335741dd320f3638812eb57144",
+        "install/requirements_base.txt": "726dbaf803b252c4fda3281e2b5baca15b8c7d3232c0a30f660cfbc8b739ad14",
+        "install/requirements_cuda.txt": "ea2d7df4ca3661230a9cdeb4a24ba807ac1b4a1953684bbc1deb1cccb4a31767",
+        "install/requirements_github_ci.txt": "a7d6daf9176c35f85ebafe27f75c471618da15433063a30c571da3360dcbbd05",
+        "install/requirements_openvino.txt": "4db8b5d0403988d521fe864781cffff149327bdefba25dc3781672af9403f1f6",
+        "install/requirements_qualcomm.txt": "04946c1d9f670fe47f25672c0794da57a37f4dd1db9d356752fdccab0d13e1ff",
+        "install/requirements_torch_cu124.txt": "334ecec5a89ebab9cb4bf7ad1773f8ff76cc71d31a4d7ee16767b1082a87abdc",
+        "install/requirements_torch_cu130_nightly.txt": "c3e440cf2c875e43b59a875fb707f694777e01c33ac72627d8e689e98bc7f6f0",
+        "ipfs_accelerate_py/consensus_kit/Cargo.toml": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "ipfs_accelerate_py/mcp/requirements-mcp.txt": "7f9b85a3bf5b1621ce0cb4b8be85aa7d08737f9ca6e1d49eb709f865a6c4fa74",
+        "ipfs_accelerate_py/mcp/requirements.txt": "bf7674c09f3d9541a84ffb83a35da6af37eac905f5d32ae4e97cbebea7255d1b",
+        "ipfs_accelerate_py/requirements.txt": "e9e7455b38597c984035c89670436ff2fa521f3eac31b5d7d5a0e5a8d52c5e2e",
+        "ipfs_accelerate_py/utils/qualcomm/onnx/requirements.txt": "e2b2c312fe316e10c5d037fd80b99f46f8d5ee609a758ade9c383c23c6e81fde",
+        "ipfs_accelerate_py/worker/skillset/libllama/avx2/requirements.txt": "6bdf66b5bf2a44e658bea2ee86695ab150a06e600bf67cd5cce245ad54962c61",
+        "ipfs_accelerate_py/worker/skillset/libllama/requirements.txt": "ae818ace5090a15cd5a3de8746567f88803a7673384d5f79402ddede6d762de4",
+        "pyproject.toml": "ee96e8622f887cc99bce6afe7f889be80b164f0182855b03e4c9d4dce9274b1a",
+        "requirements-hf-server.txt": "3c9d34aa69517ef270232c602342482db5bf1a7c53d4f7a1658e8462191709a7",
+        "requirements-phase3.txt": "2563b16eb3d42adbccb4ceef123a0cdb4185eae892513ddfca7d5071c5c3d432",
+        "requirements-proof-reuse.txt": "4809b7012f515cfaea30140a117c86e47ada29f96fff9045eff57e390cf2fc8b",
+        "requirements.txt": "e5e14f47580a20fb04e7db1ba6b06f5d43a10e64b97cf79a71da5bd18bcf2cfe",
+        "requirements_dashboard.txt": "9e6eca5a5daa1625f3354ee5bf2283fe64cac72eeed380af462891906df37821",
+        "requirements_enhanced_scraper.txt": "f1de1c89b4c607ebb1d2e3322090b733632b6e918142e3164d9e4630d2a6d77a",
+        "requirements_webnn_webgpu.txt": "3dfbe4cc38dc9cd9df8699367189d0d2ab07d0cf582c03dbec57918ed0d6923e",
+        "scripts/generators/skill_generator/setup.py": "04fb6df81db3643ef4b45ffe7bae6c59cd2b116385f4092a4add74fb21610f9f",
+        "scripts/generators/test_generator/requirements.txt": "0a693a3e4a74e4f500426a4bce17d5ad2b37510542040fc9d90e6bc59ba6ab22",
+        "setup.py": "4a1d6003c337b5e0a34637957fde6ce7513b1a6584efec6f09480b1e47bbd2b3",
+        "test/doc-builder-test/pyproject.toml": "c5f768a38d656cd76cda1e6b440b2789fa0e03d270b2bb88cab9eff90f4a5ff7",
+        "test/doc-builder-test/setup.cfg": "e7e3c0f6112d7739ad2836697a49f99b4d51ea2c947afaf0b00417a43fdc2260",
+        "test/doc-builder-test/setup.py": "16e2bf03fc2ecef9065dc1dcb6a73970799ec38cbd75d5724c4e1d06c5a46f97",
+        "test/duckdb_api/benchmark_validation/requirements.txt": "3851e6a22bf37bc49a12d5bbd3eaac8e45b14bafaf7b13e7a20cff46b8643777",
+        "test/duckdb_api/distributed_testing/requirements.test.txt": "0482a473e19bfdf0bf33dbf5b735bdb95cc24fdfe4390503080174a88922e805",
+        "test/duckdb_api/simulation_validation/requirements.txt": "29ac73f3cabe50aea5c1cc818a329ee88edb5ae546fb218c90bb36dcd4955238",
+        "test/ipfs_accelerate_py/utils/qualcomm/onnx/requirements.txt": "e2b2c312fe316e10c5d037fd80b99f46f8d5ee609a758ade9c383c23c6e81fde",
+        "test/refactored_generator_suite/setup.py": "04fb6df81db3643ef4b45ffe7bae6c59cd2b116385f4092a4add74fb21610f9f",
+        "test/refactored_test_suite/requirements.txt": "0a693a3e4a74e4f500426a4bce17d5ad2b37510542040fc9d90e6bc59ba6ab22",
+        "test/requirements.txt": "b54886473706cddefb7dd4452332c9a0c9f45ddae04c48222f65e33f03f2461f",
+        "test/requirements_api.txt": "b67da94040b96358d62efbc16eed0b40315b2c1027238b8abc815117f7f70ea1",
+        "test/requirements_dashboard.txt": "9ec041a96a6e980ba8fdaae8224db76019093a03b6013d305dde995fd3505b1c",
+        "test/requirements_samsung.txt": "b68f698e9a849fe3a252f072d1d233bc22612ef59f1d40caf2f3e62e339fd3dc",
+        "test/requirements_test.txt": "1fb552da35d2bf0493df331d9d94ec09c168ce301a16178928e3abbc2cb5c7dd",
+        "test/scripts/requirements_db.txt": "176d62468abeca7370033d0333aa441a135850f4765a12be8583fa3b3247a34b"
+      }
+    },
+    "error": "validation_command_failed",
+    "exception_types": [
+      "nError",
+      "AssertionError",
+      "ValueError",
+      "ConfiguredBoardError"
+    ],
+    "failed_command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+    "failed_commands": [
+      "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q"
+    ],
+    "failure_head": "\u001b[1m\u001b[31mE         \u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\u001b[0m\n\u001b[1m\u001b[31mE        +  where 1 = CompletedProcess(args=['/usr/bin/docker', '--host=unix:///var/run/docker.sock', '--config', '/tmp/pytest-of-barberb/pytest-6530/test_real_disposable_codex_con0/docker-config', 'run', '--pull=never', '--rm', '--interactive', '--read-only', '--network=bridge', '--runtime=runc', '--entrypoint=/usr/bin/env', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--tmpfs', '/var/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--tmpfs', '/opt/codex-home:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--name', 'ipfs-accelerate-codex-1602305-da2bbd0a5c2044bcbb29c23dfe98fff4', '--cidfile', '/tmp/pytest-of-barberb/pytest-6530/test_real_disposable_codex_con0/validation-container.cid', '--label', 'ipfs_accelerate.codex_fallback_isolation=true', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=1024', '--user', '1000:1000', '--workdir', '/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-c0fbd6dd1474-2666beb0a954', '--env', 'BASH_ENV=', '--env', 'CUDA_VISIBLE_DEVICES=-1', '--env', 'ENV=', '--env', 'LD_LIBRARY_PATH=', '--env', 'LD_PRELOAD=', '--env', 'LI...vergence.py::test_check_all_cli_emits_the_sealed_preflight_contract\\n0.15s call     api/test_agent_supervisor_prompt_v3_convergence.py::test_repository_validation_is_portable_to_an_alternate_descendant_worktree\\n0.14s call     api/test_agent_supervisor_prompt_v3_convergence.py::test_check_all_direct_file_entrypoint_matches_scheduler_execution\\n0.08s call     api/test_agent_supervisor_prompt_v3_convergence.py::test_rebound_recorded_tree_must_match_the_git_object\\n0.08s call     api/test_agent_supervisor_prompt_v3_convergence.py::test_checked_in_convergence_packet_is_valid_on_integration_checkout\\n\\n(5 durations < 0.005s hidden.  Use -vv to show",
+    "failure_review": {
+      "accepted": false,
+      "attempt": 1,
+      "changed_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "completion_authoritative": false,
+      "contract_gap_paths": [],
+      "decision": "guide_rescue",
+      "denied_paths": [],
+      "expected_outputs": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "failed_commands": [
+        "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q"
+      ],
+      "finding_codes": [],
+      "guidance_markdown": "# Implementation failure review\n\n- Decision: `guide_rescue`\n- Reason codes: `validation_command_failed`\n- Finding codes: none\n\n## Follow-up guidance\n\nDo **not** widen scope casually. Stay inside the task contract.\n\n### Declared task outputs (exact edit authority)\n- `ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py`\n- `ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py`\n- `ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py`\n- `ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py`\n- `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py`\n- `ipfs_accelerate_py/llm_router.py`\n- `test/api/test_agent_supervisor_prompt_v3_authority_hardening.py`\n- `test/api/test_llm_router_agent_supervisor_fallback_route.py`\n\n### Failed validation commands\n- `python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q`\nRe-run these commands after edits and keep them green before exit.\n\n### Authoritative validation boundary\n## Authoritative validation environment (fail-closed)\n- `PATH` is exactly \"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin\". The provider/implementer process's inherited `PATH` is ignored.\n- The canonical Python interpreter target is exactly \"/usr/bin/python3.12\"; the validation runner may expose it through a sealed launcher.\n- Each validation command receives a fresh private `HOME` whose directory name starts with `ipfs-accelerate-validation-home-`. Its XDG paths are exactly `$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, and `$HOME/.local/state`. Operator profile state such as `~/.elan`, shell startup files, and provider-only managed toolchains is unavailable.\n- An operator can replace the complete validation `PATH` only through \"IPFS_ACCELERATE_AGENT_VALIDATION_PATH\" before supervisor dispatch. Every entry and ancestor must pass the existing non-writable toolchain check; user-writable tool directories are rejected.\n- Judge external-tool availability and write semantic assertions against this exact environment, not a successful provider-side probe. If a required prover is absent, report a dependency/capability gap or add an approved digest-bound deployment; never claim usability or weaken mandatory tests.\n\n### Next attempt checklist\n1. Touch only declared Outputs / Predicted files (plus justified companions).\n2. Deliver every listed expected output file or directory tree.\n3. Keep validation commands passing.\n4. Avoid renames, submodule edits, and undeclared new modules.",
+      "justified_paths": [],
+      "missing_expected_outputs": [],
+      "next_attempt_prompt_addendum": "Prior attempt failure review (guide_rescue; reasons: validation_command_failed). Re-run and fix: python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q. Failure evidence: \u001b[1m\u001b[31mE \u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\u001b[0m \u001b[1m\u001b[31mE + where 1 = CompletedProcess(args=['/usr/bin/docker', '--host=unix:///var/run/docker.sock', '--config', '/tmp/pytest-of-barberb/pytest-6530/test_real_disposable_codex_con0/docker-config', 'run', '--pull=never', '--rm', '--interactive', '--read-only', '--network=bridge', '--runtime=runc', '--entrypoint=/usr/bin/env', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--tmpfs', '/var/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--tmpfs', '/opt/codex-home:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--name', 'ipfs-accelerate-codex-1602305-da2bbd0a5c2044bcbb29c23dfe98fff4', '--cidfile', '/tmp/pytest-of-barberb/pytest-6530/test_real_disposable_codex_con0/validation-container.cid', '--label', 'ipfs_accelerate.codex_fallback_isolation=true', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=1024', '--user', '1000:1000', '--workdir', '/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-c0fbd6dd1474-2666beb0a954', '--env', '. AST import companions (preferred fix locations): ipfs_accelerate_py/__init__.py, ipfs_accelerate_py/agent_supervisor/__init__.py, ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py, ipfs_accelerate_py/agent_supervisor/integrations/__init__.py, ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py, ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py, ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py, ipfs_accelerate_py/agent_supervisor/runtime/__init__.py, ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py. Authoritative validation environment: ## Authoritative validation environment (fail-closed) - `PATH` is exactly \"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin\". The provider/implementer process's inherited `PATH` is ignored. - The canonical Python interpreter target is exactly \"/usr/bin/python3.12\"; the validation runner may expose it through a sealed launcher. - Each validation command receives a fresh private `HOME` whose directory name starts with `ipfs-accelerate-validation-home-`. Its XDG paths are exactly `$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, and `$HOME/.local/state`. Operator profile state such as `~/.elan`, shell startup files, and provider-only managed toolchains is unavailable. - An operator can replace the complete validation `PATH` only through \"IPFS_ACCELERATE_AGENT_VALIDATION_PATH\" before supervisor dispatch. Every entry and ancestor must pass the existing non-writable toolchain check; user-writable tool directories are rejected. - Judge external-tool availability and write semantic assertions against this exact environment, not a successful provider-side probe. If a required prover is absent, report a dependency/capability gap or add an approved digest-bound deployment; never claim usability or weaken mandatory tests. Stay inside declared Outputs/Predicted files plus AST import companions listed above; finish every expected output; avoid renames and opaque submodule gitlink pin changes; do not weaken tests to pass the gate.",
+      "out_of_scope_paths": [],
+      "policy_version": "deterministic-failure-review-v3",
+      "proof_authoritative": false,
+      "reason_codes": [
+        "validation_command_failed"
+      ],
+      "receipt_id": "baguqeeravxgjnuipmyr3hfvlbcf2cd4vgaiezdb75upzj34b7nhct6od6zca",
+      "schema": "ipfs_accelerate_py/agent-supervisor/implementation-failure-review@1",
+      "task_id": "ASE3-019"
+    },
+    "freshness_authoritative": false,
+    "impact_graph": {
+      "dependencies": {
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py": [],
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py": [],
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py": [],
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": [],
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": [],
+        "ipfs_accelerate_py/llm_router.py": [],
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "test/api/test_agent_supervisor_implementation_provider_receipts.py": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "test/api/test_agent_supervisor_prompt_v3_authority.py": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py": [],
+        "test/api/test_agent_supervisor_prompt_v3_provider_route.py": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py": []
+      },
+      "graph_id": "3ca367b9c2bcbe4b322851e149bc3d293e39f265ca66fb285ae8d937c74ef733",
+      "graph_version": "declared-validation-plan-v1",
+      "repository_tree_id": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+      "validation_targets": {
+        "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d": [
+          "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+          "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ]
+      }
+    },
+    "max_workers": 2,
+    "merge_eligible": false,
+    "next_attempt_prompt_addendum": "Prior attempt failure review (guide_rescue; reasons: validation_command_failed). Re-run and fix: python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q. Failure evidence: \u001b[1m\u001b[31mE \u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\u001b[0m \u001b[1m\u001b[31mE + where 1 = CompletedProcess(args=['/usr/bin/docker', '--host=unix:///var/run/docker.sock', '--config', '/tmp/pytest-of-barberb/pytest-6530/test_real_disposable_codex_con0/docker-config', 'run', '--pull=never', '--rm', '--interactive', '--read-only', '--network=bridge', '--runtime=runc', '--entrypoint=/usr/bin/env', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--tmpfs', '/var/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--tmpfs', '/opt/codex-home:rw,nosuid,nodev,noexec,mode=0700,uid=1000,gid=1000', '--name', 'ipfs-accelerate-codex-1602305-da2bbd0a5c2044bcbb29c23dfe98fff4', '--cidfile', '/tmp/pytest-of-barberb/pytest-6530/test_real_disposable_codex_con0/validation-container.cid', '--label', 'ipfs_accelerate.codex_fallback_isolation=true', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=1024', '--user', '1000:1000', '--workdir', '/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-c0fbd6dd1474-2666beb0a954', '--env', '. AST import companions (preferred fix locations): ipfs_accelerate_py/__init__.py, ipfs_accelerate_py/agent_supervisor/__init__.py, ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py, ipfs_accelerate_py/agent_supervisor/integrations/__init__.py, ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py, ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py, ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py, ipfs_accelerate_py/agent_supervisor/runtime/__init__.py, ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py. Authoritative validation environment: ## Authoritative validation environment (fail-closed) - `PATH` is exactly \"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin\". The provider/implementer process's inherited `PATH` is ignored. - The canonical Python interpreter target is exactly \"/usr/bin/python3.12\"; the validation runner may expose it through a sealed launcher. - Each validation command receives a fresh private `HOME` whose directory name starts with `ipfs-accelerate-validation-home-`. Its XDG paths are exactly `$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, and `$HOME/.local/state`. Operator profile state such as `~/.elan`, shell startup files, and provider-only managed toolchains is unavailable. - An operator can replace the complete validation `PATH` only through \"IPFS_ACCELERATE_AGENT_VALIDATION_PATH\" before supervisor dispatch. Every entry and ancestor must pass the existing non-writable toolchain check; user-writable tool directories are rejected. - Judge external-tool availability and write semantic assertions against this exact environment, not a successful provider-side probe. If a required prover is absent, report a dependency/capability gap or add an approved digest-bound deployment; never claim usability or weaken mandatory tests. Stay inside declared Outputs/Predicted files plus AST import companions listed above; finish every expected output; avoid renames and opaque submodule gitlink pin changes; do not weaken tests to pass the gate.",
+    "nodes": [
+      {
+        "blocked_by_failed_node_ids": [],
+        "command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+        "depends_on": [],
+        "disposition": "failed",
+        "impact_paths": [
+          "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+          "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "mandatory": true,
+        "node_id": "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48",
+        "observed_seeded_defect_id": "",
+        "reason": "validation_failed",
+        "result_digest": "739fb0f56480efa0efb270caa71da19439f73d2ce727f1551b05b0f29141d458",
+        "returncode": 1,
+        "selected": true,
+        "selection_reason": "changed_path_matches_command_target",
+        "stage": "targeted",
+        "validation_id": "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d"
+      }
+    ],
+    "passed": false,
+    "proof_authoritative": false,
+    "proposal_gate": {
+      "accepted": true,
+      "attempted": true,
+      "changed_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "completion_authoritative": false,
+      "policy_id": "5bcd537c6d76211c2b8ab99eea738e0fb73da279851c91fdc190296fe61ac523",
+      "proof_authoritative": false,
+      "proposal_id": "6f8d2a2f23fbb24adcafd570053de58b6536b53e10ae46657534ce96f7d161c2",
+      "reason_codes": [],
+      "receipt_id": "c28a6aef8070e9939b53c5be85234c966586fe6d2edc7783ab98a356802a8dbd",
+      "repository_tree_id": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7"
+    },
+    "proved_requirement_ids": [],
+    "reason": "declared_validation_failed",
+    "rescue_guidance_markdown": "# Implementation failure review\n\n- Decision: `guide_rescue`\n- Reason codes: `validation_command_failed`\n- Finding codes: none\n\n## Follow-up guidance\n\nDo **not** widen scope casually. Stay inside the task contract.\n\n### Declared task outputs (exact edit authority)\n- `ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py`\n- `ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py`\n- `ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py`\n- `ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py`\n- `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py`\n- `ipfs_accelerate_py/llm_router.py`\n- `test/api/test_agent_supervisor_prompt_v3_authority_hardening.py`\n- `test/api/test_llm_router_agent_supervisor_fallback_route.py`\n\n### Failed validation commands\n- `python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q`\nRe-run these commands after edits and keep them green before exit.\n\n### Authoritative validation boundary\n## Authoritative validation environment (fail-closed)\n- `PATH` is exactly \"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin\". The provider/implementer process's inherited `PATH` is ignored.\n- The canonical Python interpreter target is exactly \"/usr/bin/python3.12\"; the validation runner may expose it through a sealed launcher.\n- Each validation command receives a fresh private `HOME` whose directory name starts with `ipfs-accelerate-validation-home-`. Its XDG paths are exactly `$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, and `$HOME/.local/state`. Operator profile state such as `~/.elan`, shell startup files, and provider-only managed toolchains is unavailable.\n- An operator can replace the complete validation `PATH` only through \"IPFS_ACCELERATE_AGENT_VALIDATION_PATH\" before supervisor dispatch. Every entry and ancestor must pass the existing non-writable toolchain check; user-writable tool directories are rejected.\n- Judge external-tool availability and write semantic assertions against this exact environment, not a successful provider-side probe. If a required prover is absent, report a dependency/capability gap or add an approved digest-bound deployment; never claim usability or weaken mandatory tests.\n\n### Next attempt checklist\n1. Touch only declared Outputs / Predicted files (plus justified companions).\n2. Deliver every listed expected output file or directory tree.\n3. Keep validation commands passing.\n4. Avoid renames, submodule edits, and undeclared new modules.",
+    "resource_budget": 2,
+    "results": [
+      {
+        "attempt_number": 1,
+        "cache_hit": false,
+        "cache_key": "3629636d777b07f3fb36813748845be72d0539edebc0e14c0684febdd17bd021",
+        "command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+        "diagnostic_signature": "eef00061e900fd524a388b38793605d13fb454710b94f36e460bf41af5c0b156",
+        "execution_elapsed_seconds": 8.105378823005594,
+        "finished_at": "2026-08-08T16:32:16.873364+00:00",
+        "ordinal": 0,
+        "raw_command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+        "resource_admission": {
+          "active_leases": 0,
+          "admission_rank": 0,
+          "admitted": true,
+          "allowed": true,
+          "capability_fit_millionths": 1000000,
+          "configured_max_lanes": 2,
+          "critical_path_length": 0,
+          "effective_slots": 2,
+          "fairness_key": "execution",
+          "host_available_slots": 2,
+          "hysteresis_state": "stable",
+          "lane_id": "validation:0:ddc80a2293916c98",
+          "merge_age_ms": 0,
+          "pressure_percent": 0,
+          "provider_available_slots": 2,
+          "provider_id": "",
+          "queue_age_ms": 0,
+          "queue_depth": 1,
+          "reason": "",
+          "reasons": [],
+          "reserved_disk_bytes": 0,
+          "reserved_gpu_memory_bytes": 0,
+          "reserved_memory_bytes": 0,
+          "reserved_process_slots": 1,
+          "reserved_quota_units": 0,
+          "reserved_tokens": 0,
+          "resource_class": "cpu-validation",
+          "resource_pool": "cpu-general",
+          "stage": "execution"
+        },
+        "resource_cost": 1,
+        "resource_lease": {
+          "child_limits": {
+            "context_tokens": 0,
+            "cpu_time_ms": 0,
+            "disk_bytes": 0,
+            "gpu_memory_bytes": 0,
+            "kernel_max_parallel": 1,
+            "max_processes": 1,
+            "maximum_provider_latency_ms": 120000,
+            "memory_bytes": 0,
+            "model_token_limit": 0,
+            "portfolio_max_parallel": 1,
+            "provider_quota": 1,
+            "wall_time_ms": 0
+          },
+          "lease_id": "resource-lease:c88f2400685b4f89bae507335a681250",
+          "released": true,
+          "resource_class": "cpu-validation",
+          "resource_pool": "cpu-general"
+        },
+        "returncode": 1,
+        "stage": "targeted",
+        "started_at": "2026-08-08T16:32:08.770065+00:00",
+        "timed_out": false,
+        "validation_id": "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d",
+        "validation_python_launcher": {
+          "content_sha256": "1c4147b0cd8cf3b65fe3ae229316207a3cb447ea9d04ced235a1d9fef8947595",
+          "interpreter_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+          "interpreter_stat": "{\"device\":66306,\"inode\":1310800,\"mode\":493,\"mtime_ns\":1772540118000000000,\"path\":\"/usr/bin/python3.12\",\"size\":7845032}",
+          "mode": "linux:sealed-memfd",
+          "policy_sha256": "aafc85e14cea5d195acded5ba1dce5df449a7f2c9d5e1f9a15ef72c4e37e0081",
+          "sealed": true
+        },
+        "validation_result_digest": "739fb0f56480efa0efb270caa71da19439f73d2ce727f1551b05b0f29141d458"
+      }
+    ],
+    "returncode": 1,
+    "selection": {
+      "changed_files": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "decisions": [
+        {
+          "command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+          "decision": "included",
+          "executable": true,
+          "fallback": false,
+          "impact_paths": [
+            "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+            "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "matched_paths": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+            "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "original_stage": "targeted",
+          "reason": "changed_path_matches_command_target",
+          "requirement_kind": "",
+          "selected": true,
+          "source": "declared",
+          "stage": "targeted",
+          "validation_id": "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d",
+          "verdict_kind": "test"
+        }
+      ],
+      "escalated": false,
+      "escalation_reason": "",
+      "fallback_count": 0,
+      "scope": "pre_merge",
+      "selected_count": 1,
+      "skipped_count": 0,
+      "unresolved_fallback_count": 0
+    },
+    "stages": [
+      {
+        "executed_count": 1,
+        "finished_at": "2026-08-08T16:32:16.874082+00:00",
+        "passed": false,
+        "planned_count": 1,
+        "stage": "targeted",
+        "started_at": "2026-08-08T16:32:08.768335+00:00",
+        "throughput": {
+          "completed_count": 1,
+          "elapsed_seconds": 8.1057067149668,
+          "lane": "validation",
+          "parallel_speedup": 0.999959548010712,
+          "peak_parallelism": 1,
+          "schema": "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1",
+          "serial_work_seconds": 8.105378823005594,
+          "throughput_per_second": 0.1233698720129545
+        }
+      }
+    ],
+    "target_commit": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+    "throughput": {
+      "accepted_count": 0,
+      "completed_count": 1,
+      "elapsed_seconds": 8.10576679703081,
+      "lane": "validation",
+      "parallel_speedup": 0.9999521360489475,
+      "peak_parallelism": 1,
+      "planned_count": 1,
+      "schema": "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1",
+      "serial_work_seconds": 8.105378823005594,
+      "throughput_per_second": 0.12336895756318894
+    },
+    "time_to_first_useful_failure_ms": 8105.749084032141,
+    "time_to_first_useful_failure_seconds": 8.10574908403214,
+    "validation_dag_receipt": {
+      "affected_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "authority_gates": [
+        {
+          "depends_on": [
+            "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+          ],
+          "disposition": "blocked",
+          "gate": "completion",
+          "reason": "validation_dag_failed"
+        },
+        {
+          "depends_on": [
+            "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+          ],
+          "disposition": "blocked",
+          "gate": "freshness",
+          "reason": "validation_dag_failed"
+        },
+        {
+          "depends_on": [
+            "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+          ],
+          "disposition": "blocked",
+          "gate": "merge",
+          "reason": "validation_dag_failed"
+        },
+        {
+          "depends_on": [
+            "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+          ],
+          "disposition": "blocked",
+          "gate": "proof",
+          "reason": "validation_dag_failed"
+        },
+        {
+          "depends_on": [
+            "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+          ],
+          "disposition": "blocked",
+          "gate": "semantic",
+          "reason": "validation_dag_failed"
+        }
+      ],
+      "changed_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "code_proof_authoritative": false,
+      "completion_authoritative": false,
+      "coverage_complete": true,
+      "graph_id": "3ca367b9c2bcbe4b322851e149bc3d293e39f265ca66fb285ae8d937c74ef733",
+      "impact_graph": {
+        "dependencies": {
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py": [],
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py": [],
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py": [],
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": [],
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": [],
+          "ipfs_accelerate_py/llm_router.py": [],
+          "test/api/test_agent_supervisor_grok_quota_terra_gate.py": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "test/api/test_agent_supervisor_implementation_provider_receipts.py": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "test/api/test_agent_supervisor_prompt_v3_authority.py": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py": [],
+          "test/api/test_agent_supervisor_prompt_v3_provider_route.py": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py": []
+        },
+        "graph_id": "3ca367b9c2bcbe4b322851e149bc3d293e39f265ca66fb285ae8d937c74ef733",
+        "graph_version": "declared-validation-plan-v1",
+        "repository_tree_id": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+        "validation_targets": {
+          "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d": [
+            "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+            "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ]
+        }
+      },
+      "nodes": [
+        {
+          "blocked_by_failed_node_ids": [],
+          "command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+          "depends_on": [],
+          "disposition": "failed",
+          "impact_paths": [
+            "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+            "test/api/test_agent_supervisor_implementation_provider_receipts.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "mandatory": true,
+          "node_id": "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48",
+          "observed_seeded_defect_id": "",
+          "reason": "validation_failed",
+          "result_digest": "739fb0f56480efa0efb270caa71da19439f73d2ce727f1551b05b0f29141d458",
+          "returncode": 1,
+          "selected": true,
+          "selection_reason": "changed_path_matches_command_target",
+          "stage": "targeted",
+          "validation_id": "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d"
+        }
+      ],
+      "objective_id": "ASE3-G020",
+      "passed": false,
+      "policy_id": "4d656898751d4652a5859dc54821cad8712c62c9b2350da9aee0ff16d2df79f0",
+      "proof_authoritative": false,
+      "proposal_receipt_id": "c28a6aef8070e9939b53c5be85234c966586fe6d2edc7783ab98a356802a8dbd",
+      "proved_requirement_ids": [],
+      "receipt_id": "7bda84d84df140c55d4fc2e53dd9ca2aa0cab7177a90b610e5d4b8becc1ade0a",
+      "repository_tree_id": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+      "required_validation_ids": [
+        "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@3",
+      "seeded_defect_id": "",
+      "seeded_defect_path": "",
+      "selected_node_ids": [
+        "02d216ff02bb52554bcceb2909451bba1a6373fa9f0d0606391f9467f7e4ca48"
+      ],
+      "transitive_evidence": null,
+      "uncovered_impact": false
+    },
+    "validation_impact_paths": [
+      "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+      "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+      "test/api/test_agent_supervisor_prompt_v3_authority.py",
+      "test/api/test_agent_supervisor_prompt_v3_provider_route.py",
+      "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+      "test/api/test_agent_supervisor_implementation_provider_receipts.py"
+    ],
+    "validation_plan_binding": {
+      "command_count": 1,
+      "graph_id": "3ca367b9c2bcbe4b322851e149bc3d293e39f265ca66fb285ae8d937c74ef733",
+      "graph_version": "declared-validation-plan-v1",
+      "source": "proposal_declared_validation_plan",
+      "validation_ids": [
+        "declared:6f748cf1b0f0e959e103a6be60de1d3004a8b53e8cc5e6f39ee9171427e2ab6d"
+      ]
+    }
+  },
+  "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-c0fbd6dd1474-2666beb0a954"
+}

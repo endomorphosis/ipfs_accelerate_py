@@ -11,21 +11,21 @@
 
 ## 📋 Table of Contents
 
-- [Overview](#-overview)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [MCP Server](#-mcp-server)
-- [Architecture](#️-architecture)
-- [Hardware and Providers](#-hardware-and-providers)
-- [Models and Inference](#-models-and-inference)
-- [IPFS and P2P](#-ipfs-and-p2p)
-- [Performance and Scaling](#-performance-and-scaling)
-- [Testing](#-testing)
-- [Documentation](#-documentation)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Acknowledgments](#-acknowledgments)
+- [Overview](#overview)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [MCP Server](#mcp-server)
+- [Architecture](#architecture)
+- [Hardware and Providers](#hardware-and-providers)
+- [Models and Inference](#models-and-inference)
+- [IPFS and P2P](#ipfs-and-p2p)
+- [Performance and Scaling](#performance-and-scaling)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
 
 ---
 

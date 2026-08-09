@@ -28,6 +28,33 @@ from types import MappingProxyType
 from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
+from ...llm_router import (
+    AgentImplementationInvocationBinding,
+    AgentImplementationRoutePlan,
+    agent_implementation_control_plane_source_generation,
+    bind_agent_implementation_attempt_store,
+    bind_agent_implementation_route_invocation,
+    build_agent_implementation_control_plane_pin,
+    decide_agent_implementation_fallback,
+    extract_agent_implementation_route_outcomes,
+    load_agent_implementation_route_authorization,
+    materialize_agent_implementation_control_plane_capsule,
+    parse_agent_implementation_effect_authorization_context,
+    parse_agent_implementation_quota_evidence,
+    resolve_agent_implementation_private_state_path,
+    resolve_agent_implementation_route,
+    resolve_agent_implementation_route_binding,
+    seal_agent_implementation_control_plane_capsule,
+    valid_agent_implementation_failure_receipt,
+    valid_agent_implementation_route_outcome,
+    verify_agent_implementation_sealed_control_plane,
+)
+from ..entrypoints.provider_attempt_store import (
+    DurableProviderAttemptCAS,
+    ProviderAttemptReservation,
+    ProviderAttemptStoreError,
+)
+
 from .. import implementation_timeout as _implementation_timeout
 from ..context.context_compiler import (
     ContextCompilationReceipt,
@@ -65,8 +92,10 @@ from .implementation_timeout import (
 )
 from ..runtime.provider_failure_policy import (
     extract_grok_failure_receipts,
+    extract_grok_route_outcomes,
     valid_grok_failure_receipt,
     valid_grok_hard_quota_receipt,
+    valid_grok_route_outcome,
 )
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -433,8 +462,12 @@ IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
     r"|grok_cli_runner"
     r"|cli_implement_runner"
-    r"|ipfs-accelerate-grok"
+    r"|ipfs-accelerate-(?:grok|codex)"
     r")"
+)
+IMPLEMENTATION_DOCKER_ISOLATION_LABELS = (
+    "ipfs_accelerate.grok_isolation=true",
+    "ipfs_accelerate.codex_fallback_isolation=true",
 )
 # How long a recently written implement log keeps a missing process from
 # being recovered as dead (docker restarts briefly drop process visibility).
@@ -444,7 +477,117 @@ GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
 )
 PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
 DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
-PROVIDER_CAPACITY_LOG_TAIL_BYTES = 128 * 1024
+# A protected terminal record may carry the complete bounded eight-owner
+# adoption/quarantine lineage (up to the router's 512KiB record ceiling).
+# Read enough stable LF-framed tail for that record plus its paired receipt.
+PROVIDER_CAPACITY_LOG_TAIL_BYTES = 1024 * 1024
+
+
+def _stable_owned_log_tail(
+    path: Path,
+    maximum_bytes: int,
+    *,
+    reject_group_writable: bool = True,
+) -> tuple[str, str]:
+    """Read one LF-framed bounded tail through a stable no-follow descriptor."""
+
+    if (
+        isinstance(maximum_bytes, bool)
+        or not isinstance(maximum_bytes, int)
+        or maximum_bytes <= 0
+    ):
+        raise OSError("log tail bound is invalid")
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    cursor = Path(candidate.anchor)
+    for component in candidate.parts[1:]:
+        if component in {"", "."}:
+            continue
+        if component == "..":
+            raise OSError("log path contains parent traversal")
+        cursor /= component
+        metadata = os.lstat(cursor)
+        if stat_module.S_ISLNK(metadata.st_mode):
+            raise OSError("log path contains a symlink component")
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("no-follow log reads are unavailable")
+    descriptor = os.open(
+        lexical,
+        os.O_RDONLY
+        | nofollow
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0),
+    )
+    try:
+        before = os.fstat(descriptor)
+
+        def valid(item: os.stat_result) -> bool:
+            return bool(
+                stat_module.S_ISREG(item.st_mode)
+                and item.st_uid == os.geteuid()
+                and item.st_nlink == 1
+                and not (
+                    stat_module.S_IMODE(item.st_mode)
+                    & (0o022 if reject_group_writable else 0o002)
+                )
+            )
+
+        if not valid(before):
+            raise OSError("log is not an owned stable regular file")
+        tail_start = max(0, before.st_size - maximum_bytes)
+        read_start = max(0, tail_start - 1)
+        expected = before.st_size - read_start
+        os.lseek(descriptor, read_start, os.SEEK_SET)
+        chunks: list[bytes] = []
+        remaining = expected
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        bounded = b"".join(chunks)
+        after = os.fstat(descriptor)
+        final = os.lstat(lexical)
+    finally:
+        os.close(descriptor)
+
+    def identity(item: os.stat_result) -> tuple[int, ...]:
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
+
+    if (
+        not valid(after)
+        or not valid(final)
+        or len(bounded) != expected
+        or identity(before) != identity(after)
+        or identity(after) != identity(final)
+    ):
+        raise OSError("log changed while its bounded tail was read")
+    tail_offset = tail_start - read_start
+    tail = bounded[tail_offset:]
+    if tail_start == 0 or bounded[:tail_offset] == b"\n":
+        receipt_tail = tail
+    else:
+        next_lf = tail.find(b"\n")
+        receipt_tail = tail[next_lf + 1 :] if next_lf >= 0 else b""
+    return (
+        tail.decode("utf-8", errors="replace"),
+        receipt_tail.decode("utf-8", errors="replace"),
+    )
+
+
 PROVIDER_CAPACITY_PATTERNS = (
     ("codex", re.compile(r"you(?:'|\u2019)?ve hit your usage limit", re.IGNORECASE)),
     ("copilot", re.compile(r"you(?:'|\u2019)?ve reached your additional usage limit", re.IGNORECASE)),
@@ -576,6 +719,37 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+)
+_ROUTE_BOARD_NAMESPACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
+)
+_ROUTE_AUTHORIZATION_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH"
+)
+_ROUTE_AUTHORIZATION_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256"
+)
+_ROUTE_AUTHORIZATION_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID"
+)
+_ROUTE_AUTHORIZATION_KIND_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND"
+)
+_ROUTE_SOURCE_HEAD_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
+)
+_ROUTE_SOURCE_TREE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE"
+)
+_ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
+_PROVIDER_ATTEMPT_STORE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER_ATTEMPT_STORE"
+)
 # Legacy production-route toggles retained as env names for test/operator
 # cleanup only. Automatic routing is always on for supported providers.
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
@@ -1693,21 +1867,26 @@ def _grok_cli_command(
     workspace_path: Path,
     model_override: str | None = None,
     failure_receipt_nonce: str = "",
+    allow_auth_unavailable_fallback: bool = False,
+    fallback_reasoning_effort: str = "medium",
+    enable_codex_fallback: bool = True,
+    route_plan: AgentImplementationRoutePlan | None = None,
+    sealed_runner_path: str = "",
 ) -> list[str]:
-    """Build a Grok CLI agent command through the quota-routed runner.
+    """Build a Grok CLI agent command through the typed-failure runner.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
 
     When a trusted system Codex install is resolvable, attach the exact
-    Terra/medium fallback argv so a single Grok invocation may fall through
-    only after independently verified hard-quota exhaustion. Codex is never
+    Terra fallback argv so a single Grok invocation may fall through only
+    after the runner validates the configured failure policy. Codex is never
     attached without that runner-owned authority gate.
     """
 
     if not _grok_binary():
         raise RuntimeError("grok CLI is not installed")
-    if not _grok_cli_available():
+    if not _grok_cli_available() and not allow_auth_unavailable_fallback:
         raise RuntimeError(
             "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
         )
@@ -1735,7 +1914,24 @@ def _grok_cli_command(
         grok_bin=grok,
         codex_bin=str(shutil.which("codex") or ""),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
+        fallback_reasoning_effort=fallback_reasoning_effort,
+        enable_codex_fallback=enable_codex_fallback,
+        accepted_runner_path=(
+            sealed_runner_path
+            if route_plan is not None
+            and route_plan.permits_authentication_unavailable
+            and route_plan.invocation_binding is not None
+            and sealed_runner_path
+            else ""
+        ),
     )
+    if (
+        allow_auth_unavailable_fallback
+        and "--codex-fallback-command-json" not in command
+    ):
+        raise RuntimeError(
+            "typed Grok authentication fallback requires a trusted Codex CLI"
+        )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.5":
         if "--model" in command:
@@ -1745,6 +1941,17 @@ def _grok_cli_command(
     if failure_receipt_nonce:
         command.extend(
             ["--grok-failure-receipt-nonce", failure_receipt_nonce]
+        )
+    if route_plan is not None:
+        command.extend(
+            [
+                "--agent-implementation-route-json",
+                json.dumps(
+                    route_plan.as_binding_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
         )
     return command
 
@@ -1771,6 +1978,96 @@ _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.5"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
+
+
+def _configured_agent_implementation_route_plan(
+    repo_root: Path,
+) -> AgentImplementationRoutePlan | None:
+    """Resolve explicit daemon profile input through the canonical router."""
+
+    route_values = {
+        "primary_provider_id": os.environ.get(
+            IMPLEMENTATION_PROVIDER_ENV, ""
+        ).strip(),
+        "primary_model_id": os.environ.get(_GROK_MODEL_ENV, "").strip(),
+        "fallback_provider_id": os.environ.get(
+            IMPLEMENTATION_FALLBACK_PROVIDER_ENV, ""
+        ).strip(),
+        "fallback_model_id": os.environ.get(_CODEX_MODEL_ENV, "").strip(),
+        "fallback_trigger": os.environ.get(
+            IMPLEMENTATION_FALLBACK_TRIGGER_ENV, ""
+        ).strip(),
+        "fallback_reasoning_effort": os.environ.get(
+            _CODEX_REASONING_EFFORT_ENV, ""
+        ).strip(),
+    }
+    authorization_values = {
+        "board_namespace": os.environ.get(
+            _ROUTE_BOARD_NAMESPACE_ENV, ""
+        ).strip(),
+        "artifact_path": os.environ.get(
+            _ROUTE_AUTHORIZATION_PATH_ENV, ""
+        ).strip(),
+        "artifact_sha256": os.environ.get(
+            _ROUTE_AUTHORIZATION_SHA256_ENV, ""
+        ).strip(),
+        "authorization_id": os.environ.get(
+            _ROUTE_AUTHORIZATION_ID_ENV, ""
+        ).strip(),
+        "authorization_kind": os.environ.get(
+            _ROUTE_AUTHORIZATION_KIND_ENV, ""
+        ).strip(),
+        "source_head": os.environ.get(_ROUTE_SOURCE_HEAD_ENV, "").strip(),
+        "source_tree": os.environ.get(_ROUTE_SOURCE_TREE_ENV, "").strip(),
+        "route_id": os.environ.get(_ROUTE_ID_ENV, "").strip(),
+    }
+    if not any(route_values.values()) and not any(authorization_values.values()):
+        return None
+    authorization = None
+    if any(authorization_values.values()):
+        if not all(authorization_values.values()):
+            raise ValueError(
+                "scoped agent route authorization environment is incomplete"
+            )
+        authorization = load_agent_implementation_route_authorization(
+            repo_root=repo_root,
+            artifact_path=authorization_values["artifact_path"],
+            board_namespace=authorization_values["board_namespace"],
+            expected_sha256=authorization_values["artifact_sha256"],
+            expected_authorization_id=authorization_values[
+                "authorization_id"
+            ],
+        )
+        if (
+            authorization.authorization_kind
+            != authorization_values["authorization_kind"]
+            or authorization.source_head != authorization_values["source_head"]
+            or authorization.source_tree != authorization_values["source_tree"]
+        ):
+            raise ValueError("scoped agent route authorization binding drifted")
+    plan = resolve_agent_implementation_route(
+        **route_values,
+        authorization=authorization,
+    )
+    if authorization is not None and plan.route_id != authorization_values[
+        "route_id"
+    ]:
+        raise ValueError("scoped agent implementation route identity drifted")
+    return plan
+
+
+def _ordered_grok_codex_route_configured(
+    repo_root: Path | None = None,
+) -> bool:
+    """Compatibility audit helper for the scoped auth/quota route."""
+
+    try:
+        plan = _configured_agent_implementation_route_plan(
+            Path.cwd() if repo_root is None else repo_root
+        )
+    except (OSError, ValueError):
+        return False
+    return bool(plan and plan.permits_authentication_unavailable)
 GROK_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {
         "grok",
@@ -3127,6 +3424,9 @@ class PortalTaskState:
     task_identities: dict[str, dict[str, Any]] = field(default_factory=dict)
     implementation_attempts: dict[str, int] = field(default_factory=dict)
     implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
+    protected_implementation_attempts: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
@@ -3249,6 +3549,13 @@ class PortalTaskState:
                     str(key): int(value)
                     for key, value in (payload.get("implementation_attempts_by_cid") or {}).items()
                     if str(value).isdigit()
+                },
+                protected_implementation_attempts={
+                    str(key): dict(value)
+                    for key, value in (
+                        payload.get("protected_implementation_attempts") or {}
+                    ).items()
+                    if isinstance(value, dict)
                 },
                 retry_budget_repair_receipts={
                     str(key): str(value)
@@ -3395,6 +3702,7 @@ def state_file_repair_reason(path: Path) -> str:
         "task_identities",
         "implementation_attempts",
         "implementation_attempts_by_cid",
+        "protected_implementation_attempts",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -3687,6 +3995,27 @@ class PortalImplementationDaemon:
         self.events_path = events_path
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
+        self._scoped_recovery_attempts: dict[str, int] = {}
+        self._scoped_control_plane = None
+        self._scoped_control_plane_launch = None
+        self._scoped_recovery_control_plane_launches: dict[str, Any] = {}
+        if implement and os.environ.get(
+            _ROUTE_AUTHORIZATION_PATH_ENV, ""
+        ).strip():
+            imported_capsule = _IMPORTED_CONTROL_PLANE_CAPSULE
+            imported_launch = _IMPORTED_CONTROL_PLANE_LAUNCH
+            if imported_capsule is not None and imported_launch is not None:
+                # This snapshot was sealed before import returned, so later
+                # integration-checkout mutations cannot select a different
+                # router/runner generation for this long-lived daemon.
+                self._scoped_control_plane = imported_capsule
+                self._scoped_control_plane_launch = imported_launch
+            else:
+                raise ValueError(
+                    "accepted control-plane import generation was not sealed; "
+                    "protected routing cannot derive code from later mutable "
+                    "checkout bytes"
+                )
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
             source_options: dict[str, Any] = {}
@@ -6400,7 +6729,6 @@ class PortalImplementationDaemon:
         can keep those scans outside the exclusive lease.
         """
 
-        resolved_task_id = task.task_id if task is not None else task_id
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
                 workspace_path,
@@ -8931,7 +9259,67 @@ class PortalImplementationDaemon:
         )
 
     def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
-        return self._task_attempt_count(state, task) + 1
+        current = self._task_attempt_count(state, task)
+        durable = self._durable_protected_recovery_attempt(state, task)
+        if durable is not None:
+            self._scoped_recovery_attempts.pop(task.task_id, None)
+            return durable
+        protected = self._scoped_recovery_attempts.pop(task.task_id, None)
+        if protected is not None and protected == current:
+            return protected
+        return current + 1
+
+    def _durable_protected_recovery_attempt(
+        self,
+        state: PortalTaskState,
+        task: PortalTask,
+    ) -> int | None:
+        """Recover one exact revision/attempt from its durable signed latch."""
+
+        current = self._task_attempt_count(state, task)
+        if current <= 0:
+            return None
+        revision = self._canonical_ref(task)
+        state_latched = self._protected_attempt_latched(
+            state,
+            task_id=task.task_id,
+            attempt=current,
+            task_revision_cid=revision,
+        )
+        event_latch = self._protected_attempt_event_latch(
+            task_id=task.task_id,
+            attempt=current,
+            task_revision_cid=revision,
+        )
+        if not state_latched and event_latch is None:
+            return None
+        key = self._protected_attempt_latch_key(
+            task.task_id,
+            current,
+            revision,
+        )
+        latch = (
+            state.protected_implementation_attempts.get(key, {})
+            if state_latched
+            else event_latch or {}
+        )
+        expected_namespace = task.board_namespace or self.todo_path.name
+        if (
+            not isinstance(latch, Mapping)
+            or latch.get("board_namespace") != expected_namespace
+            or self._task_attempt_has_implementation_finish(
+                task.task_id,
+                current,
+                task_revision_cid=revision,
+                board_namespace=expected_namespace,
+            )
+        ):
+            return None
+        # Strict CAS evidence is required by the runner before adoption.  It
+        # is deliberately not required for attempt selection: missing or
+        # substituted state must fail closed on the same consumed ordinal,
+        # never authorize increment/rollback/replay.
+        return current
 
     def _reset_attempt_budgets_for_completed_retry_repairs(
         self,
@@ -8982,6 +9370,23 @@ class PortalImplementationDaemon:
 
             canonical_task_cids: set[str] = set()
             source_task = tasks_by_id.get(source_task_id)
+            if (
+                source_task is not None
+                and self._durable_protected_recovery_attempt(
+                    state,
+                    source_task,
+                )
+                is not None
+            ):
+                deferred.append(
+                    {
+                        "source_task_id": source_task_id,
+                        "repair_task_id": repair_task_id,
+                        "failure_kind": failure_kind,
+                        "reason": "protected_attempt_latched",
+                    }
+                )
+                continue
             if source_task is not None:
                 canonical_task_cids.add(self._canonical_ref(source_task))
             stored_identity = state.task_identities.get(source_task_id, {})
@@ -9129,6 +9534,8 @@ class PortalImplementationDaemon:
         limited: list[dict[str, Any]] = []
         for task in tasks:
             attempt_count = self._task_attempt_count(state, task)
+            if self._durable_protected_recovery_attempt(state, task) is not None:
+                exempt.add(task.task_id)
             if (
                 task.task_id not in exempt
                 and resolved_statuses.get(task.task_id) == "ready"
@@ -9167,12 +9574,22 @@ class PortalImplementationDaemon:
         self,
         task_id: str,
         attempt: int,
+        *,
+        task_revision_cid: str = "",
+        board_namespace: str = "",
     ) -> bool:
-        """Return whether a durable finish event exists for task/attempt."""
+        """Return whether a durable finish exists for this exact revision."""
 
         task_id = str(task_id or "").strip()
         attempt_number = int(attempt or 0)
-        if not task_id or attempt_number <= 0:
+        revision = str(task_revision_cid or "").strip()
+        namespace = str(board_namespace or "").strip()
+        if (
+            not task_id
+            or attempt_number <= 0
+            or not revision
+            or not namespace
+        ):
             return False
         for event in self._iter_events():
             if str(event.get("type") or "") != "implementation_finished":
@@ -9181,8 +9598,180 @@ class PortalImplementationDaemon:
                 continue
             if int(event.get("attempt") or 0) != attempt_number:
                 continue
+            event_revision = str(
+                event.get("canonical_task_cid")
+                or event.get("task_revision_cid")
+                or ""
+            ).strip()
+            event_namespace = str(event.get("board_namespace") or "").strip()
+            if event_revision != revision or event_namespace != namespace:
+                continue
             return True
         return False
+
+    @staticmethod
+    def _protected_attempt_latch_key(
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> str:
+        return content_identity(
+            {
+                "task_id": str(task_id or "").strip(),
+                "attempt": int(attempt),
+                "task_revision_cid": str(task_revision_cid or "").strip(),
+            }
+        )
+
+    def _protected_attempt_latched(
+        self,
+        state: PortalTaskState,
+        *,
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> bool:
+        """Return a strict durable latch independent of command/log parsing."""
+
+        task_value = str(task_id or "").strip()
+        attempt_value = int(attempt or 0)
+        revision_value = str(task_revision_cid or "").strip()
+        if not task_value or attempt_value <= 0 or not revision_value:
+            return False
+        key = self._protected_attempt_latch_key(
+            task_value,
+            attempt_value,
+            revision_value,
+        )
+        value = state.protected_implementation_attempts.get(key)
+        if not isinstance(value, Mapping):
+            return False
+        identity = dict(value)
+        latch_id = identity.pop("latch_id", "")
+        return bool(
+            value.get("schema")
+            == (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-implementation-attempt-latch@1"
+            )
+            and value.get("task_id") == task_value
+            and value.get("attempt") == attempt_value
+            and value.get("task_revision_cid") == revision_value
+            and isinstance(value.get("board_namespace"), str)
+            and value.get("board_namespace")
+            and isinstance(value.get("route_id"), str)
+            and value.get("route_id")
+            and isinstance(value.get("invocation_id"), str)
+            and value.get("invocation_id")
+            and isinstance(value.get("logical_attempt_id"), str)
+            and value.get("logical_attempt_id")
+            and isinstance(value.get("worktree_id"), str)
+            and value.get("worktree_id")
+            and isinstance(value.get("provider_attempt_store"), str)
+            and value.get("provider_attempt_store")
+            and isinstance(value.get("provider_attempt_store_identity"), str)
+            and value.get("provider_attempt_store_identity")
+            and latch_id == content_identity(identity)
+        )
+
+    def _protected_attempt_event_latch(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> dict[str, Any] | None:
+        """Recover an immutable latch from the append-only event journal."""
+
+        names = (
+            "schema",
+            "task_id",
+            "attempt",
+            "task_revision_cid",
+            "board_namespace",
+            "route_id",
+            "invocation_id",
+            "logical_attempt_id",
+            "worktree_id",
+            "provider_attempt_store",
+            "provider_attempt_store_identity",
+        )
+        for event in reversed(tuple(self._iter_events())):
+            if (
+                event.get("type") != "protected_implementation_attempt_latched"
+                or event.get("task_id") != task_id
+                or event.get("attempt") != attempt
+                or event.get("task_revision_cid") != task_revision_cid
+            ):
+                continue
+            body = {name: event.get(name) for name in names}
+            record = {**body, "latch_id": event.get("latch_id")}
+            key = self._protected_attempt_latch_key(
+                task_id,
+                attempt,
+                task_revision_cid,
+            )
+            recovered = PortalTaskState(
+                protected_implementation_attempts={key: record}
+            )
+            return (
+                record
+                if self._protected_attempt_latched(
+                    recovered,
+                    task_id=task_id,
+                    attempt=attempt,
+                    task_revision_cid=task_revision_cid,
+                )
+                else None
+            )
+        return None
+
+    def _latch_protected_attempt(
+        self,
+        state: PortalTaskState,
+        route: AgentImplementationRoutePlan,
+    ) -> None:
+        invocation = route.invocation_binding
+        if invocation is None:
+            return
+        body: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-implementation-attempt-latch@1"
+            ),
+            "task_id": invocation.task_id,
+            "attempt": invocation.attempt,
+            "task_revision_cid": invocation.task_revision_cid,
+            "board_namespace": (
+                route.authorization.board_namespace
+                if route.authorization is not None
+                else ""
+            ),
+            "route_id": invocation.route_id,
+            "invocation_id": invocation.invocation_id,
+            "logical_attempt_id": invocation.logical_attempt_id,
+            "worktree_id": invocation.worktree_id,
+            "provider_attempt_store": invocation.provider_attempt_store,
+            "provider_attempt_store_identity": (
+                invocation.provider_attempt_store_identity
+            ),
+        }
+        record = {**body, "latch_id": content_identity(body)}
+        key = self._protected_attempt_latch_key(
+            invocation.task_id,
+            invocation.attempt,
+            invocation.task_revision_cid,
+        )
+        prior = state.protected_implementation_attempts.get(key)
+        if prior is not None and prior != record:
+            raise ImplementationRetryDeferred(
+                "protected attempt latch identity drifted",
+                backoff_seconds=300,
+            )
+        state.protected_implementation_attempts[key] = record
+        state.save(self.state_path)
+        if prior is None:
+            self._record_event("protected_implementation_attempt_latched", record)
 
     def _release_unfinished_active_attempt(
         self,
@@ -9209,10 +9798,6 @@ class PortalImplementationDaemon:
                 "attempt": attempt_number,
                 "task_id": task_id,
             }
-        released_to = max(0, attempt_number - 1)
-        previous_display = int(
-            state.implementation_attempts.get(task_id, 0) or 0
-        )
         identity = state.task_identities.get(task_id, {}) if isinstance(
             state.task_identities, Mapping
         ) else {}
@@ -9221,6 +9806,27 @@ class PortalImplementationDaemon:
             or state.last_implementation_task_cid
             or identity.get("canonical_task_cid")
             or ""
+        )
+        if self._protected_attempt_latched(
+            state,
+            task_id=task_id,
+            attempt=attempt_number,
+            task_revision_cid=task_cid,
+        ) or self._protected_attempt_event_latch(
+            task_id=task_id,
+            attempt=attempt_number,
+            task_revision_cid=task_cid,
+        ) is not None:
+            return {
+                "consumed": True,
+                "released": False,
+                "protected_scoped_attempt": True,
+                "attempt": attempt_number,
+                "task_id": task_id,
+            }
+        released_to = max(0, attempt_number - 1)
+        previous_display = int(
+            state.implementation_attempts.get(task_id, 0) or 0
         )
         previous_cid = int(
             state.implementation_attempts_by_cid.get(task_cid, 0) or 0
@@ -9246,6 +9852,131 @@ class PortalImplementationDaemon:
             "previous_cid_count": previous_cid,
         }
 
+    def _scoped_attempt_recovery_reservation(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> tuple[bool, ProviderAttemptReservation | None]:
+        """Detect protected provenance, then independently validate CAS.
+
+        The first result is conservative and only fences historical attempt
+        counter rollback.  The second is strict evidence that may be adopted.
+        A missing, truncated, forged, or substituted protected binding must
+        never fall through to legacy decrement/restore behavior.
+        """
+
+        event_latch = self._protected_attempt_event_latch(
+            task_id=task_id,
+            attempt=attempt,
+            task_revision_cid=task_revision_cid,
+        )
+        try:
+            durable_state = PortalTaskState.load(self.state_path)
+            state_latch = self._protected_attempt_latched(
+                durable_state,
+                task_id=task_id,
+                attempt=attempt,
+                task_revision_cid=task_revision_cid,
+            )
+        except (OSError, TypeError, ValueError):
+            # Recovery authority is derived from the append-only latch/event
+            # and protected command shape before a corrupt mutable projection
+            # can route this attempt into legacy rollback.
+            state_latch = False
+        durable_latch = bool(state_latch or event_latch is not None)
+        for event in reversed(tuple(self._iter_events())):
+            if (
+                str(event.get("type") or "") != "implementation_started"
+                or str(event.get("task_id") or "") != task_id
+                or int(event.get("attempt") or 0) != attempt
+            ):
+                continue
+            command = event.get("command")
+            if not isinstance(command, list) or any(
+                not isinstance(item, str) for item in command
+            ):
+                return durable_latch, None
+            protected_provenance = (
+                "--agent-implementation-route-json" in command
+                or (
+                    "--grok-failure-receipt-nonce" in command
+                    and "--codex-fallback-command-json" in command
+                    and "--canonical-legacy-preflight-route" not in command
+                    and any("gpt-5.6-terra" in item for item in command)
+                    and any('"high"' in item for item in command)
+                )
+            )
+            if not protected_provenance:
+                return durable_latch, None
+            try:
+                flag_index = command.index("--agent-implementation-route-json")
+                raw_binding = command[flag_index + 1]
+
+                def unique(
+                    pairs: Sequence[tuple[str, Any]],
+                ) -> dict[str, Any]:
+                    result: dict[str, Any] = {}
+                    for key, value in pairs:
+                        if key in result:
+                            raise ValueError("duplicate scoped recovery key")
+                        result[key] = value
+                    return result
+
+                binding = json.loads(
+                    raw_binding,
+                    object_pairs_hook=unique,
+                )
+                invocation = (
+                    binding.get("invocation_binding")
+                    if isinstance(binding, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(invocation, Mapping)
+                    or invocation.get("schema")
+                    != (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "provider-fallback-invocation@2"
+                    )
+                    or invocation.get("task_id") != task_id
+                    or invocation.get("attempt") != attempt
+                    or invocation.get("task_revision_cid")
+                    != task_revision_cid
+                ):
+                    return durable_latch, None
+                store = DurableProviderAttemptCAS(
+                    str(invocation.get("provider_attempt_store") or ""),
+                    expected_directory_identity=str(
+                        invocation.get("provider_attempt_store_identity") or ""
+                    ),
+                )
+                reservation = store.read(
+                    str(invocation.get("logical_attempt_id") or "")
+                )
+            except (
+                IndexError,
+                ValueError,
+                json.JSONDecodeError,
+                ProviderAttemptStoreError,
+            ):
+                return True, None
+            if (
+                reservation is not None
+                and reservation.task_id == task_id
+                and reservation.logical_attempt_id
+                == invocation.get("logical_attempt_id")
+                and reservation.state in {
+                    "reserved",
+                    "effect_started",
+                    "terminal",
+                }
+            ):
+                return durable_latch, reservation
+            return True, None
+        return durable_latch, None
+
     def _restore_task_attempt(
         self,
         state: PortalTaskState,
@@ -9254,7 +9985,46 @@ class PortalImplementationDaemon:
     ) -> None:
         """Restore the pre-launch count for a confirmed non-consuming deferral."""
 
+        requested = max(0, int(attempt or 0))
         identity = self._identity_for_task(task)
+        for value in tuple(state.protected_implementation_attempts.values()):
+            if not isinstance(value, Mapping):
+                continue
+            protected_attempt = value.get("attempt")
+            if (
+                isinstance(protected_attempt, int)
+                and not isinstance(protected_attempt, bool)
+                and protected_attempt > requested
+                and value.get("task_revision_cid")
+                == identity.canonical_task_cid
+                and self._protected_attempt_latched(
+                    state,
+                    task_id=task.task_id,
+                    attempt=protected_attempt,
+                    task_revision_cid=identity.canonical_task_cid,
+                )
+            ):
+                return
+        for event in reversed(tuple(self._iter_events())):
+            protected_attempt = event.get("attempt")
+            if (
+                event.get("type")
+                == "protected_implementation_attempt_latched"
+                and event.get("task_id") == task.task_id
+                and event.get("task_revision_cid")
+                == identity.canonical_task_cid
+                and isinstance(protected_attempt, int)
+                and not isinstance(protected_attempt, bool)
+                and protected_attempt > requested
+                and self._protected_attempt_event_latch(
+                    task_id=task.task_id,
+                    attempt=protected_attempt,
+                    task_revision_cid=identity.canonical_task_cid,
+                )
+                is not None
+            ):
+                return
+
         if attempt > 0:
             state.implementation_attempts[task.task_id] = attempt
             state.implementation_attempts_by_cid[identity.canonical_task_cid] = (
@@ -12484,12 +13254,27 @@ class PortalImplementationDaemon:
                 or ""
             )
             recovered_attempt_number = int(previous.active_attempt or 0)
+            recovered_revision = str(
+                previous.active_task_cid
+                or previous.last_implementation_task_cid
+                or ""
+            )
+            recovered_identity = self._task_identity_by_display_id.get(
+                recovered_task_id
+            )
+            recovered_namespace = (
+                recovered_identity.board_namespace
+                if recovered_identity is not None
+                else self.todo_path.name
+            )
             finished_attempt = bool(
                 recovered_task_id
                 and recovered_attempt_number > 0
                 and self._task_attempt_has_implementation_finish(
                     recovered_task_id,
                     recovered_attempt_number,
+                    task_revision_cid=recovered_revision,
+                    board_namespace=recovered_namespace,
                 )
             )
             if finished_attempt:
@@ -12497,15 +13282,52 @@ class PortalImplementationDaemon:
                     recovered_state
                 )
             else:
-                # Process vanished without a finish receipt (often false
-                # liveness / docker restart). Do not leave the durable attempt
-                # counter latched at the unfinished attempt or multi-task
-                # boards exhaust repair budget without ever validating work.
-                recovered_attempt = self._release_unfinished_active_attempt(
-                    recovered_state,
+                (
+                    protected_scoped_attempt,
+                    scoped_reservation,
+                ) = self._scoped_attempt_recovery_reservation(
                     task_id=recovered_task_id,
                     attempt=recovered_attempt_number,
+                    task_revision_cid=str(
+                        previous.active_task_cid
+                        or previous.last_implementation_task_cid
+                        or ""
+                    ),
                 )
+                if protected_scoped_attempt:
+                    # A protected logical attempt is latched exactly once.
+                    # Re-dispatch reuses the same attempt number so the runner
+                    # can adopt/terminalize the CAS state; no display/CID
+                    # counter is decremented, popped, restored, or incremented.
+                    self._scoped_recovery_attempts[recovered_task_id] = (
+                        recovered_attempt_number
+                    )
+                    recovered_attempt = {
+                        "consumed": True,
+                        "released": False,
+                        "protected_scoped_attempt": True,
+                        "cas_evidence_valid": scoped_reservation is not None,
+                        "attempt": recovered_attempt_number,
+                        "task_id": recovered_task_id,
+                        "reservation_id": (
+                            scoped_reservation.reservation_id
+                            if scoped_reservation is not None
+                            else ""
+                        ),
+                        "reservation_state": (
+                            scoped_reservation.state
+                            if scoped_reservation is not None
+                            else "invalid_or_missing"
+                        ),
+                    }
+                else:
+                    # Legacy vanished processes retain the historical retry
+                    # rollback behavior.
+                    recovered_attempt = self._release_unfinished_active_attempt(
+                        recovered_state,
+                        task_id=recovered_task_id,
+                        attempt=recovered_attempt_number,
+                    )
             self._clear_active_execution_state(recovered_state)
             recovered_state.save(self.state_path)
             self._record_event(
@@ -13354,6 +14176,221 @@ class PortalImplementationDaemon:
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
+    def _protected_provider_effect_audit(
+        self,
+        *,
+        command_items: Sequence[str],
+        receipt_text: str,
+        returncode: int | None,
+    ) -> dict[str, Any]:
+        """Validate protected terminal evidence at its durable claim instant."""
+
+        audit: dict[str, Any] = {
+            "exhausted": False,
+            "providers": [],
+            "reason": "",
+        }
+
+        def command_value(flag: str) -> str:
+            try:
+                index = command_items.index(flag)
+            except ValueError:
+                return ""
+            return command_items[index + 1] if index + 1 < len(command_items) else ""
+
+        def unique(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate protected recovery key")
+                result[key] = value
+            return result
+
+        route_raw = command_value("--agent-implementation-route-json")
+        locator_raw = command_value("--agent-implementation-recovery-json")
+        try:
+            if bool(route_raw) == bool(locator_raw):
+                return audit
+            if route_raw:
+                binding = json.loads(route_raw, object_pairs_hook=unique)
+                invocation_locator = (
+                    binding.get("invocation_binding")
+                    if isinstance(binding, Mapping)
+                    else None
+                )
+                if not isinstance(invocation_locator, Mapping):
+                    return audit
+                store_path = invocation_locator.get("provider_attempt_store")
+                store_identity = invocation_locator.get(
+                    "provider_attempt_store_identity"
+                )
+                logical_attempt_id = invocation_locator.get(
+                    "logical_attempt_id"
+                )
+            else:
+                locator = json.loads(locator_raw, object_pairs_hook=unique)
+                if not isinstance(locator, Mapping):
+                    return audit
+                locator_body = {
+                    key: value
+                    for key, value in locator.items()
+                    if key != "locator_id"
+                }
+                locator_encoded = json.dumps(
+                    locator_body,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+                if (
+                    locator.get("schema")
+                    != (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "provider-effect-recovery-locator@1"
+                    )
+                    or locator.get("locator_id")
+                    != "sha256:" + hashlib.sha256(locator_encoded).hexdigest()
+                ):
+                    return audit
+                invocation_locator = locator
+                store_path = locator.get("provider_attempt_store")
+                store_identity = locator.get("provider_attempt_store_identity")
+                logical_attempt_id = locator.get("logical_attempt_id")
+            if any(
+                not isinstance(value, str) or not value
+                for value in (store_path, store_identity, logical_attempt_id)
+            ):
+                return audit
+            store = DurableProviderAttemptCAS(
+                str(store_path),
+                expected_directory_identity=str(store_identity),
+            )
+            terminal = store.read(str(logical_attempt_id))
+            if terminal is None or terminal.state != "terminal":
+                return audit
+            launch_owner_pid = terminal.effect_launch_receipt.get(
+                "effect_owner_pid"
+            )
+            if (
+                isinstance(launch_owner_pid, bool)
+                or not isinstance(launch_owner_pid, int)
+                or launch_owner_pid <= 0
+                or terminal.effect_started_at_ms is None
+            ):
+                return audit
+            context = parse_agent_implementation_effect_authorization_context(
+                terminal.authorization_context,
+                repo_root=self.repo_root,
+                effect_started_at_ms=terminal.effect_started_at_ms,
+                expected_signer_parent_pid=launch_owner_pid,
+                max_age_ms=5 * 60 * 1000,
+            )
+            if context is None or context.route.invocation_binding is None:
+                return audit
+            invocation = context.route.invocation_binding
+            if route_raw:
+                if dict(binding) != context.route.as_binding_dict():
+                    return audit
+            else:
+                exact_locator = {
+                    "task_id": invocation.task_id,
+                    "attempt": invocation.attempt,
+                    "task_revision_cid": invocation.task_revision_cid,
+                    "logical_attempt_id": invocation.logical_attempt_id,
+                    "worktree_id": invocation.worktree_id,
+                    "prompt_cid": invocation.prompt_cid,
+                    "workspace_path": invocation.workspace_path,
+                    "provider_attempt_store": invocation.provider_attempt_store,
+                    "provider_attempt_store_identity": (
+                        invocation.provider_attempt_store_identity
+                    ),
+                }
+                if any(
+                    locator.get(name) != value
+                    for name, value in exact_locator.items()
+                ):
+                    return audit
+            outcome = terminal.terminal_outcome
+            if (
+                returncode is None
+                or terminal.terminal_returncode != returncode
+                or not isinstance(outcome, Mapping)
+                or terminal.logical_attempt_id != invocation.logical_attempt_id
+                or terminal.route_id != context.route.route_id
+                or terminal.task_id != invocation.task_id
+                or terminal.worktree_id != invocation.worktree_id
+                or terminal.decision_id != context.decision.content_id
+                or terminal.reservation_id != outcome.get("reservation_id")
+                or terminal.decision_id != outcome.get("decision_id")
+                or terminal.effect_launch_receipt
+                != outcome.get("effect_launch_receipt")
+                or terminal.effect_adoption_receipt
+                != outcome.get("effect_adoption_receipt")
+                or terminal.quarantine_receipt
+                != outcome.get("effect_quarantine_receipt")
+                or terminal.quarantine_terminalization_receipt
+                != outcome.get(
+                    "effect_quarantine_terminalization_receipt"
+                )
+                or terminal.terminal_returncode
+                != outcome.get("fallback_returncode")
+                or not valid_agent_implementation_route_outcome(
+                    outcome,
+                    receipt=context.failure_receipt,
+                    route=context.route,
+                    runner_returncode=returncode,
+                )
+            ):
+                return audit
+            expected_terminal_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    dict(outcome),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            logged = extract_agent_implementation_route_outcomes(receipt_text)
+            if (
+                terminal.terminal_outcome_id != expected_terminal_id
+                or terminal.terminal_outcome != dict(outcome)
+                or len(logged) != 1
+                or logged[0] != dict(outcome)
+            ):
+                return audit
+        except (
+            IndexError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+            ProviderAttemptStoreError,
+        ):
+            return audit
+        authorization = context.route.authorization
+        audit.update(
+            {
+                "route_outcome": dict(outcome),
+                "route_outcome_id": str(outcome.get("outcome_id") or ""),
+                "quota_probe_receipt": dict(context.failure_receipt),
+                "quota_probe_receipt_id": str(
+                    context.failure_receipt.get("receipt_id") or ""
+                ),
+                "failure_class": str(
+                    context.failure_receipt.get("failure_class") or "unknown"
+                ),
+                "route_authorization": (
+                    authorization.as_dict() if authorization is not None else None
+                ),
+                "invocation_binding_id": invocation.content_id,
+                "accepted_control_plane": invocation.control_plane.as_dict(),
+                "historical_effect_started_at_ms": terminal.effect_started_at_ms,
+            }
+        )
+        return audit
+
     def _provider_capacity_failure_from_log(
         self,
         log_path: Path,
@@ -13361,46 +14398,22 @@ class PortalImplementationDaemon:
         command: Sequence[str] = (),
         returncode: int | None = None,
     ) -> dict[str, Any]:
+        command_items = [str(item) for item in command]
+        protected_command = bool(
+            "--agent-implementation-route-json" in command_items
+            or "--agent-implementation-recovery-json" in command_items
+        )
         try:
-            with log_path.open("rb") as handle:
-                handle.seek(0, os.SEEK_END)
-                size = handle.tell()
-                tail_start = max(
-                    0,
-                    size - PROVIDER_CAPACITY_LOG_TAIL_BYTES,
-                )
-                # Read the preceding byte so the receipt parser can prove
-                # whether the bounded slice begins on an LF-delimited record
-                # boundary.  Never manufacture a trusted line start by
-                # cutting through model-controlled output at the tail limit.
-                read_start = max(0, tail_start - 1)
-                handle.seek(read_start)
-                bounded = handle.read()
-                tail_offset = tail_start - read_start
-                tail = bounded[tail_offset:]
-                text = tail.decode("utf-8", errors="replace")
-                if tail_start == 0 or bounded[:tail_offset] == b"\n":
-                    receipt_tail = tail
-                else:
-                    next_lf = tail.find(b"\n")
-                    receipt_tail = (
-                        tail[next_lf + 1 :]
-                        if next_lf >= 0
-                        else b""
-                    )
-                receipt_text = receipt_tail.decode(
-                    "utf-8",
-                    errors="replace",
-                )
+            text, receipt_text = _stable_owned_log_tail(
+                log_path,
+                PROVIDER_CAPACITY_LOG_TAIL_BYTES,
+                # Legacy logs only drive historical backoff accounting and
+                # were created with the daemon's ambient umask.  Protected
+                # outcome authority is always non-group-writable.
+                reject_group_writable=protected_command,
+            )
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
-        classified = classify_provider_capacity_failure(
-            text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
-        )
-        command_items = [str(item) for item in command]
 
         def command_value(flag: str) -> str:
             try:
@@ -13413,61 +14426,289 @@ class PortalImplementationDaemon:
 
         receipt_nonce = command_value("--grok-failure-receipt-nonce")
         primary_model = command_value("--model")
-        valid_probe_receipt = False
-        if returncode is not None and receipt_nonce and primary_model:
-            for receipt in reversed(
-                extract_grok_failure_receipts(receipt_text)
-            ):
-                if not valid_grok_failure_receipt(
-                    receipt,
-                    nonce=receipt_nonce,
-                    model=primary_model,
-                    returncode=returncode,
+        binding_raw = command_value("--agent-implementation-route-json")
+        protected_latched = False
+        try:
+            current_state = PortalTaskState.load(self.state_path)
+            protected_latched = self._protected_attempt_latched(
+                current_state,
+                task_id=(
+                    current_state.active_task_id
+                    or current_state.last_implementation_task_id
+                ),
+                attempt=current_state.active_attempt,
+                task_revision_cid=(
+                    current_state.active_task_cid
+                    or current_state.last_implementation_task_cid
+                ),
+            )
+        except (OSError, TypeError, ValueError):
+            # A syntactically protected command remains protected even when
+            # its durable projection cannot be decoded.
+            protected_latched = False
+        protected_provenance = bool(protected_command or protected_latched)
+        if protected_provenance:
+            return self._protected_provider_effect_audit(
+                command_items=command_items,
+                receipt_text=receipt_text,
+                returncode=returncode,
+            )
+        if protected_provenance:
+            audit: dict[str, Any] = {
+                "exhausted": False,
+                "providers": [],
+                "reason": "",
+            }
+            # A malformed/truncated protected command is still categorically
+            # protected from legacy provider-capacity reclassification.
+            if returncode is None or not receipt_nonce or not primary_model:
+                return audit
+            observed_now_ms = int(time.time() * 1000)
+            try:
+                def unique_binding(
+                    pairs: Sequence[tuple[str, Any]],
+                ) -> dict[str, Any]:
+                    result: dict[str, Any] = {}
+                    for key, value in pairs:
+                        if key in result:
+                            raise ValueError("duplicate protected route key")
+                        result[key] = value
+                    return result
+
+                binding = json.loads(
+                    binding_raw,
+                    object_pairs_hook=unique_binding,
+                )
+                if not isinstance(binding, dict):
+                    return audit
+                route_plan = resolve_agent_implementation_route_binding(
+                    binding,
+                    repo_root=self.repo_root,
+                    now_ms=observed_now_ms,
+                    max_age_ms=5 * 60 * 1000,
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                return audit
+            valid_receipts = []
+            for receipt in extract_grok_failure_receipts(receipt_text):
+                probe_returncode = receipt.get("probe_returncode")
+                if (
+                    not isinstance(probe_returncode, int)
+                    or isinstance(probe_returncode, bool)
+                    or (
+                        not valid_agent_implementation_failure_receipt(
+                            receipt,
+                            nonce=receipt_nonce,
+                            model=primary_model,
+                            probe_returncode=probe_returncode,
+                            now_ms=observed_now_ms,
+                            max_age_ms=5 * 60 * 1000,
+                        )
+                        if route_plan.invocation_binding is not None
+                        else not valid_grok_failure_receipt(
+                            receipt,
+                            nonce=receipt_nonce,
+                            model=primary_model,
+                            returncode=probe_returncode,
+                        )
+                    )
                 ):
                     continue
-                valid_probe_receipt = True
-                failure_class = str(
-                    receipt.get("failure_class") or "unknown"
+                valid_receipts.append(receipt)
+            valid_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+            def durable_outcome_matches(
+                outcome: Mapping[str, Any],
+                *,
+                receipt: Mapping[str, Any],
+            ) -> bool:
+                invocation = route_plan.invocation_binding
+                if invocation is None:
+                    return False
+                quota_evidence = None
+                if outcome.get("verifier_status") == "confirmed_quota":
+                    quota_raw = outcome.get("quota_evidence")
+                    launch = outcome.get("effect_launch_receipt")
+                    adoption = outcome.get("effect_adoption_receipt")
+                    if not isinstance(quota_raw, Mapping):
+                        return False
+                    owner_receipt = (
+                        adoption
+                        if isinstance(adoption, Mapping) and adoption
+                        else launch
+                    )
+                    expected_signer_parent_pid = (
+                        owner_receipt.get("effect_owner_pid")
+                        if isinstance(owner_receipt, Mapping)
+                        else quota_raw.get("signer_parent_pid")
+                    )
+                    if (
+                        isinstance(expected_signer_parent_pid, bool)
+                        or not isinstance(expected_signer_parent_pid, int)
+                        or expected_signer_parent_pid <= 0
+                    ):
+                        return False
+                    quota_evidence = parse_agent_implementation_quota_evidence(
+                        quota_raw,
+                        failure_receipt=receipt,
+                        invocation_binding=invocation,
+                        now_ms=observed_now_ms,
+                        max_age_ms=5 * 60 * 1000,
+                        expected_signer_parent_pid=(
+                            expected_signer_parent_pid
+                        ),
+                    )
+                    if quota_evidence is None:
+                        return False
+                elif (
+                    outcome.get("quota_evidence")
+                    or outcome.get("quota_evidence_id")
+                ):
+                    return False
+                if outcome.get("decision") == "denied":
+                    return bool(
+                        not outcome.get("reservation_id")
+                        and not outcome.get("effect_launch_receipt")
+                        and not outcome.get("effect_adoption_receipt")
+                        and not outcome.get("effect_quarantine_receipt")
+                        and not outcome.get(
+                            "effect_quarantine_terminalization_receipt"
+                        )
+                    )
+                try:
+                    store = DurableProviderAttemptCAS(
+                        invocation.provider_attempt_store,
+                        expected_directory_identity=(
+                            invocation.provider_attempt_store_identity
+                        ),
+                    )
+                    terminal = store.read(invocation.logical_attempt_id)
+                    expected_terminal_id = "sha256:" + hashlib.sha256(
+                        json.dumps(
+                            dict(outcome),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=True,
+                            allow_nan=False,
+                        ).encode("utf-8")
+                    ).hexdigest()
+                    fresh_decision = decide_agent_implementation_fallback(
+                        route_plan,
+                        repo_root=self.repo_root,
+                        failure_receipt=receipt,
+                        expected_nonce=receipt_nonce,
+                        expected_model=primary_model,
+                        expected_probe_returncode=int(
+                            receipt.get("probe_returncode")
+                        ),
+                        independent_quota_evidence=quota_evidence,
+                        expected_invocation_binding=(
+                            invocation.signed_payload()
+                        ),
+                        now_ms=observed_now_ms,
+                        max_age_ms=5 * 60 * 1000,
+                    )
+                except (OSError, TypeError, ValueError, ProviderAttemptStoreError):
+                    return False
+                return bool(
+                    terminal is not None
+                    and terminal.state == "terminal"
+                    and terminal.logical_attempt_id
+                    == invocation.logical_attempt_id
+                    and terminal.route_id == route_plan.route_id
+                    and terminal.task_id == invocation.task_id
+                    and terminal.worktree_id == invocation.worktree_id
+                    and terminal.reservation_id
+                    == outcome.get("reservation_id")
+                    and terminal.decision_id == outcome.get("decision_id")
+                    and terminal.decision_id == fresh_decision.content_id
+                    and terminal.effect_launch_receipt
+                    == outcome.get("effect_launch_receipt")
+                    and terminal.effect_adoption_receipt
+                    == outcome.get("effect_adoption_receipt")
+                    and terminal.quarantine_receipt
+                    == outcome.get("effect_quarantine_receipt")
+                    and terminal.quarantine_terminalization_receipt
+                    == outcome.get(
+                        "effect_quarantine_terminalization_receipt"
+                    )
+                    and terminal.terminal_returncode
+                    == outcome.get("fallback_returncode")
+                    and terminal.terminal_outcome_id == expected_terminal_id
+                    and terminal.terminal_outcome == dict(outcome)
                 )
-                classified.update(
+
+            for receipt in valid_receipts:
+                if route_plan.invocation_binding is not None:
+                    for outcome in extract_agent_implementation_route_outcomes(
+                        receipt_text
+                    ):
+                        if valid_agent_implementation_route_outcome(
+                            outcome,
+                            receipt=receipt,
+                            route=route_plan,
+                            runner_returncode=returncode,
+                        ) and durable_outcome_matches(
+                            outcome,
+                            receipt=receipt,
+                        ):
+                            valid_pairs.append((receipt, outcome))
+                else:
+                    for outcome in extract_grok_route_outcomes(receipt_text):
+                        if valid_grok_route_outcome(
+                            outcome,
+                            receipt=receipt,
+                            route_plan=route_plan.as_outcome_dict(),
+                            runner_returncode=returncode,
+                        ):
+                            valid_pairs.append((receipt, outcome))
+            # Auth/high fallback is the same logical attempt. Every nonzero
+            # outcome categorically bypasses provider-capacity restoration;
+            # the sole valid terminal pair is retained only as audit evidence.
+            if len(valid_pairs) == 1:
+                receipt, outcome = valid_pairs[0]
+                invocation_binding = route_plan.invocation_binding
+                audit.update(
                     {
-                        "exhausted": True,
-                        "providers": ["grok"],
-                        "reason": "provider_capacity_exhausted",
-                        "failure_class": failure_class,
+                        "route_outcome": dict(outcome),
+                        "route_outcome_id": str(
+                            outcome.get("outcome_id") or ""
+                        ),
                         "quota_probe_receipt": dict(receipt),
                         "quota_probe_receipt_id": str(
                             receipt.get("receipt_id") or ""
                         ),
-                        "quota_probe_evidence_sha256": str(
-                            receipt.get("evidence_sha256") or ""
+                        "failure_class": str(
+                            receipt.get("failure_class") or "unknown"
+                        ),
+                        "route_authorization": (
+                            route_plan.authorization.as_dict()
+                            if route_plan.authorization is not None
+                            else None
+                        ),
+                        "invocation_binding_id": (
+                            invocation_binding.content_id
+                            if invocation_binding is not None
+                            else ""
+                        ),
+                        "accepted_control_plane": (
+                            invocation_binding.control_plane.as_dict()
+                            if invocation_binding is not None
+                            else None
                         ),
                     }
                 )
-                if valid_grok_hard_quota_receipt(
-                    receipt,
-                    nonce=receipt_nonce,
-                    model=primary_model,
-                    returncode=returncode,
-                ):
-                    classified.update(
-                        {
-                            "hard_quota_exhausted_providers": ["grok"],
-                            "hard_quota_evidence_sha256": str(
-                                receipt.get("evidence_sha256") or ""
-                            ),
-                        }
-                    )
-                break
-            if not valid_probe_receipt:
-                # Automatic Grok task output is model-controlled. It may
-                # contain quota-looking text, but only the isolated preflight
-                # receipt can classify that command as provider capacity.
-                return {
-                    "exhausted": False,
-                    "providers": [],
-                    "reason": "",
-                }
+            return audit
+        # Protected nonce-bound routes returned above without invoking this
+        # compatibility classifier.  Legacy, non-route provider commands keep
+        # their existing capacity/backoff accounting; the result never grants
+        # cross-provider fallback authority.
+        classified = classify_provider_capacity_failure(
+            text,
+            provider_labels=_provider_labels_from_implementation_command(
+                command
+            ),
+        )
         if not classified["exhausted"]:
             return classified
         if classified.get("failure_class") == "hard_quota_exhausted":
@@ -14924,6 +16165,9 @@ class PortalImplementationDaemon:
                 else self._build_implementation_command(
                     workspace_path,
                     task=task,
+                    prompt=prompt,
+                    attempt=attempt,
+                    state=state,
                 )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -14992,6 +16236,9 @@ class PortalImplementationDaemon:
                                 task,
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
+                            ),
+                            pass_fds=self._accepted_control_plane_pass_fds(
+                                command
                             ),
                             timeout_seconds=timeout_policy.max_timeout_seconds,
                             progress_timeout_seconds=(
@@ -23617,6 +24864,9 @@ class PortalImplementationDaemon:
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
+                    prompt=prompt,
+                    attempt=attempt,
+                    state=state,
                 )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -23786,6 +25036,9 @@ class PortalImplementationDaemon:
                                 stdout=log_fh,
                                 input_text=prompt,
                                 env=provider_environment,
+                                pass_fds=self._accepted_control_plane_pass_fds(
+                                    command
+                                ),
                                 timeout_seconds=timeout_policy.max_timeout_seconds,
                                 progress_timeout_seconds=(
                                     timeout_policy.progress_timeout_seconds
@@ -48127,31 +49380,33 @@ class PortalImplementationDaemon:
         return False
 
     def _docker_isolation_active_for_worktree(self, worktree_path: str) -> bool:
-        """Return whether a labeled Grok isolation container mounts worktree."""
+        """Return whether an exact provider-isolation container mounts worktree."""
 
         worktree_path = str(worktree_path or "").strip()
         if not worktree_path:
             return False
-        try:
-            listed = subprocess.run(
-                [
-                    "docker",
-                    "ps",
-                    "--filter",
-                    "label=ipfs_accelerate.grok_isolation=true",
-                    "--format",
-                    "{{.ID}}",
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        if listed.returncode != 0 or not listed.stdout.strip():
-            return False
-        for container_id in listed.stdout.splitlines():
+        container_ids: set[str] = set()
+        for label in IMPLEMENTATION_DOCKER_ISOLATION_LABELS:
+            try:
+                listed = subprocess.run(
+                    [
+                        "docker",
+                        "ps",
+                        "--filter",
+                        f"label={label}",
+                        "--format",
+                        "{{.ID}}",
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if listed.returncode == 0:
+                container_ids.update(listed.stdout.splitlines())
+        for container_id in sorted(container_ids):
             container_id = container_id.strip()
             if not container_id:
                 continue
@@ -48332,6 +49587,12 @@ class PortalImplementationDaemon:
     def _implementation_context_window(self, task: PortalTask) -> int:
         return self._configured_implementation_provider_context_window(task)
 
+    @staticmethod
+    def _ordered_grok_codex_route_configured() -> bool:
+        """Expose the exact sealed route check for launch-time auditing."""
+
+        return _ordered_grok_codex_route_configured()
+
     def _require_primary_provider_readiness(
         self,
         task: PortalTask | None,
@@ -48339,6 +49600,56 @@ class PortalImplementationDaemon:
         """Defer before prompt/worktree dispatch when Grok primary is absent."""
 
         declared_provider = self._task_declared_implementation_provider(task)
+        try:
+            route_plan = _configured_agent_implementation_route_plan(
+                Path(self.repo_root)
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"invalid sealed implementation route: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if route_plan and route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                if _grok_cli_available() and _grok_binary():
+                    return
+                raise ImplementationRetryDeferred(
+                    "explicit Grok-only task requires authenticated Grok CLI",
+                    backoff_seconds=300,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if _grok_binary() and shutil.which("codex"):
+                # Authentication is intentionally not a readiness condition
+                # for this exact route. The fixed runner preflight turns a
+                # missing/expired credential into a typed, nonce-bound receipt
+                # before the task prompt and may then enter Terra/high.
+                return
+            raise ImplementationRetryDeferred(
+                "sealed Grok/Codex route requires both pinned provider CLIs",
+                backoff_seconds=300,
+            )
         if self.implementation_command and not declared_provider:
             return
         if (
@@ -48425,11 +49736,494 @@ class PortalImplementationDaemon:
                 )
         return workspace
 
+    def _scoped_provider_attempt_store(self) -> tuple[Path, str]:
+        """Return an external private CAS directory, never a task worktree."""
+
+        configured = os.environ.get(_PROVIDER_ATTEMPT_STORE_ENV, "").strip()
+        if configured:
+            directory = resolve_agent_implementation_private_state_path(configured)
+        else:
+            state_home = Path(
+                os.environ.get("XDG_STATE_HOME", "").strip()
+                or Path.home() / ".local" / "state"
+            )
+            daemon_id = hashlib.sha256(
+                str(self.state_path.expanduser().resolve(strict=False)).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+            directory = resolve_agent_implementation_private_state_path(
+                state_home
+                / "ipfs_accelerate_py"
+                / "provider-attempts"
+                / daemon_id
+            )
+        try:
+            return bind_agent_implementation_attempt_store(
+                directory,
+                create=True,
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                f"scoped provider attempt store is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+
+    def _bind_scoped_provider_invocation(
+        self,
+        route_plan: AgentImplementationRoutePlan,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        prompt: str,
+        attempt: int,
+    ) -> AgentImplementationRoutePlan:
+        """Bind exact live task/context fields to the reviewed scoped route."""
+
+        authorization = route_plan.authorization
+        bounds = (
+            authorization.authority_bounds
+            if authorization is not None
+            else None
+        )
+        if authorization is None or bounds is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback route has no signed authority bounds",
+                backoff_seconds=300,
+            )
+        context = self._last_implementation_context
+        capsule = getattr(context, "capsule", None)
+        if not isinstance(capsule, ContextCapsule):
+            raise ImplementationRetryDeferred(
+                "scoped fallback route requires a compiled context capsule",
+                backoff_seconds=300,
+            )
+        try:
+            baseline = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=workspace_path,
+            ).stdout.strip()
+        except (OSError, RuntimeError) as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback workspace baseline is unavailable",
+                backoff_seconds=300,
+            ) from exc
+        from ..entrypoints.local_profile import (
+            load_local_profile,
+            resolve_local_profile_state_paths,
+            sign_profile_binding,
+        )
+
+        try:
+            profile = load_local_profile(repository_cid=bounds.repository_cid)
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                f"scoped fallback reviewer profile is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if (
+            profile.repository_cid != capsule.repository_id
+            or profile.baseline_commit != bounds.baseline_commit
+            or tuple(profile.effect_bounds) != bounds.effects
+            or profile.budget_cid != capsule.budget.content_id
+            or profile.budget_cid != bounds.budget_cid
+            or profile.resource_cid != bounds.resource_cid
+            or profile.content_id != bounds.authority_cid
+            or profile.route_id != route_plan.route_id
+            or profile.reviewer_identity
+            != authorization.reviewer_identity
+            or profile.reviewer_provider
+            != authorization.reviewer_provider
+            or profile.fallback_provider_id
+            != route_plan.fallback_provider_id
+            or profile.fallback_model_id != route_plan.fallback_model_id
+            or profile.fallback_reasoning_effort
+            != route_plan.fallback_reasoning_effort
+        ):
+            raise ImplementationRetryDeferred(
+                "scoped fallback profile does not exactly match the signed "
+                "repository/baseline/effect/budget/resource/route/reviewer/"
+                "fallback bounds",
+                backoff_seconds=300,
+            )
+        try:
+            profile_directory, lifecycle_directory = (
+                resolve_local_profile_state_paths()
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback profile state paths are unavailable",
+                backoff_seconds=300,
+            ) from exc
+        control_plane = self._scoped_control_plane
+        if control_plane is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback requires the daemon-start generation capsule",
+                backoff_seconds=300,
+            )
+        try:
+            control_plane = build_agent_implementation_control_plane_pin(
+                runner_path=control_plane.runner_path,
+                capsule_root=control_plane.capsule_root,
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback accepted-generation capsule is invalid",
+                backoff_seconds=300,
+            ) from exc
+        if control_plane != self._scoped_control_plane:
+            raise ImplementationRetryDeferred(
+                "scoped fallback accepted-generation capsule drifted",
+                backoff_seconds=300,
+            )
+        sealed_launch = self._scoped_control_plane_launch
+        if sealed_launch is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback sealed generation is unavailable",
+                backoff_seconds=300,
+            )
+        try:
+            sealed_path = verify_agent_implementation_sealed_control_plane(
+                control_plane,
+                sealed_launch.descriptor,
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback sealed generation drifted",
+                backoff_seconds=300,
+            ) from exc
+        if (
+            sealed_path != sealed_launch.executable_path
+            or sealed_launch.archive_sha256 != control_plane.archive_sha256
+            or sealed_launch.capsule_id != control_plane.capsule_id
+        ):
+            raise ImplementationRetryDeferred(
+                "scoped fallback sealed generation identity drifted",
+                backoff_seconds=300,
+            )
+        attempt_store, attempt_store_identity = (
+            self._scoped_provider_attempt_store()
+        )
+        workspace = workspace_path.expanduser().resolve(strict=True)
+        prompt_cid = "sha256:" + hashlib.sha256(
+            prompt.encode("utf-8")
+        ).hexdigest()
+        task_revision_cid = self._canonical_ref(task)
+        worktree_id = content_identity(
+            {"workspace_path": str(workspace), "baseline_commit": baseline}
+        )
+        identity_body = {
+            "task_id": task.task_id,
+            "task_revision_cid": task_revision_cid,
+            "attempt": int(attempt),
+            "prompt_cid": prompt_cid,
+            "worktree_id": worktree_id,
+            "route_id": route_plan.route_id,
+        }
+        logical_attempt_id = content_identity(identity_body)
+        invocation_id = content_identity(
+            {**identity_body, "logical_attempt_id": logical_attempt_id}
+        )
+        issued_at_ms = int(time.time() * 1000)
+        unsigned = AgentImplementationInvocationBinding(
+            schema=(
+                "ipfs_accelerate_py.agent_supervisor."
+                "provider-fallback-invocation@2"
+            ),
+            invocation_id=invocation_id,
+            logical_attempt_id=logical_attempt_id,
+            task_id=task.task_id,
+            attempt=int(attempt),
+            task_revision_cid=task_revision_cid,
+            prompt_cid=prompt_cid,
+            worktree_id=worktree_id,
+            workspace_path=str(workspace),
+            repository_cid=capsule.repository_id,
+            baseline_commit=baseline,
+            effects=tuple(profile.effect_bounds),
+            scope_cid=content_identity(capsule.scope),
+            budget_cid=capsule.budget.content_id,
+            resource_cid=bounds.resource_cid,
+            authority_cid=profile.content_id,
+            route_id=route_plan.route_id,
+            primary_provider_id=route_plan.primary_provider_id,
+            primary_model_id=route_plan.primary_model_id,
+            fallback_provider_id=route_plan.fallback_provider_id,
+            fallback_model_id=route_plan.fallback_model_id,
+            fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+            fallback_implementer_identity=(
+                route_plan.fallback_implementer_identity
+            ),
+            reviewer_identity=authorization.reviewer_identity,
+            reviewer_provider=authorization.reviewer_provider,
+            profile_id=profile.profile_id,
+            profile_identity_did=profile.identity_did,
+            profile_lifecycle_anchor_id=profile.lifecycle_anchor_id,
+            profile_lifecycle_generation=profile.lifecycle_generation,
+            profile_dir=str(profile_directory),
+            profile_lifecycle_dir=str(lifecycle_directory),
+            issued_at_ms=issued_at_ms,
+            expires_at_ms=issued_at_ms + 5 * 60 * 1000,
+            provider_attempt_store=str(attempt_store),
+            provider_attempt_store_identity=attempt_store_identity,
+            control_plane=control_plane,
+            reviewer_signature="pending",
+        )
+        signature = sign_profile_binding(
+            profile_dir=profile_directory,
+            lifecycle_dir=lifecycle_directory,
+            payload=unsigned.signed_payload(),
+        )["signature"]
+        invocation = replace(unsigned, reviewer_signature=signature)
+        return bind_agent_implementation_route_invocation(
+            route_plan,
+            invocation,
+            repo_root=self.repo_root,
+            workspace=workspace,
+            expected_binding=invocation.signed_payload(),
+            now_ms=issued_at_ms,
+            max_age_ms=5 * 60 * 1000,
+        )
+
+    def _protected_effect_recovery_command(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask | None,
+        prompt: str,
+        attempt: int,
+        state: PortalTaskState | None,
+    ) -> list[str] | None:
+        """Build the sealed non-dispatch entry for one durable CAS effect."""
+
+        if task is None or state is None or not prompt or attempt < 1:
+            return None
+        revision = self._canonical_ref(task)
+        key = self._protected_attempt_latch_key(
+            task.task_id,
+            attempt,
+            revision,
+        )
+        latch = state.protected_implementation_attempts.get(key)
+        if not isinstance(latch, Mapping):
+            latch = self._protected_attempt_event_latch(
+                task_id=task.task_id,
+                attempt=attempt,
+                task_revision_cid=revision,
+            )
+        if not isinstance(latch, Mapping):
+            return None
+        board_namespace = task.board_namespace or self.todo_path.name
+        required_text = (
+            "logical_attempt_id",
+            "worktree_id",
+            "provider_attempt_store",
+            "provider_attempt_store_identity",
+        )
+        if (
+            latch.get("task_id") != task.task_id
+            or latch.get("attempt") != attempt
+            or latch.get("task_revision_cid") != revision
+            or latch.get("board_namespace") != board_namespace
+            or any(
+                not isinstance(latch.get(name), str) or not latch.get(name)
+                for name in required_text
+            )
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery latch identity drifted",
+                backoff_seconds=300,
+            )
+        try:
+            store = DurableProviderAttemptCAS(
+                str(latch["provider_attempt_store"]),
+                expected_directory_identity=str(
+                    latch["provider_attempt_store_identity"]
+                ),
+            )
+            reservation = store.read(str(latch["logical_attempt_id"]))
+        except (OSError, ValueError, ProviderAttemptStoreError) as exc:
+            raise ImplementationRetryDeferred(
+                f"protected effect recovery CAS is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if reservation is None or reservation.state not in {
+            "effect_started",
+            "quarantined",
+            "terminal",
+        }:
+            # A protected latch is categorical: corruption/missing/reserved
+            # state may never fall through to a newly signed provider route.
+            raise ImplementationRetryDeferred(
+                "protected effect recovery is not terminal/adoptable",
+                backoff_seconds=300,
+            )
+        if (
+            reservation.logical_attempt_id != latch["logical_attempt_id"]
+            or reservation.task_id != task.task_id
+            or reservation.worktree_id != latch["worktree_id"]
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery CAS identity drifted",
+                backoff_seconds=300,
+            )
+        launch_owner_pid = reservation.effect_launch_receipt.get(
+            "effect_owner_pid"
+        )
+        if (
+            isinstance(launch_owner_pid, bool)
+            or not isinstance(launch_owner_pid, int)
+            or launch_owner_pid <= 0
+            or reservation.effect_started_at_ms is None
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery launch authority is invalid",
+                backoff_seconds=300,
+            )
+        historical = parse_agent_implementation_effect_authorization_context(
+            reservation.authorization_context,
+            repo_root=workspace_path,
+            effect_started_at_ms=reservation.effect_started_at_ms,
+            expected_signer_parent_pid=launch_owner_pid,
+            max_age_ms=5 * 60 * 1000,
+        )
+        historical_invocation = (
+            historical.route.invocation_binding
+            if historical is not None
+            else None
+        )
+        if (
+            historical_invocation is None
+            or historical_invocation.logical_attempt_id
+            != reservation.logical_attempt_id
+            or historical_invocation.task_id != task.task_id
+            or historical_invocation.task_revision_cid != revision
+            or historical_invocation.attempt != attempt
+            or historical_invocation.worktree_id != reservation.worktree_id
+            or historical.decision.content_id != reservation.decision_id
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery historical authority is invalid",
+                backoff_seconds=300,
+            )
+        control_plane = historical_invocation.control_plane
+        try:
+            observed_control_plane = build_agent_implementation_control_plane_pin(
+                runner_path=control_plane.runner_path,
+                capsule_root=control_plane.capsule_root,
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"protected effect recovery capsule is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if observed_control_plane != control_plane:
+            raise ImplementationRetryDeferred(
+                "protected effect recovery capsule identity drifted",
+                backoff_seconds=300,
+            )
+        sealed_launch = self._scoped_recovery_control_plane_launches.get(
+            control_plane.capsule_id
+        )
+        if sealed_launch is None:
+            try:
+                sealed_launch = seal_agent_implementation_control_plane_capsule(
+                    control_plane
+                )
+            except (OSError, ValueError) as exc:
+                raise ImplementationRetryDeferred(
+                    f"protected effect recovery capsule could not be sealed: {exc}",
+                    backoff_seconds=300,
+                ) from exc
+            self._scoped_recovery_control_plane_launches[
+                control_plane.capsule_id
+            ] = sealed_launch
+        if sealed_launch is None:
+            raise ImplementationRetryDeferred(
+                "protected effect recovery sealed generation is unavailable",
+                backoff_seconds=300,
+            )
+        try:
+            executable = verify_agent_implementation_sealed_control_plane(
+                control_plane,
+                sealed_launch.descriptor,
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                f"protected effect recovery sealed generation drifted: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        workspace = workspace_path.expanduser().resolve(strict=True)
+        body: dict[str, object] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "provider-effect-recovery-locator@1"
+            ),
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "task_revision_cid": revision,
+            "board_namespace": board_namespace,
+            "logical_attempt_id": reservation.logical_attempt_id,
+            "worktree_id": reservation.worktree_id,
+            "prompt_cid": "sha256:"
+            + hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "workspace_path": str(workspace),
+            "provider_attempt_store": str(latch["provider_attempt_store"]),
+            "provider_attempt_store_identity": str(
+                latch["provider_attempt_store_identity"]
+            ),
+        }
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        locator = {
+            **body,
+            "locator_id": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+        }
+        return [
+            sys.executable,
+            "-I",
+            executable,
+            "--workspace",
+            str(workspace),
+            "--agent-implementation-recovery-json",
+            json.dumps(locator, sort_keys=True, separators=(",", ":")),
+        ]
+
+    def _accepted_control_plane_pass_fds(
+        self,
+        command: Sequence[str],
+    ) -> tuple[int, ...]:
+        """Return only the sealed archive descriptor named by this command."""
+
+        launches = [
+            self._scoped_control_plane_launch,
+            *self._scoped_recovery_control_plane_launches.values(),
+        ]
+        matches = {
+            int(launch.descriptor)
+            for launch in launches
+            if launch is not None and launch.executable_path in command[:3]
+        }
+        if len(matches) > 1:
+            raise ImplementationRetryDeferred(
+                "accepted control-plane command is ambiguous",
+                backoff_seconds=300,
+            )
+        return tuple(matches)
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
         *,
         task: PortalTask | None = None,
+        prompt: str = "",
+        attempt: int = 0,
+        state: PortalTaskState | None = None,
     ) -> list[str]:
         if self.manual_completion_authority_revalidation_only:
             raise RuntimeError(
@@ -48440,17 +50234,22 @@ class PortalImplementationDaemon:
             workspace_path,
             task=task,
         )
+        recovery_command = self._protected_effect_recovery_command(
+            workspace_path=workspace_path,
+            task=task,
+            prompt=prompt,
+            attempt=attempt,
+            state=state,
+        )
+        if recovery_command is not None:
+            return recovery_command
         declared_provider = self._task_declared_implementation_provider(task)
         if self._task_uses_typed_local_execution(task):
             raise RuntimeError(
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
-        if self.implementation_command and not declared_provider:
-            return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command and not declared_provider:
-            return shlex.split(env_command)
 
         configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
@@ -48465,6 +50264,86 @@ class PortalImplementationDaemon:
                 f"Unsupported implementation provider {provider!r}; "
                 "automatic routing fails closed on unknown values"
             )
+        try:
+            route_plan = _configured_agent_implementation_route_plan(
+                Path(self.repo_root)
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"invalid sealed implementation route: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if route_plan and route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    enable_codex_fallback=False,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if not _grok_binary():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route requires the pinned Grok CLI",
+                    backoff_seconds=300,
+                )
+            if route_plan.authorization is not None:
+                if task is None or not prompt or attempt < 1:
+                    raise ImplementationRetryDeferred(
+                        "scoped fallback requires task/prompt/attempt equality",
+                        backoff_seconds=300,
+                    )
+                route_plan = self._bind_scoped_provider_invocation(
+                    route_plan,
+                    workspace_path=workspace_path,
+                    task=task,
+                    prompt=prompt,
+                    attempt=attempt,
+                )
+                if state is None:
+                    raise ImplementationRetryDeferred(
+                        "scoped fallback requires a durable attempt latch",
+                        backoff_seconds=300,
+                    )
+                self._latch_protected_attempt(state, route_plan)
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=route_plan.primary_model_id,
+                failure_receipt_nonce=secrets.token_hex(32),
+                allow_auth_unavailable_fallback=True,
+                fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+                route_plan=route_plan,
+                sealed_runner_path=(
+                    self._scoped_control_plane_launch.executable_path
+                    if self._scoped_control_plane_launch is not None
+                    else ""
+                ),
+            )
+        if self.implementation_command and not declared_provider:
+            return shlex.split(self.implementation_command)
+        if env_command and not declared_provider:
+            return shlex.split(env_command)
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
         prefer_grok = provider in {
@@ -48623,10 +50502,14 @@ class PortalImplementationDaemon:
             except Exception:
                 pass
             if auto_selection.decision is AutoProviderDecision.GROK:
+                legacy_route_plan = resolve_agent_implementation_route(
+                    default_route="legacy"
+                )
                 return _grok_cli_command(
                     workspace_path=workspace_path,
                     model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
                     failure_receipt_nonce=secrets.token_hex(32),
+                    route_plan=legacy_route_plan,
                 )
             if auto_selection.decision is AutoProviderDecision.CLAUDE:
                 if not automatic_family_allowed("claude"):
@@ -55460,6 +57343,55 @@ def main(argv: list[str] | None = None) -> None:
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
+
+
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
+    """Seal the generation that finished importing this daemon module."""
+
+    source_root = Path(__file__).resolve(strict=True).parents[3]
+    head_before, tree_before = (
+        agent_implementation_control_plane_source_generation(source_root)
+    )
+    parent = Path(
+        tempfile.mkdtemp(prefix="asref-imported-control-plane-")
+    )
+    try:
+        pin = materialize_agent_implementation_control_plane_capsule(
+            source_root=source_root,
+            capsule_parent=parent,
+            source_head=head_before,
+            source_tree=tree_before,
+        )
+        launch = seal_agent_implementation_control_plane_capsule(pin)
+        head_after, tree_after = (
+            agent_implementation_control_plane_source_generation(source_root)
+        )
+        if (head_after, tree_after) != (head_before, tree_before):
+            raise ValueError(
+                "accepted control-plane changed while import was sealed"
+            )
+        return pin, launch, parent
+    except Exception:
+        try:
+            shutil.rmtree(parent)
+        except OSError:
+            pass
+        raise
+
+
+try:
+    (
+        _IMPORTED_CONTROL_PLANE_CAPSULE,
+        _IMPORTED_CONTROL_PLANE_LAUNCH,
+        _IMPORTED_CONTROL_PLANE_TEMP_ROOT,
+    ) = _capture_imported_control_plane_generation()
+except (OSError, ValueError, subprocess.SubprocessError):
+    # Dirty development/import trees cannot be used for the protected route.
+    # Its constructor will retry only against the same on-disk generation and
+    # fail closed if no clean exact capsule can be proven.
+    _IMPORTED_CONTROL_PLANE_CAPSULE = None
+    _IMPORTED_CONTROL_PLANE_LAUNCH = None
+    _IMPORTED_CONTROL_PLANE_TEMP_ROOT = None
 
 
 if __name__ == "__main__":

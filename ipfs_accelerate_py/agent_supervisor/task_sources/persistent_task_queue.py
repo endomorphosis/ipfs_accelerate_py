@@ -455,8 +455,6 @@ class PersistentTaskQueue:
         updates must not implicitly reset a registered task's priority or
         track; those fields change only when a caller supplies them.
         """
-
-    def get_or_create(self, task_id: str, *, priority: str = "", track: str = "") -> TaskQueueEntry:
         key = self.resolve_key(task_id)
         if key not in self.entries:
             self.entries[key] = TaskQueueEntry(
