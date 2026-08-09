@@ -140,9 +140,18 @@ def test_duckdb_completion_requires_exact_live_post_merge_evidence(
     execution_receipt = DuckDBValidationExecutionReceipt.from_dict(
         queued.metadata["validation_proof"]["validation_execution_receipt"]
     )
-    assert queued.metadata["validation_proof"]["validation_receipt_ids"] == [
-        execution_receipt.receipt_id
-    ]
+    # Declared DuckDB merges now seal post_merge_evidence_input and therefore
+    # retain both the impact validation receipt id and the execution receipt.
+    receipt_ids = queued.metadata["validation_proof"]["validation_receipt_ids"]
+    assert execution_receipt.receipt_id in receipt_ids
+    post_merge = queued.metadata["validation_proof"].get("post_merge_evidence_input")
+    assert isinstance(post_merge, dict)
+    assert post_merge.get("packet_id")
+    impact_receipt_id = str(
+        post_merge.get("validation_receipt", {}).get("receipt_id") or ""
+    )
+    assert impact_receipt_id
+    assert impact_receipt_id in receipt_ids
     assert all(execution_receipt.validation_ids)
     assert all(
         item["validation_id"] for item in queued.metadata["validation_proof"]["results"]

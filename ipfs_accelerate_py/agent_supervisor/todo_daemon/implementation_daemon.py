@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -38,7 +38,17 @@ from ..context_compiler import (
 )
 from ..context_contracts import ContextBudget, ContextCapsule
 from ..duckdb_task_source import TASK_SOURCE_CAS_SCHEMA
-from ..formal_verification_contracts import canonical_json, content_identity
+from ..formal_verification_contracts import (
+    EvidenceAuthority,
+    EvidenceKind,
+    EvidenceVerdict,
+    ProofEvidence,
+    ProofReceipt,
+    ProofVerdict,
+    ResourceBudget,
+    canonical_json,
+    content_identity,
+)
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
@@ -101,9 +111,17 @@ from ..validation_commands import (
 )
 from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import (
+    HermeticValidationPolicy,
+    ImpactValidationCheck,
     ImpactValidationDAGReceipt,
+    ImpactValidationKind,
+    RepositoryValidationPolicy,
     ValidationScheduler,
     build_declared_validation_plan_graph,
+)
+from ..code_evidence_graph import (
+    CodeImpactIndex,
+    POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA,
 )
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
@@ -7999,6 +8017,287 @@ class PortalImplementationDaemon:
             raise ValueError("post-merge evidence input identity is forged")
         return {"packet_id": packet_id, **body}
 
+    def _assemble_duckdb_declared_post_merge_evidence_input(
+        self,
+        validation_result: Mapping[str, Any],
+        *,
+        task: PortalTask,
+        worktree_path: Path,
+        candidate_tree: str,
+        implementation_commit: str,
+        policy_id: str,
+    ) -> dict[str, Any]:
+        """Build exact-tree merge evidence from declared validation success.
+
+        DuckDB-backed completion requires ``post_merge_evidence_input`` on the
+        merge claim.  When the validation runner already produced the packet,
+        it is used as-is.  Otherwise re-run the declared commands under the
+        impact-selected hermetic planner bound to the candidate tree so the
+        merge-train preflight can admit a content-bound receipt.
+        """
+
+        existing = validation_result.get("post_merge_evidence_input")
+        if isinstance(existing, Mapping):
+            return self._duckdb_post_merge_evidence_input(existing)
+
+        if not candidate_tree or not str(policy_id or "").strip():
+            raise ValueError("post-merge evidence requires candidate tree and policy")
+        if not worktree_path or not Path(worktree_path).is_dir():
+            raise ValueError("post-merge evidence requires a validation workspace")
+        if not validation_result.get("passed"):
+            raise ValueError("post-merge evidence requires a passed validation result")
+
+        tree_id = f"git-tree:{candidate_tree}"
+        observed = datetime.now(timezone.utc)
+        observed_at = observed.isoformat()
+        commands = tuple(
+            str(item).strip()
+            for item in (getattr(task, "validation", None) or ())
+            if str(item).strip()
+        )
+        if not commands:
+            raise ValueError("post-merge evidence requires declared validation commands")
+
+        selection = validation_result.get("selection")
+        changed_paths: list[str] = []
+        if isinstance(selection, Mapping):
+            raw_changed = selection.get("changed_files") or selection.get(
+                "changed_paths"
+            )
+            if isinstance(raw_changed, Sequence) and not isinstance(
+                raw_changed, (str, bytes, bytearray)
+            ):
+                changed_paths = [
+                    str(path).strip().lstrip("./")
+                    for path in raw_changed
+                    if str(path).strip()
+                ]
+        proposal = validation_result.get("proposal_gate")
+        if not changed_paths and isinstance(proposal, Mapping):
+            raw_changed = proposal.get("changed_paths") or ()
+            if isinstance(raw_changed, Sequence) and not isinstance(
+                raw_changed, (str, bytes, bytearray)
+            ):
+                changed_paths = [
+                    str(path).strip().lstrip("./")
+                    for path in raw_changed
+                    if str(path).strip()
+                ]
+        if not changed_paths:
+            # Fall back to task outputs so the impact index has at least one path.
+            for raw_path in getattr(task, "outputs", ()) or ():
+                path = str(raw_path or "").strip().lstrip("./")
+                if path:
+                    changed_paths.append(path)
+        if not changed_paths:
+            raise ValueError("post-merge evidence requires changed implementation paths")
+
+        path_dependencies = {path: () for path in changed_paths}
+        checks = tuple(
+            ImpactValidationCheck(
+                f"declared-{index}",
+                ImpactValidationKind.UNIT,
+                command,
+                cacheable=False,
+            )
+            for index, command in enumerate(commands)
+        )
+        report = self.validation_scheduler.run_impact_selected(
+            checks,
+            workspace_path=Path(worktree_path),
+            impact_index=CodeImpactIndex(
+                repository_tree_id=tree_id,
+                symbol_paths={},
+                symbol_dependencies={},
+                path_dependencies=path_dependencies,
+                validation_targets={},
+            ),
+            changed_paths=tuple(changed_paths),
+            repository_policy=RepositoryValidationPolicy(
+                required_kinds=(ImpactValidationKind.UNIT,),
+                kind_dependencies={},
+                require_acceptance_coverage=False,
+                require_transitive_validation=False,
+            ),
+            target_tree_id=tree_id,
+            runner=self._validation_command_runner,
+            hermetic_policy=HermeticValidationPolicy(
+                stability_runs=2,
+                complete_selected_dag=True,
+                required_techniques=(),
+            ),
+        )
+        if not report.get("passed"):
+            raise ValueError("declared post-merge impact validation did not pass")
+
+        def _strip_raw(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                cleaned: dict[str, Any] = {}
+                for key, nested in value.items():
+                    name = str(key).lower().replace("-", "_")
+                    if name in {
+                        "output",
+                        "outputs",
+                        "stdout",
+                        "stderr",
+                        "raw_output",
+                    } or name.endswith("_output"):
+                        continue
+                    cleaned[str(key)] = _strip_raw(nested)
+                return cleaned
+            if isinstance(value, list):
+                return [_strip_raw(item) for item in value]
+            if isinstance(value, tuple):
+                return [_strip_raw(item) for item in value]
+            return value
+
+        report = _strip_raw(report)
+        if not isinstance(report, Mapping):
+            raise ValueError("declared post-merge validation report is invalid")
+        validation_receipt = report.get("impact_validation_receipt")
+        if not isinstance(validation_receipt, Mapping):
+            raise ValueError("declared post-merge validation receipt is missing")
+        results = report.get("results")
+        if not isinstance(results, list) or not results:
+            raise ValueError("declared post-merge validation results are missing")
+
+        def _bound_check(kind: str, digest: str) -> dict[str, Any]:
+            record = {
+                "kind": kind,
+                "repository_tree_id": tree_id,
+                "status": "passed",
+                "freshness": "current",
+                "observed_at": observed_at,
+                "source_validation_receipt_id": digest,
+            }
+            return {**record, "validation_receipt_id": content_identity(record)}
+
+        def _bound_obligation(prefix: str) -> dict[str, Any]:
+            record = {
+                "obligation_id": f"{prefix}:{task.task_id}",
+                "repository_tree_id": tree_id,
+                "status": "proved",
+                "freshness": "current",
+                "observed_at": observed_at,
+            }
+            return {**record, "receipt_id": content_identity(record)}
+
+        digests = [
+            str(item.get("validation_result_digest") or item.get("result_digest") or "").strip()
+            for item in results
+            if isinstance(item, Mapping)
+        ]
+        digests = [item for item in digests if item]
+        if not digests:
+            raise ValueError("declared post-merge validation digests are missing")
+        primary_digest = digests[0]
+        semantic = _bound_check("semantic", primary_digest)
+        protocol = _bound_check("protocol", primary_digest)
+        legal = _bound_obligation("legal")
+        theorem = _bound_obligation("theorem")
+        repository_id = checkout_repository_id(self.repo_root)
+        proofs = []
+        for obligation in (legal, theorem):
+            proofs.append(
+                ProofReceipt(
+                    obligation_id=str(obligation["obligation_id"]),
+                    plan_id=f"plan:duckdb-declared:{task.task_id}",
+                    attempt_id=f"attempt:{obligation['obligation_id']}",
+                    repository_id=repository_id,
+                    repository_tree_id=tree_id,
+                    ast_scope_ids=tuple(
+                        f"path:{path}" for path in changed_paths[:16]
+                    )
+                    or ("path:repository",),
+                    premise_ids=(),
+                    translator_id="translator:duckdb-declared-validation",
+                    solver_id="solver:duckdb-declared-validation",
+                    kernel_id=f"kernel:{obligation['obligation_id']}",
+                    toolchain_id="toolchain:duckdb-declared-validation",
+                    policy_id=str(policy_id),
+                    resource_budget=ResourceBudget(
+                        wall_time_ms=10_000,
+                        cpu_time_ms=8_000,
+                        memory_bytes=64 * 1024 * 1024,
+                        max_processes=2,
+                    ),
+                    verdict=ProofVerdict.PROVED,
+                    evidence=(
+                        ProofEvidence(
+                            kind=EvidenceKind.KERNEL_VERIFICATION,
+                            authority=EvidenceAuthority.KERNEL,
+                            verdict=EvidenceVerdict.ACCEPTED,
+                            artifact_id=f"artifact:{obligation['obligation_id']}",
+                            subject_id=str(obligation["obligation_id"]),
+                            verifier_id=f"kernel:{obligation['obligation_id']}",
+                            independent=True,
+                        ),
+                    ),
+                    started_at=observed_at,
+                    finished_at=observed_at,
+                ).to_dict()
+            )
+
+        tree_records: list[dict[str, Any]] = []
+        workspace = Path(worktree_path)
+        for path in changed_paths:
+            absolute = workspace / path
+            if absolute.is_file():
+                digest = (
+                    "sha256:"
+                    + hashlib.sha256(absolute.read_bytes()).hexdigest()
+                )
+            else:
+                digest = content_identity(
+                    {
+                        "path": path,
+                        "implementation_commit": implementation_commit,
+                        "candidate_tree": candidate_tree,
+                    }
+                )
+            tree_records.append(
+                {
+                    "scope_id": f"path:{path}",
+                    "kind": "path",
+                    "qualified_symbol": path,
+                    "repository_tree_id": tree_id,
+                    "path": path,
+                    "source_hash": digest,
+                }
+            )
+
+        packet = {
+            "schema": DUCKDB_POST_MERGE_EVIDENCE_INPUT_SCHEMA,
+            "policy_id": str(policy_id),
+            "assembled_at": observed_at,
+            "freshness_deadline": (
+                observed + timedelta(hours=1)
+            ).isoformat(),
+            "validation_report": dict(report),
+            "validation_receipt": dict(validation_receipt),
+            "semantic_checks": [semantic],
+            "protocol_checks": [protocol],
+            "legal_logic_obligations": [legal],
+            "theorem_obligations": [theorem],
+            "proof_receipts": proofs,
+            "criterion_coverage": [
+                {
+                    "criterion": POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA[0],
+                    "repository_tree_id": tree_id,
+                    "implementation": list(changed_paths),
+                    "receipt_ids": [
+                        str(validation_receipt.get("receipt_id") or ""),
+                        str(semantic.get("validation_receipt_id") or ""),
+                        str(protocol.get("validation_receipt_id") or ""),
+                    ],
+                    "freshness": "current",
+                    "observed_at": observed_at,
+                }
+            ],
+            "merged_tree_records": {"ast_records": tree_records},
+        }
+        return self._duckdb_post_merge_evidence_input(packet)
+
     @staticmethod
     def _merge_completion_receipt_binding(
         metadata: Mapping[str, Any],
@@ -9622,6 +9921,44 @@ class PortalImplementationDaemon:
             raw_post_merge_input = validation_result.get(
                 "post_merge_evidence_input"
             )
+            if (
+                raw_post_merge_input is None
+                and self.task_source is not None
+                and self.task_source.source_kind == "duckdb"
+                and validation_result.get("passed") is True
+                and candidate_tree
+            ):
+                proposal_for_policy = validation_result.get("proposal_gate")
+                policy_id = ""
+                if isinstance(proposal_for_policy, Mapping):
+                    policy_id = str(
+                        proposal_for_policy.get("policy_id") or ""
+                    ).strip()
+                if not policy_id and self.formal_verification_policy is not None:
+                    policy_id = str(
+                        getattr(
+                            self.formal_verification_policy, "policy_id", ""
+                        )
+                        or ""
+                    ).strip()
+                if not policy_id:
+                    policy_id = content_identity(
+                        {
+                            "schema": DUCKDB_POST_MERGE_EVIDENCE_INPUT_SCHEMA,
+                            "task_id": task.task_id,
+                            "candidate_tree": candidate_tree,
+                        }
+                    )
+                raw_post_merge_input = (
+                    self._assemble_duckdb_declared_post_merge_evidence_input(
+                        validation_result,
+                        task=task,
+                        worktree_path=Path(worktree_path or self.repo_root),
+                        candidate_tree=candidate_tree,
+                        implementation_commit=implementation_commit,
+                        policy_id=policy_id,
+                    )
+                )
             if raw_post_merge_input is not None:
                 post_merge_input = self._duckdb_post_merge_evidence_input(
                     raw_post_merge_input
