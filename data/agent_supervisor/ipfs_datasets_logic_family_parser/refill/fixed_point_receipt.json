@@ -1,0 +1,72 @@
+{
+  "content_digest": "sha256:a764938c6595989ec35cbf02812f1b69f91721b1bb3e1f6b6ea4586eb4827235",
+  "derived_goal_ids": [],
+  "gap_ledger_entry_count": 0,
+  "goal_id": "LFP-G090",
+  "interface": "ObjectiveRefillFixedPoint@1",
+  "is_fixed_point": true,
+  "open_task_ids": [],
+  "policy": {
+    "append_only": true,
+    "content_addressed": true,
+    "cooldown_seconds": 3600,
+    "empty_scan_may_claim_completion": false,
+    "max_goals_per_epoch": 8,
+    "max_open_tasks": 48,
+    "max_refinement_depth": 3,
+    "max_tasks_per_epoch": 24,
+    "max_unchanged_failure_retries": 2,
+    "min_open_tasks": 8,
+    "mutate_seed_board": false,
+    "schema_version": "logic-gap-refill-policy/v1",
+    "scoped_output_roots": [
+      "ipfs_datasets_py/",
+      "data/agent_supervisor/ipfs_datasets_logic_family_parser/"
+    ],
+    "seed_tasks_are_immutable": true,
+    "unscoped_codebase_refill_allowed": false
+  },
+  "program_id": "ipfs-datasets-logic-family-parser-v1",
+  "refill_authorizes_completion": false,
+  "refill_authorizes_mutation": false,
+  "refill_authorizes_seed_board_edit": false,
+  "scan_a": {
+    "content_digest": "sha256:0003ddc2e30af18c40231405b2757aeeee2fd462e6b7f45b94297204be4a28ad",
+    "disposition": "empty_scan",
+    "epoch_index": 0,
+    "new_task_count": 0
+  },
+  "scan_b": {
+    "content_digest": "sha256:34ebf5651b8e31d83ad63569a13c0cdc83304c23a18cd812a83b6555ee9cd57e",
+    "disposition": "empty_scan",
+    "epoch_index": 1,
+    "new_task_count": 0
+  },
+  "schema_version": "logic-gap-refill-fixed-point/v1",
+  "seed_board_digest": "sha256:5fbb35ccc51a3586f0acc2985d6ad7144650e0db55c06e5c58b44bf34130e8a5",
+  "seed_goal_count": 11,
+  "seed_goal_ids": [
+    "LFP-G000",
+    "LFP-G010",
+    "LFP-G020",
+    "LFP-G030",
+    "LFP-G040",
+    "LFP-G050",
+    "LFP-G060",
+    "LFP-G070",
+    "LFP-G080",
+    "LFP-G090",
+    "LFP-G100"
+  ],
+  "task_id": "LFP-046",
+  "tree_identity": {
+    "config_digest": "sha256:f7f24e60e51ba7833fd081966a1b542fe85bf32414700d61db1f579380b20e2f",
+    "content_digest": "sha256:9f72bb4071c8d05f2ba9c15c64e84c227907d9cb2c3134a193a4a0984b253e89",
+    "corpus_digest": "sha256:fe8d56bfb3f05272470a6f3dbba3db118778fccf326753c5858c087ab01e50f9",
+    "revision": "",
+    "schema_version": "logic-gap-refill-tree-identity/v1",
+    "source_digest": "sha256:4e7872803e65d0a67655511e0c7b48c24c710e1068b2641e91458142c6c4feb1",
+    "tree_id": "9f72bb4071c8d05f"
+  },
+  "version": "1.0.0"
+}
