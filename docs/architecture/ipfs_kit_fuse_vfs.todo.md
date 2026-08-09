@@ -630,7 +630,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-703 Add optional FUSE packaging, guarded imports, classifiers, and wheel probes
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
