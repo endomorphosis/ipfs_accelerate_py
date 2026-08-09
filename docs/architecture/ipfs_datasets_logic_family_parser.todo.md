@@ -850,7 +850,7 @@ validation and evidence contract.
 
 ## LFP-027 Implement HyperLTL and hyperproperty syntax and lowerings
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
