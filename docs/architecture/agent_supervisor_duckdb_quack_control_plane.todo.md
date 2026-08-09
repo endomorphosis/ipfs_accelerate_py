@@ -915,7 +915,7 @@ this bootstrap is active.
 
 ## DQP-029 Add database-backed Python, CLI, MCP, status, health, logs, and lifecycle operations
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
