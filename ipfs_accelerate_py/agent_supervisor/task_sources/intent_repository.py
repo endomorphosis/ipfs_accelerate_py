@@ -159,8 +159,6 @@ _PROJECTION_TABLES: Final[tuple[str, ...]] = (
     "task_attempts",
     "completion_receipts",
     "evidence_nodes",
-    "validation_runs",
-    "validation_results",
 )
 
 # Shared tables: only intent-owned rows are cleared (not the whole table).
@@ -3197,6 +3195,8 @@ class IntentRepository:
                 """,
                 [INTENT_STREAM_ID],
             ).fetchall()
+            replayed_validation_run_ids: set[str] = set()
+            replayed_validation_result_ids: set[str] = set()
             # Preserve non-intent domain events; only rebuild intent projections.
             for table in _PROJECTION_TABLES:
                 try:
@@ -3223,11 +3223,41 @@ class IntentRepository:
                 payload = body_wrapper.get("body")
                 if not isinstance(payload, dict):
                     payload = body_wrapper
+                if event_type == IntentEventType.VALIDATION_RECORDED.value:
+                    run_id = str(payload.get("run_id") or "")
+                    result_id = str(payload.get("result_id") or "")
+                    if run_id:
+                        replayed_validation_run_ids.add(run_id)
+                    if result_id:
+                        replayed_validation_result_ids.add(result_id)
                 self._apply_event_payload(
                     connection,
                     event_type=event_type,
                     payload=payload,
                 )
+            # DuckDB's immediate unique-index checks can reject a delete and
+            # reinsert of the same ``(run_id, ordinal)`` in one transaction.
+            # Validation projections are therefore updated in place during
+            # replay, then rows absent from the admitted event stream are
+            # removed before this transaction commits.
+            for row in connection.execute(
+                "SELECT result_id FROM validation_results"
+            ).fetchall():
+                result_id = str(row[0])
+                if result_id not in replayed_validation_result_ids:
+                    connection.execute(
+                        "DELETE FROM validation_results WHERE result_id = ?",
+                        [result_id],
+                    )
+            for row in connection.execute(
+                "SELECT run_id FROM validation_runs"
+            ).fetchall():
+                run_id = str(row[0])
+                if run_id not in replayed_validation_run_ids:
+                    connection.execute(
+                        "DELETE FROM validation_runs WHERE run_id = ?",
+                        [run_id],
+                    )
         return self.snapshot()
 
     def _apply_event_payload(
@@ -3679,14 +3709,19 @@ class IntentRepository:
             tcid = str(payload.get("task_cid") or "")
             if run_id:
                 connection.execute(
-                    "DELETE FROM validation_runs WHERE run_id = ?", [run_id]
-                )
-                connection.execute(
                     """
                     INSERT INTO validation_runs (
                         run_id, task_cid, attempt_id, started_at, finished_at,
                         status, command_digest, body_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (run_id) DO UPDATE SET
+                        task_cid = EXCLUDED.task_cid,
+                        attempt_id = EXCLUDED.attempt_id,
+                        started_at = EXCLUDED.started_at,
+                        finished_at = EXCLUDED.finished_at,
+                        status = EXCLUDED.status,
+                        command_digest = EXCLUDED.command_digest,
+                        body_json = EXCLUDED.body_json
                     """,
                     [
                         run_id,
@@ -3713,15 +3748,17 @@ class IntentRepository:
                 )
             if result_id:
                 connection.execute(
-                    "DELETE FROM validation_results WHERE result_id = ?",
-                    [result_id],
-                )
-                connection.execute(
                     """
                     INSERT INTO validation_results (
                         result_id, run_id, task_cid, ordinal, outcome,
                         evidence_digest, body_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (run_id, ordinal) DO UPDATE SET
+                        result_id = EXCLUDED.result_id,
+                        task_cid = EXCLUDED.task_cid,
+                        outcome = EXCLUDED.outcome,
+                        evidence_digest = EXCLUDED.evidence_digest,
+                        body_json = EXCLUDED.body_json
                     """,
                     [
                         result_id,
