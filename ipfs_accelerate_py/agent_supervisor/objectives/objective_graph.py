@@ -1993,6 +1993,70 @@ class ObjectiveFinding:
 
 
 @dataclass(frozen=True)
+class ObjectiveTaskRenderProfile:
+    """Opt-in strict metadata and execution policy for generated task cards.
+
+    Objective boards historically accepted the generic metadata emitted by
+    :func:`render_task_block`.  Sealed boards can require additional execution
+    fields and a narrower persisted status policy.  Keeping that policy in an
+    explicit profile preserves the legacy rendering contract for callers that
+    do not opt in while allowing configured refills to fail closed before a
+    non-conforming card reaches the taskboard.
+    """
+
+    resource_stage: str
+    implementation_timeout_seconds: int
+    symbolic_first: bool
+    llm_context_budget_bytes: int
+    estimated_tokens_default: int = 1
+    allowed_statuses: tuple[str, ...] = ()
+    require_schedulable: bool | None = None
+
+    def __post_init__(self) -> None:
+        resource_stage = str(self.resource_stage or "").strip()
+        if (
+            not resource_stage
+            or "\x00" in resource_stage
+            or "\n" in resource_stage
+            or "\r" in resource_stage
+        ):
+            raise ValueError("resource_stage must be nonempty single-line text")
+        object.__setattr__(self, "resource_stage", resource_stage)
+
+        for name in (
+            "implementation_timeout_seconds",
+            "llm_context_budget_bytes",
+            "estimated_tokens_default",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if not isinstance(self.symbolic_first, bool):
+            raise ValueError("symbolic_first must be boolean")
+        if self.require_schedulable is not None and not isinstance(
+            self.require_schedulable,
+            bool,
+        ):
+            raise ValueError("require_schedulable must be boolean or None")
+
+        raw_statuses = (
+            tuple(split_terms(self.allowed_statuses))
+            if isinstance(self.allowed_statuses, str)
+            else tuple(self.allowed_statuses)
+        )
+        statuses = tuple(
+            str(value).strip().casefold().replace("-", "_").replace(" ", "_")
+            for value in raw_statuses
+            if str(value).strip()
+        )
+        if len(statuses) != len(raw_statuses):
+            raise ValueError("allowed_statuses must contain nonempty values")
+        if len(statuses) != len(set(statuses)):
+            raise ValueError("allowed_statuses must not contain duplicates")
+        object.__setattr__(self, "allowed_statuses", statuses)
+
+
+@dataclass(frozen=True)
 class ObjectiveTaskRecord:
     """A generated todo task and its bundle metadata."""
 
@@ -9919,6 +9983,111 @@ def _objective_task_blocks(
     return blocks
 
 
+def _infer_objective_task_render_profile_from_todo(
+    todo_text: str,
+    *,
+    task_prefix: str,
+) -> ObjectiveTaskRenderProfile | None:
+    """Infer an opt-in profile from a board's canonical seed-card contract.
+
+    Legacy objective boards do not declare the four strict execution fields,
+    so their output remains unchanged.  When the first canonical task carries
+    the complete contract, existing complete cards provide deterministic
+    refill defaults.  Operational cards with a different schema can coexist
+    without weakening the inferred canonical profile.
+    """
+
+    blocks = _objective_task_blocks(todo_text, task_prefix=task_prefix)
+    if not blocks:
+        return None
+    strict_fields = (
+        "resource stage",
+        "implementation timeout seconds",
+        "symbolic first",
+        "llm context budget bytes",
+    )
+    first = blocks[0]
+    if any(not first.metadata.get(name) for name in strict_fields):
+        return None
+
+    strict_blocks = [
+        block
+        for block in blocks
+        if all(block.metadata.get(name) for name in strict_fields)
+    ]
+    for block in strict_blocks:
+        duplicated = [
+            name
+            for name in (*strict_fields, "estimated tokens")
+            if len(block.metadata.get(name, ())) != 1
+        ]
+        if duplicated:
+            raise ValueError(
+                f"{block.task_id} has ambiguous strict task metadata: "
+                f"{duplicated}"
+            )
+
+    def values(name: str) -> list[str]:
+        return [str(block.one(name) or "").strip() for block in strict_blocks]
+
+    def positive_values(name: str) -> list[int]:
+        parsed: list[int] = []
+        for block, raw_value in zip(
+            strict_blocks,
+            values(name),
+            strict=True,
+        ):
+            try:
+                value = int(raw_value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"{block.task_id} has invalid strict task metadata: {name}"
+                ) from exc
+            if value < 1:
+                raise ValueError(
+                    f"{block.task_id} has invalid strict task metadata: {name}"
+                )
+            parsed.append(value)
+        return parsed
+
+    def stable_mode(items: Sequence[Any]) -> Any:
+        counts: dict[Any, tuple[int, int]] = {}
+        for index, item in enumerate(items):
+            count, first_index = counts.get(item, (0, index))
+            counts[item] = (count + 1, first_index)
+        return min(
+            counts,
+            key=lambda item: (-counts[item][0], counts[item][1]),
+        )
+
+    stages = values("resource stage")
+    if any(
+        not value or "\x00" in value or "\n" in value or "\r" in value
+        for value in stages
+    ):
+        raise ValueError("strict taskboard resource stages must be single-line")
+    symbolic_values = [value.casefold() for value in values("symbolic first")]
+    if set(symbolic_values) not in ({"true"}, {"false"}):
+        raise ValueError(
+            "strict taskboard must declare one consistent Symbolic first policy"
+        )
+    timeout_values = positive_values("implementation timeout seconds")
+    llm_budget_values = positive_values("llm context budget bytes")
+    estimated_values = positive_values("estimated tokens")
+    resource_stage = (
+        "implementation" if "implementation" in stages else stable_mode(stages)
+    )
+    return ObjectiveTaskRenderProfile(
+        resource_stage=resource_stage,
+        implementation_timeout_seconds=stable_mode(timeout_values),
+        symbolic_first=symbolic_values[0] == "true",
+        llm_context_budget_bytes=stable_mode(llm_budget_values),
+        estimated_tokens_default=stable_mode(estimated_values),
+        allowed_statuses=("todo", "completed"),
+        require_schedulable=True,
+    )
+
+
 def _normalized_requirement_set(value: str | Sequence[str]) -> frozenset[str] | None:
     raw_values = split_terms(value) if isinstance(value, str) else list(value)
     normalized = [
@@ -10501,26 +10670,88 @@ def apply_objective_finding_execution_policy(
     )
 
 
+def _coerce_objective_task_render_profile(
+    value: ObjectiveTaskRenderProfile | Mapping[str, Any] | None,
+) -> ObjectiveTaskRenderProfile | None:
+    if value is None or isinstance(value, ObjectiveTaskRenderProfile):
+        return value
+    if not isinstance(value, Mapping):
+        raise TypeError(
+            "task_render_profile must be an ObjectiveTaskRenderProfile, "
+            "mapping, or None"
+        )
+    normalized: dict[str, Any] = {}
+    for raw_name, field_value in value.items():
+        name = normalize_field_key(str(raw_name))
+        if name in normalized:
+            raise ValueError(
+                f"task_render_profile contains duplicate field {name!r}"
+            )
+        normalized[name] = field_value
+    allowed = {
+        "resource_stage",
+        "implementation_timeout_seconds",
+        "symbolic_first",
+        "llm_context_budget_bytes",
+        "estimated_tokens_default",
+        "allowed_statuses",
+        "require_schedulable",
+    }
+    unknown = sorted(set(normalized) - allowed)
+    if unknown:
+        raise ValueError(
+            f"task_render_profile contains unknown fields: {unknown}"
+        )
+    statuses = normalized.get("allowed_statuses", ())
+    if isinstance(statuses, str):
+        statuses = tuple(split_terms(statuses))
+    else:
+        statuses = tuple(statuses or ())
+    normalized["allowed_statuses"] = statuses
+    return ObjectiveTaskRenderProfile(**normalized)
+
+
+def _normalized_protected_output_paths(
+    values: Iterable[str | Path],
+) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            normalized
+            for value in values
+            for normalized in [normalize_identity_path(value)]
+            if normalized
+        )
+    )
+
+
+def _objective_output_is_protected(
+    value: str | Path,
+    protected_output_paths: Iterable[str | Path],
+) -> bool:
+    candidate = normalize_identity_path(value)
+    return bool(candidate) and any(
+        candidate == protected or candidate.startswith(protected + "/")
+        for protected in _normalized_protected_output_paths(
+            protected_output_paths
+        )
+    )
+
+
 def project_protected_objective_outputs(
     finding: ObjectiveFinding,
     protected_output_paths: Iterable[str | Path] = (),
 ) -> ObjectiveFinding:
-    """Move exact protected edit targets onto the read-only context surface.
+    """Move protected edit targets onto the read-only context surface.
 
     Objective heaps are supervisor-owned control-plane inputs.  A goal can
     legitimately cite another protected control-plane file as evidence, but a
     generated implementation task must never advertise that file as an output
-    or predicted edit target.  Keep exact normalized matches in
-    ``context_paths`` so planners can still read the evidence without crossing
-    the implementation write boundary.
+    or predicted edit target.  A protected directory/prefix also protects every
+    descendant.  Keep normalized matches in ``context_paths`` so planners can
+    still read the evidence without crossing the implementation write boundary.
     """
 
-    protected = {
-        normalized
-        for value in protected_output_paths
-        for normalized in [normalize_identity_path(value)]
-        if normalized
-    }
+    protected = _normalized_protected_output_paths(protected_output_paths)
     if not protected:
         return finding
 
@@ -10533,7 +10764,7 @@ def project_protected_objective_outputs(
             normalized = normalize_identity_path(rendered)
             if not normalized:
                 continue
-            if normalized in protected:
+            if _objective_output_is_protected(normalized, protected):
                 if normalized not in protected_context:
                     protected_context.append(normalized)
                 continue
@@ -10561,6 +10792,134 @@ def project_protected_objective_outputs(
     )
 
 
+def admit_objective_task_block(
+    block: str,
+    *,
+    task_id: str,
+    task_render_profile: ObjectiveTaskRenderProfile
+    | Mapping[str, Any]
+    | None = None,
+    protected_output_paths: Iterable[str | Path] = (),
+) -> dict[str, str]:
+    """Validate one rendered objective task before taskboard append.
+
+    The admission boundary deliberately parses the rendered Markdown instead
+    of trusting its source objects.  This catches duplicate last-wins metadata,
+    verifies strict profile fields, and provides defense in depth against a
+    protected control path reappearing on any owned-path surface.
+    """
+
+    if not isinstance(block, str) or not block.strip():
+        raise ValueError("objective task block must be nonempty text")
+    normalized_task_id = str(task_id or "").strip()
+    if not normalized_task_id:
+        raise ValueError("task_id must be nonempty")
+    heading = re.compile(
+        rf"^##[ \t]+{re.escape(normalized_task_id)}(?=[ \t]|$).*$",
+        flags=re.MULTILINE,
+    )
+    markdown_task_headings = re.findall(
+        r"^##(?:[ \t]+.*)?$",
+        block,
+        flags=re.MULTILINE,
+    )
+    if len(markdown_task_headings) != 1 or len(heading.findall(block)) != 1:
+        raise ValueError(
+            "objective task block must contain exactly one Markdown task "
+            "heading, and it must match task_id"
+        )
+
+    metadata: dict[str, str] = {}
+    canonical_metadata: dict[str, str] = {}
+    for line in block.splitlines():
+        match = re.match(
+            r"^-[ \t]+(?P<name>[^:\r\n]+):(?P<value>.*)$",
+            line,
+        )
+        if match is None:
+            continue
+        name = " ".join(match.group("name").strip().casefold().split())
+        canonical_name = normalize_field_key(name)
+        if not canonical_name:
+            raise ValueError("objective task block contains an empty metadata field")
+        if canonical_name in canonical_metadata:
+            raise ValueError(
+                "objective task block contains duplicate metadata field "
+                f"{canonical_name.replace('_', ' ')!r}"
+            )
+        value = match.group("value").strip()
+        metadata[name] = value
+        canonical_metadata[canonical_name] = value
+
+    def field(name: str) -> str:
+        return canonical_metadata.get(normalize_field_key(name), "")
+
+    profile = _coerce_objective_task_render_profile(task_render_profile)
+    if profile is not None:
+        expected = {
+            "resource stage": profile.resource_stage,
+            "implementation timeout seconds": str(
+                profile.implementation_timeout_seconds
+            ),
+            "symbolic first": str(profile.symbolic_first).lower(),
+            "llm context budget bytes": str(profile.llm_context_budget_bytes),
+        }
+        for name, value in expected.items():
+            if field(name) != value:
+                raise ValueError(
+                    f"objective task block must declare {name}: {value}"
+                )
+        try:
+            estimated_tokens = int(field("estimated tokens"))
+        except ValueError as exc:
+            raise ValueError(
+                "objective task block must declare positive estimated tokens"
+            ) from exc
+        if estimated_tokens < 1:
+            raise ValueError(
+                "objective task block must declare positive estimated tokens"
+            )
+        if profile.allowed_statuses:
+            status = (
+                field("status")
+                .casefold()
+                .replace("-", "_")
+                .replace(" ", "_")
+            )
+            if status not in profile.allowed_statuses:
+                raise ValueError(
+                    "objective task block status is not admitted by the render "
+                    f"profile: {status!r}"
+                )
+        if profile.require_schedulable is not None:
+            expected_schedulable = str(profile.require_schedulable).lower()
+            if field("is schedulable") != expected_schedulable:
+                raise ValueError(
+                    "objective task block must declare Is schedulable: "
+                    f"{expected_schedulable}"
+                )
+
+    protected = _normalized_protected_output_paths(protected_output_paths)
+    for field_name in (
+        "outputs",
+        EVIDENCE_OUTPUTS_METADATA_KEY,
+        "predicted files",
+        "changed paths",
+    ):
+        for path in split_terms(field(field_name)):
+            if profile is not None and normalize_evidence_output_path(path) != path:
+                raise ValueError(
+                    f"objective task block {field_name} contains unsafe path "
+                    f"{path!r}"
+                )
+            if _objective_output_is_protected(path, protected):
+                raise ValueError(
+                    f"objective task block {field_name} owns protected path "
+                    f"{path!r}"
+                )
+    return metadata
+
+
 def render_task_block(
     *,
     task_id: str,
@@ -10572,7 +10931,14 @@ def render_task_block(
     evidence_outputs: Sequence[str] | None = None,
     board_namespace: str = "objective-graph",
     protected_output_paths: Iterable[str | Path] = (),
+    task_render_profile: ObjectiveTaskRenderProfile
+    | Mapping[str, Any]
+    | None = None,
 ) -> str:
+    profile = _coerce_objective_task_render_profile(task_render_profile)
+    protected_output_paths = _normalized_protected_output_paths(
+        (*tuple(protected_output_paths), discovery_output_path)
+    )
     finding = project_protected_objective_outputs(
         finding,
         protected_output_paths,
@@ -10600,9 +10966,21 @@ def render_task_block(
     if evidence_outputs is None:
         evidence_outputs = objective_finding_evidence_output_paths(
             finding,
-            excluded_paths=(discovery_output_path,),
+            excluded_paths=protected_output_paths,
         )
-    unique_evidence_outputs = _unique_strings(evidence_outputs)
+    protected_evidence_outputs = [
+        path
+        for path in _unique_strings(evidence_outputs)
+        if _objective_output_is_protected(path, protected_output_paths)
+    ]
+    unique_evidence_outputs = [
+        path
+        for path in _unique_strings(evidence_outputs)
+        if path not in protected_evidence_outputs
+    ]
+    context_paths = _unique_strings(
+        [*finding.context_paths, *protected_evidence_outputs]
+    )
     evidence_outputs_line = (
         f"\n- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: "
         + ", ".join(unique_evidence_outputs)
@@ -10656,6 +11034,18 @@ def render_task_block(
     completion_task_bindings = _unique_strings(
         finding.completion_task_bindings
     )
+    estimated_tokens = max(0, _parse_int(finding.estimated_tokens, 0))
+    profile_metadata = ""
+    if profile is not None:
+        if estimated_tokens < 1:
+            estimated_tokens = profile.estimated_tokens_default
+        profile_metadata = (
+            f"\n- Resource stage: {profile.resource_stage}"
+            "\n- Implementation timeout seconds: "
+            f"{profile.implementation_timeout_seconds}"
+            f"\n- Symbolic first: {str(profile.symbolic_first).lower()}"
+            f"\n- LLM context budget bytes: {profile.llm_context_budget_bytes}"
+        )
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     acceptance = (
         (
@@ -10697,7 +11087,7 @@ def render_task_block(
 - Conflict policy: {finding.conflict_policy}
 - Predicted files: {", ".join(finding.predicted_files or finding.outputs)}
 - Changed paths: {", ".join(finding.changed_paths)}
-- Context paths: {", ".join(finding.context_paths)}
+- Context paths: {", ".join(context_paths)}
 - AST symbols: {", ".join(finding.ast_symbols)}
 - Interfaces: {", ".join(finding.interfaces)}
 - Submodules: {", ".join(finding.submodules)}
@@ -10713,9 +11103,9 @@ def render_task_block(
 - Preconditions: {", ".join(preconditions)}
 - Effects: {", ".join(effects)}
 - Evidence subset: {", ".join(evidence_subset)}
-- Resource class: {finding.resource_class or "cpu-medium"}
+- Resource class: {finding.resource_class or "cpu-medium"}{profile_metadata}
 - Token class: {finding.token_class or "medium"}
-- Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
+- Estimated tokens: {estimated_tokens}
 - Context budget tokens: 4096
 - Provider role: grok, codex-review
 - Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
@@ -10746,7 +11136,14 @@ def render_task_block(
     # mandatory ``git diff --check`` validation.  Normalize the complete block
     # rather than relying on every future interpolated field to special-case
     # an empty value.
-    return "\n".join(line.rstrip() for line in block.splitlines()) + "\n"
+    rendered = "\n".join(line.rstrip() for line in block.splitlines()) + "\n"
+    admit_objective_task_block(
+        rendered,
+        task_id=task_id,
+        task_render_profile=profile,
+        protected_output_paths=protected_output_paths,
+    )
+    return rendered
 
 
 def write_bundle_shards(
@@ -11085,6 +11482,9 @@ def generate_objective_todos(
     evidence_policy_id: str = "",
     trust_recorded_external_completion: bool = True,
     protected_output_paths: Iterable[str | Path] = (),
+    task_render_profile: ObjectiveTaskRenderProfile
+    | Mapping[str, Any]
+    | None = None,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -11092,12 +11492,15 @@ def generate_objective_todos(
     # pass a Markdown heading prefix (``"## AUTO-"``).  Everything below this
     # point deals only in canonical display-ID prefixes.
     task_prefix = normalize_task_id_prefix(task_prefix)
-    protected_output_paths = tuple(
-        dict.fromkeys(
-            normalized
-            for value in protected_output_paths
-            for normalized in [normalize_identity_path(value)]
-            if normalized
+    task_render_profile = _coerce_objective_task_render_profile(
+        task_render_profile
+    )
+    protected_output_paths = _normalized_protected_output_paths(
+        (
+            *tuple(protected_output_paths),
+            repo_relative_path(repo_root, todo_path),
+            repo_relative_path(repo_root, objective_path),
+            discovery_output_path,
         )
     )
     records: list[ObjectiveTaskRecord] = []
@@ -11219,7 +11622,12 @@ def generate_objective_todos(
     for finding in [*findings, *reprojection_findings]:
         if not execution_allowed(finding):
             continue
-        projected = apply_objective_finding_execution_policy(finding)
+        projected = apply_objective_finding_execution_policy(
+            project_protected_objective_outputs(
+                finding,
+                protected_output_paths,
+            )
+        )
         key = (
             projected.fingerprint,
             projected.dedupe_key,
@@ -11236,6 +11644,13 @@ def generate_objective_todos(
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
         board_namespace = taskboard_namespace_from_todo(todo_text, todo_path)
+        if task_render_profile is None:
+            task_render_profile = (
+                _infer_objective_task_render_profile_from_todo(
+                    todo_text,
+                    task_prefix=task_prefix,
+                )
+            )
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
         objective_goals = parse_goal_heap(
             objective_path.read_text(encoding="utf-8")
@@ -11302,7 +11717,7 @@ def generate_objective_todos(
         for finding in reprojection_candidates:
             evidence_outputs = objective_finding_evidence_output_paths(
                 finding,
-                excluded_paths=(discovery_output_path,),
+                excluded_paths=protected_output_paths,
             )
             if not evidence_outputs:
                 continue
@@ -11649,7 +12064,7 @@ def generate_objective_todos(
             )
             evidence_outputs = objective_finding_evidence_output_paths(
                 finding,
-                excluded_paths=(discovery_output_path,),
+                excluded_paths=protected_output_paths,
             )
             identity = objective_finding_task_identity(
                 task_id,
@@ -11745,6 +12160,7 @@ def generate_objective_todos(
                 evidence_outputs=evidence_outputs,
                 board_namespace=board_namespace,
                 protected_output_paths=protected_output_paths,
+                task_render_profile=task_render_profile,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             materialized_task_ids.add(task_id)
@@ -11797,6 +12213,7 @@ def generate_objective_todos(
                     evidence_outputs=record.evidence_outputs or (),
                     board_namespace=board_namespace,
                     protected_output_paths=protected_output_paths,
+                    task_render_profile=task_render_profile,
                 )
                 rerendered_records.append(
                     replace(
