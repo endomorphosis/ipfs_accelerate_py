@@ -636,7 +636,7 @@ this bootstrap is active.
 
 ## DQP-020 Persist repository snapshots, files, parser runs, AST nodes, and symbols
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
