@@ -977,7 +977,7 @@ this bootstrap is active.
 
 ## DQP-031 Migrate run registry, idempotency, audit, and self-improvement epochs
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
