@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import shlex
 import subprocess
@@ -13,12 +14,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
     command_runner_from_legacy_function,
     run_validation_commands,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-    implementation_daemon as daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -42,14 +43,14 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHONPATH_ENV,
     VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
     ValidationRuntimeError,
-    build_validation_environment,
     build_hermetic_validation_runtime,
+    build_validation_environment,
     canonical_validation_environment_contract,
     sealed_validation_python_runner,
     validation_argv_command,
     validation_environment_for_runner,
-    validation_python_launcher_environment,
     validation_python_executable,
+    validation_python_launcher_environment,
     validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
@@ -79,6 +80,57 @@ def _sealed_daemon_environment() -> dict[str, str]:
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
     )
+
+
+def _generic_authority_environment(
+    workspace: Path,
+    commands: list[str],
+) -> dict[str, str]:
+    """Build the closed generic authority binding used by direct-runner tests."""
+
+    target_commit = _git(workspace, "rev-parse", "HEAD")
+    target_tree = _git(workspace, "rev-parse", "HEAD^{tree}")
+    task_id = "TEST-GENERIC-AUTHORITY"
+    task_cid = daemon_module.content_identity(
+        {"test_generic_authority_task": task_id}
+    )
+    scope = "pre_merge"
+    plan_body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-validation-command-plan@2"
+        ),
+        "authority_profile": "generic_workspace_only@1",
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "scope": scope,
+        "commands": list(commands),
+        "target_commit": target_commit,
+        "target_tree": target_tree,
+        "git_common_anchor": "",
+        "git_dir": "",
+    }
+    return {
+        **_sealed_daemon_environment(),
+        daemon_module._AUTHORITY_VALIDATION_SCOPE_ENV: scope,
+        daemon_module._AUTHORITY_VALIDATION_PROFILE_ENV: (
+            "generic_workspace_only@1"
+        ),
+        daemon_module._AUTHORITY_VALIDATION_COMMANDS_ENV: json.dumps(
+            commands,
+            separators=(",", ":"),
+        ),
+        daemon_module._AUTHORITY_VALIDATION_TASK_ENV: task_id,
+        daemon_module._AUTHORITY_VALIDATION_TASK_CID_ENV: task_cid,
+        daemon_module._AUTHORITY_VALIDATION_PLAN_ENV: (
+            daemon_module.content_identity(plan_body)
+        ),
+        daemon_module._AUTHORITY_VALIDATION_TARGET_COMMIT_ENV: target_commit,
+        daemon_module._AUTHORITY_VALIDATION_TARGET_TREE_ENV: target_tree,
+        daemon_module._AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR_ENV: "",
+        daemon_module._AUTHORITY_VALIDATION_GIT_DIR_ENV: "",
+        daemon_module._AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV: "1",
+    }
 
 
 def test_authority_validation_rejects_remote_docker_context_before_probes(
@@ -207,7 +259,8 @@ def test_authority_validation_docker_argv_enforces_local_bounded_read_only_contr
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = (tmp_path / "workspace").resolve()
-    workspace.mkdir()
+    _repo(workspace)
+    runner_environment = _generic_authority_environment(workspace, ["true"])
     image_id = f"sha256:{'a' * 64}"
     gpu_uuid = "GPU-11111111-2222-3333-4444-555555555555"
     contract = {
@@ -259,7 +312,7 @@ def test_authority_validation_docker_argv_enforces_local_bounded_read_only_contr
         spec=SimpleNamespace(command="true", raw_command="true"),
         workspace_path=workspace,
         timeout_seconds=10,
-        environment=_sealed_daemon_environment(),
+        environment=runner_environment,
     )
 
     assert result["returncode"] == 0
@@ -288,7 +341,9 @@ def test_authority_validation_docker_argv_enforces_local_bounded_read_only_contr
     assert "--memory-swap=4294967296" in docker_argv
     assert "--shm-size=1073741824" in docker_argv
     assert (
-        "--tmpfs=/tmp:rw,nosuid,nodev,exec,size=1073741824,mode=1777"
+        "--tmpfs="
+        f"{daemon_module.AUTHORITY_VALIDATION_SCRATCH_PATH}:"
+        "rw,nosuid,nodev,exec,size=1073741824,mode=1777"
         in docker_argv
     )
     assert f"--workdir={workspace}" in docker_argv
@@ -328,6 +383,10 @@ def test_authority_validation_docker_argv_enforces_local_bounded_read_only_contr
     assert receipt["gpu_uuid"] == gpu_uuid
     assert receipt["workspace_path"] == str(workspace)
     assert receipt["workspace_read_only"] is True
+    assert receipt["host_filesystem"] == "workspace_only_read_only"
+    assert receipt["git_metadata_read_only"] is False
+    assert receipt["git_metadata_drift_detected"] is False
+    assert receipt["git_metadata_replay"]["mode"] == "not_requested"
     assert receipt["container_root_read_only"] is True
     assert receipt["network_mode"] == "none"
     assert receipt["capabilities_dropped"] == "all"
@@ -365,7 +424,7 @@ def test_authority_validation_descendants_cannot_mutate_workspace_after_return(
         staticmethod(lambda: contract),
     )
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    _repo(workspace)
     delayed_mutation = workspace / "delayed-mutation.txt"
     immediate_mutation = workspace / "immediate-mutation.txt"
     child_source = (
@@ -409,7 +468,10 @@ def test_authority_validation_descendants_cannot_mutate_workspace_after_return(
         ),
         workspace_path=workspace,
         timeout_seconds=30,
-        environment=_sealed_daemon_environment(),
+        environment=_generic_authority_environment(
+            workspace,
+            ["python spawn_descendant.py"],
+        ),
     )
 
     assert result["returncode"] == 0, result["output"]
@@ -2386,3 +2448,143 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     )
     assert report["passed"] is True
     assert report["validation_plan_binding"]["graph_id"] == graph.graph_id
+
+
+def test_dcr_proposal_validation_uses_declared_ids_without_minting_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    captured: list[tuple[str, str]] = []
+
+    class Scheduler:
+        def run_validated(
+            self,
+            proposal_validation,
+            commands,
+            **kwargs,
+        ):
+            results = []
+            for spec in commands:
+                result = kwargs["runner"](
+                    spec=spec,
+                    workspace_path=kwargs["workspace_path"],
+                    timeout_seconds=30,
+                    environment={},
+                )
+                results.append(result)
+            return {
+                "attempted": True,
+                "passed": all(item["returncode"] == 0 for item in results),
+                "returncode": 0,
+                "results": results,
+            }
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        validation_scheduler=Scheduler(),  # type: ignore[arg-type]
+        manual_completion_authority_task_ids=("DCR-011",),
+        manual_completion_authority_epoch_id="declared-id-test",
+    )
+    task = PortalTask(
+        task_id="DCR-011",
+        title="DCR proposal-bound diagnostics",
+        status="todo",
+        completion="artifact",
+        priority="P0",
+        track="deterministic-contract-repair",
+        validation=list(daemon_module.AUTHORITY_VALIDATION_DCR_RAW_COMMANDS),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_identity_for_task",
+        lambda _task: SimpleNamespace(
+            canonical_task_cid=(
+                daemon_module.AUTHORITY_VALIDATION_DCR_TASK_CID
+            )
+        ),
+    )
+    daemon._manual_completion_authority_revalidation_task_ids = frozenset(
+        {"DCR-011"}
+    )
+    daemon._manual_completion_authority_hard_blocked_task_ids = frozenset()
+    monkeypatch.setattr(
+        daemon,
+        "_refresh_manual_completion_authority_guard",
+        lambda: {"available": True, "_tasks": (task,)},
+    )
+
+    def diagnostic_runner(
+        *, spec, workspace_path, timeout_seconds, environment
+    ):
+        assert workspace_path == repo
+        assert timeout_seconds == 30
+        assert environment[
+            daemon_module._AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV
+        ] == "0"
+        assert spec.validation_id.startswith("declared:")
+        captured.append((spec.validation_id, environment[
+            daemon_module._AUTHORITY_VALIDATION_PLAN_ENV
+        ]))
+        return {
+            "command": spec.command,
+            "raw_command": spec.raw_command,
+            "ordinal": spec.ordinal,
+            "validation_id": spec.validation_id,
+            "returncode": 0,
+            "output": "diagnostic pass\n",
+            "cache_hit": False,
+            "timed_out": False,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_authority_validation_command_runner",
+        diagnostic_runner,
+    )
+    proposal_validation = SimpleNamespace(
+        accepted=True,
+        findings=(),
+        proposal=SimpleNamespace(
+            proposal_id="proposal:dcr011-dirty-candidate",
+            repository_tree_id="git-tree:proposal",
+            changed_paths=(
+                daemon_module.AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT,
+            ),
+        ),
+        policy=SimpleNamespace(policy_id="policy:dcr011"),
+        receipt=SimpleNamespace(receipt_id="receipt:dcr011"),
+    )
+    trusted_before = set(
+        daemon._trusted_manual_completion_revalidation_evidence_ids
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        tmp_path / "proposal-validation.log",
+        proposal_validation=proposal_validation,
+    )
+
+    assert report["passed"] is True
+    assert len(captured) == 2
+    assert len({plan_id for _validation_id, plan_id in captured}) == 1
+    assert [item["validation_id"] for item in report["results"]] == [
+        validation_id for validation_id, _plan_id in captured
+    ]
+    assert all(
+        validation_id.startswith("declared:")
+        for validation_id, _plan_id in captured
+    )
+    assert report["manual_completion_authority_revalidation"] is False
+    assert report["manual_completion_authority_force_uncached"] is False
+    assert "manual_completion_authority_task_cid" not in report
+    assert (
+        daemon._trusted_manual_completion_revalidation_evidence_ids
+        == trusted_before
+    )

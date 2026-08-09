@@ -52,6 +52,68 @@ def _canary_payload(output: str) -> dict[str, object]:
     raise AssertionError("sealed TypeScript canary output is absent")
 
 
+def _generic_authority_environment(
+    workspace: Path,
+    command: str,
+) -> dict[str, str]:
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("git", *arguments),
+            cwd=workspace,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    target_commit = git("rev-parse", "HEAD")
+    target_tree = git("rev-parse", "HEAD^{tree}")
+    task_id = "TEST-TYPESCRIPT-CANARY"
+    task_cid = content_identity({"test_authority_task": task_id})
+    commands = [command]
+    scope = "pre_merge"
+    plan_body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-validation-command-plan@2"
+        ),
+        "authority_profile": "generic_workspace_only@1",
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "scope": scope,
+        "commands": commands,
+        "target_commit": target_commit,
+        "target_tree": target_tree,
+        "git_common_anchor": "",
+        "git_dir": "",
+    }
+    return {
+        implementation_daemon._AUTHORITY_VALIDATION_SCOPE_ENV: scope,
+        implementation_daemon._AUTHORITY_VALIDATION_PROFILE_ENV: (
+            "generic_workspace_only@1"
+        ),
+        implementation_daemon._AUTHORITY_VALIDATION_COMMANDS_ENV: json.dumps(
+            commands,
+            separators=(",", ":"),
+        ),
+        implementation_daemon._AUTHORITY_VALIDATION_TASK_ENV: task_id,
+        implementation_daemon._AUTHORITY_VALIDATION_TASK_CID_ENV: task_cid,
+        implementation_daemon._AUTHORITY_VALIDATION_PLAN_ENV: content_identity(
+            plan_body
+        ),
+        implementation_daemon._AUTHORITY_VALIDATION_TARGET_COMMIT_ENV: (
+            target_commit
+        ),
+        implementation_daemon._AUTHORITY_VALIDATION_TARGET_TREE_ENV: target_tree,
+        implementation_daemon._AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR_ENV: "",
+        implementation_daemon._AUTHORITY_VALIDATION_GIT_DIR_ENV: "",
+        implementation_daemon._AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV: "1",
+    }
+
+
 def test_receipt_pins_one_offline_layer_over_the_sealed_base(
     tmp_path: Path,
 ) -> None:
@@ -128,7 +190,7 @@ def test_host_authority_runner_parses_the_bounded_typescript_canary() -> None:
         spec=SimpleNamespace(command=command, raw_command=command),
         workspace_path=REPOSITORY_ROOT,
         timeout_seconds=30,
-        environment={},
+        environment=_generic_authority_environment(REPOSITORY_ROOT, command),
     )
     assert result["returncode"] == 0, result.get("output")
     assert result["timed_out"] is False
@@ -142,6 +204,10 @@ def test_host_authority_runner_parses_the_bounded_typescript_canary() -> None:
     assert isolation["typescript_validation_toolchain"] == toolchain
     assert isolation["network_mode"] == "none"
     assert isolation["workspace_read_only"] is True
+    assert isolation["host_filesystem"] == "workspace_only_read_only"
+    assert isolation["git_metadata_read_only"] is False
+    assert isolation["git_metadata_drift_detected"] is False
+    assert isolation["git_metadata_replay"]["mode"] == "not_requested"
     assert isolation["container_root_read_only"] is True
     assert isolation["capabilities_dropped"] == "all"
     assert isolation["no_new_privileges"] is True
@@ -175,6 +241,63 @@ def test_host_authority_runner_parses_the_bounded_typescript_canary() -> None:
     }
     assert sealed["result"] == canary
     assert sealed["returncode"] == 0
+
+
+def test_generic_authority_runner_denies_linked_git_metadata_projection(
+    tmp_path: Path,
+) -> None:
+    def git(root: Path, *arguments: str) -> str:
+        completed = subprocess.run(
+            ("git", "-c", "protocol.file.allow=always", *arguments),
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            env={
+                **os.environ,
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_NOSYSTEM": "1",
+            },
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    def initialize(root: Path, label: str) -> None:
+        root.mkdir()
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "user.name", "Sealed linked Git test")
+        git(root, "config", "user.email", "sealed-git@example.invalid")
+        (root / "tracked.txt").write_text(label + "\n", encoding="utf-8")
+        git(root, "add", "tracked.txt")
+        git(root, "commit", "-qm", f"seed {label}")
+
+    nested_source = tmp_path / "nested-source"
+    initialize(nested_source, "nested")
+    source = tmp_path / "source"
+    initialize(source, "root")
+    git(source, "submodule", "add", "-q", str(nested_source), "nested")
+    git(source, "commit", "-qam", "add nested root")
+    linked = tmp_path / "linked"
+    git(source, "worktree", "add", "-q", "-b", "sealed", str(linked))
+    git(linked, "submodule", "update", "--init", "--recursive")
+    command = "git rev-parse --verify HEAD"
+
+    result = implementation_daemon.PortalImplementationDaemon._authority_validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=linked,
+        timeout_seconds=30,
+        environment=_generic_authority_environment(linked, command),
+    )
+
+    assert result["returncode"] not in {0, 75, 78}, result
+    isolation = result["authority_validation_isolation_receipt"]
+    assert isolation["host_filesystem"] == "workspace_only_read_only"
+    assert isolation["git_metadata_read_only"] is False
+    assert isolation["git_metadata_replay"]["mode"] == "not_requested"
+    assert isolation["git_metadata_replay"]["external_mount_count"] == 0
+    assert isolation["git_metadata_drift_detected"] is False
 
 
 def _codex_sandbox_boundary(

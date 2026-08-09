@@ -1096,6 +1096,9 @@ class MergeTrain:
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
         owner_id: str | None = None,
+        allowed_task_ids: Sequence[str] | None = None,
+        allowed_canonical_task_cids: Sequence[str] | None = None,
+        allowed_request_ids: Sequence[str] | None = None,
         formal_verification_policy: FormalVerificationPolicy | Mapping[str, Any] | None = None,
         proof_gate: Callable[..., Any] | None = None,
         proof_gate_callback: Callable[..., Any] | None = None,
@@ -1182,6 +1185,33 @@ class MergeTrain:
         )
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
         self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
+        self.allowed_task_ids = (
+            frozenset(
+                str(task_id).strip()
+                for task_id in allowed_task_ids
+                if str(task_id).strip()
+            )
+            if allowed_task_ids is not None
+            else None
+        )
+        self.allowed_canonical_task_cids = (
+            frozenset(
+                str(task_cid).strip()
+                for task_cid in allowed_canonical_task_cids
+                if str(task_cid).strip()
+            )
+            if allowed_canonical_task_cids is not None
+            else None
+        )
+        self.allowed_request_ids = (
+            frozenset(
+                str(request_id).strip()
+                for request_id in allowed_request_ids
+                if str(request_id).strip()
+            )
+            if allowed_request_ids is not None
+            else None
+        )
         if (
             distributed_repository_id is not None
             and repository_id is not None
@@ -1592,9 +1622,33 @@ class MergeTrain:
     def _dequeue_batch(self, limit: int) -> tuple[MergeRequest, ...]:
         dequeue_many = getattr(self.queue, "dequeue_many", None)
         if callable(dequeue_many):
-            return tuple(
-                dequeue_many(limit, consumer_id=self.owner_id) or ()
+            try:
+                parameters = inspect.signature(dequeue_many).parameters
+            except (TypeError, ValueError):
+                parameters = {}
+            restricted = bool(
+                self.allowed_task_ids is not None
+                or self.allowed_canonical_task_cids is not None
+                or self.allowed_request_ids is not None
             )
+            if restricted and not {
+                "allowed_task_ids",
+                "allowed_canonical_task_cids",
+                "allowed_request_ids",
+            }.issubset(parameters):
+                return ()
+            kwargs: dict[str, Any] = {}
+            if "consumer_id" in parameters:
+                kwargs["consumer_id"] = self.owner_id
+            if "allowed_task_ids" in parameters:
+                kwargs["allowed_task_ids"] = self.allowed_task_ids
+            if "allowed_canonical_task_cids" in parameters:
+                kwargs["allowed_canonical_task_cids"] = (
+                    self.allowed_canonical_task_cids
+                )
+            if "allowed_request_ids" in parameters:
+                kwargs["allowed_request_ids"] = self.allowed_request_ids
+            return tuple(dequeue_many(limit, **kwargs) or ())
         claimed: list[MergeRequest] = []
         for _ in range(max(0, int(limit))):
             request = self._dequeue()
@@ -5804,10 +5858,37 @@ class MergeTrain:
 
         try:
             signature = inspect.signature(self.queue.dequeue)
-            if "consumer_id" in signature.parameters:
-                return self.queue.dequeue(consumer_id=self.owner_id)
+            parameters = signature.parameters
+            restricted = bool(
+                self.allowed_task_ids is not None
+                or self.allowed_canonical_task_cids is not None
+                or self.allowed_request_ids is not None
+            )
+            if restricted and not {
+                "allowed_task_ids",
+                "allowed_canonical_task_cids",
+                "allowed_request_ids",
+            }.issubset(parameters):
+                return None
+            kwargs: dict[str, Any] = {}
+            if "consumer_id" in parameters:
+                kwargs["consumer_id"] = self.owner_id
+            if "allowed_task_ids" in parameters:
+                kwargs["allowed_task_ids"] = self.allowed_task_ids
+            if "allowed_canonical_task_cids" in parameters:
+                kwargs["allowed_canonical_task_cids"] = (
+                    self.allowed_canonical_task_cids
+                )
+            if "allowed_request_ids" in parameters:
+                kwargs["allowed_request_ids"] = self.allowed_request_ids
+            return self.queue.dequeue(**kwargs)
         except (TypeError, ValueError):
-            pass
+            if (
+                self.allowed_task_ids is not None
+                or self.allowed_canonical_task_cids is not None
+                or self.allowed_request_ids is not None
+            ):
+                return None
         return self.queue.dequeue()
 
     def _owns_claim(self, request: MergeRequest) -> bool:

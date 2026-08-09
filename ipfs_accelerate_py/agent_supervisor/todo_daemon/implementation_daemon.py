@@ -4,6 +4,7 @@ import argparse
 import base64
 import fcntl
 import fnmatch
+import functools
 import hashlib
 import json
 import logging
@@ -12,12 +13,14 @@ import os
 import posixpath
 import re
 import secrets
+import selectors
 import signal
 import shlex
 import shutil
 import stat as stat_module
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -56,6 +59,12 @@ from ..runtime.release_evidence import (
     EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
     EXPECTED_OUTPUT_MISSING,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
+)
+from .authority_git_pack import (
+    GitPackLimits,
+    GitPackVerificationError,
+    verify_exact_git_pack,
+    verify_exact_git_pack_base64,
 )
 from .git_environment import sanitized_git_environment
 from .implementation_timeout import (
@@ -377,6 +386,13 @@ VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
 MAX_MERGE_PROOF_METADATA_ITEMS = 256
+MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_ITEMS = 32
+MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_ITEM_BYTES = (
+    32 * 1024 * 1024
+)
+MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_TOTAL_BYTES = (
+    64 * 1024 * 1024
+)
 MANUAL_COMPLETION_REVALIDATION_STORE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "manual-completion-revalidation-store@2"
@@ -392,6 +408,8 @@ MANUAL_COMPLETION_VALIDATION_PLAN_SCHEMA = (
 MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_FAILURES = 3
 MANUAL_COMPLETION_AUTHORITY_RENEWAL_BASE_COOLDOWN_SECONDS = 300.0
 MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_COOLDOWN_SECONDS = 14400.0
+MANUAL_COMPLETION_AUTHORITY_IN_PROCESS_HANDOFF_TIMEOUT_SECONDS = 60.0
+MANUAL_COMPLETION_AUTHORITY_IN_PROCESS_HANDOFF_POLL_SECONDS = 0.25
 AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV = (
     "IPFS_ACCELERATE_AGENT_AUTHORITY_VALIDATION_CONTAINER_IMAGE"
 )
@@ -420,9 +438,113 @@ AUTHORITY_VALIDATION_DOCKER_ENDPOINT = "unix:///run/docker.sock"
 AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES = 16 * 1024 * 1024
 AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
 AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES = 1024 * 1024 * 1024
+AUTHORITY_VALIDATION_SCRATCH_PATH = "/tmp/ipfs-authority-validation-scratch"
 AUTHORITY_VALIDATION_CPU_LIMIT = 4
 AUTHORITY_VALIDATION_PIDS_LIMIT = 256
 AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS = 900
+AUTHORITY_VALIDATION_GIT_MAX_ROOTS = 128
+AUTHORITY_VALIDATION_GIT_MAX_MOUNTS = 1024
+AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES = 1_000_000
+AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES = 1536 * 1024 * 1024
+AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS = 60
+AUTHORITY_VALIDATION_GIT_PROJECTION_STALE_SECONDS = 3600
+AUTHORITY_VALIDATION_GIT_PROJECTION_PREFIX = (
+    "ipfs-accelerate-authority-git-config-"
+)
+AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ROOT_ENTRIES = 256
+AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_CANDIDATES = 64
+AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ENTRIES = 1_000_000
+AUTHORITY_VALIDATION_GIT_PROJECTION_MAX_DESCENDANTS = 4096
+AUTHORITY_VALIDATION_GIT_PROJECTION_MANIFEST_MAX_BYTES = 4 * 1024 * 1024
+AUTHORITY_VALIDATION_GIT_PACK_LIMITS = GitPackLimits(
+    max_pack_bytes=20 * 1024 * 1024,
+    max_index_bytes=4 * 1024 * 1024,
+    max_combined_bytes=21 * 1024 * 1024,
+    max_json_bytes=29 * 1024 * 1024,
+    max_objects=100_000,
+    max_object_bytes=16 * 1024 * 1024,
+    max_total_inflated_bytes=24 * 1024 * 1024,
+)
+AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_DEPTH = 256
+AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_VISITS = 100_000
+AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_LEAVES = 100_000
+AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_PATH_BYTES = 64 * 1024 * 1024
+AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_PATH_LENGTH = 4096
+AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_SECONDS = 300
+AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_REPOSITORIES = 64
+AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_ENTRIES = 100_000
+AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024
+AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_COMMANDS = 1024
+AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_TRACKED_BYTES = 32 * 1024 * 1024 * 1024
+AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT = (
+    "data/agent_supervisor/deterministic_contract_repair/forest.json"
+)
+AUTHORITY_VALIDATION_DCR_TODO_PATH = (
+    "implementation_plan/docs/48-ipfs-accelerate-deterministic-"
+    "swissknife-mcplusplus-repair.todo.md"
+)
+AUTHORITY_VALIDATION_DCR_CARRIER_SUBJECT = (
+    "DCR-011: Materialize one current multi-root forest and overlay identity"
+)
+AUTHORITY_VALIDATION_DCR_TODO_SUBJECT = "DCR-011: mark todo completed"
+AUTHORITY_VALIDATION_DCR_FOREST_COMMAND = (
+    "python3",
+    "-m",
+    (
+        "external.ipfs_accelerate.ipfs_accelerate_py.agent_supervisor."
+        "analysis.deterministic_repair_forest"
+    ),
+    "validate",
+    "--workspace",
+    ".",
+    "--artifact",
+    AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT,
+)
+AUTHORITY_VALIDATION_DCR_PYTHONPATH_PREFIX = (
+    "PYTHONPATH=Mcp-Plus-Plus:external/ipfs_accelerate:"
+    "external/ipfs_datasets:external/ipfs_kit:swissknife "
+)
+AUTHORITY_VALIDATION_DCR_RAW_COMMANDS = (
+    (
+        "python3 -m pytest -q external/ipfs_accelerate/test/api/"
+        "test_agent_supervisor_dcr_forest.py"
+    ),
+    " ".join(AUTHORITY_VALIDATION_DCR_FOREST_COMMAND),
+)
+AUTHORITY_VALIDATION_DCR_COMMANDS = tuple(
+    AUTHORITY_VALIDATION_DCR_PYTHONPATH_PREFIX + command
+    for command in AUTHORITY_VALIDATION_DCR_RAW_COMMANDS
+)
+AUTHORITY_VALIDATION_DCR_TASK_CID = (
+    "baguqeerazlxonuerchf6zpi77cixtdgmnbcyvdsj5dpsf273f3rh57uc75lq"
+)
+_AUTHORITY_VALIDATION_SCOPE_ENV = "IPFS_ACCELERATE_AUTHORITY_VALIDATION_SCOPE"
+_AUTHORITY_VALIDATION_PROFILE_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_PROFILE"
+)
+_AUTHORITY_VALIDATION_COMMANDS_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_COMMANDS"
+)
+_AUTHORITY_VALIDATION_TASK_ENV = "IPFS_ACCELERATE_AUTHORITY_VALIDATION_TASK"
+_AUTHORITY_VALIDATION_TASK_CID_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_TASK_CID"
+)
+_AUTHORITY_VALIDATION_PLAN_ENV = "IPFS_ACCELERATE_AUTHORITY_VALIDATION_PLAN"
+_AUTHORITY_VALIDATION_TARGET_COMMIT_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_TARGET_COMMIT"
+)
+_AUTHORITY_VALIDATION_TARGET_TREE_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_TARGET_TREE"
+)
+_AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR"
+)
+_AUTHORITY_VALIDATION_GIT_DIR_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_GIT_DIR"
+)
+_AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV = (
+    "IPFS_ACCELERATE_AUTHORITY_VALIDATION_PRODUCER_TRUST"
+)
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
@@ -2799,6 +2921,9850 @@ class ValidationGeneratedArtifactRestoreError(RuntimeError):
         self.receipt = dict(receipt)
 
 
+class AuthorityGitReplayError(RuntimeError):
+    """A linked-worktree Git projection could not be proven safe."""
+
+    def __init__(self, reason: str, detail: str = "") -> None:
+        self.reason = str(reason or "authority_validation_git_replay_invalid")
+        self.detail = str(detail or "")[:1000]
+        super().__init__(self.detail or self.reason)
+
+
+_AUTHORITY_GIT_MOUNT_BOOTSTRAP = r"""
+import base64, hashlib, json, os, stat, sys
+records = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+for record in records:
+    path = record["destination"]
+    try:
+        value = os.lstat(path)
+    except OSError as exc:
+        sys.stderr.write(f"authority-git-mount-missing:{path}:{type(exc).__name__}\n")
+        raise SystemExit(75)
+    if (
+        value.st_dev != record["device"]
+        or value.st_ino != record["inode"]
+        or stat.S_IFMT(value.st_mode) != record["mode_type"]
+        or (record["sha256"] and value.st_size != record["size"])
+    ):
+        sys.stderr.write(f"authority-git-mount-identity-mismatch:{path}\n")
+        raise SystemExit(75)
+    if record["sha256"]:
+        digest = hashlib.sha256()
+        with open(path, "rb") as stream:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        if digest.hexdigest() != record["sha256"]:
+            sys.stderr.write(f"authority-git-mount-content-mismatch:{path}\n")
+            raise SystemExit(75)
+os.execvp(sys.argv[2], sys.argv[2:])
+""".strip()
+
+
+_AUTHORITY_GIT_DERIVED_LAYER_VERIFY = r"""
+import base64, hashlib, json, os, stat, sys
+payload = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+root = payload["root"]
+records = payload["records"]
+expected = {record["relative_path"]: record for record in records}
+if len(expected) != len(records) or "" not in expected:
+    sys.stderr.write("authority-git-derived-manifest-invalid\n")
+    raise SystemExit(75)
+observed = set()
+def visit(path, relative):
+    try:
+        value = os.lstat(path)
+    except OSError as exc:
+        sys.stderr.write(f"authority-git-derived-missing:{path}:{type(exc).__name__}\n")
+        raise SystemExit(75)
+    record = expected.get(relative)
+    if record is None:
+        sys.stderr.write(f"authority-git-derived-extra:{path}\n")
+        raise SystemExit(75)
+    observed.add(relative)
+    expected_type = stat.S_IFDIR if record["type"] == "directory" else stat.S_IFREG
+    if (
+        stat.S_IFMT(value.st_mode) != expected_type
+        or stat.S_IMODE(value.st_mode) != record["mode"]
+        or value.st_uid != record["uid"]
+        or value.st_gid != record["gid"]
+        or (record["type"] == "regular" and value.st_size != record["size"])
+    ):
+        sys.stderr.write(f"authority-git-derived-identity-mismatch:{path}\n")
+        raise SystemExit(75)
+    if record["type"] == "directory":
+        try:
+            names = sorted(os.listdir(path))
+        except OSError as exc:
+            sys.stderr.write(f"authority-git-derived-unreadable:{path}:{type(exc).__name__}\n")
+            raise SystemExit(75)
+        for name in names:
+            if name in {".", ".."} or "/" in name or "\\" in name:
+                raise SystemExit(75)
+            child_relative = name if not relative else relative + "/" + name
+            visit(os.path.join(path, name), child_relative)
+        return
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    if digest.hexdigest() != record["sha256"]:
+        sys.stderr.write(f"authority-git-derived-content-mismatch:{path}\n")
+        raise SystemExit(75)
+visit(root, "")
+if observed != set(expected):
+    sys.stderr.write("authority-git-derived-manifest-coverage-mismatch\n")
+    raise SystemExit(75)
+os.execvp(sys.argv[2], sys.argv[2:])
+""".strip()
+
+
+_AUTHORITY_GIT_BASE_DESTINATION_PREFLIGHT = r"""
+import os, stat, sys
+target = sys.argv[1]
+if not os.path.isabs(target) or os.path.normpath(target) != target or target == "/":
+    raise SystemExit(75)
+current = "/"
+parts = [part for part in target.split("/") if part]
+for ordinal, part in enumerate(parts):
+    current = os.path.join(current, part)
+    try:
+        value = os.lstat(current)
+    except FileNotFoundError:
+        raise SystemExit(0)
+    except OSError:
+        raise SystemExit(75)
+    if stat.S_ISLNK(value.st_mode) or not stat.S_ISDIR(value.st_mode):
+        raise SystemExit(75)
+    if ordinal == len(parts) - 1:
+        sys.stderr.write("authority-git-derived-destination-preexists\n")
+        raise SystemExit(75)
+raise SystemExit(75)
+""".strip()
+
+
+@dataclass(frozen=True)
+class _AuthorityGitReplayMount:
+    source: Path
+    destination: Path
+    purpose: str
+    identity: str
+    entry_count: int
+    projection_kind: str = "synthetic-root-common"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": str(self.source),
+            "destination": str(self.destination),
+            "purpose": self.purpose,
+            "identity": self.identity,
+            "entry_count": int(self.entry_count),
+            "projection_kind": self.projection_kind,
+            "read_only": True,
+        }
+
+
+@dataclass(frozen=True)
+class _AuthorityGitSealedMount:
+    reviewed_source: Path
+    bind_source: Path
+    destination: Path
+    purpose: str
+    reviewed_identity: str
+    sealed_identity: str
+    entry_count: int
+    device: int
+    inode: int
+    mode: int
+    size: int
+    sha256: str = ""
+    verification_record_count: int = 0
+
+    def verification_record(self) -> dict[str, Any]:
+        return {
+            "destination": str(self.destination),
+            "device": self.device,
+            "inode": self.inode,
+            "mode_type": stat_module.S_IFMT(self.mode),
+            "size": self.size,
+            "sha256": self.sha256,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reviewed_source": str(self.reviewed_source),
+            "bind_source": str(self.bind_source),
+            "destination": str(self.destination),
+            "purpose": self.purpose,
+            "reviewed_identity": self.reviewed_identity,
+            "sealed_identity": self.sealed_identity,
+            "entry_count": self.entry_count,
+            "verification_record_count": self.verification_record_count,
+            "read_only": True,
+        }
+
+
+@dataclass(frozen=True)
+class _AuthorityGitRootProjection:
+    worktree: Path
+    git_dir: Path
+    common_dir: Path
+    head: str
+    tree: str
+    object_format: str
+    object_ids: tuple[str, ...]
+    object_manifest_id: str
+    object_source_bytes: int
+    object_type_counts: dict[str, int]
+    shallow_boundary: str
+    lifecycle: dict[str, Any]
+    lifecycle_id: str
+    index_path: Path
+    index_identity: str
+    core_config: dict[str, str]
+
+
+@dataclass(frozen=True)
+class _AuthorityGitReplayPlan:
+    workspace: Path
+    roots: tuple[Path, ...]
+    root_identities: tuple[dict[str, Any], ...]
+    root_projections: tuple[_AuthorityGitRootProjection, ...]
+    mounts: tuple[_AuthorityGitReplayMount, ...]
+    observation_identities: tuple[str, ...]
+    plan_id: str
+    preflight_source_bytes: int = 0
+    preflight_metadata_entries: int = 0
+    mode: str = "dcr_forest_exact"
+
+    def receipt(self, *, postflight_id: str | None = None) -> dict[str, Any]:
+        postflight = str(postflight_id or self.plan_id)
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-metadata-replay@2"
+            ),
+            "mode": self.mode,
+            "workspace_path": str(self.workspace),
+            "configured_roots": [
+                "."
+                if root == self.workspace
+                else root.relative_to(self.workspace).as_posix()
+                for root in self.roots
+            ],
+            "root_identities": [dict(item) for item in self.root_identities],
+            "external_mounts": [mount.to_dict() for mount in self.mounts],
+            "external_mount_count": len(self.mounts),
+            "observation_count": len(self.observation_identities),
+            "observation_identities": list(self.observation_identities),
+            "preflight_budget": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-replay-budget@1"
+                ),
+                "source_bytes": int(self.preflight_source_bytes),
+                "metadata_entries": int(self.preflight_metadata_entries),
+            },
+            "preflight_id": self.plan_id,
+            "postflight_id": postflight,
+            "drift_detected": postflight != self.plan_id,
+            "read_only": True,
+            "symlinks_allowed": False,
+            "projection_scope": (
+                "dcr_forest_exact_trees_and_lifecycle_blobs"
+                if self.mode == "dcr_forest_exact"
+                else "none"
+            ),
+            "raw_common_config_exposed": False,
+            "raw_refs_exposed": False,
+            "unrelated_objects_exposed": False,
+        }
+
+
+@dataclass(frozen=True)
+class _BoundedSubprocessResult:
+    args: tuple[str, ...]
+    returncode: int
+    stdout: bytes
+    stderr: bytes
+    timed_out: bool
+    output_overflow: bool
+    reaped: bool
+
+
+def _run_bounded_subprocess(
+    command: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    environment: Mapping[str, str] | None = None,
+    deadline: float,
+    stdout_limit: int,
+    stderr_limit: int,
+    input_bytes: bytes | None = None,
+    stdin_fd: int | None = None,
+    start_new_session: bool = False,
+) -> _BoundedSubprocessResult:
+    """Run one local control command with streaming output limits.
+
+    ``subprocess.run(..., PIPE)`` applies output limits only after buffering the
+    complete child output.  Authority setup cannot trust that boundary.  This
+    helper drains both pipes incrementally, kills on the first byte beyond a
+    declared limit or deadline, and gives reap itself a separate short bound.
+    """
+
+    argv = tuple(str(item) for item in command)
+    if (
+        not argv
+        or stdout_limit < 0
+        or stderr_limit < 0
+        or (input_bytes is not None and stdin_fd is not None)
+        or (stdin_fd is not None and stdin_fd < 0)
+    ):
+        raise ValueError("bounded subprocess arguments are invalid")
+    if time.monotonic() >= deadline:
+        return _BoundedSubprocessResult(
+            args=argv,
+            returncode=-9,
+            stdout=b"",
+            stderr=b"",
+            timed_out=True,
+            output_overflow=False,
+            reaped=True,
+        )
+    process: subprocess.Popen[bytes] | None = None
+    selector: selectors.BaseSelector | None = None
+    writer: threading.Thread | None = None
+    writer_errors: list[BaseException] = []
+    stdout = bytearray()
+    stderr = bytearray()
+    timed_out = False
+    overflow = False
+    reaped = False
+    try:
+        process = subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=(dict(environment) if environment is not None else None),
+            stdin=(
+                stdin_fd
+                if stdin_fd is not None
+                else subprocess.PIPE
+                if input_bytes is not None
+                else subprocess.DEVNULL
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=start_new_session,
+        )
+
+        if input_bytes is not None:
+            def write_input() -> None:
+                try:
+                    assert process is not None
+                    if process.stdin is not None:
+                        process.stdin.write(input_bytes)
+                        process.stdin.close()
+                except BaseException as exc:  # pragma: no cover - race guard
+                    writer_errors.append(exc)
+
+            writer = threading.Thread(target=write_input, daemon=True)
+            writer.start()
+
+        selector = selectors.DefaultSelector()
+        assert process.stdout is not None and process.stderr is not None
+        selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            events = selector.select(timeout=min(0.1, remaining))
+            for key, _mask in events:
+                try:
+                    chunk = os.read(key.fileobj.fileno(), 1024 * 1024)
+                except OSError:
+                    chunk = b""
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                destination = stdout if key.data == "stdout" else stderr
+                limit = stdout_limit if key.data == "stdout" else stderr_limit
+                remaining_capacity = max(0, limit - len(destination))
+                destination.extend(chunk[:remaining_capacity])
+                if len(chunk) > remaining_capacity:
+                    overflow = True
+                    break
+            if overflow:
+                break
+        if writer is not None:
+            writer.join(timeout=max(0.0, min(1.0, deadline - time.monotonic())))
+        if (
+            timed_out
+            or overflow
+            or writer_errors
+            or (writer is not None and writer.is_alive())
+        ):
+            if process.poll() is None:
+                try:
+                    if start_new_session and os.name == "posix":
+                        os.killpg(process.pid, signal.SIGKILL)
+                    else:
+                        process.kill()
+                except OSError:
+                    pass
+        try:
+            process.wait(
+                timeout=max(0.0, min(2.0, deadline - time.monotonic()))
+            )
+            reaped = True
+        except subprocess.TimeoutExpired:
+            try:
+                if start_new_session and os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except OSError:
+                pass
+            try:
+                process.wait(
+                    timeout=max(
+                        0.0, min(2.0, deadline - time.monotonic())
+                    )
+                )
+                reaped = True
+            except subprocess.TimeoutExpired:
+                reaped = False
+        return _BoundedSubprocessResult(
+            args=argv,
+            returncode=int(process.returncode if process.returncode is not None else -9),
+            stdout=bytes(stdout),
+            stderr=bytes(stderr),
+            timed_out=timed_out,
+            output_overflow=overflow,
+            reaped=reaped,
+        )
+    finally:
+        # An exception raised while registering/draining the pipes must not
+        # strand an authority setup process.  Normal returns have already
+        # reaped the child; this is the fail-closed exceptional path.
+        if process is not None and process.poll() is None:
+            try:
+                if start_new_session and os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except OSError:
+                pass
+            try:
+                process.wait(
+                    timeout=max(
+                        0.0, min(2.0, deadline - time.monotonic())
+                    )
+                )
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                try:
+                    process.wait(
+                        timeout=max(
+                            0.0, min(2.0, deadline - time.monotonic())
+                        )
+                    )
+                except subprocess.TimeoutExpired:
+                    pass
+        if selector is not None:
+            selector.close()
+        if process is not None:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+
+
+@dataclass
+class _TrackedCheckoutProofBudget:
+    """One monotonic budget shared by pre/post committed checkout proofs."""
+
+    started: float
+    deadline: float
+    repositories: int = 0
+    entries: int = 0
+    tracked_bytes: int = 0
+    git_output_bytes: int = 0
+    git_command_count: int = 0
+    output_overflow: bool = False
+
+    @classmethod
+    def begin(cls) -> "_TrackedCheckoutProofBudget":
+        started = time.monotonic()
+        return cls(
+            started=started,
+            deadline=(
+                started + AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_SECONDS
+            ),
+        )
+
+    def check(self, detail: str) -> None:
+        if time.monotonic() > self.deadline:
+            raise AuthorityGitReplayError(
+                "committed_checkout_proof_timeout", detail
+            )
+
+    def add_repository(self, detail: str) -> None:
+        self.repositories += 1
+        if self.repositories > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_REPOSITORIES:
+            raise AuthorityGitReplayError(
+                "committed_checkout_proof_repository_limit", detail
+            )
+        self.check(detail)
+
+    def add_entries(self, count: int, detail: str) -> None:
+        self.entries += max(0, int(count))
+        if self.entries > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_ENTRIES:
+            raise AuthorityGitReplayError(
+                "committed_checkout_proof_entry_limit", detail
+            )
+        self.check(detail)
+
+    def add_tracked_bytes(self, count: int, detail: str) -> None:
+        self.tracked_bytes += max(0, int(count))
+        if self.tracked_bytes > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_TRACKED_BYTES:
+            raise AuthorityGitReplayError(
+                "committed_checkout_proof_byte_limit", detail
+            )
+        self.check(detail)
+
+    def add_git_output(self, count: int, detail: str) -> None:
+        self.git_output_bytes += max(0, int(count))
+        self.git_command_count += 1
+        if (
+            self.git_command_count
+            > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_COMMANDS
+        ):
+            raise AuthorityGitReplayError(
+                "committed_checkout_proof_git_command_limit", detail
+            )
+        self.check(detail)
+
+    def receipt(self) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "committed-checkout-proof-budget@1"
+            ),
+            "time_limit_seconds": AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_SECONDS,
+            "repository_limit": AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_REPOSITORIES,
+            "entry_limit": AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_ENTRIES,
+            "git_stdout_per_command_limit_bytes": (
+                AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+            ),
+            "git_stderr_per_command_limit_bytes": (
+                AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+            ),
+            "git_command_limit": (
+                AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_COMMANDS
+            ),
+            "tracked_byte_limit": AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_TRACKED_BYTES,
+            "includes_validation_wall_time": True,
+            "elapsed_milliseconds": int(
+                math.ceil(max(0.0, time.monotonic() - self.started) * 1000)
+            ),
+            "repositories": int(self.repositories),
+            "entries": int(self.entries),
+            "tracked_bytes": int(self.tracked_bytes),
+            "git_output_bytes": int(self.git_output_bytes),
+            "git_command_count": int(self.git_command_count),
+            "output_overflow": bool(self.output_overflow),
+        }
+
+
+def _committed_candidate_authority_attestation_valid(
+    evidence: Mapping[str, Any],
+) -> bool:
+    """Verify the closed committed-checkout attestation before publication."""
+
+    try:
+        attestation = evidence.get(
+            "committed_candidate_authority_validation"
+        )
+        attestation_keys = {
+            "schema",
+            "authority_profile",
+            "attempted",
+            "passed",
+            "implementation_commit",
+            "target_tree",
+            "parent_commit",
+            "subject",
+            "changed_paths",
+            "lifecycle_mode",
+            "precommit_validation_evidence_id",
+            "checkout_proof_before",
+            "checkout_proof_after",
+            "checkout_observations_equal",
+            "checkout_proof_budget",
+        }
+        if (
+            not isinstance(attestation, Mapping)
+            or set(attestation) != attestation_keys
+            or attestation["attempted"] is not True
+            or attestation["passed"] is not True
+        ):
+            return False
+        profile = str(attestation["authority_profile"])
+        expected_schema = (
+            "ipfs_accelerate_py.agent_supervisor."
+            + (
+                "committed-dcr011-authority-validation@1"
+                if profile == "dcr011_forest@1"
+                else "committed-generic-authority-validation@1"
+            )
+        )
+        if (
+            profile
+            not in {"dcr011_forest@1", "generic_workspace_only@1"}
+            or attestation["schema"] != expected_schema
+            or re.fullmatch(
+                r"(?:[0-9a-f]{40}|[0-9a-f]{64})",
+                str(attestation["implementation_commit"]),
+            )
+            is None
+            or re.fullmatch(
+                r"(?:[0-9a-f]{40}|[0-9a-f]{64})", str(attestation["target_tree"])
+            )
+            is None
+            or re.fullmatch(
+                r"(?:[0-9a-f]{40}|[0-9a-f]{64})", str(attestation["parent_commit"])
+            )
+            is None
+            or len(
+                {
+                    len(str(attestation[key]))
+                    for key in (
+                        "implementation_commit",
+                        "target_tree",
+                        "parent_commit",
+                    )
+                }
+            )
+            != 1
+            or re.fullmatch(
+                r"b[a-z2-7]+",
+                str(attestation["precommit_validation_evidence_id"]),
+            )
+            is None
+            or evidence.get("target_commit")
+            != attestation["implementation_commit"]
+            or evidence.get("target_tree") != attestation["target_tree"]
+            or evidence.get("repository_tree_id")
+            != f"git-tree:{attestation['target_tree']}"
+        ):
+            return False
+        if profile == "dcr011_forest@1":
+            if (
+                attestation["lifecycle_mode"] != "artifact_carried"
+                or attestation["subject"]
+                != AUTHORITY_VALIDATION_DCR_CARRIER_SUBJECT
+                or attestation["changed_paths"]
+                != [AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT]
+            ):
+                return False
+        elif (
+            attestation["lifecycle_mode"] != "not_requested"
+            or not isinstance(attestation["subject"], str)
+            or not isinstance(attestation["changed_paths"], list)
+            or any(
+                not isinstance(item, str)
+                for item in attestation["changed_paths"]
+            )
+        ):
+            return False
+
+        budget_keys = {
+            "schema",
+            "time_limit_seconds",
+            "repository_limit",
+            "entry_limit",
+            "git_stdout_per_command_limit_bytes",
+            "git_stderr_per_command_limit_bytes",
+            "git_command_limit",
+            "tracked_byte_limit",
+            "includes_validation_wall_time",
+            "elapsed_milliseconds",
+            "repositories",
+            "entries",
+            "tracked_bytes",
+            "git_output_bytes",
+            "git_command_count",
+            "output_overflow",
+        }
+
+        def checked_budget(value: Any) -> Mapping[str, Any] | None:
+            if not isinstance(value, Mapping) or set(value) != budget_keys:
+                return None
+            integer_fields = (
+                "elapsed_milliseconds",
+                "repositories",
+                "entries",
+                "tracked_bytes",
+                "git_output_bytes",
+                "git_command_count",
+            )
+            if any(
+                type(value[field]) is not int or int(value[field]) < 0
+                for field in integer_fields
+            ):
+                return None
+            if (
+                value["schema"]
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "committed-checkout-proof-budget@1"
+                )
+                or value["time_limit_seconds"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_SECONDS
+                or value["repository_limit"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_REPOSITORIES
+                or value["entry_limit"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_ENTRIES
+                or value["git_stdout_per_command_limit_bytes"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+                or value["git_stderr_per_command_limit_bytes"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+                or value["git_command_limit"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_COMMANDS
+                or value["tracked_byte_limit"]
+                != AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_TRACKED_BYTES
+                or value["includes_validation_wall_time"] is not True
+                or value["output_overflow"] is not False
+                or value["elapsed_milliseconds"]
+                > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_SECONDS * 1000
+                or value["repositories"]
+                > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_REPOSITORIES
+                or value["entries"]
+                > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_ENTRIES
+                or value["tracked_bytes"]
+                > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_TRACKED_BYTES
+                or value["git_command_count"]
+                > AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_COMMANDS
+            ):
+                return None
+            return value
+
+        proof_keys = {
+            "schema",
+            "passed",
+            "reason",
+            "phase",
+            "workspace_path",
+            "expected_commit",
+            "repository_count",
+            "tracked_entry_count",
+            "materialized_gitlink_count",
+            "repositories",
+            "observation_record_count",
+            "observation_sha256",
+            "observation_id",
+            "budget",
+        }
+
+        def checked_proof(value: Any, phase: str) -> Mapping[str, Any] | None:
+            if not isinstance(value, Mapping) or set(value) != proof_keys:
+                return None
+            workspace_path = str(value["workspace_path"])
+            repository_records = value["repositories"]
+            if (
+                value["schema"]
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "post-merge-tracked-checkout-proof@2"
+                )
+                or value["passed"] is not True
+                or value["reason"] != "post_merge_tracked_checkout_exact"
+                or value["phase"] != phase
+                or not workspace_path
+                or not Path(workspace_path).is_absolute()
+                or "\0" in workspace_path
+                or value["expected_commit"]
+                != attestation["implementation_commit"]
+                or type(value["repository_count"]) is not int
+                or int(value["repository_count"]) <= 0
+                or type(value["tracked_entry_count"]) is not int
+                or int(value["tracked_entry_count"]) < 0
+                or type(value["materialized_gitlink_count"]) is not int
+                or int(value["materialized_gitlink_count"])
+                != int(value["repository_count"]) - 1
+                or not isinstance(repository_records, list)
+                or len(repository_records) != value["repository_count"]
+                or type(value["observation_record_count"]) is not int
+                or int(value["observation_record_count"]) <= 0
+                or re.fullmatch(
+                    r"[0-9a-f]{64}", str(value["observation_sha256"])
+                )
+                is None
+            ):
+                return None
+            repository_keys = {
+                "repository",
+                "expected_commit",
+                "tracked_entry_count",
+            }
+            if any(
+                not isinstance(record, Mapping)
+                or set(record) != repository_keys
+                or not str(record["repository"])
+                or re.fullmatch(
+                    r"(?:[0-9a-f]{40}|[0-9a-f]{64})", str(record["expected_commit"])
+                )
+                is None
+                or type(record["tracked_entry_count"]) is not int
+                or int(record["tracked_entry_count"]) < 0
+                for record in repository_records
+            ):
+                return None
+            if (
+                len(
+                    {str(record["repository"]) for record in repository_records}
+                )
+                != len(repository_records)
+                or sum(
+                    int(record["tracked_entry_count"])
+                    for record in repository_records
+                )
+                != value["tracked_entry_count"]
+            ):
+                return None
+            observation_body = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "committed-checkout-observation@1"
+                ),
+                "workspace_path": workspace_path,
+                "expected_commit": value["expected_commit"],
+                "record_count": value["observation_record_count"],
+                "records_sha256": value["observation_sha256"],
+            }
+            if value["observation_id"] != content_identity(observation_body):
+                return None
+            if checked_budget(value["budget"]) is None:
+                return None
+            return value
+
+        before = checked_proof(attestation["checkout_proof_before"], "before")
+        after = checked_proof(attestation["checkout_proof_after"], "after")
+        final_budget = checked_budget(attestation["checkout_proof_budget"])
+        if before is None or after is None or final_budget is None:
+            return False
+        before_budget = before["budget"]
+        after_budget = after["budget"]
+        cumulative_fields = (
+            "elapsed_milliseconds",
+            "repositories",
+            "entries",
+            "tracked_bytes",
+            "git_output_bytes",
+            "git_command_count",
+        )
+        return bool(
+            attestation["checkout_observations_equal"] is True
+            and before["workspace_path"] == after["workspace_path"]
+            and before["repositories"] == after["repositories"]
+            and before["observation_id"] == after["observation_id"]
+            and before["observation_id"]
+            and before_budget["repositories"] == before["repository_count"]
+            and before_budget["entries"] == before["tracked_entry_count"]
+            and after_budget["repositories"]
+            == before["repository_count"] + after["repository_count"]
+            and after_budget["entries"]
+            == before["tracked_entry_count"] + after["tracked_entry_count"]
+            and all(
+                int(after_budget[field]) >= int(before_budget[field])
+                for field in cumulative_fields
+            )
+            and dict(final_budget) == dict(after_budget)
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _manual_completion_authority_evidence_bytes(
+    evidence: Mapping[str, Any],
+) -> bytes:
+    """Return deterministic lossless JSON bytes for one full live capability.
+
+    Formal ``canonical_json`` intentionally rejects floats, while diagnostic
+    validation results legitimately carry bounded timing values.  The
+    authority ID still uses its closed formal projection; this lossless byte
+    form exists only to bound and retain the exact in-process evidence body.
+    """
+
+    return json.dumps(
+        evidence,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _manual_completion_authority_rotation_binding_id(
+    *,
+    branch_name: str,
+    baseline_ref: str,
+    implementation_commit: str,
+    candidate_tree: str,
+    target_repository_id: str,
+    target_branch: str,
+    task_id: str,
+    canonical_task_cid: str,
+    canonical_task_key: str,
+    completion_task_cids: Mapping[str, str],
+    todo_path: str,
+    evidence: Mapping[str, Any],
+) -> str:
+    attestation = evidence.get(
+        "committed_candidate_authority_validation"
+    )
+    if not isinstance(attestation, Mapping):
+        return ""
+    body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "manual-completion-authority-queue-rotation@1"
+        ),
+        "branch_name": str(branch_name),
+        "baseline_ref": str(baseline_ref),
+        "implementation_commit": str(implementation_commit),
+        "candidate_tree": str(candidate_tree),
+        "target_repository_id": str(target_repository_id),
+        "target_branch": str(target_branch),
+        "task_id": str(task_id),
+        "canonical_task_cid": str(canonical_task_cid),
+        "canonical_task_key": str(canonical_task_key),
+        "completion_task_cids": dict(completion_task_cids),
+        "todo_path": str(todo_path),
+        "declared_validation_commands": list(
+            evidence.get(
+                "manual_completion_authority_declared_validation_commands"
+            )
+            or ()
+        ),
+        "validated_tree_identity": evidence.get(
+            "manual_completion_authority_validated_tree_identity"
+        ),
+        "carrier_parent": attestation.get("parent_commit"),
+        "carrier_subject": attestation.get("subject"),
+        "carrier_changed_paths": attestation.get("changed_paths"),
+        "lifecycle_mode": attestation.get("lifecycle_mode"),
+    }
+    return content_identity(body)
+
+
+def _manual_completion_authority_rotation_binding_valid(
+    *,
+    queued_binding_id: str,
+    queued_full_evidence_id: str,
+    branch_name: str,
+    baseline_ref: str,
+    implementation_commit: str,
+    candidate_tree: str,
+    target_repository_id: str,
+    target_branch: str,
+    task_id: str,
+    canonical_task_cid: str,
+    canonical_task_key: str,
+    completion_task_cids: Mapping[str, str],
+    todo_path: str,
+    evidence: Mapping[str, Any],
+) -> bool:
+    committed_attestation = evidence.get(
+        "committed_candidate_authority_validation"
+    )
+    committed_capability = bool(
+        str(queued_full_evidence_id or "").strip()
+        or isinstance(committed_attestation, Mapping)
+    )
+    if not committed_capability:
+        return True
+    expected = _manual_completion_authority_rotation_binding_id(
+        branch_name=branch_name,
+        baseline_ref=baseline_ref,
+        implementation_commit=implementation_commit,
+        candidate_tree=candidate_tree,
+        target_repository_id=target_repository_id,
+        target_branch=target_branch,
+        task_id=task_id,
+        canonical_task_cid=canonical_task_cid,
+        canonical_task_key=canonical_task_key,
+        completion_task_cids=completion_task_cids,
+        todo_path=todo_path,
+        evidence=evidence,
+    )
+    return bool(
+        str(queued_binding_id or "").strip()
+        and expected
+        and str(queued_binding_id).strip() == expected
+    )
+
+
+@dataclass
+class _AuthorityGitSetupBudget:
+    """One monotonic and aggregate-byte budget for Git replay setup."""
+
+    started: float
+    deadline: float
+    source_bytes: int = 0
+    sealed_bytes: int = 0
+    metadata_entries: int = 0
+
+    @classmethod
+    def begin(cls) -> "_AuthorityGitSetupBudget":
+        started = time.monotonic()
+        return cls(
+            started=started,
+            deadline=(
+                started + AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            ),
+        )
+
+    def check(self, detail: str) -> None:
+        if time.monotonic() > self.deadline:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_setup_timeout", detail
+            )
+
+    def remaining(self, detail: str) -> float:
+        self.check(detail)
+        return max(0.001, self.deadline - time.monotonic())
+
+    def add_source(self, value: int, detail: str) -> None:
+        self.source_bytes += max(0, int(value))
+        self._check_bytes(detail)
+
+    def add_sealed(self, value: int, detail: str) -> None:
+        self.sealed_bytes += max(0, int(value))
+        self._check_bytes(detail)
+
+    def add_entries(self, value: int, detail: str) -> None:
+        self.metadata_entries += max(0, int(value))
+        if self.metadata_entries > AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_metadata_entry_limit", detail
+            )
+        self.check(detail)
+
+    def _check_bytes(self, detail: str) -> None:
+        if self.source_bytes + self.sealed_bytes > (
+            AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_snapshot_byte_limit", detail
+            )
+        self.check(detail)
+
+    def receipt(self, *, mount_count: int, completed: bool) -> dict[str, Any]:
+        elapsed = max(0.0, time.monotonic() - self.started)
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-sealed-projection@2"
+            ),
+            "source_bytes": int(self.source_bytes),
+            "sealed_bytes": int(self.sealed_bytes),
+            "aggregate_bytes": int(self.source_bytes + self.sealed_bytes),
+            "byte_limit": AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES,
+            "setup_elapsed_milliseconds": int(math.ceil(elapsed * 1000)),
+            "setup_time_limit_seconds": int(
+                AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            ),
+            "metadata_entries": int(self.metadata_entries),
+            "metadata_entry_limit": AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES,
+            "mount_count": int(mount_count),
+            "completed": bool(completed),
+            "copy_mode": "independent_exact_bytes_or_generated_pack",
+            "hardlinks_used": False,
+            "object_scope": "dcr_forest_exact_trees_and_lifecycle_blobs",
+            "raw_common_config_exposed": False,
+            "raw_refs_exposed": False,
+            "unrelated_objects_exposed": False,
+        }
+
+
+def _authority_git_path_text_safe(value: str) -> bool:
+    """Return whether a path can be represented by Docker's mount grammar."""
+
+    return bool(
+        value
+        and "," not in value
+        and all(character not in "\r\n\0" and ord(character) >= 32 for character in value)
+        and "\x7f" not in value
+    )
+
+
+def _authority_git_local_only_environment() -> dict[str, str]:
+    environment = sanitized_git_environment()
+    environment.update(
+        {
+            "GIT_ALLOW_PROTOCOL": "",
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_PROTOCOL_FROM_USER": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
+def _authority_git_forest_lifecycle_subject(workspace: Path) -> str:
+    artifact = workspace.joinpath(
+        *PurePosixPath(AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT).parts
+    )
+    _authority_git_require_symlink_free(
+        artifact,
+        reason="authority_validation_git_lifecycle_subject_invalid",
+    )
+    try:
+        value = artifact.lstat()
+        if not stat_module.S_ISREG(value.st_mode) or value.st_size > 16 * 1024 * 1024:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_lifecycle_subject_invalid",
+                str(artifact),
+            )
+        payload = json.loads(artifact.read_text(encoding="utf-8"))
+        subject = str(payload["portable"]["lifecycle"]["subject_head"]).lower()
+    except AuthorityGitReplayError:
+        raise
+    except (KeyError, OSError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_lifecycle_subject_invalid", str(artifact)
+        ) from exc
+    if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", subject):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_lifecycle_subject_invalid", str(artifact)
+        )
+    return subject
+
+
+def _authority_git_require_symlink_free(path: Path, *, reason: str) -> None:
+    """Reject a missing or symlinked component without following aliases."""
+
+    if not path.is_absolute() or not _authority_git_path_text_safe(str(path)):
+        raise AuthorityGitReplayError(reason, str(path))
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current /= part
+        try:
+            value = current.lstat()
+        except OSError as exc:
+            raise AuthorityGitReplayError(reason, str(path)) from exc
+        if stat_module.S_ISLNK(value.st_mode):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_metadata_symlink_forbidden",
+                str(current),
+            )
+
+
+def _authority_git_regular_file_digest(
+    path: Path,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+) -> tuple[str, int]:
+    """Hash one non-followed regular file and bind its stable inode metadata."""
+
+    _authority_git_require_symlink_free(
+        path,
+        reason="authority_validation_git_metadata_unreadable",
+    )
+    try:
+        before = path.lstat()
+        if not stat_module.S_ISREG(before.st_mode):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_metadata_type_invalid", str(path)
+            )
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            digest = hashlib.sha256()
+            remaining = int(opened.st_size)
+            while True:
+                if budget is not None:
+                    budget.check(str(path))
+                chunk = os.read(descriptor, min(1024 * 1024, remaining + 1))
+                if not chunk:
+                    break
+                if len(chunk) > remaining:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_metadata_drift", str(path)
+                    )
+                remaining -= len(chunk)
+                digest.update(chunk)
+        finally:
+            os.close(descriptor)
+        after = path.lstat()
+    except AuthorityGitReplayError:
+        raise
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_unreadable", str(path)
+        ) from exc
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if remaining or any(
+        getattr(before, field) != getattr(opened, field)
+        or getattr(opened, field) != getattr(after, field)
+        for field in stable_fields
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_drift", str(path)
+        )
+    identity = content_identity(
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-file-identity@1"
+            ),
+            "path": str(path),
+            "device": int(after.st_dev),
+            "inode": int(after.st_ino),
+            "mode": int(after.st_mode),
+            "size": int(after.st_size),
+            "mtime_ns": int(after.st_mtime_ns),
+            "ctime_ns": int(after.st_ctime_ns),
+            "sha256": digest.hexdigest(),
+        }
+    )
+    return identity, 1
+
+
+def _authority_git_directory_digest(
+    path: Path,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+) -> tuple[str, int]:
+    """Bind a Git metadata tree by names and non-followed inode metadata.
+
+    Object payloads remain content-addressed by Git; hashing every pack again
+    would make the 900-second authority gate depend on repository size.  The
+    pre/post metadata identity still rejects entry, inode, size, timestamp, or
+    type drift, and all control files mounted separately receive byte hashes.
+    """
+
+    _authority_git_require_symlink_free(
+        path,
+        reason="authority_validation_git_metadata_unreadable",
+    )
+    try:
+        root_before = path.lstat()
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_unreadable", str(path)
+        ) from exc
+    if not stat_module.S_ISDIR(root_before.st_mode):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_type_invalid", str(path)
+        )
+    digest = hashlib.sha256()
+    count = 0
+    stack: list[tuple[Path, str]] = [(path, "")]
+    while stack:
+        if budget is not None:
+            budget.check(str(path))
+        directory, prefix = stack.pop()
+        try:
+            entries = sorted(
+                os.scandir(directory), key=lambda item: os.fsencode(item.name)
+            )
+        except OSError as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_metadata_unreadable", str(directory)
+            ) from exc
+        child_directories: list[tuple[Path, str]] = []
+        for entry in entries:
+            relative = f"{prefix}/{entry.name}" if prefix else entry.name
+            try:
+                value = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_drift", str(entry.path)
+                ) from exc
+            if stat_module.S_ISLNK(value.st_mode):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_symlink_forbidden",
+                    str(entry.path),
+                )
+            if not (
+                stat_module.S_ISREG(value.st_mode)
+                or stat_module.S_ISDIR(value.st_mode)
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_type_invalid",
+                    str(entry.path),
+                )
+            count += 1
+            if budget is not None:
+                budget.add_entries(1, str(path))
+            if count > AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_entry_limit", str(path)
+                )
+            digest.update(os.fsencode(relative))
+            digest.update(b"\0")
+            digest.update(
+                canonical_json(
+                    {
+                        "device": int(value.st_dev),
+                        "inode": int(value.st_ino),
+                        "mode": int(value.st_mode),
+                        "size": int(value.st_size),
+                        "mtime_ns": int(value.st_mtime_ns),
+                        "ctime_ns": int(value.st_ctime_ns),
+                    }
+                ).encode("utf-8")
+            )
+            digest.update(b"\0")
+            if stat_module.S_ISDIR(value.st_mode):
+                child_directories.append((Path(entry.path), relative))
+        stack.extend(reversed(child_directories))
+    try:
+        root_after = path.lstat()
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_drift", str(path)
+        ) from exc
+    root_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if any(
+        getattr(root_before, field) != getattr(root_after, field)
+        for field in root_fields
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_drift", str(path)
+        )
+    identity = content_identity(
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-directory-identity@1"
+            ),
+            "path": str(path),
+            "device": int(root_after.st_dev),
+            "inode": int(root_after.st_ino),
+            "mode": int(root_after.st_mode),
+            "size": int(root_after.st_size),
+            "mtime_ns": int(root_after.st_mtime_ns),
+            "ctime_ns": int(root_after.st_ctime_ns),
+            "entry_count": count,
+            "metadata_sha256": digest.hexdigest(),
+        }
+    )
+    return identity, count
+
+
+def _authority_git_fd_directory_digest(
+    root_descriptor: int,
+    *,
+    display_path: Path,
+    budget: _AuthorityGitSetupBudget | None = None,
+) -> tuple[str, int]:
+    """Bind an already-opened directory without following its pathname."""
+
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    root_before = os.fstat(root_descriptor)
+    if not stat_module.S_ISDIR(root_before.st_mode):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_type_invalid", str(display_path)
+        )
+    digest = hashlib.sha256()
+    count = 0
+
+    def visit(directory_descriptor: int, prefix: str) -> None:
+        nonlocal count
+        if budget is not None:
+            budget.check(str(display_path))
+        directory_before = os.fstat(directory_descriptor)
+        with os.scandir(directory_descriptor) as scanner:
+            entries = sorted(scanner, key=lambda item: os.fsencode(item.name))
+        for entry in entries:
+            relative = f"{prefix}/{entry.name}" if prefix else entry.name
+            value = entry.stat(follow_symlinks=False)
+            if stat_module.S_ISLNK(value.st_mode):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_symlink_forbidden",
+                    f"{display_path}/{relative}",
+                )
+            if not (
+                stat_module.S_ISREG(value.st_mode)
+                or stat_module.S_ISDIR(value.st_mode)
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_type_invalid",
+                    f"{display_path}/{relative}",
+                )
+            count += 1
+            if budget is not None:
+                budget.add_entries(1, str(display_path))
+            if count > AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_entry_limit",
+                    str(display_path),
+                )
+            digest.update(os.fsencode(relative))
+            digest.update(b"\0")
+            digest.update(
+                canonical_json(
+                    {
+                        "device": int(value.st_dev),
+                        "inode": int(value.st_ino),
+                        "mode": int(value.st_mode),
+                        "size": int(value.st_size),
+                        "mtime_ns": int(value.st_mtime_ns),
+                        "ctime_ns": int(value.st_ctime_ns),
+                    }
+                ).encode("utf-8")
+            )
+            digest.update(b"\0")
+            if stat_module.S_ISDIR(value.st_mode):
+                child_descriptor = os.open(
+                    entry.name,
+                    directory_flags,
+                    dir_fd=directory_descriptor,
+                )
+                try:
+                    opened = os.fstat(child_descriptor)
+                    if (
+                        int(opened.st_dev) != int(value.st_dev)
+                        or int(opened.st_ino) != int(value.st_ino)
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_metadata_drift",
+                            f"{display_path}/{relative}",
+                        )
+                    visit(child_descriptor, relative)
+                finally:
+                    os.close(child_descriptor)
+        directory_after = os.fstat(directory_descriptor)
+        if any(
+            getattr(directory_before, field)
+            != getattr(directory_after, field)
+            for field in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_metadata_drift", str(display_path)
+            )
+
+    visit(root_descriptor, "")
+    root_after = os.fstat(root_descriptor)
+    if any(
+        getattr(root_before, field) != getattr(root_after, field)
+        for field in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_drift", str(display_path)
+        )
+    return (
+        content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-directory-identity@1"
+                ),
+                "path": str(display_path),
+                "device": int(root_after.st_dev),
+                "inode": int(root_after.st_ino),
+                "mode": int(root_after.st_mode),
+                "size": int(root_after.st_size),
+                "mtime_ns": int(root_after.st_mtime_ns),
+                "ctime_ns": int(root_after.st_ctime_ns),
+                "entry_count": count,
+                "metadata_sha256": digest.hexdigest(),
+            }
+        ),
+        count,
+    )
+
+
+def _authority_git_path_identity(
+    path: Path,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+) -> tuple[str, int]:
+    try:
+        mode = path.lstat().st_mode
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_unreadable", str(path)
+        ) from exc
+    if stat_module.S_ISREG(mode):
+        return _authority_git_regular_file_digest(path, budget=budget)
+    if stat_module.S_ISDIR(mode):
+        return _authority_git_directory_digest(path, budget=budget)
+    if stat_module.S_ISLNK(mode):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_symlink_forbidden", str(path)
+        )
+    raise AuthorityGitReplayError(
+        "authority_validation_git_metadata_type_invalid", str(path)
+    )
+
+
+def _authority_git_seal_mounts(
+    plan: _AuthorityGitReplayPlan,
+    projection_root: Path,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+    projection_descriptor: int = -1,
+) -> tuple[
+    tuple[_AuthorityGitSealedMount, ...],
+    dict[str, Any],
+    tuple[dict[str, Any], ...],
+]:
+    """Build one private minimal metadata tree at the root common-dir path."""
+
+    active_budget = budget or _AuthorityGitSetupBudget.begin()
+    if len(plan.mounts) != 1 or not plan.root_projections:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_plan_invalid",
+            str(plan.workspace),
+        )
+    mount = plan.mounts[0]
+    root_common = mount.destination
+    metadata_root = projection_root / "metadata"
+    metadata_root.mkdir(mode=0o700)
+    verification_hashes: dict[Path, str] = {}
+    pack_receipts: list[dict[str, Any]] = []
+
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+
+    def write_all(descriptor: int, payload: bytes, detail: str) -> None:
+        offset = 0
+        while offset < len(payload):
+            active_budget.check(detail)
+            written = os.write(descriptor, payload[offset:])
+            if written <= 0:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_snapshot_failed", detail
+                )
+            offset += written
+
+    def generated_file(destination: Path, payload: bytes) -> None:
+        active_budget.check(str(destination))
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(
+            destination,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+        )
+        try:
+            write_all(descriptor, payload, str(destination))
+            value = os.fstat(descriptor)
+            if not stat_module.S_ISREG(value.st_mode) or value.st_size != len(
+                payload
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_snapshot_failed",
+                    str(destination),
+                )
+        finally:
+            os.close(descriptor)
+        active_budget.add_sealed(len(payload), str(destination))
+        verification_hashes[destination] = hashlib.sha256(payload).hexdigest()
+
+    def copy_regular(source: Path, destination: Path) -> None:
+        _authority_git_require_symlink_free(
+            source,
+            reason="authority_validation_git_metadata_snapshot_failed",
+        )
+        before = source.lstat()
+        if not stat_module.S_ISREG(before.st_mode):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_metadata_type_invalid", str(source)
+            )
+        active_budget.add_source(int(before.st_size), str(source))
+        source_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        source_flags |= getattr(os, "O_NOFOLLOW", 0)
+        source_flags |= getattr(os, "O_NOATIME", 0)
+        try:
+            source_descriptor = os.open(source, source_flags)
+        except PermissionError:
+            source_flags &= ~getattr(os, "O_NOATIME", 0)
+            source_descriptor = os.open(source, source_flags)
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        destination_descriptor = -1
+        try:
+            opened = os.fstat(source_descriptor)
+            if any(
+                getattr(before, field) != getattr(opened, field)
+                for field in stable_fields
+            ) or not stat_module.S_ISREG(opened.st_mode):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_drift", str(source)
+                )
+            destination_descriptor = os.open(
+                destination,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+            )
+            digest = hashlib.sha256()
+            remaining = int(opened.st_size)
+            while remaining:
+                active_budget.check(str(source))
+                chunk = os.read(source_descriptor, min(1024 * 1024, remaining))
+                if not chunk:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_metadata_drift", str(source)
+                    )
+                write_all(destination_descriptor, chunk, str(destination))
+                digest.update(chunk)
+                remaining -= len(chunk)
+            if os.read(source_descriptor, 1):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_drift", str(source)
+                )
+            opened_after = os.fstat(source_descriptor)
+            path_after = source.lstat()
+            if any(
+                getattr(before, field) != getattr(opened_after, field)
+                or getattr(opened_after, field) != getattr(path_after, field)
+                for field in stable_fields
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_drift", str(source)
+                )
+            destination_value = os.fstat(destination_descriptor)
+            if (
+                not stat_module.S_ISREG(destination_value.st_mode)
+                or destination_value.st_size != opened.st_size
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_snapshot_failed",
+                    str(destination),
+                )
+            active_budget.add_sealed(int(destination_value.st_size), str(destination))
+            verification_hashes[destination] = digest.hexdigest()
+        finally:
+            if destination_descriptor >= 0:
+                os.close(destination_descriptor)
+            os.close(source_descriptor)
+
+    def run_git(
+        root: Path,
+        arguments: Sequence[str],
+        *,
+        stdin: Any = subprocess.DEVNULL,
+        stdout: Any = subprocess.PIPE,
+    ) -> subprocess.CompletedProcess[bytes]:
+        active_budget.check(str(root))
+        try:
+            completed = subprocess.run(
+                ("git", *arguments),
+                cwd=root,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=subprocess.PIPE,
+                timeout=active_budget.remaining(str(root)),
+                check=False,
+                env=_authority_git_local_only_environment(),
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_failed", str(root)
+            ) from exc
+        if completed.returncode != 0:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_failed",
+                f"{root}: {os.fsdecode(completed.stderr)[-500:]}",
+            )
+        return completed
+
+    def write_pack(
+        root: Path,
+        object_ids: tuple[str, ...],
+        objects_directory: Path,
+        *,
+        object_format: str,
+    ) -> dict[str, Any]:
+        objects_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        pack_directory = objects_directory / "pack"
+        pack_directory.mkdir(mode=0o700)
+        (objects_directory / "info").mkdir(mode=0o700)
+        pack_path = pack_directory / "authority.pack"
+        index_path = pack_directory / "authority.idx"
+        object_input = "".join(f"{oid}\n" for oid in object_ids).encode("ascii")
+        process: subprocess.Popen[bytes] | None = None
+        writer: threading.Thread | None = None
+        descriptor = -1
+        selector: selectors.BaseSelector | None = None
+        writer_failure: list[BaseException] = []
+        pack_digest = hashlib.sha256()
+        pack_bytes = 0
+        try:
+            process = subprocess.Popen(
+                (
+                    "git",
+                    "pack-objects",
+                    "--stdout",
+                    "--no-revs",
+                    "--missing=error",
+                    "--no-write-bitmap-index",
+                    "--no-reuse-delta",
+                    "--no-reuse-object",
+                    "--no-thin",
+                    "--no-include-tag",
+                    "--threads=1",
+                    "--window=0",
+                    "--depth=0",
+                ),
+                cwd=root,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                start_new_session=(os.name == "posix"),
+                env=_authority_git_local_only_environment(),
+            )
+            descriptor = os.open(
+                pack_path,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+            )
+
+            def feed_objects() -> None:
+                try:
+                    assert process is not None
+                    if process.stdin is not None:
+                        process.stdin.write(object_input)
+                        process.stdin.close()
+                except BaseException as exc:  # pragma: no cover - race guard
+                    writer_failure.append(exc)
+
+            writer = threading.Thread(target=feed_objects, daemon=True)
+            writer.start()
+            if process.stdout is None:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_object_projection_failed", str(root)
+                )
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while True:
+                active_budget.check(str(root))
+                events = selector.select(
+                    timeout=min(0.1, active_budget.remaining(str(root)))
+                )
+                for key, _mask in events:
+                    chunk = os.read(key.fileobj.fileno(), 1024 * 1024)
+                    if chunk:
+                        if (
+                            active_budget.source_bytes
+                            + active_budget.sealed_bytes
+                            + pack_bytes
+                            + len(chunk)
+                            > AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+                            or pack_bytes + len(chunk)
+                            > AUTHORITY_VALIDATION_GIT_PACK_LIMITS.max_pack_bytes
+                        ):
+                            raise AuthorityGitReplayError(
+                                "authority_validation_git_snapshot_byte_limit",
+                                str(root),
+                            )
+                        write_all(descriptor, chunk, str(pack_path))
+                        pack_digest.update(chunk)
+                        pack_bytes += len(chunk)
+                    else:
+                        selector.unregister(key.fileobj)
+                if process.poll() is not None and not selector.get_map():
+                    break
+            writer.join(timeout=1)
+            if writer.is_alive() or writer_failure or process.returncode != 0:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_object_projection_failed", str(root)
+                )
+            pack_value = os.fstat(descriptor)
+            if pack_value.st_size != pack_bytes:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_snapshot_failed",
+                    str(pack_path),
+                )
+        except AuthorityGitReplayError:
+            raise
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_failed", str(root)
+            ) from exc
+        finally:
+            if selector is not None:
+                selector.close()
+            if process is not None and process.poll() is None:
+                try:
+                    if os.name == "posix":
+                        os.killpg(process.pid, signal.SIGKILL)
+                    else:
+                        process.kill()
+                except OSError:
+                    pass
+            if process is not None:
+                for stream in (process.stdin, process.stdout):
+                    if stream is not None and not stream.closed:
+                        try:
+                            stream.close()
+                        except OSError:
+                            pass
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                    try:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        pass
+            if writer is not None and writer.ident is not None:
+                writer.join(timeout=1)
+            if descriptor >= 0:
+                os.close(descriptor)
+        active_budget.add_sealed(pack_bytes, str(pack_path))
+        verification_hashes[pack_path] = pack_digest.hexdigest()
+
+        indexed = run_git(
+            root,
+            (
+                "-c",
+                "pack.writeReverseIndex=false",
+                "index-pack",
+                "--strict",
+                str(pack_path),
+            ),
+        )
+        try:
+            pack_hash = indexed.stdout.decode("ascii").strip().lower()
+        except UnicodeDecodeError as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_failed", str(root)
+            ) from exc
+        expected_oid_length = len(object_ids[0])
+        if not re.fullmatch(
+            rf"[0-9a-f]{{{expected_oid_length}}}", pack_hash
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_failed", str(root)
+            )
+        hashed_pack_path = pack_directory / f"pack-{pack_hash}.pack"
+        hashed_index_path = pack_directory / f"pack-{pack_hash}.idx"
+        pack_path.rename(hashed_pack_path)
+        index_path.rename(hashed_index_path)
+        pack_path = hashed_pack_path
+        index_path = hashed_index_path
+        verification_hashes.pop(pack_directory / "authority.pack", None)
+        verification_hashes[pack_path] = pack_digest.hexdigest()
+        index_value = index_path.lstat()
+        if (
+            int(index_value.st_size)
+            > AUTHORITY_VALIDATION_GIT_PACK_LIMITS.max_index_bytes
+            or pack_bytes + int(index_value.st_size)
+            > AUTHORITY_VALIDATION_GIT_PACK_LIMITS.max_combined_bytes
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_byte_limit",
+                str(index_path),
+            )
+        active_budget.add_sealed(int(index_value.st_size), str(index_path))
+        pack_wire = pack_path.read_bytes()
+        index_wire = index_path.read_bytes()
+        verification_hashes[index_path] = hashlib.sha256(index_wire).hexdigest()
+        try:
+            verified_pack = verify_exact_git_pack(
+                pack_wire,
+                index_wire,
+                object_format=object_format,
+                limits=AUTHORITY_VALIDATION_GIT_PACK_LIMITS,
+            )
+        except GitPackVerificationError as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_scope_mismatch",
+                exc.reason,
+            ) from exc
+        if set(verified_pack) != set(object_ids):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_scope_mismatch",
+                str(root),
+            )
+        with index_path.open("rb") as index_stream:
+            shown = run_git(root, ("show-index",), stdin=index_stream).stdout
+        shown_ids = {
+            line.split()[1].decode("ascii")
+            for line in shown.splitlines()
+            if len(line.split()) >= 2
+        }
+        if shown_ids != set(object_ids):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_scope_mismatch",
+                f"{root}: show-index={sorted(shown_ids)}",
+            )
+        projection_environment = _authority_git_local_only_environment()
+        projection_environment.update(
+            {
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES": "",
+                "GIT_OBJECT_DIRECTORY": str(objects_directory),
+            }
+        )
+        try:
+            verified = subprocess.run(
+                (
+                    "git",
+                    f"--git-dir={objects_directory.parent}",
+                    "cat-file",
+                    "--batch-check=%(objectname)",
+                ),
+                cwd=root,
+                input=object_input,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=active_budget.remaining(str(root)),
+                check=False,
+                env=projection_environment,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_failed", str(root)
+            ) from exc
+        if verified.returncode != 0 or tuple(
+            line.decode("ascii") for line in verified.stdout.splitlines()
+        ) != object_ids:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_scope_mismatch",
+                (
+                    f"{root}: rc={verified.returncode}: "
+                    f"{os.fsdecode(verified.stderr)[-300:]}: "
+                    f"{os.fsdecode(verified.stdout)[-300:]}"
+                ),
+            )
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-object-pack@2"
+            ),
+            "object_count": len(object_ids),
+            "object_set_id": content_identity(list(object_ids)),
+            "pack_relative_path": str(
+                pack_path.relative_to(metadata_root).as_posix()
+            ),
+            "pack_size": int(pack_path.lstat().st_size),
+            "pack_sha256": verification_hashes[pack_path],
+            "pack_base64": base64.b64encode(pack_wire).decode("ascii"),
+            "index_relative_path": str(
+                index_path.relative_to(metadata_root).as_posix()
+            ),
+            "index_size": int(index_path.lstat().st_size),
+            "index_sha256": verification_hashes[index_path],
+            "index_base64": base64.b64encode(index_wire).decode("ascii"),
+        }
+
+    by_common: dict[Path, list[_AuthorityGitRootProjection]] = {}
+    for root_projection in plan.root_projections:
+        by_common.setdefault(root_projection.common_dir, []).append(root_projection)
+
+    for common_dir, common_roots in sorted(
+        by_common.items(), key=lambda item: str(item[0])
+    ):
+        relative_common = common_dir.relative_to(root_common)
+        projected_common = metadata_root / relative_common
+        projected_common.mkdir(mode=0o700, parents=True, exist_ok=True)
+        (projected_common / "refs").mkdir(mode=0o700, exist_ok=True)
+        representative = common_roots[0]
+        if any(
+            item.core_config != representative.core_config
+            or item.object_format != representative.object_format
+            for item in common_roots[1:]
+        ) or (
+            common_dir != root_common
+            and len({item.worktree for item in common_roots}) != 1
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_shared_common_config_conflict",
+                str(common_dir),
+            )
+        config_lines = ["[core]"]
+        for key in (
+            "repositoryformatversion",
+            "filemode",
+            "bare",
+            "logallrefupdates",
+            "ignorecase",
+            "symlinks",
+            "precomposeunicode",
+            "protecthfs",
+            "protectntfs",
+        ):
+            value = representative.core_config.get(key)
+            if value:
+                config_lines.append(f"\t{key} = {value}")
+        if common_dir != root_common:
+            config_lines.append(
+                "\tworktree = " + json.dumps(str(representative.worktree))
+            )
+        if representative.object_format == "sha256":
+            config_lines.extend(["[extensions]", "\tobjectformat = sha256"])
+        generated_file(
+            projected_common / "config",
+            ("\n".join(config_lines) + "\n").encode("utf-8"),
+        )
+        generated_file(projected_common / "info" / "exclude", b"")
+        generated_file(projected_common / "info" / "attributes", b"")
+        shallow_boundaries = sorted(
+            {item.shallow_boundary for item in common_roots}
+        )
+        generated_file(
+            projected_common / "shallow",
+            "".join(f"{oid}\n" for oid in shallow_boundaries).encode("ascii"),
+        )
+        generated_file(
+            projected_common / "HEAD",
+            f"{representative.head}\n".encode("ascii"),
+        )
+        object_ids = tuple(
+            sorted(
+                {
+                    oid
+                    for root_projection in common_roots
+                    for oid in root_projection.object_ids
+                }
+            )
+        )
+        pack_receipt = write_pack(
+            representative.worktree,
+            object_ids,
+            projected_common / "objects",
+            object_format=representative.object_format,
+        )
+        pack_receipts.append(
+            {
+                **pack_receipt,
+                "common_dir": str(common_dir),
+                "root_relative_paths": [
+                    (
+                        "."
+                        if item.worktree == plan.workspace
+                        else item.worktree.relative_to(plan.workspace).as_posix()
+                    )
+                    for item in common_roots
+                ],
+                "shallow_boundaries": shallow_boundaries,
+            }
+        )
+
+    for root_projection in plan.root_projections:
+        relative_git = root_projection.git_dir.relative_to(root_common)
+        projected_git = metadata_root / relative_git
+        projected_git.mkdir(mode=0o700, parents=True, exist_ok=True)
+        projected_head = projected_git / "HEAD"
+        expected_head = f"{root_projection.head}\n".encode("ascii")
+        if projected_head.exists():
+            if projected_head.read_bytes() != expected_head:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_shared_common_head_conflict",
+                    str(projected_head),
+                )
+        else:
+            generated_file(projected_head, expected_head)
+        copy_regular(root_projection.index_path, projected_git / "index")
+        if root_projection.git_dir != root_projection.common_dir:
+            relative_common = os.path.relpath(
+                root_projection.common_dir, root_projection.git_dir
+            )
+            generated_file(
+                projected_git / "commondir",
+                f"{relative_common}\n".encode("utf-8"),
+            )
+        if root_projection.git_dir != root_projection.worktree / ".git":
+            generated_file(
+                projected_git / "gitdir",
+                f"{root_projection.worktree / '.git'}\n".encode("utf-8"),
+            )
+
+    system_config = metadata_root / ".authority-system-gitconfig"
+    safe_directories = "".join(
+        "\tdirectory = " + json.dumps(str(root)) + "\n"
+        for root in plan.roots
+    )
+    generated_file(
+        system_config, ("[safe]\n" + safe_directories).encode("utf-8")
+    )
+
+    for directory, child_directories, filenames in os.walk(metadata_root):
+        active_budget.check(str(metadata_root))
+        for filename in filenames:
+            (Path(directory) / filename).chmod(0o400)
+        for child in child_directories:
+            (Path(directory) / child).chmod(0o500)
+    metadata_root.chmod(0o500)
+
+    if projection_descriptor >= 0:
+        metadata_descriptor = os.open(
+            "metadata",
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=projection_descriptor,
+        )
+        try:
+            identity, count = _authority_git_fd_directory_digest(
+                metadata_descriptor,
+                display_path=metadata_root,
+                budget=active_budget,
+            )
+        finally:
+            os.close(metadata_descriptor)
+    else:
+        identity, count = _authority_git_path_identity(
+            metadata_root, budget=active_budget
+        )
+    value = metadata_root.lstat()
+    verification_records: list[dict[str, Any]] = [
+        {
+            "destination": str(root_common),
+            "device": int(value.st_dev),
+            "inode": int(value.st_ino),
+            "mode_type": stat_module.S_IFMT(value.st_mode),
+            "size": int(value.st_size),
+            "sha256": "",
+        }
+    ]
+    for source_path, sha256 in sorted(
+        verification_hashes.items(), key=lambda item: str(item[0])
+    ):
+        source_value = source_path.lstat()
+        destination = root_common / source_path.relative_to(metadata_root)
+        verification_records.append(
+            {
+                "destination": str(destination),
+                "device": int(source_value.st_dev),
+                "inode": int(source_value.st_ino),
+                "mode_type": stat_module.S_IFMT(source_value.st_mode),
+                "size": int(source_value.st_size),
+                "sha256": sha256,
+            }
+        )
+    sealed_mount = _AuthorityGitSealedMount(
+        reviewed_source=mount.source,
+        bind_source=metadata_root,
+        destination=root_common,
+        purpose=mount.purpose,
+        reviewed_identity=mount.identity,
+        sealed_identity=identity,
+        entry_count=count,
+        device=int(value.st_dev),
+        inode=int(value.st_ino),
+        mode=int(value.st_mode),
+        size=int(value.st_size),
+        verification_record_count=len(verification_records),
+    )
+    active_budget.check(str(projection_root))
+    git_version = _authority_git_run(
+        plan.workspace, "--version", budget=active_budget, output_limit=4096
+    ).decode("ascii").strip()
+    snapshot_receipt = active_budget.receipt(mount_count=1, completed=True)
+    snapshot_receipt["object_packs"] = pack_receipts
+    snapshot_receipt["object_pack_count"] = len(pack_receipts)
+    snapshot_receipt["git_version"] = git_version
+    return (
+        (sealed_mount,),
+        snapshot_receipt,
+        tuple(verification_records),
+    )
+
+
+_AUTHORITY_GIT_PROJECTION_MANIFEST = ".authority-projection-lease.json"
+
+
+def _authority_git_projection_parent() -> Path:
+    root = Path(tempfile.gettempdir()) / (
+        f".ipfs-accelerate-authority-git-projections-{os.getuid()}"
+    )
+    try:
+        root.mkdir(mode=0o700, exist_ok=True)
+        value = root.lstat()
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_root_invalid", str(root)
+        ) from exc
+    if (
+        not stat_module.S_ISDIR(value.st_mode)
+        or stat_module.S_ISLNK(value.st_mode)
+        or int(value.st_uid) != int(os.getuid())
+        or stat_module.S_IMODE(value.st_mode) != 0o700
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_root_invalid", str(root)
+        )
+    return root
+
+
+def _authority_process_start_ticks(pid: int) -> int | None:
+    try:
+        raw = Path(f"/proc/{int(pid)}/stat").read_text(encoding="ascii")
+        fields = raw.rsplit(")", 1)[1].split()
+        return int(fields[19])
+    except (IndexError, OSError, ValueError):
+        return None
+
+
+def _authority_git_remove_unfinalized_created_projection(
+    path: Path,
+    *,
+    root_descriptor: int,
+    expected_device: int,
+    expected_inode: int,
+    manifest_identity: tuple[int, int] | None,
+) -> bool:
+    """Remove only creator-owned empty/initial-lease state via pinned fds."""
+
+    parent_descriptor = -1
+    manifest_descriptor = -1
+    try:
+        root_value = os.fstat(root_descriptor)
+        if (
+            int(root_value.st_dev) != int(expected_device)
+            or int(root_value.st_ino) != int(expected_inode)
+            or not stat_module.S_ISDIR(root_value.st_mode)
+        ):
+            return False
+        with os.scandir(root_descriptor) as scanner:
+            first_entry = next(scanner, None)
+            second_entry = next(scanner, None)
+        if second_entry is not None:
+            return False
+        names = [first_entry.name] if first_entry is not None else []
+        if any(name != _AUTHORITY_GIT_PROJECTION_MANIFEST for name in names):
+            return False
+        if _AUTHORITY_GIT_PROJECTION_MANIFEST in names:
+            if manifest_identity is None:
+                return False
+            manifest_descriptor = os.open(
+                _AUTHORITY_GIT_PROJECTION_MANIFEST,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=root_descriptor,
+            )
+            manifest_value = os.fstat(manifest_descriptor)
+            if (
+                not stat_module.S_ISREG(manifest_value.st_mode)
+                or int(manifest_value.st_dev) != manifest_identity[0]
+                or int(manifest_value.st_ino) != manifest_identity[1]
+                or int(manifest_value.st_nlink) != 1
+            ):
+                return False
+            os.unlink(
+                _AUTHORITY_GIT_PROJECTION_MANIFEST,
+                dir_fd=root_descriptor,
+            )
+            if int(os.fstat(manifest_descriptor).st_nlink) != 0:
+                return False
+            os.close(manifest_descriptor)
+            manifest_descriptor = -1
+        with os.scandir(root_descriptor) as scanner:
+            if next(scanner, None) is not None:
+                return False
+        open_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        parent_descriptor = os.open(path.parent, open_flags)
+        published = os.stat(
+            path.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            int(published.st_dev) != int(expected_device)
+            or int(published.st_ino) != int(expected_inode)
+            or not stat_module.S_ISDIR(published.st_mode)
+        ):
+            return False
+        os.rmdir(path.name, dir_fd=parent_descriptor)
+        if int(os.fstat(root_descriptor).st_nlink) != 0:
+            return False
+        try:
+            os.stat(
+                path.name,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return True
+        return False
+    except OSError:
+        return False
+    finally:
+        if manifest_descriptor >= 0:
+            os.close(manifest_descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _authority_git_create_projection(
+    workspace: Path,
+    *,
+    budget: _AuthorityGitSetupBudget,
+) -> tuple[Path, dict[str, Any], int]:
+    budget.check(str(workspace))
+    creation_descriptor = -1
+    projection_value: os.stat_result | None = None
+    projection: Path | None = None
+    manifest_identity: tuple[int, int] | None = None
+    try:
+        projection = Path(
+            tempfile.mkdtemp(
+                prefix=AUTHORITY_VALIDATION_GIT_PROJECTION_PREFIX,
+                dir=_authority_git_projection_parent(),
+            )
+        )
+        value = projection.lstat()
+        projection_value = value
+        creation_descriptor = os.open(
+            projection,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened_value = os.fstat(creation_descriptor)
+        if (
+            not stat_module.S_ISDIR(opened_value.st_mode)
+            or int(opened_value.st_dev) != int(value.st_dev)
+            or int(opened_value.st_ino) != int(value.st_ino)
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_create_race",
+                str(projection),
+            )
+        manifest_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-projection-lease@2"
+            ),
+            "projection_path": str(projection),
+            "workspace_path": str(workspace),
+            "creator": "authority-validation-command-runner",
+            "uid": int(os.getuid()),
+            "pid": int(os.getpid()),
+            "process_start_ticks": int(
+                _authority_process_start_ticks(os.getpid()) or 0
+            ),
+            "created_unix_ns": int(time.time_ns()),
+            "root_device": int(value.st_dev),
+            "root_inode": int(value.st_ino),
+            "mount_source": (
+                f"/proc/{os.getpid()}/fd/{creation_descriptor}/metadata"
+            ),
+            "finalized": False,
+            "descendant_record_count": 0,
+            "descendant_manifest_id": content_identity([]),
+            "descendant_records": [],
+            "cleanup_quarantine_path": "",
+        }
+        manifest = {
+            **manifest_body,
+            "manifest_id": content_identity(manifest_body),
+        }
+        encoded = (canonical_json(manifest) + "\n").encode("utf-8")
+        descriptor = os.open(
+            _AUTHORITY_GIT_PROJECTION_MANIFEST,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o400,
+            dir_fd=creation_descriptor,
+        )
+        try:
+            manifest_value = os.fstat(descriptor)
+            manifest_identity = (
+                int(manifest_value.st_dev),
+                int(manifest_value.st_ino),
+            )
+            offset = 0
+            while offset < len(encoded):
+                budget.check(str(projection))
+                written = os.write(descriptor, encoded[offset:])
+                if written <= 0:
+                    raise OSError("projection manifest write stalled")
+                offset += written
+        finally:
+            os.close(descriptor)
+        budget.add_sealed(len(encoded), str(projection))
+        returned_descriptor = creation_descriptor
+        creation_descriptor = -1
+        return projection, manifest, returned_descriptor
+    except (OSError, AuthorityGitReplayError) as exc:
+        cleanup_attempted = False
+        cleanup_succeeded = False
+        cleanup_descriptor = creation_descriptor
+        reopened_descriptor = -1
+        if projection is not None and projection_value is None:
+            cleanup_attempted = True
+            parent_descriptor = -1
+            try:
+                open_flags = (
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                )
+                parent_descriptor = os.open(projection.parent, open_flags)
+                # No creator-owned descendant can precede the first lstat.
+                # rmdir is therefore the only safe recovery operation: it
+                # removes an empty exact name and refuses injected contents.
+                os.rmdir(projection.name, dir_fd=parent_descriptor)
+                cleanup_succeeded = True
+            except FileNotFoundError:
+                cleanup_succeeded = True
+            except OSError:
+                cleanup_succeeded = False
+            finally:
+                if parent_descriptor >= 0:
+                    os.close(parent_descriptor)
+        if (
+            cleanup_descriptor < 0
+            and projection is not None
+            and projection_value is not None
+        ):
+            parent_descriptor = -1
+            try:
+                open_flags = (
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                )
+                parent_descriptor = os.open(projection.parent, open_flags)
+                published = os.stat(
+                    projection.name,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+                if (
+                    int(published.st_dev) == int(projection_value.st_dev)
+                    and int(published.st_ino) == int(projection_value.st_ino)
+                    and stat_module.S_ISDIR(published.st_mode)
+                ):
+                    reopened_descriptor = os.open(
+                        projection.name,
+                        open_flags,
+                        dir_fd=parent_descriptor,
+                    )
+                    reopened = os.fstat(reopened_descriptor)
+                    if (
+                        int(reopened.st_dev)
+                        != int(projection_value.st_dev)
+                        or int(reopened.st_ino)
+                        != int(projection_value.st_ino)
+                    ):
+                        os.close(reopened_descriptor)
+                        reopened_descriptor = -1
+            except OSError:
+                reopened_descriptor = -1
+            finally:
+                if parent_descriptor >= 0:
+                    os.close(parent_descriptor)
+            cleanup_descriptor = reopened_descriptor
+        if (
+            projection is not None
+            and projection_value is not None
+            and cleanup_descriptor >= 0
+        ):
+            cleanup_attempted = True
+            cleanup_succeeded = _authority_git_remove_unfinalized_created_projection(
+                projection,
+                root_descriptor=cleanup_descriptor,
+                expected_device=int(projection_value.st_dev),
+                expected_inode=int(projection_value.st_ino),
+                manifest_identity=manifest_identity,
+            )
+        if reopened_descriptor >= 0:
+            os.close(reopened_descriptor)
+        if projection is not None and not cleanup_succeeded:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_creator_cleanup_failed",
+                str(projection or workspace),
+            ) from exc
+        raise
+    finally:
+        if creation_descriptor >= 0:
+            os.close(creation_descriptor)
+
+
+def _authority_git_write_projection_manifest(
+    root_descriptor: int,
+    manifest_body: Mapping[str, Any],
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+    publish_callback: Callable[[Mapping[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Rewrite the lease through its pinned root descriptor."""
+
+    manifest = {
+        **dict(manifest_body),
+        "manifest_id": content_identity(manifest_body),
+    }
+    encoded = (canonical_json(manifest) + "\n").encode("utf-8")
+    if len(encoded) > AUTHORITY_VALIDATION_GIT_PROJECTION_MANIFEST_MAX_BYTES:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_manifest_limit",
+            str(manifest_body.get("projection_path") or ""),
+        )
+    current_descriptor = os.open(
+        _AUTHORITY_GIT_PROJECTION_MANIFEST,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=root_descriptor,
+    )
+    try:
+        before = os.fstat(current_descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or int(before.st_nlink) != 1
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_manifest_invalid",
+                str(manifest_body.get("projection_path") or ""),
+            )
+    finally:
+        os.close(current_descriptor)
+    temporary_name = (
+        f"{_AUTHORITY_GIT_PROJECTION_MANIFEST}."
+        f"{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    descriptor = -1
+    temporary_identity: tuple[int, int] | None = None
+    try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=root_descriptor,
+        )
+        temporary_value = os.fstat(descriptor)
+        temporary_identity = (
+            int(temporary_value.st_dev),
+            int(temporary_value.st_ino),
+        )
+        offset = 0
+        while offset < len(encoded):
+            if budget is not None:
+                budget.check(str(manifest_body.get("projection_path") or ""))
+            written = os.write(descriptor, encoded[offset:])
+            if written <= 0:
+                raise OSError("projection manifest write stalled")
+            offset += written
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if after.st_size != len(encoded):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_manifest_invalid",
+                str(manifest_body.get("projection_path") or ""),
+            )
+        os.fchmod(descriptor, 0o400)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(
+            temporary_name,
+            _AUTHORITY_GIT_PROJECTION_MANIFEST,
+            src_dir_fd=root_descriptor,
+            dst_dir_fd=root_descriptor,
+        )
+        os.fsync(root_descriptor)
+        if publish_callback is not None:
+            publish_callback(manifest)
+        if budget is not None and len(encoded) > int(before.st_size):
+            budget.add_sealed(
+                len(encoded) - int(before.st_size),
+                str(manifest_body.get("projection_path") or ""),
+            )
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary_identity is not None:
+            cleanup_descriptor = -1
+            try:
+                cleanup_descriptor = os.open(
+                    temporary_name,
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=root_descriptor,
+                )
+                cleanup_value = os.fstat(cleanup_descriptor)
+                if (
+                    stat_module.S_ISREG(cleanup_value.st_mode)
+                    and int(cleanup_value.st_dev) == temporary_identity[0]
+                    and int(cleanup_value.st_ino) == temporary_identity[1]
+                    and int(cleanup_value.st_nlink) == 1
+                ):
+                    os.unlink(temporary_name, dir_fd=root_descriptor)
+                    if int(os.fstat(cleanup_descriptor).st_nlink) != 0:
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_manifest_invalid",
+                            str(manifest_body.get("projection_path") or ""),
+                        )
+            except FileNotFoundError:
+                pass
+            finally:
+                if cleanup_descriptor >= 0:
+                    os.close(cleanup_descriptor)
+    return manifest
+
+
+def _authority_git_finalize_projection(
+    projection: Path,
+    root_descriptor: int,
+    manifest: Mapping[str, Any],
+    *,
+    budget: _AuthorityGitSetupBudget,
+    publish_callback: Callable[[Mapping[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Bind every sealed descendant to one closed fd-anchored lease."""
+
+    root_value = os.fstat(root_descriptor)
+    if (
+        int(root_value.st_dev) != int(manifest.get("root_device") or -1)
+        or int(root_value.st_ino) != int(manifest.get("root_inode") or -1)
+        or not stat_module.S_ISDIR(root_value.st_mode)
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_create_race", str(projection)
+        )
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    records: list[dict[str, Any]] = []
+
+    def add_directory(directory_descriptor: int, prefix: PurePosixPath) -> None:
+        budget.check(str(projection))
+        entries: list[tuple[str, os.stat_result]] = []
+        with os.scandir(directory_descriptor) as scanner:
+            for entry in scanner:
+                if (
+                    not prefix.parts
+                    and entry.name == _AUTHORITY_GIT_PROJECTION_MANIFEST
+                ):
+                    continue
+                if len(records) + len(entries) >= (
+                    AUTHORITY_VALIDATION_GIT_PROJECTION_MAX_DESCENDANTS
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_manifest_limit",
+                        str(projection),
+                    )
+                entries.append((entry.name, entry.stat(follow_symlinks=False)))
+        for entry_name, observed in sorted(entries, key=lambda item: item[0]):
+            relative = prefix / entry_name
+            relative_text = relative.as_posix()
+            if (
+                relative.is_absolute()
+                or any(part in {"", ".", ".."} for part in relative.parts)
+                or any(character in relative_text for character in "\\\r\n\0")
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_manifest_invalid",
+                    relative_text,
+                )
+            if stat_module.S_ISDIR(observed.st_mode):
+                child_descriptor = os.open(
+                    entry_name,
+                    directory_flags,
+                    dir_fd=directory_descriptor,
+                )
+                try:
+                    opened = os.fstat(child_descriptor)
+                    if (
+                        int(opened.st_dev) != int(observed.st_dev)
+                        or int(opened.st_ino) != int(observed.st_ino)
+                        or not stat_module.S_ISDIR(opened.st_mode)
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_manifest_drift",
+                            relative_text,
+                        )
+                    records.append(
+                        {
+                            "relative_path": relative_text,
+                            "type": "directory",
+                            "device": int(opened.st_dev),
+                            "inode": int(opened.st_ino),
+                            "nlink": int(opened.st_nlink),
+                            "mode": int(opened.st_mode),
+                            "size": int(opened.st_size),
+                            "mtime_ns": int(opened.st_mtime_ns),
+                            "ctime_ns": int(opened.st_ctime_ns),
+                            "sha256": "",
+                        }
+                    )
+                    add_directory(child_descriptor, relative)
+                    after = os.fstat(child_descriptor)
+                    if any(
+                        getattr(opened, field) != getattr(after, field)
+                        for field in (
+                            "st_dev",
+                            "st_ino",
+                            "st_mode",
+                            "st_size",
+                            "st_mtime_ns",
+                            "st_ctime_ns",
+                        )
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_manifest_drift",
+                            relative_text,
+                        )
+                finally:
+                    os.close(child_descriptor)
+                continue
+            if not stat_module.S_ISREG(observed.st_mode):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_manifest_invalid",
+                    relative_text,
+                )
+            child_descriptor = os.open(
+                entry_name,
+                file_flags,
+                dir_fd=directory_descriptor,
+            )
+            try:
+                opened = os.fstat(child_descriptor)
+                if (
+                    int(opened.st_dev) != int(observed.st_dev)
+                    or int(opened.st_ino) != int(observed.st_ino)
+                    or not stat_module.S_ISREG(opened.st_mode)
+                    or int(opened.st_nlink) != 1
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_manifest_drift",
+                        relative_text,
+                    )
+                digest = hashlib.sha256()
+                remaining = int(opened.st_size)
+                while remaining:
+                    budget.check(str(projection))
+                    chunk = os.read(child_descriptor, min(1024 * 1024, remaining))
+                    if not chunk:
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_manifest_drift",
+                            relative_text,
+                        )
+                    digest.update(chunk)
+                    remaining -= len(chunk)
+                if os.read(child_descriptor, 1):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_manifest_drift",
+                        relative_text,
+                    )
+                after = os.fstat(child_descriptor)
+                if any(
+                    getattr(opened, field) != getattr(after, field)
+                    for field in (
+                        "st_dev",
+                        "st_ino",
+                        "st_mode",
+                        "st_size",
+                        "st_mtime_ns",
+                        "st_ctime_ns",
+                    )
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_manifest_drift",
+                        relative_text,
+                    )
+                records.append(
+                    {
+                        "relative_path": relative_text,
+                        "type": "regular",
+                        "device": int(opened.st_dev),
+                        "inode": int(opened.st_ino),
+                        "nlink": int(opened.st_nlink),
+                        "mode": int(opened.st_mode),
+                        "size": int(opened.st_size),
+                        "mtime_ns": int(opened.st_mtime_ns),
+                        "ctime_ns": int(opened.st_ctime_ns),
+                        "sha256": digest.hexdigest(),
+                    }
+                )
+            finally:
+                os.close(child_descriptor)
+
+    add_directory(root_descriptor, PurePosixPath())
+    records.sort(key=lambda item: str(item["relative_path"]))
+    manifest_body = {
+        key: manifest[key]
+        for key in manifest
+        if key
+        not in {
+            "manifest_id",
+            "descendant_record_count",
+            "descendant_manifest_id",
+            "descendant_records",
+            "finalized",
+            "cleanup_quarantine_path",
+        }
+    }
+    manifest_body.update(
+        {
+            "finalized": True,
+            "descendant_record_count": len(records),
+            "descendant_manifest_id": content_identity(records),
+            "descendant_records": records,
+            "cleanup_quarantine_path": "",
+        }
+    )
+    finalized = _authority_git_write_projection_manifest(
+        root_descriptor,
+        manifest_body,
+        budget=budget,
+        publish_callback=publish_callback,
+    )
+    published = projection.lstat()
+    final_root = os.fstat(root_descriptor)
+    if (
+        int(published.st_dev) != int(final_root.st_dev)
+        or int(published.st_ino) != int(final_root.st_ino)
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_create_race", str(projection)
+        )
+    return finalized
+
+
+def _authority_git_derived_layer_manifest(
+    projection_manifest: Mapping[str, Any], destination_root: Path
+) -> dict[str, Any]:
+    record_map = _authority_git_projection_record_map(
+        projection_manifest.get("descendant_records"),
+        expected_device=int(projection_manifest.get("root_device") or -1),
+    )
+    if record_map is None or record_map.get("metadata", {}).get("type") != "directory":
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_manifest_invalid",
+            str(destination_root),
+        )
+    records: list[dict[str, Any]] = []
+    for source_relative, source_record in record_map.items():
+        if source_relative == "metadata":
+            relative = ""
+        elif source_relative.startswith("metadata/"):
+            relative = source_relative.removeprefix("metadata/")
+        else:
+            continue
+        records.append(
+            {
+                "relative_path": relative,
+                "type": str(source_record["type"]),
+                "mode": stat_module.S_IMODE(int(source_record["mode"])),
+                "uid": int(os.getuid()),
+                "gid": int(os.getgid()),
+                "size": int(source_record["size"]),
+                "sha256": str(source_record["sha256"]),
+            }
+        )
+    records.sort(key=lambda item: str(item["relative_path"]))
+    body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-git-derived-layer-manifest@1"
+        ),
+        "root": str(destination_root),
+        "records": records,
+        "record_count": len(records),
+    }
+    return {**body, "manifest_id": content_identity(body)}
+
+
+def _authority_git_stream_projection_tar(
+    root_descriptor: int,
+    projection_manifest: Mapping[str, Any],
+    destination_root: Path,
+    docker_cp_command: Sequence[str],
+    *,
+    docker_environment: Mapping[str, str],
+    budget: _AuthorityGitSetupBudget,
+) -> dict[str, Any]:
+    """Stream a canonical manifest-closed metadata layer to Docker."""
+
+    destination_text = str(destination_root)
+    if (
+        not destination_root.is_absolute()
+        or str(Path(destination_text)) != destination_text
+        or destination_text == "/"
+        or any(part in {"", ".", ".."} for part in destination_root.parts[1:])
+        or any(character in destination_text for character in "\\\r\n\0")
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_destination_invalid",
+            destination_text,
+        )
+    record_map = _authority_git_projection_record_map(
+        projection_manifest.get("descendant_records"),
+        expected_device=int(projection_manifest.get("root_device") or -1),
+    )
+    if record_map is None or "metadata" not in record_map:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_manifest_invalid",
+            destination_text,
+        )
+    metadata_records = {
+        relative: record
+        for relative, record in record_map.items()
+        if relative == "metadata" or relative.startswith("metadata/")
+    }
+    if not _authority_git_fd_tree_matches_manifest(
+        root_descriptor,
+        record_map,
+        allow_missing=False,
+        recovery=False,
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_manifest_drift",
+            destination_text,
+        )
+
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    metadata_descriptor = os.open(
+        "metadata", directory_flags, dir_fd=root_descriptor
+    )
+    archive_descriptor = -1
+    archive_digest = hashlib.sha256()
+    archive_bytes = 0
+    entry_count = 0
+    observed: set[str] = {"metadata"}
+
+    def record_matches(
+        value: os.stat_result,
+        record: Mapping[str, Any],
+        *,
+        directory: bool,
+    ) -> bool:
+        return bool(
+            int(value.st_dev) == int(record["device"])
+            and int(value.st_ino) == int(record["inode"])
+            and int(value.st_nlink) == int(record["nlink"])
+            and int(value.st_mode) == int(record["mode"])
+            and int(value.st_size) == int(record["size"])
+            and int(value.st_mtime_ns) == int(record["mtime_ns"])
+            and int(value.st_ctime_ns) == int(record["ctime_ns"])
+            and (
+                stat_module.S_ISDIR(value.st_mode)
+                if directory
+                else stat_module.S_ISREG(value.st_mode)
+            )
+        )
+
+    class _ArchiveWriter:
+        def __init__(self, stream: Any) -> None:
+            self.stream = stream
+
+        def write(self, payload: bytes) -> int:
+            nonlocal archive_bytes
+            budget.check(destination_text)
+            budget.add_sealed(len(payload), destination_text)
+            offset = 0
+            while offset < len(payload):
+                written = self.stream.write(payload[offset:])
+                if written is None:
+                    written = len(payload) - offset
+                if written <= 0:
+                    raise BrokenPipeError("Docker copy stream stalled")
+                offset += int(written)
+            self.stream.flush()
+            archive_digest.update(payload)
+            archive_bytes += len(payload)
+            return len(payload)
+
+        def flush(self) -> None:
+            self.stream.flush()
+
+    class _ExactReader:
+        def __init__(
+            self,
+            descriptor: int,
+            record: Mapping[str, Any],
+            detail: str,
+        ) -> None:
+            self.descriptor = descriptor
+            self.record = record
+            self.detail = detail
+            self.remaining = int(record["size"])
+            self.digest = hashlib.sha256()
+
+        def read(self, requested: int = -1) -> bytes:
+            budget.check(self.detail)
+            if self.remaining <= 0:
+                return b""
+            limit = self.remaining if requested < 0 else min(
+                self.remaining, max(1, int(requested))
+            )
+            chunk = os.read(self.descriptor, min(limit, 1024 * 1024))
+            if not chunk:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_manifest_drift",
+                    self.detail,
+                )
+            self.remaining -= len(chunk)
+            self.digest.update(chunk)
+            return chunk
+
+        def verified(self) -> bool:
+            return bool(
+                self.remaining == 0
+                and not os.read(self.descriptor, 1)
+                and self.digest.hexdigest() == self.record["sha256"]
+                and record_matches(
+                    os.fstat(self.descriptor), self.record, directory=False
+                )
+            )
+
+    target_prefix = PurePosixPath(*destination_root.parts[1:])
+
+    def tar_info(
+        name: PurePosixPath,
+        record: Mapping[str, Any],
+        *,
+        directory: bool,
+    ) -> tarfile.TarInfo:
+        nonlocal entry_count
+        name_text = name.as_posix()
+        if (
+            name.is_absolute()
+            or any(part in {"", ".", ".."} for part in name.parts)
+            or any(character in name_text for character in "\\\r\n\0")
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_archive_invalid",
+                name_text,
+            )
+        value = tarfile.TarInfo(name_text)
+        value.type = tarfile.DIRTYPE if directory else tarfile.REGTYPE
+        value.mode = stat_module.S_IMODE(int(record["mode"]))
+        value.uid = int(os.getuid())
+        value.gid = int(os.getgid())
+        value.uname = ""
+        value.gname = ""
+        value.mtime = 0
+        value.size = 0 if directory else int(record["size"])
+        entry_count += 1
+        return value
+
+    def add_directory(
+        archive: tarfile.TarFile,
+        directory_descriptor: int,
+        source_prefix: PurePosixPath,
+        archive_prefix: PurePosixPath,
+    ) -> None:
+        entries: list[tuple[str, os.stat_result]] = []
+        with os.scandir(directory_descriptor) as scanner:
+            for entry in scanner:
+                entries.append((entry.name, entry.stat(follow_symlinks=False)))
+        for entry_name, listed in sorted(entries, key=lambda item: item[0]):
+            source_relative = (source_prefix / entry_name).as_posix()
+            record = metadata_records.get(source_relative)
+            if record is None:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_manifest_drift",
+                    source_relative,
+                )
+            observed.add(source_relative)
+            archive_relative = archive_prefix / entry_name
+            if record["type"] == "directory":
+                child_descriptor = os.open(
+                    entry_name, directory_flags, dir_fd=directory_descriptor
+                )
+                try:
+                    opened = os.fstat(child_descriptor)
+                    if (
+                        not record_matches(opened, record, directory=True)
+                        or int(opened.st_dev) != int(listed.st_dev)
+                        or int(opened.st_ino) != int(listed.st_ino)
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_manifest_drift",
+                            source_relative,
+                        )
+                    archive.addfile(
+                        tar_info(archive_relative, record, directory=True)
+                    )
+                    add_directory(
+                        archive,
+                        child_descriptor,
+                        source_prefix / entry_name,
+                        archive_relative,
+                    )
+                    if not record_matches(
+                        os.fstat(child_descriptor), record, directory=True
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_manifest_drift",
+                            source_relative,
+                        )
+                finally:
+                    os.close(child_descriptor)
+                continue
+            child_descriptor = os.open(
+                entry_name, file_flags, dir_fd=directory_descriptor
+            )
+            try:
+                opened = os.fstat(child_descriptor)
+                if (
+                    not record_matches(opened, record, directory=False)
+                    or int(opened.st_dev) != int(listed.st_dev)
+                    or int(opened.st_ino) != int(listed.st_ino)
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_manifest_drift",
+                        source_relative,
+                    )
+                reader = _ExactReader(
+                    child_descriptor, record, source_relative
+                )
+                archive.addfile(
+                    tar_info(archive_relative, record, directory=False),
+                    reader,
+                )
+                if not reader.verified():
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_manifest_drift",
+                        source_relative,
+                    )
+            finally:
+                os.close(child_descriptor)
+
+    try:
+        metadata_value = os.fstat(metadata_descriptor)
+        metadata_record = metadata_records["metadata"]
+        if not record_matches(metadata_value, metadata_record, directory=True):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_manifest_drift",
+                destination_text,
+            )
+        if not hasattr(os, "memfd_create"):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_archive_unsupported",
+                destination_text,
+            )
+        archive_descriptor = os.memfd_create(
+            "ipfs-authority-git-layer",
+            getattr(os, "MFD_CLOEXEC", 0x0001)
+            | getattr(os, "MFD_ALLOW_SEALING", 0x0002),
+        )
+        with os.fdopen(os.dup(archive_descriptor), "wb", buffering=0) as stream:
+            with tarfile.open(
+                fileobj=_ArchiveWriter(stream),
+                mode="w|",
+                format=tarfile.PAX_FORMAT,
+            ) as archive:
+                archive.addfile(
+                    tar_info(target_prefix, metadata_record, directory=True)
+                )
+                add_directory(
+                    archive,
+                    metadata_descriptor,
+                    PurePosixPath("metadata"),
+                    target_prefix,
+                )
+        if observed != set(metadata_records):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_manifest_drift",
+                destination_text,
+            )
+        if not _authority_git_fd_tree_matches_manifest(
+            root_descriptor,
+            record_map,
+            allow_missing=False,
+            recovery=False,
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_manifest_drift",
+                destination_text,
+            )
+        os.fsync(archive_descriptor)
+        fcntl.fcntl(
+            archive_descriptor,
+            fcntl.F_ADD_SEALS,
+            fcntl.F_SEAL_SEAL
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_WRITE,
+        )
+        if os.fstat(archive_descriptor).st_size != archive_bytes:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_archive_invalid",
+                destination_text,
+        )
+        os.lseek(archive_descriptor, 0, os.SEEK_SET)
+        try:
+            copied = _run_bounded_subprocess(
+                list(docker_cp_command),
+                environment=docker_environment,
+                deadline=budget.deadline,
+                stdout_limit=AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES,
+                stderr_limit=AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES,
+                stdin_fd=archive_descriptor,
+                start_new_session=True,
+            )
+        except (OSError, ValueError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_setup_timeout", destination_text
+            ) from exc
+        output = copied.stdout + copied.stderr
+        if (
+            copied.returncode != 0
+            or copied.timed_out
+            or copied.output_overflow
+            or not copied.reaped
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_projection_archive_copy_failed",
+                os.fsdecode(output[-1000:]),
+            )
+        budget.check(destination_text)
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-canonical-archive@1"
+            ),
+            "format": "pax",
+            "entry_count": entry_count,
+            "manifest_id": content_identity(
+                [dict(metadata_records[key]) for key in sorted(metadata_records)]
+            ),
+            "sha256": archive_digest.hexdigest(),
+            "size": archive_bytes,
+            "destination_root": destination_text,
+            "links_allowed": False,
+            "special_files_allowed": False,
+        }
+    except (BrokenPipeError, OSError, tarfile.TarError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_archive_copy_failed",
+            str(exc),
+        ) from exc
+    finally:
+        os.close(metadata_descriptor)
+        if archive_descriptor >= 0:
+            os.close(archive_descriptor)
+
+
+_AUTHORITY_GIT_DOCKER_CLEANUP_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.authority-git-docker-cleanup-lease@2"
+)
+_AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY = (
+    "org.ipfs-accelerate.authority-git-lease"
+)
+_AUTHORITY_GIT_DOCKER_CLEANUP_MAX_LEASES = 64
+_AUTHORITY_GIT_DOCKER_CLEANUP_MAX_BYTES = 64 * 1024
+_AUTHORITY_GIT_DOCKER_CLEANUP_MAX_RESOURCES = (
+    _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_LEASES * 16
+)
+_AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS = 30.0
+_AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS = 2.0
+
+
+def _authority_git_docker_cleanup_parent() -> Path:
+    root = Path(tempfile.gettempdir()) / (
+        f".ipfs-accelerate-authority-git-docker-cleanup-{os.getuid()}"
+    )
+    try:
+        root.mkdir(mode=0o700, exist_ok=True)
+        value = root.lstat()
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_root_invalid", str(root)
+        ) from exc
+    if (
+        not stat_module.S_ISDIR(value.st_mode)
+        or stat_module.S_ISLNK(value.st_mode)
+        or int(value.st_uid) != os.getuid()
+        or stat_module.S_IMODE(value.st_mode) != 0o700
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_root_invalid", str(root)
+        )
+    return root
+
+
+def _authority_git_docker_cleanup_lease_body(
+    *,
+    base_image_id: str,
+    authority_plan_id: str,
+    command_binding_id: str,
+    projection_manifest_id: str,
+) -> dict[str, Any]:
+    process_start_ticks = _authority_process_start_ticks(os.getpid())
+    if process_start_ticks is None:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_owner_invalid"
+        )
+    created_unix_ns = time.time_ns()
+    seed = {
+        "schema": _AUTHORITY_GIT_DOCKER_CLEANUP_SCHEMA,
+        "uid": os.getuid(),
+        "pid": os.getpid(),
+        "process_start_ticks": process_start_ticks,
+        "created_unix_ns": created_unix_ns,
+        "docker_endpoint": AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
+        "base_image_id": base_image_id,
+        "authority_plan_id": authority_plan_id,
+        "command_binding_id": command_binding_id,
+        "projection_manifest_id": projection_manifest_id,
+    }
+    lease_id = hashlib.sha256(canonical_json(seed).encode("utf-8")).hexdigest()
+    return {
+        **seed,
+        "phase": "building",
+        "lease_id": lease_id,
+        "cleanup_label_key": _AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY,
+        "cleanup_label_value": lease_id,
+        "image_tag": f"ipfs-accelerate-authority-git:{lease_id}",
+        "preflight_container_name": f"ipfs-authority-git-preflight-{lease_id[:32]}",
+        "builder_container_name": f"ipfs-authority-git-builder-{lease_id[:32]}",
+    }
+
+
+def _authority_git_docker_cleanup_lease_valid(
+    value: Any, *, journal_path: Path | None = None
+) -> dict[str, Any] | None:
+    keys = {
+        "schema",
+        "lease_id",
+        "manifest_id",
+        "uid",
+        "pid",
+        "process_start_ticks",
+        "created_unix_ns",
+        "phase",
+        "docker_endpoint",
+        "base_image_id",
+        "authority_plan_id",
+        "command_binding_id",
+        "projection_manifest_id",
+        "cleanup_label_key",
+        "cleanup_label_value",
+        "image_tag",
+        "preflight_container_name",
+        "builder_container_name",
+    }
+    if not isinstance(value, Mapping) or set(value) != keys:
+        return None
+    body = {key: value[key] for key in value if key != "manifest_id"}
+    seed = {
+        key: body[key]
+        for key in (
+            "schema",
+            "uid",
+            "pid",
+            "process_start_ticks",
+            "created_unix_ns",
+            "docker_endpoint",
+            "base_image_id",
+            "authority_plan_id",
+            "command_binding_id",
+            "projection_manifest_id",
+        )
+    }
+    expected_id = hashlib.sha256(
+        canonical_json(seed).encode("utf-8")
+    ).hexdigest()
+    lease_id = str(value["lease_id"])
+    expected_parent = _authority_git_docker_cleanup_parent()
+    if (
+        value["schema"] != _AUTHORITY_GIT_DOCKER_CLEANUP_SCHEMA
+        or value["manifest_id"] != content_identity(body)
+        or type(value["uid"]) is not int
+        or value["uid"] != os.getuid()
+        or any(
+            type(value[key]) is not int or value[key] <= 0
+            for key in ("pid", "process_start_ticks", "created_unix_ns")
+        )
+        or lease_id != expected_id
+        or value["phase"]
+        not in {
+            "building",
+            "commit_in_flight",
+            "runtime",
+            "cleanup_pending",
+            "indeterminate_commit",
+        }
+        or value["docker_endpoint"] != AUTHORITY_VALIDATION_DOCKER_ENDPOINT
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", str(value["base_image_id"]))
+        is None
+        or not str(value["authority_plan_id"])
+        or not str(value["command_binding_id"])
+        or not str(value["projection_manifest_id"])
+        or value["cleanup_label_key"]
+        != _AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY
+        or value["cleanup_label_value"] != lease_id
+        or value["image_tag"]
+        != f"ipfs-accelerate-authority-git:{lease_id}"
+        or value["preflight_container_name"]
+        != f"ipfs-authority-git-preflight-{lease_id[:32]}"
+        or value["builder_container_name"]
+        != f"ipfs-authority-git-builder-{lease_id[:32]}"
+        or (
+            journal_path is not None
+            and (
+                journal_path.parent != expected_parent
+                or journal_path.name != f"{lease_id}.json"
+            )
+        )
+    ):
+        return None
+    return dict(value)
+
+
+def _authority_git_docker_cleanup_lock(
+    *, deadline: float
+) -> tuple[int, int]:
+    """Acquire the cleanup-root serialization fence before its deadline."""
+
+    root = _authority_git_docker_cleanup_parent()
+    root_descriptor = -1
+    lock_descriptor = -1
+    try:
+        root_descriptor = os.open(
+            root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        lock_descriptor = os.open(
+            ".lock",
+            os.O_RDWR
+            | os.O_CREAT
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=root_descriptor,
+        )
+        lock_value = os.fstat(lock_descriptor)
+        if (
+            not stat_module.S_ISREG(lock_value.st_mode)
+            or int(lock_value.st_uid) != os.getuid()
+            or int(lock_value.st_nlink) != 1
+            or stat_module.S_IMODE(lock_value.st_mode) != 0o600
+        ):
+            raise OSError("unsafe authority Git Docker cleanup lock")
+        while True:
+            try:
+                fcntl.flock(
+                    lock_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB
+                )
+                return root_descriptor, lock_descriptor
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Docker cleanup lock deadline")
+                time.sleep(min(0.05, remaining))
+    except BaseException:
+        if lock_descriptor >= 0:
+            os.close(lock_descriptor)
+        if root_descriptor >= 0:
+            os.close(root_descriptor)
+        raise
+
+
+def _authority_git_docker_cleanup_unlock(
+    root_descriptor: int, lock_descriptor: int
+) -> None:
+    try:
+        fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_descriptor)
+        os.close(root_descriptor)
+
+
+def _authority_git_set_docker_cleanup_phase(
+    lease: Mapping[str, Any],
+    journal_path: Path,
+    *,
+    expected_phases: frozenset[str],
+    next_phase: str,
+    deadline: float | None = None,
+    _lock_held: bool = False,
+) -> dict[str, Any] | None:
+    """Atomically advance one cleanup lease under the root flock."""
+
+    if not _lock_held:
+        root_descriptor = -1
+        lock_descriptor = -1
+        try:
+            root_descriptor, lock_descriptor = (
+                _authority_git_docker_cleanup_lock(
+                    deadline=(
+                        deadline
+                        if deadline is not None
+                        else time.monotonic()
+                        + _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS
+                    )
+                )
+            )
+            return _authority_git_set_docker_cleanup_phase(
+                lease,
+                journal_path,
+                expected_phases=expected_phases,
+                next_phase=next_phase,
+                deadline=deadline,
+                _lock_held=True,
+            )
+        except (OSError, TimeoutError):
+            return None
+        finally:
+            if root_descriptor >= 0 and lock_descriptor >= 0:
+                _authority_git_docker_cleanup_unlock(
+                    root_descriptor, lock_descriptor
+                )
+
+    validated = _authority_git_docker_cleanup_lease_valid(
+        lease, journal_path=journal_path
+    )
+    if validated is None:
+        return None
+    current = _authority_git_read_docker_cleanup_lease(journal_path)
+    if current is None or current["lease_id"] != validated["lease_id"]:
+        return None
+    if current["phase"] == next_phase:
+        return current
+    if current != validated or current["phase"] not in expected_phases:
+        return None
+    body = {
+        key: value
+        for key, value in current.items()
+        if key != "manifest_id"
+    }
+    body["phase"] = next_phase
+    pending = {**body, "manifest_id": content_identity(body)}
+    if (
+        _authority_git_docker_cleanup_lease_valid(
+            pending, journal_path=journal_path
+        )
+        is None
+    ):
+        return None
+    encoded = (canonical_json(pending) + "\n").encode("utf-8")
+    if len(encoded) > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_BYTES:
+        return None
+    root = _authority_git_docker_cleanup_parent()
+    root_descriptor = -1
+    temporary_descriptor = -1
+    temporary_name = (
+        f".{pending['lease_id']}.{pending['pid']}."
+        f"{pending['process_start_ticks']}.pending.tmp"
+    )
+    try:
+        root_descriptor = os.open(
+            root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        temporary_descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=root_descriptor,
+        )
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(temporary_descriptor, encoded[offset:])
+            if written <= 0:
+                raise OSError("short cleanup lease phase write")
+            offset += written
+        os.fsync(temporary_descriptor)
+        os.close(temporary_descriptor)
+        temporary_descriptor = -1
+        # The cleanup-root flock serializes readers and the 0700 directory
+        # prevents an untrusted pathname swap between verification and replace.
+        os.replace(
+            temporary_name,
+            journal_path.name,
+            src_dir_fd=root_descriptor,
+            dst_dir_fd=root_descriptor,
+        )
+        os.fsync(root_descriptor)
+        return pending
+    except OSError:
+        return None
+    finally:
+        if temporary_descriptor >= 0:
+            os.close(temporary_descriptor)
+        if root_descriptor >= 0:
+            try:
+                os.unlink(temporary_name, dir_fd=root_descriptor)
+            except OSError:
+                pass
+            os.close(root_descriptor)
+
+
+def _authority_git_mark_docker_cleanup_pending(
+    lease: Mapping[str, Any],
+    journal_path: Path,
+    *,
+    deadline: float | None = None,
+    _lock_held: bool = False,
+) -> dict[str, Any] | None:
+    """Make cleanup reclaimable, retaining ambiguous commit tombstones."""
+
+    current = _authority_git_read_docker_cleanup_lease(journal_path)
+    if current is None or current.get("lease_id") != lease.get("lease_id"):
+        return None
+    current_phase = str(current.get("phase") or "")
+    if current_phase in {"cleanup_pending", "indeterminate_commit"}:
+        return current
+    next_phase = (
+        "indeterminate_commit"
+        if current_phase == "commit_in_flight"
+        else "cleanup_pending"
+    )
+    return _authority_git_set_docker_cleanup_phase(
+        current,
+        journal_path,
+        expected_phases=frozenset({current_phase}),
+        next_phase=next_phase,
+        deadline=deadline,
+        _lock_held=_lock_held,
+    )
+
+
+def _authority_git_transition_docker_cleanup_phase(
+    lease: Mapping[str, Any],
+    journal_path: Path,
+    *,
+    expected_phase: str,
+    next_phase: str,
+    deadline: float,
+) -> dict[str, Any] | None:
+    """Serialize a producer phase transition with cleanup/reclaim."""
+
+    root_descriptor = -1
+    lock_descriptor = -1
+    try:
+        root_descriptor, lock_descriptor = _authority_git_docker_cleanup_lock(
+            deadline=deadline
+        )
+        return _authority_git_set_docker_cleanup_phase(
+            lease,
+            journal_path,
+            expected_phases=frozenset({expected_phase}),
+            next_phase=next_phase,
+            deadline=deadline,
+            _lock_held=True,
+        )
+    except (OSError, TimeoutError):
+        return None
+    finally:
+        if root_descriptor >= 0 and lock_descriptor >= 0:
+            _authority_git_docker_cleanup_unlock(
+                root_descriptor, lock_descriptor
+            )
+
+
+def _authority_git_publish_docker_cleanup_lease(
+    body: Mapping[str, Any],
+    *,
+    deadline: float | None = None,
+    _lock_held: bool = False,
+) -> tuple[dict[str, Any], Path]:
+    if not _lock_held:
+        root_descriptor = -1
+        lock_descriptor = -1
+        try:
+            root_descriptor, lock_descriptor = (
+                _authority_git_docker_cleanup_lock(
+                    deadline=(
+                        deadline
+                        if deadline is not None
+                        else time.monotonic()
+                        + _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS
+                    )
+                )
+            )
+            return _authority_git_publish_docker_cleanup_lease(
+                body,
+                deadline=deadline,
+                _lock_held=True,
+            )
+        except (OSError, TimeoutError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_docker_cleanup_lease_publish_failed"
+            ) from exc
+        finally:
+            if root_descriptor >= 0 and lock_descriptor >= 0:
+                _authority_git_docker_cleanup_unlock(
+                    root_descriptor, lock_descriptor
+                )
+
+    lease = {**dict(body), "manifest_id": content_identity(body)}
+    if _authority_git_docker_cleanup_lease_valid(lease) is None:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_lease_invalid"
+        )
+    root = _authority_git_docker_cleanup_parent()
+    encoded = (canonical_json(lease) + "\n").encode("utf-8")
+    if len(encoded) > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_BYTES:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_lease_invalid"
+        )
+    root_descriptor = os.open(
+        root,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    temporary_name = (
+        f".{lease['lease_id']}.{lease['pid']}."
+        f"{lease['process_start_ticks']}.tmp"
+    )
+    final_name = f"{lease['lease_id']}.json"
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=root_descriptor,
+        )
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            if written <= 0:
+                raise OSError("short cleanup lease write")
+            offset += written
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.link(
+            temporary_name,
+            final_name,
+            src_dir_fd=root_descriptor,
+            dst_dir_fd=root_descriptor,
+            follow_symlinks=False,
+        )
+        os.unlink(temporary_name, dir_fd=root_descriptor)
+        os.fsync(root_descriptor)
+    except OSError as exc:
+        try:
+            os.unlink(temporary_name, dir_fd=root_descriptor)
+        except OSError:
+            pass
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_lease_publish_failed"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        os.close(root_descriptor)
+    return lease, root / final_name
+
+
+def _authority_git_read_docker_cleanup_lease(path: Path) -> dict[str, Any] | None:
+    try:
+        value = path.lstat()
+        if (
+            not stat_module.S_ISREG(value.st_mode)
+            or stat_module.S_ISLNK(value.st_mode)
+            or int(value.st_uid) != os.getuid()
+            or int(value.st_nlink) != 1
+            or value.st_size > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_BYTES
+        ):
+            return None
+        raw = path.read_bytes()
+        if len(raw) != value.st_size:
+            return None
+        parsed = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    lease = _authority_git_docker_cleanup_lease_valid(
+        parsed, journal_path=path
+    )
+    if lease is None or raw != (canonical_json(lease) + "\n").encode("utf-8"):
+        return None
+    return lease
+
+
+def _authority_git_release_docker_cleanup_lease(
+    path: Path, lease: Mapping[str, Any]
+) -> bool:
+    expected = (canonical_json(dict(lease)) + "\n").encode("utf-8")
+    root = _authority_git_docker_cleanup_parent()
+    if path.parent != root:
+        return False
+    root_descriptor = -1
+    file_descriptor = -1
+    try:
+        root_descriptor = os.open(
+            root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        file_descriptor = os.open(
+            path.name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=root_descriptor,
+        )
+        opened = os.fstat(file_descriptor)
+        raw = b""
+        while len(raw) < opened.st_size:
+            chunk = os.read(file_descriptor, opened.st_size - len(raw))
+            if not chunk:
+                return False
+            raw += chunk
+        if (
+            os.read(file_descriptor, 1)
+            or raw != expected
+            or int(opened.st_nlink) != 1
+        ):
+            return False
+        os.unlink(path.name, dir_fd=root_descriptor)
+        if int(os.fstat(file_descriptor).st_nlink) != 0:
+            return False
+        os.fsync(root_descriptor)
+        return True
+    except OSError:
+        return False
+    finally:
+        if file_descriptor >= 0:
+            os.close(file_descriptor)
+        if root_descriptor >= 0:
+            os.close(root_descriptor)
+
+
+def _authority_git_cleanup_docker_lease(
+    lease: Mapping[str, Any],
+    journal_path: Path,
+    *,
+    docker_prefix: Sequence[str],
+    docker_environment: Mapping[str, str],
+    deadline: float,
+    _lock_held: bool = False,
+) -> bool:
+    """Remove exact lease-labeled Docker resources through one deadline."""
+
+    if not _lock_held:
+        root_descriptor = -1
+        lock_descriptor = -1
+        try:
+            root_descriptor, lock_descriptor = (
+                _authority_git_docker_cleanup_lock(deadline=deadline)
+            )
+            return _authority_git_cleanup_docker_lease(
+                lease,
+                journal_path,
+                docker_prefix=docker_prefix,
+                docker_environment=docker_environment,
+                deadline=deadline,
+                _lock_held=True,
+            )
+        except (OSError, TimeoutError):
+            return False
+        finally:
+            if root_descriptor >= 0 and lock_descriptor >= 0:
+                _authority_git_docker_cleanup_unlock(
+                    root_descriptor, lock_descriptor
+                )
+
+    validated = _authority_git_docker_cleanup_lease_valid(
+        lease, journal_path=journal_path
+    )
+    if validated is None:
+        return False
+    validated = _authority_git_mark_docker_cleanup_pending(
+        validated,
+        journal_path,
+        deadline=deadline,
+        _lock_held=True,
+    )
+    if validated is None:
+        return False
+    label = (
+        f"{validated['cleanup_label_key']}="
+        f"{validated['cleanup_label_value']}"
+    )
+
+    def control(arguments: Sequence[str]) -> _BoundedSubprocessResult | None:
+        try:
+            result = _run_bounded_subprocess(
+                [*docker_prefix, *arguments],
+                environment=docker_environment,
+                deadline=deadline,
+                stdout_limit=1024 * 1024,
+                stderr_limit=1024 * 1024,
+                start_new_session=True,
+            )
+        except (OSError, ValueError):
+            return None
+        if (
+            result.returncode != 0
+            or result.timed_out
+            or result.output_overflow
+            or not result.reaped
+        ):
+            return None
+        return result
+
+    def resource_ids() -> tuple[list[str], list[str]] | None:
+        containers_result = control(
+            [
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                f"label={label}",
+                "--format",
+                "{{.ID}}",
+            ]
+        )
+        images_result = control(
+            [
+                "image",
+                "ls",
+                "--all",
+                "--no-trunc",
+                "--quiet",
+                "--filter",
+                f"label={label}",
+            ]
+        )
+        tag_result = control(
+            [
+                "image",
+                "ls",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                f"reference={validated['image_tag']}",
+                "--format",
+                "{{.ID}}",
+            ]
+        )
+        if any(
+            result is None
+            for result in (containers_result, images_result, tag_result)
+        ):
+            return None
+        containers = [
+            os.fsdecode(item).strip()
+            for item in containers_result.stdout.splitlines()
+            if os.fsdecode(item).strip()
+        ]
+        images = [
+            os.fsdecode(item).strip()
+            for result in (images_result, tag_result)
+            for item in result.stdout.splitlines()
+            if os.fsdecode(item).strip()
+        ]
+        if (
+            len(containers) > 16
+            or len(images) > 16
+            or any(
+                re.fullmatch(r"[0-9a-f]{12,64}", item) is None
+                for item in containers
+            )
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", item) is None
+                for item in images
+            )
+        ):
+            return None
+        return list(dict.fromkeys(containers)), list(dict.fromkeys(images))
+
+    empty_since: float | None = None
+    while time.monotonic() < deadline:
+        found = resource_ids()
+        if found is None:
+            return False
+        containers, images = found
+        if containers or images:
+            empty_since = None
+            for container_id in containers:
+                if control(["container", "rm", "--force", container_id]) is None:
+                    return False
+            # The deterministic tag query above catches a commit that
+            # finishes after the client times out; remove each resulting ID
+            # once so deleting its sole tag cannot make a second removal
+            # spuriously fail.
+            for image_id in images:
+                if control(["image", "rm", "--force", image_id]) is None:
+                    return False
+            continue
+        now = time.monotonic()
+        if empty_since is None:
+            empty_since = now
+        elif now - empty_since >= _AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS:
+            final = resource_ids()
+            if final == ([], []):
+                # A timed-out Docker commit has no server-side completion
+                # bound.  Keep its tiny durable tombstone so every future
+                # setup checks the deterministic tag/label again; only a
+                # positively completed commit may release the journal.
+                if validated["phase"] == "indeterminate_commit":
+                    return True
+                return _authority_git_release_docker_cleanup_lease(
+                    journal_path, validated
+                )
+            empty_since = None
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+    return False
+
+
+def _authority_git_cleanup_docker_lease_batch(
+    leases: Sequence[tuple[Path, Mapping[str, Any]]],
+    *,
+    active_lease_ids: set[str],
+    docker_prefix: Sequence[str],
+    docker_environment: Mapping[str, str],
+    deadline: float,
+) -> bool:
+    """Reclaim many fenced leases through one global continuous quiet window.
+
+    The caller owns the cleanup-root flock.  That fence also serializes lease
+    publication and phase changes, so the active lease-ID set remains a closed
+    protection set while the global Docker label/tag namespace is swept.
+    """
+
+    pending: list[tuple[Path, dict[str, Any]]] = []
+    for path, lease in leases:
+        current = _authority_git_read_docker_cleanup_lease(path)
+        if (
+            current is None
+            or current != dict(lease)
+            or current["phase"]
+            not in {"cleanup_pending", "indeterminate_commit"}
+        ):
+            return False
+        pending.append((path, current))
+    if not pending:
+        return True
+    reclaimable_lease_ids = {
+        str(lease["lease_id"]) for _path, lease in pending
+    }
+    if any(re.fullmatch(r"[0-9a-f]{64}", item) is None for item in active_lease_ids):
+        return False
+    if (
+        len(reclaimable_lease_ids) != len(pending)
+        or reclaimable_lease_ids.intersection(active_lease_ids)
+        or any(
+            re.fullmatch(r"[0-9a-f]{64}", item) is None
+            for item in reclaimable_lease_ids
+        )
+    ):
+        return False
+
+    def control(arguments: Sequence[str]) -> _BoundedSubprocessResult | None:
+        try:
+            result = _run_bounded_subprocess(
+                [*docker_prefix, *arguments],
+                environment=docker_environment,
+                deadline=deadline,
+                stdout_limit=1024 * 1024,
+                stderr_limit=1024 * 1024,
+                start_new_session=True,
+            )
+        except (OSError, ValueError):
+            return None
+        if (
+            result.returncode != 0
+            or result.timed_out
+            or result.output_overflow
+            or not result.reaped
+        ):
+            return None
+        return result
+
+    def listed_ids(
+        arguments: Sequence[str], pattern: str
+    ) -> list[str] | None:
+        result = control(arguments)
+        if result is None:
+            return None
+        values = list(
+            dict.fromkeys(
+                os.fsdecode(line).strip()
+                for line in result.stdout.splitlines()
+                if os.fsdecode(line).strip()
+            )
+        )
+        if (
+            len(values) > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_RESOURCES
+            or any(re.fullmatch(pattern, value) is None for value in values)
+        ):
+            return None
+        return values
+
+    def inspected_labels(
+        kind: str, resource_ids: Sequence[str]
+    ) -> dict[str, str] | None:
+        if not resource_ids:
+            return {}
+        result = control(
+            [
+                kind,
+                "inspect",
+                "--format={{json .Config.Labels}}",
+                *resource_ids,
+            ]
+        )
+        if result is None:
+            return None
+        lines = result.stdout.splitlines()
+        if len(lines) != len(resource_ids):
+            return None
+        labels_by_id: dict[str, str] = {}
+        for resource_id, raw in zip(resource_ids, lines, strict=True):
+            try:
+                labels = json.loads(raw.decode("utf-8", "strict"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return None
+            if not isinstance(labels, Mapping):
+                return None
+            lease_id = str(
+                labels.get(_AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY) or ""
+            )
+            if re.fullmatch(r"[0-9a-f]{64}", lease_id) is None:
+                return None
+            labels_by_id[resource_id] = lease_id
+        return labels_by_id
+
+    def removable_resource_ids() -> tuple[list[str], list[str]] | None:
+        containers = listed_ids(
+            [
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                f"label={_AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY}",
+                "--format",
+                "{{.ID}}",
+            ],
+            r"[0-9a-f]{12,64}",
+        )
+        labeled_images = listed_ids(
+            [
+                "image",
+                "ls",
+                "--all",
+                "--no-trunc",
+                "--quiet",
+                "--filter",
+                f"label={_AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY}",
+            ],
+            r"sha256:[0-9a-f]{64}",
+        )
+        tagged_images = listed_ids(
+            [
+                "image",
+                "ls",
+                "--all",
+                "--no-trunc",
+                "--quiet",
+                "--filter",
+                "reference=ipfs-accelerate-authority-git:*",
+            ],
+            r"sha256:[0-9a-f]{64}",
+        )
+        if containers is None or labeled_images is None or tagged_images is None:
+            return None
+        images = list(dict.fromkeys([*labeled_images, *tagged_images]))
+        if len(images) > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_RESOURCES:
+            return None
+        container_labels = inspected_labels("container", containers)
+        image_labels = inspected_labels("image", images)
+        if container_labels is None or image_labels is None:
+            return None
+        known_lease_ids = active_lease_ids | reclaimable_lease_ids
+        if (
+            not set(container_labels.values()).issubset(known_lease_ids)
+            or not set(image_labels.values()).issubset(known_lease_ids)
+        ):
+            # The cleanup label/tag namespace is reserved, but deletion still
+            # requires an exact valid journal selected under this root fence.
+            # Unknown provenance is retained and fails closed.
+            return None
+        return (
+            [
+                resource_id
+                for resource_id in containers
+                if container_labels[resource_id] in reclaimable_lease_ids
+            ],
+            [
+                resource_id
+                for resource_id in images
+                if image_labels[resource_id] in reclaimable_lease_ids
+            ],
+        )
+
+    empty_since: float | None = None
+    while time.monotonic() < deadline:
+        found = removable_resource_ids()
+        if found is None:
+            return False
+        containers, images = found
+        if containers or images:
+            empty_since = None
+            for container_id in containers:
+                if control(["container", "rm", "--force", container_id]) is None:
+                    return False
+            for image_id in images:
+                if control(["image", "rm", "--force", image_id]) is None:
+                    return False
+            continue
+        now = time.monotonic()
+        if empty_since is None:
+            empty_since = now
+        elif now - empty_since >= _AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS:
+            if removable_resource_ids() == ([], []):
+                for path, lease in pending:
+                    if lease["phase"] == "indeterminate_commit":
+                        continue
+                    if not _authority_git_release_docker_cleanup_lease(
+                        path, lease
+                    ):
+                        return False
+                return True
+            empty_since = None
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+    return False
+
+
+def _authority_git_reclaim_docker_cleanup_leases(
+    *,
+    docker_prefix: Sequence[str],
+    docker_environment: Mapping[str, str],
+    deadline: float,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    if started >= deadline:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_reclaim_failed"
+        )
+    time_limit_milliseconds = int(
+        math.ceil(max(0.0, deadline - started) * 1000)
+    )
+    root = _authority_git_docker_cleanup_parent()
+    root_descriptor = -1
+    lock_descriptor = -1
+    try:
+        root_descriptor, lock_descriptor = _authority_git_docker_cleanup_lock(
+            deadline=deadline
+        )
+        entries = sorted(
+            (
+                Path(entry.path)
+                for entry in os.scandir(root)
+                if entry.name != ".lock"
+            ),
+            key=lambda item: item.name,
+        )
+    except (OSError, TimeoutError) as exc:
+        if root_descriptor >= 0 and lock_descriptor >= 0:
+            _authority_git_docker_cleanup_unlock(
+                root_descriptor, lock_descriptor
+            )
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_reclaim_failed"
+        ) from exc
+    if len(entries) > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_LEASES:
+        _authority_git_docker_cleanup_unlock(
+            root_descriptor, lock_descriptor
+        )
+        root_descriptor = -1
+        lock_descriptor = -1
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_reclaim_limit"
+        )
+    try:
+        active = 0
+        reclaimed = 0
+        active_lease_ids: set[str] = set()
+        reclaimable: list[tuple[Path, Mapping[str, Any]]] = []
+        for path in entries:
+            temporary_match = re.fullmatch(
+                r"\.([0-9a-f]{64})\.([1-9][0-9]*)\.([1-9][0-9]*)"
+                r"(?:\.pending)?\.tmp",
+                path.name,
+            )
+            if temporary_match is not None:
+                try:
+                    temporary_value = path.lstat()
+                    if (
+                        not stat_module.S_ISREG(temporary_value.st_mode)
+                        or stat_module.S_ISLNK(temporary_value.st_mode)
+                        or int(temporary_value.st_uid) != os.getuid()
+                        or temporary_value.st_size
+                        > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_BYTES
+                    ):
+                        raise OSError("unsafe cleanup lease temporary")
+                    temporary_pid = int(temporary_match.group(2))
+                    if (
+                        _authority_process_start_ticks(temporary_pid)
+                        == int(temporary_match.group(3))
+                    ):
+                        active += 1
+                        continue
+                    path.unlink()
+                    reclaimed += 1
+                    continue
+                except OSError as exc:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_docker_cleanup_lease_invalid",
+                        str(path),
+                    ) from exc
+            lease = _authority_git_read_docker_cleanup_lease(path)
+            if lease is None:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_docker_cleanup_lease_invalid",
+                    str(path),
+                )
+            owner_ticks = _authority_process_start_ticks(int(lease["pid"]))
+            if (
+                lease["phase"]
+                in {"building", "commit_in_flight", "runtime"}
+                and owner_ticks == int(lease["process_start_ticks"])
+            ):
+                active += 1
+                active_lease_ids.add(str(lease["lease_id"]))
+                continue
+            pending = _authority_git_mark_docker_cleanup_pending(
+                lease,
+                path,
+                deadline=deadline,
+                _lock_held=True,
+            )
+            if pending is None:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_docker_cleanup_reclaim_failed",
+                    str(path),
+                )
+            reclaimable.append((path, pending))
+        if reclaimable and not _authority_git_cleanup_docker_lease_batch(
+            reclaimable,
+            active_lease_ids=active_lease_ids,
+            docker_prefix=docker_prefix,
+            docker_environment=docker_environment,
+            deadline=deadline,
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_docker_cleanup_reclaim_failed"
+            )
+        for path, lease in reclaimable:
+            if lease["phase"] == "indeterminate_commit":
+                retained = _authority_git_read_docker_cleanup_lease(path)
+                if retained != dict(lease):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_docker_cleanup_reclaim_failed",
+                        str(path),
+                    )
+                active += 1
+            else:
+                if path.exists():
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_docker_cleanup_reclaim_failed",
+                        str(path),
+                    )
+                reclaimed += 1
+        finished = time.monotonic()
+        if finished > deadline:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_docker_cleanup_reclaim_failed"
+            )
+        retained_indeterminate = sum(
+            1
+            for _path, lease in reclaimable
+            if lease["phase"] == "indeterminate_commit"
+        )
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-docker-cleanup-reclaimer@2"
+            ),
+            "scanned": len(entries),
+            "active": active,
+            "reclaimed": reclaimed,
+            "retained_indeterminate": retained_indeterminate,
+            "elapsed_milliseconds": int(
+                math.ceil(max(0.0, finished - started) * 1000)
+            ),
+            "time_limit_milliseconds": time_limit_milliseconds,
+            "quiet_milliseconds": int(
+                _AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS * 1000
+            ),
+            "succeeded": True,
+        }
+    finally:
+        if root_descriptor >= 0 and lock_descriptor >= 0:
+            _authority_git_docker_cleanup_unlock(
+                root_descriptor, lock_descriptor
+            )
+
+
+def _authority_git_build_derived_image(
+    root_descriptor: int,
+    projection_manifest: Mapping[str, Any],
+    destination_root: Path,
+    *,
+    base_image_id: str,
+    docker_prefix: Sequence[str],
+    docker_environment: Mapping[str, str],
+    budget: _AuthorityGitSetupBudget,
+    cleanup_guard: Any,
+    authority_plan_id: str,
+    command_binding_id: str,
+    docker_cleanup_reclaimer: Mapping[str, Any],
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """Create one verified one-layer image without a host bind mount."""
+
+    destination_text = str(destination_root)
+    derived_manifest = _authority_git_derived_layer_manifest(
+        projection_manifest, destination_root
+    )
+    verification_payload = base64.b64encode(
+        canonical_json(derived_manifest).encode("utf-8")
+    ).decode("ascii")
+    if not isinstance(docker_cleanup_reclaimer, Mapping):
+        raise AuthorityGitReplayError(
+            "authority_validation_git_docker_cleanup_reclaim_failed"
+        )
+    cleanup_lease_body = _authority_git_docker_cleanup_lease_body(
+        base_image_id=base_image_id,
+        authority_plan_id=authority_plan_id,
+        command_binding_id=command_binding_id,
+        projection_manifest_id=str(projection_manifest["manifest_id"]),
+    )
+    cleanup_lease, cleanup_journal_path = (
+        _authority_git_publish_docker_cleanup_lease(
+            cleanup_lease_body, deadline=budget.deadline
+        )
+    )
+    cleanup_label_key = str(cleanup_lease["cleanup_label_key"])
+    cleanup_label_value = str(cleanup_lease["cleanup_label_value"])
+    cleanup_label = f"{cleanup_label_key}={cleanup_label_value}"
+    cleanup_image_tag = str(cleanup_lease["image_tag"])
+    preflight_name = str(cleanup_lease["preflight_container_name"])
+    builder_name = str(cleanup_lease["builder_container_name"])
+    builder_id = ""
+    derived_image_id = ""
+    builder_removed = False
+
+    def run_docker(
+        arguments: Sequence[str],
+        *,
+        detail: str,
+        output_limit: int = 1024 * 1024,
+    ) -> subprocess.CompletedProcess[bytes]:
+        budget.check(detail)
+        try:
+            bounded = _run_bounded_subprocess(
+                [*docker_prefix, *arguments],
+                environment=docker_environment,
+                deadline=budget.deadline,
+                stdout_limit=output_limit,
+                stderr_limit=output_limit,
+                start_new_session=True,
+            )
+        except (OSError, ValueError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_setup_timeout", detail
+            ) from exc
+        if bounded.timed_out:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_setup_timeout", detail
+            )
+        if (
+            bounded.output_overflow
+            or len(bounded.stdout) + len(bounded.stderr) > output_limit
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_output_limit", detail
+            )
+        if not bounded.reaped:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_control_failed",
+                detail,
+            )
+        budget.check(detail)
+        return subprocess.CompletedProcess(
+            list(bounded.args),
+            bounded.returncode,
+            stdout=bounded.stdout + bounded.stderr,
+            stderr=b"",
+        )
+
+    cleanup_control_deadline: list[float] = []
+
+    def cleanup_labeled_resources() -> bool:
+        now = time.monotonic()
+        if not cleanup_control_deadline:
+            cleanup_control_deadline.append(
+                now + _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS
+            )
+        elif cleanup_control_deadline[0] <= now:
+            cleanup_control_deadline[0] = (
+                now + _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS
+            )
+        return _authority_git_cleanup_docker_lease(
+            cleanup_lease,
+            cleanup_journal_path,
+            docker_prefix=docker_prefix,
+            docker_environment=docker_environment,
+            deadline=cleanup_control_deadline[0],
+        )
+
+    # The fsynced lease was published before the first build Docker operation.
+    # Its deterministic tag and label remain discoverable even if commit
+    # finishes server-side after this client times out or the process exits.
+    cleanup_guard.register_derived_image(
+        cleanup_labeled_resources,
+        image_id="",
+        cleanup_lease_id=str(cleanup_lease["lease_id"]),
+        cleanup_journal_path=str(cleanup_journal_path),
+    )
+
+    def inspect_image(image: str) -> dict[str, Any]:
+        result = run_docker(
+            ["image", "inspect", image],
+            detail=f"inspect-image:{image}",
+            output_limit=2 * 1024 * 1024,
+        )
+        if result.returncode != 0:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_inspect_failed",
+                os.fsdecode(result.stdout[-1000:]),
+            )
+        try:
+            values = json.loads(result.stdout)
+            if not isinstance(values, list) or len(values) != 1:
+                raise ValueError("image inspect cardinality")
+            value = values[0]
+            if not isinstance(value, Mapping):
+                raise ValueError("image inspect shape")
+            return dict(value)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_inspect_failed",
+                str(exc),
+            ) from exc
+
+    try:
+        preflight = run_docker(
+            [
+                "run",
+                "--rm",
+                "--pull=never",
+                f"--name={preflight_name}",
+                f"--label={cleanup_label}",
+                "--network=none",
+                "--read-only",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges:true",
+                "--log-driver=none",
+                f"--user={os.getuid()}:{os.getgid()}",
+                base_image_id,
+                "/usr/bin/python",
+                "-s",
+                "-c",
+                _AUTHORITY_GIT_BASE_DESTINATION_PREFLIGHT,
+                destination_text,
+            ],
+            detail="derived-image-base-preflight",
+            output_limit=64 * 1024,
+        )
+        if preflight.returncode != 0:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_destination_unsafe",
+                os.fsdecode(preflight.stdout[-1000:]),
+            )
+        created = run_docker(
+            [
+                "create",
+                "--pull=never",
+                f"--name={builder_name}",
+                f"--label={cleanup_label}",
+                "--network=none",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges:true",
+                "--log-driver=none",
+                f"--user={os.getuid()}:{os.getgid()}",
+                "--env=PYTHONDONTWRITEBYTECODE=1",
+                base_image_id,
+                "/usr/bin/python",
+                "-s",
+                "-c",
+                _AUTHORITY_GIT_DERIVED_LAYER_VERIFY,
+                verification_payload,
+                "/bin/true",
+            ],
+            detail="derived-image-builder-create",
+            output_limit=64 * 1024,
+        )
+        builder_id = os.fsdecode(created.stdout).strip()
+        if (
+            created.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{64}", builder_id) is None
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_builder_create_failed",
+                os.fsdecode(created.stdout[-1000:]),
+            )
+        archive_receipt = _authority_git_stream_projection_tar(
+            root_descriptor,
+            projection_manifest,
+            destination_root,
+            [*docker_prefix, "cp", "--archive", "-", f"{builder_name}:/"],
+            docker_environment=docker_environment,
+            budget=budget,
+        )
+        verified = run_docker(
+            ["start", "--attach", builder_name],
+            detail="derived-image-builder-verify",
+            output_limit=64 * 1024,
+        )
+        if verified.returncode != 0:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_builder_verify_failed",
+                os.fsdecode(verified.stdout[-1000:]),
+            )
+        transitioned = _authority_git_transition_docker_cleanup_phase(
+            cleanup_lease,
+            cleanup_journal_path,
+            expected_phase="building",
+            next_phase="commit_in_flight",
+            deadline=budget.deadline,
+        )
+        if transitioned is None:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_docker_cleanup_lease_transition_failed",
+                str(cleanup_journal_path),
+            )
+        cleanup_lease = transitioned
+        committed = run_docker(
+            [
+                "commit",
+                "--change",
+                f"LABEL {cleanup_label}",
+                builder_name,
+                cleanup_image_tag,
+            ],
+            detail="derived-image-commit",
+            output_limit=64 * 1024,
+        )
+        derived_image_id = os.fsdecode(committed.stdout).strip()
+        if (
+            committed.returncode != 0
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", derived_image_id) is None
+            or derived_image_id == base_image_id
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_commit_failed",
+                os.fsdecode(committed.stdout[-1000:]),
+            )
+        transitioned = _authority_git_transition_docker_cleanup_phase(
+            cleanup_lease,
+            cleanup_journal_path,
+            expected_phase="commit_in_flight",
+            next_phase="runtime",
+            deadline=budget.deadline,
+        )
+        if transitioned is None:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_docker_cleanup_lease_transition_failed",
+                str(cleanup_journal_path),
+            )
+        cleanup_lease = transitioned
+
+        cleanup_guard.register_derived_image(
+            cleanup_labeled_resources,
+            image_id=derived_image_id,
+            cleanup_lease_id=str(cleanup_lease["lease_id"]),
+            cleanup_journal_path=str(cleanup_journal_path),
+        )
+        base_inspect = inspect_image(base_image_id)
+        derived_inspect = inspect_image(derived_image_id)
+        tagged_inspect = inspect_image(cleanup_image_tag)
+        base_layers = list(
+            (base_inspect.get("RootFS") or {}).get("Layers") or []
+        )
+        derived_layers = list(
+            (derived_inspect.get("RootFS") or {}).get("Layers") or []
+        )
+        if (
+            not base_layers
+            or derived_layers[:-1] != base_layers
+            or len(derived_layers) != len(base_layers) + 1
+            or not all(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(item))
+                for item in derived_layers
+            )
+            or str(derived_inspect.get("Id") or "") != derived_image_id
+            or str(tagged_inspect.get("Id") or "") != derived_image_id
+            or str(base_inspect.get("Id") or "") != base_image_id
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_layers_invalid",
+                derived_image_id,
+            )
+        builder_removal = run_docker(
+            ["container", "rm", "--force", builder_name],
+            detail="derived-image-builder-remove",
+            output_limit=64 * 1024,
+        )
+        builder_listing = run_docker(
+            [
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                f"name=^/{builder_name}$",
+                "--format",
+                "{{.ID}}",
+            ],
+            detail="derived-image-builder-removal-verify",
+            output_limit=64 * 1024,
+        )
+        builder_removed = bool(
+            builder_removal.returncode == 0
+            and builder_listing.returncode == 0
+            and not builder_listing.stdout.strip()
+        )
+        if not builder_removed:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_builder_cleanup_failed",
+                builder_name,
+            )
+        config_bytes = json.dumps(
+            derived_inspect.get("Config") or {},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        derived_labels = (derived_inspect.get("Config") or {}).get(
+            "Labels"
+        ) or {}
+        if (
+            not isinstance(derived_labels, Mapping)
+            or derived_labels.get(cleanup_label_key) != cleanup_label_value
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_label_invalid",
+                derived_image_id,
+            )
+        base_size = int(base_inspect.get("Size") or 0)
+        derived_size = int(derived_inspect.get("Size") or 0)
+        added_size = derived_size - base_size
+        if (
+            base_size <= 0
+            or derived_size < base_size
+            or added_size < 0
+            or added_size > AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_derived_image_size_invalid",
+                derived_image_id,
+            )
+        budget.add_sealed(added_size, derived_image_id)
+        transport_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-derived-image@1"
+            ),
+            "base_image_id": base_image_id,
+            "derived_image_id": derived_image_id,
+            "base_layers": base_layers,
+            "derived_layers": derived_layers,
+            "added_layer": derived_layers[-1],
+            "base_size": base_size,
+            "derived_size": derived_size,
+            "added_size": added_size,
+            "derived_config_sha256": hashlib.sha256(config_bytes).hexdigest(),
+            "destination_preexisting": False,
+            "builder_container_id": builder_id,
+            "builder_removed_before_runtime": True,
+            "builder_verification_passed": True,
+            "cleanup_label": cleanup_label,
+            "cleanup_lease_id": cleanup_lease["lease_id"],
+            "cleanup_lease": dict(cleanup_lease),
+            "cleanup_image_tag": cleanup_image_tag,
+            "cleanup_journal_path": str(cleanup_journal_path),
+            "cleanup_quiet_seconds": int(
+                _AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS
+            ),
+            "cleanup_reclaimer": docker_cleanup_reclaimer,
+            "archive": archive_receipt,
+            "layer_manifest": derived_manifest,
+            "network_mode": "none",
+            "provider_code_ran_during_build": False,
+        }
+        return (
+            derived_image_id,
+            {**transport_body, "transport_id": content_identity(transport_body)},
+            derived_manifest,
+        )
+    finally:
+        # Every builder/preflight/runtime/image resource carries the durable
+        # cleanup label.  The outer guard owns their one aggregate cleanup
+        # deadline on every return/exception path.
+        pass
+
+
+def _authority_git_reclaim_stale_projections(
+    temporary_root: Path | None = None,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+) -> dict[str, Any]:
+    """Reclaim only stale, provenance-bound leases within explicit bounds."""
+
+    root = Path(temporary_root or _authority_git_projection_parent())
+    _authority_git_require_symlink_free(
+        root,
+        reason="authority_validation_git_projection_root_invalid",
+    )
+    now_ns = time.time_ns()
+    root_entries = 0
+    candidates: list[Path] = []
+    invalid_manifests = 0
+    active_leases = 0
+    reclaimed = 0
+    failures = 0
+    reclaimed_bytes = 0
+    scanned_entries = 0
+    root_scan_truncated = False
+    try:
+        with os.scandir(root) as entries:
+            for entry in entries:
+                if budget is not None:
+                    budget.check(str(root))
+                root_entries += 1
+                if root_entries > AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ROOT_ENTRIES:
+                    root_scan_truncated = True
+                    break
+                if not entry.name.startswith(
+                    AUTHORITY_VALIDATION_GIT_PROJECTION_PREFIX
+                ):
+                    invalid_manifests += 1
+                    continue
+                if len(candidates) >= AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_CANDIDATES:
+                    root_scan_truncated = True
+                    break
+                candidates.append(Path(entry.path))
+    except OSError as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_projection_reclaim_failed", str(root)
+        ) from exc
+
+    expected_manifest_keys = {
+        "schema",
+        "projection_path",
+        "workspace_path",
+        "creator",
+        "uid",
+        "pid",
+        "process_start_ticks",
+        "created_unix_ns",
+        "root_device",
+        "root_inode",
+        "mount_source",
+        "finalized",
+        "descendant_record_count",
+        "descendant_manifest_id",
+        "descendant_records",
+        "cleanup_quarantine_path",
+        "manifest_id",
+    }
+    for candidate in sorted(candidates, key=lambda item: str(item)):
+        try:
+            candidate_value = candidate.lstat()
+            if (
+                not stat_module.S_ISDIR(candidate_value.st_mode)
+                or stat_module.S_ISLNK(candidate_value.st_mode)
+                or int(candidate_value.st_uid) != os.getuid()
+            ):
+                invalid_manifests += 1
+                continue
+            manifest_path = candidate / _AUTHORITY_GIT_PROJECTION_MANIFEST
+            manifest_value = manifest_path.lstat()
+            if (
+                not stat_module.S_ISREG(manifest_value.st_mode)
+                or manifest_value.st_size
+                > AUTHORITY_VALIDATION_GIT_PROJECTION_MANIFEST_MAX_BYTES
+            ):
+                invalid_manifests += 1
+                continue
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, Mapping) or set(manifest) != expected_manifest_keys:
+                invalid_manifests += 1
+                continue
+            manifest_body = {
+                key: manifest[key] for key in expected_manifest_keys - {"manifest_id"}
+            }
+            projection_path = Path(str(manifest.get("projection_path") or ""))
+            cleanup_path_text = str(
+                manifest.get("cleanup_quarantine_path") or ""
+            )
+            cleanup_path = Path(cleanup_path_text) if cleanup_path_text else None
+            finalized = manifest.get("finalized")
+            unfinalized_initial_lease = bool(
+                finalized is False
+                and cleanup_path is None
+                and candidate == projection_path
+                and manifest.get("descendant_record_count") == 0
+                and manifest.get("descendant_records") == []
+                and manifest.get("descendant_manifest_id")
+                == content_identity([])
+            )
+            if (
+                manifest.get("schema")
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-projection-lease@2"
+                )
+                or manifest.get("creator")
+                != "authority-validation-command-runner"
+                or candidate not in {projection_path, cleanup_path}
+                or not projection_path.is_absolute()
+                or projection_path.parent != root
+                or (
+                    cleanup_path is not None
+                    and (
+                        not cleanup_path.is_absolute()
+                        or cleanup_path.parent != root
+                        or not cleanup_path.name.startswith(
+                            projection_path.name + ".quarantine-"
+                        )
+                    )
+                )
+                or manifest.get("uid") != os.getuid()
+                or manifest.get("root_device") != int(candidate_value.st_dev)
+                or manifest.get("root_inode") != int(candidate_value.st_ino)
+                or manifest.get("manifest_id") != content_identity(manifest_body)
+                or type(finalized) is not bool
+                or (finalized is False and not unfinalized_initial_lease)
+                or manifest.get("descendant_record_count")
+                != len(manifest.get("descendant_records") or [])
+                or manifest.get("descendant_manifest_id")
+                != content_identity(manifest.get("descendant_records") or [])
+            ):
+                invalid_manifests += 1
+                continue
+            created_ns = int(manifest["created_unix_ns"])
+            if now_ns - created_ns < (
+                AUTHORITY_VALIDATION_GIT_PROJECTION_STALE_SECONDS
+                * 1_000_000_000
+            ):
+                active_leases += 1
+                continue
+            owner_ticks = _authority_process_start_ticks(int(manifest["pid"]))
+            if owner_ticks is not None and owner_ticks == int(
+                manifest["process_start_ticks"]
+            ):
+                active_leases += 1
+                continue
+            if unfinalized_initial_lease:
+                root_descriptor = -1
+                try:
+                    root_descriptor = os.open(
+                        candidate,
+                        os.O_RDONLY
+                        | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0),
+                    )
+                    if not _authority_git_remove_unfinalized_created_projection(
+                        candidate,
+                        root_descriptor=root_descriptor,
+                        expected_device=int(candidate_value.st_dev),
+                        expected_inode=int(candidate_value.st_ino),
+                        manifest_identity=(
+                            int(manifest_value.st_dev),
+                            int(manifest_value.st_ino),
+                        ),
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_projection_reclaim_unsafe",
+                            str(candidate),
+                        )
+                finally:
+                    if root_descriptor >= 0:
+                        os.close(root_descriptor)
+                reclaimed += 1
+                continue
+            record_map = _authority_git_projection_record_map(
+                manifest.get("descendant_records"),
+                expected_device=int(candidate_value.st_dev),
+            )
+            if record_map is None:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_reclaim_unsafe",
+                    str(candidate),
+                )
+            projection_entries = len(record_map)
+            scanned_entries += projection_entries
+            projection_bytes = sum(
+                int(record["size"])
+                for record in record_map.values()
+                if record["type"] == "regular"
+            )
+            if (
+                projection_entries > AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ENTRIES
+                or scanned_entries > AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ENTRIES
+                or projection_bytes > AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+                or reclaimed_bytes + projection_bytes
+                > AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_reclaim_limit",
+                    str(candidate),
+                )
+            final_value = candidate.lstat()
+            if (
+                final_value.st_dev != candidate_value.st_dev
+                or final_value.st_ino != candidate_value.st_ino
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_reclaim_unsafe",
+                    str(candidate),
+                )
+            if not _authority_git_quarantine_remove_projection(
+                candidate,
+                expected_device=int(candidate_value.st_dev),
+                expected_inode=int(candidate_value.st_ino),
+                expected_manifest_id=str(manifest["manifest_id"]),
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_projection_reclaim_unsafe",
+                    str(candidate),
+                )
+            reclaimed += 1
+            reclaimed_bytes += projection_bytes
+        except AuthorityGitReplayError:
+            failures += 1
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            invalid_manifests += 1
+    return {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-git-projection-reclaimer@2"
+        ),
+        "root_entries_scanned": min(
+            root_entries, AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ROOT_ENTRIES
+        ),
+        "root_scan_truncated": root_scan_truncated,
+        "candidates": len(candidates),
+        "invalid_manifests": invalid_manifests,
+        "active_leases": active_leases,
+        "scanned_projection_entries": scanned_entries,
+        "reclaimed": reclaimed,
+        "reclaimed_bytes": reclaimed_bytes,
+        "failures": failures,
+        "candidate_limit": AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_CANDIDATES,
+        "entry_limit": AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ENTRIES,
+        "byte_limit": AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES,
+        "stale_after_seconds": AUTHORITY_VALIDATION_GIT_PROJECTION_STALE_SECONDS,
+    }
+
+
+def _authority_git_projection_record_map(
+    records: Any,
+    *,
+    expected_device: int | None = None,
+) -> dict[str, Mapping[str, Any]] | None:
+    """Return one closed canonical descendant map or fail closed."""
+
+    if (
+        not isinstance(records, list)
+        or len(records) > AUTHORITY_VALIDATION_GIT_PROJECTION_MAX_DESCENDANTS
+    ):
+        return None
+    record_keys = {
+        "relative_path",
+        "type",
+        "device",
+        "inode",
+        "nlink",
+        "mode",
+        "size",
+        "mtime_ns",
+        "ctime_ns",
+        "sha256",
+    }
+    mapped: dict[str, Mapping[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, Mapping) or set(record) != record_keys:
+            return None
+        relative_text = str(record["relative_path"])
+        relative = PurePosixPath(relative_text)
+        record_type = str(record["type"])
+        if (
+            not relative_text
+            or relative.is_absolute()
+            or relative.as_posix() != relative_text
+            or any(part in {"", ".", ".."} for part in relative.parts)
+            or any(character in relative_text for character in "\\\r\n\0")
+            or relative_text == _AUTHORITY_GIT_PROJECTION_MANIFEST
+            or relative_text in mapped
+            or record_type not in {"directory", "regular"}
+            or any(
+                type(record[key]) is not int or int(record[key]) < minimum
+                for key, minimum in (
+                    ("device", 0),
+                    ("inode", 1),
+                    ("nlink", 1),
+                    ("mode", 1),
+                    ("size", 0),
+                    ("mtime_ns", 0),
+                    ("ctime_ns", 0),
+                )
+            )
+            or (
+                expected_device is not None
+                and int(record["device"]) != int(expected_device)
+            )
+            or (
+                record_type == "directory"
+                and not stat_module.S_ISDIR(int(record["mode"]))
+            )
+            or (
+                record_type == "regular"
+                and not stat_module.S_ISREG(int(record["mode"]))
+            )
+            or (
+                record_type == "regular"
+                and (
+                    int(record["nlink"]) != 1
+                    or re.fullmatch(r"[0-9a-f]{64}", str(record["sha256"]))
+                    is None
+                )
+            )
+            or (record_type == "directory" and record["sha256"] != "")
+        ):
+            return None
+        mapped[relative_text] = record
+    if list(mapped) != sorted(mapped):
+        return None
+    return mapped
+
+
+def _authority_git_fd_tree_matches_manifest(
+    root_descriptor: int,
+    record_map: Mapping[str, Mapping[str, Any]],
+    *,
+    allow_missing: bool,
+    recovery: bool,
+) -> bool:
+    """Verify the live fd tree contains only identity-pinned records."""
+
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+    observed_paths: set[str] = set()
+
+    def matches(
+        value: os.stat_result,
+        record: Mapping[str, Any],
+        *,
+        directory: bool,
+    ) -> bool:
+        if (
+            int(value.st_dev) != int(record["device"])
+            or int(value.st_ino) != int(record["inode"])
+            or stat_module.S_IFMT(value.st_mode)
+            != stat_module.S_IFMT(int(record["mode"]))
+        ):
+            return False
+        if directory and recovery:
+            return bool(
+                int(value.st_nlink) >= 2
+                and int(value.st_nlink) <= int(record["nlink"])
+                and stat_module.S_IMODE(value.st_mode)
+                in {stat_module.S_IMODE(int(record["mode"])), 0o700}
+            )
+        return bool(
+            int(value.st_nlink) == int(record["nlink"])
+            and int(value.st_mode) == int(record["mode"])
+            and int(value.st_size) == int(record["size"])
+            and int(value.st_mtime_ns) == int(record["mtime_ns"])
+            and int(value.st_ctime_ns) == int(record["ctime_ns"])
+        )
+
+    def visit(directory_descriptor: int, prefix: PurePosixPath) -> bool:
+        with os.scandir(directory_descriptor) as scanner:
+            for entry in scanner:
+                if (
+                    not prefix.parts
+                    and entry.name == _AUTHORITY_GIT_PROJECTION_MANIFEST
+                ):
+                    continue
+                relative = (prefix / entry.name).as_posix()
+                record = record_map.get(relative)
+                if record is None:
+                    return False
+                observed_paths.add(relative)
+                observed = entry.stat(follow_symlinks=False)
+                is_directory = record["type"] == "directory"
+                if not matches(observed, record, directory=is_directory):
+                    return False
+                if is_directory:
+                    child_descriptor = os.open(
+                        entry.name,
+                        directory_flags,
+                        dir_fd=directory_descriptor,
+                    )
+                    try:
+                        opened = os.fstat(child_descriptor)
+                        if not matches(opened, record, directory=True):
+                            return False
+                        if not visit(child_descriptor, prefix / entry.name):
+                            return False
+                    finally:
+                        os.close(child_descriptor)
+                    continue
+                if not stat_module.S_ISREG(observed.st_mode):
+                    return False
+                child_descriptor = os.open(
+                    entry.name,
+                    file_flags,
+                    dir_fd=directory_descriptor,
+                )
+                try:
+                    opened = os.fstat(child_descriptor)
+                    if not matches(opened, record, directory=False):
+                        return False
+                    digest = hashlib.sha256()
+                    remaining = int(opened.st_size)
+                    while remaining:
+                        chunk = os.read(
+                            child_descriptor, min(1024 * 1024, remaining)
+                        )
+                        if not chunk:
+                            return False
+                        remaining -= len(chunk)
+                        digest.update(chunk)
+                    if os.read(child_descriptor, 1):
+                        return False
+                    if digest.hexdigest() != record["sha256"]:
+                        return False
+                    if not matches(
+                        os.fstat(child_descriptor), record, directory=False
+                    ):
+                        return False
+                finally:
+                    os.close(child_descriptor)
+        return True
+
+    try:
+        if not visit(root_descriptor, PurePosixPath()):
+            return False
+        return bool(allow_missing or observed_paths == set(record_map))
+    except OSError:
+        return False
+
+
+def _authority_git_fd_remove_tree(
+    root_descriptor: int,
+    record_map: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    """Delete only manifest-listed descendants, bottom-up by dirfd."""
+
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+    def clear_directory(
+        directory_descriptor: int, prefix: PurePosixPath
+    ) -> bool:
+        entries: list[tuple[str, Mapping[str, Any]]] = []
+        with os.scandir(directory_descriptor) as scanner:
+            for entry in scanner:
+                if (
+                    not prefix.parts
+                    and entry.name == _AUTHORITY_GIT_PROJECTION_MANIFEST
+                ):
+                    continue
+                relative = (prefix / entry.name).as_posix()
+                record = record_map.get(relative)
+                if record is None:
+                    return False
+                entries.append((entry.name, record))
+        os.fchmod(directory_descriptor, 0o700)
+        for entry_name, record in sorted(entries, key=lambda item: item[0]):
+            if record["type"] == "directory":
+                child_descriptor = os.open(
+                    entry_name,
+                    directory_flags,
+                    dir_fd=directory_descriptor,
+                )
+                try:
+                    opened = os.fstat(child_descriptor)
+                    if (
+                        int(opened.st_dev) != int(record["device"])
+                        or int(opened.st_ino) != int(record["inode"])
+                        or not stat_module.S_ISDIR(opened.st_mode)
+                    ):
+                        return False
+                    if not clear_directory(
+                        child_descriptor, prefix / entry_name
+                    ):
+                        return False
+                    current = os.stat(
+                        entry_name,
+                        dir_fd=directory_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if (
+                        int(current.st_dev) != int(record["device"])
+                        or int(current.st_ino) != int(record["inode"])
+                        or not stat_module.S_ISDIR(current.st_mode)
+                    ):
+                        return False
+                    os.rmdir(entry_name, dir_fd=directory_descriptor)
+                    if int(os.fstat(child_descriptor).st_nlink) != 0:
+                        return False
+                finally:
+                    os.close(child_descriptor)
+                continue
+            child_descriptor = os.open(
+                entry_name,
+                file_flags,
+                dir_fd=directory_descriptor,
+            )
+            try:
+                opened = os.fstat(child_descriptor)
+                if (
+                    int(opened.st_dev) != int(record["device"])
+                    or int(opened.st_ino) != int(record["inode"])
+                    or int(opened.st_nlink) != 1
+                    or not stat_module.S_ISREG(opened.st_mode)
+                    or int(opened.st_mode) != int(record["mode"])
+                    or int(opened.st_size) != int(record["size"])
+                    or int(opened.st_mtime_ns) != int(record["mtime_ns"])
+                    or int(opened.st_ctime_ns) != int(record["ctime_ns"])
+                ):
+                    return False
+                current = os.stat(
+                    entry_name,
+                    dir_fd=directory_descriptor,
+                    follow_symlinks=False,
+                )
+                if (
+                    int(current.st_dev) != int(opened.st_dev)
+                    or int(current.st_ino) != int(opened.st_ino)
+                ):
+                    return False
+                os.unlink(entry_name, dir_fd=directory_descriptor)
+                if int(os.fstat(child_descriptor).st_nlink) != 0:
+                    return False
+            finally:
+                os.close(child_descriptor)
+        return True
+
+    try:
+        if not _authority_git_fd_tree_matches_manifest(
+            root_descriptor,
+            record_map,
+            allow_missing=True,
+            recovery=True,
+        ):
+            return False
+        return clear_directory(root_descriptor, PurePosixPath())
+    except OSError:
+        return False
+
+
+def _authority_git_quarantine_remove_exact_projection(
+    path: Path,
+    *,
+    expected_device: int,
+    expected_inode: int,
+    expected_manifest_id: str | None,
+    creation_descriptor: int = -1,
+) -> bool:
+    """Quarantine and remove one closed, identity-pinned projection."""
+
+    path = Path(path)
+    parent = path.parent
+    name = path.name
+    open_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    parent_descriptor = -1
+    root_descriptor = -1
+    try:
+        creation_value = (
+            os.fstat(creation_descriptor)
+            if creation_descriptor >= 0
+            else None
+        )
+        if creation_value is not None and (
+            int(creation_value.st_dev) != int(expected_device)
+            or int(creation_value.st_ino) != int(expected_inode)
+            or not stat_module.S_ISDIR(creation_value.st_mode)
+        ):
+            return False
+        parent_descriptor = os.open(parent, open_flags)
+        before = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        if (
+            int(before.st_dev) != int(expected_device)
+            or int(before.st_ino) != int(expected_inode)
+            or not stat_module.S_ISDIR(before.st_mode)
+            or stat_module.S_ISLNK(before.st_mode)
+        ):
+            return False
+        root_descriptor = os.open(
+            name,
+            open_flags,
+            dir_fd=parent_descriptor,
+        )
+        reopened = os.fstat(root_descriptor)
+        if (
+            int(reopened.st_dev) != int(expected_device)
+            or int(reopened.st_ino) != int(expected_inode)
+            or not stat_module.S_ISDIR(reopened.st_mode)
+            or (
+                creation_value is not None
+                and (
+                    int(reopened.st_dev) != int(creation_value.st_dev)
+                    or int(reopened.st_ino) != int(creation_value.st_ino)
+                )
+            )
+        ):
+            return False
+        manifest_descriptor = os.open(
+            _AUTHORITY_GIT_PROJECTION_MANIFEST,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=root_descriptor,
+        )
+        try:
+            manifest_value = os.fstat(manifest_descriptor)
+            if (
+                not stat_module.S_ISREG(manifest_value.st_mode)
+                or int(manifest_value.st_nlink) != 1
+                or manifest_value.st_size
+                > AUTHORITY_VALIDATION_GIT_PROJECTION_MANIFEST_MAX_BYTES
+            ):
+                return False
+            manifest_bytes = b""
+            remaining = int(manifest_value.st_size)
+            while remaining:
+                chunk = os.read(manifest_descriptor, min(65536, remaining))
+                if not chunk:
+                    return False
+                manifest_bytes += chunk
+                remaining -= len(chunk)
+            if os.read(manifest_descriptor, 1):
+                return False
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
+        finally:
+            os.close(manifest_descriptor)
+        manifest_keys = {
+            "schema",
+            "projection_path",
+            "workspace_path",
+            "creator",
+            "uid",
+            "pid",
+            "process_start_ticks",
+            "created_unix_ns",
+            "root_device",
+            "root_inode",
+            "mount_source",
+            "finalized",
+            "descendant_record_count",
+            "descendant_manifest_id",
+            "descendant_records",
+            "cleanup_quarantine_path",
+            "manifest_id",
+        }
+        if not isinstance(manifest, Mapping) or set(manifest) != manifest_keys:
+            return False
+        manifest_body = {
+            key: manifest[key] for key in manifest if key != "manifest_id"
+        }
+        original_path = Path(str(manifest["projection_path"]))
+        planned_path_text = str(manifest["cleanup_quarantine_path"] or "")
+        planned_path = Path(planned_path_text) if planned_path_text else None
+        if (
+            manifest["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-projection-lease@2"
+            )
+            or manifest["manifest_id"] != content_identity(manifest_body)
+            or manifest["manifest_id"] != expected_manifest_id
+            or manifest["root_device"] != expected_device
+            or manifest["root_inode"] != expected_inode
+            or manifest["finalized"] is not True
+            or manifest["descendant_record_count"]
+            != len(manifest["descendant_records"])
+            or manifest["descendant_manifest_id"]
+            != content_identity(manifest["descendant_records"])
+            or path not in {original_path, planned_path}
+            or original_path.parent != parent
+            or (
+                planned_path is not None
+                and (
+                    planned_path.parent != parent
+                    or not planned_path.name.startswith(
+                        original_path.name + ".quarantine-"
+                    )
+                )
+            )
+        ):
+            return False
+        record_map = _authority_git_projection_record_map(
+            manifest["descendant_records"],
+            expected_device=expected_device,
+        )
+        if record_map is None:
+            return False
+        recovery = planned_path is not None
+        if not _authority_git_fd_tree_matches_manifest(
+            root_descriptor,
+            record_map,
+            allow_missing=recovery,
+            recovery=recovery,
+        ):
+            return False
+        if planned_path is None:
+            quarantine_name = (
+                f"{original_path.name}.quarantine-"
+                f"{os.getpid()}-{time.time_ns()}"
+            )
+            planned_path = parent / quarantine_name
+            manifest_body = {
+                key: manifest[key]
+                for key in manifest
+                if key not in {"manifest_id", "cleanup_quarantine_path"}
+            }
+            manifest_body["cleanup_quarantine_path"] = str(planned_path)
+            manifest = _authority_git_write_projection_manifest(
+                root_descriptor, manifest_body
+            )
+        else:
+            quarantine_name = planned_path.name
+        if name != quarantine_name:
+            try:
+                os.stat(
+                    quarantine_name,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                pass
+            else:
+                return False
+            os.rename(
+                name,
+                quarantine_name,
+                src_dir_fd=parent_descriptor,
+                dst_dir_fd=parent_descriptor,
+            )
+        quarantined = os.stat(
+            quarantine_name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            int(quarantined.st_dev) != int(expected_device)
+            or int(quarantined.st_ino) != int(expected_inode)
+        ):
+            return False
+        if not _authority_git_fd_remove_tree(root_descriptor, record_map):
+            return False
+        manifest_descriptor = os.open(
+            _AUTHORITY_GIT_PROJECTION_MANIFEST,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=root_descriptor,
+        )
+        try:
+            pinned_manifest = os.fstat(manifest_descriptor)
+            if (
+                not stat_module.S_ISREG(pinned_manifest.st_mode)
+                or int(pinned_manifest.st_nlink) != 1
+            ):
+                return False
+            expected_manifest_bytes = (
+                canonical_json(dict(manifest)) + "\n"
+            ).encode("utf-8")
+            actual_manifest_bytes = b""
+            remaining = int(pinned_manifest.st_size)
+            while remaining:
+                chunk = os.read(
+                    manifest_descriptor, min(65536, remaining)
+                )
+                if not chunk:
+                    return False
+                actual_manifest_bytes += chunk
+                remaining -= len(chunk)
+            if (
+                os.read(manifest_descriptor, 1)
+                or actual_manifest_bytes != expected_manifest_bytes
+            ):
+                return False
+            os.unlink(
+                _AUTHORITY_GIT_PROJECTION_MANIFEST,
+                dir_fd=root_descriptor,
+            )
+            if int(os.fstat(manifest_descriptor).st_nlink) != 0:
+                return False
+        finally:
+            os.close(manifest_descriptor)
+        with os.scandir(root_descriptor) as remaining_entries:
+            if next(remaining_entries, None) is not None:
+                return False
+        final = os.stat(
+            quarantine_name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            int(final.st_dev) != int(expected_device)
+            or int(final.st_ino) != int(expected_inode)
+        ):
+            return False
+        os.rmdir(quarantine_name, dir_fd=parent_descriptor)
+        if int(os.fstat(root_descriptor).st_nlink) != 0:
+            return False
+        try:
+            os.stat(
+                quarantine_name,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return True
+        return False
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    finally:
+        if root_descriptor >= 0:
+            os.close(root_descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _authority_git_quarantine_remove_created_projection(
+    path: Path,
+    *,
+    expected_device: int,
+    expected_inode: int,
+    creation_descriptor: int,
+    expected_manifest_id: str | None,
+) -> bool:
+    """Remove a never-published projection while its creation fd pins it."""
+
+    return _authority_git_quarantine_remove_exact_projection(
+        path,
+        expected_device=expected_device,
+        expected_inode=expected_inode,
+        expected_manifest_id=expected_manifest_id,
+        creation_descriptor=creation_descriptor,
+    )
+
+
+def _authority_git_quarantine_remove_projection(
+    path: Path,
+    *,
+    expected_device: int,
+    expected_inode: int,
+    expected_manifest_id: str,
+) -> bool:
+    """Remove one published projection after exact manifest verification."""
+
+    if not expected_manifest_id:
+        return False
+    return _authority_git_quarantine_remove_exact_projection(
+        path,
+        expected_device=expected_device,
+        expected_inode=expected_inode,
+        expected_manifest_id=expected_manifest_id,
+    )
+
+
+@dataclass
+class _AuthorityValidationCleanupGuard:
+    projection_path: Path | None = None
+    projection_device: int = 0
+    projection_inode: int = 0
+    projection_manifest_id: str = ""
+    projection_descriptor: int = -1
+    projection_attempted: bool = False
+    projection_succeeded: bool = True
+    container_cleanup: Callable[[], bool] | None = None
+    container_attempted: bool = False
+    container_succeeded: bool = True
+    derived_image_cleanup: Callable[[], bool] | None = None
+    derived_image_id: str = ""
+    derived_cleanup_lease_id: str = ""
+    derived_cleanup_journal_path: str = ""
+    derived_cleanup_quiet_milliseconds: int = 0
+    derived_cleanup_elapsed_milliseconds: int = 0
+    derived_cleanup_time_limit_milliseconds: int = 0
+    derived_image_attempted: bool = False
+    derived_image_succeeded: bool = True
+
+    def register_projection(
+        self,
+        path: Path,
+        manifest: Mapping[str, Any],
+        *,
+        descriptor: int = -1,
+    ) -> None:
+        self.projection_path = path
+        self.projection_device = int(manifest["root_device"])
+        self.projection_inode = int(manifest["root_inode"])
+        self.projection_manifest_id = str(manifest["manifest_id"])
+        if descriptor >= 0:
+            self.projection_descriptor = descriptor
+
+    def register_container(self, cleanup: Callable[[], bool]) -> None:
+        self.container_cleanup = cleanup
+
+    def register_derived_image(
+        self,
+        cleanup: Callable[[], bool],
+        *,
+        image_id: str,
+        cleanup_lease_id: str = "",
+        cleanup_journal_path: str = "",
+    ) -> None:
+        self.derived_image_cleanup = cleanup
+        self.derived_image_id = image_id
+        if cleanup_lease_id:
+            self.derived_cleanup_lease_id = cleanup_lease_id
+        if cleanup_journal_path:
+            self.derived_cleanup_journal_path = cleanup_journal_path
+
+    def cleanup_container_now(self) -> bool:
+        if self.container_cleanup is None:
+            return self.container_succeeded
+        cleanup = self.container_cleanup
+        self.container_cleanup = None
+        self.container_attempted = True
+        try:
+            self.container_succeeded = bool(cleanup())
+        except BaseException:
+            self.container_succeeded = False
+        return self.container_succeeded
+
+    def cleanup_projection_now(self) -> bool:
+        if self.projection_path is None:
+            return self.projection_succeeded
+        path = self.projection_path
+        self.projection_path = None
+        descriptor = self.projection_descriptor
+        self.projection_descriptor = -1
+        self.projection_attempted = True
+        try:
+            self.projection_succeeded = bool(
+                _authority_git_quarantine_remove_exact_projection(
+                    path,
+                    expected_device=self.projection_device,
+                    expected_inode=self.projection_inode,
+                    expected_manifest_id=self.projection_manifest_id,
+                    creation_descriptor=descriptor,
+                )
+            )
+        except FileNotFoundError:
+            self.projection_succeeded = True
+        except BaseException:
+            self.projection_succeeded = False
+        finally:
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    self.projection_succeeded = False
+        return self.projection_succeeded
+
+    def cleanup_derived_image_now(self) -> bool:
+        if self.derived_image_cleanup is None:
+            return self.derived_image_succeeded
+        cleanup = self.derived_image_cleanup
+        self.derived_image_attempted = True
+        cleanup_started = time.monotonic()
+        try:
+            self.derived_image_succeeded = bool(cleanup())
+        except BaseException:
+            self.derived_image_succeeded = False
+        self.derived_cleanup_elapsed_milliseconds = int(
+            math.ceil(max(0.0, time.monotonic() - cleanup_started) * 1000)
+        )
+        self.derived_cleanup_time_limit_milliseconds = int(
+            _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS * 1000
+        )
+        if self.derived_image_succeeded:
+            self.derived_image_cleanup = None
+            self.derived_cleanup_quiet_milliseconds = int(
+                _AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS * 1000
+            )
+        return self.derived_image_succeeded
+
+    def cleanup_all(self) -> dict[str, Any]:
+        if self.derived_image_cleanup is not None:
+            # The derived-image lease label covers the runtime container too.
+            # Use its one aggregate deadline for container, image, tag, and
+            # journal cleanup instead of spending independent Docker-control
+            # timeouts before it.
+            derived_succeeded = self.cleanup_derived_image_now()
+            self.container_attempted = True
+            self.container_succeeded = derived_succeeded
+            self.container_cleanup = None
+        else:
+            self.cleanup_container_now()
+        self.cleanup_projection_now()
+        return self.receipt()
+
+    def receipt(self) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-runtime-cleanup@1"
+            ),
+            "container_attempted": self.container_attempted,
+            "container_succeeded": self.container_succeeded,
+            "derived_image_attempted": self.derived_image_attempted,
+            "derived_image_succeeded": self.derived_image_succeeded,
+            "derived_image_id": self.derived_image_id,
+            "derived_cleanup_lease_id": self.derived_cleanup_lease_id,
+            "derived_cleanup_journal_path": self.derived_cleanup_journal_path,
+            "derived_cleanup_quiet_milliseconds": (
+                self.derived_cleanup_quiet_milliseconds
+            ),
+            "derived_cleanup_elapsed_milliseconds": (
+                self.derived_cleanup_elapsed_milliseconds
+            ),
+            "derived_cleanup_time_limit_milliseconds": (
+                self.derived_cleanup_time_limit_milliseconds
+            ),
+            "derived_cleanup_journal_released": bool(
+                self.derived_image_succeeded
+                and (
+                    not self.derived_cleanup_journal_path
+                    or not Path(self.derived_cleanup_journal_path).exists()
+                )
+            ),
+            "projection_attempted": self.projection_attempted,
+            "projection_succeeded": self.projection_succeeded,
+            "succeeded": bool(
+                self.container_succeeded
+                and self.derived_image_succeeded
+                and self.projection_succeeded
+            ),
+        }
+
+
+def _authority_validation_cleanup_scoped(
+    function: Callable[..., dict[str, Any]],
+) -> Callable[..., dict[str, Any]]:
+    @functools.wraps(function)
+    def wrapped(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        guard = _AuthorityValidationCleanupGuard()
+        kwargs["_cleanup_guard"] = guard
+        result: dict[str, Any] | None = None
+        try:
+            result = function(*args, **kwargs)
+            return result
+        finally:
+            cleanup = guard.cleanup_all()
+            if result is not None and "git_projection_cleanup" not in result:
+                result["git_projection_cleanup"] = cleanup
+
+    return wrapped
+
+
+_AUTHORITY_ISOLATION_RECEIPT_BODY_KEYS = frozenset(
+    {
+        "schema",
+        "contract_id",
+        "backend",
+        "docker_endpoint",
+        "base_image_id",
+        "image_id",
+        "gpu_uuid",
+        "gpu_requested",
+        "network_mode",
+        "host_filesystem",
+        "workspace_path",
+        "workspace_read_only",
+        "git_metadata_read_only",
+        "git_metadata_drift_detected",
+        "git_metadata_replay",
+        "git_metadata_sealed_mounts",
+        "git_sealed_projection",
+        "git_setup_reclaimer",
+        "git_postflight",
+        "git_projection_cleanup",
+        "authority_command_binding",
+        "git_mount_bootstrap",
+        "git_safe_directory_config",
+        "private_pid_namespace",
+        "cgroup_process_limit",
+        "memory_limit_bytes",
+        "tmpfs_limit_bytes",
+        "cpu_limit",
+        "timeout_limit_seconds",
+        "capabilities_dropped",
+        "no_new_privileges",
+        "container_root_read_only",
+        "container_log_driver",
+        "typescript_validation_toolchain",
+        "output_limit_bytes",
+        "output_limit_exceeded",
+        "output_bounded",
+        "storage_bounded",
+        "cpu_bounded",
+        "container_removed",
+        "process_tree_quiesced",
+    }
+)
+
+
+def _authority_validation_build_isolation_receipt(
+    body: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the only accepted canonical authority isolation receipt."""
+
+    normalized = dict(body)
+    if set(normalized) != _AUTHORITY_ISOLATION_RECEIPT_BODY_KEYS:
+        raise AuthorityGitReplayError(
+            "authority_validation_isolation_receipt_schema_invalid"
+        )
+    if normalized.get("schema") != (
+        "ipfs_accelerate_py.agent_supervisor."
+        "authority-validation-isolation-receipt@3"
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_isolation_receipt_schema_invalid"
+        )
+    return {
+        **normalized,
+        "receipt_id": content_identity(normalized),
+    }
+
+
+def _authority_git_commit_witness(
+    raw: bytes, *, oid_length: int
+) -> tuple[str, tuple[str, ...], str] | None:
+    """Parse only the commit semantics used by the closed DCR lifecycle."""
+
+    separator = raw.find(b"\n\n")
+    if separator < 0 or b"\0" in raw[:separator] or b"\r" in raw[:separator]:
+        return None
+    header_lines = raw[:separator].split(b"\n")
+    if not header_lines or not header_lines[0].startswith(b"tree "):
+        return None
+    oid_pattern = re.compile(
+        rb"[0-9a-f]{" + str(oid_length).encode("ascii") + rb"}"
+    )
+    tree_value = header_lines[0][5:]
+    if oid_pattern.fullmatch(tree_value) is None:
+        return None
+    parents: list[str] = []
+    for line in header_lines[1:]:
+        if line.startswith(b"parent "):
+            parent = line[7:]
+            if oid_pattern.fullmatch(parent) is None:
+                return None
+            parents.append(parent.decode("ascii"))
+        elif line.startswith(b" "):
+            # Header continuation (for example a signed commit) is semantic
+            # input to the commit OID but irrelevant to this lifecycle proof.
+            continue
+        elif b" " not in line or not line.split(b" ", 1)[0]:
+            return None
+    message = raw[separator + 2 :]
+    try:
+        subject = message.split(b"\n", 1)[0].decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        return None
+    return tree_value.decode("ascii"), tuple(parents), subject
+
+
+def _authority_git_tree_witness(
+    raw: bytes, *, oid_length: int
+) -> tuple[tuple[str, bytes, str], ...] | None:
+    """Parse one canonical raw Git tree without following gitlink objects."""
+
+    oid_bytes = oid_length // 2
+    offset = 0
+    entries: list[tuple[str, bytes, str]] = []
+    prior_sort_key: bytes | None = None
+    allowed_modes = {b"40000", b"100644", b"100755", b"120000", b"160000"}
+    while offset < len(raw):
+        space = raw.find(b" ", offset)
+        nul = raw.find(b"\0", space + 1 if space >= 0 else offset)
+        if space <= offset or nul <= space + 1 or nul + 1 + oid_bytes > len(raw):
+            return None
+        mode = raw[offset:space]
+        name = raw[space + 1 : nul]
+        oid_raw = raw[nul + 1 : nul + 1 + oid_bytes]
+        offset = nul + 1 + oid_bytes
+        if (
+            mode not in allowed_modes
+            or name in {b"", b".", b".."}
+            or b"/" in name
+            or b"\0" in name
+        ):
+            return None
+        sort_key = name + (b"/" if mode == b"40000" else b"")
+        if prior_sort_key is not None and sort_key <= prior_sort_key:
+            return None
+        prior_sort_key = sort_key
+        entries.append(
+            (mode.decode("ascii"), name, oid_raw.hex())
+        )
+    return tuple(entries)
+
+
+def _authority_git_tree_inventory(
+    objects: Mapping[str, Any],
+    root_tree: str,
+    *,
+    oid_length: int,
+) -> tuple[set[str], dict[bytes, tuple[str, str]]] | None:
+    """Return the exact reachable-tree set and flattened non-tree entries."""
+
+    trees: set[str] = set()
+    leaves: dict[bytes, tuple[str, str]] = {}
+    visited_locations: set[tuple[str, bytes]] = set()
+    stack: list[tuple[str, bytes, int, frozenset[str]]] = [
+        (root_tree, b"", 0, frozenset())
+    ]
+    traversed_entries = 0
+    cumulative_path_bytes = 0
+    while stack:
+        tree_oid, prefix, depth, ancestors = stack.pop()
+        if (
+            depth > AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_DEPTH
+            or tree_oid in ancestors
+            or len(prefix) > AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_PATH_LENGTH
+            or (tree_oid, prefix) in visited_locations
+            or len(visited_locations)
+            >= AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_VISITS
+        ):
+            return None
+        visited_locations.add((tree_oid, prefix))
+        tree_object = objects.get(tree_oid)
+        if tree_object is None or tree_object.object_type != "tree":
+            return None
+        entries = _authority_git_tree_witness(
+            tree_object.raw, oid_length=oid_length
+        )
+        if entries is None:
+            return None
+        trees.add(tree_oid)
+        traversed_entries += len(entries)
+        if traversed_entries > AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_VISITS:
+            return None
+        next_ancestors = ancestors | {tree_oid}
+        child_trees: list[tuple[str, bytes, int, frozenset[str]]] = []
+        for mode, name, oid in entries:
+            path = name if not prefix else prefix + b"/" + name
+            cumulative_path_bytes += len(path)
+            if (
+                len(path) > AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_PATH_LENGTH
+                or cumulative_path_bytes
+                > AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_PATH_BYTES
+            ):
+                return None
+            if mode == "40000":
+                child_trees.append((oid, path, depth + 1, next_ancestors))
+            elif path in leaves:
+                return None
+            else:
+                if len(leaves) >= AUTHORITY_VALIDATION_GIT_CLOSURE_MAX_LEAVES:
+                    return None
+                leaves[path] = (mode, oid)
+        stack.extend(reversed(child_trees))
+    return trees, leaves
+
+
+def _authority_git_exact_root_object_closure(
+    root: Mapping[str, Any],
+    objects: Mapping[str, Any],
+) -> set[str] | None:
+    """Derive one root's exact allowed pack closure from raw Git objects."""
+
+    object_format = str(root["object_format"])
+    oid_length = 40 if object_format == "sha1" else 64
+    lifecycle = root["lifecycle"]
+    commits = [str(lifecycle["subject"]), *map(str, lifecycle["transitions"])]
+    commit_witnesses: dict[str, tuple[str, tuple[str, ...], str]] = {}
+    reachable_trees: set[str] = set()
+    inventories: dict[str, dict[bytes, tuple[str, str]]] = {}
+    for commit in commits:
+        value = objects.get(commit)
+        if value is None or value.object_type != "commit":
+            return None
+        witness = _authority_git_commit_witness(
+            value.raw, oid_length=oid_length
+        )
+        if witness is None:
+            return None
+        commit_witnesses[commit] = witness
+        tree_oid = witness[0]
+        inventory = _authority_git_tree_inventory(
+            objects, tree_oid, oid_length=oid_length
+        )
+        if inventory is None:
+            return None
+        trees, leaves = inventory
+        reachable_trees.update(trees)
+        inventories[commit] = leaves
+    head = str(root["head"])
+    if head not in commit_witnesses or commit_witnesses[head][0] != root["tree"]:
+        return None
+    transition_records = lifecycle["transition_records"]
+    for index, record in enumerate(transition_records):
+        commit = commits[index + 1]
+        tree_oid, parents, subject = commit_witnesses[commit]
+        if (
+            tree_oid != record["tree"]
+            or list(parents) != record["parents"]
+            or subject != record["subject"]
+            or not parents
+            or parents[0] not in inventories
+        ):
+            return None
+        before = inventories[parents[0]]
+        after = inventories[commit]
+        try:
+            changed_paths = sorted(
+                path.decode("utf-8", "strict")
+                for path in set(before) | set(after)
+                if before.get(path) != after.get(path)
+            )
+        except UnicodeDecodeError:
+            return None
+        if changed_paths != record["changed_paths"]:
+            return None
+    designated_blobs: set[str] = set()
+
+    def designated(commit: str, path_text: str) -> str | None:
+        path = path_text.encode("utf-8")
+        entry = inventories.get(commit, {}).get(path)
+        if entry is None or entry[0] not in {"100644", "100755"}:
+            return None
+        value = objects.get(entry[1])
+        if value is None or value.object_type != "blob":
+            return None
+        return entry[1]
+
+    transitions = list(map(str, lifecycle["transitions"]))
+    if transitions:
+        carrier_blob = designated(
+            transitions[0], AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT
+        )
+        if carrier_blob != lifecycle["carrier_forest_blob"]:
+            return None
+        designated_blobs.add(carrier_blob)
+    if len(transitions) == 3:
+        subject_blob = designated(
+            str(lifecycle["subject"]), AUTHORITY_VALIDATION_DCR_TODO_PATH
+        )
+        completed_blob = designated(
+            transitions[2], AUTHORITY_VALIDATION_DCR_TODO_PATH
+        )
+        if (
+            subject_blob != lifecycle["subject_todo_blob"]
+            or completed_blob != lifecycle["completed_todo_blob"]
+            or subject_blob is None
+            or completed_blob is None
+        ):
+            return None
+        before_raw = objects[subject_blob].raw
+        after_raw = objects[completed_blob].raw
+        marker = b"## DCR-011 "
+        before_start = before_raw.find(marker)
+        after_start = after_raw.find(marker)
+        before_end = before_raw.find(b"\n## ", before_start + len(marker))
+        after_end = after_raw.find(b"\n## ", after_start + len(marker))
+        before_end = len(before_raw) if before_end < 0 else before_end
+        after_end = len(after_raw) if after_end < 0 else after_end
+        before_block = before_raw[before_start:before_end]
+        after_block = after_raw[after_start:after_end]
+        restored_block = after_block.replace(
+            b"- Status: completed", b"- Status: todo", 1
+        )
+        restored = (
+            after_raw[:after_start] + restored_block + after_raw[after_end:]
+        )
+        if not (
+            before_start >= 0
+            and after_start >= 0
+            and before_block.count(b"- Status: todo") == 1
+            and after_block.count(b"- Status: completed") == 1
+            and restored == before_raw
+        ):
+            return None
+        designated_blobs.update({subject_blob, completed_blob})
+    exact = set(commits) | reachable_trees | designated_blobs
+    if exact != set(map(str, root["object_ids"])):
+        return None
+    type_counts = {"blob": 0, "commit": 0, "tree": 0}
+    uncompressed_bytes = 0
+    for oid in exact:
+        value = objects.get(oid)
+        if value is None or value.object_type not in type_counts:
+            return None
+        type_counts[value.object_type] += 1
+        uncompressed_bytes += len(value.raw)
+    if (
+        type_counts != dict(root["object_type_counts"])
+        or uncompressed_bytes != root["object_source_bytes"]
+    ):
+        return None
+    return exact
+
+
+def _authority_validation_isolation_receipt_valid(
+    receipt_value: Any,
+    *,
+    contract: Mapping[str, Any],
+    result: Mapping[str, Any],
+    validated_tree_identity: Mapping[str, Any] | None = None,
+    expected_task_id: str = "",
+    expected_task_cid: str = "",
+    expected_commands: Sequence[str] | None = None,
+) -> bool:
+    """Strictly verify a DCR-011 per-ordinal authority receipt.
+
+    This verifier deliberately accepts no optional receipt fields.  It is
+    independent of the runtime builder so a self-consistent, recomputed CID
+    cannot make an incomplete or authority-expanded receipt acceptable.
+    """
+
+    def exact(value: Any, keys: set[str] | frozenset[str]) -> Mapping[str, Any]:
+        if not isinstance(value, Mapping) or set(value) != set(keys):
+            raise ValueError("receipt key set mismatch")
+        return value
+
+    def integer(value: Any, *, minimum: int = 0) -> int:
+        if type(value) is not int or value < minimum:
+            raise ValueError("invalid integer")
+        return value
+
+    def cid(value: Any) -> str:
+        text = str(value or "")
+        if not re.fullmatch(r"b[a-z2-7]+", text):
+            raise ValueError("invalid content identity")
+        return text
+
+    try:
+        receipt = exact(
+            receipt_value,
+            _AUTHORITY_ISOLATION_RECEIPT_BODY_KEYS | {"receipt_id"},
+        )
+        body = {
+            key: receipt[key]
+            for key in _AUTHORITY_ISOLATION_RECEIPT_BODY_KEYS
+        }
+        if (
+            receipt["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-isolation-receipt@3"
+            )
+            or receipt["receipt_id"] != content_identity(body)
+            or contract.get("available") is not True
+            or receipt["contract_id"] != contract.get("contract_id")
+            or receipt["backend"] != "docker-local-cuda"
+            or receipt["docker_endpoint"] != contract.get("docker_endpoint")
+            or receipt["base_image_id"] != contract.get("image_id")
+            or receipt["gpu_uuid"] != contract.get("gpu_uuid")
+            or receipt["network_mode"] != "none"
+            or receipt["gpu_requested"] is not True
+            or receipt["workspace_read_only"] is not True
+            or receipt["git_metadata_drift_detected"] is not False
+            or receipt["private_pid_namespace"] is not True
+            or receipt["cgroup_process_limit"]
+            != AUTHORITY_VALIDATION_PIDS_LIMIT
+            or receipt["memory_limit_bytes"]
+            != AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES
+            or receipt["tmpfs_limit_bytes"]
+            != AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES
+            or receipt["cpu_limit"] != AUTHORITY_VALIDATION_CPU_LIMIT
+            or receipt["timeout_limit_seconds"]
+            != AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS
+            or receipt["capabilities_dropped"] != "all"
+            or receipt["no_new_privileges"] is not True
+            or receipt["container_root_read_only"] is not True
+            or receipt["container_log_driver"] != "none"
+            or receipt["typescript_validation_toolchain"]
+            != contract.get("typescript_validation_toolchain")
+            or receipt["output_limit_bytes"]
+            != AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES
+            or receipt["output_limit_exceeded"] is not False
+            or receipt["output_bounded"] is not True
+            or receipt["storage_bounded"] is not True
+            or receipt["cpu_bounded"] is not True
+            or receipt["container_removed"] is not True
+            or receipt["process_tree_quiesced"] is not True
+        ):
+            return False
+
+        binding_keys = {
+            "schema",
+            "authority_profile",
+            "task_id",
+            "canonical_task_cid",
+            "scope",
+            "plan_id",
+            "expected_target_commit",
+            "expected_target_tree",
+            "expected_git_common_anchor",
+            "expected_git_dir",
+            "ordinal",
+            "validation_id",
+            "command",
+            "raw_command",
+            "guarded_argv",
+            "command_binding_id",
+            "command_binding_cache_id",
+        }
+        binding = exact(receipt["authority_command_binding"], binding_keys)
+        scope = str(binding["scope"])
+        dcr_commands = (
+            AUTHORITY_VALIDATION_DCR_COMMANDS
+            if scope == "pre_merge"
+            else AUTHORITY_VALIDATION_DCR_RAW_COMMANDS
+            if scope == "post_merge"
+            else ()
+        )
+        ordinal = integer(binding["ordinal"])
+        profile = str(binding["authority_profile"])
+        supplied_commands = (
+            tuple(str(item) for item in expected_commands)
+            if isinstance(expected_commands, Sequence)
+            and not isinstance(expected_commands, (str, bytes, bytearray))
+            else ()
+        )
+        dcr_marker_present = bool(
+            profile == "dcr011_forest@1"
+            or binding["task_id"] == "DCR-011"
+            or binding["canonical_task_cid"]
+            == AUTHORITY_VALIDATION_DCR_TASK_CID
+            or any(
+                "deterministic_repair_forest" in command
+                for command in supplied_commands
+            )
+        )
+        command_plan = dcr_commands if dcr_marker_present else supplied_commands
+        target_commit = str(binding["expected_target_commit"])
+        target_tree = str(binding["expected_target_tree"])
+        workspace_path = str(receipt["workspace_path"])
+        common_anchor = str(binding["expected_git_common_anchor"])
+        expected_git_dir = str(binding["expected_git_dir"])
+        if (
+            binding["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-command-binding@2"
+            )
+            or profile
+            not in {"dcr011_forest@1", "generic_workspace_only@1"}
+            or not command_plan
+            or ordinal >= len(command_plan)
+            or binding["command"] != command_plan[ordinal]
+            or binding["raw_command"] != command_plan[ordinal]
+            or result.get("command") != command_plan[ordinal]
+            or result.get("raw_command") != command_plan[ordinal]
+            or result.get("ordinal") != ordinal
+            or result.get("validation_id") != binding["validation_id"]
+            or result.get("authority_validation_command_binding")
+            != dict(binding)
+            or binding["validation_id"] != ""
+            or binding["guarded_argv"]
+            != validation_shell_command(command_plan[ordinal])
+            or not Path(workspace_path).is_absolute()
+            or str(Path(workspace_path)) != workspace_path
+            or any(part == ".." for part in Path(workspace_path).parts)
+            or "\\" in workspace_path
+            or any(
+                character in workspace_path + common_anchor + expected_git_dir
+                for character in ",\r\n\0"
+            )
+            or not re.fullmatch(r"[0-9a-f]{64}", str(result.get("cache_key") or ""))
+        ):
+            return False
+        if dcr_marker_present:
+            if (
+                profile != "dcr011_forest@1"
+                or binding["task_id"] != "DCR-011"
+                or binding["canonical_task_cid"]
+                != AUTHORITY_VALIDATION_DCR_TASK_CID
+                or ordinal not in {0, 1}
+                or tuple(command_plan) != tuple(dcr_commands)
+                or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", target_commit)
+                or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", target_tree)
+                or len(target_commit) != len(target_tree)
+                or not Path(common_anchor).is_absolute()
+                or not Path(expected_git_dir).is_absolute()
+            ):
+                return False
+            try:
+                Path(expected_git_dir).relative_to(common_anchor)
+            except ValueError:
+                return False
+        elif (
+            profile != "generic_workspace_only@1"
+            or not expected_task_id
+            or not expected_task_cid
+            or binding["task_id"] != expected_task_id
+            or binding["canonical_task_cid"] != expected_task_cid
+            or binding["task_id"] == "DCR-011"
+            or binding["canonical_task_cid"]
+            == AUTHORITY_VALIDATION_DCR_TASK_CID
+            or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", target_commit)
+            or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", target_tree)
+            or len(target_commit) != len(target_tree)
+            or common_anchor
+            or expected_git_dir
+        ):
+            return False
+        plan_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-command-plan@2"
+            ),
+            "authority_profile": profile,
+            "task_id": binding["task_id"],
+            "canonical_task_cid": binding["canonical_task_cid"],
+            "scope": scope,
+            "commands": list(command_plan),
+            "target_commit": target_commit,
+            "target_tree": target_tree,
+            "git_common_anchor": common_anchor,
+            "git_dir": expected_git_dir,
+        }
+        if binding["plan_id"] != content_identity(plan_body):
+            return False
+        binding_body = {
+            key: binding[key]
+            for key in binding_keys
+            - {"command_binding_id", "command_binding_cache_id"}
+        }
+        if binding["command_binding_id"] != content_identity(binding_body):
+            return False
+        if binding["command_binding_cache_id"] != content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-validation-command-cache-key@1"
+                ),
+                "workspace_path": workspace_path,
+                "plan_id": binding["plan_id"],
+                "command_binding_id": binding["command_binding_id"],
+            }
+        ):
+            return False
+        if isinstance(validated_tree_identity, Mapping):
+            validated_commit = str(
+                validated_tree_identity.get("target_commit") or ""
+            )
+            validated_tree = str(
+                validated_tree_identity.get("repository_tree_id") or ""
+            )
+            if validated_commit and validated_commit != target_commit:
+                return False
+            if validated_tree and validated_tree != f"git-tree:{target_tree}":
+                return False
+
+        replay_keys = {
+            "schema",
+            "mode",
+            "workspace_path",
+            "configured_roots",
+            "root_identities",
+            "external_mounts",
+            "external_mount_count",
+            "observation_count",
+            "observation_identities",
+            "preflight_budget",
+            "preflight_id",
+            "postflight_id",
+            "drift_detected",
+            "read_only",
+            "symlinks_allowed",
+            "projection_scope",
+            "raw_common_config_exposed",
+            "raw_refs_exposed",
+            "unrelated_objects_exposed",
+        }
+        replay = exact(receipt["git_metadata_replay"], replay_keys)
+        replay_external_mount_count = integer(replay["external_mount_count"])
+        replay_observation_count = integer(replay["observation_count"])
+        replay_preflight_budget = exact(
+            replay["preflight_budget"],
+            {"schema", "source_bytes", "metadata_entries"},
+        )
+        replay_preflight_source_bytes = integer(
+            replay_preflight_budget["source_bytes"]
+        )
+        replay_preflight_metadata_entries = integer(
+            replay_preflight_budget["metadata_entries"]
+        )
+        if replay_preflight_budget["schema"] != (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-git-replay-budget@1"
+        ):
+            return False
+        if (
+            replay["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-metadata-replay@2"
+            )
+            or replay["workspace_path"] != workspace_path
+            or replay["preflight_id"] != replay["postflight_id"]
+            or replay["drift_detected"] is not False
+            or replay["read_only"] is not True
+            or replay["symlinks_allowed"] is not False
+            or replay["raw_common_config_exposed"] is not False
+            or replay["raw_refs_exposed"] is not False
+            or replay["unrelated_objects_exposed"] is not False
+        ):
+            return False
+
+        sealed_keys = {
+            "reviewed_source",
+            "bind_source",
+            "destination",
+            "purpose",
+            "reviewed_identity",
+            "sealed_identity",
+            "entry_count",
+            "verification_record_count",
+            "read_only",
+        }
+        bootstrap_keys = {
+            "schema",
+            "record_count",
+            "manifest_id",
+            "records",
+            "runs_before_validation_command",
+            "source_swap_fails_closed",
+            "derived_layer_manifest_id",
+            "derived_layer_record_count",
+            "exact_tree_verified",
+        }
+        bootstrap = exact(receipt["git_mount_bootstrap"], bootstrap_keys)
+        bootstrap_record_count = integer(bootstrap["record_count"])
+        bootstrap_layer_record_count = integer(
+            bootstrap["derived_layer_record_count"]
+        )
+        records = bootstrap["records"]
+        if not isinstance(records, list) or any(
+            not isinstance(item, Mapping) for item in records
+        ):
+            return False
+        record_keys = {
+            "destination",
+            "device",
+            "inode",
+            "mode_type",
+            "size",
+            "sha256",
+        }
+        for record in records:
+            exact(record, record_keys)
+            integer(record["device"])
+            integer(record["inode"], minimum=1)
+            integer(record["mode_type"], minimum=1)
+            integer(record["size"])
+            if record["sha256"] and not re.fullmatch(
+                r"[0-9a-f]{64}", str(record["sha256"])
+            ):
+                return False
+        if (
+            bootstrap["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-mount-bootstrap@1"
+            )
+            or bootstrap_record_count != len(records)
+            or bootstrap["manifest_id"] != content_identity(records)
+            or bootstrap["runs_before_validation_command"] is not True
+            or bootstrap["source_swap_fails_closed"] is not True
+            or len({str(item["destination"]) for item in records})
+            != len(records)
+        ):
+            return False
+
+        cleanup = exact(
+            receipt["git_projection_cleanup"],
+            {
+                "schema",
+                "container_attempted",
+                "container_succeeded",
+                "derived_image_attempted",
+                "derived_image_succeeded",
+                "derived_image_id",
+                "derived_cleanup_lease_id",
+                "derived_cleanup_journal_path",
+                "derived_cleanup_quiet_milliseconds",
+                "derived_cleanup_elapsed_milliseconds",
+                "derived_cleanup_time_limit_milliseconds",
+                "derived_cleanup_journal_released",
+                "projection_attempted",
+                "projection_succeeded",
+                "succeeded",
+            },
+        )
+        cleanup_quiet_milliseconds = integer(
+            cleanup["derived_cleanup_quiet_milliseconds"]
+        )
+        cleanup_elapsed_milliseconds = integer(
+            cleanup["derived_cleanup_elapsed_milliseconds"]
+        )
+        cleanup_time_limit_milliseconds = integer(
+            cleanup["derived_cleanup_time_limit_milliseconds"]
+        )
+        if (
+            cleanup["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-runtime-cleanup@1"
+            )
+            or cleanup["container_attempted"] is not True
+            or cleanup["container_succeeded"] is not True
+            or cleanup["derived_image_succeeded"] is not True
+            or cleanup["derived_cleanup_journal_released"] is not True
+            or cleanup["projection_succeeded"] is not True
+            or cleanup["succeeded"] is not True
+        ):
+            return False
+
+        safe = exact(
+            receipt["git_safe_directory_config"],
+            {
+                "mounted",
+                "path",
+                "sha256",
+                "configured_roots",
+                "read_only",
+                "required_for_git_discovery",
+                "synthetic_metadata_owned_by_container_uid",
+            },
+        )
+        postflight = receipt["git_postflight"]
+        reclaimer = receipt["git_setup_reclaimer"]
+        snapshot = receipt["git_sealed_projection"]
+        sealed = receipt["git_metadata_sealed_mounts"]
+
+        forest_projection_expected = bool(dcr_marker_present and ordinal == 1)
+        if not forest_projection_expected:
+            exact(reclaimer, {"schema", "mode"})
+            exact(
+                postflight,
+                {
+                    "schema",
+                    "mode",
+                    "elapsed_milliseconds",
+                    "time_limit_seconds",
+                    "completed",
+                },
+            )
+            exact(
+                snapshot,
+                {
+                    "schema",
+                    "source_bytes",
+                    "sealed_bytes",
+                    "aggregate_bytes",
+                    "byte_limit",
+                    "setup_elapsed_milliseconds",
+                    "setup_time_limit_seconds",
+                    "metadata_entries",
+                    "metadata_entry_limit",
+                    "mount_count",
+                    "completed",
+                    "copy_mode",
+                    "hardlinks_used",
+                    "object_scope",
+                    "raw_common_config_exposed",
+                    "raw_refs_exposed",
+                    "unrelated_objects_exposed",
+                    "object_packs",
+                    "object_pack_count",
+                    "git_version",
+                    "transport",
+                },
+            )
+            for key in (
+                "source_bytes",
+                "sealed_bytes",
+                "aggregate_bytes",
+                "byte_limit",
+                "setup_elapsed_milliseconds",
+                "setup_time_limit_seconds",
+                "metadata_entries",
+                "metadata_entry_limit",
+                "mount_count",
+                "object_pack_count",
+            ):
+                integer(snapshot[key])
+            integer(postflight["elapsed_milliseconds"])
+            integer(postflight["time_limit_seconds"], minimum=1)
+            not_requested_plan = content_identity(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "authority-git-metadata-not-requested@1"
+                    ),
+                    "workspace": workspace_path,
+                    "mode": "not_requested",
+                }
+            )
+            if (
+                receipt["host_filesystem"] != "workspace_only_read_only"
+                or receipt["image_id"] != receipt["base_image_id"]
+                or receipt["git_metadata_read_only"] is not False
+                or replay["mode"] != "not_requested"
+                or replay["projection_scope"] != "none"
+                or replay["configured_roots"] != []
+                or replay["root_identities"] != []
+                or replay["external_mounts"] != []
+                or replay_external_mount_count != 0
+                or replay_observation_count != 0
+                or replay_preflight_source_bytes != 0
+                or replay_preflight_metadata_entries != 0
+                or replay["observation_identities"] != []
+                or replay["preflight_id"] != not_requested_plan
+                or sealed != []
+                or records != []
+                or snapshot["schema"]
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-sealed-projection@2"
+                )
+                or any(
+                    snapshot[key] != 0
+                    for key in (
+                        "source_bytes",
+                        "sealed_bytes",
+                        "aggregate_bytes",
+                        "setup_elapsed_milliseconds",
+                        "metadata_entries",
+                        "mount_count",
+                        "object_pack_count",
+                    )
+                )
+                or snapshot["byte_limit"]
+                != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+                or snapshot["metadata_entry_limit"]
+                != AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES
+                or snapshot["setup_time_limit_seconds"]
+                != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+                or snapshot["copy_mode"] != "not_requested"
+                or snapshot["object_scope"] != "none"
+                or snapshot["object_packs"] != []
+                or snapshot["git_version"] != "not_requested"
+                or snapshot["completed"] is not True
+                or snapshot["hardlinks_used"] is not False
+                or reclaimer
+                != {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "authority-git-projection-reclaimer@2"
+                    ),
+                    "mode": "not_requested",
+                }
+                or postflight["mode"] != "not_requested"
+                or postflight["elapsed_milliseconds"] != 0
+                or postflight["time_limit_seconds"]
+                != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+                or postflight["completed"] is not True
+                or cleanup["projection_attempted"] is not False
+                or cleanup["derived_image_attempted"] is not False
+                or cleanup["derived_image_id"] != ""
+                or cleanup["derived_cleanup_lease_id"] != ""
+                or cleanup["derived_cleanup_journal_path"] != ""
+                or cleanup_quiet_milliseconds != 0
+                or cleanup_elapsed_milliseconds != 0
+                or cleanup_time_limit_milliseconds != 0
+                or bootstrap["derived_layer_manifest_id"] != ""
+                or bootstrap_layer_record_count != 0
+                or bootstrap["exact_tree_verified"] is not False
+                or snapshot["transport"]
+                != {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "authority-git-derived-image@1"
+                    ),
+                    "mode": "not_requested",
+                }
+                or safe
+                != {
+                    "mounted": False,
+                    "path": "",
+                    "sha256": "",
+                    "configured_roots": [],
+                    "read_only": True,
+                    "required_for_git_discovery": False,
+                    "synthetic_metadata_owned_by_container_uid": False,
+                }
+            ):
+                return False
+            return True
+
+        # Ordinal one is the sole production Git projection capability.
+        reclaimer_keys = {
+            "schema",
+            "root_entries_scanned",
+            "root_scan_truncated",
+            "candidates",
+            "invalid_manifests",
+            "active_leases",
+            "scanned_projection_entries",
+            "reclaimed",
+            "reclaimed_bytes",
+            "failures",
+            "candidate_limit",
+            "entry_limit",
+            "byte_limit",
+            "stale_after_seconds",
+        }
+        exact(reclaimer, reclaimer_keys)
+        for key in (
+            "root_entries_scanned",
+            "candidates",
+            "invalid_manifests",
+            "active_leases",
+            "scanned_projection_entries",
+            "reclaimed",
+            "reclaimed_bytes",
+            "failures",
+        ):
+            integer(reclaimer[key])
+        integer(reclaimer["candidate_limit"], minimum=1)
+        integer(reclaimer["entry_limit"], minimum=1)
+        integer(reclaimer["byte_limit"], minimum=1)
+        integer(reclaimer["stale_after_seconds"], minimum=1)
+        snapshot_keys = {
+            "schema",
+            "source_bytes",
+            "sealed_bytes",
+            "aggregate_bytes",
+            "byte_limit",
+            "setup_elapsed_milliseconds",
+            "setup_time_limit_seconds",
+            "metadata_entries",
+            "metadata_entry_limit",
+            "mount_count",
+            "completed",
+            "copy_mode",
+            "hardlinks_used",
+            "object_scope",
+            "raw_common_config_exposed",
+            "raw_refs_exposed",
+            "unrelated_objects_exposed",
+            "object_packs",
+            "object_pack_count",
+            "git_version",
+            "projection_lease",
+            "transport",
+        }
+        exact(snapshot, snapshot_keys)
+        for key in (
+            "source_bytes",
+            "sealed_bytes",
+            "aggregate_bytes",
+            "byte_limit",
+            "setup_elapsed_milliseconds",
+            "setup_time_limit_seconds",
+            "metadata_entries",
+            "metadata_entry_limit",
+            "mount_count",
+            "object_pack_count",
+        ):
+            integer(snapshot[key])
+        transport = exact(
+            snapshot["transport"],
+            {
+                "schema",
+                "base_image_id",
+                "derived_image_id",
+                "base_layers",
+                "derived_layers",
+                "added_layer",
+                "base_size",
+                "derived_size",
+                "added_size",
+                "derived_config_sha256",
+                "destination_preexisting",
+                "builder_container_id",
+                "builder_removed_before_runtime",
+                "builder_verification_passed",
+                "archive",
+                "layer_manifest",
+                "network_mode",
+                "provider_code_ran_during_build",
+                "cleanup_label",
+                "cleanup_lease_id",
+                "cleanup_lease",
+                "cleanup_image_tag",
+                "cleanup_journal_path",
+                "cleanup_quiet_seconds",
+                "cleanup_reclaimer",
+                "transport_id",
+            },
+        )
+        transport_body = {
+            key: transport[key] for key in transport if key != "transport_id"
+        }
+        archive = exact(
+            transport["archive"],
+            {
+                "schema",
+                "format",
+                "entry_count",
+                "manifest_id",
+                "sha256",
+                "size",
+                "destination_root",
+                "links_allowed",
+                "special_files_allowed",
+            },
+        )
+        layer_manifest = exact(
+            transport["layer_manifest"],
+            {"schema", "root", "records", "record_count", "manifest_id"},
+        )
+        layer_manifest_body = {
+            key: layer_manifest[key]
+            for key in layer_manifest
+            if key != "manifest_id"
+        }
+        layer_records = layer_manifest["records"]
+        archive_entry_count = integer(archive["entry_count"])
+        archive_size = integer(archive["size"], minimum=1)
+        layer_record_count = integer(layer_manifest["record_count"])
+        if not isinstance(layer_records, list):
+            return False
+        layer_record_keys = {
+            "relative_path",
+            "type",
+            "mode",
+            "uid",
+            "gid",
+            "size",
+            "sha256",
+        }
+        layer_paths: list[str] = []
+        for layer_record_value in layer_records:
+            layer_record = exact(layer_record_value, layer_record_keys)
+            relative_text = str(layer_record["relative_path"])
+            relative = PurePosixPath(relative_text)
+            if (
+                (relative_text and relative.is_absolute())
+                or relative.as_posix() != (relative_text or ".")
+                or any(part in {"", ".", ".."} for part in relative.parts)
+                or any(character in relative_text for character in "\\\r\n\0")
+                or layer_record["type"] not in {"directory", "regular"}
+                or type(layer_record["mode"]) is not int
+                or int(layer_record["mode"]) not in {0o400, 0o500}
+                or layer_record["uid"] != os.getuid()
+                or layer_record["gid"] != os.getgid()
+                or type(layer_record["size"]) is not int
+                or int(layer_record["size"]) < 0
+                or (
+                    layer_record["type"] == "regular"
+                    and re.fullmatch(
+                        r"[0-9a-f]{64}", str(layer_record["sha256"])
+                    )
+                    is None
+                )
+                or (
+                    layer_record["type"] == "directory"
+                    and layer_record["sha256"] != ""
+                )
+            ):
+                return False
+            layer_paths.append(relative_text)
+        base_layers = transport["base_layers"]
+        derived_layers = transport["derived_layers"]
+        cleanup_lease_id = str(transport["cleanup_lease_id"])
+        cleanup_journal_path = Path(str(transport["cleanup_journal_path"]))
+        docker_cleanup_lease = exact(
+            transport["cleanup_lease"],
+            {
+                "schema",
+                "lease_id",
+                "manifest_id",
+                "uid",
+                "pid",
+                "process_start_ticks",
+                "created_unix_ns",
+                "phase",
+                "docker_endpoint",
+                "base_image_id",
+                "authority_plan_id",
+                "command_binding_id",
+                "projection_manifest_id",
+                "cleanup_label_key",
+                "cleanup_label_value",
+                "image_tag",
+                "preflight_container_name",
+                "builder_container_name",
+            },
+        )
+        cleanup_lease_pid = integer(
+            docker_cleanup_lease["pid"], minimum=1
+        )
+        cleanup_lease_start_ticks = integer(
+            docker_cleanup_lease["process_start_ticks"], minimum=1
+        )
+        cleanup_lease_created_ns = integer(
+            docker_cleanup_lease["created_unix_ns"], minimum=1
+        )
+        cleanup_lease_now_ns = time.time_ns()
+        cleanup_lease_max_age_ns = (
+            AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            + AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS
+            + AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            + MANUAL_COMPLETION_AUTHORITY_IN_PROCESS_HANDOFF_TIMEOUT_SECONDS
+            + _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS
+        ) * 1_000_000_000
+        cleanup_reclaimer = exact(
+            transport["cleanup_reclaimer"],
+            {
+                "schema",
+                "scanned",
+                "active",
+                "reclaimed",
+                "retained_indeterminate",
+                "elapsed_milliseconds",
+                "time_limit_milliseconds",
+                "quiet_milliseconds",
+                "succeeded",
+            },
+        )
+        cleanup_reclaimer_scanned = integer(cleanup_reclaimer["scanned"])
+        cleanup_reclaimer_active = integer(cleanup_reclaimer["active"])
+        cleanup_reclaimer_reclaimed = integer(cleanup_reclaimer["reclaimed"])
+        cleanup_reclaimer_retained = integer(
+            cleanup_reclaimer["retained_indeterminate"]
+        )
+        cleanup_reclaimer_elapsed = integer(
+            cleanup_reclaimer["elapsed_milliseconds"]
+        )
+        cleanup_reclaimer_limit = integer(
+            cleanup_reclaimer["time_limit_milliseconds"], minimum=1
+        )
+        cleanup_reclaimer_quiet = integer(
+            cleanup_reclaimer["quiet_milliseconds"], minimum=1
+        )
+        if (
+            transport["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-derived-image@1"
+            )
+            or transport["transport_id"] != content_identity(transport_body)
+            or transport["base_image_id"] != receipt["base_image_id"]
+            or transport["derived_image_id"] != receipt["image_id"]
+            or cleanup["derived_image_id"] != receipt["image_id"]
+            or cleanup["derived_image_attempted"] is not True
+            or cleanup["derived_cleanup_lease_id"] != cleanup_lease_id
+            or cleanup["derived_cleanup_journal_path"]
+            != str(cleanup_journal_path)
+            or cleanup["projection_attempted"] is not True
+            or cleanup_quiet_milliseconds
+            != int(_AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS * 1000)
+            or cleanup_time_limit_milliseconds
+            != int(_AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS * 1000)
+            or cleanup_elapsed_milliseconds
+            > cleanup_time_limit_milliseconds
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(receipt["image_id"])
+            )
+            or not isinstance(base_layers, list)
+            or not base_layers
+            or not isinstance(derived_layers, list)
+            or derived_layers[:-1] != base_layers
+            or len(derived_layers) != len(base_layers) + 1
+            or transport["added_layer"] != derived_layers[-1]
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(item)) is None
+                for item in derived_layers
+            )
+            or type(transport["base_size"]) is not int
+            or int(transport["base_size"]) <= 0
+            or type(transport["derived_size"]) is not int
+            or int(transport["derived_size"]) < int(transport["base_size"])
+            or transport["added_size"]
+            != transport["derived_size"] - transport["base_size"]
+            or type(transport["added_size"]) is not int
+            or not 0 <= int(transport["added_size"]) <= snapshot["byte_limit"]
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(transport["derived_config_sha256"])
+            )
+            is None
+            or transport["destination_preexisting"] is not False
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(transport["builder_container_id"])
+            )
+            is None
+            or transport["builder_removed_before_runtime"] is not True
+            or transport["builder_verification_passed"] is not True
+            or transport["network_mode"] != "none"
+            or transport["provider_code_ran_during_build"] is not False
+            or re.fullmatch(
+                r"org\.ipfs-accelerate\.authority-git-lease="
+                r"[0-9a-f]{64}",
+                str(transport["cleanup_label"]),
+            )
+            is None
+            or re.fullmatch(r"[0-9a-f]{64}", cleanup_lease_id) is None
+            or _authority_git_docker_cleanup_lease_valid(
+                docker_cleanup_lease,
+                journal_path=cleanup_journal_path,
+            )
+            != dict(docker_cleanup_lease)
+            or docker_cleanup_lease["phase"] != "runtime"
+            or docker_cleanup_lease["lease_id"] != cleanup_lease_id
+            or docker_cleanup_lease["uid"] != os.getuid()
+            or cleanup_lease_pid != os.getpid()
+            or _authority_process_start_ticks(cleanup_lease_pid)
+            != cleanup_lease_start_ticks
+            or cleanup_lease_created_ns > cleanup_lease_now_ns
+            or cleanup_lease_now_ns - cleanup_lease_created_ns
+            > cleanup_lease_max_age_ns
+            or docker_cleanup_lease["docker_endpoint"]
+            != receipt["docker_endpoint"]
+            or docker_cleanup_lease["base_image_id"]
+            != receipt["base_image_id"]
+            or docker_cleanup_lease["authority_plan_id"]
+            != binding["plan_id"]
+            or docker_cleanup_lease["command_binding_id"]
+            != binding["command_binding_id"]
+            or transport["cleanup_label"]
+            != f"{_AUTHORITY_GIT_DOCKER_CLEANUP_LABEL_KEY}={cleanup_lease_id}"
+            or transport["cleanup_image_tag"]
+            != f"ipfs-accelerate-authority-git:{cleanup_lease_id}"
+            or cleanup_journal_path.parent
+            != _authority_git_docker_cleanup_parent()
+            or cleanup_journal_path.name != f"{cleanup_lease_id}.json"
+            or cleanup_journal_path.exists()
+            or type(transport["cleanup_quiet_seconds"]) is not int
+            or transport["cleanup_quiet_seconds"]
+            != int(_AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS)
+            or cleanup_reclaimer["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-docker-cleanup-reclaimer@2"
+            )
+            or cleanup_reclaimer["succeeded"] is not True
+            or cleanup_reclaimer_scanned
+            != cleanup_reclaimer_active + cleanup_reclaimer_reclaimed
+            or cleanup_reclaimer_scanned
+            > _AUTHORITY_GIT_DOCKER_CLEANUP_MAX_LEASES
+            or cleanup_reclaimer_retained > cleanup_reclaimer_active
+            or cleanup_reclaimer_elapsed > cleanup_reclaimer_limit
+            or cleanup_reclaimer_limit
+            > int(_AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS * 1000)
+            or cleanup_reclaimer_quiet
+            != int(_AUTHORITY_GIT_DOCKER_CLEANUP_QUIET_SECONDS * 1000)
+            or archive["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-canonical-archive@1"
+            )
+            or archive["format"] != "pax"
+            or archive_entry_count != len(layer_records)
+            or archive["destination_root"] != common_anchor
+            or archive["links_allowed"] is not False
+            or archive["special_files_allowed"] is not False
+            or not 0 < archive_size <= snapshot["byte_limit"]
+            or re.fullmatch(r"[0-9a-f]{64}", str(archive["sha256"])) is None
+            or layer_manifest["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-derived-layer-manifest@1"
+            )
+            or layer_manifest["root"] != common_anchor
+            or layer_record_count != len(layer_records)
+            or layer_manifest["manifest_id"]
+            != content_identity(layer_manifest_body)
+            or layer_paths != sorted(set(layer_paths))
+            or not layer_paths
+            or layer_paths[0] != ""
+            or bootstrap["derived_layer_manifest_id"]
+            != layer_manifest["manifest_id"]
+            or bootstrap_layer_record_count != len(layer_records)
+            or bootstrap["exact_tree_verified"] is not True
+        ):
+            return False
+        postflight = exact(
+            postflight,
+            {
+                "schema",
+                "mode",
+                "elapsed_milliseconds",
+                "time_limit_seconds",
+                "metadata_entries",
+                "source_bytes",
+                "completed",
+            },
+        )
+        integer(postflight["elapsed_milliseconds"])
+        integer(postflight["time_limit_seconds"], minimum=1)
+        integer(postflight["metadata_entries"])
+        integer(postflight["source_bytes"])
+        if not isinstance(sealed, list) or len(sealed) != 1:
+            return False
+        sealed_mount = exact(sealed[0], sealed_keys)
+        integer(sealed_mount["entry_count"])
+        integer(sealed_mount["verification_record_count"])
+        if (
+            receipt["host_filesystem"]
+            != "workspace_and_identity_checked_git_metadata_read_only"
+            or receipt["git_metadata_read_only"] is not True
+            or replay["mode"] != "dcr_forest_exact"
+            or replay["projection_scope"]
+            != "dcr_forest_exact_trees_and_lifecycle_blobs"
+            or not isinstance(replay["configured_roots"], list)
+            or not replay["configured_roots"]
+            or replay["configured_roots"][0] != "."
+            or len(set(replay["configured_roots"]))
+            != len(replay["configured_roots"])
+            or replay_external_mount_count != 1
+            or not isinstance(replay["external_mounts"], list)
+            or len(replay["external_mounts"]) != 1
+            or not isinstance(replay["observation_identities"], list)
+            or replay_observation_count
+            != len(replay["observation_identities"])
+            or not replay["observation_identities"]
+            or replay["observation_identities"]
+            != sorted(replay["observation_identities"])
+            or any(not cid(item) for item in replay["observation_identities"])
+        ):
+            return False
+        mount = exact(
+            replay["external_mounts"][0],
+            {
+                "source",
+                "destination",
+                "purpose",
+                "identity",
+                "entry_count",
+                "projection_kind",
+                "read_only",
+            },
+        )
+        mount_entry_count = integer(mount["entry_count"], minimum=1)
+        if (
+            mount["source"] != common_anchor
+            or mount["destination"] != common_anchor
+            or mount["purpose"] != "synthetic-root-common-metadata"
+            or mount["projection_kind"] != "synthetic-root-common"
+            or mount["read_only"] is not True
+            or not cid(mount["identity"])
+            or sealed_mount["reviewed_source"] != common_anchor
+            or sealed_mount["bind_source"]
+            != f"docker-image:{receipt['image_id']}"
+            or sealed_mount["destination"] != common_anchor
+            or sealed_mount["purpose"] != mount["purpose"]
+            or sealed_mount["reviewed_identity"] != mount["identity"]
+            or sealed_mount["read_only"] is not True
+            or sealed_mount["verification_record_count"] != len(records)
+            or not cid(sealed_mount["sealed_identity"])
+        ):
+            return False
+
+        root_keys = {
+            "relative_path",
+            "head",
+            "tree",
+            "git_dir",
+            "common_dir",
+            "object_format",
+            "index_identity",
+            "object_count",
+            "object_ids",
+            "object_manifest_id",
+            "object_source_bytes",
+            "object_type_counts",
+            "shallow_boundary",
+            "lifecycle",
+            "lifecycle_id",
+            "core_config",
+        }
+        roots = replay["root_identities"]
+        if (
+            not isinstance(roots, list)
+            or not roots
+            or len(roots) > AUTHORITY_VALIDATION_GIT_MAX_ROOTS
+            or len(roots) != len(replay["configured_roots"])
+        ):
+            return False
+        if mount_entry_count != len(roots):
+            return False
+        root_by_path: dict[str, Mapping[str, Any]] = {}
+        all_root_oids: dict[str, set[str]] = {}
+        common_object_formats: dict[str, str] = {}
+        expected_bootstrap_destinations = {
+            common_anchor,
+            str(Path(common_anchor) / ".authority-system-gitconfig"),
+        }
+        for root_value in roots:
+            root = exact(root_value, root_keys)
+            relative_path = str(root["relative_path"])
+            if relative_path in root_by_path:
+                return False
+            root_by_path[relative_path] = root
+            relative_posix = PurePosixPath(relative_path)
+            git_dir_text = str(root["git_dir"])
+            common_dir_text = str(root["common_dir"])
+            object_format = str(root["object_format"])
+            if object_format not in {"sha1", "sha256"}:
+                return False
+            oid_length = 40 if object_format == "sha1" else 64
+            oid_pattern = rf"[0-9a-f]{{{oid_length}}}"
+            if (
+                relative_path not in replay["configured_roots"]
+                or (
+                    relative_path != "."
+                    and (
+                        not relative_path
+                        or relative_posix.is_absolute()
+                        or relative_posix.as_posix() != relative_path
+                        or any(
+                            part in {"", ".", ".."}
+                            for part in relative_posix.parts
+                        )
+                        or "\\" in relative_path
+                        or any(
+                            character in relative_path
+                            for character in "\r\n\0"
+                        )
+                    )
+                )
+                or not re.fullmatch(oid_pattern, str(root["head"]))
+                or not re.fullmatch(oid_pattern, str(root["tree"]))
+                or not re.fullmatch(
+                    oid_pattern, str(root["shallow_boundary"])
+                )
+                or not cid(root["index_identity"])
+                or not Path(git_dir_text).is_absolute()
+                or not Path(common_dir_text).is_absolute()
+                or str(Path(git_dir_text)) != git_dir_text
+                or str(Path(common_dir_text)) != common_dir_text
+                or any(
+                    part == ".."
+                    for part in (
+                        *Path(git_dir_text).parts,
+                        *Path(common_dir_text).parts,
+                    )
+                )
+                or any(
+                    character in git_dir_text + common_dir_text
+                    for character in "\\\r\n\0"
+                )
+            ):
+                return False
+            try:
+                Path(str(root["git_dir"])).relative_to(common_anchor)
+                Path(str(root["common_dir"])).relative_to(common_anchor)
+            except ValueError:
+                return False
+            object_ids = root["object_ids"]
+            object_count = integer(root["object_count"], minimum=1)
+            if (
+                not isinstance(object_ids, list)
+                or object_ids != sorted(set(object_ids))
+                or len(object_ids) != object_count
+                or any(
+                    not re.fullmatch(oid_pattern, str(oid))
+                    for oid in object_ids
+                )
+                or root["head"] not in object_ids
+                or root["tree"] not in object_ids
+            ):
+                return False
+            counts = exact(
+                root["object_type_counts"], {"blob", "commit", "tree"}
+            )
+            core_config = root["core_config"]
+            core_allowed = {
+                "repositoryformatversion",
+                "filemode",
+                "bare",
+                "logallrefupdates",
+                "ignorecase",
+                "symlinks",
+                "precomposeunicode",
+                "protecthfs",
+                "protectntfs",
+            }
+            if (
+                any(type(counts[key]) is not int or counts[key] < 0 for key in counts)
+                or sum(counts.values()) != object_count
+                or not isinstance(core_config, Mapping)
+                or not {
+                    "repositoryformatversion",
+                    "filemode",
+                    "bare",
+                    "logallrefupdates",
+                }.issubset(core_config)
+                or not set(core_config).issubset(core_allowed)
+                or core_config["repositoryformatversion"] != "0"
+                or core_config["bare"] != "false"
+                or core_config["logallrefupdates"] != "false"
+                or any(
+                    str(core_config[key]) not in {"true", "false"}
+                    for key in set(core_config) - {"repositoryformatversion"}
+                )
+            ):
+                return False
+            lifecycle = exact(
+                root["lifecycle"],
+                {
+                    "schema",
+                    "mode",
+                    "subject",
+                    "observed_head",
+                    "transitions",
+                    "transition_records",
+                    "carrier_forest_blob",
+                    "subject_todo_blob",
+                    "completed_todo_blob",
+                    "carrier_artifact_applicable",
+                    "carrier_artifact_exact",
+                    "todo_delta_applicable",
+                    "todo_delta_exact",
+                },
+            )
+            if (
+                lifecycle["schema"]
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-dcr011-lifecycle@1"
+                )
+                or root["lifecycle_id"] != content_identity(lifecycle)
+                or lifecycle["subject"] != root["shallow_boundary"]
+                or lifecycle["observed_head"] != root["head"]
+            ):
+                return False
+            transitions = lifecycle["transitions"]
+            transition_records = lifecycle["transition_records"]
+            if (
+                not isinstance(transitions, list)
+                or not isinstance(transition_records, list)
+                or len(transitions) != len(transition_records)
+                or len(transitions) > 3
+                or transitions != list(dict.fromkeys(transitions))
+                or lifecycle["subject"] in transitions
+                or any(
+                    not re.fullmatch(oid_pattern, str(oid))
+                    for oid in transitions
+                )
+                or [lifecycle["subject"], *transitions][-1]
+                != root["head"]
+            ):
+                return False
+            expected_mode = (
+                (
+                    "captured",
+                    "artifact_carried",
+                    "integrated",
+                    "todo_completed",
+                )[len(transitions)]
+                if relative_path == "."
+                else "non_orchestration_current_head"
+            )
+            if lifecycle["mode"] != expected_mode:
+                return False
+            if lifecycle["subject"] not in object_ids:
+                return False
+            if (
+                not re.fullmatch(oid_pattern, str(lifecycle["subject"]))
+                or not re.fullmatch(
+                    oid_pattern, str(lifecycle["observed_head"])
+                )
+                or any(
+                    type(lifecycle[key]) is not bool
+                    for key in (
+                        "carrier_artifact_applicable",
+                        "carrier_artifact_exact",
+                        "todo_delta_applicable",
+                        "todo_delta_exact",
+                    )
+                )
+            ):
+                return False
+            special_blob_keys = (
+                "carrier_forest_blob",
+                "subject_todo_blob",
+                "completed_todo_blob",
+            )
+            special_blob_ids = [
+                str(lifecycle[key])
+                for key in special_blob_keys
+                if str(lifecycle[key])
+            ]
+            expected_blob_count = (
+                0
+                if expected_mode
+                in {"captured", "non_orchestration_current_head"}
+                else 3
+                if expected_mode == "todo_completed"
+                else 1
+            )
+            if (
+                any(
+                    value
+                    and re.fullmatch(oid_pattern, value) is None
+                    for value in (str(lifecycle[key]) for key in special_blob_keys)
+                )
+                or len(special_blob_ids) != len(set(special_blob_ids))
+                or len(special_blob_ids) != expected_blob_count
+                or any(oid not in object_ids for oid in special_blob_ids)
+                or counts["commit"] != 1 + len(transitions)
+                or counts["blob"] != expected_blob_count
+                or counts["tree"] <= 0
+            ):
+                return False
+            for index, record_value in enumerate(transition_records):
+                record = exact(
+                    record_value,
+                    {
+                        "ordinal",
+                        "commit",
+                        "parents",
+                        "subject",
+                        "tree",
+                        "changed_paths",
+                    },
+                )
+                if (
+                    integer(record["ordinal"], minimum=1) != index + 1
+                    or record["commit"] != transitions[index]
+                    or re.fullmatch(
+                        oid_pattern, str(record["commit"])
+                    ) is None
+                    or record["commit"] not in object_ids
+                    or re.fullmatch(oid_pattern, str(record["tree"])) is None
+                    or record["tree"] not in object_ids
+                    or not isinstance(record["parents"], list)
+                    or any(
+                        re.fullmatch(oid_pattern, str(parent)) is None
+                        or parent not in object_ids
+                        for parent in record["parents"]
+                    )
+                    or not isinstance(record["changed_paths"], list)
+                ):
+                    return False
+            if transition_records and transition_records[-1]["tree"] != root["tree"]:
+                return False
+            if relative_path != "." and (
+                transitions != []
+                or transition_records != []
+                or lifecycle["subject"] != root["head"]
+                or root["head"] != root["shallow_boundary"]
+                or any(
+                    lifecycle[key]
+                    for key in (
+                        "carrier_forest_blob",
+                        "subject_todo_blob",
+                        "completed_todo_blob",
+                        "carrier_artifact_applicable",
+                        "carrier_artifact_exact",
+                        "todo_delta_applicable",
+                        "todo_delta_exact",
+                    )
+                )
+            ):
+                return False
+            if relative_path == ".":
+                if (
+                    root["head"] != target_commit
+                    or root["tree"] != target_tree
+                    or root["common_dir"] != common_anchor
+                    or root["git_dir"] != expected_git_dir
+                    or lifecycle["subject"]
+                    not in object_ids
+                ):
+                    return False
+                if transitions:
+                    carrier_record = transition_records[0]
+                    if (
+                        carrier_record["parents"] != [lifecycle["subject"]]
+                        or carrier_record["subject"]
+                        != AUTHORITY_VALIDATION_DCR_CARRIER_SUBJECT
+                        or carrier_record["changed_paths"]
+                        != [AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT]
+                        or lifecycle["carrier_forest_blob"] not in object_ids
+                        or lifecycle["carrier_artifact_applicable"] is not True
+                        or lifecycle["carrier_artifact_exact"] is not True
+                    ):
+                        return False
+                elif any(
+                    lifecycle[key]
+                    for key in (
+                        "carrier_forest_blob",
+                        "carrier_artifact_applicable",
+                        "carrier_artifact_exact",
+                    )
+                ):
+                    return False
+                if len(transitions) >= 2:
+                    merge_record = transition_records[1]
+                    if (
+                        merge_record["parents"]
+                        != [lifecycle["subject"], transitions[0]]
+                        or merge_record["tree"]
+                        != transition_records[0]["tree"]
+                        or not str(merge_record["subject"]).lower().startswith(
+                            "merge branch '"
+                        )
+                        or "dcr-011" not in str(merge_record["subject"]).lower()
+                    ):
+                        return False
+                if len(transitions) == 3:
+                    completed_record = transition_records[2]
+                    if (
+                        completed_record["parents"] != [transitions[1]]
+                        or completed_record["subject"]
+                        != AUTHORITY_VALIDATION_DCR_TODO_SUBJECT
+                        or completed_record["changed_paths"]
+                        != [AUTHORITY_VALIDATION_DCR_TODO_PATH]
+                        or lifecycle["subject_todo_blob"] not in object_ids
+                        or lifecycle["completed_todo_blob"] not in object_ids
+                        or lifecycle["todo_delta_applicable"] is not True
+                        or lifecycle["todo_delta_exact"] is not True
+                    ):
+                        return False
+                elif any(
+                    lifecycle[key]
+                    for key in (
+                        "subject_todo_blob",
+                        "completed_todo_blob",
+                        "todo_delta_applicable",
+                        "todo_delta_exact",
+                    )
+                ):
+                    return False
+            manifest_body = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-object-closure@1"
+                ),
+                "head": root["head"],
+                "tree": root["tree"],
+                "shallow_boundary": root["shallow_boundary"],
+                "object_ids": object_ids,
+                "object_type_counts": dict(counts),
+                "uncompressed_bytes": integer(
+                    root["object_source_bytes"], minimum=1
+                ),
+                "lifecycle_id": root["lifecycle_id"],
+            }
+            if root["object_manifest_id"] != content_identity(manifest_body):
+                return False
+            all_root_oids.setdefault(str(root["common_dir"]), set()).update(
+                str(oid) for oid in object_ids
+            )
+            prior_format = common_object_formats.setdefault(
+                str(root["common_dir"]), object_format
+            )
+            if prior_format != object_format:
+                return False
+            root_git_dir = Path(git_dir_text)
+            root_common_dir = Path(common_dir_text)
+            expected_bootstrap_destinations.update(
+                {
+                    str(root_git_dir / "HEAD"),
+                    str(root_git_dir / "index"),
+                    str(root_common_dir / "HEAD"),
+                    str(root_common_dir / "config"),
+                    str(root_common_dir / "info" / "attributes"),
+                    str(root_common_dir / "info" / "exclude"),
+                    str(root_common_dir / "shallow"),
+                }
+            )
+            if root_git_dir != root_common_dir:
+                expected_bootstrap_destinations.update(
+                    {
+                        str(root_git_dir / "commondir"),
+                        str(root_git_dir / "gitdir"),
+                    }
+                )
+            elif relative_path != ".":
+                expected_bootstrap_destinations.add(
+                    str(root_git_dir / "gitdir")
+                )
+        if set(root_by_path) != set(replay["configured_roots"]):
+            return False
+        replay_plan_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-metadata-replay-plan@2"
+            ),
+            "workspace": workspace_path,
+            "roots": [
+                workspace_path
+                if relative == "."
+                else str(Path(workspace_path) / relative)
+                for relative in replay["configured_roots"]
+            ],
+            "root_identities": roots,
+            "mounts": replay["external_mounts"],
+            "observation_identities": replay["observation_identities"],
+            "preflight_budget": dict(replay_preflight_budget),
+        }
+        if replay["preflight_id"] != content_identity(replay_plan_body):
+            return False
+
+        packs = snapshot["object_packs"]
+        if (
+            not isinstance(packs, list)
+            or snapshot["object_pack_count"] != len(packs)
+            or len(packs) != len(all_root_oids)
+        ):
+            return False
+        record_by_destination = {
+            str(record["destination"]): record for record in records
+        }
+
+        def generated_record_matches(destination: Path, payload: bytes) -> bool:
+            record = record_by_destination.get(str(destination))
+            return bool(
+                record is not None
+                and record["mode_type"] == stat_module.S_IFREG
+                and record["size"] == len(payload)
+                and record["sha256"] == hashlib.sha256(payload).hexdigest()
+            )
+
+        roots_by_common: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
+        for relative in replay["configured_roots"]:
+            root = root_by_path[relative]
+            roots_by_common.setdefault(str(root["common_dir"]), []).append(
+                (relative, root)
+            )
+        for common_dir, common_roots in roots_by_common.items():
+            representative_relative, representative = common_roots[0]
+            if any(
+                root["core_config"] != representative["core_config"]
+                or root["object_format"] != representative["object_format"]
+                for _, root in common_roots[1:]
+            ) or (
+                common_dir != common_anchor
+                and len({relative for relative, _ in common_roots}) != 1
+            ):
+                return False
+            representative_worktree = (
+                workspace_path
+                if representative_relative == "."
+                else str(Path(workspace_path) / representative_relative)
+            )
+            config_lines = ["[core]"]
+            for key in (
+                "repositoryformatversion",
+                "filemode",
+                "bare",
+                "logallrefupdates",
+                "ignorecase",
+                "symlinks",
+                "precomposeunicode",
+                "protecthfs",
+                "protectntfs",
+            ):
+                value = representative["core_config"].get(key)
+                if value:
+                    config_lines.append(f"\t{key} = {value}")
+            if common_dir != common_anchor:
+                config_lines.append(
+                    "\tworktree = "
+                    + json.dumps(representative_worktree)
+                )
+            if representative["object_format"] == "sha256":
+                config_lines.extend(
+                    ["[extensions]", "\tobjectformat = sha256"]
+                )
+            shallow_boundaries = sorted(
+                {str(root["shallow_boundary"]) for _, root in common_roots}
+            )
+            generated_common_files = {
+                "config": ("\n".join(config_lines) + "\n").encode("utf-8"),
+                "info/exclude": b"",
+                "info/attributes": b"",
+                "shallow": "".join(
+                    f"{oid}\n" for oid in shallow_boundaries
+                ).encode("ascii"),
+                "HEAD": f"{representative['head']}\n".encode("ascii"),
+            }
+            if any(
+                not generated_record_matches(
+                    Path(common_dir).joinpath(*PurePosixPath(relative).parts),
+                    payload,
+                )
+                for relative, payload in generated_common_files.items()
+            ):
+                return False
+        for relative, root in (
+            (relative, root_by_path[relative])
+            for relative in replay["configured_roots"]
+        ):
+            worktree = (
+                Path(workspace_path)
+                if relative == "."
+                else Path(workspace_path) / relative
+            )
+            git_dir = Path(str(root["git_dir"]))
+            common_dir = Path(str(root["common_dir"]))
+            if not generated_record_matches(
+                git_dir / "HEAD", f"{root['head']}\n".encode("ascii")
+            ):
+                return False
+            if git_dir != common_dir and not generated_record_matches(
+                git_dir / "commondir",
+                f"{os.path.relpath(common_dir, git_dir)}\n".encode("utf-8"),
+            ):
+                return False
+            if git_dir != worktree / ".git" and not generated_record_matches(
+                git_dir / "gitdir",
+                f"{worktree / '.git'}\n".encode("utf-8"),
+            ):
+                return False
+        pack_common_dirs: set[str] = set()
+        pack_keys = {
+            "schema",
+            "object_count",
+            "object_set_id",
+            "pack_relative_path",
+            "pack_size",
+            "pack_sha256",
+            "pack_base64",
+            "index_relative_path",
+            "index_size",
+            "index_sha256",
+            "index_base64",
+            "common_dir",
+            "root_relative_paths",
+            "shallow_boundaries",
+        }
+        for pack_value in packs:
+            pack = exact(pack_value, pack_keys)
+            common_dir = str(pack["common_dir"])
+            if common_dir in pack_common_dirs or common_dir not in all_root_oids:
+                return False
+            pack_common_dirs.add(common_dir)
+            expected_oids = sorted(all_root_oids[common_dir])
+            pack_oid_length = (
+                40 if common_object_formats[common_dir] == "sha1" else 64
+            )
+            pack_object_count = integer(pack["object_count"], minimum=1)
+            pack_size = integer(pack["pack_size"], minimum=1)
+            index_size = integer(pack["index_size"], minimum=1)
+            verified_pack = verify_exact_git_pack_base64(
+                pack["pack_base64"],
+                pack["index_base64"],
+                object_format=common_object_formats[common_dir],
+                limits=AUTHORITY_VALIDATION_GIT_PACK_LIMITS,
+            )
+            pack_wire = base64.b64decode(pack["pack_base64"], validate=True)
+            index_wire = base64.b64decode(pack["index_base64"], validate=True)
+            if (
+                pack["schema"]
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-object-pack@2"
+                )
+                or pack_object_count != len(expected_oids)
+                or set(verified_pack) != set(expected_oids)
+                or pack["object_set_id"] != content_identity(expected_oids)
+                or pack_size != len(pack_wire)
+                or index_size != len(index_wire)
+                or pack["pack_sha256"]
+                != hashlib.sha256(pack_wire).hexdigest()
+                or pack["index_sha256"]
+                != hashlib.sha256(index_wire).hexdigest()
+                or pack["root_relative_paths"]
+                != [
+                    relative
+                    for relative in replay["configured_roots"]
+                    if root_by_path[relative]["common_dir"] == common_dir
+                ]
+                or pack["shallow_boundaries"]
+                != sorted(
+                    {
+                        root_by_path[relative]["shallow_boundary"]
+                        for relative in pack["root_relative_paths"]
+                    }
+                )
+            ):
+                return False
+            try:
+                common_relative = Path(common_dir).relative_to(
+                    common_anchor
+                )
+            except ValueError:
+                return False
+            common_prefix = PurePosixPath(*common_relative.parts)
+            pack_path = PurePosixPath(str(pack["pack_relative_path"]))
+            index_path = PurePosixPath(str(pack["index_relative_path"]))
+            expected_pack_parent = common_prefix / "objects" / "pack"
+            pack_name_match = re.fullmatch(
+                rf"pack-([0-9a-f]{{{pack_oid_length}}})\.pack",
+                pack_path.name,
+            )
+            index_name_match = re.fullmatch(
+                rf"pack-([0-9a-f]{{{pack_oid_length}}})\.idx",
+                index_path.name,
+            )
+            if (
+                pack_path == index_path
+                or pack_path.parent != expected_pack_parent
+                or index_path.parent != expected_pack_parent
+                or pack_name_match is None
+                or index_name_match is None
+                or pack_name_match.group(1) != index_name_match.group(1)
+                or pack_name_match.group(1) != verified_pack.pack_checksum
+            ):
+                return False
+            derived_pack_oids: set[str] = set()
+            for relative in pack["root_relative_paths"]:
+                root_closure = _authority_git_exact_root_object_closure(
+                    root_by_path[relative], verified_pack
+                )
+                if root_closure is None:
+                    return False
+                derived_pack_oids.update(root_closure)
+            if derived_pack_oids != set(verified_pack):
+                return False
+            for kind in ("pack", "index"):
+                relative_key = f"{kind}_relative_path"
+                size_key = f"{kind}_size"
+                sha_key = f"{kind}_sha256"
+                relative = PurePosixPath(str(pack[relative_key]))
+                if relative.is_absolute() or ".." in relative.parts:
+                    return False
+                destination = str(Path(common_anchor) / Path(*relative.parts))
+                expected_bootstrap_destinations.add(destination)
+                record = record_by_destination.get(destination)
+                if (
+                    record is None
+                    or record["size"] != pack[size_key]
+                    or record["sha256"] != pack[sha_key]
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(pack[sha_key]))
+                ):
+                    return False
+
+        lease = exact(
+            snapshot["projection_lease"],
+            {
+                "schema",
+                "projection_path",
+                "workspace_path",
+                "creator",
+                "uid",
+                "pid",
+                "process_start_ticks",
+                "created_unix_ns",
+                "root_device",
+                "root_inode",
+                "mount_source",
+                "finalized",
+                "descendant_record_count",
+                "descendant_manifest_id",
+                "descendant_records",
+                "cleanup_quarantine_path",
+                "manifest_id",
+            },
+        )
+        lease_body = {key: lease[key] for key in lease if key != "manifest_id"}
+        projection_path = Path(str(lease["projection_path"]))
+        lease_uid = integer(lease["uid"])
+        lease_pid = integer(lease["pid"], minimum=1)
+        lease_process_start_ticks = integer(
+            lease["process_start_ticks"], minimum=1
+        )
+        lease_created_unix_ns = integer(
+            lease["created_unix_ns"], minimum=1
+        )
+        integer(lease["root_device"])
+        integer(lease["root_inode"], minimum=1)
+        lease_descendant_count = integer(
+            lease["descendant_record_count"], minimum=1
+        )
+        expected_projection_parent = Path(tempfile.gettempdir()) / (
+            f".ipfs-accelerate-authority-git-projections-{os.getuid()}"
+        )
+        current_process_start_ticks = _authority_process_start_ticks(
+            os.getpid()
+        )
+        lease_now_ns = time.time_ns()
+        # The fd itself is intentionally closed after the derived image has
+        # been materialized.  Historical descriptor provenance is protected
+        # by the live in-process evidence capability and the pre-close
+        # transport/bootstrap identities; the offline receipt can still bind
+        # its exact process lifetime and a bounded setup/run/postflight/
+        # handoff/cleanup window without pretending the dead fd is reopenable.
+        lease_max_age_ns = (
+            AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            + AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS
+            + AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            + MANUAL_COMPLETION_AUTHORITY_IN_PROCESS_HANDOFF_TIMEOUT_SECONDS
+            + 60
+        ) * 1_000_000_000
+        if (
+            lease["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-projection-lease@2"
+            )
+            or lease["workspace_path"] != workspace_path
+            or lease["creator"] != "authority-validation-command-runner"
+            or not projection_path.is_absolute()
+            or str(projection_path) != str(lease["projection_path"])
+            or projection_path.parent != expected_projection_parent
+            or not projection_path.name.startswith(
+                AUTHORITY_VALIDATION_GIT_PROJECTION_PREFIX
+            )
+            or lease_uid != os.getuid()
+            or lease_pid != os.getpid()
+            or current_process_start_ticks is None
+            or lease_process_start_ticks != current_process_start_ticks
+            or lease_created_unix_ns > lease_now_ns
+            or lease_now_ns - lease_created_unix_ns > lease_max_age_ns
+            or lease["manifest_id"] != content_identity(lease_body)
+            or docker_cleanup_lease["projection_manifest_id"]
+            != lease["manifest_id"]
+            or lease["finalized"] is not True
+            or lease["cleanup_quarantine_path"] != ""
+            or not isinstance(lease["descendant_records"], list)
+            or lease_descendant_count != len(lease["descendant_records"])
+            or lease["descendant_manifest_id"]
+            != content_identity(lease["descendant_records"])
+            or not re.fullmatch(
+                rf"/proc/{os.getpid()}/fd/(?:0|[1-9][0-9]*)/metadata",
+                str(lease["mount_source"]),
+            )
+        ):
+            return False
+        lease_record_map = _authority_git_projection_record_map(
+            lease["descendant_records"],
+            expected_device=int(lease["root_device"]),
+        )
+        if lease_record_map is None or "metadata" not in lease_record_map:
+            return False
+        metadata_source_records = [
+            dict(lease_record_map[key])
+            for key in sorted(lease_record_map)
+            if key == "metadata" or key.startswith("metadata/")
+        ]
+        expected_layer_records: list[dict[str, Any]] = []
+        for source_record in metadata_source_records:
+            source_relative = str(source_record["relative_path"])
+            expected_layer_records.append(
+                {
+                    "relative_path": (
+                        ""
+                        if source_relative == "metadata"
+                        else source_relative.removeprefix("metadata/")
+                    ),
+                    "type": source_record["type"],
+                    "mode": stat_module.S_IMODE(int(source_record["mode"])),
+                    "uid": int(lease["uid"]),
+                    "gid": int(os.getgid()),
+                    "size": int(source_record["size"]),
+                    "sha256": source_record["sha256"],
+                }
+            )
+        expected_layer_records.sort(
+            key=lambda item: str(item["relative_path"])
+        )
+        if (
+            layer_records != expected_layer_records
+            or archive["entry_count"] != len(metadata_source_records)
+            or archive["manifest_id"]
+            != content_identity(metadata_source_records)
+        ):
+            return False
+        layer_by_relative = {
+            str(item["relative_path"]): item for item in layer_records
+        }
+        for bootstrap_record in records:
+            try:
+                destination_relative = Path(
+                    str(bootstrap_record["destination"])
+                ).relative_to(common_anchor)
+            except ValueError:
+                return False
+            relative_text = (
+                ""
+                if destination_relative == Path(".")
+                else destination_relative.as_posix()
+            )
+            layer_record = layer_by_relative.get(relative_text)
+            source_key = (
+                "metadata"
+                if not relative_text
+                else f"metadata/{relative_text}"
+            )
+            source_record = lease_record_map.get(source_key)
+            if (
+                layer_record is None
+                or source_record is None
+                or int(bootstrap_record["device"])
+                != int(source_record["device"])
+                or int(bootstrap_record["inode"])
+                != int(source_record["inode"])
+                or int(bootstrap_record["mode_type"])
+                != stat_module.S_IFMT(int(source_record["mode"]))
+                or int(bootstrap_record["size"])
+                != int(source_record["size"])
+                or str(bootstrap_record["sha256"])
+                != str(source_record["sha256"])
+                or layer_record["size"] != bootstrap_record["size"]
+                or layer_record["sha256"] != bootstrap_record["sha256"]
+            ):
+                return False
+        if (
+            snapshot["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-sealed-projection@2"
+            )
+            or snapshot["aggregate_bytes"]
+            != snapshot["source_bytes"] + snapshot["sealed_bytes"]
+            or snapshot["aggregate_bytes"] > snapshot["byte_limit"]
+            or snapshot["byte_limit"]
+            != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+            or snapshot["setup_elapsed_milliseconds"]
+            > snapshot["setup_time_limit_seconds"] * 1000
+            or snapshot["setup_time_limit_seconds"]
+            != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            or snapshot["metadata_entries"]
+            > snapshot["metadata_entry_limit"]
+            or snapshot["metadata_entry_limit"]
+            != AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES
+            or snapshot["mount_count"] != 1
+            or snapshot["completed"] is not True
+            or snapshot["copy_mode"]
+            != "independent_exact_bytes_or_generated_pack"
+            or snapshot["hardlinks_used"] is not False
+            or snapshot["object_scope"]
+            != "dcr_forest_exact_trees_and_lifecycle_blobs"
+            or snapshot["raw_common_config_exposed"] is not False
+            or snapshot["raw_refs_exposed"] is not False
+            or snapshot["unrelated_objects_exposed"] is not False
+            or not re.fullmatch(r"git version [0-9][^\r\n]*", snapshot["git_version"])
+            or reclaimer["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-projection-reclaimer@2"
+            )
+            or reclaimer["failures"] != 0
+            or reclaimer["root_scan_truncated"] is not False
+            or reclaimer["invalid_manifests"] != 0
+            or reclaimer["root_entries_scanned"] != reclaimer["candidates"]
+            or reclaimer["candidates"]
+            != reclaimer["active_leases"] + reclaimer["reclaimed"]
+            or reclaimer["candidates"] > reclaimer["candidate_limit"]
+            or reclaimer["scanned_projection_entries"]
+            > reclaimer["entry_limit"]
+            or reclaimer["candidate_limit"]
+            != AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_CANDIDATES
+            or reclaimer["entry_limit"]
+            != AUTHORITY_VALIDATION_GIT_RECLAIM_MAX_ENTRIES
+            or reclaimer["byte_limit"]
+            != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+            or reclaimer["reclaimed_bytes"] > reclaimer["byte_limit"]
+            or reclaimer["stale_after_seconds"]
+            != AUTHORITY_VALIDATION_GIT_PROJECTION_STALE_SECONDS
+            or postflight["schema"]
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-postflight@1"
+            )
+            or postflight["mode"] != "dcr_forest_exact"
+            or postflight["elapsed_milliseconds"]
+            > postflight["time_limit_seconds"] * 1000
+            or postflight["time_limit_seconds"]
+            != AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            or postflight["metadata_entries"]
+            > AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES
+            or postflight["source_bytes"]
+            > AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES
+            or postflight["source_bytes"]
+            != replay_preflight_source_bytes
+            or postflight["metadata_entries"]
+            != replay_preflight_metadata_entries
+            or postflight["completed"] is not True
+            or cleanup["projection_attempted"] is not True
+            or safe["mounted"] is not True
+            or safe["path"]
+            != str(Path(common_anchor) / ".authority-system-gitconfig")
+            or safe["configured_roots"] != replay["configured_roots"]
+            or safe["read_only"] is not True
+            or safe["required_for_git_discovery"] is not False
+            or safe["synthetic_metadata_owned_by_container_uid"] is not True
+            or sealed_mount["entry_count"] != len(layer_records) - 1
+        ):
+            return False
+        expected_source_bytes = sum(
+            int(root_by_path[relative]["object_source_bytes"])
+            for relative in replay["configured_roots"]
+        ) + sum(
+            int(record_by_destination[str(Path(root["git_dir"]) / "index")]["size"])
+            for root in roots
+        )
+        expected_sealed_bytes = (
+            sum(
+                int(record["size"])
+                for record in layer_records
+                if record["type"] == "regular"
+            )
+            + len((canonical_json(dict(lease)) + "\n").encode("utf-8"))
+            + int(archive["size"])
+            + int(transport["added_size"])
+        )
+        if (
+            snapshot["source_bytes"] != expected_source_bytes
+            or snapshot["sealed_bytes"] != expected_sealed_bytes
+            or snapshot["aggregate_bytes"]
+            != expected_source_bytes + expected_sealed_bytes
+        ):
+            return False
+        safe_record = record_by_destination.get(str(safe["path"]))
+        expected_safe_bytes = (
+            "[safe]\n"
+            + "".join(
+                "\tdirectory = "
+                + json.dumps(
+                    workspace_path
+                    if relative == "."
+                    else str(Path(workspace_path) / relative)
+                )
+                + "\n"
+                for relative in replay["configured_roots"]
+            )
+        ).encode("utf-8")
+        expected_safe_sha256 = hashlib.sha256(expected_safe_bytes).hexdigest()
+        if (
+            safe_record is None
+            or safe["sha256"] != safe_record["sha256"]
+            or safe["sha256"] != expected_safe_sha256
+            or safe_record["size"] != len(expected_safe_bytes)
+            or not safe["sha256"]
+            or set(record_by_destination)
+            != expected_bootstrap_destinations
+            or len(record_by_destination) != len(records)
+        ):
+            return False
+        return True
+    except (AssertionError, KeyError, TypeError, ValueError, ValidationRuntimeError):
+        return False
+
+
+def _authority_git_run(
+    root: Path,
+    *arguments: str,
+    budget: _AuthorityGitSetupBudget | None = None,
+    output_limit: int = 128 * 1024 * 1024,
+    input_bytes: bytes | None = None,
+) -> bytes:
+    if budget is not None:
+        budget.check(str(root))
+    try:
+        completed = _run_bounded_subprocess(
+            ("git", *arguments),
+            cwd=root,
+            environment=_authority_git_local_only_environment(),
+            deadline=(
+                budget.deadline
+                if budget is not None
+                else time.monotonic() + 30
+            ),
+            stdout_limit=output_limit,
+            stderr_limit=output_limit,
+            input_bytes=input_bytes,
+            start_new_session=True,
+        )
+    except (OSError, ValueError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_observation_failed", str(root)
+        ) from exc
+    if completed.timed_out:
+        raise AuthorityGitReplayError(
+            (
+                "authority_validation_git_setup_timeout"
+                if budget is not None
+                else "authority_validation_git_observation_failed"
+            ),
+            str(root),
+        )
+    if completed.output_overflow:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_observation_output_limit", str(root)
+        )
+    if not completed.reaped:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_observation_failed", str(root)
+        )
+    if completed.returncode != 0:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_observation_failed",
+            f"{root}: {os.fsdecode(completed.stderr)[-500:]}",
+        )
+    if budget is not None:
+        budget.check(str(root))
+    return completed.stdout
+
+
+def _authority_git_control_path(
+    value: str,
+    *,
+    base: Path,
+    reason: str,
+) -> Path:
+    raw = str(value)
+    if not _authority_git_path_text_safe(raw) or raw.strip() != raw:
+        raise AuthorityGitReplayError(reason, raw)
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    candidate = Path(os.path.abspath(candidate))
+    _authority_git_require_symlink_free(candidate, reason=reason)
+    if not candidate.is_dir():
+        raise AuthorityGitReplayError(reason, str(candidate))
+    return candidate
+
+
+def _authority_git_pointer(marker: Path) -> Path:
+    try:
+        value = marker.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_gitdir_pointer_unreadable", str(marker)
+        ) from exc
+    lines = value.splitlines()
+    if len(lines) != 1 or not lines[0].casefold().startswith("gitdir:"):
+        raise AuthorityGitReplayError(
+            "authority_validation_gitdir_pointer_unresolved", str(marker)
+        )
+    raw = lines[0].split(":", 1)[1].strip()
+    return _authority_git_control_path(
+        raw,
+        base=marker.parent,
+        reason="authority_validation_gitdir_pointer_unresolved",
+    )
+
+
+def _authority_git_common_dir(git_dir: Path) -> Path:
+    marker = git_dir / "commondir"
+    if not marker.exists():
+        return git_dir
+    _authority_git_require_symlink_free(
+        marker,
+        reason="authority_validation_git_commondir_unresolved",
+    )
+    try:
+        value = marker.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_commondir_unresolved", str(marker)
+        ) from exc
+    lines = value.splitlines()
+    if len(lines) != 1:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_commondir_unresolved", str(marker)
+        )
+    return _authority_git_control_path(
+        lines[0].strip(),
+        base=git_dir,
+        reason="authority_validation_git_commondir_unresolved",
+    )
+
+
+def _authority_git_configured_children(
+    root: Path,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+) -> tuple[Path, ...]:
+    modules = root / ".gitmodules"
+    if not modules.exists():
+        return ()
+    _authority_git_require_symlink_free(
+        modules,
+        reason="authority_validation_gitmodules_unreviewed",
+    )
+    dirty = _authority_git_run(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--",
+        ".gitmodules",
+        budget=budget,
+    )
+    index_record = _authority_git_run(
+        root,
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+        ".gitmodules",
+        budget=budget,
+    ).rstrip(b"\0")
+    head_record = _authority_git_run(
+        root,
+        "ls-tree",
+        "-z",
+        "HEAD",
+        "--",
+        ".gitmodules",
+        budget=budget,
+    ).rstrip(b"\0")
+    cache_tag = _authority_git_run(
+        root,
+        "ls-files",
+        "-v",
+        "-z",
+        "--",
+        ".gitmodules",
+        budget=budget,
+    ).rstrip(b"\0")
+    try:
+        index_metadata, index_path = index_record.split(b"\t", 1)
+        index_mode, index_oid, index_stage = index_metadata.split(b" ", 2)
+        head_metadata, head_path = head_record.split(b"\t", 1)
+        head_mode, head_type, head_oid = head_metadata.split(b" ", 2)
+        modules_bytes = modules.read_bytes()
+        blob_input = (
+            f"blob {len(modules_bytes)}\0".encode("ascii") + modules_bytes
+        )
+        worktree_oid = (
+            hashlib.sha1(blob_input).hexdigest()
+            if len(head_oid) == 40
+            else hashlib.sha256(blob_input).hexdigest()
+        ).encode("ascii")
+    except (OSError, ValueError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_gitmodules_unreviewed", str(modules)
+        ) from exc
+    if (
+        dirty
+        or index_path != b".gitmodules"
+        or head_path != b".gitmodules"
+        or index_stage != b"0"
+        or index_mode != head_mode
+        or index_oid != head_oid
+        or head_mode not in {b"100644", b"100755"}
+        or head_type != b"blob"
+        or worktree_oid != head_oid
+        or not cache_tag.startswith(b"H ")
+        or cache_tag[2:] != b".gitmodules"
+    ):
+        raise AuthorityGitReplayError(
+            "authority_validation_gitmodules_unreviewed", str(modules)
+        )
+    try:
+        completed = subprocess.run(
+            (
+                "git",
+                "config",
+                "--null",
+                "--file",
+                str(modules),
+                "--get-regexp",
+                r"^submodule\..*\.path$",
+            ),
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=(budget.remaining(str(root)) if budget is not None else 10),
+            check=False,
+            env=_authority_git_local_only_environment(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuthorityGitReplayError(
+            "authority_validation_gitmodules_unreadable", str(modules)
+        ) from exc
+    if completed.returncode not in {0, 1}:
+        raise AuthorityGitReplayError(
+            "authority_validation_gitmodules_unreadable", str(modules)
+        )
+    children: list[Path] = []
+    for record in completed.stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            _key, raw_value = record.decode("utf-8").split("\n", 1)
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_gitmodules_unreadable", str(modules)
+            ) from exc
+        if not _authority_git_path_text_safe(raw_value):
+            raise AuthorityGitReplayError(
+                "authority_validation_gitmodules_path_invalid", raw_value
+            )
+        relative = PurePosixPath(raw_value)
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or ".." in relative.parts
+            or relative.as_posix() in {"", "."}
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_gitmodules_path_invalid", raw_value
+            )
+        child = root.joinpath(*relative.parts)
+        marker = child / ".git"
+        if not marker.exists():
+            continue
+        child = Path(os.path.abspath(child))
+        _authority_git_require_symlink_free(
+            child,
+            reason="authority_validation_git_configured_root_invalid",
+        )
+        raw_relative = os.fsencode(relative.as_posix())
+        tree_record = _authority_git_run(
+            root,
+            "ls-tree",
+            "-z",
+            "HEAD",
+            "--",
+            relative.as_posix(),
+            budget=budget,
+        ).rstrip(b"\0")
+        child_index_record = _authority_git_run(
+            root,
+            "ls-files",
+            "--stage",
+            "-z",
+            "--",
+            relative.as_posix(),
+            budget=budget,
+        ).rstrip(b"\0")
+        try:
+            tree_metadata, tree_path = tree_record.split(b"\t", 1)
+            tree_mode, tree_type, tree_oid = tree_metadata.split(b" ", 2)
+            child_index_metadata, child_index_path = child_index_record.split(
+                b"\t", 1
+            )
+            (
+                child_index_mode,
+                child_index_oid,
+                child_index_stage,
+            ) = child_index_metadata.split(b" ", 2)
+        except ValueError as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_configured_root_not_gitlink",
+                str(child),
+            ) from exc
+        if (
+            tree_path != raw_relative
+            or tree_mode != b"160000"
+            or tree_type != b"commit"
+            or child_index_path != raw_relative
+            or child_index_mode != b"160000"
+            or child_index_oid != tree_oid
+            or child_index_stage != b"0"
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_configured_root_not_gitlink",
+                str(child),
+            )
+        child_observation = _authority_git_run(
+            child,
+            "rev-parse",
+            "--path-format=absolute",
+            "--show-toplevel",
+            "HEAD",
+            budget=budget,
+        ).decode("utf-8", errors="strict").splitlines()
+        if (
+            len(child_observation) != 2
+            or Path(os.path.abspath(child_observation[0])) != child
+            or child_observation[1].encode("ascii") != tree_oid
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_configured_root_identity_mismatch",
+                str(child),
+            )
+        children.append(child)
+    if len(set(children)) != len(children):
+        raise AuthorityGitReplayError(
+            "authority_validation_gitmodules_path_duplicate", str(modules)
+        )
+    return tuple(sorted(children, key=lambda item: str(item)))
+
+
+def _authority_git_replay_plan(
+    workspace: Path,
+    *,
+    budget: _AuthorityGitSetupBudget | None = None,
+    lifecycle_subject: str | None = None,
+) -> _AuthorityGitReplayPlan:
+    """Resolve only reviewed roots' exact read-only Git replay projection."""
+
+    budget = budget or _AuthorityGitSetupBudget.begin()
+    preflight_source_start = int(budget.source_bytes)
+    preflight_entries_start = int(budget.metadata_entries)
+    workspace = Path(os.path.abspath(workspace))
+    _authority_git_require_symlink_free(
+        workspace,
+        reason="authority_validation_workspace_mount_unsafe",
+    )
+    if not workspace.is_dir():
+        raise AuthorityGitReplayError(
+            "authority_validation_workspace_mount_unsafe", str(workspace)
+        )
+    root_marker = workspace / ".git"
+    if root_marker.exists():
+        _authority_git_require_symlink_free(
+            root_marker,
+            reason="authority_validation_gitdir_pointer_unresolved",
+        )
+    marker_is_incomplete_directory = bool(
+        root_marker.exists()
+        and stat_module.S_ISDIR(root_marker.lstat().st_mode)
+        and not (root_marker / "HEAD").exists()
+    )
+    if marker_is_incomplete_directory:
+        raise AuthorityGitReplayError(
+            "authority_validation_gitdir_pointer_unresolved", str(root_marker)
+        )
+    if not root_marker.exists():
+        body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-metadata-replay-plan@1"
+            ),
+            "workspace": str(workspace),
+            "roots": [],
+            "root_identities": [],
+            "mounts": [],
+            "observation_identities": [],
+            "preflight_budget": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-replay-budget@1"
+                ),
+                "source_bytes": 0,
+                "metadata_entries": 0,
+            },
+        }
+        return _AuthorityGitReplayPlan(
+            workspace=workspace,
+            roots=(),
+            root_identities=(),
+            root_projections=(),
+            mounts=(),
+            observation_identities=(),
+            plan_id=content_identity(body),
+            preflight_source_bytes=0,
+            preflight_metadata_entries=0,
+        )
+
+    roots: list[Path] = []
+    pending = [workspace]
+    seen_roots: set[Path] = set()
+    root_identities: list[dict[str, Any]] = []
+    root_projections: list[_AuthorityGitRootProjection] = []
+    observations: dict[Path, tuple[str, int, str]] = {}
+    drift_observation_paths: set[Path] = set()
+    root_common_anchor: Path | None = None
+
+    def observe(
+        path: Path,
+        purpose: str,
+        *,
+        drift_sensitive: bool = True,
+    ) -> None:
+        path = Path(os.path.abspath(path))
+        prior = observations.get(path)
+        if prior is None:
+            identity, count = _authority_git_path_identity(path, budget=budget)
+            observations[path] = (identity, count, purpose)
+        if drift_sensitive:
+            drift_observation_paths.add(path)
+
+    def exact_object_projection(
+        root: Path,
+        *,
+        head: str,
+        tree: str,
+    ) -> tuple[
+        tuple[str, ...],
+        str,
+        int,
+        dict[str, int],
+        str,
+        dict[str, Any],
+        str,
+    ]:
+        commits = [head.lower()]
+        transitions: list[str] = []
+        shallow_boundary = head.lower()
+        lifecycle_transition_records: list[dict[str, Any]] = []
+        special_blob_ids = {
+            "carrier_forest_blob": "",
+            "subject_todo_blob": "",
+            "completed_todo_blob": "",
+        }
+        carrier_artifact_applicable = False
+        carrier_artifact_exact = False
+        todo_delta_applicable = False
+        todo_delta_exact = False
+        if root == workspace:
+            subject = str(lifecycle_subject or "").lower()
+            if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", subject):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_lifecycle_subject_invalid",
+                    str(root),
+                )
+            shallow_boundary = subject
+            if subject != head.lower():
+                try:
+                    ancestor = subprocess.run(
+                        (
+                            "git",
+                            "merge-base",
+                            "--is-ancestor",
+                            subject,
+                            head,
+                        ),
+                        cwd=root,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=(budget.remaining(str(root)) if budget else 10),
+                        check=False,
+                        env=_authority_git_local_only_environment(),
+                    )
+                except (OSError, subprocess.SubprocessError) as exc:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_lifecycle_unavailable",
+                        str(root),
+                    ) from exc
+                if ancestor.returncode != 0:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_lifecycle_unavailable",
+                        str(root),
+                    )
+                transitions = [
+                    item
+                    for item in _authority_git_run(
+                        root,
+                        "rev-list",
+                        "--ancestry-path",
+                        "--reverse",
+                        "--topo-order",
+                        f"{subject}..{head}",
+                        budget=budget,
+                    )
+                    .decode("ascii")
+                    .splitlines()
+                    if item
+                ]
+                if (
+                    not transitions
+                    or len(transitions) > 3
+                    or transitions[-1] != head.lower()
+                    or any(
+                        not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", item)
+                        for item in transitions
+                    )
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_lifecycle_unavailable",
+                        str(root),
+                    )
+                commits = [subject, *transitions]
+
+                def commit_parents(commit: str) -> tuple[str, ...]:
+                    fields = _authority_git_run(
+                        root,
+                        "rev-list",
+                        "--parents",
+                        "-n",
+                        "1",
+                        commit,
+                        budget=budget,
+                    ).decode("ascii").split()
+                    if not fields or fields[0] != commit:
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_lifecycle_topology_invalid",
+                            str(root),
+                        )
+                    return tuple(fields[1:])
+
+                def commit_subject(commit: str) -> str:
+                    return _authority_git_run(
+                        root,
+                        "show",
+                        "-s",
+                        "--format=%s",
+                        commit,
+                        budget=budget,
+                    ).decode("utf-8").rstrip("\r\n")
+
+                def changed_paths(parent: str, commit: str) -> tuple[str, ...]:
+                    raw = _authority_git_run(
+                        root,
+                        "diff-tree",
+                        "--no-commit-id",
+                        "--name-only",
+                        "-r",
+                        "-z",
+                        parent,
+                        commit,
+                        "--",
+                        budget=budget,
+                    )
+                    try:
+                        return tuple(
+                            sorted(
+                                item.decode("utf-8", "strict")
+                                for item in raw.split(b"\0")
+                                if item
+                            )
+                        )
+                    except UnicodeDecodeError as exc:
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_lifecycle_topology_invalid",
+                            str(root),
+                        ) from exc
+
+                carrier = transitions[0]
+                if (
+                    commit_parents(carrier) != (subject,)
+                    or commit_subject(carrier)
+                    != AUTHORITY_VALIDATION_DCR_CARRIER_SUBJECT
+                    or changed_paths(subject, carrier)
+                    != (AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT,)
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_lifecycle_topology_invalid",
+                        str(root),
+                    )
+                if len(transitions) >= 2:
+                    merge = transitions[1]
+                    merge_subject = commit_subject(merge).lower()
+                    merge_tree = _authority_git_run(
+                        root,
+                        "rev-parse",
+                        f"{merge}^{{tree}}",
+                        budget=budget,
+                    ).decode("ascii").strip()
+                    carrier_tree = _authority_git_run(
+                        root,
+                        "rev-parse",
+                        f"{carrier}^{{tree}}",
+                        budget=budget,
+                    ).decode("ascii").strip()
+                    if (
+                        commit_parents(merge) != (subject, carrier)
+                        or merge_tree != carrier_tree
+                        or not merge_subject.startswith("merge branch '")
+                        or "dcr-011" not in merge_subject
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_lifecycle_topology_invalid",
+                            str(root),
+                        )
+                if len(transitions) == 3:
+                    completed = transitions[2]
+                    if (
+                        commit_parents(completed) != (transitions[1],)
+                        or commit_subject(completed)
+                        != AUTHORITY_VALIDATION_DCR_TODO_SUBJECT
+                        or changed_paths(transitions[1], completed)
+                        != (AUTHORITY_VALIDATION_DCR_TODO_PATH,)
+                    ):
+                        raise AuthorityGitReplayError(
+                            "authority_validation_git_lifecycle_topology_invalid",
+                            str(root),
+                        )
+                for transition_index, transition in enumerate(transitions):
+                    transition_parents = commit_parents(transition)
+                    transition_tree = _authority_git_run(
+                        root,
+                        "rev-parse",
+                        f"{transition}^{{tree}}",
+                        budget=budget,
+                    ).decode("ascii").strip().lower()
+                    lifecycle_transition_records.append(
+                        {
+                            "ordinal": transition_index + 1,
+                            "commit": transition,
+                            "parents": list(transition_parents),
+                            "subject": commit_subject(transition),
+                            "tree": transition_tree,
+                            "changed_paths": list(
+                                changed_paths(
+                                    transition_parents[0], transition
+                                )
+                            ),
+                        }
+                    )
+
+        object_ids = set(commits)
+        tree_entry_count = 0
+        for commit in commits:
+            commit_tree = _authority_git_run(
+                root,
+                "rev-parse",
+                f"{commit}^{{tree}}",
+                budget=budget,
+            ).decode("ascii").strip().lower()
+            if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit_tree):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_object_projection_invalid",
+                    str(root),
+                )
+            object_ids.add(commit_tree)
+            tree_records = _authority_git_run(
+                root,
+                "ls-tree",
+                "-r",
+                "-t",
+                "-z",
+                commit,
+                budget=budget,
+            )
+            for record in tree_records.split(b"\0"):
+                if not record:
+                    continue
+                tree_entry_count += 1
+                try:
+                    metadata, _path = record.split(b"\t", 1)
+                    _mode, object_type, oid = metadata.split(b" ", 2)
+                    oid_text = oid.decode("ascii").lower()
+                except (UnicodeDecodeError, ValueError) as exc:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_object_projection_invalid",
+                        str(root),
+                    ) from exc
+                if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", oid_text):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_object_projection_invalid",
+                        str(root),
+                    )
+                if object_type == b"tree":
+                    object_ids.add(oid_text)
+
+        if root == workspace and transitions:
+            carrier = transitions[0]
+            special_specs = [
+                f"{carrier}:{AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT}"
+            ]
+            if len(transitions) == 3:
+                special_specs.extend(
+                    [
+                        f"{shallow_boundary}:{AUTHORITY_VALIDATION_DCR_TODO_PATH}",
+                        f"{transitions[2]}:{AUTHORITY_VALIDATION_DCR_TODO_PATH}",
+                    ]
+                )
+            for spec in special_specs:
+                special_oid = _authority_git_run(
+                    root, "rev-parse", spec, budget=budget
+                ).decode("ascii").strip().lower()
+                if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", special_oid):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_object_projection_invalid",
+                        str(root),
+                )
+                object_ids.add(special_oid)
+                if spec.startswith(f"{carrier}:"):
+                    special_blob_ids["carrier_forest_blob"] = special_oid
+                elif spec.startswith(f"{shallow_boundary}:"):
+                    special_blob_ids["subject_todo_blob"] = special_oid
+                elif len(transitions) == 3 and spec.startswith(
+                    f"{transitions[2]}:"
+                ):
+                    special_blob_ids["completed_todo_blob"] = special_oid
+            carrier_artifact_applicable = True
+            artifact_path = workspace.joinpath(
+                *PurePosixPath(
+                    AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT
+                ).parts
+            )
+            observe(artifact_path, "dcr011-carried-artifact")
+            artifact_value = artifact_path.lstat()
+            if (
+                not stat_module.S_ISREG(artifact_value.st_mode)
+                or artifact_value.st_size > 16 * 1024 * 1024
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_lifecycle_artifact_invalid",
+                    str(artifact_path),
+                )
+            artifact_bytes = artifact_path.read_bytes()
+            carrier_bytes = _authority_git_run(
+                root,
+                "show",
+                f"{carrier}:{AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT}",
+                budget=budget,
+                output_limit=16 * 1024 * 1024,
+            )
+            carrier_artifact_exact = carrier_bytes == artifact_bytes
+            if not carrier_artifact_exact:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_lifecycle_artifact_invalid",
+                    str(artifact_path),
+                )
+            if len(transitions) == 3:
+                todo_delta_applicable = True
+                before_raw = _authority_git_run(
+                    root,
+                    "show",
+                    f"{shallow_boundary}:{AUTHORITY_VALIDATION_DCR_TODO_PATH}",
+                    budget=budget,
+                    output_limit=16 * 1024 * 1024,
+                )
+                after_raw = _authority_git_run(
+                    root,
+                    "show",
+                    f"{transitions[2]}:{AUTHORITY_VALIDATION_DCR_TODO_PATH}",
+                    budget=budget,
+                    output_limit=16 * 1024 * 1024,
+                )
+                try:
+                    before_todo = before_raw.decode("utf-8")
+                    after_todo = after_raw.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_lifecycle_todo_invalid",
+                        str(root),
+                    ) from exc
+                marker = "## DCR-011 "
+                before_start = before_todo.find(marker)
+                after_start = after_todo.find(marker)
+                before_end = before_todo.find(
+                    "\n## ", before_start + len(marker)
+                )
+                after_end = after_todo.find(
+                    "\n## ", after_start + len(marker)
+                )
+                before_end = (
+                    len(before_todo) if before_end < 0 else before_end
+                )
+                after_end = len(after_todo) if after_end < 0 else after_end
+                before_block = before_todo[before_start:before_end]
+                after_block = after_todo[after_start:after_end]
+                restored_block = after_block.replace(
+                    "- Status: completed", "- Status: todo", 1
+                )
+                restored = (
+                    after_todo[:after_start]
+                    + restored_block
+                    + after_todo[after_end:]
+                )
+                todo_delta_exact = bool(
+                    before_start >= 0
+                    and after_start >= 0
+                    and before_block.count("- Status: todo") == 1
+                    and after_block.count("- Status: completed") == 1
+                    and restored == before_todo
+                )
+                if not todo_delta_exact:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_lifecycle_todo_invalid",
+                        str(root),
+                    )
+        index_records = _authority_git_run(
+            root, "ls-files", "--stage", "-z", budget=budget
+        )
+        index_entry_count = 0
+        for record in index_records.split(b"\0"):
+            if not record:
+                continue
+            index_entry_count += 1
+            try:
+                metadata, _path = record.split(b"\t", 1)
+                mode, oid, stage = metadata.split(b" ", 2)
+                oid_text = oid.decode("ascii").lower()
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_index_invalid", str(root)
+                ) from exc
+            if stage != b"0" or not re.fullmatch(
+                r"(?:[0-9a-f]{40}|[0-9a-f]{64})", oid_text
+            ) or mode not in {b"100644", b"100755", b"120000", b"160000"}:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_index_invalid", str(root)
+                )
+        if budget is not None:
+            budget.add_entries(
+                tree_entry_count + index_entry_count + len(object_ids),
+                str(root),
+            )
+        ordered = tuple(sorted(object_ids))
+        batch_input = "".join(f"{oid}\n" for oid in ordered).encode("ascii")
+        batch = _authority_git_run(
+            root,
+            "cat-file",
+            (
+                "--batch-check=%(objectname) %(objecttype) "
+                "%(objectsize)"
+            ),
+            budget=budget,
+            input_bytes=batch_input,
+        )
+        source_bytes = 0
+        type_counts = {"blob": 0, "commit": 0, "tree": 0}
+        observed_ids: list[str] = []
+        for line in batch.splitlines():
+            try:
+                oid, object_type, raw_size = (
+                    line.decode("ascii").split()
+                )
+                size = int(raw_size)
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_object_projection_invalid",
+                    str(root),
+                ) from exc
+            if (
+                oid not in object_ids
+                or object_type not in {"blob", "commit", "tree"}
+                or size < 0
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_object_projection_invalid",
+                    str(root),
+                )
+            source_bytes += size
+            type_counts[object_type] += 1
+            observed_ids.append(oid)
+        if tuple(observed_ids) != ordered:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_object_projection_invalid", str(root)
+            )
+        if budget is not None:
+            budget.add_source(source_bytes, str(root))
+        lifecycle = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-dcr011-lifecycle@1"
+            ),
+            "mode": (
+                (
+                    "captured",
+                    "artifact_carried",
+                    "integrated",
+                    "todo_completed",
+                )[len(transitions)]
+                if root == workspace
+                else "non_orchestration_current_head"
+            ),
+            "subject": shallow_boundary,
+            "observed_head": head.lower(),
+            "transitions": list(transitions),
+            "transition_records": lifecycle_transition_records,
+            **special_blob_ids,
+            "carrier_artifact_applicable": carrier_artifact_applicable,
+            "carrier_artifact_exact": carrier_artifact_exact,
+            "todo_delta_applicable": todo_delta_applicable,
+            "todo_delta_exact": todo_delta_exact,
+        }
+        lifecycle_id = content_identity(lifecycle)
+        manifest_id = content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-object-closure@1"
+                ),
+                "head": head.lower(),
+                "tree": tree.lower(),
+                "shallow_boundary": shallow_boundary,
+                "object_ids": list(ordered),
+                "object_type_counts": type_counts,
+                "uncompressed_bytes": source_bytes,
+                "lifecycle_id": lifecycle_id,
+            }
+        )
+        return (
+            ordered,
+            manifest_id,
+            source_bytes,
+            type_counts,
+            shallow_boundary,
+            lifecycle,
+            lifecycle_id,
+        )
+
+    def exact_core_config(root: Path) -> dict[str, str]:
+        def optional_value(*arguments: str) -> str:
+            try:
+                completed = subprocess.run(
+                    ("git", "config", *arguments),
+                    cwd=root,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=(budget.remaining(str(root)) if budget else 10),
+                    check=False,
+                    env=_authority_git_local_only_environment(),
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_config_semantics_unavailable",
+                    str(root),
+                ) from exc
+            if completed.returncode == 1:
+                return ""
+            if completed.returncode != 0 or len(completed.stdout) > 4096:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_config_semantics_unavailable",
+                    str(root),
+                )
+            try:
+                return completed.stdout.decode("utf-8").strip()
+            except UnicodeDecodeError as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_config_semantics_unavailable",
+                    str(root),
+                ) from exc
+
+        risky = optional_value(
+            "--get-regexp",
+            (
+                r"^(core\.(attributesfile|excludesfile|fsmonitor|sparsecheckout|"
+                r"sparsecheckoutcone)|extensions\.partialclone|filter\.)"
+            ),
+        )
+        if risky:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_config_semantics_unreviewed",
+                str(root),
+            )
+        repository_version = optional_value(
+            "--int", "--get", "core.repositoryformatversion"
+        )
+        bare = _authority_git_run(
+            root, "rev-parse", "--is-bare-repository", budget=budget
+        ).decode("ascii").strip()
+        if repository_version not in {"", "0"} or bare != "false":
+            raise AuthorityGitReplayError(
+                "authority_validation_git_config_semantics_unreviewed",
+                str(root),
+            )
+        result = {
+            "repositoryformatversion": "0",
+            "filemode": "true",
+            "bare": "false",
+            "logallrefupdates": "false",
+        }
+        for key in (
+            "filemode",
+            "ignorecase",
+            "symlinks",
+            "precomposeunicode",
+            "protecthfs",
+            "protectntfs",
+        ):
+            value = optional_value("--bool", "--get", f"core.{key}")
+            if value:
+                if value not in {"true", "false"}:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_config_semantics_unreviewed",
+                        str(root),
+                    )
+                result[key] = value
+        return result
+
+    while pending:
+        if budget is not None:
+            budget.check(str(workspace))
+        root = pending.pop(0)
+        if root in seen_roots:
+            continue
+        if len(seen_roots) >= AUTHORITY_VALIDATION_GIT_MAX_ROOTS:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_root_limit", str(workspace)
+            )
+        try:
+            root.relative_to(workspace)
+        except ValueError as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_configured_root_invalid", str(root)
+            ) from exc
+        _authority_git_require_symlink_free(
+            root,
+            reason="authority_validation_git_configured_root_invalid",
+        )
+        marker = root / ".git"
+        _authority_git_require_symlink_free(
+            marker,
+            reason="authority_validation_gitdir_pointer_unresolved",
+        )
+        marker_mode = marker.lstat().st_mode
+        if stat_module.S_ISDIR(marker_mode):
+            git_dir = marker
+        elif stat_module.S_ISREG(marker_mode):
+            observe(marker, "worktree-gitdir-pointer")
+            git_dir = _authority_git_pointer(marker)
+        else:
+            raise AuthorityGitReplayError(
+                "authority_validation_gitdir_pointer_unresolved", str(marker)
+            )
+        common_dir = _authority_git_common_dir(git_dir)
+        _authority_git_require_symlink_free(
+            git_dir,
+            reason="authority_validation_git_metadata_anchor_invalid",
+        )
+        _authority_git_require_symlink_free(
+            common_dir,
+            reason="authority_validation_git_metadata_anchor_invalid",
+        )
+        if root_common_anchor is None:
+            root_common_anchor = common_dir
+            try:
+                git_dir.relative_to(root_common_anchor)
+            except ValueError as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_anchor_invalid",
+                    str(git_dir),
+                ) from exc
+        else:
+            try:
+                git_dir.relative_to(root_common_anchor)
+                common_dir.relative_to(root_common_anchor)
+            except ValueError as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_metadata_outside_anchor",
+                    str(git_dir),
+                ) from exc
+        backpointer = git_dir / "gitdir"
+        if (
+            stat_module.S_ISREG(marker_mode)
+            and git_dir != common_dir
+            and not backpointer.exists()
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_worktree_registration_invalid",
+                str(backpointer),
+            )
+        if backpointer.exists():
+            _authority_git_require_symlink_free(
+                backpointer,
+                reason=(
+                    "authority_validation_git_worktree_registration_invalid"
+                ),
+            )
+            if not stat_module.S_ISREG(backpointer.lstat().st_mode):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_worktree_registration_invalid",
+                    str(backpointer),
+                )
+            observe(backpointer, "worktree-backpointer")
+            try:
+                backpointer_value = backpointer.read_text(
+                    encoding="utf-8"
+                ).strip()
+            except (OSError, UnicodeDecodeError) as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_worktree_registration_invalid",
+                    str(backpointer),
+                ) from exc
+            if not _authority_git_path_text_safe(backpointer_value):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_worktree_registration_invalid",
+                    str(backpointer),
+                )
+            registered_marker = Path(backpointer_value)
+            if not registered_marker.is_absolute():
+                registered_marker = git_dir / registered_marker
+            if Path(os.path.abspath(registered_marker)) != marker:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_worktree_registration_invalid",
+                    str(backpointer),
+                )
+        observed = _authority_git_run(
+            root,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-dir",
+            "--git-common-dir",
+            "--show-toplevel",
+            "HEAD",
+            "HEAD^{tree}",
+            "--show-object-format",
+            budget=budget,
+        ).decode("utf-8", errors="strict").splitlines()
+        if len(observed) != 6:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_observation_failed", str(root)
+            )
+        observed_git_dir = Path(os.path.abspath(observed[0]))
+        observed_common_dir = Path(os.path.abspath(observed[1]))
+        observed_root = Path(os.path.abspath(observed[2]))
+        if (
+            observed_git_dir != git_dir
+            or observed_common_dir != common_dir
+            or observed_root != root
+            or not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", observed[3])
+            or not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", observed[4])
+            or len(observed[3]) != len(observed[4])
+            or observed[5] not in {"sha1", "sha256"}
+            or len(observed[3]) != (40 if observed[5] == "sha1" else 64)
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_identity_mismatch", str(root)
+            )
+
+        for path, purpose, required in (
+            (git_dir / "HEAD", "worktree-head", True),
+            (git_dir / "index", "worktree-index", True),
+            (git_dir / "commondir", "worktree-commondir", False),
+        ):
+            if not path.exists():
+                if required:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_metadata_unreadable", str(path)
+                    )
+                continue
+            observe(
+                path,
+                purpose,
+            )
+        split_index = _authority_git_run(
+            root, "rev-parse", "--shared-index-path", budget=budget
+        ).decode("utf-8", errors="strict").strip()
+        if split_index:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_split_index_forbidden", split_index
+            )
+        try:
+            index_prefix = (git_dir / "index").read_bytes()
+        except OSError as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_index_invalid", str(root)
+            ) from exc
+        if (
+            len(index_prefix) < 12
+            or index_prefix[:4] != b"DIRC"
+            or int.from_bytes(index_prefix[4:8], "big") not in {2, 3, 4}
+            or b"FSMN" in index_prefix
+            or b"sdir" in index_prefix
+        ):
+            raise AuthorityGitReplayError(
+                "authority_validation_git_index_extension_unreviewed",
+                str(root),
+            )
+
+        alternate_pending = [common_dir / "objects"]
+        alternate_seen: set[Path] = set()
+        while alternate_pending:
+            object_dir = alternate_pending.pop(0)
+            if object_dir in alternate_seen:
+                continue
+            alternate_seen.add(object_dir)
+            http_alternates = object_dir / "info" / "http-alternates"
+            if http_alternates.exists() and http_alternates.read_bytes().strip():
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_http_alternate_forbidden",
+                    str(http_alternates),
+                )
+            alternates = object_dir / "info" / "alternates"
+            if not alternates.exists():
+                continue
+            observe(
+                alternates,
+                "object-alternates-control",
+            )
+            try:
+                alternate_lines = alternates.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError) as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_alternate_unresolved", str(alternates)
+                ) from exc
+            for line in alternate_lines:
+                if not line or line != line.strip():
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_alternate_unresolved",
+                        str(alternates),
+                    )
+                # An alternate is an authority expansion outside the exact
+                # reviewed repository metadata roots. Authority validation
+                # does not inherit it merely because repository-local text
+                # names an arbitrary absolute directory.
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_external_alternate_forbidden",
+                    str(alternates),
+                )
+
+        exclude = common_dir / "info" / "exclude"
+        attributes = common_dir / "info" / "attributes"
+        for semantic_file, purpose in (
+            (exclude, "common-excludes-policy"),
+            (attributes, "common-attributes-policy"),
+        ):
+            if not semantic_file.exists():
+                continue
+            observe(semantic_file, purpose)
+            try:
+                semantic_lines = semantic_file.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            except (OSError, UnicodeDecodeError) as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_semantic_info_unreviewed",
+                    str(semantic_file),
+                ) from exc
+            if any(
+                line.strip() and not line.lstrip().startswith("#")
+                for line in semantic_lines
+            ):
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_semantic_info_unreviewed",
+                    str(semantic_file),
+                )
+
+        grafts = common_dir / "info" / "grafts"
+        if grafts.exists() and grafts.read_bytes().strip():
+            raise AuthorityGitReplayError(
+                "authority_validation_git_grafts_forbidden", str(grafts)
+            )
+        replace_refs = common_dir / "refs" / "replace"
+        if replace_refs.exists():
+            try:
+                with os.scandir(replace_refs) as replace_entries:
+                    has_replace_refs = any(replace_entries)
+                if has_replace_refs:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_replace_refs_forbidden",
+                        str(replace_refs),
+                    )
+            except OSError as exc:
+                raise AuthorityGitReplayError(
+                    "authority_validation_git_replace_refs_forbidden",
+                    str(replace_refs),
+                ) from exc
+
+        try:
+            promisor = subprocess.run(
+                (
+                    "git",
+                    "config",
+                    "--local",
+                    "--null",
+                    "--get-regexp",
+                    r"^(extensions\.partialclone|remote\..*\.promisor)$",
+                ),
+                cwd=root,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=(budget.remaining(str(root)) if budget else 10),
+                check=False,
+                env=_authority_git_local_only_environment(),
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_promisor_check_failed", str(root)
+            ) from exc
+        if promisor.returncode not in {0, 1}:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_promisor_check_failed", str(root)
+            )
+        if promisor.stdout:
+            raise AuthorityGitReplayError(
+                "authority_validation_git_promisor_repository_forbidden",
+                str(root),
+            )
+
+        modules = root / ".gitmodules"
+        if modules.exists():
+            observe(modules, "reviewed-gitmodules")
+        (
+            object_ids,
+            object_manifest_id,
+            object_source_bytes,
+            object_type_counts,
+            shallow_boundary,
+            lifecycle,
+            lifecycle_id,
+        ) = (
+            exact_object_projection(
+                root,
+                head=observed[3].lower(),
+                tree=observed[4].lower(),
+            )
+        )
+        index_path = git_dir / "index"
+        index_identity = observations[index_path][0]
+        core_config = exact_core_config(root)
+        root_identities.append(
+            {
+                "relative_path": (
+                    "."
+                    if root == workspace
+                    else root.relative_to(workspace).as_posix()
+                ),
+                "head": observed[3].lower(),
+                "tree": observed[4].lower(),
+                "git_dir": str(git_dir),
+                "common_dir": str(common_dir),
+                "object_format": observed[5],
+                "index_identity": index_identity,
+                "object_count": len(object_ids),
+                "object_ids": list(object_ids),
+                "object_manifest_id": object_manifest_id,
+                "object_source_bytes": object_source_bytes,
+                "object_type_counts": dict(object_type_counts),
+                "shallow_boundary": shallow_boundary,
+                "lifecycle": dict(lifecycle),
+                "lifecycle_id": lifecycle_id,
+                "core_config": dict(core_config),
+            }
+        )
+        root_projections.append(
+            _AuthorityGitRootProjection(
+                worktree=root,
+                git_dir=git_dir,
+                common_dir=common_dir,
+                head=observed[3].lower(),
+                tree=observed[4].lower(),
+                object_format=observed[5],
+                object_ids=object_ids,
+                object_manifest_id=object_manifest_id,
+                object_source_bytes=object_source_bytes,
+                object_type_counts=dict(object_type_counts),
+                shallow_boundary=shallow_boundary,
+                lifecycle=dict(lifecycle),
+                lifecycle_id=lifecycle_id,
+                index_path=index_path,
+                index_identity=index_identity,
+                core_config=dict(core_config),
+            )
+        )
+        roots.append(root)
+        seen_roots.add(root)
+        pending.extend(
+            _authority_git_configured_children(root, budget=budget)
+        )
+
+    if root_common_anchor is None:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_metadata_anchor_invalid", str(workspace)
+        )
+    anchor_value = root_common_anchor.lstat()
+    anchor_identity = content_identity(
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-root-common-anchor@1"
+            ),
+            "path": str(root_common_anchor),
+            "device": int(anchor_value.st_dev),
+            "inode": int(anchor_value.st_ino),
+            "mode": int(anchor_value.st_mode),
+        }
+    )
+    mounts = [
+        _AuthorityGitReplayMount(
+            source=root_common_anchor,
+            destination=root_common_anchor,
+            purpose="synthetic-root-common-metadata",
+            identity=anchor_identity,
+            entry_count=len(root_projections),
+        )
+    ]
+    if len(mounts) > AUTHORITY_VALIDATION_GIT_MAX_MOUNTS:
+        raise AuthorityGitReplayError(
+            "authority_validation_git_mount_limit", str(workspace)
+        )
+    preflight_source_bytes = int(budget.source_bytes) - preflight_source_start
+    preflight_metadata_entries = (
+        int(budget.metadata_entries) - preflight_entries_start
+    )
+    preflight_budget = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-git-replay-budget@1"
+        ),
+        "source_bytes": preflight_source_bytes,
+        "metadata_entries": preflight_metadata_entries,
+    }
+    body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-git-metadata-replay-plan@2"
+        ),
+        "workspace": str(workspace),
+        "roots": [str(root) for root in roots],
+        "root_identities": root_identities,
+        "mounts": [mount.to_dict() for mount in mounts],
+        "observation_identities": sorted(
+            observations[path][0] for path in drift_observation_paths
+        ),
+        "preflight_budget": preflight_budget,
+    }
+    return _AuthorityGitReplayPlan(
+        workspace=workspace,
+        roots=tuple(roots),
+        root_identities=tuple(root_identities),
+        root_projections=tuple(root_projections),
+        mounts=tuple(mounts),
+        observation_identities=tuple(body["observation_identities"]),
+        plan_id=content_identity(body),
+        preflight_source_bytes=preflight_source_bytes,
+        preflight_metadata_entries=preflight_metadata_entries,
+    )
+
+
+def _authority_git_not_requested_plan(workspace: Path) -> _AuthorityGitReplayPlan:
+    workspace = Path(os.path.abspath(workspace))
+    body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "authority-git-metadata-not-requested@1"
+        ),
+        "workspace": str(workspace),
+        "mode": "not_requested",
+    }
+    return _AuthorityGitReplayPlan(
+        workspace=workspace,
+        roots=(),
+        root_identities=(),
+        root_projections=(),
+        mounts=(),
+        observation_identities=(),
+        plan_id=content_identity(body),
+        preflight_source_bytes=0,
+        preflight_metadata_entries=0,
+        mode="not_requested",
+    )
+
+
 @dataclass(frozen=True)
 class PortalTask:
     task_id: str
@@ -3743,6 +13709,16 @@ class PortalImplementationDaemon:
         self._trusted_manual_completion_revalidation_evidence_ids: set[str] = (
             set()
         )
+        self._trusted_manual_completion_revalidation_evidence_lock = (
+            threading.RLock()
+        )
+        self._trusted_manual_completion_revalidation_evidence_by_id: dict[
+            str, dict[str, Any]
+        ] = {}
+        self._trusted_manual_completion_revalidation_evidence_bytes_by_id: dict[
+            str, int
+        ] = {}
+        self._trusted_manual_completion_revalidation_evidence_total_bytes = 0
         self._manual_completion_authority_revalidation_task_ids = frozenset()
         self._manual_completion_authority_historical_task_ids = frozenset(
             self.manual_completion_authority_required_task_ids
@@ -9430,7 +19406,11 @@ class PortalImplementationDaemon:
             }
         if revoked_task_ids or recovered:
             self._trusted_manual_completion_revalidation_receipt_ids.clear()
-            self._trusted_manual_completion_revalidation_evidence_ids.clear()
+            with self._trusted_manual_completion_revalidation_evidence_lock:
+                self._trusted_manual_completion_revalidation_evidence_ids.clear()
+                self._trusted_manual_completion_revalidation_evidence_by_id.clear()
+                self._trusted_manual_completion_revalidation_evidence_bytes_by_id.clear()
+                self._trusted_manual_completion_revalidation_evidence_total_bytes = 0
         self._manual_completion_authority_revocation_generation = generation
         result = {
             "available": True,
@@ -9491,11 +19471,16 @@ class PortalImplementationDaemon:
                     key: item.get(key)
                     for key in (
                         "command",
+                        "raw_command",
+                        "ordinal",
+                        "validation_id",
                         "returncode",
                         "cache_hit",
+                        "cache_key",
                         "timed_out",
                         "infrastructure_failure",
                         "validation_result_digest",
+                        "authority_validation_command_binding",
                         "authority_validation_isolation_receipt",
                     )
                     if key in item
@@ -9520,14 +19505,201 @@ class PortalImplementationDaemon:
                 "manual_completion_authority_task_cid",
                 "manual_completion_authority_validation_plan_id",
                 "manual_completion_authority_declared_validation_commands",
+                "manual_completion_authority_executed_validation_commands",
                 "manual_completion_authority_revocation_generation",
                 "manual_completion_authority_validated_tree_identity",
                 "manual_completion_authority_validated_tree_id",
                 "manual_completion_authority_validation_result_count",
             )
         }
+        projection["committed_candidate_authority_validation"] = (
+            evidence.get("committed_candidate_authority_validation")
+        )
         projection["results"] = results
         return content_identity(projection)
+
+    def _discard_retained_manual_completion_authority_evidence(
+        self,
+        evidence_id: str,
+    ) -> None:
+        """Atomically revoke one process-local committed capability."""
+
+        normalized_id = str(evidence_id or "")
+        if not normalized_id:
+            return
+        with self._trusted_manual_completion_revalidation_evidence_lock:
+            self._trusted_manual_completion_revalidation_evidence_ids.discard(
+                normalized_id
+            )
+            self._trusted_manual_completion_revalidation_evidence_by_id.pop(
+                normalized_id,
+                None,
+            )
+            removed_bytes = (
+                self._trusted_manual_completion_revalidation_evidence_bytes_by_id.pop(
+                    normalized_id,
+                    0,
+                )
+            )
+            self._trusted_manual_completion_revalidation_evidence_total_bytes = max(
+                0,
+                self._trusted_manual_completion_revalidation_evidence_total_bytes
+                - removed_bytes,
+            )
+
+    def _mint_ephemeral_manual_completion_authority_evidence(
+        self,
+        evidence: Mapping[str, Any],
+    ) -> str:
+        """Mint one non-retained authority token for an immediate mutation.
+
+        Post-merge validation evidence contains the complete isolation receipts
+        needed by the completion guard, but it must never enter a durable
+        callback journal or the retained merge-evidence map.  The caller first
+        performs the full structural check with ``_pending_producer_evidence``
+        and then holds this exact ID only across the completion mutation and
+        receipt publication.  Refuse to adopt an existing token: doing so would
+        make this caller unable to prove that its unconditional revocation does
+        not remove another live capability.
+        """
+
+        evidence_id = self._manual_completion_revalidation_evidence_id(
+            evidence
+        )
+        if not evidence_id:
+            raise ValueError("ephemeral authority evidence ID is empty")
+        with self._trusted_manual_completion_revalidation_evidence_lock:
+            if (
+                evidence_id
+                in self._trusted_manual_completion_revalidation_evidence_ids
+                or evidence_id
+                in self._trusted_manual_completion_revalidation_evidence_by_id
+                or evidence_id
+                in self._trusted_manual_completion_revalidation_evidence_bytes_by_id
+            ):
+                raise ValueError(
+                    "ephemeral authority evidence token already exists"
+                )
+            self._trusted_manual_completion_revalidation_evidence_ids.add(
+                evidence_id
+            )
+        return evidence_id
+
+    def _retain_manual_completion_authority_evidence(
+        self,
+        evidence_id: str,
+        evidence: Mapping[str, Any],
+    ) -> int:
+        """Retain an exact bounded capability and return its canonical size."""
+
+        normalized_id = str(evidence_id or "")
+        canonical_bytes = _manual_completion_authority_evidence_bytes(
+            evidence
+        )
+        evidence_bytes = len(canonical_bytes)
+        if not normalized_id:
+            raise ValueError("committed authority evidence ID is empty")
+        if (
+            evidence_bytes
+            > MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_ITEM_BYTES
+        ):
+            raise ValueError(
+                "committed authority evidence exceeds the per-record byte cap"
+            )
+        if (
+            evidence_bytes
+            > MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_TOTAL_BYTES
+        ):
+            raise ValueError(
+                "committed authority evidence exceeds the aggregate byte cap"
+            )
+        retained = json.loads(canonical_bytes.decode("utf-8"))
+        if not isinstance(retained, dict):
+            raise ValueError("committed authority evidence is not an object")
+        with self._trusted_manual_completion_revalidation_evidence_lock:
+            self._discard_retained_manual_completion_authority_evidence(
+                normalized_id
+            )
+            while self._trusted_manual_completion_revalidation_evidence_by_id and (
+                len(self._trusted_manual_completion_revalidation_evidence_by_id)
+                >= MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_ITEMS
+                or self._trusted_manual_completion_revalidation_evidence_total_bytes
+                + evidence_bytes
+                > MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_TOTAL_BYTES
+            ):
+                oldest_id = next(
+                    iter(
+                        self._trusted_manual_completion_revalidation_evidence_by_id
+                    )
+                )
+                self._discard_retained_manual_completion_authority_evidence(
+                    oldest_id
+                )
+            if (
+                self._trusted_manual_completion_revalidation_evidence_total_bytes
+                + evidence_bytes
+                > MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_TOTAL_BYTES
+            ):
+                raise ValueError(
+                    "committed authority evidence cannot fit the aggregate byte cap"
+                )
+            self._trusted_manual_completion_revalidation_evidence_by_id[
+                normalized_id
+            ] = retained
+            self._trusted_manual_completion_revalidation_evidence_bytes_by_id[
+                normalized_id
+            ] = evidence_bytes
+            self._trusted_manual_completion_revalidation_evidence_total_bytes += (
+                evidence_bytes
+            )
+            self._trusted_manual_completion_revalidation_evidence_ids.add(
+                normalized_id
+            )
+        return evidence_bytes
+
+    def _retained_manual_completion_authority_evidence(
+        self,
+        compact_evidence: Mapping[str, Any] | None,
+    ) -> Mapping[str, Any] | None:
+        """Resolve only an exact live-process committed evidence capability."""
+
+        if not isinstance(compact_evidence, Mapping):
+            return None
+        evidence_id = str(
+            compact_evidence.get(
+                "manual_completion_authority_full_evidence_id"
+            )
+            or ""
+        )
+        with self._trusted_manual_completion_revalidation_evidence_lock:
+            retained = (
+                self._trusted_manual_completion_revalidation_evidence_by_id.get(
+                    evidence_id
+                )
+                if evidence_id
+                else None
+            )
+            retained_bytes = (
+                self._trusted_manual_completion_revalidation_evidence_bytes_by_id.get(
+                    evidence_id,
+                    0,
+                )
+            )
+            if (
+                isinstance(retained, Mapping)
+                and retained_bytes > 0
+                and retained_bytes
+                <= MAX_RETAINED_MANUAL_COMPLETION_AUTHORITY_EVIDENCE_ITEM_BYTES
+                and evidence_id
+                in self._trusted_manual_completion_revalidation_evidence_ids
+                and len(_manual_completion_authority_evidence_bytes(retained))
+                == retained_bytes
+                and self._manual_completion_revalidation_evidence_id(retained)
+                == evidence_id
+                and _committed_candidate_authority_attestation_valid(retained)
+            ):
+                return retained
+        return compact_evidence
 
     def _current_manual_completion_revalidation_receipts(
         self,
@@ -9559,11 +19731,11 @@ class PortalImplementationDaemon:
         store_generation = int(store["revocation_generation"])
         valid_task_ids: set[str] = set()
         invalid_task_ids: set[str] = set()
-        # Empty trusted set ⇒ cold start / first load this process.  Re-admit
-        # self-consistent durable receipts so restarts do not rewalk the DAG.
-        # Non-empty trusted set ⇒ live process: the trusted set remains the
-        # TOCTOU fence against same-UID mid-process store forgery (a forged
-        # self-consistent row must not introduce a new receipt_id).
+        # The durable schema stores only result digests, not the bounded closed
+        # isolation receipts needed to re-run the strict verifier.  A cold
+        # process therefore cannot distinguish a producer-authored row from a
+        # self-consistent same-UID forgery and must force fresh revalidation.
+        # A live process may accept only receipt IDs it produced itself.
         cold_start = not self._trusted_manual_completion_revalidation_receipt_ids
         confirmed_receipt_ids: set[str] = set()
         for raw_task_id, raw_receipt in store["records"].items():
@@ -9630,24 +19802,21 @@ class PortalImplementationDaemon:
             if not structurally_valid:
                 invalid_task_ids.add(task_id)
                 continue
-            if cold_start or (
-                receipt_id
+            if (
+                not cold_start
+                and receipt_id
                 in self._trusted_manual_completion_revalidation_receipt_ids
             ):
-                self._trusted_manual_completion_revalidation_receipt_ids.add(
-                    receipt_id
-                )
                 confirmed_receipt_ids.add(receipt_id)
                 valid_task_ids.add(task_id)
             else:
-                # Live process saw a new self-consistent receipt_id that this
-                # process never produced — treat as forged store mutation.
+                # Cold starts and live same-UID replacements both lack a
+                # process-local producer token.
                 invalid_task_ids.add(task_id)
-        if not cold_start:
-            # Drop previously trusted ids whose rows were replaced or removed.
-            self._trusted_manual_completion_revalidation_receipt_ids &= (
-                confirmed_receipt_ids
-            )
+        # Drop previously trusted ids whose rows were replaced or removed.
+        self._trusted_manual_completion_revalidation_receipt_ids &= (
+            confirmed_receipt_ids
+        )
         return valid_task_ids, {
             "available": True,
             "path": str(path),
@@ -9655,7 +19824,8 @@ class PortalImplementationDaemon:
             "invalid_task_ids": sorted(invalid_task_ids),
             "store_id": str(store.get("store_id") or ""),
             "revocation_generation": store_generation,
-            "cold_start_readmission": cold_start,
+            "cold_start_readmission": False,
+            "cold_start_revalidation_required": cold_start,
         }
 
     def _manual_completion_validated_tree_is_current(
@@ -9677,7 +19847,7 @@ class PortalImplementationDaemon:
             # Non-Git validation evidence remains process-local through the
             # trusted producer token; restart always forces revalidation.
             return True
-        if re.fullmatch(r"[0-9a-f]{40,64}", target_commit) is None:
+        if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", target_commit) is None:
             return False
         resolved_tree = self._candidate_repository_tree(target_commit)
         if not resolved_tree:
@@ -10554,13 +20724,20 @@ class PortalImplementationDaemon:
         base: dict[str, Any] = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
-                "authority-validation-isolation@2"
+                "authority-validation-isolation@3"
             ),
             "backend": "docker-local-cuda",
             "docker_endpoint": AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
             "network_mode": "none",
-            "host_filesystem": "workspace_only_read_only",
+            "host_filesystem": (
+                "workspace_only_or_dcr011_exact_git_projection_read_only"
+            ),
             "workspace_mode": "read_only",
+            "git_metadata_replay": (
+                "dcr011_exact_forest_cli_only"
+            ),
+            "git_metadata_symlinks_allowed": False,
+            "git_metadata_drift_policy": "fail_closed",
             "writable_filesystems": ["private_tmpfs", "private_shm"],
             "pid_namespace": "private",
             "capabilities": "none",
@@ -10945,6 +21122,7 @@ class PortalImplementationDaemon:
         authority_evidence: Mapping[str, Any] | None = None,
         expected_validated_tree_identity: Mapping[str, Any] | None = None,
         refresh: bool = True,
+        _pending_producer_evidence: bool = False,
     ) -> dict[str, Any] | None:
         """Reject a completion/integration touching a currently gated closure."""
 
@@ -11050,7 +21228,8 @@ class PortalImplementationDaemon:
                 evidence
             )
             producer_trusted = bool(
-                evidence_id
+                _pending_producer_evidence
+                or evidence_id
                 in self._trusted_manual_completion_revalidation_evidence_ids
             )
             runtime_tree_identity_valid = bool(
@@ -11093,11 +21272,11 @@ class PortalImplementationDaemon:
                     "manual-completion-validated-tree@1"
                 )
                 and re.fullmatch(
-                    r"[0-9a-f]{40,64}",
+                    r"(?:[0-9a-f]{40}|[0-9a-f]{64})",
                     str(validated_tree_identity.get("target_commit") or ""),
                 )
                 and re.fullmatch(
-                    r"git-tree:[0-9a-f]{40,64}",
+                    r"git-tree:(?:[0-9a-f]{40}|[0-9a-f]{64})",
                     str(
                         validated_tree_identity.get("repository_tree_id")
                         or ""
@@ -11136,6 +21315,38 @@ class PortalImplementationDaemon:
             current_isolation_contract = (
                 self._authority_validation_isolation_contract()
             )
+            executed_authority_commands = tuple(
+                str(item.get("command") or "")
+                for item in validation_results
+            )
+            first_receipt = (
+                validation_results[0].get(
+                    "authority_validation_isolation_receipt"
+                )
+                if validation_results
+                else None
+            )
+            first_binding = (
+                first_receipt.get("authority_command_binding")
+                if isinstance(first_receipt, Mapping)
+                else None
+            )
+            expected_execution_scope = str(
+                first_binding.get("scope") or ""
+            ) if isinstance(first_binding, Mapping) else ""
+            bound_execution_commands = evidence.get(
+                "manual_completion_authority_executed_validation_commands"
+            )
+            trusted_expected_execution_vector = (
+                tuple(str(item) for item in bound_execution_commands)
+                if isinstance(bound_execution_commands, Sequence)
+                and not isinstance(
+                    bound_execution_commands, (str, bytes, bytearray)
+                )
+                and bound_execution_commands
+                and all(isinstance(item, str) and item for item in bound_execution_commands)
+                else ()
+            )
 
             def successful_uncached_result(item: Mapping[str, Any]) -> bool:
                 raw_returncode = item.get("returncode")
@@ -11144,40 +21355,23 @@ class PortalImplementationDaemon:
                 result_digest = str(
                     item.get("validation_result_digest") or ""
                 )
-                raw_receipt = item.get(
-                    "authority_validation_isolation_receipt"
-                )
-                isolation_receipt = (
-                    dict(raw_receipt)
-                    if isinstance(raw_receipt, Mapping)
-                    else {}
-                )
-                receipt_id = str(
-                    isolation_receipt.pop("receipt_id", "") or ""
-                )
-                isolation_valid = bool(
-                    current_isolation_contract.get("available") is True
-                    and isolation_receipt.get("backend")
-                    == "docker-local-cuda"
-                    and isolation_receipt.get("contract_id")
-                    == current_isolation_contract.get("contract_id")
-                    and isolation_receipt.get("image_id")
-                    == current_isolation_contract.get("image_id")
-                    and isolation_receipt.get("network_mode") == "none"
-                    and isolation_receipt.get("host_filesystem")
-                    == "workspace_only_read_only"
-                    and isolation_receipt.get("workspace_read_only") is True
-                    and isolation_receipt.get("private_pid_namespace") is True
-                    and isolation_receipt.get("capabilities_dropped") == "all"
-                    and isolation_receipt.get("no_new_privileges") is True
-                    and isolation_receipt.get("container_removed") is True
-                    and isolation_receipt.get("process_tree_quiesced") is True
-                    and isolation_receipt.get("output_bounded") is True
-                    and isolation_receipt.get("storage_bounded") is True
-                    and isolation_receipt.get("cpu_bounded") is True
-                    and isolation_receipt.get("gpu_requested") is True
-                    and receipt_id
-                    and receipt_id == content_identity(isolation_receipt)
+                cache_key = str(item.get("cache_key") or "")
+                isolation_valid = (
+                    _authority_validation_isolation_receipt_valid(
+                        item.get("authority_validation_isolation_receipt"),
+                        contract=current_isolation_contract,
+                        result=item,
+                        validated_tree_identity=(
+                            validated_tree_identity
+                            if isinstance(validated_tree_identity, Mapping)
+                            else None
+                        ),
+                        expected_task_id=evidence_task_id,
+                        expected_task_cid=evidence_task_cid,
+                        expected_commands=(
+                            trusted_expected_execution_vector
+                        ),
+                    )
                 )
                 return bool(
                     str(item.get("command") or "").strip()
@@ -11185,10 +21379,109 @@ class PortalImplementationDaemon:
                     and item.get("timed_out") is False
                     and item.get("infrastructure_failure") is not True
                     and isolation_valid
+                    and re.fullmatch(r"[0-9a-f]{64}", cache_key)
                     and re.fullmatch(
                         r"[0-9a-f]{64}",
                         result_digest,
                     )
+                )
+
+            def authority_result_pair_valid() -> bool:
+                dcr_marker_present = bool(
+                    evidence_task_id == "DCR-011"
+                    or evidence_task_cid
+                    == AUTHORITY_VALIDATION_DCR_TASK_CID
+                    or any(
+                        "deterministic_repair_forest" in command
+                        for command in executed_authority_commands
+                    )
+                )
+                expected_count = (
+                    2
+                    if dcr_marker_present
+                    else len(
+                        current_plan_binding.get("declared_commands") or []
+                    )
+                )
+                if not expected_count or len(validation_results) != expected_count:
+                    return False
+                if [item.get("ordinal") for item in validation_results] != list(
+                    range(expected_count)
+                ):
+                    return False
+                bindings: list[Mapping[str, Any]] = []
+                for item in validation_results:
+                    receipt = item.get(
+                        "authority_validation_isolation_receipt"
+                    )
+                    if not isinstance(receipt, Mapping):
+                        return False
+                    binding_value = receipt.get("authority_command_binding")
+                    if not isinstance(binding_value, Mapping):
+                        return False
+                    bindings.append(binding_value)
+                shared_fields = (
+                    "authority_profile",
+                    "task_id",
+                    "canonical_task_cid",
+                    "scope",
+                    "plan_id",
+                    "expected_target_commit",
+                    "expected_target_tree",
+                    "expected_git_common_anchor",
+                    "expected_git_dir",
+                )
+                if any(
+                    binding.get(field) != bindings[0].get(field)
+                    for field in shared_fields
+                    for binding in bindings[1:]
+                ):
+                    return False
+                scope = str(bindings[0].get("scope") or "")
+                if scope not in {"pre_merge", "post_merge"}:
+                    return False
+                if list(executed_authority_commands) != [
+                    item.get("command") for item in validation_results
+                ] or executed_authority_commands != (
+                    trusted_expected_execution_vector
+                ):
+                    return False
+                if dcr_marker_present:
+                    expected_command_vector = (
+                        AUTHORITY_VALIDATION_DCR_COMMANDS
+                        if scope == "pre_merge"
+                        else AUTHORITY_VALIDATION_DCR_RAW_COMMANDS
+                    )
+                    if (
+                        bindings[0].get("authority_profile")
+                        != "dcr011_forest@1"
+                        or tuple(executed_authority_commands)
+                        != tuple(expected_command_vector)
+                    ):
+                        return False
+                elif (
+                    bindings[0].get("authority_profile")
+                    != "generic_workspace_only@1"
+                    or evidence_task_id == "DCR-011"
+                    or evidence_task_cid
+                    == AUTHORITY_VALIDATION_DCR_TASK_CID
+                ):
+                    return False
+                workspace_paths = [
+                    item["authority_validation_isolation_receipt"].get(
+                        "workspace_path"
+                    )
+                    for item in validation_results
+                ]
+                return bool(
+                    workspace_paths[0]
+                    and all(
+                        path == workspace_paths[0]
+                        for path in workspace_paths[1:]
+                    )
+                    and bindings[0].get("task_id") == evidence_task_id
+                    and bindings[0].get("canonical_task_cid")
+                    == evidence_task_cid
                 )
 
             evidence_valid = bool(
@@ -11217,6 +21510,8 @@ class PortalImplementationDaemon:
                     "manual_completion_authority_declared_validation_commands"
                 )
                 == current_plan_binding.get("declared_commands")
+                and list(trusted_expected_execution_vector)
+                == list(bound_execution_commands or [])
                 and type(evidence_generation) is int
                 and evidence_generation
                 == self._manual_completion_authority_revocation_generation
@@ -11228,7 +21523,21 @@ class PortalImplementationDaemon:
                 and len(validation_results) == len(raw_results)
                 and type(evidence_result_count) is int
                 and evidence_result_count == len(validation_results)
+                and evidence_result_count
+                == len(
+                    current_plan_binding.get("declared_commands") or []
+                )
+                and authority_result_pair_valid()
                 and all(successful_uncached_result(item) for item in validation_results)
+                and (
+                    evidence.get(
+                        "committed_candidate_authority_validation"
+                    )
+                    is None
+                    or _committed_candidate_authority_attestation_valid(
+                        evidence
+                    )
+                )
             )
             evidence_context_id = str(
                 evidence.get("manual_completion_authority_context_id") or ""
@@ -12034,12 +22343,7 @@ class PortalImplementationDaemon:
         execution_tasks = [
             task
             for task in tasks
-            if (
-                not self.execution_slice_task_ids
-                and not self.execution_slice_task_cids
-            )
-            or task.task_id in self.execution_slice_task_ids
-            or self._canonical_ref(task) in self.execution_slice_task_cids
+            if self._task_in_execution_slice(task)
         ]
         representative_task_ids = self._canonical_representative_task_ids(
             execution_tasks,
@@ -15219,38 +25523,51 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
     ) -> dict[str, Any]:
-        """Rebind process-local authority to the final clean baseline."""
+        """Confirm that command receipts already bind the clean baseline.
+
+        Authority evidence is never relabelled here.  The isolated command
+        receipts must have observed the exact commit/tree that this caller is
+        about to publish.
+        """
 
         result = dict(validation_result)
         self._trusted_manual_completion_revalidation_evidence_ids.discard(
             self._manual_completion_revalidation_evidence_id(result)
         )
         candidate_binding = result.get("candidate_binding")
+        candidate_tree = self._candidate_repository_tree(baseline_ref)
+        expected_identity = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": baseline_ref,
+            "repository_tree_id": (
+                f"git-tree:{candidate_tree}" if candidate_tree else ""
+            ),
+        }
         if not (
             result.get("attempted") is True
             and result.get("passed") is True
             and isinstance(candidate_binding, Mapping)
             and candidate_binding.get("verified") is True
             and baseline_ref
+            and candidate_tree
+            and result.get(
+                "manual_completion_authority_validated_tree_identity"
+            )
+            == expected_identity
         ):
+            result.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": (
+                        "manual_completion_authority_validated_tree_mismatch"
+                    ),
+                }
+            )
             return result
-        validated_tree_identity = {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                "manual-completion-validated-tree@1"
-            ),
-            "target_commit": baseline_ref,
-            "dependency_state_id": content_identity(
-                result.get("dependency_state") or {}
-            ),
-            "candidate_binding_id": content_identity(candidate_binding),
-        }
-        result[
-            "manual_completion_authority_validated_tree_identity"
-        ] = validated_tree_identity
-        result[
-            "manual_completion_authority_validated_tree_id"
-        ] = content_identity(validated_tree_identity)
         self._trusted_manual_completion_revalidation_evidence_ids.add(
             self._manual_completion_revalidation_evidence_id(result)
         )
@@ -15684,20 +26001,30 @@ class PortalImplementationDaemon:
                 )
             )
             completion_tree_id = baseline_ref
-            todo_update_result = (
-                self._publish_manual_completion_authority_revalidation_receipt_only(
-                    task,
-                    expected_task_cid=self._canonical_ref(task),
-                    expected_target_commit=baseline_ref,
-                    authority_context_id=str(
-                        validation_result.get(
-                            "manual_completion_authority_context_id"
-                        )
-                        or ""
-                    ),
-                    authority_evidence=validation_result,
+            renewal_evidence_id = (
+                self._manual_completion_revalidation_evidence_id(
+                    validation_result
                 )
             )
+            try:
+                todo_update_result = (
+                    self._publish_manual_completion_authority_revalidation_receipt_only(
+                        task,
+                        expected_task_cid=self._canonical_ref(task),
+                        expected_target_commit=baseline_ref,
+                        authority_context_id=str(
+                            validation_result.get(
+                                "manual_completion_authority_context_id"
+                            )
+                            or ""
+                        ),
+                        authority_evidence=validation_result,
+                    )
+                )
+            finally:
+                self._discard_retained_manual_completion_authority_evidence(
+                    renewal_evidence_id
+                )
             persisted_receipt = todo_update_result.get(
                 "manual_completion_authority_revalidation_receipt"
             )
@@ -15707,11 +26034,6 @@ class PortalImplementationDaemon:
                 and persisted_receipt.get("persisted") is True
             )
             if not completion_durable:
-                self._trusted_manual_completion_revalidation_evidence_ids.discard(
-                    self._manual_completion_revalidation_evidence_id(
-                        validation_result
-                    )
-                )
                 validation_result.update(
                     {
                         "passed": False,
@@ -16996,6 +27318,9 @@ class PortalImplementationDaemon:
         completion_intent: Mapping[str, Any] | None = None,
         manual_completion_authority_context_id: str = "",
         manual_completion_authority_evidence: Mapping[str, Any] | None = None,
+        manual_completion_authority_expected_tree_identity: (
+            Mapping[str, Any] | None
+        ) = None,
     ) -> dict[str, Any]:
         completion_kwargs: dict[str, Any] = {}
         if expected_task_cids is not None:
@@ -17014,6 +27339,10 @@ class PortalImplementationDaemon:
             completion_kwargs[
                 "manual_completion_authority_evidence"
             ] = manual_completion_authority_evidence
+        if manual_completion_authority_expected_tree_identity is not None:
+            completion_kwargs[
+                "manual_completion_authority_expected_tree_identity"
+            ] = manual_completion_authority_expected_tree_identity
         return self._mark_tasks_completed_in_todo(
             [task_id],
             primary_task_id=task_id,
@@ -17095,13 +27424,32 @@ class PortalImplementationDaemon:
             ] = self._manual_completion_authority_policy_id()
             if manual_completion_authority_evidence is not None:
                 expectation[
-                    "manual_completion_authority_evidence"
-                ] = _bounded_merge_proof_value(
-                    manual_completion_authority_evidence,
-                    field_name=(
-                        "manual_completion_authority_evidence"
-                    ),
+                    "manual_completion_authority_evidence_id"
+                ] = self._manual_completion_revalidation_evidence_id(
+                    manual_completion_authority_evidence
                 )
+                validated_tree_identity = (
+                    manual_completion_authority_evidence.get(
+                        "manual_completion_authority_validated_tree_identity"
+                    )
+                )
+                validated_tree_id = str(
+                    manual_completion_authority_evidence.get(
+                        "manual_completion_authority_validated_tree_id"
+                    )
+                    or ""
+                )
+                if (
+                    isinstance(validated_tree_identity, Mapping)
+                    and validated_tree_id
+                    == content_identity(validated_tree_identity)
+                ):
+                    expectation[
+                        "manual_completion_authority_validated_tree_identity"
+                    ] = dict(validated_tree_identity)
+                    expectation[
+                        "manual_completion_authority_validated_tree_id"
+                    ] = validated_tree_id
         if self.task_source is None:
             tasks_by_id = {
                 task.task_id: task for task in self._load_tasks()
@@ -17436,6 +27784,181 @@ class PortalImplementationDaemon:
             self._write_completion_callback_record(record_path, current)
         return result
 
+    def _fresh_post_merge_authority_for_callback_expectation(
+        self,
+        expectation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Revalidate an ID-only completion journal without trusting its ID.
+
+        Callback journals intentionally retain no raw validation evidence.  A
+        restart therefore treats the stored evidence ID as diagnostics only,
+        loads the exact bound task/commit/tree, and produces a new uncached PMV
+        result before any recovery mutation or publication is attempted.
+        """
+
+        failure: dict[str, Any] = {
+            "passed": False,
+            "reason": "completion_callback_authority_revalidation_required",
+        }
+        evidence_id = str(
+            expectation.get("manual_completion_authority_evidence_id") or ""
+        )
+        identity = expectation.get(
+            "manual_completion_authority_validated_tree_identity"
+        )
+        identity_id = str(
+            expectation.get(
+                "manual_completion_authority_validated_tree_id"
+            )
+            or ""
+        )
+        raw_task_ids = expectation.get("task_ids")
+        task_ids = (
+            [str(item).strip() for item in raw_task_ids]
+            if isinstance(raw_task_ids, Sequence)
+            and not isinstance(raw_task_ids, (str, bytes, bytearray))
+            and all(isinstance(item, str) and item.strip() for item in raw_task_ids)
+            else []
+        )
+        if (
+            not evidence_id
+            or not isinstance(identity, Mapping)
+            or set(identity)
+            != {"schema", "target_commit", "repository_tree_id"}
+            or identity.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            )
+            or identity_id != content_identity(identity)
+            or len(task_ids) != len(set(task_ids))
+            or not task_ids
+        ):
+            return {**failure, "detail": "callback_authority_binding_invalid"}
+        target_commit = str(identity.get("target_commit") or "")
+        repository_tree_id = str(identity.get("repository_tree_id") or "")
+        if (
+            re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", target_commit) is None
+            or re.fullmatch(
+                r"git-tree:(?:[0-9a-f]{40}|[0-9a-f]{64})", repository_tree_id
+            )
+            is None
+        ):
+            return {**failure, "detail": "callback_authority_tree_invalid"}
+        guard = self._refresh_manual_completion_authority_guard()
+        if guard.get("available") is not True:
+            return {
+                **failure,
+                "detail": "callback_authority_guard_unavailable",
+                "guard": {
+                    key: value for key, value in guard.items() if key != "_tasks"
+                },
+            }
+        tasks_by_id = {
+            task.task_id: task
+            for task in guard.get("_tasks", ())
+            if isinstance(task, PortalTask)
+        }
+        authority_task_ids = sorted(
+            set(task_ids)
+            & set(self._manual_completion_authority_revalidation_task_ids)
+        )
+        if len(authority_task_ids) != 1:
+            return {
+                **failure,
+                "detail": "callback_authority_task_binding_invalid",
+                "authority_task_ids": authority_task_ids,
+            }
+        task = tasks_by_id.get(authority_task_ids[0])
+        if task is None:
+            return {**failure, "detail": "callback_authority_task_missing"}
+        gate = self._run_post_merge_completion_validation(
+            task,
+            target_commit=target_commit,
+        )
+        gate = self._recheck_post_merge_publication_binding(
+            gate,
+            task_id=task.task_id,
+            target_branch=self._main_branch_name(),
+        )
+        raw_evidence = gate.get("_manual_completion_authority_evidence")
+        if gate.get("passed") is not True or not isinstance(
+            raw_evidence, Mapping
+        ):
+            return {
+                **failure,
+                "detail": "callback_authority_fresh_validation_failed",
+                "validation": {
+                    key: value
+                    for key, value in gate.items()
+                    if key
+                    not in {"evidence", "_manual_completion_authority_evidence"}
+                },
+            }
+        rejection = self._manual_completion_authority_rejection(
+            task_ids,
+            authority_context_id=str(
+                raw_evidence.get(
+                    "manual_completion_authority_context_id"
+                )
+                or ""
+            ),
+            authority_evidence=raw_evidence,
+            expected_validated_tree_identity=identity,
+            _pending_producer_evidence=True,
+        )
+        if rejection is not None:
+            return {
+                **failure,
+                "detail": "callback_authority_fresh_evidence_invalid",
+                "authority_rejection": rejection,
+            }
+        return {
+            "passed": True,
+            "task": task,
+            "tasks": [tasks_by_id[task_id] for task_id in task_ids],
+            "task_ids": task_ids,
+            "target_commit": target_commit,
+            "repository_tree_id": repository_tree_id,
+            "authority_evidence": raw_evidence,
+            "validation": gate.get("evidence"),
+        }
+
+    def _completion_callback_expectation_matches_current_pre_state(
+        self,
+        expectation: Mapping[str, Any],
+    ) -> bool:
+        """Return whether an ID-only journal still names its exact pre-state."""
+
+        raw_task_ids = expectation.get("task_ids")
+        if not isinstance(raw_task_ids, Sequence) or isinstance(
+            raw_task_ids, (str, bytes, bytearray)
+        ):
+            return False
+        task_ids = [str(item).strip() for item in raw_task_ids]
+        if not task_ids or any(not item for item in task_ids):
+            return False
+        try:
+            current = self._completion_callback_expectation(task_ids)
+        except (OSError, TaskSourceError, ValueError):
+            return False
+
+        def authority_redacted(value: Mapping[str, Any]) -> dict[str, Any]:
+            return {
+                key: item
+                for key, item in value.items()
+                if key
+                not in {
+                    "expectation_id",
+                    "manual_completion_authority_evidence",
+                    "manual_completion_authority_evidence_id",
+                    "manual_completion_authority_validated_tree_identity",
+                    "manual_completion_authority_validated_tree_id",
+                }
+            }
+
+        return authority_redacted(expectation) == authority_redacted(current)
+
     def _recover_pending_external_completion_callbacks(
         self,
     ) -> dict[str, Any]:
@@ -17476,37 +27999,6 @@ class PortalImplementationDaemon:
                     "reason": "completion_callback_journal_incomplete",
                     "record_path": str(record_path),
                 }
-            authority_rejection = (
-                self._manual_completion_authority_rejection(
-                    expectation.get("task_ids", ()),
-                    authority_context_id=str(
-                        expectation.get(
-                            "manual_completion_authority_context_id"
-                        )
-                        or ""
-                    ),
-                    authority_evidence=(
-                        expectation.get(
-                            "manual_completion_authority_evidence"
-                        )
-                        if isinstance(
-                            expectation.get(
-                                "manual_completion_authority_evidence"
-                            ),
-                            Mapping,
-                        )
-                        else None
-                    ),
-                )
-            )
-            if authority_rejection is not None:
-                return {
-                    "required": True,
-                    "blocked": True,
-                    "recovered": recovered,
-                    "record_path": str(record_path),
-                    **authority_rejection,
-                }
             try:
                 sink = self._validated_completion_publication_sink(
                     completion_intent
@@ -17526,13 +28018,152 @@ class PortalImplementationDaemon:
                     raise ValueError(
                         "completion callback filename/state binding mismatch"
                     )
-                result = (
-                    self._run_external_completion_callback_transaction(
-                        expectation=expectation,
-                        completion_intent=completion_intent,
-                        callback=None,
-                    )
+                raw_journal_evidence = expectation.get(
+                    "manual_completion_authority_evidence"
                 )
+                id_only_authority = bool(
+                    expectation.get(
+                        "manual_completion_authority_evidence_id"
+                    )
+                    and not isinstance(raw_journal_evidence, Mapping)
+                )
+                if id_only_authority:
+                    fresh = (
+                        self._fresh_post_merge_authority_for_callback_expectation(
+                            expectation
+                        )
+                    )
+                    if fresh.get("passed") is not True:
+                        return {
+                            "required": True,
+                            "blocked": True,
+                            "recovered": recovered,
+                            "reason": (
+                                "completion_callback_fresh_revalidation_required"
+                            ),
+                            "record_path": str(record_path),
+                            "fresh_revalidation": fresh,
+                        }
+                    fresh_evidence = fresh["authority_evidence"]
+                    if self._completion_callback_expectation_matches_current_pre_state(
+                        expectation
+                    ):
+                        # No callback mutation occurred. Remove only the exact
+                        # pending record, then let the normal scoped wrapper
+                        # create a fresh journal and perform the mutation once.
+                        with serialized_lock_update(record_path):
+                            current = self._validated_completion_callback_record(
+                                load_json_dict(record_path)
+                            )
+                            if (
+                                current is None
+                                or current.get("record_id")
+                                != record.get("record_id")
+                                or current.get("phase") != "pending"
+                            ):
+                                raise RuntimeError(
+                                    "completion callback pre-state journal changed"
+                                )
+                            record_path.unlink()
+                        members = expectation.get("members")
+                        completion_task_cids = {
+                            str(member.get("task_id") or ""): str(
+                                member.get("canonical_task_cid") or ""
+                            )
+                            for member in members
+                            if isinstance(member, Mapping)
+                            and str(member.get("task_id") or "")
+                            and str(member.get("canonical_task_cid") or "")
+                        } if isinstance(members, Sequence) else {}
+                        result = self._mark_reconciled_completion_in_todo(
+                            fresh["task"],
+                            fresh["tasks"],
+                            completion_task_cids,
+                            expected_target_commit=str(
+                                fresh["target_commit"]
+                            ),
+                            expected_repository_tree_id=str(
+                                fresh["repository_tree_id"]
+                            ),
+                            completion_intent=completion_intent,
+                            validation_evidence=fresh_evidence,
+                        )
+                    else:
+                        evidence_id = (
+                            self._mint_ephemeral_manual_completion_authority_evidence(
+                                fresh_evidence
+                            )
+                        )
+                        try:
+                            result = (
+                                self._run_external_completion_callback_transaction(
+                                    expectation=expectation,
+                                    completion_intent=completion_intent,
+                                    callback=None,
+                                )
+                            )
+                            revalidation_members = sorted(
+                                set(fresh["task_ids"])
+                                & set(
+                                    self._manual_completion_authority_revalidation_task_ids
+                                )
+                            )
+                            receipt_result = (
+                                self._persist_manual_completion_revalidation_receipts(
+                                    revalidation_members,
+                                    authority_context_id=str(
+                                        fresh_evidence.get(
+                                            "manual_completion_authority_context_id"
+                                        )
+                                        or ""
+                                    ),
+                                    authority_evidence=fresh_evidence,
+                                    expected_target_commit=str(
+                                        fresh["target_commit"]
+                                    ),
+                                )
+                            )
+                            result[
+                                "manual_completion_authority_revalidation_receipt"
+                            ] = receipt_result
+                            if receipt_result.get("persisted") is not True:
+                                result["durable"] = False
+                        finally:
+                            self._discard_retained_manual_completion_authority_evidence(
+                                evidence_id
+                            )
+                else:
+                    authority_rejection = (
+                        self._manual_completion_authority_rejection(
+                            expectation.get("task_ids", ()),
+                            authority_context_id=str(
+                                expectation.get(
+                                    "manual_completion_authority_context_id"
+                                )
+                                or ""
+                            ),
+                            authority_evidence=(
+                                raw_journal_evidence
+                                if isinstance(raw_journal_evidence, Mapping)
+                                else None
+                            ),
+                        )
+                    )
+                    if authority_rejection is not None:
+                        return {
+                            "required": True,
+                            "blocked": True,
+                            "recovered": recovered,
+                            "record_path": str(record_path),
+                            **authority_rejection,
+                        }
+                    result = (
+                        self._run_external_completion_callback_transaction(
+                            expectation=expectation,
+                            completion_intent=completion_intent,
+                            callback=None,
+                        )
+                    )
             except Exception as exc:
                 return {
                     "required": True,
@@ -17598,33 +28229,59 @@ class PortalImplementationDaemon:
         completion_task_cids: Mapping[str, str],
         *,
         expected_target_commit: str = "",
+        expected_repository_tree_id: str = "",
+        completion_intent: Mapping[str, Any] | None = None,
         validation_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Persist reconciliation completion under exact task-revision CIDs."""
+        """Persist reconciliation under an exact post-merge capability."""
 
         work_order = self._bundle_work_order_for_task(task)
+        task_ids = [
+            completion_task.task_id for completion_task in completion_tasks
+        ]
+        completion_reason = (
+            "merge_reconciliation_bundle"
+            if work_order is not None
+            else "merge_reconciliation"
+        )
+        bundle_payload = (
+            work_order.to_dict() if work_order is not None else None
+        )
+        if self.manual_completion_authority_task_ids:
+            evidence = (
+                validation_evidence
+                if isinstance(validation_evidence, Mapping)
+                else {}
+            )
+            expected_tree_identity = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                ),
+                "target_commit": str(expected_target_commit or ""),
+                "repository_tree_id": str(
+                    expected_repository_tree_id or ""
+                ),
+            }
+            return self._mark_post_merge_completion_with_ephemeral_authority(
+                task_ids,
+                primary_task_id=task.task_id,
+                completion_reason=completion_reason,
+                bundle_work_order=bundle_payload,
+                expected_task_cids=completion_task_cids,
+                expected_target_commit=expected_target_commit,
+                completion_intent=completion_intent,
+                authority_evidence=evidence,
+                expected_validated_tree_identity=expected_tree_identity,
+            )
         return self._mark_tasks_completed_in_todo(
-            [completion_task.task_id for completion_task in completion_tasks],
+            task_ids,
             primary_task_id=task.task_id,
-            completion_reason=(
-                "merge_reconciliation_bundle"
-                if work_order is not None
-                else "merge_reconciliation"
-            ),
-            bundle_work_order=(
-                work_order.to_dict()
-                if work_order is not None
-                else None
-            ),
+            completion_reason=completion_reason,
+            bundle_work_order=bundle_payload,
             expected_task_cids=completion_task_cids,
             expected_target_commit=expected_target_commit,
-            manual_completion_authority_context_id=str(
-                (validation_evidence or {}).get(
-                    "manual_completion_authority_context_id"
-                )
-                or ""
-            ),
-            manual_completion_authority_evidence=validation_evidence,
+            completion_intent=completion_intent,
         )
 
     def _fsynced_runtime_taskboard_completion_snapshot(
@@ -18144,6 +28801,95 @@ class PortalImplementationDaemon:
             result["runtime_taskboard_binding"] = runtime_binding
         return result
 
+    def _mark_post_merge_completion_with_ephemeral_authority(
+        self,
+        task_ids: Sequence[str],
+        *,
+        primary_task_id: str,
+        completion_reason: str,
+        bundle_work_order: dict[str, Any] | None = None,
+        expected_task_cids: Mapping[str, str] | None = None,
+        expected_target_commit: str,
+        completion_intent: Mapping[str, Any] | None,
+        authority_evidence: Mapping[str, Any],
+        expected_validated_tree_identity: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Publish one post-merge completion under a short-lived capability.
+
+        The post-merge producer deliberately does not publish its raw evidence.
+        First run the complete authority verifier with only producer membership
+        waived and with an exact commit/tree identity.  Only after every check
+        passes do we mint a set-only token, and its lifetime is exactly the
+        board mutation plus durable receipt publication below.
+        """
+
+        normalized_task_ids = [
+            str(task_id).strip()
+            for task_id in dict.fromkeys(task_ids)
+            if str(task_id).strip()
+        ]
+        authority_context_id = str(
+            authority_evidence.get(
+                "manual_completion_authority_context_id"
+            )
+            or ""
+        )
+        rejection = self._manual_completion_authority_rejection(
+            normalized_task_ids,
+            authority_context_id=authority_context_id,
+            authority_evidence=authority_evidence,
+            expected_validated_tree_identity=(
+                expected_validated_tree_identity
+            ),
+            _pending_producer_evidence=True,
+        )
+        failure = {
+            "updated": False,
+            "durable": False,
+            "task_id": primary_task_id,
+            "completion_reason": completion_reason,
+            "expected_task_ids": normalized_task_ids,
+        }
+        if rejection is not None:
+            return {
+                **failure,
+                "reason": "post_merge_manual_completion_authority_invalid",
+                "manual_completion_authority_rejection": rejection,
+            }
+        try:
+            evidence_id = (
+                self._mint_ephemeral_manual_completion_authority_evidence(
+                    authority_evidence
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            return {
+                **failure,
+                "reason": "post_merge_manual_completion_authority_mint_failed",
+                "authority_mint_error": str(exc)[-1000:],
+            }
+        try:
+            return self._mark_tasks_completed_in_todo(
+                normalized_task_ids,
+                primary_task_id=primary_task_id,
+                completion_reason=completion_reason,
+                bundle_work_order=bundle_work_order,
+                expected_task_cids=expected_task_cids,
+                expected_target_commit=expected_target_commit,
+                completion_intent=completion_intent,
+                manual_completion_authority_context_id=(
+                    authority_context_id
+                ),
+                manual_completion_authority_evidence=authority_evidence,
+                manual_completion_authority_expected_tree_identity=(
+                    expected_validated_tree_identity
+                ),
+            )
+        finally:
+            self._discard_retained_manual_completion_authority_evidence(
+                evidence_id
+            )
+
     def _mark_tasks_completed_in_todo(
         self,
         task_ids: Sequence[str],
@@ -18157,6 +28903,9 @@ class PortalImplementationDaemon:
         completion_intent: Mapping[str, Any] | None = None,
         manual_completion_authority_context_id: str = "",
         manual_completion_authority_evidence: Mapping[str, Any] | None = None,
+        manual_completion_authority_expected_tree_identity: (
+            Mapping[str, Any] | None
+        ) = None,
     ) -> dict[str, Any]:
         expected_task_ids = [
             str(task_id).strip()
@@ -18167,6 +28916,9 @@ class PortalImplementationDaemon:
             expected_task_ids,
             authority_context_id=manual_completion_authority_context_id,
             authority_evidence=manual_completion_authority_evidence,
+            expected_validated_tree_identity=(
+                manual_completion_authority_expected_tree_identity
+            ),
         )
         if authority_rejection is not None:
             result = {
@@ -18215,6 +28967,9 @@ class PortalImplementationDaemon:
                         ),
                         authority_evidence=(
                             manual_completion_authority_evidence
+                        ),
+                        expected_validated_tree_identity=(
+                            manual_completion_authority_expected_tree_identity
                         ),
                     )
                 )
@@ -19545,6 +30300,18 @@ class PortalImplementationDaemon:
         completion_task_ids = (
             work_order.task_ids if work_order is not None else [task.task_id]
         )
+        candidate_tree = self._candidate_repository_tree(implementation_commit)
+        repository_tree_id = (
+            f"git-tree:{candidate_tree}" if candidate_tree else ""
+        )
+        expected_candidate_authority_identity = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": implementation_commit,
+            "repository_tree_id": repository_tree_id,
+        }
         authority_context_id = self._manual_completion_authority_policy_id()
         if self.manual_completion_authority_task_ids:
             authority_guard = self._refresh_manual_completion_authority_guard()
@@ -19577,6 +30344,11 @@ class PortalImplementationDaemon:
                     completion_task_ids,
                     authority_context_id=validation_context_id,
                     authority_evidence=validation_result,
+                    expected_validated_tree_identity=(
+                        expected_candidate_authority_identity
+                        if revalidation_members
+                        else None
+                    ),
                 )
             )
             if validation_authority_rejection:
@@ -19621,8 +30393,6 @@ class PortalImplementationDaemon:
             raise RuntimeError(
                 str(protected_rejection.get("reason") or "protected merge candidate rejected")
             )
-        candidate_tree = self._candidate_repository_tree(implementation_commit)
-        repository_tree_id = f"git-tree:{candidate_tree}" if candidate_tree else ""
         proof_changed_scopes, proof_changed_scopes_complete = (
             self._proof_changed_scopes(
                 baseline_ref=baseline_ref,
@@ -19678,11 +30448,41 @@ class PortalImplementationDaemon:
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
             )
         if validation_result is not None:
+            committed_authority_evidence_id = ""
+            if validation_result.get(
+                "committed_candidate_authority_validation"
+            ) is not None:
+                committed_authority_evidence_id = (
+                    self._manual_completion_revalidation_evidence_id(
+                        validation_result
+                    )
+                )
+                retained_authority_evidence = (
+                    self._trusted_manual_completion_revalidation_evidence_by_id.get(
+                        committed_authority_evidence_id
+                    )
+                )
+                if (
+                    committed_authority_evidence_id
+                    not in self._trusted_manual_completion_revalidation_evidence_ids
+                    or not isinstance(retained_authority_evidence, Mapping)
+                    or self._manual_completion_revalidation_evidence_id(
+                        retained_authority_evidence
+                    )
+                    != committed_authority_evidence_id
+                    or not _committed_candidate_authority_attestation_valid(
+                        retained_authority_evidence
+                    )
+                ):
+                    raise RuntimeError(
+                        "committed authority evidence is not retained exactly"
+                    )
             result_records = [
                 {
                     key: item.get(key)
                     for key in (
                         "command",
+                        "raw_command",
                         "validation_id",
                         "returncode",
                         "passed",
@@ -19698,6 +30498,7 @@ class PortalImplementationDaemon:
                         "ordinal",
                         "started_at",
                         "finished_at",
+                        "authority_validation_command_binding",
                         "authority_validation_isolation_receipt",
                     )
                     if key in item
@@ -19711,10 +30512,8 @@ class PortalImplementationDaemon:
                 "attempted": bool(validation_result.get("attempted")),
                 "passed": bool(validation_result.get("passed")),
                 "returncode": int(validation_result.get("returncode") or 0),
-                # Validation runs before the daemon creates its commit.  The
-                # merge gate must bind the evidence to the immutable commit
-                # and Git tree that were actually enqueued, not the earlier
-                # workspace HEAD reported by the validation scheduler.
+                # The authority gate above proves the decisive command
+                # receipts observed this exact immutable commit/tree.
                 "target_commit": implementation_commit,
                 "target_tree": candidate_tree,
                 "repository_tree_id": repository_tree_id,
@@ -19793,6 +30592,17 @@ class PortalImplementationDaemon:
                         ),
                     )
                 ),
+                "manual_completion_authority_executed_validation_commands": (
+                    _bounded_merge_proof_value(
+                        validation_result.get(
+                            "manual_completion_authority_executed_validation_commands"
+                        )
+                        or [],
+                        field_name=(
+                            "manual_completion_authority_executed_validation_commands"
+                        ),
+                    )
+                ),
                 "manual_completion_authority_revocation_generation": int(
                     validation_result.get(
                         "manual_completion_authority_revocation_generation"
@@ -19822,24 +30632,20 @@ class PortalImplementationDaemon:
                     )
                     or 0
                 ),
+                "committed_candidate_authority_validation": (
+                    _bounded_merge_proof_value(
+                        validation_result.get(
+                            "committed_candidate_authority_validation"
+                        ),
+                        field_name=(
+                            "committed_candidate_authority_validation"
+                        ),
+                    )
+                ),
+                "manual_completion_authority_full_evidence_id": (
+                    committed_authority_evidence_id
+                ),
             }
-            if validation_proof.get(
-                "manual_completion_authority_revalidation"
-            ):
-                candidate_authority_tree_identity = {
-                    "schema": (
-                        "ipfs_accelerate_py.agent_supervisor."
-                        "manual-completion-validated-tree@1"
-                    ),
-                    "target_commit": implementation_commit,
-                    "repository_tree_id": repository_tree_id,
-                }
-                validation_proof[
-                    "manual_completion_authority_validated_tree_identity"
-                ] = candidate_authority_tree_identity
-                validation_proof[
-                    "manual_completion_authority_validated_tree_id"
-                ] = content_identity(candidate_authority_tree_identity)
             raw_proof_gate = validation_result.get(
                 "proof_gate",
                 validation_result.get("proof_gate_packet"),
@@ -19864,19 +30670,6 @@ class PortalImplementationDaemon:
                         )
                     )
             metadata["validation_proof"] = validation_proof
-            if validation_proof.get(
-                "manual_completion_authority_revalidation"
-            ):
-                # Projection to the immutable candidate tree creates a new
-                # authority-bearing evidence identity.  Trust it only because
-                # the original runtime evidence passed the in-process gate
-                # above; a queue file reconstructed after restart cannot mint
-                # this producer token for itself.
-                self._trusted_manual_completion_revalidation_evidence_ids.add(
-                    self._manual_completion_revalidation_evidence_id(
-                        validation_proof
-                    )
-                )
         if self.formal_verification_policy is not None:
             metadata["formal_verification_policy"] = _bounded_merge_proof_value(
                 self.formal_verification_policy,
@@ -19886,6 +30679,30 @@ class PortalImplementationDaemon:
             metadata["bundle_work_order"] = work_order.to_dict()
         if worktree_pool_handoff:
             metadata["worktree_pool_handoff"] = True
+        committed_attestation = (
+            validation_result.get(
+                "committed_candidate_authority_validation"
+            )
+            if isinstance(validation_result, Mapping)
+            else None
+        )
+        if isinstance(committed_attestation, Mapping):
+            metadata[
+                "manual_completion_authority_rotation_binding_id"
+            ] = _manual_completion_authority_rotation_binding_id(
+                branch_name=branch_name,
+                baseline_ref=baseline_ref,
+                implementation_commit=implementation_commit,
+                candidate_tree=candidate_tree,
+                target_repository_id=self.merge_target_repository_id,
+                target_branch=self.resolved_merge_target_branch,
+                task_id=task.task_id,
+                canonical_task_cid=identity.canonical_task_cid,
+                canonical_task_key=identity.canonical_task_key,
+                completion_task_cids=completion_task_cids,
+                todo_path=str(self.todo_path),
+                evidence=validation_result,
+            )
         request = self.merge_queue.enqueue(
             branch_name=branch_name,
             task_id=task.task_id,
@@ -19899,6 +30716,61 @@ class PortalImplementationDaemon:
             target_repository_id=self.merge_target_repository_id,
             target_branch=self.resolved_merge_target_branch,
         )
+        requested_authority_evidence_id = str(
+            (
+                metadata.get("validation_proof")
+                if isinstance(metadata.get("validation_proof"), Mapping)
+                else {}
+            ).get("manual_completion_authority_full_evidence_id")
+            or ""
+        ).strip()
+        returned_validation_proof = (
+            request.metadata.get("validation_proof")
+            if isinstance(request.metadata, Mapping)
+            and isinstance(request.metadata.get("validation_proof"), Mapping)
+            else {}
+        )
+        returned_authority_evidence_id = str(
+            returned_validation_proof.get(
+                "manual_completion_authority_full_evidence_id"
+            )
+            or ""
+        ).strip()
+        if (
+            requested_authority_evidence_id
+            and returned_authority_evidence_id
+            != requested_authority_evidence_id
+        ):
+            rotate_authority = getattr(
+                self.merge_queue,
+                "rotate_pending_manual_authority_evidence",
+                None,
+            )
+            rotated_request = (
+                rotate_authority(
+                    str(request.request_id),
+                    commit_sha=implementation_commit,
+                    branch_name=branch_name,
+                    task_id=task.task_id,
+                    canonical_task_id=identity.canonical_task_cid,
+                    canonical_task_key=identity.canonical_task_key,
+                    expected_previous_evidence_id=(
+                        returned_authority_evidence_id
+                    ),
+                    metadata=metadata,
+                    lane_id=f"{os.getpid()}:{self.task_shard_index}",
+                    attempt=attempt,
+                )
+                if callable(rotate_authority)
+                and returned_authority_evidence_id
+                else None
+            )
+            if rotated_request is None:
+                raise RuntimeError(
+                    "pending manual-authority merge capability could not "
+                    "be rotated to the fresh committed evidence"
+                )
+            request = rotated_request
         result = {
             "attempted": False,
             "merged": False,
@@ -21494,6 +32366,63 @@ class PortalImplementationDaemon:
                 )
                 if str(task_id or "").strip()
             )
+        compact_authority_evidence = (
+            metadata.get("validation_proof")
+            if isinstance(metadata.get("validation_proof"), Mapping)
+            else None
+        )
+        merge_authority_evidence = (
+            completion_daemon._retained_manual_completion_authority_evidence(
+                compact_authority_evidence
+            )
+        )
+        queued_rotation_binding_id = str(
+            metadata.get(
+                "manual_completion_authority_rotation_binding_id"
+            )
+            or ""
+        )
+        queued_full_evidence_id = str(
+            compact_authority_evidence.get(
+                "manual_completion_authority_full_evidence_id"
+            )
+            or ""
+        ).strip() if isinstance(compact_authority_evidence, Mapping) else ""
+        if not _manual_completion_authority_rotation_binding_valid(
+            queued_binding_id=queued_rotation_binding_id,
+            queued_full_evidence_id=queued_full_evidence_id,
+            branch_name=branch_name,
+            baseline_ref=str(metadata.get("baseline_ref") or ""),
+            implementation_commit=implementation_commit,
+            candidate_tree=authority_candidate_tree,
+            target_repository_id=str(
+                metadata.get("target_repository_id") or ""
+            ),
+            target_branch=str(metadata.get("target_branch") or ""),
+            task_id=task.task_id,
+            canonical_task_cid=str(
+                getattr(request, "canonical_task_id", "") or ""
+            ),
+            canonical_task_key=str(
+                getattr(request, "canonical_task_key", "") or ""
+            ),
+            completion_task_cids=completion_task_cids,
+            todo_path=str(metadata.get("todo_path") or ""),
+            evidence=(
+                merge_authority_evidence
+                if isinstance(merge_authority_evidence, Mapping)
+                else {}
+            ),
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "task_id": task.task_id,
+                "reason": (
+                    "manual_completion_authority_rotation_binding_invalid"
+                ),
+            }
         authority_rejection = (
             completion_daemon._manual_completion_authority_rejection(
                 completion_authority_task_ids,
@@ -21503,14 +32432,7 @@ class PortalImplementationDaemon:
                     )
                     or ""
                 ),
-                authority_evidence=(
-                    metadata.get("validation_proof")
-                    if isinstance(
-                        metadata.get("validation_proof"),
-                        Mapping,
-                    )
-                    else None
-                ),
+                authority_evidence=merge_authority_evidence,
                 expected_validated_tree_identity=(
                     completion_authority_validated_tree_identity
                 ),
@@ -21891,11 +32813,7 @@ class PortalImplementationDaemon:
                         or ""
                     ),
                     "manual_completion_authority_evidence": (
-                        metadata.get("validation_proof")
-                        if isinstance(
-                            metadata.get("validation_proof"), Mapping
-                        )
-                        else None
+                        merge_authority_evidence
                     ),
                     "manual_completion_authority_expected_generation": (
                         authority_generation_before_merge
@@ -22288,30 +33206,6 @@ class PortalImplementationDaemon:
                     ),
                     "expected_target_commit": target_commit,
                 }
-                if completion_daemon.manual_completion_authority_task_ids:
-                    authority_evidence = (
-                        post_merge_completion_gate.get(
-                            "_manual_completion_authority_evidence"
-                        )
-                    )
-                    authority_evidence = (
-                        authority_evidence
-                        if isinstance(authority_evidence, Mapping)
-                        else {}
-                    )
-                    completion_mutation_kwargs.update(
-                        {
-                            "manual_completion_authority_context_id": str(
-                                authority_evidence.get(
-                                    "manual_completion_authority_context_id"
-                                )
-                                or ""
-                            ),
-                            "manual_completion_authority_evidence": (
-                                authority_evidence or None
-                            ),
-                        }
-                    )
                 if (
                     completion_daemon.task_source is not None
                     or completion_daemon._todo_board_is_implementation_protected()
@@ -22321,7 +33215,7 @@ class PortalImplementationDaemon:
                     )
                 bundle_payload = metadata.get("bundle_work_order")
                 if isinstance(bundle_payload, dict):
-                    task_ids = [
+                    completion_task_ids = [
                         str(item)
                         for item in [
                             bundle_payload.get("primary_task_id"),
@@ -22329,20 +33223,92 @@ class PortalImplementationDaemon:
                         ]
                         if str(item or "")
                     ]
-                    todo_update_result = completion_daemon._mark_tasks_completed_in_todo(
-                        task_ids,
-                        primary_task_id=str(bundle_payload.get("primary_task_id") or task.task_id),
-                        completion_reason="bundle_work_order",
-                        bundle_work_order=bundle_payload,
-                        **completion_mutation_kwargs,
+                    completion_primary_task_id = str(
+                        bundle_payload.get("primary_task_id") or task.task_id
+                    )
+                    completion_reason = "bundle_work_order"
+                else:
+                    completion_task_ids = [task.task_id]
+                    completion_primary_task_id = task.task_id
+                    completion_reason = "single_task"
+                if completion_daemon.manual_completion_authority_task_ids:
+                    authority_evidence_value = (
+                        post_merge_completion_gate.get(
+                            "_manual_completion_authority_evidence"
+                        )
+                    )
+                    authority_evidence = (
+                        authority_evidence_value
+                        if isinstance(authority_evidence_value, Mapping)
+                        else {}
+                    )
+                    expected_authority_tree_identity = {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "manual-completion-validated-tree@1"
+                        ),
+                        "target_commit": target_commit,
+                        "repository_tree_id": str(
+                            post_merge_completion_gate.get(
+                                "repository_tree_id"
+                            )
+                            or ""
+                        ),
+                    }
+                    todo_update_result = (
+                        completion_daemon._mark_post_merge_completion_with_ephemeral_authority(
+                            completion_task_ids,
+                            primary_task_id=completion_primary_task_id,
+                            completion_reason=completion_reason,
+                            bundle_work_order=(
+                                bundle_payload
+                                if isinstance(bundle_payload, dict)
+                                else None
+                            ),
+                            expected_task_cids=completion_mutation_kwargs.get(
+                                "expected_task_cids"
+                            ),
+                            expected_target_commit=target_commit,
+                            completion_intent=completion_mutation_kwargs.get(
+                                "completion_intent"
+                            ),
+                            authority_evidence=authority_evidence,
+                            expected_validated_tree_identity=(
+                                expected_authority_tree_identity
+                            ),
+                        )
                     )
                 else:
                     todo_update_result = (
-                        completion_daemon._mark_task_completed_in_todo(
-                            task.task_id,
+                        completion_daemon._mark_tasks_completed_in_todo(
+                            completion_task_ids,
+                            primary_task_id=completion_primary_task_id,
+                            completion_reason=completion_reason,
+                            bundle_work_order=(
+                                bundle_payload
+                                if isinstance(bundle_payload, dict)
+                                else None
+                            ),
                             **completion_mutation_kwargs,
                         )
                     )
+                if str(todo_update_result.get("reason") or "") in {
+                    "post_merge_manual_completion_authority_invalid",
+                    "post_merge_manual_completion_authority_mint_failed",
+                }:
+                    result.update(
+                        {
+                            "merged": False,
+                            "already_merged": False,
+                            "returncode": 2,
+                            "reason": str(todo_update_result["reason"]),
+                            "integration_occurred": True,
+                            "completion_skipped": True,
+                            "target_commit": target_commit,
+                            "todo_update_result": todo_update_result,
+                        }
+                    )
+                    return result
                 post_merge_completion_gate = (
                     completion_daemon._post_merge_validation_after_completion_cas(
                         post_merge_completion_gate,
@@ -22636,7 +33602,11 @@ class PortalImplementationDaemon:
             repository_tree_id=f"git-tree:{tree}" if tree else "",
         )
 
-    def _consume_one_merge_candidate(self) -> dict[str, Any] | None:
+    def _consume_one_merge_candidate(
+        self,
+        *,
+        allowed_request_ids: Sequence[str] | None = None,
+    ) -> dict[str, Any] | None:
         """Opportunistically advance one item while respecting the train lease."""
 
         from ..merge.merge_train import MergeTrain
@@ -22654,6 +33624,17 @@ class PortalImplementationDaemon:
             repo_root=self.repo_root,
             queue=self.merge_queue,
             target_branch=target_branch,
+            allowed_task_ids=(
+                tuple(sorted(self.execution_slice_task_ids))
+                if self.execution_slice_task_ids
+                else None
+            ),
+            allowed_canonical_task_cids=(
+                tuple(sorted(self.execution_slice_task_cids))
+                if self.execution_slice_task_cids
+                else None
+            ),
+            allowed_request_ids=allowed_request_ids,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
             post_merge_validation=self._merge_train_post_merge_validation,
@@ -22675,7 +33656,602 @@ class PortalImplementationDaemon:
             or (isinstance(merge_result, dict) and bool(merge_result.get("merged")))
         )
 
+    def _merge_train_authority_handoff_complete(
+        self,
+        result: Mapping[str, Any] | None,
+        *,
+        request_id: str,
+    ) -> bool:
+        """Require terminal acceptance and durable task completion."""
+
+        if not isinstance(result, Mapping):
+            return False
+        merge_result = result.get("merge_result")
+        if not isinstance(merge_result, Mapping):
+            return False
+        todo_update_result = merge_result.get("todo_update_result")
+        completion_receipts = (
+            todo_update_result.get("completion_receipts")
+            if isinstance(todo_update_result, Mapping)
+            else None
+        )
+        return bool(
+            self._merge_train_result_request_id(dict(result))
+            == str(request_id or "")
+            and result.get("status") in {"merged", "already_merged", "completed"}
+            and result.get("integrated") is True
+            and result.get("accepted") is True
+            and result.get("acceptance_pending") is False
+            and (
+                merge_result.get("merged") is True
+                or merge_result.get("already_merged") is True
+            )
+            and isinstance(todo_update_result, Mapping)
+            and self._todo_completion_is_durable(todo_update_result)
+            and isinstance(completion_receipts, Sequence)
+            and not isinstance(
+                completion_receipts,
+                (str, bytes, bytearray),
+            )
+            and bool(completion_receipts)
+            and all(
+                isinstance(receipt, Mapping)
+                and str(receipt.get("task_id") or "")
+                and str(receipt.get("canonical_task_cid") or "")
+                for receipt in completion_receipts
+            )
+        )
+
+    def _run_committed_dcr011_authority_validation(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        state: PortalTaskState,
+        log_path: Path,
+        baseline_ref: str,
+        implementation_commit: str,
+        precommit_validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Validate the exact clean DCR-011 carrier commit before enqueue.
+
+        The dirty-candidate validation authorizes creating the commit.  It
+        cannot authorize the immutable queue handoff: this second, uncached
+        pass observes the carrier commit itself and replaces (never relabels)
+        the precommit authority evidence.
+        """
+
+        original = dict(precommit_validation_result)
+        if task.task_id not in (
+            self._manual_completion_authority_revalidation_task_ids
+        ):
+            return original
+        task_cid = self._canonical_ref(task)
+        dcr_profile = bool(
+            task.task_id == "DCR-011"
+            or task_cid == AUTHORITY_VALIDATION_DCR_TASK_CID
+        )
+        committed_schema = (
+            "ipfs_accelerate_py.agent_supervisor."
+            + (
+                "committed-dcr011-authority-validation@1"
+                if dcr_profile
+                else "committed-generic-authority-validation@1"
+            )
+        )
+
+        precommit_evidence_id = self._manual_completion_revalidation_evidence_id(
+            original
+        )
+        self._trusted_manual_completion_revalidation_evidence_ids.discard(
+            precommit_evidence_id
+        )
+
+        def fail(reason: str, **details: Any) -> dict[str, Any]:
+            failed = {
+                **original,
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": reason,
+                "committed_candidate_authority_validation": {
+                    "schema": committed_schema,
+                    "authority_profile": (
+                        "dcr011_forest@1"
+                        if dcr_profile
+                        else "generic_workspace_only@1"
+                    ),
+                    "attempted": True,
+                    "passed": False,
+                    "implementation_commit": implementation_commit,
+                    "precommit_validation_evidence_id": precommit_evidence_id,
+                    **details,
+                },
+            }
+            self._trusted_manual_completion_revalidation_evidence_ids.discard(
+                self._manual_completion_revalidation_evidence_id(failed)
+            )
+            return failed
+
+        if dcr_profile and (
+            task.task_id != "DCR-011"
+            or task_cid != AUTHORITY_VALIDATION_DCR_TASK_CID
+        ):
+            return fail("committed_dcr011_authority_membership_missing")
+        if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", implementation_commit) is None:
+            return fail("committed_dcr011_authority_commit_invalid")
+
+        checkout_budget = _TrackedCheckoutProofBudget.begin()
+        checkout_git_environment = sanitized_git_environment()
+
+        def run_checkout_git(
+            arguments: Sequence[str],
+        ) -> subprocess.CompletedProcess[str]:
+            checkout_budget.check(str(workspace_path))
+            bounded = _run_bounded_subprocess(
+                ["git", *arguments],
+                cwd=workspace_path,
+                environment=checkout_git_environment,
+                deadline=checkout_budget.deadline,
+                stdout_limit=(
+                    AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+                ),
+                stderr_limit=(
+                    AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+                ),
+                start_new_session=True,
+            )
+            checkout_budget.output_overflow = bool(
+                checkout_budget.output_overflow or bounded.output_overflow
+            )
+            checkout_budget.add_git_output(
+                len(bounded.stdout) + len(bounded.stderr),
+                str(workspace_path),
+            )
+            if bounded.timed_out:
+                raise AuthorityGitReplayError(
+                    "committed_checkout_proof_timeout",
+                    str(workspace_path),
+                )
+            if bounded.output_overflow:
+                raise AuthorityGitReplayError(
+                    "committed_checkout_proof_git_output_limit",
+                    str(workspace_path),
+                )
+            if not bounded.reaped:
+                raise AuthorityGitReplayError(
+                    "committed_checkout_proof_process_unreaped",
+                    str(workspace_path),
+                )
+            completed = subprocess.CompletedProcess(
+                list(bounded.args),
+                bounded.returncode,
+                stdout=bounded.stdout.decode(
+                    "utf-8", errors="surrogateescape"
+                ),
+                stderr=bounded.stderr.decode(
+                    "utf-8", errors="surrogateescape"
+                ),
+            )
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    "git "
+                    + " ".join(arguments)
+                    + " failed: "
+                    + completed.stderr[-1000:]
+                )
+            return completed
+
+        try:
+            before_lines = run_checkout_git(
+                ["rev-parse", "HEAD", "HEAD^{tree}"],
+            ).stdout.splitlines()
+            status_before = run_checkout_git(
+                [
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
+                ],
+            ).stdout
+            parent_fields = run_checkout_git(
+                ["rev-list", "--parents", "-n1", implementation_commit],
+            ).stdout.split()
+            subject = run_checkout_git(
+                ["show", "-s", "--format=%s", implementation_commit],
+            ).stdout.rstrip("\n")
+            changed_paths = tuple(
+                path
+                for path in run_checkout_git(
+                    [
+                        "diff-tree",
+                        "--no-commit-id",
+                        "--name-only",
+                        "-r",
+                        "-z",
+                        implementation_commit,
+                        "--",
+                    ],
+                ).stdout.split("\0")
+                if path
+            )
+        except AuthorityGitReplayError as exc:
+            return fail(
+                exc.reason,
+                budget_failure_detail=exc.detail,
+                checkout_proof_budget=checkout_budget.receipt(),
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return fail(
+                "committed_dcr011_authority_preflight_failed",
+                exception_type=type(exc).__name__,
+                checkout_proof_budget=checkout_budget.receipt(),
+            )
+
+        if (
+            len(before_lines) != 2
+            or before_lines[0] != implementation_commit
+            or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", before_lines[1])
+            or status_before
+        ):
+            return fail(
+                "committed_dcr011_authority_workspace_not_exact_clean",
+                observed_head=(before_lines[0] if before_lines else ""),
+                observed_tree=(before_lines[1] if len(before_lines) > 1 else ""),
+                dirty=bool(status_before),
+            )
+        carrier_tree = before_lines[1]
+        carrier_shape_valid = bool(
+            parent_fields == [implementation_commit, baseline_ref]
+            and (
+                not dcr_profile
+                or (
+                    subject == AUTHORITY_VALIDATION_DCR_CARRIER_SUBJECT
+                    and changed_paths
+                    == (AUTHORITY_VALIDATION_DCR_FOREST_ARTIFACT,)
+                )
+            )
+        )
+        if not carrier_shape_valid:
+            return fail(
+                (
+                    "committed_dcr011_authority_carrier_shape_invalid"
+                    if dcr_profile
+                    else "committed_generic_authority_parent_invalid"
+                ),
+                parents=parent_fields[1:],
+                subject=subject,
+                changed_paths=list(changed_paths),
+            )
+        checkout_proof_before = self._exact_post_merge_tracked_checkout_proof(
+            workspace_path,
+            expected_commit=implementation_commit,
+            budget=checkout_budget,
+            phase="before",
+        )
+        if checkout_proof_before.get("passed") is not True:
+            return fail(
+                "committed_dcr011_authority_checkout_not_exact",
+                checkout_proof=checkout_proof_before,
+                checkout_proof_budget=checkout_budget.receipt(),
+            )
+
+        decisive = self._run_validation_commands(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            proposal_validation=None,
+            force_uncached=True,
+            scope="pre_merge",
+            _publish_authority_evidence=False,
+        )
+        decisive_evidence_id = self._manual_completion_revalidation_evidence_id(
+            decisive
+        )
+        # This helper is the sole publisher for a committed candidate.  The
+        # runner result is diagnostic until the immutable checkout postflight
+        # and committed attestation below have both closed.
+        self._trusted_manual_completion_revalidation_evidence_ids.discard(
+            decisive_evidence_id
+        )
+        try:
+            after_lines = run_checkout_git(
+                ["rev-parse", "HEAD", "HEAD^{tree}"],
+            ).stdout.splitlines()
+            status_after = run_checkout_git(
+                [
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
+                ],
+            ).stdout
+        except AuthorityGitReplayError as exc:
+            decisive = {
+                **dict(decisive),
+                "passed": False,
+                "returncode": 1,
+                "reason": exc.reason,
+                "budget_failure_detail": exc.detail,
+            }
+            after_lines = []
+            status_after = "unavailable"
+        except (OSError, RuntimeError, ValueError) as exc:
+            decisive = {
+                **dict(decisive),
+                "passed": False,
+                "returncode": 1,
+                "reason": "committed_dcr011_authority_postflight_failed",
+                "exception_type": type(exc).__name__,
+            }
+            after_lines = []
+            status_after = "unavailable"
+        checkout_proof_after = self._exact_post_merge_tracked_checkout_proof(
+            workspace_path,
+            expected_commit=implementation_commit,
+            budget=checkout_budget,
+            phase="after",
+        )
+        checkout_proof_budget = checkout_budget.receipt()
+        before_observation_id = str(
+            checkout_proof_before.get("observation_id") or ""
+        )
+        after_observation_id = str(
+            checkout_proof_after.get("observation_id") or ""
+        )
+        checkout_observations_equal = bool(
+            before_observation_id
+            and before_observation_id == after_observation_id
+        )
+
+        expected_identity = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": implementation_commit,
+            "repository_tree_id": f"git-tree:{carrier_tree}",
+        }
+        raw_results = decisive.get("results")
+        results = (
+            [item for item in raw_results if isinstance(item, Mapping)]
+            if isinstance(raw_results, Sequence)
+            and not isinstance(raw_results, (str, bytes, bytearray))
+            else []
+        )
+        forest_receipt = (
+            results[1].get("authority_validation_isolation_receipt")
+            if len(results) == 2
+            else None
+        )
+        replay = (
+            forest_receipt.get("git_metadata_replay")
+            if isinstance(forest_receipt, Mapping)
+            else None
+        )
+        root_records = (
+            replay.get("root_identities")
+            if isinstance(replay, Mapping)
+            else None
+        )
+        root_record = next(
+            (
+                item
+                for item in root_records
+                if isinstance(item, Mapping)
+                and item.get("relative_path") == "."
+            ),
+            None,
+        ) if isinstance(root_records, Sequence) else None
+        lifecycle = (
+            root_record.get("lifecycle")
+            if isinstance(root_record, Mapping)
+            else None
+        )
+        bindings = [
+            item.get("authority_validation_command_binding")
+            for item in results
+        ]
+        expected_result_count = 2 if dcr_profile else len(task.validation)
+        expected_profile = (
+            "dcr011_forest@1"
+            if dcr_profile
+            else "generic_workspace_only@1"
+        )
+        decisive_valid = bool(
+            decisive.get("attempted") is True
+            and decisive.get("passed") is True
+            and int(decisive.get("returncode") or 0) == 0
+            and after_lines == [implementation_commit, carrier_tree]
+            and not status_after
+            and checkout_proof_after.get("passed") is True
+            and checkout_observations_equal
+            and checkout_proof_budget.get("output_overflow") is False
+            and decisive.get(
+                "manual_completion_authority_validated_tree_identity"
+            )
+            == expected_identity
+            and len(results) == expected_result_count
+            and [item.get("ordinal") for item in results]
+            == list(range(expected_result_count))
+            and all(isinstance(item, Mapping) for item in bindings)
+            and all(
+                item.get("expected_target_commit") == implementation_commit
+                and item.get("expected_target_tree") == carrier_tree
+                and item.get("authority_profile") == expected_profile
+                for item in bindings
+                if isinstance(item, Mapping)
+            )
+            and (
+                not dcr_profile
+                or (
+                    isinstance(lifecycle, Mapping)
+                    and lifecycle.get("mode") == "artifact_carried"
+                )
+            )
+        )
+        committed_attestation = {
+            "schema": committed_schema,
+            "authority_profile": expected_profile,
+            "attempted": True,
+            "passed": True,
+            "implementation_commit": implementation_commit,
+            "target_tree": carrier_tree,
+            "parent_commit": baseline_ref,
+            "subject": subject,
+            "changed_paths": list(changed_paths),
+            "lifecycle_mode": (
+                "artifact_carried" if dcr_profile else "not_requested"
+            ),
+            "precommit_validation_evidence_id": precommit_evidence_id,
+            "checkout_proof_before": checkout_proof_before,
+            "checkout_proof_after": checkout_proof_after,
+            "checkout_observations_equal": checkout_observations_equal,
+            "checkout_proof_budget": checkout_proof_budget,
+        }
+        committed_decisive = {
+            **dict(decisive),
+            "target_commit": implementation_commit,
+            "target_tree": carrier_tree,
+            "repository_tree_id": f"git-tree:{carrier_tree}",
+            "committed_candidate_authority_validation": (
+                committed_attestation
+            ),
+        }
+        decisive_valid = bool(
+            decisive_valid
+            and _committed_candidate_authority_attestation_valid(
+                committed_decisive
+            )
+        )
+        rejection: Mapping[str, Any] | None = None
+        final_evidence_id = ""
+        final_evidence_published = False
+        if decisive_valid:
+            try:
+                final_evidence_id = (
+                    self._manual_completion_revalidation_evidence_id(
+                        committed_decisive
+                    )
+                )
+                rejection = self._manual_completion_authority_rejection(
+                    [task.task_id],
+                    authority_context_id=str(
+                        committed_decisive.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    authority_evidence=committed_decisive,
+                    expected_validated_tree_identity=expected_identity,
+                    _pending_producer_evidence=True,
+                )
+                decisive_valid = rejection is None
+                if decisive_valid:
+                    self._retain_manual_completion_authority_evidence(
+                        final_evidence_id,
+                        committed_decisive,
+                    )
+                    final_evidence_published = True
+            except Exception as exc:
+                rejection = {
+                    "reason": (
+                        "committed_candidate_authority_postflight_exception"
+                    ),
+                    "exception_type": type(exc).__name__,
+                }
+                decisive_valid = False
+            finally:
+                if final_evidence_id and not final_evidence_published:
+                    self._discard_retained_manual_completion_authority_evidence(
+                        final_evidence_id
+                    )
+        if not decisive_valid:
+            self._trusted_manual_completion_revalidation_evidence_ids.discard(
+                decisive_evidence_id
+            )
+            failed = {
+                **dict(decisive),
+                "passed": False,
+                "returncode": 1,
+                "reason": str(decisive.get("reason") or "")
+                or "committed_dcr011_authority_validation_failed",
+                "committed_candidate_authority_validation": {
+                    "schema": committed_schema,
+                    "authority_profile": expected_profile,
+                    "attempted": True,
+                    "passed": False,
+                    "implementation_commit": implementation_commit,
+                    "target_tree": carrier_tree,
+                    "precommit_validation_evidence_id": precommit_evidence_id,
+                    "repository_drift": bool(
+                        after_lines != [implementation_commit, carrier_tree]
+                        or status_after
+                        or checkout_proof_after.get("passed") is not True
+                        or not checkout_observations_equal
+                    ),
+                    "checkout_proof_before": checkout_proof_before,
+                    "checkout_proof_after": checkout_proof_after,
+                    "checkout_observations_equal": (
+                        checkout_observations_equal
+                    ),
+                    "checkout_proof_budget": checkout_proof_budget,
+                    "authority_rejection": dict(rejection or {}),
+                },
+            }
+            self._trusted_manual_completion_revalidation_evidence_ids.discard(
+                self._manual_completion_revalidation_evidence_id(failed)
+            )
+            return failed
+        return committed_decisive
+
     def _enqueue_validated_worktree(
+        self,
+        *,
+        state: PortalTaskState,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+        baseline_ref: str,
+        worktree_path: Path,
+        implementation_commit: str,
+        commit_result: Mapping[str, Any],
+        validation_result: Mapping[str, Any],
+        changed_submodule_paths: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        """Consume a committed authority capability only in this call."""
+
+        authority_capability_id = (
+            self._manual_completion_revalidation_evidence_id(
+                validation_result
+            )
+            if validation_result.get(
+                "committed_candidate_authority_validation"
+            )
+            is not None
+            else ""
+        )
+        try:
+            return self._enqueue_validated_worktree_impl(
+                state=state,
+                task=task,
+                attempt=attempt,
+                branch_name=branch_name,
+                baseline_ref=baseline_ref,
+                worktree_path=worktree_path,
+                implementation_commit=implementation_commit,
+                commit_result=commit_result,
+                validation_result=validation_result,
+                changed_submodule_paths=changed_submodule_paths,
+            )
+        finally:
+            if authority_capability_id:
+                self._discard_retained_manual_completion_authority_evidence(
+                    authority_capability_id
+                )
+
+    def _enqueue_validated_worktree_impl(
         self,
         *,
         state: PortalTaskState,
@@ -22744,6 +34320,16 @@ class PortalImplementationDaemon:
             validation_result=dict(validation_result),
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
         )
+        authority_capability_id = (
+            self._manual_completion_revalidation_evidence_id(
+                validation_result
+            )
+            if validation_result.get(
+                "committed_candidate_authority_validation"
+            )
+            is not None
+            else ""
+        )
         if lifecycle_record is not None:
             lifecycle_handoff = self._finalize_exact_worktree_lifecycle(
                 lifecycle_record,
@@ -22758,32 +34344,67 @@ class PortalImplementationDaemon:
         if pool_handoff.get("attempted", False):
             pool_handoff["lifecycle_finalize"] = lifecycle_handoff
             merge_result["worktree_pool_handoff"] = pool_handoff
-        try:
-            train_result = self._consume_one_merge_candidate()
-        except Exception as exc:
-            # Enqueue has already committed the durable handoff; a busy
-            # consumer must not turn the lane into a merge polling loop.
-            train_result = {
-                "status": "deferred",
-                "reason": "merge_train_consumer_unavailable",
-                "exception_type": type(exc).__name__,
-                "error": str(exc)[-4000:],
-            }
-            self._record_event(
-                "merge_train_consumer_deferred",
-                {
-                    "task_id": task.task_id,
-                    "attempt": attempt,
-                    "request_id": str(request.request_id),
-                    **train_result,
-                },
+        handoff_deadline = time.monotonic() + (
+            MANUAL_COMPLETION_AUTHORITY_IN_PROCESS_HANDOFF_TIMEOUT_SECONDS
+            if authority_capability_id
+            else 0.0
+        )
+        train_result: dict[str, Any] | None = None
+        while True:
+            try:
+                train_result = self._consume_one_merge_candidate(
+                    allowed_request_ids=(str(request.request_id),)
+                )
+            except Exception as exc:
+                train_result = {
+                    "status": "deferred",
+                    "reason": "merge_train_consumer_unavailable",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
+                self._record_event(
+                    "merge_train_consumer_deferred",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "request_id": str(request.request_id),
+                        **train_result,
+                    },
+                )
+            if not authority_capability_id:
+                break
+            if self._merge_train_authority_handoff_complete(
+                train_result,
+                request_id=str(request.request_id),
+            ):
+                break
+            queued_request = self.merge_queue.get(str(request.request_id))
+            if (
+                queued_request is None
+                or str(queued_request.status or "") != "pending"
+                or time.monotonic() >= handoff_deadline
+            ):
+                break
+            remaining = handoff_deadline - time.monotonic()
+            time.sleep(
+                min(
+                    MANUAL_COMPLETION_AUTHORITY_IN_PROCESS_HANDOFF_POLL_SECONDS,
+                    max(0.0, remaining),
+                )
             )
         if train_result is not None:
             merge_result["train_result"] = train_result
             consumed_request_id = self._merge_train_result_request_id(train_result)
             if (
                 consumed_request_id == str(request.request_id)
-                and self._merge_train_result_is_integrated(train_result)
+                and (
+                    self._merge_train_authority_handoff_complete(
+                        train_result,
+                        request_id=str(request.request_id),
+                    )
+                    if authority_capability_id
+                    else self._merge_train_result_is_integrated(train_result)
+                )
             ):
                 callback_result = train_result.get("merge_result")
                 if isinstance(callback_result, dict):
@@ -22793,6 +34414,31 @@ class PortalImplementationDaemon:
                         "queued": False,
                         "merged": True,
                         "reason": str(train_result.get("status") or "merged"),
+                        "request_id": str(request.request_id),
+                    }
+                )
+        exact_authority_handoff_integrated = bool(
+            self._merge_train_authority_handoff_complete(
+                train_result,
+                request_id=str(request.request_id),
+            )
+        )
+        if authority_capability_id:
+            self._discard_retained_manual_completion_authority_evidence(
+                authority_capability_id
+            )
+            if not exact_authority_handoff_integrated:
+                merge_result.update(
+                    {
+                        "queued": True,
+                        "merged": False,
+                        "returncode": 75,
+                        "status": "stopped",
+                        "stop": True,
+                        "reason": (
+                            "manual_completion_authority_in_process_"
+                            "handoff_incomplete"
+                        ),
                         "request_id": str(request.request_id),
                     }
                 )
@@ -23427,6 +35073,23 @@ class PortalImplementationDaemon:
                             "",
                         ),
                     }
+            if validation_result.get("passed", False):
+                # The proposal-bound pass above authorizes the recovered
+                # candidate shape only.  It deliberately carries declared
+                # validation IDs and is never merge authority.  Re-run the
+                # exact clean committed candidate through the uncached,
+                # empty-ID producer seam before any queue handoff.
+                validation_result = (
+                    self._run_committed_dcr011_authority_validation(
+                        workspace_path=worktree_path,
+                        task=task,
+                        state=state,
+                        log_path=log_path,
+                        baseline_ref=resolved_baseline,
+                        implementation_commit=resolved_candidate,
+                        precommit_validation_result=validation_result,
+                    )
+                )
             if validation_result.get("passed", False):
                 effective_changed_submodule_paths = (
                     list(changed_submodule_paths)
@@ -24208,17 +35871,59 @@ class PortalImplementationDaemon:
                     )
                     implementation_commit = str(commit_result.get("commit", ""))
                     if implementation_commit:
-                        merge_result = self._enqueue_validated_worktree(
-                            state=state,
-                            task=task,
-                            attempt=attempt,
-                            branch_name=branch_name,
-                            baseline_ref=baseline_ref,
-                            worktree_path=worktree_path,
-                            implementation_commit=implementation_commit,
-                            commit_result=commit_result,
-                            validation_result=validation_result,
+                        validation_result = (
+                            self._run_committed_dcr011_authority_validation(
+                                workspace_path=worktree_path,
+                                task=task,
+                                state=state,
+                                log_path=log_path,
+                                baseline_ref=baseline_ref,
+                                implementation_commit=implementation_commit,
+                                precommit_validation_result=(
+                                    validation_result
+                                ),
+                            )
                         )
+                        if validation_result.get("passed", False):
+                            merge_result = self._enqueue_validated_worktree(
+                                state=state,
+                                task=task,
+                                attempt=attempt,
+                                branch_name=branch_name,
+                                baseline_ref=baseline_ref,
+                                worktree_path=worktree_path,
+                                implementation_commit=implementation_commit,
+                                commit_result=commit_result,
+                                validation_result=validation_result,
+                            )
+                        else:
+                            returncode = int(
+                                validation_result.get("returncode") or 1
+                            )
+                            merge_result = {
+                                "merged": False,
+                                "queued": False,
+                                "reason": (
+                                    "committed_candidate_authority_"
+                                    "validation_failed"
+                                ),
+                            }
+                            failed_preservation_result = (
+                                self._preserve_failed_validation_worktree(
+                                    worktree_path,
+                                    branch_name,
+                                    task,
+                                    attempt,
+                                    validation_result,
+                                    baseline_ref=baseline_ref,
+                                )
+                            )
+                            cleanup_result = dict(
+                                failed_preservation_result.get(
+                                    "cleanup_result"
+                                )
+                                or cleanup_result
+                            )
                     elif commit_result.get("reason") == "no_changes":
                         current_head = self._run_git(
                             ["rev-parse", "HEAD"],
@@ -24586,18 +36291,76 @@ class PortalImplementationDaemon:
                         )
                         implementation_commit = str(commit_result.get("commit", ""))
                         if implementation_commit:
-                            merge_result = self._enqueue_validated_worktree(
-                                state=state,
-                                task=task,
-                                attempt=attempt,
-                                branch_name=branch_name,
-                                baseline_ref=baseline_ref,
-                                worktree_path=worktree_path,
-                                implementation_commit=implementation_commit,
-                                commit_result=commit_result,
-                                validation_result=validation_result,
+                            validation_result = (
+                                self._run_committed_dcr011_authority_validation(
+                                    workspace_path=worktree_path,
+                                    task=task,
+                                    state=state,
+                                    log_path=log_path,
+                                    baseline_ref=baseline_ref,
+                                    implementation_commit=(
+                                        implementation_commit
+                                    ),
+                                    precommit_validation_result=(
+                                        validation_result
+                                    ),
+                                )
                             )
-                            commit_handoff_ready = True
+                            if validation_result.get("passed", False):
+                                merge_result = self._enqueue_validated_worktree(
+                                    state=state,
+                                    task=task,
+                                    attempt=attempt,
+                                    branch_name=branch_name,
+                                    baseline_ref=baseline_ref,
+                                    worktree_path=worktree_path,
+                                    implementation_commit=(
+                                        implementation_commit
+                                    ),
+                                    commit_result=commit_result,
+                                    validation_result=validation_result,
+                                )
+                                commit_handoff_ready = True
+                            else:
+                                returncode = 1
+                                merge_result = {
+                                    "merged": False,
+                                    "queued": False,
+                                    "reason": (
+                                        "committed_candidate_authority_"
+                                        "validation_failed"
+                                    ),
+                                }
+                                failed_preservation_result = (
+                                    self._preserve_timed_out_worktree(
+                                        worktree_path,
+                                        branch_name,
+                                        task,
+                                        attempt,
+                                        validation_result,
+                                        baseline_ref=baseline_ref,
+                                    )
+                                )
+                                cleanup_result = dict(
+                                    failed_preservation_result.get(
+                                        "cleanup_result"
+                                    )
+                                    or cleanup_result
+                                )
+                                timeout_result.update(
+                                    {
+                                        "reason": (
+                                            "committed_candidate_authority_"
+                                            "validation_failed"
+                                        ),
+                                        "validation_result": (
+                                            validation_result
+                                        ),
+                                        "preservation_result": (
+                                            failed_preservation_result
+                                        ),
+                                    }
+                                )
                         elif commit_result.get("reason") == "no_changes":
                             cleanup_result = self._cleanup_merged_worktree(
                                 worktree_path,
@@ -35766,6 +47529,7 @@ class PortalImplementationDaemon:
         force_uncached: bool = False,
         scope: str = "pre_merge",
         target_commit: str = "",
+        _publish_authority_evidence: bool = True,
     ) -> dict[str, Any]:
         validation_scope = str(scope or "pre_merge").strip()
         expected_target_commit = str(target_commit or "").strip()
@@ -35810,6 +47574,7 @@ class PortalImplementationDaemon:
             force_uncached = True
         authority_context_id = ""
         authority_revalidation_required = False
+        authority_producer_trust = False
         if self.manual_completion_authority_task_ids:
             authority_guard = self._refresh_manual_completion_authority_guard()
             if authority_guard.get("available") is not True:
@@ -35834,6 +47599,7 @@ class PortalImplementationDaemon:
             )
             if authority_revalidation_required:
                 force_uncached = True
+                authority_producer_trust = proposal_validation is None
         if not workspace_path.exists():
             missing = self._missing_validation_workspace_result(
                 workspace_path,
@@ -35955,11 +47721,214 @@ class PortalImplementationDaemon:
                 replace(spec, cacheable=False)
                 for spec in build_validation_commands(commands)
             )
-        validation_runner = (
-            self._authority_validation_command_runner
-            if authority_revalidation_required
-            else self._validation_command_runner
-        )
+        if authority_revalidation_required:
+            trusted_task_cid = self._canonical_ref(task)
+            dcr_marker_present = bool(
+                task.task_id == "DCR-011"
+                or trusted_task_cid == AUTHORITY_VALIDATION_DCR_TASK_CID
+            )
+            authority_profile = (
+                "dcr011_forest@1"
+                if dcr_marker_present
+                else "generic_workspace_only@1"
+            )
+            trusted_target_commit = ""
+            trusted_target_tree = ""
+            trusted_common_anchor = ""
+            trusted_candidate_git_dir_text = ""
+            if dcr_marker_present:
+                try:
+                    trusted_git_lines = self._run_git(
+                        [
+                            "rev-parse",
+                            "HEAD",
+                            "HEAD^{tree}",
+                            "--path-format=absolute",
+                            "--git-dir",
+                            "--git-common-dir",
+                        ],
+                        cwd=workspace_path,
+                    ).stdout.splitlines()
+                except (OSError, RuntimeError) as exc:
+                    return {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 75,
+                        "results": [],
+                        "reason": "authority_validation_git_binding_unavailable",
+                        "exception_type": type(exc).__name__,
+                        **binding,
+                    }
+                if (
+                    len(trusted_git_lines) != 4
+                    or not re.fullmatch(
+                        r"(?:[0-9a-f]{40}|[0-9a-f]{64})", trusted_git_lines[0]
+                    )
+                    or not re.fullmatch(
+                        r"(?:[0-9a-f]{40}|[0-9a-f]{64})", trusted_git_lines[1]
+                    )
+                    or not Path(trusted_git_lines[2]).is_absolute()
+                    or not Path(trusted_git_lines[3]).is_absolute()
+                ):
+                    return {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 75,
+                        "results": [],
+                        "reason": "authority_validation_git_binding_invalid",
+                        **binding,
+                    }
+                trusted_target_commit = trusted_git_lines[0]
+                trusted_target_tree = trusted_git_lines[1]
+                trusted_candidate_git_dir = Path(
+                    os.path.abspath(trusted_git_lines[2])
+                )
+                trusted_candidate_common = Path(
+                    os.path.abspath(trusted_git_lines[3])
+                )
+                try:
+                    daemon_common_lines = self._run_git(
+                        [
+                            "rev-parse",
+                            "--path-format=absolute",
+                            "--git-common-dir",
+                        ],
+                        cwd=self.repo_root,
+                    ).stdout.splitlines()
+                    if len(daemon_common_lines) != 1:
+                        raise RuntimeError(
+                            "daemon common-dir shape mismatch"
+                        )
+                    daemon_common_anchor = Path(
+                        os.path.abspath(daemon_common_lines[0])
+                    )
+                    trusted_candidate_git_dir.relative_to(
+                        daemon_common_anchor
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    return {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 75,
+                        "results": [],
+                        "reason": "authority_validation_git_anchor_mismatch",
+                        "exception_type": type(exc).__name__,
+                        **binding,
+                    }
+                if trusted_candidate_common != daemon_common_anchor:
+                    return {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 75,
+                        "results": [],
+                        "reason": "authority_validation_git_anchor_mismatch",
+                        **binding,
+                    }
+                trusted_common_anchor = str(daemon_common_anchor)
+                trusted_candidate_git_dir_text = str(
+                    trusted_candidate_git_dir
+                )
+            else:
+                try:
+                    generic_git_lines = self._run_git(
+                        ["rev-parse", "HEAD", "HEAD^{tree}"],
+                        cwd=workspace_path,
+                    ).stdout.splitlines()
+                except (OSError, RuntimeError) as exc:
+                    return {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 75,
+                        "results": [],
+                        "reason": (
+                            "authority_validation_candidate_binding_"
+                            "unavailable"
+                        ),
+                        "exception_type": type(exc).__name__,
+                        **binding,
+                    }
+                if (
+                    len(generic_git_lines) != 2
+                    or any(
+                        re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", item) is None
+                        for item in generic_git_lines
+                    )
+                ):
+                    return {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 75,
+                        "results": [],
+                        "reason": (
+                            "authority_validation_candidate_binding_invalid"
+                        ),
+                        **binding,
+                    }
+                trusted_target_commit, trusted_target_tree = generic_git_lines
+            authority_plan_body = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-validation-command-plan@2"
+                ),
+                "authority_profile": authority_profile,
+                "task_id": task.task_id,
+                "canonical_task_cid": trusted_task_cid,
+                "scope": validation_scope,
+                "commands": list(commands),
+                "target_commit": trusted_target_commit,
+                "target_tree": trusted_target_tree,
+                "git_common_anchor": trusted_common_anchor,
+                "git_dir": trusted_candidate_git_dir_text,
+            }
+            authority_plan_id = content_identity(authority_plan_body)
+
+            def authority_validation_runner(
+                *,
+                spec: Any,
+                workspace_path: Path,
+                timeout_seconds: float,
+                environment: dict[str, str],
+            ) -> dict[str, Any]:
+                authority_environment = dict(environment)
+                authority_environment.update(
+                    {
+                        _AUTHORITY_VALIDATION_SCOPE_ENV: validation_scope,
+                        _AUTHORITY_VALIDATION_PROFILE_ENV: authority_profile,
+                        _AUTHORITY_VALIDATION_COMMANDS_ENV: json.dumps(
+                            commands,
+                            ensure_ascii=True,
+                            separators=(",", ":"),
+                        ),
+                        _AUTHORITY_VALIDATION_TASK_ENV: task.task_id,
+                        _AUTHORITY_VALIDATION_TASK_CID_ENV: trusted_task_cid,
+                        _AUTHORITY_VALIDATION_PLAN_ENV: authority_plan_id,
+                        _AUTHORITY_VALIDATION_TARGET_COMMIT_ENV: (
+                            trusted_target_commit
+                        ),
+                        _AUTHORITY_VALIDATION_TARGET_TREE_ENV: (
+                            trusted_target_tree
+                        ),
+                        _AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR_ENV: (
+                            trusted_common_anchor
+                        ),
+                        _AUTHORITY_VALIDATION_GIT_DIR_ENV: (
+                            trusted_candidate_git_dir_text
+                        ),
+                        _AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV: (
+                            "1" if proposal_validation is None else "0"
+                        ),
+                    }
+                )
+                return self._authority_validation_command_runner(
+                    spec=spec,
+                    workspace_path=workspace_path,
+                    timeout_seconds=timeout_seconds,
+                    environment=authority_environment,
+                )
+
+            validation_runner = authority_validation_runner
+        else:
+            validation_runner = self._validation_command_runner
         scheduler_target_options = (
             {"target_commit": expected_target_commit}
             if validation_scope == "post_merge"
@@ -36334,31 +48303,57 @@ class PortalImplementationDaemon:
                 authority_context_id
             )
             result["manual_completion_authority_revalidation"] = (
-                authority_revalidation_required
+                authority_producer_trust
             )
             result["manual_completion_authority_force_uncached"] = bool(
-                authority_revalidation_required
+                authority_producer_trust
             )
             result["manual_completion_authority_task_id"] = task.task_id
-            if authority_revalidation_required:
+            if authority_producer_trust:
                 plan_binding = self._manual_completion_validation_plan_binding(
                     task
                 )
+                authority_results = [
+                    item
+                    for item in result.get("results", ())
+                    if isinstance(item, Mapping)
+                ]
+                authority_command_binding = (
+                    authority_results[-1].get(
+                        "authority_validation_command_binding"
+                    )
+                    if authority_results
+                    else None
+                )
+                if isinstance(authority_command_binding, Mapping):
+                    validated_authority_profile = str(
+                        authority_command_binding.get("authority_profile")
+                        or ""
+                    )
+                    validated_target_commit = str(
+                        authority_command_binding.get(
+                            "expected_target_commit"
+                        )
+                        or ""
+                    )
+                    validated_target_tree = str(
+                        authority_command_binding.get("expected_target_tree")
+                        or ""
+                    )
+                else:
+                    validated_authority_profile = ""
+                    validated_target_commit = ""
+                    validated_target_tree = ""
                 validated_tree_identity = {
                     "schema": (
                         "ipfs_accelerate_py.agent_supervisor."
                         "manual-completion-validated-tree@1"
                     ),
-                    "target_commit": str(
-                        result.get("target_commit")
-                        or result.get("repository_tree_id")
-                        or ""
-                    ),
-                    "dependency_state_id": content_identity(
-                        result.get("dependency_state") or {}
-                    ),
-                    "candidate_binding_id": content_identity(
-                        result.get("candidate_binding") or {}
+                    "target_commit": validated_target_commit,
+                    "repository_tree_id": (
+                        f"git-tree:{validated_target_tree}"
+                        if validated_target_tree
+                        else ""
                     ),
                 }
                 result["manual_completion_authority_task_cid"] = str(
@@ -36370,6 +48365,12 @@ class PortalImplementationDaemon:
                 result[
                     "manual_completion_authority_declared_validation_commands"
                 ] = list(plan_binding["declared_commands"])
+                result[
+                    "manual_completion_authority_executed_validation_commands"
+                ] = [
+                    str(item.get("command") or "")
+                    for item in authority_results
+                ]
                 result[
                     "manual_completion_authority_revocation_generation"
                 ] = int(
@@ -36390,9 +48391,10 @@ class PortalImplementationDaemon:
                         if isinstance(item, Mapping)
                     ]
                 )
-                self._trusted_manual_completion_revalidation_evidence_ids.add(
-                    self._manual_completion_revalidation_evidence_id(result)
-                )
+                if _publish_authority_evidence:
+                    self._trusted_manual_completion_revalidation_evidence_ids.add(
+                        self._manual_completion_revalidation_evidence_id(result)
+                    )
         return result
 
     def _exact_post_merge_tracked_checkout_proof(
@@ -36400,6 +48402,8 @@ class PortalImplementationDaemon:
         workspace: Path,
         *,
         expected_commit: str,
+        budget: _TrackedCheckoutProofBudget | None = None,
+        phase: str = "standalone",
     ) -> dict[str, Any]:
         """Prove tracked index and checkout bytes match one exact tree.
 
@@ -36413,21 +48417,64 @@ class PortalImplementationDaemon:
         result: dict[str, Any] = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
-                "post-merge-tracked-checkout-proof@1"
+                "post-merge-tracked-checkout-proof@2"
             ),
             "passed": False,
             "reason": "post_merge_tracked_checkout_unproven",
+            "phase": str(phase or "standalone"),
+            "workspace_path": str(workspace.absolute()),
             "expected_commit": str(expected_commit or ""),
             "repository_count": 0,
             "tracked_entry_count": 0,
             "materialized_gitlink_count": 0,
             "repositories": [],
+            "observation_record_count": 0,
+            "observation_sha256": "",
+            "observation_id": "",
+            "budget": {},
         }
+        active_budget = budget or _TrackedCheckoutProofBudget.begin()
+        observation_digest = hashlib.sha256()
+        observation_count = 0
+        observation_workspace_path = str(workspace.absolute())
+
+        def observe(record: Mapping[str, Any]) -> None:
+            nonlocal observation_count
+            active_budget.check(str(workspace))
+            observation_digest.update(
+                canonical_json(dict(record)).encode("utf-8") + b"\n"
+            )
+            observation_count += 1
+
+        def finalize_result() -> dict[str, Any]:
+            observation_sha256 = observation_digest.hexdigest()
+            observation_body = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "committed-checkout-observation@1"
+                ),
+                "workspace_path": observation_workspace_path,
+                "expected_commit": str(expected_commit or ""),
+                "record_count": int(observation_count),
+                "records_sha256": observation_sha256,
+            }
+            result.update(
+                {
+                    "observation_record_count": int(observation_count),
+                    "observation_sha256": observation_sha256,
+                    "observation_id": content_identity(observation_body),
+                    "budget": active_budget.receipt(),
+                }
+            )
+            return result
+
         try:
             workspace_root = workspace.resolve(strict=True)
         except (OSError, RuntimeError):
             result["reason"] = "post_merge_tracked_workspace_unavailable"
-            return result
+            return finalize_result()
+        observation_workspace_path = str(workspace_root)
+        result["workspace_path"] = observation_workspace_path
         environment = sanitized_git_environment()
         visited: set[Path] = set()
 
@@ -36442,17 +48489,54 @@ class PortalImplementationDaemon:
             *arguments: str,
         ) -> subprocess.CompletedProcess[str]:
             try:
-                return subprocess.run(
+                active_budget.check(str(repository))
+                bounded = _run_bounded_subprocess(
                     ["git", *arguments],
                     cwd=repository,
-                    env=environment,
-                    text=True,
-                    encoding="utf-8",
-                    errors="surrogateescape",
-                    capture_output=True,
-                    check=False,
+                    environment=environment,
+                    deadline=active_budget.deadline,
+                    stdout_limit=(
+                        AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+                    ),
+                    stderr_limit=(
+                        AUTHORITY_VALIDATION_CHECKOUT_PROOF_MAX_GIT_OUTPUT_BYTES
+                    ),
+                    start_new_session=True,
                 )
-            except (OSError, UnicodeError) as exc:
+                active_budget.output_overflow = bool(
+                    active_budget.output_overflow or bounded.output_overflow
+                )
+                active_budget.add_git_output(
+                    len(bounded.stdout) + len(bounded.stderr),
+                    str(repository),
+                )
+                if bounded.timed_out:
+                    raise AuthorityGitReplayError(
+                        "committed_checkout_proof_timeout", str(repository)
+                    )
+                if bounded.output_overflow:
+                    raise AuthorityGitReplayError(
+                        "committed_checkout_proof_git_output_limit",
+                        str(repository),
+                    )
+                if not bounded.reaped:
+                    raise AuthorityGitReplayError(
+                        "committed_checkout_proof_process_unreaped",
+                        str(repository),
+                    )
+                return subprocess.CompletedProcess(
+                    list(bounded.args),
+                    bounded.returncode,
+                    stdout=bounded.stdout.decode(
+                        "utf-8", errors="surrogateescape"
+                    ),
+                    stderr=bounded.stderr.decode(
+                        "utf-8", errors="surrogateescape"
+                    ),
+                )
+            except AuthorityGitReplayError:
+                raise
+            except (OSError, UnicodeError, ValueError) as exc:
                 return subprocess.CompletedProcess(
                     ["git", *arguments],
                     127,
@@ -36484,6 +48568,7 @@ class PortalImplementationDaemon:
                 int(value.st_size),
                 int(value.st_mtime_ns),
                 int(value.st_ctime_ns),
+                int(value.st_nlink),
             )
 
         def new_object_digest(object_format: str) -> Any:
@@ -36529,9 +48614,11 @@ class PortalImplementationDaemon:
                     )
                     total = 0
                     while True:
+                        active_budget.check(str(path))
                         chunk = os.read(descriptor, 1024 * 1024)
                         if not chunk:
                             break
+                        active_budget.add_tracked_bytes(len(chunk), str(path))
                         total += len(chunk)
                         digest.update(chunk)
                     opened_after = os.fstat(descriptor)
@@ -36567,6 +48654,7 @@ class PortalImplementationDaemon:
                 digest = new_object_digest(object_format)
                 digest.update(f"blob {len(link_bytes)}\0".encode("ascii"))
                 digest.update(link_bytes)
+                active_budget.add_tracked_bytes(len(link_bytes), str(path))
                 return digest.hexdigest(), stat_identity(after), ""
             return "", None, "unsupported tracked Git mode"
 
@@ -36595,11 +48683,7 @@ class PortalImplementationDaemon:
                     "post_merge_tracked_repository_cycle",
                     repository=repository_label,
                 )
-            if len(visited) >= MAX_MERGE_PROOF_METADATA_ITEMS:
-                return fail(
-                    "post_merge_tracked_repository_limit_exceeded",
-                    repository=repository_label,
-                )
+            active_budget.add_repository(repository_label)
             visited.add(resolved_repository)
             result["repository_count"] = len(visited)
 
@@ -36672,6 +48756,31 @@ class PortalImplementationDaemon:
                     index_returncode=int(index_before.returncode),
                     flags_returncode=int(flags_before.returncode),
                 )
+
+            observe(
+                {
+                    "kind": "repository_inventory",
+                    "repository": repository_label,
+                    "path": str(resolved_repository),
+                    "commit": commit,
+                    "object_format": object_format,
+                    "tree_sha256": hashlib.sha256(
+                        tree_result.stdout.encode(
+                            "utf-8", errors="surrogateescape"
+                        )
+                    ).hexdigest(),
+                    "index_sha256": hashlib.sha256(
+                        index_before.stdout.encode(
+                            "utf-8", errors="surrogateescape"
+                        )
+                    ).hexdigest(),
+                    "flags_sha256": hashlib.sha256(
+                        flags_before.stdout.encode(
+                            "utf-8", errors="surrogateescape"
+                        )
+                    ).hexdigest(),
+                }
+            )
 
             tree_entries: dict[str, tuple[str, str, str]] = {}
             for record in tree_result.stdout.split("\0"):
@@ -36770,8 +48879,32 @@ class PortalImplementationDaemon:
             result["tracked_entry_count"] = int(
                 result["tracked_entry_count"]
             ) + len(tree_entries)
+            active_budget.add_entries(len(tree_entries), repository_label)
             stable_paths: dict[Path, tuple[int, ...]] = {}
-            verified_directories: set[Path] = {resolved_repository}
+            try:
+                repository_status = os.lstat(resolved_repository)
+            except OSError as exc:
+                return fail(
+                    "post_merge_tracked_repository_root_unavailable",
+                    repository=repository_label,
+                    path_error=f"{type(exc).__name__}: {exc}"[:1000],
+                )
+            if not stat_module.S_ISDIR(repository_status.st_mode):
+                return fail(
+                    "post_merge_tracked_repository_root_not_directory",
+                    repository=repository_label,
+                )
+            stable_directories: dict[Path, tuple[int, ...]] = {
+                resolved_repository: stat_identity(repository_status)
+            }
+            observe(
+                {
+                    "kind": "parent_directory",
+                    "repository": repository_label,
+                    "path": ".",
+                    "stat": list(stat_identity(repository_status)),
+                }
+            )
             for relative, (mode, kind, object_id) in sorted(
                 tree_entries.items()
             ):
@@ -36791,7 +48924,7 @@ class PortalImplementationDaemon:
                 current_directory = resolved_repository
                 for part in pure_relative.parts[:-1]:
                     current_directory /= part
-                    if current_directory in verified_directories:
+                    if current_directory in stable_directories:
                         continue
                     try:
                         parent_status = os.lstat(current_directory)
@@ -36810,7 +48943,18 @@ class PortalImplementationDaemon:
                             repository=repository_label,
                             failure_path=display_path(relative),
                         )
-                    verified_directories.add(current_directory)
+                    parent_identity = stat_identity(parent_status)
+                    stable_directories[current_directory] = parent_identity
+                    observe(
+                        {
+                            "kind": "parent_directory",
+                            "repository": repository_label,
+                            "path": current_directory.relative_to(
+                                resolved_repository
+                            ).as_posix(),
+                            "stat": list(parent_identity),
+                        }
+                    )
 
                 tracked_path = resolved_repository.joinpath(
                     *pure_relative.parts
@@ -36846,6 +48990,16 @@ class PortalImplementationDaemon:
                         )
                     if path_status is not None:
                         stable_paths[tracked_path] = path_status
+                    observe(
+                        {
+                            "kind": "tracked_entry",
+                            "repository": repository_label,
+                            "path": relative,
+                            "mode": mode,
+                            "object_id": object_id,
+                            "stat": list(path_status or ()),
+                        }
+                    )
                     continue
                 if mode != "160000" or kind != "commit":
                     return fail(
@@ -36858,6 +49012,18 @@ class PortalImplementationDaemon:
                 try:
                     gitlink_status = os.lstat(tracked_path)
                 except FileNotFoundError:
+                    observe(
+                        {
+                            "kind": "gitlink",
+                            "repository": repository_label,
+                            "path": relative,
+                            "mode": mode,
+                            "object_id": object_id,
+                            "materialized": False,
+                            "stat": [],
+                            "git_marker_stat": [],
+                        }
+                    )
                     continue
                 except OSError as exc:
                     return fail(
@@ -36878,9 +49044,8 @@ class PortalImplementationDaemon:
                     git_marker_status = os.lstat(git_marker)
                 except FileNotFoundError:
                     try:
-                        unmaterialized_entries = list(
-                            os.scandir(tracked_path)
-                        )
+                        with os.scandir(tracked_path) as iterator:
+                            unmaterialized_entry = next(iterator, None)
                     except OSError as exc:
                         return fail(
                             "post_merge_tracked_gitlink_unavailable",
@@ -36890,12 +49055,24 @@ class PortalImplementationDaemon:
                                 f"{type(exc).__name__}: {exc}"[:1000]
                             ),
                         )
-                    if unmaterialized_entries:
+                    if unmaterialized_entry is not None:
                         return fail(
                             "post_merge_tracked_gitlink_unmaterialized_dirty",
                             repository=repository_label,
                             failure_path=display_path(full_label),
                         )
+                    observe(
+                        {
+                            "kind": "gitlink",
+                            "repository": repository_label,
+                            "path": relative,
+                            "mode": mode,
+                            "object_id": object_id,
+                            "materialized": False,
+                            "stat": list(stat_identity(gitlink_status)),
+                            "git_marker_stat": [],
+                        }
+                    )
                     continue
                 except OSError as exc:
                     return fail(
@@ -36913,6 +49090,21 @@ class PortalImplementationDaemon:
                         repository=repository_label,
                         failure_path=display_path(full_label),
                     )
+                stable_paths[git_marker] = stat_identity(git_marker_status)
+                observe(
+                    {
+                        "kind": "gitlink",
+                        "repository": repository_label,
+                        "path": relative,
+                        "mode": mode,
+                        "object_id": object_id,
+                        "materialized": True,
+                        "stat": list(stat_identity(gitlink_status)),
+                        "git_marker_stat": list(
+                            stat_identity(git_marker_status)
+                        ),
+                    }
+                )
                 child_probe = run_git(
                     tracked_path,
                     "rev-parse",
@@ -36986,6 +49178,38 @@ class PortalImplementationDaemon:
                         head_after_result.stdout.strip()
                     ),
                 )
+            for directory, expected_status in stable_directories.items():
+                try:
+                    final_status = os.lstat(directory)
+                except OSError as exc:
+                    return fail(
+                        "post_merge_tracked_parent_changed_during_proof",
+                        repository=repository_label,
+                        failure_path=display_path(
+                            (
+                                directory.relative_to(
+                                    resolved_repository
+                                ).as_posix()
+                                if directory != resolved_repository
+                                else "."
+                            )
+                        ),
+                        path_error=f"{type(exc).__name__}: {exc}"[:1000],
+                    )
+                if stat_identity(final_status) != expected_status:
+                    return fail(
+                        "post_merge_tracked_parent_changed_during_proof",
+                        repository=repository_label,
+                        failure_path=display_path(
+                            (
+                                directory.relative_to(
+                                    resolved_repository
+                                ).as_posix()
+                                if directory != resolved_repository
+                                else "."
+                            )
+                        ),
+                    )
             for path, expected_status in stable_paths.items():
                 try:
                     final_status = os.lstat(path)
@@ -37017,19 +49241,28 @@ class PortalImplementationDaemon:
                 )
             return True
 
-        if prove_repository(
-            workspace_root,
-            commit=str(expected_commit or ""),
-            repository_label=".",
-            depth=0,
-        ):
+        try:
+            if prove_repository(
+                workspace_root,
+                commit=str(expected_commit or ""),
+                repository_label=".",
+                depth=0,
+            ):
+                result.update(
+                    {
+                        "passed": True,
+                        "reason": "post_merge_tracked_checkout_exact",
+                    }
+                )
+        except AuthorityGitReplayError as exc:
             result.update(
                 {
-                    "passed": True,
-                    "reason": "post_merge_tracked_checkout_exact",
+                    "passed": False,
+                    "reason": exc.reason,
+                    "budget_failure_detail": exc.detail,
                 }
             )
-        return result
+        return finalize_result()
 
     def _validate_exact_post_merge_commit(
         self,
@@ -37038,6 +49271,7 @@ class PortalImplementationDaemon:
         target_commit: str,
         repository_tree_id: str = "",
         log_path: Path | None = None,
+        _authority_evidence_sink: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Validate one immutable integrated commit in a clean checkout.
 
@@ -37086,6 +49320,15 @@ class PortalImplementationDaemon:
             *,
             validated_commit: str,
         ) -> dict[str, Any]:
+            if _authority_evidence_sink is not None:
+                # The formal post-merge receipt converts diagnostic floats to
+                # exact text.  Completion authority, however, is bound to the
+                # original non-published producer result. Carry that exact
+                # object only through this private in-process sink; the caller
+                # structurally verifies it before minting a mutation-scoped
+                # token, and it is never an extra field on the closed PMV
+                # receipt.
+                _authority_evidence_sink.append(dict(result))
             payload = receipt_safe(dict(result))
             evidence: dict[str, Any]
             if not expected_commit or not expected_tree_id:
@@ -37396,6 +49639,7 @@ class PortalImplementationDaemon:
                             force_uncached=True,
                             scope="post_merge",
                             target_commit=expected_commit,
+                            _publish_authority_evidence=False,
                         )
                         if effective_submodules:
                             raw_result["offline_submodule_paths"] = list(
@@ -37643,11 +49887,13 @@ class PortalImplementationDaemon:
         commit = str(target_commit or "").strip()
         tree = self._candidate_repository_tree(commit)
         repository_tree_id = f"git-tree:{tree}" if tree else ""
+        exact_authority_evidence: list[dict[str, Any]] = []
         try:
             evidence = self._validate_exact_post_merge_commit(
                 task,
                 target_commit=commit,
                 repository_tree_id=repository_tree_id,
+                _authority_evidence_sink=exact_authority_evidence,
             )
         except Exception as exc:
             evidence = {
@@ -37665,12 +49911,16 @@ class PortalImplementationDaemon:
             repository_tree_id=repository_tree_id,
         )
         raw_authority_evidence = (
-            dict(evidence.get("validation_result") or {})
-            if isinstance(evidence, Mapping)
-            and isinstance(evidence.get("validation_result"), Mapping)
-            else {}
+            exact_authority_evidence[-1]
+            if exact_authority_evidence
+            else (
+                dict(evidence.get("validation_result") or {})
+                if isinstance(evidence, Mapping)
+                and isinstance(evidence.get("validation_result"), Mapping)
+                else {}
+            )
         )
-        if isinstance(evidence, Mapping):
+        if not exact_authority_evidence and isinstance(evidence, Mapping):
             for field in ("attempted", "passed", "returncode"):
                 if field in evidence:
                     raw_authority_evidence[field] = evidence[field]
@@ -37831,12 +50081,14 @@ class PortalImplementationDaemon:
         }
 
     @staticmethod
+    @_authority_validation_cleanup_scoped
     def _authority_validation_command_runner(
         *,
         spec: Any,
         workspace_path: Path,
         timeout_seconds: float,
         environment: dict[str, str],
+        _cleanup_guard: _AuthorityValidationCleanupGuard,
     ) -> dict[str, Any]:
         """Run authority-bearing validation inside a pinned Docker sandbox."""
 
@@ -37891,11 +50143,378 @@ class PortalImplementationDaemon:
                 "infrastructure_failure": True,
             }
 
+        authority_scope = str(
+            environment.get(_AUTHORITY_VALIDATION_SCOPE_ENV) or ""
+        )
+        authority_profile = str(
+            environment.get(_AUTHORITY_VALIDATION_PROFILE_ENV) or ""
+        )
+        try:
+            parsed_commands = json.loads(
+                str(environment.get(_AUTHORITY_VALIDATION_COMMANDS_ENV) or "")
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed_commands = None
+        authority_commands = (
+            tuple(parsed_commands)
+            if isinstance(parsed_commands, list)
+            and parsed_commands
+            and len(parsed_commands) <= MAX_MERGE_PROOF_METADATA_ITEMS
+            and all(
+                isinstance(item, str)
+                and item
+                and len(item.encode("utf-8")) <= 64 * 1024
+                and "\0" not in item
+                for item in parsed_commands
+            )
+            else ()
+        )
+        authority_task = str(
+            environment.get(_AUTHORITY_VALIDATION_TASK_ENV) or ""
+        )
+        authority_task_cid = str(
+            environment.get(_AUTHORITY_VALIDATION_TASK_CID_ENV) or ""
+        )
+        authority_plan_id = str(
+            environment.get(_AUTHORITY_VALIDATION_PLAN_ENV) or ""
+        )
+        expected_target_commit = str(
+            environment.get(_AUTHORITY_VALIDATION_TARGET_COMMIT_ENV) or ""
+        )
+        expected_target_tree = str(
+            environment.get(_AUTHORITY_VALIDATION_TARGET_TREE_ENV) or ""
+        )
+        expected_common_anchor = str(
+            environment.get(_AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR_ENV) or ""
+        )
+        expected_git_dir = str(
+            environment.get(_AUTHORITY_VALIDATION_GIT_DIR_ENV) or ""
+        )
+        producer_trust = (
+            str(
+                environment.get(
+                    _AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV
+                )
+                or ""
+            )
+            == "1"
+        )
+        dcr_expected_commands = (
+            AUTHORITY_VALIDATION_DCR_COMMANDS
+            if authority_scope == "pre_merge"
+            else AUTHORITY_VALIDATION_DCR_RAW_COMMANDS
+            if authority_scope == "post_merge"
+            else ()
+        )
+        dcr_marker_present = bool(
+            authority_profile == "dcr011_forest@1"
+            or authority_task == "DCR-011"
+            or authority_task_cid == AUTHORITY_VALIDATION_DCR_TASK_CID
+            or "deterministic_repair_forest" in str(spec.command)
+            or any(
+                "deterministic_repair_forest" in command
+                for command in authority_commands
+            )
+        )
+        expected_commands = (
+            dcr_expected_commands
+            if dcr_marker_present
+            else authority_commands
+        )
+        expected_plan_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-command-plan@2"
+            ),
+            "authority_profile": authority_profile,
+            "task_id": (
+                "DCR-011" if dcr_marker_present else authority_task
+            ),
+            "canonical_task_cid": (
+                AUTHORITY_VALIDATION_DCR_TASK_CID
+                if dcr_marker_present
+                else authority_task_cid
+            ),
+            "scope": authority_scope,
+            "commands": list(expected_commands),
+            "target_commit": expected_target_commit,
+            "target_tree": expected_target_tree,
+            "git_common_anchor": expected_common_anchor,
+            "git_dir": expected_git_dir,
+        }
+        expected_plan_id = (
+            content_identity(expected_plan_body) if expected_commands else ""
+        )
+        ordinal = getattr(spec, "ordinal", 0)
+        validation_id = str(getattr(spec, "validation_id", "") or "")
+        raw_command = str(spec.raw_command or spec.command)
+        plan_context_valid = bool(
+            authority_profile == "dcr011_forest@1"
+            and authority_task == "DCR-011"
+            and authority_task_cid == AUTHORITY_VALIDATION_DCR_TASK_CID
+            and authority_plan_id
+            and authority_plan_id == expected_plan_id
+            and re.fullmatch(
+                r"(?:[0-9a-f]{40}|[0-9a-f]{64})", expected_target_commit
+            )
+            and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", expected_target_tree)
+            and len(expected_target_commit) == len(expected_target_tree)
+            and Path(expected_common_anchor).is_absolute()
+            and Path(expected_git_dir).is_absolute()
+            and not any(
+                character in expected_common_anchor
+                + expected_git_dir
+                for character in ",\r\n\0"
+            )
+            and type(ordinal) is int
+            and ordinal in {0, 1}
+            and str(spec.command) == expected_commands[ordinal]
+            and raw_command == expected_commands[ordinal]
+            and (
+                validation_id == ""
+                if producer_trust
+                else re.fullmatch(r"declared:[0-9a-f]{64}", validation_id)
+                is not None
+            )
+            and command_argv
+            == validation_shell_command(expected_commands[ordinal])
+        )
+        generic_context_valid = bool(
+            authority_profile == "generic_workspace_only@1"
+            and not dcr_marker_present
+            and authority_scope in {"pre_merge", "post_merge"}
+            and expected_commands
+            and authority_plan_id == expected_plan_id
+            and re.fullmatch(
+                r"(?:[0-9a-f]{40}|[0-9a-f]{64})", expected_target_commit
+            )
+            and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", expected_target_tree)
+            and len(expected_target_commit) == len(expected_target_tree)
+            and expected_common_anchor == ""
+            and expected_git_dir == ""
+            and type(ordinal) is int
+            and 0 <= ordinal < len(expected_commands)
+            and str(spec.command) == expected_commands[ordinal]
+            and raw_command == expected_commands[ordinal]
+            and command_argv
+            == validation_shell_command(expected_commands[ordinal])
+        )
+        if dcr_marker_present and not plan_context_valid:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 78,
+                "output": "",
+                "error": "authority_validation_command_binding_rejected",
+                "reason": "authority_validation_dcr_plan_binding_mismatch",
+                "infrastructure_failure": False,
+            }
+        if not dcr_marker_present and not generic_context_valid:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 78,
+                "output": "",
+                "error": "authority_validation_command_binding_rejected",
+                "reason": "authority_validation_generic_plan_binding_mismatch",
+                "infrastructure_failure": False,
+            }
+        forest_projection_requested = bool(
+            plan_context_valid and ordinal == 1
+        )
+        if (
+            "deterministic_repair_forest" in str(spec.command)
+            and not forest_projection_requested
+        ):
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 78,
+                "output": "",
+                "error": "authority_validation_command_binding_rejected",
+                "reason": "authority_validation_git_projection_not_authorized",
+                "infrastructure_failure": False,
+            }
+        command_binding_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-command-binding@2"
+            ),
+            "authority_profile": authority_profile,
+            "task_id": authority_task,
+            "canonical_task_cid": authority_task_cid,
+            "scope": authority_scope,
+            "plan_id": authority_plan_id,
+            "expected_target_commit": expected_target_commit,
+            "expected_target_tree": expected_target_tree,
+            "expected_git_common_anchor": expected_common_anchor,
+            "expected_git_dir": expected_git_dir,
+            "ordinal": int(ordinal),
+            "validation_id": validation_id,
+            "command": str(spec.command),
+            "raw_command": raw_command,
+            "guarded_argv": list(command_argv),
+        }
+        command_binding = {
+            **command_binding_body,
+            "command_binding_id": content_identity(command_binding_body),
+        }
+        command_binding["command_binding_cache_id"] = content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-validation-command-cache-key@1"
+                ),
+                "workspace_path": workspace_text,
+                "plan_id": authority_plan_id,
+                "command_binding_id": command_binding["command_binding_id"],
+            }
+        )
+        base["authority_validation_command_binding"] = command_binding
+
+        docker_path = str(contract["docker_path"])
+        base_image_id = str(contract["image_id"])
+        runtime_image_id = base_image_id
+        docker_endpoint = str(contract["docker_endpoint"])
+        gpu_uuid = str(contract["gpu_uuid"])
+        docker_environment = {
+            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
+            "DOCKER_HOST": docker_endpoint,
+            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
+            "PATH": os.defpath,
+        }
+        docker_prefix = [docker_path, "--host", docker_endpoint]
+        cleanup_reclaim_started = time.monotonic()
+        try:
+            docker_cleanup_reclaimer = (
+                _authority_git_reclaim_docker_cleanup_leases(
+                    docker_prefix=docker_prefix,
+                    docker_environment=docker_environment,
+                    deadline=(
+                        cleanup_reclaim_started
+                        + _AUTHORITY_GIT_DOCKER_CLEANUP_SECONDS
+                    ),
+                )
+            )
+        except AuthorityGitReplayError as exc:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": "",
+                "error": (
+                    "authority_validation_git_metadata_replay_rejected"
+                ),
+                "reason": exc.reason,
+                "infrastructure_failure": True,
+                "git_docker_cleanup_reclaimer": {},
+            }
+
+        setup_budget = (
+            _AuthorityGitSetupBudget.begin()
+            if forest_projection_requested
+            else None
+        )
+        try:
+            if forest_projection_requested:
+                assert setup_budget is not None
+                git_projection_reclaimer = (
+                    _authority_git_reclaim_stale_projections(
+                        budget=setup_budget
+                    )
+                )
+                if (
+                    git_projection_reclaimer["failures"]
+                    or git_projection_reclaimer["invalid_manifests"]
+                    or git_projection_reclaimer["root_scan_truncated"]
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_reclaim_failed",
+                        workspace_text,
+                    )
+                lifecycle_subject = _authority_git_forest_lifecycle_subject(
+                    workspace
+                )
+                git_replay_plan = _authority_git_replay_plan(
+                    workspace,
+                    budget=setup_budget,
+                    lifecycle_subject=lifecycle_subject,
+                )
+                if not git_replay_plan.roots or not git_replay_plan.mounts:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_plan_empty",
+                        workspace_text,
+                    )
+                _authority_git_require_symlink_free(
+                    Path(expected_common_anchor),
+                    reason=(
+                        "authority_validation_git_metadata_anchor_invalid"
+                    ),
+                )
+                root_identity = next(
+                    (
+                        item
+                        for item in git_replay_plan.root_identities
+                        if item.get("relative_path") == "."
+                    ),
+                    None,
+                )
+                if (
+                    not isinstance(root_identity, Mapping)
+                    or root_identity.get("head") != expected_target_commit
+                    or root_identity.get("tree") != expected_target_tree
+                    or root_identity.get("common_dir")
+                    != expected_common_anchor
+                    or root_identity.get("git_dir") != expected_git_dir
+                    or git_replay_plan.mounts[0].destination
+                    != Path(expected_common_anchor)
+                ):
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_target_binding_mismatch",
+                        workspace_text,
+                    )
+            else:
+                git_projection_reclaimer = {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "authority-git-projection-reclaimer@2"
+                    ),
+                    "mode": "not_requested",
+                }
+                git_replay_plan = _authority_git_not_requested_plan(workspace)
+        except AuthorityGitReplayError as exc:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": "",
+                "error": "authority_validation_git_metadata_replay_rejected",
+                "reason": exc.reason,
+                "infrastructure_failure": True,
+                "git_projection_reclaimer": git_projection_reclaimer
+                if "git_projection_reclaimer" in locals()
+                else {},
+            }
+
         child_environment = {
             str(key): str(value)
             for key, value in environment.items()
             if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(key))
             and "\0" not in str(value)
+            and str(key)
+            not in {
+                _AUTHORITY_VALIDATION_SCOPE_ENV,
+                _AUTHORITY_VALIDATION_PROFILE_ENV,
+                _AUTHORITY_VALIDATION_COMMANDS_ENV,
+                _AUTHORITY_VALIDATION_TASK_ENV,
+                _AUTHORITY_VALIDATION_TASK_CID_ENV,
+                _AUTHORITY_VALIDATION_PLAN_ENV,
+                _AUTHORITY_VALIDATION_TARGET_COMMIT_ENV,
+                _AUTHORITY_VALIDATION_TARGET_TREE_ENV,
+                _AUTHORITY_VALIDATION_GIT_COMMON_ANCHOR_ENV,
+                _AUTHORITY_VALIDATION_GIT_DIR_ENV,
+                _AUTHORITY_VALIDATION_PRODUCER_TRUST_ENV,
+            }
         }
         allowed_python_paths: list[str] = []
         for raw_path in str(child_environment.get("PYTHONPATH") or "").split(
@@ -37922,7 +50541,7 @@ class PortalImplementationDaemon:
         )
         child_environment.update(
             {
-                "HOME": "/tmp/validation-home",
+                "HOME": f"{AUTHORITY_VALIDATION_SCRATCH_PATH}/home",
                 "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE": (
                     "/usr/bin/python"
                 ),
@@ -37940,24 +50559,260 @@ class PortalImplementationDaemon:
                 "IPFS_ACCELERATE_TYPESCRIPT_VERSION": TYPESCRIPT_VERSION,
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONPATH": os.pathsep.join(allowed_python_paths),
-                "TMPDIR": "/tmp",
-                "XDG_CACHE_HOME": "/tmp/validation-home/.cache",
-                "XDG_CONFIG_HOME": "/tmp/validation-home/.config",
-                "XDG_DATA_HOME": "/tmp/validation-home/.local/share",
-                "XDG_STATE_HOME": "/tmp/validation-home/.local/state",
+                "TMPDIR": AUTHORITY_VALIDATION_SCRATCH_PATH,
+                "XDG_CACHE_HOME": (
+                    f"{AUTHORITY_VALIDATION_SCRATCH_PATH}/home/.cache"
+                ),
+                "XDG_CONFIG_HOME": (
+                    f"{AUTHORITY_VALIDATION_SCRATCH_PATH}/home/.config"
+                ),
+                "XDG_DATA_HOME": (
+                    f"{AUTHORITY_VALIDATION_SCRATCH_PATH}/home/.local/share"
+                ),
+                "XDG_STATE_HOME": (
+                    f"{AUTHORITY_VALIDATION_SCRATCH_PATH}/home/.local/state"
+                ),
             }
         )
-        docker_path = str(contract["docker_path"])
-        image_id = str(contract["image_id"])
-        docker_endpoint = str(contract["docker_endpoint"])
-        gpu_uuid = str(contract["gpu_uuid"])
-        docker_environment = {
-            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
-            "DOCKER_HOST": docker_endpoint,
-            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
-            "PATH": os.defpath,
+        child_environment = sanitized_git_environment(child_environment)
+        if not forest_projection_requested:
+            # The reviewed ordinal-0 DCR test population constructs private
+            # temporary repositories and proves that the forest reader itself
+            # ignores replace refs.  A process-wide GIT_NO_REPLACE_OBJECTS
+            # would falsify that test setup before the reader is exercised.
+            # The authority-bearing forest CLI keeps the guard below through
+            # its exact synthetic metadata projection.
+            child_environment.pop("GIT_NO_REPLACE_OBJECTS", None)
+
+        git_system_config: Path | None = None
+        git_system_config_bind_source: Path | None = None
+        git_system_config_identity = ""
+        sealed_git_mounts: tuple[_AuthorityGitSealedMount, ...] = ()
+        derived_layer_manifest: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-derived-layer-manifest@1"
+            ),
+            "mode": "not_requested",
         }
-        docker_prefix = [docker_path, "--host", docker_endpoint]
+        git_snapshot_receipt: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-sealed-projection@2"
+            ),
+            "source_bytes": 0,
+            "sealed_bytes": 0,
+            "aggregate_bytes": 0,
+            "byte_limit": AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_BYTES,
+            "setup_elapsed_milliseconds": 0,
+            "setup_time_limit_seconds": (
+                AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+            ),
+            "metadata_entries": 0,
+            "metadata_entry_limit": AUTHORITY_VALIDATION_GIT_MAX_METADATA_ENTRIES,
+            "mount_count": 0,
+            "completed": True,
+            "copy_mode": "not_requested",
+            "hardlinks_used": False,
+            "object_scope": "none",
+            "raw_common_config_exposed": False,
+            "raw_refs_exposed": False,
+            "unrelated_objects_exposed": False,
+            "object_packs": [],
+            "object_pack_count": 0,
+            "git_version": "not_requested",
+            "transport": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-derived-image@1"
+                ),
+                "mode": "not_requested",
+            },
+        }
+        git_mount_verification_records: list[dict[str, Any]] = []
+        if forest_projection_requested:
+            try:
+                assert setup_budget is not None
+                (
+                    projection_root,
+                    projection_manifest,
+                    projection_descriptor,
+                ) = (
+                    _authority_git_create_projection(
+                        workspace, budget=setup_budget
+                    )
+                )
+                _cleanup_guard.register_projection(
+                    projection_root,
+                    projection_manifest,
+                    descriptor=projection_descriptor,
+                )
+                (
+                    sealed_git_mounts,
+                    git_snapshot_receipt,
+                    sealed_verification_records,
+                ) = _authority_git_seal_mounts(
+                    git_replay_plan,
+                    Path(str(projection_manifest["mount_source"])).parent,
+                    budget=setup_budget,
+                    projection_descriptor=projection_descriptor,
+                )
+                projection_manifest = _authority_git_finalize_projection(
+                    projection_root,
+                    projection_descriptor,
+                    projection_manifest,
+                    budget=setup_budget,
+                    publish_callback=lambda published: (
+                        _cleanup_guard.register_projection(
+                            projection_root,
+                            published,
+                            descriptor=projection_descriptor,
+                        )
+                    ),
+                )
+                _cleanup_guard.register_projection(
+                    projection_root, projection_manifest
+                )
+                git_mount_verification_records.extend(
+                    sealed_verification_records
+                )
+                git_system_config = (
+                    git_replay_plan.mounts[0].destination
+                    / ".authority-system-gitconfig"
+                )
+                git_system_config_bind_source = (
+                    sealed_git_mounts[0].bind_source
+                    / ".authority-system-gitconfig"
+                )
+                git_system_config_identity = next(
+                    str(record["sha256"])
+                    for record in git_mount_verification_records
+                    if record["destination"] == str(git_system_config)
+                )
+                git_snapshot_receipt["projection_lease"] = projection_manifest
+                common_destination = git_replay_plan.mounts[0].destination
+                try:
+                    common_destination.relative_to(workspace)
+                except ValueError:
+                    pass
+                else:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_derived_destination_unsafe",
+                        str(common_destination),
+                    )
+                try:
+                    common_destination.relative_to(
+                        Path(AUTHORITY_VALIDATION_SCRATCH_PATH)
+                    )
+                except ValueError:
+                    pass
+                else:
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_derived_destination_hidden",
+                        str(common_destination),
+                    )
+                (
+                    runtime_image_id,
+                    derived_transport,
+                    derived_layer_manifest,
+                ) = _authority_git_build_derived_image(
+                    projection_descriptor,
+                    projection_manifest,
+                    common_destination,
+                    base_image_id=base_image_id,
+                    docker_prefix=docker_prefix,
+                    docker_environment=docker_environment,
+                    budget=setup_budget,
+                    cleanup_guard=_cleanup_guard,
+                    authority_plan_id=authority_plan_id,
+                    command_binding_id=str(
+                        command_binding["command_binding_id"]
+                    ),
+                    docker_cleanup_reclaimer=docker_cleanup_reclaimer,
+                )
+                git_snapshot_receipt["transport"] = derived_transport
+                sealed_git_mounts = tuple(
+                    replace(
+                        mount,
+                        bind_source=Path(
+                            f"docker-image:{runtime_image_id}"
+                        ),
+                    )
+                    for mount in sealed_git_mounts
+                )
+                git_system_config_bind_source = None
+                if not _cleanup_guard.cleanup_projection_now():
+                    raise AuthorityGitReplayError(
+                        "authority_validation_git_projection_cleanup_failed",
+                        str(projection_root),
+                    )
+                frozen_setup = setup_budget.receipt(
+                    mount_count=len(sealed_git_mounts), completed=True
+                )
+                for key in (
+                    "source_bytes",
+                    "sealed_bytes",
+                    "aggregate_bytes",
+                    "byte_limit",
+                    "setup_elapsed_milliseconds",
+                    "setup_time_limit_seconds",
+                    "metadata_entries",
+                    "metadata_entry_limit",
+                ):
+                    git_snapshot_receipt[key] = frozen_setup[key]
+            except (OSError, AuthorityGitReplayError) as exc:
+                # Sealing may stop after creating a bounded partial tree but
+                # before publishing its closed descendant manifest.  With the
+                # creation fd still pinned, make one independent bounded
+                # cleanup-only finalization attempt so ordinary setup timeout
+                # and copy failures do not create permanently unreclaimable
+                # finalized=false residue.  Any unexpected/special entry
+                # still fails closed and is left untouched.
+                if (
+                    "projection_manifest" in locals()
+                    and "projection_root" in locals()
+                    and "projection_descriptor" in locals()
+                    and isinstance(projection_manifest, Mapping)
+                    and projection_manifest.get("finalized") is not True
+                    and int(projection_descriptor) >= 0
+                ):
+                    try:
+                        projection_manifest = (
+                            _authority_git_finalize_projection(
+                                projection_root,
+                                projection_descriptor,
+                                projection_manifest,
+                                budget=_AuthorityGitSetupBudget.begin(),
+                                publish_callback=lambda published: (
+                                    _cleanup_guard.register_projection(
+                                        projection_root,
+                                        published,
+                                        descriptor=projection_descriptor,
+                                    )
+                                ),
+                            )
+                        )
+                    except (OSError, AuthorityGitReplayError):
+                        pass
+                cleanup_receipt = _cleanup_guard.cleanup_all()
+                return {
+                    **base,
+                    "finished_at": utc_now(),
+                    "returncode": 75,
+                    "output": "",
+                    "error": (
+                        "authority_validation_git_metadata_replay_rejected"
+                    ),
+                    "reason": (
+                        exc.reason
+                        if isinstance(exc, AuthorityGitReplayError)
+                        else "authority_validation_git_safe_config_unavailable"
+                    ),
+                    "infrastructure_failure": True,
+                    "git_projection_cleanup": cleanup_receipt,
+                }
+            child_environment.pop("GIT_CONFIG_NOSYSTEM", None)
+            child_environment["GIT_CONFIG_SYSTEM"] = str(git_system_config)
         container_name = (
             f"ipfs-accelerate-authority-validation-{os.getpid()}-"
             f"{time.time_ns()}"
@@ -37986,15 +50841,44 @@ class PortalImplementationDaemon:
                 "--mount=type=bind,src="
                 f"{workspace_text},dst={workspace_text},readonly"
             ),
-            (
-                "--tmpfs=/tmp:rw,nosuid,nodev,exec,"
-                f"size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES},mode=1777"
-            ),
-            f"--workdir={workspace_text}",
         ]
+        if forest_projection_requested:
+            docker_command.append(
+                f"--label={derived_transport['cleanup_label']}"
+            )
+        docker_command.extend(
+            [
+                (
+                    f"--tmpfs={AUTHORITY_VALIDATION_SCRATCH_PATH}:"
+                    "rw,nosuid,nodev,exec,"
+                    f"size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES},mode=1777"
+                ),
+                f"--workdir={workspace_text}",
+            ]
+        )
         for key, value in sorted(child_environment.items()):
             docker_command.extend(["--env", f"{key}={value}"])
-        docker_command.extend([image_id, *command_argv])
+        mount_verification_payload = base64.b64encode(
+            canonical_json(
+                derived_layer_manifest
+                if forest_projection_requested
+                else git_mount_verification_records
+            ).encode("utf-8")
+        ).decode("ascii")
+        docker_command.extend(
+            [
+                runtime_image_id,
+                "/usr/bin/python",
+                "-c",
+                (
+                    _AUTHORITY_GIT_DERIVED_LAYER_VERIFY
+                    if forest_projection_requested
+                    else _AUTHORITY_GIT_MOUNT_BOOTSTRAP
+                ),
+                mount_verification_payload,
+                *command_argv,
+            ]
+        )
 
         timed_out = False
         output_limit_exceeded = False
@@ -38042,6 +50926,58 @@ class PortalImplementationDaemon:
             except (OSError, subprocess.TimeoutExpired):
                 return None
 
+        def cleanup_runtime_container() -> bool:
+            if process is not None and process.poll() is None:
+                docker_control(["container", "kill", container_name])
+                try:
+                    if os.name == "posix":
+                        os.killpg(process.pid, signal.SIGKILL)
+                    else:
+                        process.kill()
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+            listed = docker_control(
+                [
+                    "container",
+                    "ls",
+                    "--all",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.ID}}",
+                ]
+            )
+            removed = bool(
+                listed is not None
+                and listed.returncode == 0
+                and not str(listed.stdout or "").strip()
+            )
+            if not removed:
+                docker_control(["container", "rm", "--force", container_name])
+                verified = docker_control(
+                    [
+                        "container",
+                        "ls",
+                        "--all",
+                        "--filter",
+                        f"name=^/{container_name}$",
+                        "--format",
+                        "{{.ID}}",
+                    ]
+                )
+                removed = bool(
+                    verified is not None
+                    and verified.returncode == 0
+                    and not str(verified.stdout or "").strip()
+                )
+            return removed
+
+        _cleanup_guard.register_container(cleanup_runtime_container)
+
         try:
             process = subprocess.Popen(
                 docker_command,
@@ -38075,7 +51011,8 @@ class PortalImplementationDaemon:
                     break
                 time.sleep(0.05)
             if timed_out or output_limit_exceeded:
-                docker_control(["container", "kill", container_name])
+                if not forest_projection_requested:
+                    docker_control(["container", "kill", container_name])
             if process.poll() is None:
                 try:
                     if os.name == "posix":
@@ -38111,7 +51048,8 @@ class PortalImplementationDaemon:
             )
 
         if process is not None and process.poll() is None:
-            docker_control(["container", "kill", container_name])
+            if not forest_projection_requested:
+                docker_control(["container", "kill", container_name])
         if reader is not None:
             reader.join(timeout=3)
             if not reader_finished.is_set():
@@ -38123,42 +51061,12 @@ class PortalImplementationDaemon:
                         pass
                 reader.join(timeout=1)
 
-        listed = docker_control(
-            [
-                "container",
-                "ls",
-                "--all",
-                "--filter",
-                f"name=^/{container_name}$",
-                "--format",
-                "{{.ID}}",
-            ]
-        )
-        container_removed = bool(
-            listed is not None
-            and listed.returncode == 0
-            and not str(listed.stdout or "").strip()
+        container_removed = (
+            True
+            if forest_projection_requested
+            else _cleanup_guard.cleanup_container_now()
         )
         if not container_removed:
-            docker_control(
-                ["container", "rm", "--force", container_name]
-            )
-            verified = docker_control(
-                [
-                    "container",
-                    "ls",
-                    "--all",
-                    "--filter",
-                    f"name=^/{container_name}$",
-                    "--format",
-                    "{{.ID}}",
-                ]
-            )
-            container_removed = bool(
-                verified is not None
-                and verified.returncode == 0
-                and not str(verified.stdout or "").strip()
-            )
             infrastructure_failure = True
             returncode = 75
 
@@ -38173,21 +51081,154 @@ class PortalImplementationDaemon:
         if returncode == 125:
             infrastructure_failure = True
             returncode = 75
+        git_replay_failure_reason = ""
+        git_replay_postflight_id = git_replay_plan.plan_id
+        git_postflight_receipt: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-git-postflight@1"
+            ),
+            "mode": "not_requested",
+            "elapsed_milliseconds": 0,
+            "time_limit_seconds": AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS,
+            "completed": True,
+        }
+        postflight_budget: _AuthorityGitSetupBudget | None = None
+        try:
+            if forest_projection_requested:
+                postflight_budget = _AuthorityGitSetupBudget.begin()
+                postflight_subject = _authority_git_forest_lifecycle_subject(
+                    workspace
+                )
+                postflight_git_replay = _authority_git_replay_plan(
+                    workspace,
+                    budget=postflight_budget,
+                    lifecycle_subject=postflight_subject,
+                )
+                git_replay_postflight_id = postflight_git_replay.plan_id
+                if postflight_git_replay.plan_id != git_replay_plan.plan_id:
+                    git_replay_failure_reason = (
+                        "authority_validation_git_metadata_drift"
+                    )
+                postflight_budget.check(workspace_text)
+                git_postflight_receipt = {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "authority-git-postflight@1"
+                    ),
+                    "mode": "dcr_forest_exact",
+                    "elapsed_milliseconds": int(
+                        math.ceil(
+                            (time.monotonic() - postflight_budget.started) * 1000
+                        )
+                    ),
+                    "time_limit_seconds": (
+                        AUTHORITY_VALIDATION_GIT_SNAPSHOT_MAX_SECONDS
+                    ),
+                    "metadata_entries": postflight_budget.metadata_entries,
+                    "source_bytes": postflight_budget.source_bytes,
+                    "completed": True,
+                }
+            if postflight_budget is not None:
+                postflight_budget.check(workspace_text)
+                git_postflight_receipt["elapsed_milliseconds"] = int(
+                    math.ceil(
+                        (time.monotonic() - postflight_budget.started) * 1000
+                    )
+                )
+        except AuthorityGitReplayError as exc:
+            git_replay_postflight_id = f"unavailable:{exc.reason}"
+            git_replay_failure_reason = exc.reason
+        if git_replay_failure_reason:
+            infrastructure_failure = True
+            returncode = 75
+        cleanup_receipt = _cleanup_guard.cleanup_all()
+        if forest_projection_requested:
+            container_removed = bool(
+                cleanup_receipt["container_succeeded"]
+            )
+        if not cleanup_receipt["succeeded"]:
+            infrastructure_failure = True
+            returncode = 75
+            if not git_replay_failure_reason:
+                git_replay_failure_reason = (
+                    "authority_validation_git_projection_cleanup_failed"
+                )
         isolation_receipt_body = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
-                "authority-validation-isolation-receipt@2"
+                "authority-validation-isolation-receipt@3"
             ),
             "contract_id": str(contract.get("contract_id") or ""),
             "backend": "docker-local-cuda",
             "docker_endpoint": docker_endpoint,
-            "image_id": image_id,
+            "base_image_id": base_image_id,
+            "image_id": runtime_image_id,
             "gpu_uuid": gpu_uuid,
             "gpu_requested": True,
             "network_mode": "none",
-            "host_filesystem": "workspace_only_read_only",
+            "host_filesystem": (
+                "workspace_and_identity_checked_git_metadata_read_only"
+                if forest_projection_requested
+                else "workspace_only_read_only"
+            ),
             "workspace_path": workspace_text,
             "workspace_read_only": True,
+            "git_metadata_read_only": forest_projection_requested,
+            "git_metadata_drift_detected": bool(
+                git_replay_failure_reason
+            ),
+            "git_metadata_replay": git_replay_plan.receipt(
+                postflight_id=(
+                    git_replay_postflight_id or git_replay_plan.plan_id
+                )
+            ),
+            "git_metadata_sealed_mounts": [
+                mount.to_dict() for mount in sealed_git_mounts
+            ],
+            "git_sealed_projection": dict(git_snapshot_receipt),
+            "git_setup_reclaimer": dict(git_projection_reclaimer),
+            "git_postflight": dict(git_postflight_receipt),
+            "git_projection_cleanup": dict(cleanup_receipt),
+            "authority_command_binding": dict(command_binding),
+            "git_mount_bootstrap": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "authority-git-mount-bootstrap@1"
+                ),
+                "record_count": len(git_mount_verification_records),
+                "manifest_id": content_identity(
+                    git_mount_verification_records
+                ),
+                "records": [
+                    dict(item) for item in git_mount_verification_records
+                ],
+                "runs_before_validation_command": True,
+                "source_swap_fails_closed": True,
+                "derived_layer_manifest_id": str(
+                    derived_layer_manifest.get("manifest_id") or ""
+                ),
+                "derived_layer_record_count": int(
+                    derived_layer_manifest.get("record_count") or 0
+                ),
+                "exact_tree_verified": forest_projection_requested,
+            },
+            "git_safe_directory_config": {
+                "mounted": git_system_config is not None,
+                "path": str(git_system_config or ""),
+                "sha256": git_system_config_identity,
+                "configured_roots": [
+                    "."
+                    if root == workspace
+                    else root.relative_to(workspace).as_posix()
+                    for root in git_replay_plan.roots
+                ],
+                "read_only": True,
+                "required_for_git_discovery": False,
+                "synthetic_metadata_owned_by_container_uid": (
+                    forest_projection_requested
+                ),
+            },
             "private_pid_namespace": True,
             "cgroup_process_limit": AUTHORITY_VALIDATION_PIDS_LIMIT,
             "memory_limit_bytes": AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES,
@@ -38211,10 +51252,9 @@ class PortalImplementationDaemon:
             "container_removed": container_removed,
             "process_tree_quiesced": container_removed,
         }
-        isolation_receipt = {
-            **isolation_receipt_body,
-            "receipt_id": content_identity(isolation_receipt_body),
-        }
+        isolation_receipt = _authority_validation_build_isolation_receipt(
+            isolation_receipt_body
+        )
         return {
             **base,
             "finished_at": utc_now(),
@@ -38223,14 +51263,18 @@ class PortalImplementationDaemon:
             "timed_out": timed_out,
             "infrastructure_failure": infrastructure_failure,
             "error": (
-                "authority_validation_output_limit_exceeded"
+                "authority_validation_git_metadata_replay_rejected"
+                if git_replay_failure_reason
+                else "authority_validation_output_limit_exceeded"
                 if output_limit_exceeded
                 else "authority_validation_container_runtime_failed"
                 if infrastructure_failure
                 else ""
             ),
             "reason": (
-                "authority_validation_container_not_quiesced"
+                git_replay_failure_reason
+                if git_replay_failure_reason
+                else "authority_validation_container_not_quiesced"
                 if not container_removed
                 else "authority_validation_output_limit_exceeded"
                 if output_limit_exceeded
@@ -38239,6 +51283,7 @@ class PortalImplementationDaemon:
                 else ""
             ),
             "authority_validation_isolation_receipt": isolation_receipt,
+            "git_projection_cleanup": cleanup_receipt,
         }
 
     @staticmethod
@@ -41775,7 +54820,7 @@ class PortalImplementationDaemon:
             or path != relative
         ):
             return ""
-        return fields[1] if re.fullmatch(r"[0-9a-fA-F]{40,64}", fields[1]) else ""
+        return fields[1] if re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", fields[1]) else ""
 
     def _capture_submodule_merge_snapshot(
         self,
@@ -45523,6 +58568,12 @@ class PortalImplementationDaemon:
                         completion_tasks,
                         completion_task_cids,
                         expected_target_commit=target_commit,
+                        expected_repository_tree_id=str(
+                            post_merge_validation.get(
+                                "repository_tree_id"
+                            )
+                            or ""
+                        ),
                         validation_evidence=(
                             post_merge_validation.get(
                                 "_manual_completion_authority_evidence"
@@ -45925,6 +58976,12 @@ class PortalImplementationDaemon:
                         completion_tasks,
                         completion_task_cids,
                         expected_target_commit=target_commit,
+                        expected_repository_tree_id=str(
+                            post_merge_validation.get(
+                                "repository_tree_id"
+                            )
+                            or ""
+                        ),
                         validation_evidence=(
                             post_merge_validation.get(
                                 "_manual_completion_authority_evidence"
@@ -46226,6 +59283,9 @@ class PortalImplementationDaemon:
                     completion_tasks,
                     completion_task_cids,
                     expected_target_commit=target_commit,
+                    expected_repository_tree_id=str(
+                        post_merge_validation.get("repository_tree_id") or ""
+                    ),
                     validation_evidence=(
                         post_merge_validation.get(
                             "_manual_completion_authority_evidence"
@@ -47939,14 +60999,32 @@ class PortalImplementationDaemon:
 
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
+        root = self.repo_root.resolve()
+        persisted_repo_root = str(metadata.get("repo_root") or "").strip()
+        persisted_worktree_root = str(
+            metadata.get("worktree_root") or ""
+        ).strip()
+        if not persisted_repo_root and not persisted_worktree_root:
+            return "repository_path_missing"
         try:
-            if Path(str(metadata.get("repo_root") or "")).resolve() != (
-                self.repo_root.resolve()
-            ):
+            # Current checkout leases intentionally leave ``repo_root`` empty
+            # during the linked-worktree rolling migration.  In that schema,
+            # the exact worktree path plus repository identity are the closed
+            # replacement authority.  Legacy nonempty ``repo_root`` records
+            # remain readable only when they name this exact checkout.
+            persisted_path = (
+                Path(persisted_repo_root).resolve()
+                if persisted_repo_root
+                else Path(persisted_worktree_root).resolve()
+            )
+            if persisted_path != root:
                 return "repository_path_mismatch"
         except (OSError, RuntimeError, ValueError):
             return "repository_path_invalid"
-        root = self.repo_root.resolve()
+        if str(metadata.get("repository_id") or "") != (
+            checkout_repository_id(root)
+        ):
+            return "repository_identity_mismatch"
         relative_paths = [
             path.resolve().relative_to(root).as_posix()
             for path in paths
@@ -48552,8 +61630,28 @@ class PortalImplementationDaemon:
         }
 
     def _recover_protected_checkout_mutation(self) -> dict[str, Any]:
+        """Recover one protected mutation with unconditional token cleanup."""
+
+        ephemeral_evidence_ids: list[str] = []
+        try:
+            return self._recover_protected_checkout_mutation_implementation(
+                _ephemeral_evidence_id_sink=ephemeral_evidence_ids
+            )
+        finally:
+            for evidence_id in reversed(ephemeral_evidence_ids):
+                self._discard_retained_manual_completion_authority_evidence(
+                    evidence_id
+                )
+
+    def _recover_protected_checkout_mutation_implementation(
+        self,
+        *,
+        _ephemeral_evidence_id_sink: list[str],
+    ) -> dict[str, Any]:
         """Autonomously finish a retained protected generated-file mutation."""
 
+        protected_authority_expectation: Mapping[str, Any] | None = None
+        protected_authority_revalidation: dict[str, Any] = {}
         existing = read_checkout_mutation_lease(
             self._repo_merge_lock_path()
         )
@@ -48581,44 +61679,54 @@ class PortalImplementationDaemon:
                         if str(task_id).strip()
                     )
                 recovery_task_ids.discard("")
-                authority_rejection = (
-                    self._manual_completion_authority_rejection(
-                        recovery_task_ids,
-                        authority_context_id=(
-                            str(
-                                expectation.get(
-                                    "manual_completion_authority_context_id"
-                                )
-                                or ""
-                            )
-                            if isinstance(expectation, Mapping)
-                            else ""
-                        ),
-                        authority_evidence=(
-                            expectation.get(
-                                "manual_completion_authority_evidence"
-                            )
-                            if isinstance(expectation, Mapping)
-                            and isinstance(
-                                expectation.get(
-                                    "manual_completion_authority_evidence"
-                                ),
-                                Mapping,
-                            )
-                            else None
-                        ),
-                    )
+                raw_journal_evidence = (
+                    expectation.get("manual_completion_authority_evidence")
+                    if isinstance(expectation, Mapping)
+                    else None
                 )
-                if authority_rejection is not None:
-                    return {
-                        "required": True,
-                        "blocked": True,
-                        "recovered": False,
-                        "checkout_mutation_lease_retained": True,
-                        "checkout_mutation_recovery_required": True,
-                        "lock_path": str(existing.lock_path),
-                        **authority_rejection,
-                    }
+                id_only_authority = bool(
+                    isinstance(expectation, Mapping)
+                    and expectation.get(
+                        "manual_completion_authority_evidence_id"
+                    )
+                    and not isinstance(raw_journal_evidence, Mapping)
+                )
+                if id_only_authority:
+                    # The target may already be the exact protected-board
+                    # completion child. Defer fresh PMV until the pinned release
+                    # proof below distinguishes pre-state from post-state.
+                    protected_authority_expectation = expectation
+                else:
+                    authority_rejection = (
+                        self._manual_completion_authority_rejection(
+                            recovery_task_ids,
+                            authority_context_id=(
+                                str(
+                                    expectation.get(
+                                        "manual_completion_authority_context_id"
+                                    )
+                                    or ""
+                                )
+                                if isinstance(expectation, Mapping)
+                                else ""
+                            ),
+                            authority_evidence=(
+                                raw_journal_evidence
+                                if isinstance(raw_journal_evidence, Mapping)
+                                else None
+                            ),
+                        )
+                    )
+                    if authority_rejection is not None:
+                        return {
+                            "required": True,
+                            "blocked": True,
+                            "recovered": False,
+                            "checkout_mutation_lease_retained": True,
+                            "checkout_mutation_recovery_required": True,
+                            "lock_path": str(existing.lock_path),
+                            **authority_rejection,
+                        }
 
         adoption = self._adopt_protected_checkout_recovery()
         if not adoption.get("required", False):
@@ -48655,6 +61763,189 @@ class PortalImplementationDaemon:
             if isinstance(guard, Mapping)
             else {}
         )
+        if protected_authority_expectation is not None:
+            revalidation_expectation = dict(
+                protected_authority_expectation
+            )
+            original_identity = protected_authority_expectation.get(
+                "manual_completion_authority_validated_tree_identity"
+            )
+            original_target = (
+                str(original_identity.get("target_commit") or "")
+                if isinstance(original_identity, Mapping)
+                else ""
+            )
+            live_recovery_target = self._resolved_commit_ref(
+                self.repo_root,
+                self._main_branch_name(),
+            )
+            if live_recovery_target != original_target:
+                publication_binding = (
+                    self._manual_completion_receipt_publication_binding(
+                        {
+                            "durable": True,
+                            "protected_board_postcondition": {
+                                "trusted": bool(proof.get("trusted")),
+                                "clean": bool(proof.get("clean")),
+                                "release_proof": proof,
+                            },
+                        },
+                        expected_target_commit=original_target,
+                    )
+                )
+                completion_target = str(
+                    publication_binding.get("receipt_target_commit") or ""
+                )
+                completion_tree = self._candidate_repository_tree(
+                    completion_target
+                )
+                if (
+                    publication_binding.get("passed") is not True
+                    or not completion_target
+                    or not completion_tree
+                ):
+                    return {
+                        **adoption,
+                        "blocked": True,
+                        "recovered": False,
+                        "reason": (
+                            "protected_recovery_completion_binding_invalid"
+                        ),
+                        "checkout_mutation_lease_retained": True,
+                        "checkout_mutation_recovery_required": True,
+                        "publication_binding": publication_binding,
+                    }
+                completion_identity = {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "manual-completion-validated-tree@1"
+                    ),
+                    "target_commit": completion_target,
+                    "repository_tree_id": f"git-tree:{completion_tree}",
+                }
+                revalidation_expectation[
+                    "manual_completion_authority_validated_tree_identity"
+                ] = completion_identity
+                revalidation_expectation[
+                    "manual_completion_authority_validated_tree_id"
+                ] = content_identity(completion_identity)
+            protected_authority_revalidation = (
+                self._fresh_post_merge_authority_for_callback_expectation(
+                    revalidation_expectation
+                )
+            )
+            if protected_authority_revalidation.get("passed") is not True:
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "reason": (
+                        "protected_recovery_fresh_revalidation_required"
+                    ),
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "fresh_revalidation": {
+                        key: value
+                        for key, value in (
+                            protected_authority_revalidation.items()
+                        )
+                        if key not in {"authority_evidence", "task", "tasks"}
+                    },
+                }
+            scoped_evidence = protected_authority_revalidation.get(
+                "authority_evidence"
+            )
+            if not isinstance(scoped_evidence, Mapping):
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "reason": "protected_recovery_authority_evidence_missing",
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                }
+            scoped_evidence_id = (
+                self._mint_ephemeral_manual_completion_authority_evidence(
+                    scoped_evidence
+                )
+            )
+            _ephemeral_evidence_id_sink.append(scoped_evidence_id)
+
+            expected_scoped_identity = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                ),
+                "target_commit": str(
+                    protected_authority_revalidation.get("target_commit") or ""
+                ),
+                "repository_tree_id": str(
+                    protected_authority_revalidation.get(
+                        "repository_tree_id"
+                    )
+                    or ""
+                ),
+            }
+
+            def scoped_authority_rejection() -> dict[str, Any] | None:
+                return self._manual_completion_authority_rejection(
+                    protected_authority_revalidation.get("task_ids") or (),
+                    authority_context_id=str(
+                        scoped_evidence.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    authority_evidence=scoped_evidence,
+                    expected_validated_tree_identity=expected_scoped_identity,
+                )
+
+            def persist_scoped_authority_receipt() -> dict[str, Any]:
+                rejection = scoped_authority_rejection()
+                if rejection is not None:
+                    return {
+                        "persisted": False,
+                        "reason": (
+                            "protected_recovery_authority_changed_before_receipt"
+                        ),
+                        "authority_rejection": rejection,
+                    }
+                revalidation_members = sorted(
+                    set(
+                        protected_authority_revalidation.get("task_ids") or ()
+                    )
+                    & set(
+                        self._manual_completion_authority_revalidation_task_ids
+                    )
+                )
+                return self._persist_manual_completion_revalidation_receipts(
+                    revalidation_members,
+                    authority_context_id=str(
+                        scoped_evidence.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    authority_evidence=scoped_evidence,
+                    expected_target_commit=str(
+                        protected_authority_revalidation.get(
+                            "target_commit"
+                        )
+                        or ""
+                    ),
+                )
+
+            authority_recheck = scoped_authority_rejection()
+            if authority_recheck is not None:
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "reason": "protected_recovery_authority_recheck_failed",
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "authority_rejection": authority_recheck,
+                }
         completion_intent = intent.get("completion_intent")
         callback_replay: dict[str, Any] | None = None
         callback_marker_valid = bool(
@@ -48713,6 +62004,21 @@ class PortalImplementationDaemon:
                     "error": str(exc)[-4000:],
                 }
 
+        if protected_authority_revalidation.get("passed") is True:
+            authority_recheck = scoped_authority_rejection()
+            if authority_recheck is not None:
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "reason": (
+                        "protected_recovery_authority_changed_after_replay"
+                    ),
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "authority_rejection": authority_recheck,
+                }
+
         # Replaying an unfinished Markdown member may have dirtied the board,
         # so the pre-replay proof is no longer authoritative.
         proof = (
@@ -48721,15 +62027,48 @@ class PortalImplementationDaemon:
             else proof
         )
         if proof.get("trusted", False) and callback_replay is None:
+            trusted_recovery_result: dict[str, Any] = {
+                "required": True,
+                "recovery_attempted": True,
+                "release_proof": proof,
+            }
+            if protected_authority_revalidation.get("passed") is True:
+                receipt_result = persist_scoped_authority_receipt()
+                trusted_recovery_result[
+                    "manual_completion_authority_revalidation_receipt"
+                ] = receipt_result
+                if receipt_result.get("persisted") is not True:
+                    return {
+                        **adoption,
+                        **trusted_recovery_result,
+                        "blocked": True,
+                        "recovered": False,
+                        "reason": (
+                            "protected_recovery_authority_receipt_not_durable"
+                        ),
+                        "checkout_mutation_lease_retained": True,
+                        "checkout_mutation_recovery_required": True,
+                    }
             return self._finish_retained_checkout_mutation_recovery(
                 lease,
-                {
-                    "required": True,
-                    "recovery_attempted": True,
-                    "release_proof": proof,
-                },
+                trusted_recovery_result,
                 operation="recover_protected_generated_outputs",
             )
+
+        if protected_authority_revalidation.get("passed") is True:
+            authority_recheck = scoped_authority_rejection()
+            if authority_recheck is not None:
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "reason": (
+                        "protected_recovery_authority_changed_before_commit"
+                    ),
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "authority_rejection": authority_recheck,
+                }
 
         subjects = intent.get("subjects")
         if not isinstance(subjects, Mapping):
@@ -48761,6 +62100,117 @@ class PortalImplementationDaemon:
             raise
         finally:
             self._checkout_mutation_context.transaction_depth = 0
+        if protected_authority_revalidation.get("passed") is True:
+            validated_target = str(
+                protected_authority_revalidation.get("target_commit") or ""
+            )
+            live_after_commit = self._resolved_commit_ref(
+                self.repo_root,
+                self._main_branch_name(),
+            )
+            if live_after_commit != validated_target:
+                post_commit_proof = (
+                    self._protected_checkout_release_proof(guard)
+                    if isinstance(guard, Mapping)
+                    else {}
+                )
+                publication_binding = (
+                    self._manual_completion_receipt_publication_binding(
+                        {
+                            "durable": True,
+                            "protected_board_postcondition": {
+                                "trusted": bool(
+                                    post_commit_proof.get("trusted")
+                                ),
+                                "clean": bool(post_commit_proof.get("clean")),
+                                "release_proof": post_commit_proof,
+                            },
+                        },
+                        expected_target_commit=validated_target,
+                    )
+                )
+                completion_target = str(
+                    publication_binding.get("receipt_target_commit") or ""
+                )
+                completion_tree = self._candidate_repository_tree(
+                    completion_target
+                )
+                if (
+                    publication_binding.get("passed") is not True
+                    or completion_target != live_after_commit
+                    or not completion_tree
+                    or protected_authority_expectation is None
+                ):
+                    return {
+                        **adoption,
+                        "blocked": True,
+                        "recovered": False,
+                        "reason": (
+                            "protected_recovery_post_commit_binding_invalid"
+                        ),
+                        "checkout_mutation_lease_retained": True,
+                        "checkout_mutation_recovery_required": True,
+                        "publication_binding": publication_binding,
+                    }
+                completion_identity = {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "manual-completion-validated-tree@1"
+                    ),
+                    "target_commit": completion_target,
+                    "repository_tree_id": f"git-tree:{completion_tree}",
+                }
+                completion_expectation = dict(
+                    protected_authority_expectation
+                )
+                completion_expectation[
+                    "manual_completion_authority_validated_tree_identity"
+                ] = completion_identity
+                completion_expectation[
+                    "manual_completion_authority_validated_tree_id"
+                ] = content_identity(completion_identity)
+                refreshed_authority = (
+                    self._fresh_post_merge_authority_for_callback_expectation(
+                        completion_expectation
+                    )
+                )
+                refreshed_evidence = refreshed_authority.get(
+                    "authority_evidence"
+                )
+                if (
+                    refreshed_authority.get("passed") is not True
+                    or not isinstance(refreshed_evidence, Mapping)
+                ):
+                    return {
+                        **adoption,
+                        "blocked": True,
+                        "recovered": False,
+                        "reason": (
+                            "protected_recovery_post_commit_revalidation_failed"
+                        ),
+                        "checkout_mutation_lease_retained": True,
+                        "checkout_mutation_recovery_required": True,
+                        "fresh_revalidation": {
+                            key: value
+                            for key, value in refreshed_authority.items()
+                            if key
+                            not in {"authority_evidence", "task", "tasks"}
+                        },
+                    }
+                self._discard_retained_manual_completion_authority_evidence(
+                    scoped_evidence_id
+                )
+                if scoped_evidence_id in _ephemeral_evidence_id_sink:
+                    _ephemeral_evidence_id_sink.remove(scoped_evidence_id)
+                protected_authority_revalidation = refreshed_authority
+                scoped_evidence = refreshed_evidence
+                expected_scoped_identity = completion_identity
+                scoped_evidence_id = (
+                    self._mint_ephemeral_manual_completion_authority_evidence(
+                        scoped_evidence
+                    )
+                )
+                _ephemeral_evidence_id_sink.append(scoped_evidence_id)
         result = {
             "required": True,
             "recovery_attempted": True,
@@ -48820,6 +62270,28 @@ class PortalImplementationDaemon:
                     "checkout_mutation_recovery_required": True,
                     "reason": (
                         "protected_recovery_callback_marker_pending"
+                    ),
+                }
+        # ID-only authority journals may omit a terminal publication intent.
+        # The protected file still crossed an authority-gated commit boundary,
+        # so a successful release must persist the freshly revalidated receipt
+        # even when there was no callback payload to replay.  At this point a
+        # changed target has already been rebound and revalidated as the exact
+        # protected-board completion child above.
+        if protected_authority_revalidation.get("passed") is True:
+            receipt_result = persist_scoped_authority_receipt()
+            result[
+                "manual_completion_authority_revalidation_receipt"
+            ] = receipt_result
+            if receipt_result.get("persisted") is not True:
+                return {
+                    **result,
+                    "blocked": True,
+                    "recovered": False,
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "reason": (
+                        "protected_recovery_authority_receipt_not_durable"
                     ),
                 }
         return self._finish_retained_checkout_mutation_recovery(
@@ -51581,9 +65053,50 @@ class PortalImplementationDaemon:
             }
         return None
 
+    def _task_matches_execution_slice_identity(self, task: PortalTask) -> bool:
+        """Bind one task revision to every configured slice dimension."""
+
+        return bool(
+            (
+                not self.execution_slice_task_ids
+                or task.task_id in self.execution_slice_task_ids
+            )
+            and (
+                not self.execution_slice_task_cids
+                or self._canonical_ref(task) in self.execution_slice_task_cids
+            )
+        )
+
+    def _task_in_execution_slice(self, task: PortalTask) -> bool:
+        """Admit only identity-bound, non-expanding slice work.
+
+        IDs and canonical CIDs are independent capabilities.  When both are
+        configured, matching only one must not admit a stale revision.  A
+        reviewed packet aggregate is all-or-nothing: if any covered task is
+        outside the capability, the primary is not selectable as a misleading
+        standalone task.
+        """
+
+        if not self._task_matches_execution_slice_identity(task):
+            return False
+        if not (
+            self.execution_slice_task_ids
+            or self.execution_slice_task_cids
+        ):
+            return True
+        try:
+            self._bundle_work_order_for_task(task)
+        except ImplementationRetryDeferred as exc:
+            if exc.reason == "execution_slice_bundle_expansion_forbidden":
+                return False
+            raise
+        return True
+
     def _bundle_work_order_for_task(self, task: PortalTask) -> BundleWorkOrder | None:
         """Return bundle completion metadata for a packet aggregate task."""
 
+        if not self._task_matches_execution_slice_identity(task):
+            return None
         context = self._load_todo_vector_context(task)
         if context is None or not context.get("aggregate_primary"):
             return None
@@ -51617,6 +65130,13 @@ class PortalImplementationDaemon:
             candidate_record = covered_records.get(task_id)
             if shard_task is None or not isinstance(candidate_record, dict):
                 continue
+            if not self._task_matches_execution_slice_identity(shard_task):
+                # Aggregate membership is all-or-nothing.  Silently dropping
+                # a reviewed sibling would change packet semantics, while
+                # retaining it would broaden the launch capability.
+                raise ImplementationRetryDeferred(
+                    "execution_slice_bundle_expansion_forbidden"
+                )
             candidate_bundle_key = (
                 self._task_metadata_value(shard_task, "bundle")
                 or str(candidate_record.get("bundle_key") or "").strip()

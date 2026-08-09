@@ -19,7 +19,7 @@ import time
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ..task_sources.duckdb_state import (
     DuckDBConnection,
@@ -60,6 +60,18 @@ class MergeQueueFullError(RuntimeError):
 
 class MergeQueueFenceError(RuntimeError):
     """Raised when stale or non-owning work tries to mutate a claimed request."""
+
+
+class MergeQueueAuthorityRotationReceiptError(RuntimeError):
+    """The DB CAS succeeded but its compatibility receipt could not publish."""
+
+    def __init__(self, request_id: str, error: BaseException) -> None:
+        self.request_id = str(request_id)
+        self.error_type = type(error).__name__
+        super().__init__(
+            "manual_authority_rotation_stage_receipt_failed:"
+            f"{self.request_id}:{self.error_type}"
+        )
 
 
 @dataclass(frozen=True)
@@ -617,6 +629,190 @@ class MergeQueue:
         receipt_path = self._write_stage_receipt(request)
         return replace(request, file_path=receipt_path)
 
+    @staticmethod
+    def _manual_authority_full_evidence_id(
+        metadata: Mapping[str, Any] | Any,
+    ) -> str:
+        if not isinstance(metadata, Mapping):
+            return ""
+        validation_proof = metadata.get("validation_proof")
+        if not isinstance(validation_proof, Mapping):
+            return ""
+        return str(
+            validation_proof.get(
+                "manual_completion_authority_full_evidence_id"
+            )
+            or ""
+        ).strip()
+
+    def rotate_pending_manual_authority_evidence(
+        self,
+        request_id: str,
+        *,
+        commit_sha: str,
+        branch_name: str,
+        task_id: str,
+        canonical_task_id: str,
+        canonical_task_key: str,
+        expected_previous_evidence_id: str,
+        metadata: Mapping[str, Any],
+        lane_id: str,
+        attempt: int,
+    ) -> MergeRequest | None:
+        """CAS a stale pending capability to one freshly validated producer.
+
+        A process-local capability cannot survive a daemon restart.  Fresh
+        committed validation may adopt only the exact still-pending dedupe
+        row for the same immutable commit, and only while its prior authority
+        ID is unchanged and no consumer claim exists.
+        """
+
+        normalized_request_id = str(request_id or "").strip()
+        normalized_commit = str(commit_sha or "").strip()
+        normalized_branch = str(branch_name or "").strip()
+        normalized_task_id = str(task_id or "").strip()
+        normalized_task_cid = str(canonical_task_id or "").strip()
+        normalized_task_key = str(canonical_task_key or "").strip()
+        previous_id = str(expected_previous_evidence_id or "").strip()
+        metadata_dict = dict(metadata)
+        replacement_id = self._manual_authority_full_evidence_id(metadata_dict)
+        if (
+            not normalized_request_id
+            or not normalized_commit
+            or not normalized_branch
+            or not normalized_task_id
+            or not normalized_task_cid
+            or not normalized_task_key
+            or not previous_id
+            or not replacement_id
+            or replacement_id == previous_id
+        ):
+            return None
+        if (
+            (self.target_repository_id or self.require_target_binding)
+            and not self._metadata_matches_target(metadata_dict)
+        ):
+            return None
+        updated_row: DuckDBRow | None = None
+        now = self._clock()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id=?",
+                    (normalized_request_id,),
+                ).fetchone()
+                if row is None:
+                    connection.commit()
+                    return None
+                try:
+                    current_metadata = json.loads(row["metadata_json"] or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    connection.commit()
+                    return None
+                if not (
+                    str(row["status"] or "") == "pending"
+                    and not str(row["claim_token"] or "")
+                    and not str(row["consumer_id"] or "")
+                    and str(row["commit_sha"] or "") == normalized_commit
+                    and str(row["branch_name"] or "") == normalized_branch
+                    and str(row["task_id"] or "") == normalized_task_id
+                    and str(row["canonical_task_id"] or "")
+                    == normalized_task_cid
+                    and str(row["canonical_task_key"] or "")
+                    == normalized_task_key
+                    and self._manual_authority_full_evidence_id(
+                        current_metadata
+                    )
+                    == previous_id
+                ):
+                    connection.commit()
+                    return None
+                current_non_authority = dict(current_metadata)
+                replacement_non_authority = dict(metadata_dict)
+                mutable_authority_keys = (
+                    "validation_proof",
+                    "manual_completion_authority_context_id",
+                    "manual_completion_authority_task_ids",
+                    "manual_completion_authority_required_task_ids",
+                    "manual_completion_authority_epoch_id",
+                    "manual_completion_authority_revocation_generation",
+                    "worktree_path",
+                    "worktree_pool_handoff",
+                )
+                for key in mutable_authority_keys:
+                    current_non_authority.pop(key, None)
+                    replacement_non_authority.pop(key, None)
+                current_rotation_id = str(
+                    current_non_authority.get(
+                        "manual_completion_authority_rotation_binding_id"
+                    )
+                    or ""
+                ).strip()
+                replacement_rotation_id = str(
+                    replacement_non_authority.get(
+                        "manual_completion_authority_rotation_binding_id"
+                    )
+                    or ""
+                ).strip()
+                if (
+                    not current_rotation_id
+                    or current_rotation_id != replacement_rotation_id
+                    or current_non_authority != replacement_non_authority
+                ):
+                    connection.commit()
+                    return None
+                generation = int(row["claim_generation"] or 0)
+                updated = connection.execute(
+                    """UPDATE merge_requests
+                       SET metadata_json=?, lane_id=?, attempt=?, updated_at=?
+                       WHERE request_id=? AND status='pending'
+                         AND commit_sha=? AND branch_name=? AND task_id=?
+                         AND canonical_task_id=? AND canonical_task_key=?
+                         AND claim_token=''
+                         AND consumer_id='' AND claim_generation=?""",
+                    (
+                        json.dumps(
+                            metadata_dict,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            default=str,
+                        ),
+                        str(lane_id or os.getpid()),
+                        max(1, int(attempt)),
+                        now,
+                        normalized_request_id,
+                        normalized_commit,
+                        normalized_branch,
+                        normalized_task_id,
+                        normalized_task_cid,
+                        normalized_task_key,
+                        generation,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    connection.rollback()
+                    return None
+                updated_row = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id=?",
+                    (normalized_request_id,),
+                ).fetchone()
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        if updated_row is None:
+            return None
+        request = self._request_from_row(updated_row)
+        try:
+            receipt_path = self._write_stage_receipt(request)
+        except OSError as exc:
+            raise MergeQueueAuthorityRotationReceiptError(
+                request.request_id,
+                exc,
+            ) from exc
+        return replace(request, file_path=receipt_path)
+
     def _metadata_matches_target(self, value: Any) -> bool:
         """Return whether one durable row belongs to this consumer view."""
 
@@ -656,16 +852,33 @@ class MergeQueue:
                 "request target differs from the queue binding"
             )
 
-    def dequeue(self, consumer_id: str = "") -> Optional[MergeRequest]:
+    def dequeue(
+        self,
+        consumer_id: str = "",
+        *,
+        allowed_task_ids: Sequence[str] | None = None,
+        allowed_canonical_task_cids: Sequence[str] | None = None,
+        allowed_request_ids: Sequence[str] | None = None,
+    ) -> Optional[MergeRequest]:
         """Atomically claim the fairest pending request for one consumer."""
 
-        claimed = self.dequeue_many(1, consumer_id=consumer_id)
+        claimed = self.dequeue_many(
+            1,
+            consumer_id=consumer_id,
+            allowed_task_ids=allowed_task_ids,
+            allowed_canonical_task_cids=allowed_canonical_task_cids,
+            allowed_request_ids=allowed_request_ids,
+        )
         return claimed[0] if claimed else None
 
     def dequeue_many(
         self,
         limit: int,
         consumer_id: str = "",
+        *,
+        allowed_task_ids: Sequence[str] | None = None,
+        allowed_canonical_task_cids: Sequence[str] | None = None,
+        allowed_request_ids: Sequence[str] | None = None,
     ) -> tuple[MergeRequest, ...]:
         """Atomically claim a bounded, deterministically ordered preflight batch.
 
@@ -678,6 +891,33 @@ class MergeQueue:
         requested = int(limit)
         if requested <= 0:
             return ()
+        task_allowlist = (
+            frozenset(
+                str(task_id).strip()
+                for task_id in allowed_task_ids
+                if str(task_id).strip()
+            )
+            if allowed_task_ids is not None
+            else None
+        )
+        cid_allowlist = (
+            frozenset(
+                str(task_cid).strip()
+                for task_cid in allowed_canonical_task_cids
+                if str(task_cid).strip()
+            )
+            if allowed_canonical_task_cids is not None
+            else None
+        )
+        request_allowlist = (
+            frozenset(
+                str(request_id).strip()
+                for request_id in allowed_request_ids
+                if str(request_id).strip()
+            )
+            if allowed_request_ids is not None
+            else None
+        )
         self._purge_stale()
         consumer = str(consumer_id or os.getpid())
         now = self._clock()
@@ -717,6 +957,56 @@ class MergeQueue:
                         for row in rows
                         if self._metadata_matches_target(row["metadata_json"])
                     ]
+                if task_allowlist is not None or cid_allowlist is not None:
+                    rows = [
+                        row
+                        for row in rows
+                        if (
+                            task_allowlist is None
+                            or str(row["task_id"] or "") in task_allowlist
+                        )
+                        and (
+                            cid_allowlist is None
+                            or str(row["canonical_task_id"] or "")
+                            in cid_allowlist
+                        )
+                    ]
+                if request_allowlist is not None:
+                    rows = [
+                        row
+                        for row in rows
+                        if str(row["request_id"] or "") in request_allowlist
+                    ]
+                else:
+                    # Committed manual-authority rows carry a process-local
+                    # full-evidence capability.  A generic lane must never
+                    # claim and quarantine one merely because it shares the
+                    # task/CID slice.  Only the producer's exact request-ID
+                    # dequeue below may claim it.
+                    eligible_rows: list[DuckDBRow] = []
+                    for row in rows:
+                        try:
+                            metadata = json.loads(row["metadata_json"] or "{}")
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            metadata = {}
+                        validation_proof = (
+                            metadata.get("validation_proof")
+                            if isinstance(metadata, Mapping)
+                            else None
+                        )
+                        full_evidence_id = (
+                            str(
+                                validation_proof.get(
+                                    "manual_completion_authority_full_evidence_id"
+                                )
+                                or ""
+                            ).strip()
+                            if isinstance(validation_proof, Mapping)
+                            else ""
+                        )
+                        if not full_evidence_id:
+                            eligible_rows.append(row)
+                    rows = eligible_rows
                 if not rows:
                     connection.commit()
                     return ()
@@ -1514,7 +1804,22 @@ class MergeQueue:
                     continue
                 attempt = int(row["attempt"])
                 failure_count = int(row["failure_count"])
-                if attempt < self.max_attempts:
+                try:
+                    row_metadata = json.loads(row["metadata_json"] or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    row_metadata = {}
+                authority_capability = bool(
+                    self._manual_authority_full_evidence_id(row_metadata)
+                )
+                if authority_capability:
+                    new_status = "pending"
+                    new_attempt = attempt
+                    failure_count += 1
+                    reason = (
+                        "manual_completion_authority_revalidation_required"
+                    )
+                    finished_at = 0.0
+                elif attempt < self.max_attempts:
                     new_status = "pending"
                     new_attempt = attempt + 1
                     failure_count += 1
@@ -1573,7 +1878,21 @@ class MergeQueue:
                     continue
                 attempt = int(row["attempt"])
                 failure_count = int(row["failure_count"]) + 1
-                if attempt < self.max_attempts:
+                try:
+                    row_metadata = json.loads(row["metadata_json"] or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    row_metadata = {}
+                authority_capability = bool(
+                    self._manual_authority_full_evidence_id(row_metadata)
+                )
+                if authority_capability:
+                    status = "pending"
+                    next_attempt = attempt
+                    finished_at = 0.0
+                    reason = (
+                        "manual_completion_authority_revalidation_required"
+                    )
+                elif attempt < self.max_attempts:
                     status = "pending"
                     next_attempt = attempt + 1
                     finished_at = 0.0

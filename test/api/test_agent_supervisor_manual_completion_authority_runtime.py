@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 
@@ -181,6 +183,7 @@ def _revalidation_daemon(
     *,
     suffix: str,
 ) -> daemon_module.PortalImplementationDaemon:
+    _ensure_git_authority_fixture(root)
     state_dir = root / f"state-{suffix}"
     return daemon_module.PortalImplementationDaemon(
         todo_path=board,
@@ -203,6 +206,18 @@ def _git(repo: Path, *arguments: str) -> str:
         capture_output=True,
         check=True,
     ).stdout.strip()
+
+
+def _ensure_git_authority_fixture(root: Path) -> None:
+    """Give generic authority tests the exact commit/tree binding production has."""
+
+    if (root / ".git").exists():
+        return
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Authority Test")
+    _git(root, "config", "user.email", "authority@example.invalid")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "authority fixture baseline")
 
 
 def _git_revalidation_repo(
@@ -905,6 +920,7 @@ def test_pending_descendant_requires_fresh_revalidation_after_manual_activation(
         encoding="utf-8",
     )
     (tmp_path / "dependent.txt").write_text("old\n", encoding="utf-8")
+    _ensure_git_authority_fixture(tmp_path)
     state_dir = tmp_path / "state-activated"
     daemon = daemon_module.PortalImplementationDaemon(
         todo_path=board,
@@ -1208,13 +1224,16 @@ def test_restart_and_same_uid_disk_forgery_lose_receipt_trust(
     )
     restart_guard = restarted._refresh_manual_completion_authority_guard()
 
-    # Durable self-consistent receipts are cold-start re-admitted so a
-    # supervisor restart does not rewalk the full revalidation DAG.
-    assert receipt_id in (
+    # Digest-only durable rows cannot replay their closed isolation receipt.
+    # A restarted process therefore forces a fresh uncached validation.
+    assert receipt_id not in (
         restarted._trusted_manual_completion_revalidation_receipt_ids
     )
-    assert restart_guard["revalidation_receipt_task_ids"] == ["TEST-002"]
-    assert "TEST-002" not in restart_guard["revalidation_task_ids"]
+    assert restart_guard["revalidation_receipt_task_ids"] == []
+    assert restart_guard["revalidation_task_ids"] == ["TEST-002"]
+    assert restart_guard["revalidation_receipt_guard"][
+        "cold_start_revalidation_required"
+    ] is True
 
     store_path = daemon._manual_completion_revalidation_store_path()
     store = json.loads(store_path.read_text(encoding="utf-8"))
@@ -1501,7 +1520,7 @@ def test_cross_board_authority_metadata_must_be_nonempty_and_consistent(
     assert construction_called is False
 
 
-def test_enqueue_transfers_producer_trust_to_candidate_tree_proof_only_in_process(
+def test_enqueue_rejects_raw_authority_for_a_different_candidate_commit(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1519,11 +1538,8 @@ def test_enqueue_transfers_producer_trust_to_candidate_tree_proof_only_in_proces
         log_name="candidate-proof-validation.log",
     )
     task = {item.task_id: item for item in daemon._load_tasks()}["TEST-002"]
-    captured_metadata: dict[str, object] = {}
-
-    def capture_enqueue(**kwargs):
-        captured_metadata.update(kwargs["metadata"])
-        return SimpleNamespace(request_id="candidate-proof-request")
+    def capture_enqueue(**_kwargs):
+        pytest.fail("mismatched raw authority reached the durable queue")
 
     monkeypatch.setattr(daemon.merge_queue, "enqueue", capture_enqueue)
     monkeypatch.setattr(
@@ -1542,77 +1558,19 @@ def test_enqueue_transfers_producer_trust_to_candidate_tree_proof_only_in_proces
         lambda **_kwargs: ([], True),
     )
 
-    daemon._enqueue_merge_candidate(
-        branch_name="agent/test-002",
-        implementation_commit="a" * 40,
-        baseline_ref="b" * 40,
-        worktree_path=None,
-        task=task,
-        attempt=1,
-        validation_result=evidence,
-    )
-
-    candidate_proof = captured_metadata["validation_proof"]
-    candidate_tree_identity = candidate_proof[
-        "manual_completion_authority_validated_tree_identity"
-    ]
-    candidate_proof_id = (
-        daemon._manual_completion_revalidation_evidence_id(candidate_proof)
-    )
-    assert candidate_proof_id in (
-        daemon._trusted_manual_completion_revalidation_evidence_ids
-    )
-    assert daemon._manual_completion_authority_rejection(
-        ["TEST-002"],
-        authority_context_id=captured_metadata[
-            "manual_completion_authority_context_id"
-        ],
-        authority_evidence=candidate_proof,
-        expected_validated_tree_identity=candidate_tree_identity,
-    ) is None
-    # Without the exact pre-merge expectation, the token cannot be consumed
-    # until its candidate commit is actually integrated.
-    preintegration_rejection = daemon._manual_completion_authority_rejection(
-        ["TEST-002"],
-        authority_context_id=captured_metadata[
-            "manual_completion_authority_context_id"
-        ],
-        authority_evidence=candidate_proof,
-    )
-    assert preintegration_rejection is not None
-    assert preintegration_rejection[
-        "manual_completion_authority_evidence_valid"
-    ] is False
-    monkeypatch.setattr(
-        daemon,
-        "_manual_completion_validated_tree_is_current",
-        lambda _identity: True,
-    )
-    assert daemon._manual_completion_authority_rejection(
-        ["TEST-002"],
-        authority_context_id=captured_metadata[
-            "manual_completion_authority_context_id"
-        ],
-        authority_evidence=candidate_proof,
-    ) is None
-
-    restarted = _revalidation_daemon(
-        tmp_path,
-        board,
-        suffix="candidate-proof-restart",
-    )
-    restart_rejection = restarted._manual_completion_authority_rejection(
-        ["TEST-002"],
-        authority_context_id=captured_metadata[
-            "manual_completion_authority_context_id"
-        ],
-        authority_evidence=candidate_proof,
-        expected_validated_tree_identity=candidate_tree_identity,
-    )
-    assert restart_rejection is not None
-    assert restart_rejection[
-        "manual_completion_authority_evidence_valid"
-    ] is False
+    with pytest.raises(
+        RuntimeError,
+        match="manual_completion_authority_revalidation_required",
+    ):
+        daemon._enqueue_merge_candidate(
+            branch_name="agent/test-002",
+            implementation_commit="a" * 40,
+            baseline_ref="b" * 40,
+            worktree_path=None,
+            task=task,
+            attempt=1,
+            validation_result=evidence,
+        )
 
 
 def test_completion_rechecks_generation_inside_mutation_boundary(
@@ -1834,8 +1792,9 @@ def test_enqueue_refreshes_authority_before_context_and_rejects_any_denial(
     captured_metadata: list[dict[str, object]] = []
 
     def capture_enqueue(**kwargs):
-        captured_metadata.append(dict(kwargs["metadata"]))
-        return SimpleNamespace(request_id="request-1")
+        metadata = dict(kwargs["metadata"])
+        captured_metadata.append(metadata)
+        return SimpleNamespace(request_id="request-1", metadata=metadata)
 
     monkeypatch.setattr(daemon.merge_queue, "enqueue", capture_enqueue)
     monkeypatch.setattr(
@@ -2188,15 +2147,14 @@ def test_restart_freshly_renews_completed_claim_without_provider(
     finally:
         second_patch.undo()
 
-    # After the first no-provider revalidation, a cold restart re-admits the
-    # durable receipt and does not schedule another implement/revalidate pass
-    # (and still never consults the provider).
-    assert second_result is None
+    # A digest-only durable row is never authority on cold restart.  The new
+    # process performs a fresh no-provider renewal before admitting authority.
+    assert second_result is not None
+    assert second_result["returncode"] == 0
+    assert second_result["authority_revalidation_only"] is True
+    assert second_result["validation_result"]["results"]
     assert "TEST-002" in second_guard["revalidation_receipt_task_ids"]
     assert "TEST-002" not in second_guard["revalidation_task_ids"]
-    assert second_pass.get("ready_count", 0) == 0 or not second_pass.get(
-        "eligible_ready_task_ids"
-    )
 
 def _install_successful_authority_validation_runner(
     daemon: daemon_module.PortalImplementationDaemon,
@@ -2205,11 +2163,12 @@ def _install_successful_authority_validation_runner(
     """Keep control-flow regressions independent of the host Docker image."""
 
     contract = {
-        "schema": (
-            "ipfs_accelerate_py.agent_supervisor."
-            "authority-validation-isolation@2"
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-isolation@3"
         ),
         "available": True,
+        "docker_path": "/usr/bin/docker",
         "backend": "docker-local-cuda",
         "contract_id": daemon_module.content_identity(
             {"test_authority_validation_contract": 2}
@@ -2219,7 +2178,9 @@ def _install_successful_authority_validation_runner(
         "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000000",
         "gpu_requested": True,
         "network_mode": "none",
-        "host_filesystem": "workspace_only_read_only",
+        "host_filesystem": (
+            "workspace_and_identity_checked_git_metadata_read_only"
+        ),
         "workspace_mode": "read_only",
         "writable_filesystems": ["private_tmpfs", "private_shm"],
         "pid_namespace": "private",
@@ -2240,7 +2201,23 @@ def _install_successful_authority_validation_runner(
         ),
         "cpu_limit": daemon_module.AUTHORITY_VALIDATION_CPU_LIMIT,
         "pids_limit": daemon_module.AUTHORITY_VALIDATION_PIDS_LIMIT,
+        "typescript_validation_toolchain": {},
     }
+
+    production_runner = (
+        daemon_module.PortalImplementationDaemon.
+        _authority_validation_command_runner
+    )
+
+    class CompletedDockerProcess:
+        pid = 424242
+        returncode = 0
+
+        def __init__(self) -> None:
+            self.stdout = io.BytesIO(b"validated\n")
+
+        def poll(self) -> int:
+            return self.returncode
 
     def successful_runner(
         *,
@@ -2249,64 +2226,31 @@ def _install_successful_authority_validation_runner(
         timeout_seconds: float,
         environment: dict[str, str],
     ) -> dict[str, object]:
-        del timeout_seconds, environment
-        receipt_body = {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                "authority-validation-isolation-receipt@2"
-            ),
-            "contract_id": contract["contract_id"],
-            "backend": "docker-local-cuda",
-            "docker_endpoint": contract["docker_endpoint"],
-            "image_id": contract["image_id"],
-            "gpu_uuid": contract["gpu_uuid"],
-            "gpu_requested": True,
-            "network_mode": "none",
-            "host_filesystem": "workspace_only_read_only",
-            "workspace_path": str(workspace_path.resolve()),
-            "workspace_read_only": True,
-            "private_pid_namespace": True,
-            "cgroup_process_limit": (
-                daemon_module.AUTHORITY_VALIDATION_PIDS_LIMIT
-            ),
-            "memory_limit_bytes": (
-                daemon_module.AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES
-            ),
-            "tmpfs_limit_bytes": (
-                daemon_module.AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES
-            ),
-            "cpu_limit": daemon_module.AUTHORITY_VALIDATION_CPU_LIMIT,
-            "capabilities_dropped": "all",
-            "no_new_privileges": True,
-            "container_root_read_only": True,
-            "container_log_driver": "none",
-            "output_limit_bytes": (
-                daemon_module.AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES
-            ),
-            "output_limit_exceeded": False,
-            "output_bounded": True,
-            "storage_bounded": True,
-            "cpu_bounded": True,
-            "container_removed": True,
-            "process_tree_quiesced": True,
-        }
-        return {
-            "command": str(spec.command),
-            "raw_command": str(spec.raw_command or spec.command),
-            "started_at": "2026-08-03T00:00:00+00:00",
-            "finished_at": "2026-08-03T00:00:01+00:00",
-            "returncode": 0,
-            "output": "",
-            "timed_out": False,
-            "infrastructure_failure": False,
-            "error": "",
-            "reason": "",
-            "authority_validation_isolation": dict(contract),
-            "authority_validation_isolation_receipt": {
-                **receipt_body,
-                "receipt_id": daemon_module.content_identity(receipt_body),
-            },
-        }
+        def fake_popen(*_args, **_kwargs):
+            return CompletedDockerProcess()
+
+        def fake_run(command, **_kwargs):
+            return subprocess.CompletedProcess(command, 0, "")
+
+        with mock.patch.object(
+            daemon_module.PortalImplementationDaemon,
+            "_authority_validation_isolation_contract",
+            staticmethod(lambda: dict(contract)),
+        ), mock.patch.object(
+            daemon_module.subprocess,
+            "Popen",
+            fake_popen,
+        ), mock.patch.object(
+            daemon_module.subprocess,
+            "run",
+            fake_run,
+        ):
+            return production_runner(
+                spec=spec,
+                workspace_path=workspace_path,
+                timeout_seconds=timeout_seconds,
+                environment=environment,
+            )
 
     monkeypatch.setattr(
         daemon,
@@ -2348,15 +2292,21 @@ def test_protected_board_child_persists_exact_post_merge_authority_receipt(
         target_commit=parent,
     )
     raw_authority = gate["_manual_completion_authority_evidence"]
-    update = daemon._mark_tasks_completed_in_todo(
+    update = daemon._mark_post_merge_completion_with_ephemeral_authority(
         [task.task_id],
         primary_task_id=task.task_id,
         completion_reason="exact_post_merge_validation",
         expected_target_commit=parent,
-        manual_completion_authority_context_id=str(
-            raw_authority["manual_completion_authority_context_id"]
-        ),
-        manual_completion_authority_evidence=raw_authority,
+        completion_intent=None,
+        authority_evidence=raw_authority,
+        expected_validated_tree_identity={
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": parent,
+            "repository_tree_id": str(gate["repository_tree_id"]),
+        },
     )
 
     child = _git(repo, "rev-parse", "HEAD")
@@ -2392,6 +2342,18 @@ def test_protected_board_child_persists_exact_post_merge_authority_receipt(
     assert receipt["persisted"] is True
     assert receipt["completion_publication_binding"] == publication
     assert "- Status: completed" in board.read_text(encoding="utf-8")
+    assert '"manual_completion_authority_evidence":' not in json.dumps(
+        update,
+        sort_keys=True,
+    )
+    for durable_path in daemon.state_path.parent.rglob("*"):
+        if durable_path.is_file():
+            durable_bytes = durable_path.read_bytes()
+            assert b'"manual_completion_authority_evidence"' not in (
+                durable_bytes
+            ), durable_path
+    assert daemon._trusted_manual_completion_revalidation_evidence_ids == set()
+    assert daemon._trusted_manual_completion_revalidation_evidence_by_id == {}
 
     restarted = _implementation_revalidation_daemon(
         tmp_path,
@@ -2402,8 +2364,18 @@ def test_protected_board_child_persists_exact_post_merge_authority_receipt(
     )
     restarted_guard = restarted._refresh_manual_completion_authority_guard()
     assert restarted_guard["available"] is True
-    assert "TEST-002" in restarted_guard["revalidation_receipt_task_ids"]
-    assert "TEST-002" not in restarted_guard["revalidation_task_ids"]
+    assert "TEST-002" not in restarted_guard["revalidation_receipt_task_ids"]
+    assert "TEST-002" in restarted_guard["revalidation_task_ids"]
+
+    _forbid_revalidation_provider_and_seeding(restarted, monkeypatch)
+    _install_successful_authority_validation_runner(restarted, monkeypatch)
+    renewed = restarted.run_once().get("implementation_result")
+    renewed_guard = restarted._refresh_manual_completion_authority_guard()
+    assert renewed is not None
+    assert renewed["returncode"] == 0
+    assert renewed["authority_revalidation_only"] is True
+    assert "TEST-002" in renewed_guard["revalidation_receipt_task_ids"]
+    assert "TEST-002" not in renewed_guard["revalidation_task_ids"]
 
 
 def test_protected_board_receipt_rejects_interposed_unvalidated_commit(
@@ -2469,15 +2441,21 @@ def test_protected_board_receipt_rejects_interposed_unvalidated_commit(
         "_commit_generated_file_update",
         interpose_unvalidated_code,
     )
-    update = daemon._mark_tasks_completed_in_todo(
+    update = daemon._mark_post_merge_completion_with_ephemeral_authority(
         [task.task_id],
         primary_task_id=task.task_id,
         completion_reason="exact_post_merge_validation",
         expected_target_commit=parent,
-        manual_completion_authority_context_id=str(
-            raw_authority["manual_completion_authority_context_id"]
-        ),
-        manual_completion_authority_evidence=raw_authority,
+        completion_intent=None,
+        authority_evidence=raw_authority,
+        expected_validated_tree_identity={
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": parent,
+            "repository_tree_id": str(gate["repository_tree_id"]),
+        },
     )
 
     child = _git(repo, "rev-parse", "HEAD")
@@ -2532,6 +2510,354 @@ def test_protected_board_receipt_rejects_interposed_unvalidated_commit(
     assert restarted_guard["available"] is True
     assert "TEST-002" not in restarted_guard["revalidation_receipt_task_ids"]
     assert "TEST-002" in restarted_guard["revalidation_task_ids"]
+
+
+def test_post_mutation_receipt_exception_revokes_token_and_restart_renews(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "todo", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-board-post-mutation-crash",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    assert daemon._refresh_manual_completion_authority_guard()[
+        "available"
+    ] is True
+    task = {
+        item.task_id: item for item in daemon._load_tasks()
+    }["TEST-002"]
+    parent = _git(repo, "rev-parse", "HEAD")
+    gate = daemon._run_post_merge_completion_validation(
+        task,
+        target_commit=parent,
+    )
+    raw_authority = gate["_manual_completion_authority_evidence"]
+    persistence_calls = 0
+
+    def crash_after_mutation(*_args, **_kwargs):
+        nonlocal persistence_calls
+        persistence_calls += 1
+        raise RuntimeError("injected receipt publication crash")
+
+    monkeypatch.setattr(
+        daemon,
+        "_persist_manual_completion_revalidation_receipts",
+        crash_after_mutation,
+    )
+    with pytest.raises(RuntimeError, match="receipt publication crash"):
+        daemon._mark_post_merge_completion_with_ephemeral_authority(
+            [task.task_id],
+            primary_task_id=task.task_id,
+            completion_reason="exact_post_merge_validation",
+            expected_target_commit=parent,
+            completion_intent=None,
+            authority_evidence=raw_authority,
+            expected_validated_tree_identity={
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                ),
+                "target_commit": parent,
+                "repository_tree_id": str(gate["repository_tree_id"]),
+            },
+        )
+    completion_commit = _git(repo, "rev-parse", "HEAD")
+    assert persistence_calls == 1
+    assert completion_commit != parent
+    assert _git(repo, "rev-parse", f"{completion_commit}^1") == parent
+    assert "- Status: completed" in board.read_text(encoding="utf-8")
+    assert daemon._trusted_manual_completion_revalidation_evidence_ids == set()
+    assert daemon._trusted_manual_completion_revalidation_evidence_by_id == {}
+
+    restarted = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-board-post-mutation-crash",
+        implementation_protected_paths=("tasks.md",),
+    )
+    restarted_guard = restarted._refresh_manual_completion_authority_guard()
+    assert restarted_guard["available"] is True
+    assert "TEST-002" in restarted_guard["revalidation_task_ids"]
+    _forbid_revalidation_provider_and_seeding(restarted, monkeypatch)
+    _install_successful_authority_validation_runner(restarted, monkeypatch)
+    renewed = restarted.run_once().get("implementation_result")
+    renewed_guard = restarted._refresh_manual_completion_authority_guard()
+    assert renewed is not None
+    assert renewed["returncode"] == 0
+    assert renewed["authority_revalidation_only"] is True
+    assert "TEST-002" in renewed_guard["revalidation_receipt_task_ids"]
+    assert restarted._trusted_manual_completion_revalidation_evidence_ids == set()
+    assert restarted._trusted_manual_completion_revalidation_evidence_by_id == {}
+
+
+def test_id_only_protected_recovery_revalidates_committed_child_and_persists_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dirty retained board is never completed from its persisted evidence ID.
+
+    The first process dies after changing the protected board but before its
+    commit.  Recovery must validate the original integration parent, commit
+    only the protected board, validate that exact completion child again, and
+    persist the child-bound authority receipt before releasing the lease.
+    """
+
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "todo", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-id-only-retained-recovery",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    assert daemon._refresh_manual_completion_authority_guard()[
+        "available"
+    ] is True
+    task = {
+        item.task_id: item for item in daemon._load_tasks()
+    }["TEST-002"]
+    parent = _git(repo, "rev-parse", "HEAD")
+    gate = daemon._run_post_merge_completion_validation(
+        task,
+        target_commit=parent,
+    )
+    raw_authority = gate["_manual_completion_authority_evidence"]
+
+    def crash_before_protected_commit(*_args, **_kwargs):
+        raise RuntimeError("injected protected commit crash")
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        crash_before_protected_commit,
+    )
+    with pytest.raises(RuntimeError, match="protected commit crash"):
+        daemon._mark_post_merge_completion_with_ephemeral_authority(
+            [task.task_id],
+            primary_task_id=task.task_id,
+            completion_reason="exact_post_merge_validation",
+            expected_target_commit=parent,
+            completion_intent=None,
+            authority_evidence=raw_authority,
+            expected_validated_tree_identity={
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                ),
+                "target_commit": parent,
+                "repository_tree_id": str(gate["repository_tree_id"]),
+            },
+        )
+
+    lease = daemon._current_checkout_mutation_lease()
+    assert lease is not None
+    assert lease.metadata["protected_recovery_required"] is True
+    journal_json = json.dumps(lease.metadata, sort_keys=True)
+    assert '"manual_completion_authority_evidence_id"' in journal_json
+    assert '"manual_completion_authority_evidence"' not in journal_json
+    assert "- Status: completed" in board.read_text(encoding="utf-8")
+    assert _git(repo, "rev-parse", "HEAD") == parent
+    assert _git(repo, "status", "--porcelain", "--", "tasks.md") == (
+        "M tasks.md"
+    )
+    assert daemon._trusted_manual_completion_revalidation_evidence_ids == set()
+    assert daemon._trusted_manual_completion_revalidation_evidence_by_id == {}
+
+    dead = daemon_module.update_checkout_mutation_lease(
+        lease,
+        {
+            **dict(lease.metadata),
+            "pid": 999_999_999,
+            "owner_script": "dead-implementation-daemon",
+        },
+    )
+    assert dead is not None
+    daemon._clear_checkout_mutation_context()
+
+    restarted = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-id-only-retained-recovery",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(restarted, monkeypatch)
+    validated_targets: list[str] = []
+    run_post_merge = restarted._run_post_merge_completion_validation
+
+    def capture_post_merge(task, *, target_commit: str):
+        validated_targets.append(target_commit)
+        return run_post_merge(task, target_commit=target_commit)
+
+    monkeypatch.setattr(
+        restarted,
+        "_run_post_merge_completion_validation",
+        capture_post_merge,
+    )
+    recovered = restarted._recover_protected_checkout_mutation()
+
+    child = _git(repo, "rev-parse", "HEAD")
+    assert recovered.get("checkout_mutation_lease_recovered") is True, recovered
+    assert recovered["checkout_mutation_lease_retained"] is False
+    assert child != parent
+    assert _git(repo, "rev-parse", f"{child}^1") == parent
+    assert _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        parent,
+        child,
+    ) == "tasks.md"
+    assert validated_targets == [parent, child]
+    receipt = recovered.get(
+        "manual_completion_authority_revalidation_receipt"
+    )
+    assert isinstance(receipt, dict), recovered
+    assert receipt["persisted"] is True
+    assert not daemon_module.checkout_mutation_lock_path(repo).exists()
+    renewed_guard = restarted._refresh_manual_completion_authority_guard()
+    assert "TEST-002" in renewed_guard["revalidation_receipt_task_ids"]
+    assert restarted._trusted_manual_completion_revalidation_evidence_ids == set()
+    assert restarted._trusted_manual_completion_revalidation_evidence_by_id == {}
+    for durable_path in restarted.state_path.parent.rglob("*"):
+        if durable_path.is_file():
+            assert b'"manual_completion_authority_evidence"' not in (
+                durable_path.read_bytes()
+            ), durable_path
+
+
+def test_id_only_protected_recovery_generation_race_retains_lease_and_revokes_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "todo", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-id-only-generation-race",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    assert daemon._refresh_manual_completion_authority_guard()[
+        "available"
+    ] is True
+    task = {
+        item.task_id: item for item in daemon._load_tasks()
+    }["TEST-002"]
+    parent = _git(repo, "rev-parse", "HEAD")
+    gate = daemon._run_post_merge_completion_validation(
+        task,
+        target_commit=parent,
+    )
+    raw_authority = gate["_manual_completion_authority_evidence"]
+    completion_intent = daemon._completion_publication_intent(
+        task,
+        merged_tree_id=parent,
+        evidence={"passed": True, "completion_authoritative": True},
+    )
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("injected protected commit crash")
+        ),
+    )
+    with pytest.raises(RuntimeError, match="protected commit crash"):
+        daemon._mark_post_merge_completion_with_ephemeral_authority(
+            [task.task_id],
+            primary_task_id=task.task_id,
+            completion_reason="exact_post_merge_validation",
+            expected_target_commit=parent,
+            completion_intent=completion_intent,
+            authority_evidence=raw_authority,
+            expected_validated_tree_identity={
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                ),
+                "target_commit": parent,
+                "repository_tree_id": str(gate["repository_tree_id"]),
+            },
+        )
+
+    lease = daemon._current_checkout_mutation_lease()
+    assert lease is not None
+    dead = daemon_module.update_checkout_mutation_lease(
+        lease,
+        {
+            **dict(lease.metadata),
+            "pid": 999_999_999,
+            "owner_script": "dead-implementation-daemon",
+        },
+    )
+    assert dead is not None
+    daemon._clear_checkout_mutation_context()
+
+    restarted = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="protected-id-only-generation-race",
+        implementation_protected_paths=("tasks.md",),
+    )
+    _install_successful_authority_validation_runner(restarted, monkeypatch)
+    replay = restarted._replay_completion_callback_expectation
+
+    def replay_then_revoke(expectation):
+        result = replay(expectation)
+        restarted._manual_completion_authority_revocation_generation += 1
+        return result
+
+    monkeypatch.setattr(
+        restarted,
+        "_replay_completion_callback_expectation",
+        replay_then_revoke,
+    )
+    recovery = restarted._recover_protected_checkout_mutation()
+
+    assert recovery["blocked"] is True
+    assert recovery["recovered"] is False
+    assert recovery["reason"] == (
+        "protected_recovery_authority_changed_after_replay"
+    )
+    assert recovery["checkout_mutation_lease_retained"] is True
+    assert daemon_module.checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "rev-parse", "HEAD") == parent
+    assert _git(repo, "status", "--porcelain", "--", "tasks.md") == (
+        "M tasks.md"
+    )
+    assert restarted._trusted_manual_completion_revalidation_evidence_ids == set()
+    assert restarted._trusted_manual_completion_revalidation_evidence_by_id == {}
+    assert restarted._trusted_manual_completion_revalidation_evidence_bytes_by_id == {}
+    assert restarted._trusted_manual_completion_revalidation_evidence_total_bytes == 0
+    retained = daemon_module.read_checkout_mutation_lease(
+        daemon_module.checkout_mutation_lock_path(repo)
+    )
+    assert retained is not None
+    assert '"manual_completion_authority_evidence"' not in json.dumps(
+        retained.metadata,
+        sort_keys=True,
+    )
 
 
 def test_completed_to_todo_race_at_receipt_boundary_leaves_no_authority(
