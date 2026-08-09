@@ -912,7 +912,7 @@ validation and evidence contract.
 
 ## LFP-029 Implement the target-neutral symbolic protocol DSL and ProVerif adapter
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
