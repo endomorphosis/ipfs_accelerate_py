@@ -450,7 +450,7 @@ this bootstrap is active.
 
 ## DQP-014 Register supervisors, daemons, sessions, process births, and heartbeats
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
