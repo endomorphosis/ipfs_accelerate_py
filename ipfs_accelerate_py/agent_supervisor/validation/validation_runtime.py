@@ -34,13 +34,24 @@ VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
+VALIDATION_CARGO_HOME_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_CARGO_HOME"
+VALIDATION_RUSTUP_HOME_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_RUSTUP_HOME"
+)
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
 PROOF_REUSE_STATE_ROOT_ENV = "IPFS_PROOF_REUSE_STATE_ROOT"
+PROVIDER_PROTECTED_STATE_ROOT_ENV = (
+    "IPFS_ACCELERATE_AGENT_PROTECTED_STATE_ROOT"
+)
 VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "validation-filesystem-boundary@1"
+)
+PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "provider-filesystem-boundary@1"
 )
 VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
@@ -98,6 +109,9 @@ _LANDLOCK_WRITE_ACCESS = (
 )
 VALIDATION_LANDLOCK_FAILURE_MARKER = (
     "ipfs-accelerate-validation-landlock-error:"
+)
+LANDLOCK_APPLIED_ACK_FD_ENV = (
+    "IPFS_ACCELERATE_AGENT_LANDLOCK_APPLIED_ACK_FD"
 )
 
 # These values affect deterministic/offline validation without carrying the
@@ -177,6 +191,44 @@ class ValidationFilesystemBoundaryReceipt:
             "workspace_writable": True,
             "private_home_writable": True,
             "standard_device_nodes_writable": True,
+            "proof_authoritative": False,
+            "completion_authority": False,
+        }
+
+
+@dataclass(frozen=True)
+class ProviderFilesystemBoundaryReceipt:
+    """Body-free evidence for one autonomous provider write boundary."""
+
+    landlock_abi: int
+    policy_sha256: str
+    checkpoint_writable: bool
+    provider_profile_count: int
+
+    def to_dict(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        stage: str,
+        applied: bool = True,
+    ) -> dict[str, object]:
+        return {
+            "schema": PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA,
+            "mode": "landlock-provider-write-fence-v1",
+            "task_id": str(task_id),
+            "attempt": int(attempt),
+            "stage": str(stage),
+            "landlock_abi": self.landlock_abi,
+            "policy_sha256": self.policy_sha256,
+            "applied": bool(applied),
+            "provider_descendants_fenced": bool(applied),
+            "proof_reuse_authority_content_and_names_read_only": bool(applied),
+            "task_checkpoint_writable": self.checkpoint_writable,
+            "provider_private_home_writable": True,
+            "provider_profile_count": self.provider_profile_count,
+            "shared_git_metadata_writable": False,
+            "protected_hardlink_aliases_checked": True,
             "proof_authoritative": False,
             "completion_authority": False,
         }
@@ -877,17 +929,107 @@ def checked(value):
         raise OSError(number, os.strerror(number))
     return int(value)
 
+def inventory_walk_error(error):
+    raise error
+
 try:
     payload = json.loads(sys.argv[1])
-    if set(payload) != {"writable_paths"}:
+    if not isinstance(payload, dict) or set(payload) - {
+        "writable_paths",
+        "expected_path_identities",
+        "hardlink_guard",
+    }:
         raise ValueError("invalid policy keys")
     writable_paths = payload["writable_paths"]
     if (
         not isinstance(writable_paths, list)
         or len(writable_paths) < 2
-        or len(writable_paths) > 8
+        or len(writable_paths) > 16
     ):
         raise ValueError("invalid writable path population")
+    expected_identities = payload.get("expected_path_identities", [])
+    if not isinstance(expected_identities, list) or len(expected_identities) > 16:
+        raise ValueError("invalid expected path identities")
+    for expected in expected_identities:
+        if not isinstance(expected, list) or len(expected) != 3:
+            raise ValueError("invalid expected path identity")
+        raw_path, raw_dev, raw_ino = expected
+        if not isinstance(raw_path, str) or not os.path.isabs(raw_path):
+            raise ValueError("invalid identity path")
+        identity = os.lstat(raw_path)
+        if (int(identity.st_dev), int(identity.st_ino)) != (raw_dev, raw_ino):
+            raise RuntimeError("writable path identity changed")
+    hardlink_guard = payload.get("hardlink_guard")
+    if hardlink_guard is not None:
+        if not isinstance(hardlink_guard, dict) or set(hardlink_guard) != {
+            "excluded_protected_roots",
+            "protected_roots",
+            "writable_roots",
+        }:
+            raise ValueError("invalid hardlink guard")
+        writable_roots = hardlink_guard["writable_roots"]
+        protected_roots = hardlink_guard["protected_roots"]
+        excluded_roots = set(hardlink_guard["excluded_protected_roots"])
+        if (
+            not isinstance(writable_roots, list)
+            or not isinstance(protected_roots, list)
+            or len(writable_roots) > 16
+            or len(protected_roots) > 16
+            or any(not isinstance(item, str) or not os.path.isabs(item) for item in writable_roots)
+            or any(not isinstance(item, str) or not os.path.isabs(item) for item in protected_roots)
+            or any(not isinstance(item, str) or not os.path.isabs(item) for item in excluded_roots)
+        ):
+            raise ValueError("invalid hardlink guard roots")
+        candidate_inodes = set()
+        visited = 0
+        for writable_root in writable_roots:
+            for directory, directory_names, file_names in os.walk(
+                writable_root,
+                topdown=True,
+                onerror=inventory_walk_error,
+                followlinks=False,
+            ):
+                directory_names[:] = [
+                    name
+                    for name in directory_names
+                    if not os.path.islink(os.path.join(directory, name))
+                ]
+                for name in file_names:
+                    visited += 1
+                    if visited > 1000000:
+                        raise RuntimeError("hardlink inventory bound exceeded")
+                    identity = os.lstat(os.path.join(directory, name))
+                    if stat_module.S_ISREG(identity.st_mode) and identity.st_nlink > 1:
+                        candidate_inodes.add((int(identity.st_dev), int(identity.st_ino)))
+        if candidate_inodes:
+            for protected_root in protected_roots:
+                for directory, directory_names, file_names in os.walk(
+                    protected_root,
+                    topdown=True,
+                    onerror=inventory_walk_error,
+                    followlinks=False,
+                ):
+                    if directory == protected_root:
+                        directory_names[:] = [
+                            name for name in directory_names if name != "worktrees"
+                        ]
+                    retained = []
+                    for name in directory_names:
+                        child = os.path.join(directory, name)
+                        if os.path.islink(child) or child in excluded_roots:
+                            continue
+                        retained.append(name)
+                    directory_names[:] = retained
+                    for name in file_names:
+                        visited += 1
+                        if visited > 2000000:
+                            raise RuntimeError("protected inventory bound exceeded")
+                        identity = os.lstat(os.path.join(directory, name))
+                        if (
+                            stat_module.S_ISREG(identity.st_mode)
+                            and (int(identity.st_dev), int(identity.st_ino)) in candidate_inodes
+                        ):
+                            raise RuntimeError("writable hardlink aliases protected state")
     command = sys.argv[2:]
     if not command:
         raise ValueError("validation command is missing")
@@ -937,6 +1079,15 @@ try:
         checked(libc.syscall(RESTRICT_SELF, ruleset_fd, 0))
     finally:
         os.close(ruleset_fd)
+    raw_ack_fd = os.environ.pop(
+        "IPFS_ACCELERATE_AGENT_LANDLOCK_APPLIED_ACK_FD", ""
+    ).strip()
+    if raw_ack_fd:
+        ack_fd = int(raw_ack_fd)
+        if ack_fd < 3:
+            raise ValueError("invalid Landlock acknowledgement descriptor")
+        os.write(ack_fd, b"landlock-applied-v1\\n")
+        os.close(ack_fd)
     os.execvpe(command[0], command, os.environ)
 except BaseException as exc:
     message = (FAILURE_MARKER + type(exc).__name__ + "\\n").encode(
@@ -984,10 +1135,15 @@ def _workspace_multilink_inodes(workspace: Path) -> set[tuple[int, int]]:
     """Collect regular-file identities that have aliases outside one name."""
 
     identities: set[tuple[int, int]] = set()
+
+    def reject_walk_error(error: OSError) -> None:
+        raise error
+
     try:
         for directory, directory_names, file_names in os.walk(
             workspace,
             topdown=True,
+            onerror=reject_walk_error,
             followlinks=False,
         ):
             directory_path = Path(directory)
@@ -1012,17 +1168,32 @@ def _reject_protected_state_hardlink_aliases(
     *,
     state_root: Path,
     workspace: Path,
+    additional_writable_paths: Sequence[Path] = (),
+    protected_scan_exclusions: Sequence[Path] = (),
 ) -> None:
-    """Reject a writable worktree name aliasing proof-control evidence."""
+    """Reject any writable name aliasing protected proof-control evidence."""
 
-    candidate_inodes = _workspace_multilink_inodes(workspace)
+    writable_paths = tuple(
+        dict.fromkeys((workspace, *additional_writable_paths))
+    )
+    candidate_inodes: set[tuple[int, int]] = set()
+    for writable_path in writable_paths:
+        candidate_inodes.update(_workspace_multilink_inodes(writable_path))
     if not candidate_inodes:
         return
+    excluded_paths = tuple(
+        dict.fromkeys((workspace, *protected_scan_exclusions))
+    )
+
+    def reject_walk_error(error: OSError) -> None:
+        raise error
+
     for reviewed_root in _reviewed_proof_state_roots(state_root):
         try:
             for directory, directory_names, file_names in os.walk(
                 reviewed_root,
                 topdown=True,
+                onerror=reject_walk_error,
                 followlinks=False,
             ):
                 directory_path = Path(directory)
@@ -1038,14 +1209,13 @@ def _reject_protected_state_hardlink_aliases(
                     child = directory_path / name
                     if child.is_symlink():
                         continue
-                    try:
-                        workspace.relative_to(child)
-                    except ValueError:
-                        retained_directories.append(name)
-                    else:
-                        # Never compare the authorized writable subtree to
-                        # itself when the configured root contains worktrees.
+                    if child in excluded_paths:
+                        # Never compare an explicitly non-authoritative
+                        # writable subtree to itself.  Ancestors are retained
+                        # until this exact path is reached so neighboring
+                        # control state remains in the protected inventory.
                         continue
+                    retained_directories.append(name)
                 directory_names[:] = retained_directories
                 for name in file_names:
                     candidate = directory_path / name
@@ -1057,7 +1227,7 @@ def _reject_protected_state_hardlink_aliases(
                         int(identity.st_ino),
                     ) in candidate_inodes:
                         raise ValidationRuntimeError(
-                            "validation workspace aliases protected "
+                            "writable provider or validation state aliases protected "
                             "proof-reuse state through a hardlink"
                         )
         except ValidationRuntimeError:
@@ -1129,6 +1299,199 @@ def validation_readonly_state_command(
     receipt = ValidationFilesystemBoundaryReceipt(
         landlock_abi=abi,
         policy_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    )
+    return [executable, "-I", "-c", source, policy, *argv], receipt
+
+
+def provider_readonly_state_command(
+    command: Sequence[str],
+    *,
+    state_root_path: Path | str,
+    workspace_path: Path | str,
+    private_home_path: Path | str,
+    checkpoint_path: Path | str | None,
+    provider_profile_paths: Sequence[Path | str],
+    environment: Mapping[str, str],
+) -> tuple[list[str], ProviderFilesystemBoundaryReceipt]:
+    """Fence one autonomous provider child from proof-authority writes.
+
+    The exact worktree, fresh private home, canonical provider profile roots,
+    and (when present) the task's non-authoritative checkpoint directory stay
+    writable.  Shared Git metadata and every current/historical proof-control
+    path remain read-only.  The returned launcher is inherited by every tool
+    process spawned by the provider.
+    """
+
+    argv = [str(value) for value in command]
+    if not argv:
+        raise ValidationRuntimeError("provider command must not be empty")
+    state_root = Path(state_root_path).resolve(strict=True)
+    workspace = Path(workspace_path).resolve(strict=True)
+    private_home = Path(private_home_path).resolve(strict=True)
+    if not state_root.is_dir():
+        raise ValidationRuntimeError(
+            "proof-reuse state root is not a directory"
+        )
+    if not workspace.is_dir() or not private_home.is_dir():
+        raise ValidationRuntimeError(
+            "provider workspace and private home must be directories"
+        )
+
+    checkpoint: Path | None = None
+    if checkpoint_path is not None and str(checkpoint_path).strip():
+        checkpoint = Path(checkpoint_path).resolve(strict=True)
+        if not checkpoint.is_dir():
+            raise ValidationRuntimeError(
+                "provider checkpoint path is not a directory"
+            )
+        try:
+            checkpoint_relative = checkpoint.relative_to(state_root)
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "provider checkpoint path is outside the current state root"
+            ) from exc
+        if (
+            len(checkpoint_relative.parts) != 4
+            or checkpoint_relative.parts[0] != "state"
+            or checkpoint_relative.parts[2] != "implementation_checkpoints"
+            or not checkpoint_relative.parts[1].startswith("ptr_lane_")
+            or not checkpoint_relative.parts[3]
+        ):
+            raise ValidationRuntimeError(
+                "provider checkpoint path is not task checkpoint scratch"
+            )
+
+    profiles: list[Path] = []
+    for raw_path in provider_profile_paths:
+        text = str(raw_path).strip()
+        if not text:
+            continue
+        profile = Path(text).resolve(strict=True)
+        if not profile.is_dir():
+            raise ValidationRuntimeError(
+                "provider profile path is not a directory"
+            )
+        profiles.append(profile)
+    profiles = list(dict.fromkeys(profiles))
+
+    protected_roots = _reviewed_proof_state_roots(state_root)
+    for protected_root in protected_roots:
+        try:
+            workspace_relative = workspace.relative_to(protected_root)
+        except ValueError:
+            continue
+        if (
+            protected_root != state_root
+            or len(workspace_relative.parts) != 3
+            or workspace_relative.parts[0] != "worktrees"
+            or re.fullmatch(r"ptr_lane_\d+", workspace_relative.parts[1])
+            is None
+            or not workspace_relative.parts[2]
+        ):
+            raise ValidationRuntimeError(
+                "provider workspace is not an exact current-lane worktree"
+            )
+    for writable in (private_home, *profiles):
+        for protected_root in protected_roots:
+            try:
+                writable.relative_to(protected_root)
+            except ValueError:
+                pass
+            else:
+                raise ValidationRuntimeError(
+                    "provider private/profile path overlaps proof state"
+                )
+            try:
+                protected_root.relative_to(writable)
+            except ValueError:
+                pass
+            else:
+                raise ValidationRuntimeError(
+                    "provider writable path contains proof state"
+                )
+    for writable in (workspace, checkpoint):
+        if writable is None:
+            continue
+        try:
+            state_root.relative_to(writable)
+        except ValueError:
+            pass
+        else:
+            raise ValidationRuntimeError(
+                "provider writable path contains proof state"
+            )
+
+    additional_hardlink_surfaces = [private_home, *profiles]
+    protected_scan_exclusions: list[Path] = []
+    if checkpoint is not None:
+        additional_hardlink_surfaces.append(checkpoint)
+        protected_scan_exclusions.append(checkpoint)
+    _reject_protected_state_hardlink_aliases(
+        state_root=state_root,
+        workspace=workspace,
+        additional_writable_paths=tuple(additional_hardlink_surfaces),
+        protected_scan_exclusions=tuple(protected_scan_exclusions),
+    )
+
+    source = _validation_landlock_launcher_source()
+    writable_paths = [str(workspace), str(private_home)]
+    if checkpoint is not None:
+        writable_paths.append(str(checkpoint))
+    writable_paths.extend(str(path) for path in profiles)
+    null_devices = tuple(
+        path
+        for path in _validation_standard_device_write_paths()
+        if path == "/dev/null"
+    )
+    writable_paths.extend(null_devices)
+    writable_paths = list(dict.fromkeys(writable_paths))
+    if len(writable_paths) > 8:
+        raise ValidationRuntimeError(
+            "provider filesystem boundary has too many writable paths"
+        )
+    writable_directories = [workspace, private_home]
+    if checkpoint is not None:
+        writable_directories.append(checkpoint)
+    writable_directories.extend(profiles)
+    excluded_protected_roots = []
+    for candidate in (workspace, checkpoint):
+        if candidate is None:
+            continue
+        if any(
+            candidate == protected_root
+            or protected_root in candidate.parents
+            for protected_root in protected_roots
+        ):
+            excluded_protected_roots.append(str(candidate))
+    expected_path_identities: list[list[object]] = []
+    for raw_path in writable_paths:
+        identity = Path(raw_path).lstat()
+        expected_path_identities.append(
+            [raw_path, int(identity.st_dev), int(identity.st_ino)]
+        )
+    policy = json.dumps(
+        {
+            "expected_path_identities": expected_path_identities,
+            "hardlink_guard": {
+                "excluded_protected_roots": excluded_protected_roots,
+                "protected_roots": [str(path) for path in protected_roots],
+                "writable_roots": [str(path) for path in writable_directories],
+            },
+            "writable_paths": writable_paths,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    executable = validation_python_executable(
+        {VALIDATION_PYTHON_ENV: environment.get(_CHILD_PYTHON_ENV, "")}
+    )
+    receipt = ProviderFilesystemBoundaryReceipt(
+        landlock_abi=validation_landlock_abi(),
+        policy_sha256=hashlib.sha256(
+            source.encode("utf-8") + b"\0" + policy.encode("utf-8")
+        ).hexdigest(),
+        checkpoint_writable=checkpoint is not None,
+        provider_profile_count=len(profiles),
     )
     return [executable, "-I", "-c", source, policy, *argv], receipt
 
@@ -1270,6 +1633,16 @@ def build_validation_environment(
     npm_cache = _approved_directory(source, VALIDATION_NPM_CACHE_ENV)
     if npm_cache is not None:
         result["NPM_CONFIG_CACHE"] = npm_cache
+    cargo_home = _approved_directory(source, VALIDATION_CARGO_HOME_ENV)
+    if cargo_home is not None:
+        # Private validation HOME cannot see the supervisor cargo registry.
+        # Bind the pre-populated host cache read-only and stay offline so
+        # validation never mutates or redownloads crates.io content.
+        result["CARGO_HOME"] = cargo_home
+        result.setdefault("CARGO_NET_OFFLINE", "true")
+    rustup_home = _approved_directory(source, VALIDATION_RUSTUP_HOME_ENV)
+    if rustup_home is not None:
+        result["RUSTUP_HOME"] = rustup_home
     playwright_browsers = _approved_directory(
         source,
         VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,

@@ -142,6 +142,8 @@ from ..validation.validation_commands import (
 )
 from ..validation.validation_runtime import (
     PROOF_REUSE_STATE_ROOT_ENV,
+    PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA,
+    PROVIDER_PROTECTED_STATE_ROOT_ENV,
     VALIDATION_LANDLOCK_FAILURE_MARKER,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     ValidationFilesystemBoundaryReceipt,
@@ -1033,6 +1035,7 @@ def _codex_implementation_command(
     command = [
         codex,
         "exec",
+        "--ephemeral",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(workspace_path),
@@ -1138,41 +1141,175 @@ def _ordered_provider_fallback_command(
 
 
 def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
-    """Return whether a static resolver command targets our route adapter."""
+    """Return whether a command executes our route adapter directly or via Python."""
 
     try:
         command = shlex.split(command_template)
     except ValueError:
         return False
+    if not command:
+        return False
     expected = (
         Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
     ).resolve()
-    candidates = command[:2]
-    for argument in candidates:
-        if not argument or argument.startswith("-"):
-            continue
-        try:
-            candidate = Path(argument).expanduser().resolve()
-        except (OSError, RuntimeError):
-            continue
-        if candidate == expected:
-            return True
-    return False
+    try:
+        executable = Path(command[0]).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    if executable == expected:
+        return True
+    if len(command) < 2:
+        return False
+    try:
+        interpreter = Path(sys.executable).resolve(strict=True)
+        script = Path(command[1]).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    return executable == interpreter and script == expected
+
+
+def _provider_state_boundary_required() -> bool:
+    return bool(str(os.environ.get(PROOF_REUSE_STATE_ROOT_ENV) or "").strip())
+
+
+def _require_packaged_provider_fallback_runner(
+    command: Sequence[str] | str,
+) -> None:
+    template = command if isinstance(command, str) else shlex.join(command)
+    if (
+        _provider_state_boundary_required()
+        and not _uses_packaged_provider_fallback_runner(template)
+    ):
+        raise RuntimeError(
+            "protected proof-reuse provider execution requires the packaged "
+            "provider fallback runner"
+        )
 
 
 def _prepare_provider_route_receipt(path: Path) -> None:
     """Remove only the exact stale attempt receipt before provider dispatch."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    for candidate in (path, _provider_filesystem_boundary_receipt_path(path)):
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat_module.S_ISREG(metadata.st_mode) and not stat_module.S_ISLNK(
+            metadata.st_mode
+        ):
+            raise RuntimeError("provider receipt path is not replaceable")
+        candidate.unlink()
+
+
+def _provider_filesystem_boundary_receipt_path(route_path: Path) -> Path:
+    name = route_path.name
+    if name.startswith("provider-route-"):
+        name = "provider-filesystem-boundary-" + name[len("provider-route-") :]
+    else:
+        name = "provider-filesystem-boundary-" + name
+    return route_path.with_name(name)
+
+
+def _validated_provider_filesystem_boundary_receipt(
+    route_path: Path,
+    *,
+    task_id: str,
+    attempt: int,
+    stage: str = "implementation",
+    checkpoint_writable: bool,
+) -> dict[str, Any]:
+    """Read one exact-bound, body-free provider filesystem receipt."""
+
+    path = _provider_filesystem_boundary_receipt_path(route_path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        metadata = path.lstat()
-    except FileNotFoundError:
-        return
-    if not stat_module.S_ISREG(metadata.st_mode) and not stat_module.S_ISLNK(
-        metadata.st_mode
+        descriptor = os.open(path, flags)
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "provider filesystem boundary receipt is missing"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > MAX_PROVIDER_ROUTE_RECEIPT_BYTES
+        ):
+            raise RuntimeError(
+                "provider filesystem boundary receipt is not bounded regular data"
+            )
+        raw = os.read(descriptor, MAX_PROVIDER_ROUTE_RECEIPT_BYTES + 1)
+        after = os.fstat(descriptor)
+        if (
+            len(raw) != before.st_size
+            or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        ):
+            raise RuntimeError(
+                "provider filesystem boundary receipt changed while read"
+            )
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError(
+            "provider filesystem boundary receipt is malformed"
+        ) from exc
+    expected_keys = {
+        "applied",
+        "attempt",
+        "completion_authority",
+        "landlock_abi",
+        "mode",
+        "policy_sha256",
+        "proof_authoritative",
+        "proof_reuse_authority_content_and_names_read_only",
+        "protected_hardlink_aliases_checked",
+        "provider_descendants_fenced",
+        "provider_private_home_writable",
+        "provider_profile_count",
+        "schema",
+        "shared_git_metadata_writable",
+        "stage",
+        "task_id",
+        "task_checkpoint_writable",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        raise RuntimeError(
+            "provider filesystem boundary receipt envelope is not body-free"
+        )
+    raw_abi = payload.get("landlock_abi")
+    raw_profile_count = payload.get("provider_profile_count")
+    if (
+        payload.get("schema") != PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA
+        or payload.get("mode") != "landlock-provider-write-fence-v1"
+        or payload.get("task_id") != task_id
+        or type(payload.get("attempt")) is not int
+        or payload.get("attempt") != attempt
+        or payload.get("stage") != stage
+        or type(raw_abi) is not int
+        or not 3 <= raw_abi <= 100
+        or type(raw_profile_count) is not int
+        or not 0 <= raw_profile_count <= 2
+        or re.fullmatch(r"[0-9a-f]{64}", str(payload.get("policy_sha256") or ""))
+        is None
+        or payload.get("applied") is not True
+        or payload.get("provider_descendants_fenced") is not True
+        or payload.get("proof_reuse_authority_content_and_names_read_only")
+        is not True
+        or payload.get("task_checkpoint_writable") is not checkpoint_writable
+        or payload.get("provider_private_home_writable") is not True
+        or payload.get("shared_git_metadata_writable") is not False
+        or payload.get("protected_hardlink_aliases_checked") is not True
+        or payload.get("proof_authoritative") is not False
+        or payload.get("completion_authority") is not False
     ):
-        raise RuntimeError("provider route receipt path is not replaceable")
-    path.unlink()
+        raise RuntimeError(
+            "provider filesystem boundary receipt binding is invalid"
+        )
+    return dict(payload)
 
 
 def _validated_provider_route_receipt(
@@ -9018,9 +9155,11 @@ class PortalImplementationDaemon:
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
         provider_route_receipt: dict[str, Any] = {}
+        provider_filesystem_boundary_receipt: dict[str, Any] = {}
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         provider_route_receipt_path = (
-            checkpoint_dir / f"provider-route-attempt-{attempt}.json"
+            self._ensure_provider_route_receipt_dir(task)
+            / f"provider-route-attempt-{attempt}.json"
         )
         timeout_policy = self._implementation_timeout_policy(task)
 
@@ -9079,6 +9218,7 @@ class PortalImplementationDaemon:
                 route_receipt_path=provider_route_receipt_path,
                 route_attempt=attempt,
             )
+            _require_packaged_provider_fallback_runner(command)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -9141,6 +9281,30 @@ class PortalImplementationDaemon:
                             attempt=attempt,
                         ),
                     ),
+                )
+            if _provider_state_boundary_required():
+                provider_filesystem_boundary_receipt = (
+                    _validated_provider_filesystem_boundary_receipt(
+                        provider_route_receipt_path,
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        checkpoint_writable=True,
+                    )
+                )
+                self._record_event(
+                    "implementation_provider_filesystem_bounded",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "provider_filesystem_boundary_receipt_path": str(
+                            _provider_filesystem_boundary_receipt_path(
+                                provider_route_receipt_path
+                            )
+                        ),
+                        "provider_filesystem_boundary_receipt": (
+                            provider_filesystem_boundary_receipt
+                        ),
+                    },
                 )
             provider_route_receipt = _validated_provider_route_receipt(
                 provider_route_receipt_path,
@@ -9418,6 +9582,15 @@ class PortalImplementationDaemon:
                     provider_route_receipt_path
                 )
                 result["provider_route_receipt"] = provider_route_receipt
+            if provider_filesystem_boundary_receipt:
+                result["provider_filesystem_boundary_receipt_path"] = str(
+                    _provider_filesystem_boundary_receipt_path(
+                        provider_route_receipt_path
+                    )
+                )
+                result["provider_filesystem_boundary_receipt"] = (
+                    provider_filesystem_boundary_receipt
+                )
             if protected_path_violation:
                 result["reason"] = str(
                     protected_path_violation.get("reason")
@@ -16571,11 +16744,13 @@ class PortalImplementationDaemon:
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
         provider_route_receipt: dict[str, Any] = {}
+        provider_filesystem_boundary_receipt: dict[str, Any] = {}
         provider_dispatched = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         provider_route_receipt_path = (
-            checkpoint_dir / f"provider-route-attempt-{attempt}.json"
+            self._ensure_provider_route_receipt_dir(task)
+            / f"provider-route-attempt-{attempt}.json"
         )
         timeout_policy = self._implementation_timeout_policy(task)
         lifecycle_record: WorkspaceLifecycleRecord | None = None
@@ -16680,6 +16855,7 @@ class PortalImplementationDaemon:
                 route_receipt_path=provider_route_receipt_path,
                 route_attempt=attempt,
             )
+            _require_packaged_provider_fallback_runner(command)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -16801,6 +16977,30 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                     },
                     invoke_provider,
+                )
+            if _provider_state_boundary_required():
+                provider_filesystem_boundary_receipt = (
+                    _validated_provider_filesystem_boundary_receipt(
+                        provider_route_receipt_path,
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        checkpoint_writable=True,
+                    )
+                )
+                self._record_event(
+                    "implementation_provider_filesystem_bounded",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "provider_filesystem_boundary_receipt_path": str(
+                            _provider_filesystem_boundary_receipt_path(
+                                provider_route_receipt_path
+                            )
+                        ),
+                        "provider_filesystem_boundary_receipt": (
+                            provider_filesystem_boundary_receipt
+                        ),
+                    },
                 )
             provider_route_receipt = _validated_provider_route_receipt(
                 provider_route_receipt_path,
@@ -17266,10 +17466,101 @@ class PortalImplementationDaemon:
                 ),
                 "salvaged": False,
             }
+            provider_boundary_timeout_valid = True
+            if _provider_state_boundary_required():
+                try:
+                    provider_filesystem_boundary_receipt = (
+                        _validated_provider_filesystem_boundary_receipt(
+                            provider_route_receipt_path,
+                            task_id=task.task_id,
+                            attempt=attempt,
+                            checkpoint_writable=True,
+                        )
+                    )
+                except RuntimeError:
+                    provider_boundary_timeout_valid = False
+                    timeout_result[
+                        "provider_filesystem_boundary_receipt_error"
+                    ] = "invalid_provider_filesystem_boundary_receipt"
+                else:
+                    self._record_event(
+                        "implementation_provider_filesystem_bounded",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "provider_filesystem_boundary_receipt_path": str(
+                                _provider_filesystem_boundary_receipt_path(
+                                    provider_route_receipt_path
+                                )
+                            ),
+                            "provider_filesystem_boundary_receipt": (
+                                provider_filesystem_boundary_receipt
+                            ),
+                        },
+                    )
             if protected_path_violation:
                 timeout_result["reason"] = "implementation_protected_path_mutated"
                 timeout_result["protected_path_violation"] = protected_path_violation
-            if worktree_path.exists() and not protected_path_violation:
+            if (
+                worktree_path.exists()
+                and not protected_path_violation
+                and not provider_boundary_timeout_valid
+            ):
+                validation_result = self._sanitize_failed_validation_result(
+                    {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": 124,
+                        "reason": (
+                            "provider_filesystem_boundary_unverified_after_timeout"
+                        ),
+                    }
+                )
+                try:
+                    failed_preservation_result = (
+                        self._preserve_timed_out_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            validation_result,
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                except Exception as preservation_exc:
+                    failed_preservation_result = {
+                        "commit_result": {"committed": False},
+                        "cleanup_result": {
+                            "cleaned": False,
+                            "reason": "boundary_timeout_preservation_failed",
+                        },
+                        "error": str(preservation_exc)[-1000:],
+                    }
+                commit_result = dict(
+                    failed_preservation_result.get("commit_result")
+                    or commit_result
+                )
+                implementation_commit = str(commit_result.get("commit", ""))
+                cleanup_result = dict(
+                    failed_preservation_result.get("cleanup_result")
+                    or cleanup_result
+                )
+                timeout_result.update(
+                    {
+                        "reason": (
+                            "provider_filesystem_boundary_unverified_after_timeout"
+                        ),
+                        "preservation_result": failed_preservation_result,
+                    }
+                )
+                timeout_followup_event_type = (
+                    "implementation_timeout_salvage_failed"
+                )
+            if (
+                worktree_path.exists()
+                and not protected_path_violation
+                and provider_boundary_timeout_valid
+            ):
                 try:
                     self._mark_active_phase(
                         state,
@@ -18054,6 +18345,15 @@ class PortalImplementationDaemon:
                 provider_route_receipt_path
             )
             result["provider_route_receipt"] = provider_route_receipt
+        if provider_filesystem_boundary_receipt:
+            result["provider_filesystem_boundary_receipt_path"] = str(
+                _provider_filesystem_boundary_receipt_path(
+                    provider_route_receipt_path
+                )
+            )
+            result["provider_filesystem_boundary_receipt"] = (
+                provider_filesystem_boundary_receipt
+            )
         if protected_path_violation:
             result["reason"] = str(
                 protected_path_violation.get("reason")
@@ -26547,6 +26847,47 @@ class PortalImplementationDaemon:
         ) as temporary_home:
             home_path = Path(temporary_home)
             child_environment = dict(environment)
+            # Cargo/Rustup toolchains live outside the private validation HOME.
+            # Point offline validation at the supervisor's pre-populated caches
+            # so locked crates resolve without network or host profile hooks.
+            from ..validation.validation_runtime import (
+                VALIDATION_CARGO_HOME_ENV,
+                VALIDATION_RUSTUP_HOME_ENV,
+            )
+
+            raw_cargo = str(os.environ.get("CARGO_HOME") or "").strip()
+            host_cargo = (
+                Path(raw_cargo).expanduser()
+                if raw_cargo
+                else (Path.home() / ".cargo")
+            )
+            raw_rustup = str(os.environ.get("RUSTUP_HOME") or "").strip()
+            host_rustup = (
+                Path(raw_rustup).expanduser()
+                if raw_rustup
+                else (Path.home() / ".rustup")
+            )
+            try:
+                if host_cargo.is_dir():
+                    cargo_home = str(host_cargo.resolve(strict=True))
+                    child_environment.setdefault(
+                        VALIDATION_CARGO_HOME_ENV,
+                        cargo_home,
+                    )
+                    # Set the runtime names directly: this runner already holds
+                    # a built validation environment and does not re-enter
+                    # build_validation_environment before exec.
+                    child_environment.setdefault("CARGO_HOME", cargo_home)
+                    child_environment.setdefault("CARGO_NET_OFFLINE", "true")
+                if host_rustup.is_dir():
+                    rustup_home = str(host_rustup.resolve(strict=True))
+                    child_environment.setdefault(
+                        VALIDATION_RUSTUP_HOME_ENV,
+                        rustup_home,
+                    )
+                    child_environment.setdefault("RUSTUP_HOME", rustup_home)
+            except OSError:
+                pass
             child_environment.update(
                 {
                     "HOME": str(home_path),
@@ -28520,6 +28861,17 @@ class PortalImplementationDaemon:
         command_template = self.llm_merge_resolver_command
         if not command_template:
             return {"attempted": False, "reason": "resolver_command_not_configured"}
+        try:
+            _require_packaged_provider_fallback_runner(command_template)
+        except RuntimeError:
+            result = {
+                "attempted": False,
+                "applied": False,
+                "reason": "provider_filesystem_boundary_required",
+                "infrastructure_failure": True,
+            }
+            self._record_event("llm_merge_resolver_invoked", result)
+            return result
         from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
 
         merge_result = {
@@ -28563,7 +28915,7 @@ class PortalImplementationDaemon:
         route_receipt_path: Path | None = None
         route_arguments: dict[str, Any] = {}
         if _uses_packaged_provider_fallback_runner(command_template):
-            checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+            receipt_dir = self._ensure_provider_route_receipt_dir(task)
             route_scope = hashlib.sha256(
                 json.dumps(
                     {
@@ -28577,7 +28929,7 @@ class PortalImplementationDaemon:
                 ).encode("utf-8")
             ).hexdigest()[:16]
             route_receipt_path = (
-                checkpoint_dir
+                receipt_dir
                 / (
                     "provider-route-semantic-merge-attempt-"
                     f"{attempt}-{route_scope}.json"
@@ -28597,6 +28949,38 @@ class PortalImplementationDaemon:
             **route_arguments,
         )
         if route_receipt_path is not None:
+            if _provider_state_boundary_required():
+                try:
+                    boundary_receipt = (
+                        _validated_provider_filesystem_boundary_receipt(
+                            route_receipt_path,
+                            task_id=task.task_id,
+                            attempt=attempt,
+                            stage="semantic_merge",
+                            checkpoint_writable=False,
+                        )
+                    )
+                except RuntimeError:
+                    result = {
+                        **result,
+                        "applied": False,
+                        "apply_error": (
+                            "provider filesystem boundary receipt validation failed"
+                        ),
+                        "provider_filesystem_boundary_receipt_error": (
+                            "invalid_provider_filesystem_boundary_receipt"
+                        ),
+                    }
+                else:
+                    result = {
+                        **result,
+                        "provider_filesystem_boundary_receipt_path": str(
+                            _provider_filesystem_boundary_receipt_path(
+                                route_receipt_path
+                            )
+                        ),
+                        "provider_filesystem_boundary_receipt": boundary_receipt,
+                    }
             try:
                 route_receipt = _validated_provider_route_receipt(
                     route_receipt_path,
@@ -30225,10 +30609,24 @@ class PortalImplementationDaemon:
                         merge_stderr=checkout.stderr,
                         reason="submodule_default_branch_checkout_failed",
                     )
-                    if (
-                        resolver.get("applied", False)
-                        and self._git_current_branch(source) != default_branch
-                    ):
+                    if not resolver.get("applied", False):
+                        result.update(
+                            {
+                                "path": full_relative,
+                                "branch": submodule_branch,
+                                "default_branch": default_branch,
+                                "merged": False,
+                                "returncode": checkout.returncode,
+                                "reason": (
+                                    "default_branch_checkout_resolver_rejected"
+                                ),
+                                "stdout": checkout.stdout[-4000:],
+                                "stderr": checkout.stderr[-4000:],
+                                "llm_merge_resolver": resolver,
+                            }
+                        )
+                        return result
+                    if self._git_current_branch(source) != default_branch:
                         checkout = subprocess.run(
                             checkout_command,
                             cwd=source,
@@ -38617,6 +39015,27 @@ class PortalImplementationDaemon:
             / f"{stem}-{identity_suffix}"
         ).resolve()
 
+    def _provider_route_receipt_dir(self, task: PortalTask) -> Path:
+        stem = self._implementation_context_file_stem(task)
+        identity_suffix = self._identity_for_task(task).short_id
+        return (
+            self.state_path.parent
+            / "provider_route_receipts"
+            / f"{stem}-{identity_suffix}"
+        ).resolve()
+
+    def _ensure_provider_route_receipt_dir(
+        self,
+        task: PortalTask,
+    ) -> Path:
+        receipt_dir = self._provider_route_receipt_dir(task)
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            receipt_dir.chmod(0o700)
+        except OSError:
+            pass
+        return receipt_dir
+
     def _ensure_implementation_checkpoint_dir(
         self,
         task: PortalTask,
@@ -38758,6 +39177,9 @@ class PortalImplementationDaemon:
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+            PROVIDER_PROTECTED_STATE_ROOT_ENV: str(
+                os.environ.get(PROOF_REUSE_STATE_ROOT_ENV) or ""
+            ).strip(),
             # The daemon retains this read capability for the later validation
             # gate.  Do not project its location into the autonomous provider
             # subprocess; the provider is authorized to edit only its exact
