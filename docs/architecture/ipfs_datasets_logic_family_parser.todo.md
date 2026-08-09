@@ -602,7 +602,7 @@ validation and evidence contract.
 
 ## LFP-019 Implement TPTP CNF/FOF/TFF and TSTP controlled frontends
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
