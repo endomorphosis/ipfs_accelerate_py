@@ -884,7 +884,7 @@ this bootstrap is active.
 
 ## DQP-028 Generate delta task packets and deterministic-first replay suppression
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
