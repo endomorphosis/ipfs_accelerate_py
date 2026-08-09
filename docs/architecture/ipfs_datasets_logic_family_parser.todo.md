@@ -261,7 +261,7 @@ validation and evidence contract.
 
 ## LFP-008 Add versioned aliases and dual-read one-write canonicalization
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
