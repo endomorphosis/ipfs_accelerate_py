@@ -18,7 +18,7 @@
     "historical_ase_or_ase2_completion_is_authority": false
   },
   "initial_projection": {
-    "task_count": 25,
+    "task_count": 27,
     "goal_count": 10,
     "root_goal_id": "ASE3-G000",
     "bootstrap_task_id": "ASE3-000",
@@ -47,7 +47,9 @@
       "ASE3-025",
       "ASE3-026",
       "ASE3-027",
-      "ASE3-028"
+      "ASE3-028",
+      "ASE3-029",
+      "ASE3-030"
     ],
     "noncanonical_transition_task_ids": [
       "ASE3-022"
@@ -128,9 +130,9 @@
   ],
   "task_groups": {
     "ASE3-G010": ["ASE3-000"],
-    "ASE3-G020": ["ASE3-001", "ASE3-002", "ASE3-018", "ASE3-019", "ASE3-027", "ASE3-028"],
+    "ASE3-G020": ["ASE3-001", "ASE3-002", "ASE3-018", "ASE3-019", "ASE3-027", "ASE3-029", "ASE3-028"],
     "ASE3-G030": ["ASE3-004", "ASE3-024"],
-    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006", "ASE3-023", "ASE3-025"],
+    "ASE3-G040": ["ASE3-003", "ASE3-005", "ASE3-006", "ASE3-030", "ASE3-023", "ASE3-025"],
     "ASE3-G050": ["ASE3-007", "ASE3-021"],
     "ASE3-G055": ["ASE3-020"],
     "ASE3-G060": ["ASE3-008", "ASE3-026"],
@@ -162,7 +164,21 @@
     "ASE3-025": ["ASE3-004", "ASE3-023", "ASE3-024"],
     "ASE3-026": ["ASE3-008", "ASE3-020", "ASE3-021", "ASE3-025"],
     "ASE3-027": ["ASE3-001", "ASE3-018"],
-    "ASE3-028": ["ASE3-019", "ASE3-022"]
+    "ASE3-028": ["ASE3-029"],
+    "ASE3-029": ["ASE3-022"],
+    "ASE3-030": ["ASE3-019"]
+  },
+  "acceptance_prerequisites": {
+    "ASE3-023": ["ASE3-030"],
+    "ASE3-022": ["ASE3-030"]
+  },
+  "protected_identity_acceptance": {
+    "task_id": "ASE3-030",
+    "status": "reserved",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1",
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": ["ASE3-023", "ASE3-022"]
   },
   "protected_runtime_activation": {
     "task_id": "ASE3-026",
@@ -205,6 +221,11 @@
     "semantic_progress_seconds": 300,
     "max_recoveries_per_window": 3,
     "recovery_window_seconds": 1800,
+    "canary_task_id": "ASE3-013",
+    "canary_observation_seconds": 900,
+    "continuous_health_required": true,
+    "monotonic_elapsed_receipt_required": true,
+    "prompt_may_override_observation_window": false,
     "running_requires_process_birth_lease_fence_and_heartbeat": true,
     "queue_drain_is_completion": false,
     "branch_local_completion_is_completion": false
