@@ -22,8 +22,15 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
-from ..planning.parallel_plan_compiler import ParallelExecutionPlan, ParallelPlanCompiler
-from ..planning.plan_revision_contracts import PlanAuthorityRoots, PlanDelta, PlanRevision
+from ..planning.parallel_plan_compiler import (
+    ParallelExecutionPlan,
+    ParallelPlanCompiler,
+)
+from ..planning.plan_revision_contracts import (
+    PlanAuthorityRoots,
+    PlanDelta,
+    PlanRevision,
+)
 from ..proof.formal_verification_contracts import content_identity
 from ..task_sources.plan_revision_store import (
     PLAN_REVISION_ACTIVE_SCHEMA,

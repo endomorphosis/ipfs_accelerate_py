@@ -2,24 +2,45 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
+
+from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.entrypoints import (
     execution_plan as execution_plan_module,
+)
+from ipfs_accelerate_py.agent_supervisor.entrypoints import (
+    local_profile as local_profile_module,
 )
 from ipfs_accelerate_py.agent_supervisor.entrypoints.execution_plan import (
     ExecutionClaimConflictError,
     ExecutionPlanError,
     ProductionParallelPlanAdapter,
     load_plan_revision_store_binding,
+)
+from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+    ed25519_did_key,
+    export_local_profile_lifecycle_witness,
+    initialize_local_profile,
+    lifecycle_root_identity_did,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as scheduler_module,
@@ -57,6 +78,118 @@ V3_AUTHORIZATION_PATH = Path(
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     "provider_fallback_policy_authorization_20260808.json"
 )
+V3_ROOT_PIN_PATH = Path(
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    "local_profile_lifecycle_root_pin_20260808.json"
+)
+V3_WITNESS_PATH = Path(
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    "local_profile_lifecycle_witness_20260808.json"
+)
+_TEST_SEALED_DESCRIPTORS: list[int] = []
+
+
+@pytest.fixture(autouse=True)
+def _isolated_local_profile_lifecycle_registry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Any:
+    monkeypatch.setattr(
+        local_profile_module,
+        "_LIFECYCLE_REGISTRY_ROOT_OVERRIDE",
+        tmp_path / "local-profile-root-registry",
+    )
+    yield
+    for descriptor in _TEST_SEALED_DESCRIPTORS:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+    _TEST_SEALED_DESCRIPTORS.clear()
+
+
+def _canonical_json_bytes(value: dict[str, Any]) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _content_addressed_mapping(
+    value: dict[str, Any],
+    *,
+    identity_field: str,
+) -> str:
+    body = dict(value)
+    body.pop(identity_field, None)
+    return "sha256:" + hashlib.sha256(_canonical_json_bytes(body)).hexdigest()
+
+
+def _test_sealed_control_plane(
+    tmp_path: Path,
+    *,
+    source_head: str,
+    source_tree: str,
+) -> tuple[
+    llm_router.AgentImplementationControlPlanePin,
+    llm_router.AgentImplementationSealedControlPlane,
+]:
+    """Build a production-shaped capsule from this test process's sources."""
+
+    root = tmp_path / "accepted-control-plane-capsule"
+    root.mkdir(mode=0o700)
+    relative_files = set(llm_router._AGENT_CONTROL_PLANE_RELATIVE_FILES)
+    relative_files.update(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in (
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor"
+        ).rglob("*.py")
+    )
+    digests: dict[str, str] = {}
+    for relative in sorted(relative_files):
+        source = REPO_ROOT / relative
+        payload = source.read_bytes()
+        target = root / relative
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        target.chmod(0o400)
+        digests[relative] = "sha256:" + hashlib.sha256(payload).hexdigest()
+    manifest: dict[str, Any] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "materialized-control-plane@1"
+        ),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "files": digests,
+    }
+    manifest["capsule_id"] = _content_addressed_mapping(
+        manifest,
+        identity_field="capsule_id",
+    )
+    manifest_path = root / ".agent-control-plane-manifest.json"
+    manifest_path.write_bytes(_canonical_json_bytes(manifest) + b"\n")
+    manifest_path.chmod(0o400)
+    for directory in sorted(
+        (entry for entry in root.rglob("*") if entry.is_dir()),
+        key=lambda entry: len(entry.parts),
+        reverse=True,
+    ):
+        directory.chmod(0o500)
+    root.chmod(0o500)
+    pin = llm_router.build_agent_implementation_control_plane_pin(
+        runner_path=(
+            root
+            / "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+        ),
+        capsule_root=root,
+    )
+    sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
+    _TEST_SEALED_DESCRIPTORS.append(sealed.descriptor)
+    return pin, sealed
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -217,11 +350,127 @@ def _commit_v3_route_authorization(
 ) -> None:
     source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
     source_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    reviewer_key = Ed25519PrivateKey.generate()
+    reviewer_identity = ed25519_did_key(reviewer_key.public_key())
+    profile_dir = repo.parent / f"{repo.name}-reviewer-profile"
+    lifecycle_dir = repo.parent / f"{repo.name}-reviewer-lifecycle"
+    profile = initialize_local_profile(
+        repository_cid=f"repository:{repo.name}",
+        baseline_commit=source_head,
+        profile_dir=profile_dir,
+        lifecycle_dir=lifecycle_dir,
+        signing_key=reviewer_key.private_bytes(
+            Encoding.Raw,
+            PrivateFormat.Raw,
+            NoEncryption(),
+        ),
+        effect_bounds=("edit", "isolated_worktree", "test"),
+        budget_cid="budget:configured-board-fixture",
+        resource_cid="resource:configured-board-fixture",
+        route_id=V3_ROUTE_ID,
+        reviewer_identity=reviewer_identity,
+        reviewer_provider="local_operator",
+        fallback_provider_id="codex",
+        fallback_model_id="gpt-5.6-terra",
+        fallback_reasoning_effort="high",
+    )
+    root_identity_did = lifecycle_root_identity_did()
+    authorized_at_ms = int(time.time()) * 1000
+    root_pin: dict[str, Any] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "local-profile-lifecycle-root-pin@1"
+        ),
+        "board_namespace": V3_BOARD_NAMESPACE,
+        "base_head": source_head,
+        "base_tree": source_tree,
+        "root_identity_did": root_identity_did,
+        "pinned_at_ms": authorized_at_ms,
+    }
+    root_pin["pin_id"] = _content_addressed_mapping(
+        root_pin,
+        identity_field="pin_id",
+    )
+    root_pin_path = repo / V3_ROOT_PIN_PATH
+    root_pin_path.parent.mkdir(parents=True, exist_ok=True)
+    root_pin_path.write_bytes(_canonical_json_bytes(root_pin))
+    root_pin_path.chmod(0o400)
+    _git(repo, "add", V3_ROOT_PIN_PATH.as_posix())
+    _git(repo, "commit", "-m", "pin fixture lifecycle root")
+
+    witness_nonce = "witness:" + hashlib.sha256(
+        str(repo).encode("utf-8")
+    ).hexdigest()
+    witness = export_local_profile_lifecycle_witness(
+        repository_cid=f"repository:{repo.name}",
+        board_namespace=V3_BOARD_NAMESPACE,
+        base_head=source_head,
+        base_tree=source_tree,
+        nonce=witness_nonce,
+        profile_dir=profile_dir,
+        lifecycle_dir=lifecycle_dir,
+        observed_at_ms=authorized_at_ms,
+        expires_at_ms=authorized_at_ms + 10 * 60 * 1000,
+    )
+    witness_path = repo / V3_WITNESS_PATH
+    witness_path.write_bytes(_canonical_json_bytes(witness))
+    witness_path.chmod(0o400)
+    witness_sha256 = "sha256:" + hashlib.sha256(
+        witness_path.read_bytes()
+    ).hexdigest()
+    root_pin_sha256 = "sha256:" + hashlib.sha256(
+        root_pin_path.read_bytes()
+    ).hexdigest()
+    authority_bounds: dict[str, Any] = {
+        "repository_cid": f"repository:{repo.name}",
+        "baseline_commit": source_head,
+        "effects": ["edit", "isolated_worktree", "test"],
+        "budget_cid": "budget:configured-board-fixture",
+        "resource_cid": "resource:configured-board-fixture",
+        "authority_cid": profile.content_id,
+    }
+    route = {
+        "route_id": V3_ROUTE_ID,
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+        "allowed_trigger_classes": [
+            "grok_authentication_unavailable",
+            "grok_hard_quota_exhausted",
+        ],
+    }
+    review_payload = llm_router.agent_implementation_route_review_payload(
+        board_namespace=V3_BOARD_NAMESPACE,
+        authorization_kind="explicit_operator_override",
+        source_head=source_head,
+        source_tree=source_tree,
+        route=route,
+        authority_bounds=authority_bounds,
+        reviewer_identity=reviewer_identity,
+        reviewer_provider="local_operator",
+        reviewer_profile_id=profile.profile_id,
+        reviewer_profile_content_id=profile.content_id,
+        reviewer_lifecycle_anchor_id=profile.lifecycle_anchor_id,
+        reviewer_lifecycle_generation=profile.lifecycle_generation,
+        reviewer_witness_path=V3_WITNESS_PATH.as_posix(),
+        reviewer_witness_sha256=witness_sha256,
+        lifecycle_root_identity_did=root_identity_did,
+        lifecycle_witness_nonce=witness_nonce,
+        lifecycle_root_pin_path=V3_ROOT_PIN_PATH.as_posix(),
+        lifecycle_root_pin_sha256=root_pin_sha256,
+        authorized_at_ms=authorized_at_ms,
+        fallback_implementer_identity="codex",
+    )
+    signature = base64.b64encode(
+        reviewer_key.sign(_canonical_json_bytes(review_payload))
+    ).decode("ascii")
     artifact = repo / V3_AUTHORIZATION_PATH
     authorization = {
         "schema": (
             "ipfs_accelerate_py.agent_supervisor."
-            "provider-fallback-policy-authorization@1"
+            "provider-fallback-policy-authorization@2"
         ),
         "board_namespace": V3_BOARD_NAMESPACE,
         "authorization_source": {
@@ -231,18 +480,7 @@ def _commit_v3_route_authorization(
             "prospective_only": True,
             "requires_descendant_tree": True,
         },
-        "route": {
-            "route_id": V3_ROUTE_ID,
-            "primary_provider_id": "grok_cli",
-            "primary_model_id": "grok-4.5",
-            "fallback_provider_id": "codex",
-            "fallback_model_id": "gpt-5.6-terra",
-            "fallback_reasoning_effort": "high",
-            "allowed_trigger_classes": [
-                "grok_authentication_unavailable",
-                "grok_hard_quota_exhausted",
-            ],
-        },
+        "route": route,
         "ownership_contract": {
             "canonical_route_plan_owner": "ipfs_accelerate_py.llm_router",
             "typed_fallback_decision_owner": "ipfs_accelerate_py.llm_router",
@@ -251,14 +489,40 @@ def _commit_v3_route_authorization(
         "bootstrap_route_guarantees": {
             "explicit_codex_review_conflict_denied": True,
         },
+        "reviewer": {
+            "identity": reviewer_identity,
+            "provider": "local_operator",
+            "profile_id": profile.profile_id,
+            "profile_content_id": profile.content_id,
+            "lifecycle_anchor_id": profile.lifecycle_anchor_id,
+            "generation": profile.lifecycle_generation,
+            "witness_path": V3_WITNESS_PATH.as_posix(),
+            "witness_sha256": witness_sha256,
+            "signature": signature,
+        },
+        "authority_bounds": authority_bounds,
+        "fallback_implementer_identity": "codex",
+        "lifecycle_root_identity_did": root_identity_did,
+        "lifecycle_witness_nonce": witness_nonce,
+        "lifecycle_root_pin_path": V3_ROOT_PIN_PATH.as_posix(),
+        "lifecycle_root_pin_sha256": root_pin_sha256,
+        "authorized_at_ms": authorized_at_ms,
     }
     payload["board_namespace"] = V3_BOARD_NAMESPACE
     provider = payload["provider"]
     assert isinstance(provider, dict)
     provider["route_authorization_path"] = V3_AUTHORIZATION_PATH.as_posix()
-    _write(artifact, json.dumps(authorization, indent=2, sort_keys=True) + "\n")
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_bytes(_canonical_json_bytes(authorization))
+    artifact.chmod(0o400)
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    _git(repo, "add", config_path.relative_to(repo).as_posix(), V3_AUTHORIZATION_PATH.as_posix())
+    _git(
+        repo,
+        "add",
+        config_path.relative_to(repo).as_posix(),
+        V3_AUTHORIZATION_PATH.as_posix(),
+        V3_WITNESS_PATH.as_posix(),
+    )
     _git(repo, "commit", "-m", "authorize scoped high route")
 
 
@@ -338,20 +602,28 @@ def _provider_capacity(
     lanes: int = 2,
     active: int = 0,
     observed_at_ms: int = PLAN_NOW,
-    max_age_ms: int = 60_000,
+    primary_healthy: bool = True,
+    fallback_healthy: bool = True,
 ) -> tuple[dict[str, object], ...]:
-    return (
-        {
-            "provider_id": "grok_cli",
-            "healthy": True,
+    def observation(provider_id: str, healthy: bool) -> dict[str, object]:
+        return {
+            "provider_id": provider_id,
+            "healthy": healthy,
+            "quota_remaining": 10,
+            "latency_ms": 25,
+            "context_window_tokens": 100_000,
+            "token_budget_remaining": 100_000,
             "max_concurrency": lanes,
             "active_requests": active,
-            "quota_remaining": 10,
-            "token_budget_remaining": 100_000,
-            "context_window_tokens": 100_000,
+            "capabilities": ["implementation"],
             "observed_at_ms": observed_at_ms,
-            "max_age_ms": max_age_ms,
-        },
+            "retry_after_ms": 0,
+            "available_concurrency": max(0, lanes - active),
+        }
+
+    return (
+        observation("grok_cli", primary_healthy),
+        observation("codex_cli", fallback_healthy),
     )
 
 
@@ -457,6 +729,13 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
     runtime_relative = Path("data/agent_supervisor") / (
         "plan-bound-gate-test-" + tmp_path.name
     )
@@ -475,8 +754,8 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         "--plan-bound-capacity-snapshot-id", "capacity:test",
         "--plan-bound-slice-manifest-cid", "manifest:test",
         "--plan-bound-slice-id", "slice:test",
-        "--plan-bound-source-head", "head:test",
-        "--plan-bound-source-tree", "tree:test",
+        "--plan-bound-source-head", source_head,
+        "--plan-bound-source-tree", source_tree,
         "--plan-bound-task-source-revision", "task-source:test",
         "--plan-bound-configuration-root", "configuration:test",
         "--plan-bound-accepted-tree-root", str(REPO_ROOT),
@@ -520,6 +799,10 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
                 repo_root=REPO_ROOT,
                 common_args=(),
                 python_executable=sys.executable,
+                accepted_control_plane_pin=control_plane_pin,
+                accepted_control_plane_descriptor=(
+                    control_plane_launch.descriptor
+                ),
                 output=lambda _message: None,
             )
 
@@ -550,6 +833,18 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('bad')\n",
         encoding="utf-8",
     )
+    (shadow_root / "sitecustomize.py").write_text(
+        f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('bad')\n",
+        encoding="utf-8",
+    )
+    shadow_runner = (
+        shadow_package / "agent_supervisor/runtime/multi_supervisor_runner.py"
+    )
+    shadow_runner.parent.mkdir(parents=True)
+    shadow_runner.write_text(
+        f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('bad')\n",
+        encoding="utf-8",
+    )
     hostile_environment = dict(os.environ)
     hostile_environment.update(
         {
@@ -558,6 +853,47 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
             "PYTHONSTARTUP": str(shadow_package / "__init__.py"),
         }
     )
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    sealed_modules = (
+        multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE,
+        (
+            "ipfs_accelerate_py.agent_supervisor.runtime."
+            "configured_board_scheduler"
+        ),
+        (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+    )
+    for sealed_module in sealed_modules:
+        sealed_command = (
+            multi_runner_module.build_sealed_control_plane_module_command(
+                python_executable=sys.executable,
+                pin=control_plane_pin,
+                descriptor=control_plane_launch.descriptor,
+                module_name=sealed_module,
+                argv=("--help",),
+            )
+        )
+        sealed_result = subprocess.run(
+            sealed_command,
+            cwd=shadow_root,
+            env=hostile_environment,
+            pass_fds=(control_plane_launch.descriptor,),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        assert sealed_result.returncode == 0, sealed_result.stderr
+        assert "usage:" in sealed_result.stdout
+        assert not sentinel.exists()
     entries = (
         REPO_ROOT
         / "scripts/ops/agent_supervisor/configured_board_scheduler.py",
@@ -662,6 +998,116 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     os.chmod(pid_path, 0o600)
     assert scheduler_module._remove_owned_coordinator_pid(board) is True
     assert not pid_path.exists()
+
+
+def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    receipt = materialize_configured_board_execution_plan(
+        board,
+        now_ms=PLAN_NOW,
+        host_capacity_snapshot=_host_capacity(lanes=1),
+        provider_capacity_snapshots=_provider_capacity(lanes=1),
+        task_state_snapshots=(),
+    )
+    assert receipt is not None
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=receipt.slice_manifest.source_head,
+        source_tree=receipt.slice_manifest.repository_tree_id,
+    )
+    launch_plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260809T-pid-projection",
+        parallelism_receipt=receipt,
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_launch.descriptor,
+    )
+    argv = list(launch_plan["argv"])
+    record_index = argv.index("--implementation-plan-bound-track")
+    child = multi_runner_module.PlanBoundSupervisorChild.from_cli_record(
+        argv[record_index + 1]
+    )
+    track = child.track(stamp="20260809T-pid-projection")
+    resolved_track = track.resolve(repo)
+    resolved_track.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside-plan-bound-pid"
+    outside.write_text("31337\n", encoding="ascii")
+    spawned = False
+
+    def forbidden_spawn(*_args, **_kwargs):
+        nonlocal spawned
+        spawned = True
+        raise AssertionError("unsafe PID authority reached process birth")
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_validate_plan_bound_accepted_tree",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        multi_runner_module.subprocess,
+        "Popen",
+        forbidden_spawn,
+    )
+
+    for link_kind in ("symbolic", "hard"):
+        if link_kind == "symbolic":
+            resolved_track.supervisor_pid_path.symlink_to(outside)
+        else:
+            os.link(outside, resolved_track.supervisor_pid_path)
+        try:
+            expected = "symbolic link" if link_kind == "symbolic" else "hardlink"
+            with pytest.raises(ValueError, match=expected):
+                multi_runner_module.start_track(
+                    track,
+                    repo_root=repo,
+                    common_args=(),
+                    python_executable=sys.executable,
+                    accepted_control_plane_pin=control_plane_pin,
+                    accepted_control_plane_descriptor=(
+                        control_plane_launch.descriptor
+                    ),
+                    output=lambda _message: None,
+                )
+        finally:
+            resolved_track.supervisor_pid_path.unlink()
+        assert outside.read_text(encoding="ascii") == "31337\n"
+        assert spawned is False
+
+    master_pid = board.path(board.runtime_paths["state"]) / "wave-master.pid"
+    for link_kind in ("symbolic", "hard"):
+        if link_kind == "symbolic":
+            master_pid.symlink_to(outside)
+        else:
+            os.link(outside, master_pid)
+        try:
+            expected = "symbolic link" if link_kind == "symbolic" else "hardlink"
+            with pytest.raises(ValueError, match=expected):
+                multi_runner_module.run_supervisor_tracks(
+                    (track,),
+                    repo_root=repo,
+                    common_args=(),
+                    duration_seconds=0.1,
+                    master_pid_path=master_pid,
+                    plan_bound_children=(child,),
+                    accepted_control_plane_pin=control_plane_pin,
+                    accepted_control_plane_descriptor=(
+                        control_plane_launch.descriptor
+                    ),
+                    output=lambda _message: None,
+                )
+        finally:
+            master_pid.unlink()
+        assert outside.read_text(encoding="ascii") == "31337\n"
+        assert spawned is False
 
 
 def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
@@ -1056,8 +1502,7 @@ def test_v3_materializer_requires_fresh_unsaturated_provider_evidence(
             board,
             provider_capacity_snapshots=_provider_capacity(
                 lanes=1,
-                observed_at_ms=PLAN_NOW - 10_000,
-                max_age_ms=1_000,
+                observed_at_ms=PLAN_NOW - 20_000,
             ),
             **common,
         )
@@ -1070,6 +1515,131 @@ def test_v3_materializer_requires_fresh_unsaturated_provider_evidence(
             ),
             **common,
         )
+
+
+def test_route_capacity_projection_is_router_owned_strict_and_fallback_only(
+    tmp_path: Path,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    fallback_only = _provider_capacity(
+        lanes=2,
+        primary_healthy=False,
+        fallback_healthy=True,
+    )
+    capacity, route = scheduler_module.configured_board_route_capacity_projection(
+        board,
+        provider_capacity_snapshots=fallback_only,
+        now_ms=PLAN_NOW,
+    )
+    assert capacity["schema"].endswith("implementation-route-capacity@2")
+    assert capacity["route_id"] == route.route_id == V3_ROUTE_ID
+    assert capacity["provider_id"] == route.route_id
+    assert capacity["healthy"] is True
+    assert capacity["schedulable"] is True
+    assert capacity["available_concurrency"] == 2
+    assert capacity["profile_id"].startswith("sha256:")
+    lanes = {item["role"]: item for item in capacity["lanes"]}
+    assert lanes["primary"]["capacity_available"] is False
+    assert lanes["typed_fallback_capacity_only"] == {
+        **lanes["typed_fallback_capacity_only"],
+        "provider_id": "codex",
+        "model_id": "gpt-5.6-terra",
+        "reasoning_effort": "high",
+        "capacity_available": True,
+        "dispatch_authorized": False,
+    }
+    assert all(item["dispatch_authorized"] is False for item in lanes.values())
+
+    receipt = materialize_configured_board_execution_plan(
+        board,
+        now_ms=PLAN_NOW,
+        host_capacity_snapshot=_host_capacity(lanes=2),
+        provider_capacity_snapshots=fallback_only,
+        task_state_snapshots=(),
+    )
+    assert receipt is not None
+    assert receipt.slice_manifest.capacity_snapshot_id == (
+        receipt.binding.capacity_snapshot_id
+    )
+
+    both_unavailable = _provider_capacity(
+        lanes=2,
+        primary_healthy=False,
+        fallback_healthy=False,
+    )
+    denied, _route = scheduler_module.configured_board_route_capacity_projection(
+        board,
+        provider_capacity_snapshots=both_unavailable,
+        now_ms=PLAN_NOW,
+    )
+    assert denied["schedulable"] is False
+    assert denied["available_concurrency"] == 0
+    with pytest.raises(ExecutionPlanError):
+        materialize_configured_board_execution_plan(
+            board,
+            now_ms=PLAN_NOW,
+            host_capacity_snapshot=_host_capacity(lanes=2),
+            provider_capacity_snapshots=both_unavailable,
+            task_state_snapshots=(),
+        )
+
+    canonical = [dict(item) for item in _provider_capacity(lanes=1)]
+    extra = [dict(item) for item in canonical]
+    extra[0]["scheduler_guess"] = True
+    wrong_type = [dict(item) for item in canonical]
+    wrong_type[0]["observed_at_ms"] = float(PLAN_NOW)
+    mixed = [dict(item) for item in canonical]
+    mixed[1]["provider_id"] = "grok"
+    adversarial = (
+        canonical[:1],
+        [*canonical, dict(canonical[0])],
+        extra,
+        wrong_type,
+        mixed,
+    )
+    for observations in adversarial:
+        with pytest.raises(ConfiguredBoardError, match="router rejected"):
+            scheduler_module.configured_board_route_capacity_projection(
+                board,
+                provider_capacity_snapshots=observations,
+                now_ms=PLAN_NOW,
+            )
+
+    aliases = [dict(item) for item in canonical]
+    aliases[0]["provider_id"] = "grok"
+    aliases[1]["provider_id"] = "codex"
+    aliased, _route = scheduler_module.configured_board_route_capacity_projection(
+        board,
+        provider_capacity_snapshots=aliases,
+        now_ms=PLAN_NOW,
+    )
+    assert aliased["route_id"] == V3_ROUTE_ID
+    assert aliased["schedulable"] is True
+
+    stale, _route = scheduler_module.configured_board_route_capacity_projection(
+        board,
+        provider_capacity_snapshots=_provider_capacity(
+            lanes=1,
+            observed_at_ms=PLAN_NOW - 20_000,
+        ),
+        now_ms=PLAN_NOW,
+    )
+    assert stale["schedulable"] is False
+
+    legacy_route = llm_router.resolve_agent_implementation_route(
+        default_route="legacy"
+    )
+    legacy = llm_router.project_agent_implementation_route_capacity(
+        legacy_route,
+        observations=[dict(item) for item in fallback_only],
+        now_ms=PLAN_NOW,
+        max_age_ms=5_000,
+    ).as_compiler_snapshot()
+    assert legacy["schedulable"] is False
+    assert all(item["dispatch_authorized"] is False for item in legacy["lanes"])
 
 
 def test_v3_materializer_denies_same_id_cid_and_same_namespace_config_races(
@@ -1269,6 +1839,11 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
     )
     assert receipt is not None
     execution_slice = receipt.slice_manifest.slices[0]
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=receipt.slice_manifest.source_head,
+        source_tree=receipt.slice_manifest.repository_tree_id,
+    )
     state_dir = board.path(board.runtime_paths["state"]) / "lane-0"
     config = supervisor_module.PortalSupervisorConfig(
         todo_path=board.path(board.taskboard_path),
@@ -1306,6 +1881,8 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         plan_bound_task_source_revision=receipt.slice_manifest.task_source_revision,
         plan_bound_configuration_root=receipt.slice_manifest.configuration_root,
         plan_bound_accepted_tree_root=repo,
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_launch.descriptor,
     )
     supervisor = supervisor_module.PortalImplementationSupervisor(config)
     with monkeypatch.context() as build_context:
@@ -1316,15 +1893,21 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         )
         command = supervisor._build_daemon_command()
     marker = supervisor_module.PLAN_BOUND_DAEMON_CHILD_MARKER
-    assert command[:4] == [
-        sys.executable,
-        "-P",
-        "-m",
-        (
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_supervisor"
-        ),
+    assert Path(command[0]).samefile(sys.executable)
+    assert command[1:4] == [
+        "-I",
+        "-c",
+        multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP,
     ]
+    assert command[4] == str(control_plane_launch.descriptor)
+    assert json.loads(command[5]) == control_plane_pin.as_dict()
+    assert command[6] == (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_supervisor"
+    )
+    assert command[7] == (
+        multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256
+    )
     assert marker in command
     assert supervisor_module.PLAN_BOUND_DAEMON_ENTRYPOINT in command
     assert command.count("--execution-slice-task-id") == 0
@@ -1657,10 +2240,20 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-    retry_identity = multi_runner_module.LinuxProcessAdapter()._identity(
-        retry_process.pid,
-        launch_profile,
-    )
+    retry_deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            retry_identity = (
+                multi_runner_module.LinuxProcessAdapter()._identity(
+                    retry_process.pid,
+                    launch_profile,
+                )
+            )
+            break
+        except multi_runner_module.ProcessIdentityMismatch:
+            if time.monotonic() >= retry_deadline:
+                raise
+            time.sleep(0.01)
     try:
         with pytest.raises(
             ValueError,
@@ -1696,6 +2289,8 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         detach=False,
         stamp="20260808T-scope-drift",
         parallelism_receipt=receipt,
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_launch.descriptor,
     )
     child_records = [
         launch_plan["argv"][index + 1]
@@ -1746,6 +2341,10 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                 stop_grace_seconds=0.01,
                 exit_when_all_tracks_terminal=True,
                 plan_bound_children=(child,),
+                accepted_control_plane_pin=control_plane_pin,
+                accepted_control_plane_descriptor=(
+                    control_plane_launch.descriptor
+                ),
                 output=lambda _message: None,
             )
         assert runner_result["replan_required"] is True
@@ -1808,6 +2407,11 @@ def test_fenced_slice_reassignment_has_one_cas_winner_and_recipient_adopts(
 ) -> None:
     repo, board, receipt, donor, recipient, process = _fenced_plan_children(
         tmp_path
+    )
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=receipt.slice_manifest.source_head,
+        source_tree=receipt.slice_manifest.repository_tree_id,
     )
     config_path = board.config_path
     assert getattr(process, "_agent_supervisor_process_identity", None) is not None
@@ -1920,9 +2524,13 @@ def test_fenced_slice_reassignment_has_one_cas_winner_and_recipient_adopts(
             plan_bound_source_head=child.source_head,
             plan_bound_source_tree=child.source_tree,
             plan_bound_task_source_revision=child.task_source_revision,
-            plan_bound_configuration_root=child.configuration_root,
-            plan_bound_accepted_tree_root=Path(child.accepted_tree_root),
-        )
+                plan_bound_configuration_root=child.configuration_root,
+                plan_bound_accepted_tree_root=Path(child.accepted_tree_root),
+                accepted_control_plane_pin=control_plane_pin,
+                accepted_control_plane_descriptor=(
+                    control_plane_launch.descriptor
+                ),
+            )
 
     # The unit repository stands in for the accepted import tree.  Preserve
     # that production invariant while exercising owner loss and adoption.

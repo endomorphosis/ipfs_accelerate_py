@@ -18,10 +18,12 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -29,9 +31,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ...llm_router import (
+    AgentImplementationControlPlanePin,
     AgentImplementationRoutePlan,
+    AgentImplementationSealedControlPlane,
     load_agent_implementation_route_authorization,
+    materialize_agent_implementation_control_plane_capsule,
+    project_agent_implementation_route_capacity,
     resolve_agent_implementation_route,
+    seal_agent_implementation_control_plane_capsule,
+    verify_agent_implementation_sealed_control_plane,
 )
 from ..entrypoints.contracts import InvocationBudget
 from ..entrypoints.execution_plan import (
@@ -79,7 +87,10 @@ from .multi_supervisor_runner import (
     _read_stable_regular_bytes,
     _read_stable_regular_json,
     _StableArtifactReadError,
+    accepted_control_plane_pin_json,
     build_configured_multi_supervisor_cli_runner,
+    build_sealed_control_plane_module_command,
+    parse_accepted_control_plane_pin,
     utc_run_stamp,
 )
 from .provider_capacity_monitor import (
@@ -623,6 +634,7 @@ def _plan_authority_roots(
     tree: str,
     task_source_revision: str,
     task_population: _ConfiguredBoardTaskPopulation,
+    route_capacity_profile_id: str = "",
 ) -> PlanAuthorityRoots:
     source = {
         "board_namespace": board.board_namespace,
@@ -654,7 +666,12 @@ def _plan_authority_roots(
             }
         ),
         capability_catalog_root=_identity({"submodules": board.worktree_submodule_paths}),
-        provider_catalog_root=_identity(dict(board.payload.get("provider") or {})),
+        provider_catalog_root=_identity(
+            {
+                "provider": dict(board.payload.get("provider") or {}),
+                "route_capacity_profile_id": route_capacity_profile_id,
+            }
+        ),
         usage_policy_root=_identity({"max_lanes": board.max_lanes}),
         configuration_root=board.configuration_root,
     )
@@ -726,13 +743,6 @@ def configured_board_capacity_observation(
         providers = tuple(dict(item) for item in provider_capacity_snapshots)
     if not providers:
         raise ConfiguredBoardError("fresh provider capacity evidence is required")
-    providers = tuple(
-        {
-            **provider,
-            "max_age_ms": provider.get("max_age_ms", provider_max_age_ms),
-        }
-        for provider in providers
-    )
     if now_ms is None:
         current_ms = max(
             int(time.time() * 1000),
@@ -740,6 +750,61 @@ def configured_board_capacity_observation(
             *(int(provider.get("observed_at_ms") or 0) for provider in providers),
         )
     return host, providers, current_ms
+
+
+def configured_board_route_capacity_projection(
+    board: "ConfiguredBoard",
+    *,
+    provider_capacity_snapshots: Sequence[Mapping[str, Any]],
+    now_ms: int,
+) -> tuple[dict[str, Any], AgentImplementationRoutePlan]:
+    """Return the router-owned logical provider snapshot for the sealed route.
+
+    The scheduler deliberately supplies unclassified monitor observations and
+    retains the router DTO unchanged.  In particular, the fallback lane's
+    capacity is never interpreted here as dispatch authority.
+    """
+
+    if not _plan_bound_profile(board):
+        raise ConfiguredBoardError(
+            "logical route capacity projection requires the sealed v3 profile"
+        )
+    provider = board.payload.get("provider")
+    if not isinstance(provider, Mapping):
+        raise ConfiguredBoardError("sealed v3 provider configuration is absent")
+    route = _resolved_ordered_provider_route(
+        provider,
+        repo_root=board.repo_root,
+        board_namespace=board.board_namespace,
+    )
+    max_age_ms = max(
+        5_000,
+        int(float(board.payload["poll_interval_seconds"]) * 3_000),
+    )
+    try:
+        profile = project_agent_implementation_route_capacity(
+            route,
+            observations=[dict(item) for item in provider_capacity_snapshots],
+            now_ms=now_ms,
+            max_age_ms=max_age_ms,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "router rejected provider capacity observations"
+        ) from exc
+    snapshot = profile.as_compiler_snapshot()
+    if (
+        not isinstance(snapshot, dict)
+        or snapshot != profile.as_dict()
+        or snapshot.get("provider_id") != route.route_id
+        or snapshot.get("route_id") != route.route_id
+        or not isinstance(snapshot.get("profile_id"), str)
+        or not snapshot["profile_id"]
+    ):
+        raise ConfiguredBoardError(
+            "router returned a noncanonical logical capacity snapshot"
+        )
+    return dict(snapshot), route
 
 
 def materialize_configured_board_execution_plan(
@@ -783,10 +848,22 @@ def materialize_configured_board_execution_plan(
         path=board.path(board.taskboard_path),
         source_head=head,
     )
+    host, provider_observations, current_ms = configured_board_capacity_observation(
+        board,
+        now_ms=now_ms,
+        host_capacity_snapshot=host_capacity_snapshot,
+        provider_capacity_snapshots=provider_capacity_snapshots,
+    )
+    route_capacity, route = configured_board_route_capacity_projection(
+        board,
+        provider_capacity_snapshots=provider_observations,
+        now_ms=current_ms,
+    )
     task_population = _configured_board_task_population(
         board,
         source_head=head,
         taskboard_bytes=taskboard_bytes,
+        provider_id=route.route_id,
         task_state_snapshots=task_state_snapshots,
     )
     records = task_population.ready_records
@@ -798,21 +875,18 @@ def materialize_configured_board_execution_plan(
         tree=tree,
         task_source_revision=task_source_revision,
         task_population=task_population,
+        route_capacity_profile_id=str(route_capacity["profile_id"]),
     )
-    host, providers, current_ms = configured_board_capacity_observation(
-        board,
-        now_ms=now_ms,
-        host_capacity_snapshot=host_capacity_snapshot,
-        provider_capacity_snapshots=provider_capacity_snapshots,
-    )
-    provider_payload = board.payload.get("provider")
-    provider_payload = provider_payload if isinstance(provider_payload, Mapping) else {}
-    primary_provider = str(
-        provider_payload.get("primary_provider_id")
-        or provider_payload.get("provider_id")
-        or "configured-provider"
-    ).strip()
-    capacity = {**host, "host": host, "providers": list(providers)}
+    providers = (route_capacity,)
+    capacity = {
+        **host,
+        "host": host,
+        "providers": list(providers),
+        "provider_observations": [
+            dict(item) for item in provider_observations
+        ],
+        "route_capacity_profile_id": route_capacity["profile_id"],
+    }
     store_root = board.path(board.runtime_paths["state"]) / "plan-revision-store"
     store = PlanRevisionStore(store_root)
     adapter = ProductionParallelPlanAdapter(store)
@@ -1096,7 +1170,9 @@ def materialize_configured_board_execution_plan(
                 tuple(sorted(blocked_cids)),
             ),
             resource_contract=PlanResourceContract(resource_class="process-control"),
-            provider_contract=PlanProviderContract(provider_requirement=primary_provider),
+            provider_contract=PlanProviderContract(
+                provider_requirement=route.route_id
+            ),
             lease_contract=PlanLeaseContract(
                 lease_duration_ms=max(60_000, int(float(board.payload["implementation_timeout_seconds"]) * 1000)),
                 fencing_epoch=semantic_revision,
@@ -2033,6 +2109,8 @@ def configured_board_launch_plan(
     duration_seconds: float = float("inf"),
     stamp: str | None = None,
     parallelism_receipt: ParallelismDecisionReceipt | None = None,
+    accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
+    accepted_control_plane_descriptor: int = -1,
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
@@ -2123,6 +2201,36 @@ def configured_board_launch_plan(
         # runner accepts this marker without constructing or starting a child.
         if "--plan-bound-wave" not in runner_args:
             runner_args.append("--plan-bound-wave")
+        if accepted_control_plane_pin is not None:
+            verify_agent_implementation_sealed_control_plane(
+                accepted_control_plane_pin,
+                accepted_control_plane_descriptor,
+            )
+            expected_generation = (
+                (
+                    parallelism_receipt.slice_manifest.source_head,
+                    parallelism_receipt.slice_manifest.repository_tree_id,
+                )
+                if parallelism_receipt is not None
+                else _git_identity(board.repo_root)
+            )
+            if (
+                accepted_control_plane_pin.source_head,
+                accepted_control_plane_pin.source_tree,
+            ) != expected_generation:
+                raise ConfiguredBoardError(
+                    "accepted control-plane generation differs from the wave"
+                )
+            runner_args.extend(
+                [
+                    "--accepted-control-plane-pin-json",
+                    accepted_control_plane_pin_json(
+                        accepted_control_plane_pin
+                    ),
+                    "--accepted-control-plane-fd",
+                    str(accepted_control_plane_descriptor),
+                ]
+            )
     else:
         runner_args.extend(
             [
@@ -2199,6 +2307,23 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--accepted-tree-root", type=Path, default=None)
+    parser.add_argument(
+        "--accepted-control-plane-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--accepted-control-plane-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--accepted-control-plane-capsule-parent",
+        type=Path,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser(
         "preflight",
@@ -2431,6 +2556,163 @@ def _remove_reserved_coordinator_pid(
             pid_path.unlink()
 
 
+def _materialize_plan_bound_control_plane(
+    board: ConfiguredBoard,
+) -> tuple[
+    AgentImplementationControlPlanePin,
+    AgentImplementationSealedControlPlane,
+    Path,
+]:
+    """Seal one clean accepted HEAD outside the candidate repository."""
+
+    accepted_tree_root = Path(__file__).absolute().parents[3]
+    if board.repo_root != accepted_tree_root:
+        raise ConfiguredBoardError(
+            "plan-bound coordinator repo root is not the accepted module tree"
+        )
+    source_head, source_tree = _git_identity(accepted_tree_root)
+    capsule_parent = Path(
+        tempfile.mkdtemp(prefix="asref-configured-control-plane-")
+    )
+    try:
+        pin = materialize_agent_implementation_control_plane_capsule(
+            source_root=accepted_tree_root,
+            capsule_parent=capsule_parent,
+            source_head=source_head,
+            source_tree=source_tree,
+        )
+        sealed = seal_agent_implementation_control_plane_capsule(pin)
+        if (
+            pin.source_head != source_head
+            or pin.source_tree != source_tree
+            or verify_agent_implementation_sealed_control_plane(
+                pin,
+                sealed.descriptor,
+            )
+            != sealed.executable_path
+        ):
+            raise ConfiguredBoardError(
+                "accepted control-plane capsule identity drifted"
+            )
+        return pin, sealed, capsule_parent
+    except BaseException:
+        try:
+            shutil.rmtree(capsule_parent)
+        except OSError:
+            pass
+        raise
+
+
+def _plan_bound_coordinator_module_argv(
+    board: ConfiguredBoard,
+    *,
+    implement: bool,
+    duration_seconds: float,
+    pin: AgentImplementationControlPlanePin,
+    sealed: AgentImplementationSealedControlPlane,
+    capsule_parent: Path,
+) -> list[str]:
+    argv = [
+        "--repo-root",
+        str(board.repo_root),
+        "--config",
+        str(board.config_path),
+        "--accepted-tree-root",
+        str(board.repo_root),
+        "--accepted-control-plane-pin-json",
+        accepted_control_plane_pin_json(pin),
+        "--accepted-control-plane-fd",
+        str(sealed.descriptor),
+        "--accepted-control-plane-capsule-parent",
+        str(capsule_parent),
+        "launch",
+        "--foreground",
+        "--duration-seconds",
+        str(duration_seconds),
+    ]
+    if implement:
+        argv.append("--implement")
+    return argv
+
+
+def _cleanup_plan_bound_control_plane(
+    pin: AgentImplementationControlPlanePin,
+    capsule_parent: Path,
+) -> None:
+    """Remove only the uniquely-created private capsule parent after fencing."""
+
+    parent = Path(capsule_parent)
+    capsule = Path(pin.capsule_root)
+    if (
+        not parent.is_absolute()
+        or parent.parent != Path(tempfile.gettempdir())
+        or not parent.name.startswith("asref-configured-control-plane-")
+        or capsule.parent != parent
+    ):
+        return
+    try:
+        for entry in parent.rglob("*"):
+            observed = os.lstat(entry)
+            if stat.S_ISLNK(observed.st_mode) or int(observed.st_uid) != os.geteuid():
+                return
+        directories = sorted(
+            (entry for entry in parent.rglob("*") if entry.is_dir()),
+            key=lambda entry: len(entry.parts),
+            reverse=True,
+        )
+        for directory in directories:
+            os.chmod(directory, 0o700)
+        os.chmod(parent, 0o700)
+        shutil.rmtree(parent)
+    except OSError:
+        return
+
+
+def _launch_foreground_plan_bound_coordinator(
+    board: ConfiguredBoard,
+    *,
+    implement: bool,
+    duration_seconds: float,
+) -> int:
+    pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
+    try:
+        command = build_sealed_control_plane_module_command(
+            python_executable=sys.executable,
+            pin=pin,
+            descriptor=sealed.descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.runtime."
+                "configured_board_scheduler"
+            ),
+            argv=_plan_bound_coordinator_module_argv(
+                board,
+                implement=implement,
+                duration_seconds=duration_seconds,
+                pin=pin,
+                sealed=sealed,
+                capsule_parent=capsule_parent,
+            ),
+        )
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+        }
+        environment["PATH"] = "/usr/bin:/bin"
+        process = subprocess.Popen(
+            command,
+            cwd=board.repo_root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            start_new_session=False,
+            pass_fds=(sealed.descriptor,),
+        )
+        return int(process.wait())
+    finally:
+        os.close(sealed.descriptor)
+        _cleanup_plan_bound_control_plane(pin, capsule_parent)
+
+
 def _launch_detached_plan_bound_coordinator(
     board: ConfiguredBoard,
     *,
@@ -2450,8 +2732,8 @@ def _launch_detached_plan_bound_coordinator(
     stamp = utc_run_stamp()
     log_path = log_dir / f"configured-board-{stamp}.log"
     pid_path = state_dir / "configured-board-master.pid"
-    accepted_tree_root = Path(__file__).resolve().parents[3]
-    if board.repo_root.resolve() != accepted_tree_root:
+    accepted_tree_root = Path(__file__).absolute().parents[3]
+    if board.repo_root != accepted_tree_root:
         raise ConfiguredBoardError(
             "detached coordinator repo root is not the accepted module tree"
         )
@@ -2468,34 +2750,40 @@ def _launch_detached_plan_bound_coordinator(
             path=authority_path,
             source_head=source_head,
         )
-    command = [
-        sys.executable,
-        "-I",
-        str(entry),
-        "--repo-root",
-        str(accepted_tree_root),
-        "--config",
-        str(board.config_path),
-        "--accepted-tree-root",
-        str(accepted_tree_root),
-        "launch",
-        "--foreground",
-        "--duration-seconds",
-        str(duration_seconds),
-    ]
-    if implement:
-        command.append("--implement")
     descriptor, reserved_identity = _reserve_coordinator_pid_projection(
         pid_path
     )
     process: subprocess.Popen[bytes] | None = None
+    sealed: AgentImplementationSealedControlPlane | None = None
+    capsule_parent: Path | None = None
     try:
+        pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(
+            board
+        )
+        command = build_sealed_control_plane_module_command(
+            python_executable=sys.executable,
+            pin=pin,
+            descriptor=sealed.descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.runtime."
+                "configured_board_scheduler"
+            ),
+            argv=_plan_bound_coordinator_module_argv(
+                board,
+                implement=implement,
+                duration_seconds=duration_seconds,
+                pin=pin,
+                sealed=sealed,
+                capsule_parent=capsule_parent,
+            ),
+        )
         with _open_plan_bound_coordinator_log(log_path) as stream:
             launch_environment = {
                 name: value
                 for name, value in os.environ.items()
-                if not name.startswith("PYTHON")
+                if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
             }
+            launch_environment["PATH"] = "/usr/bin:/bin"
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,
@@ -2504,6 +2792,7 @@ def _launch_detached_plan_bound_coordinator(
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
+                pass_fds=(sealed.descriptor,),
             )
         _publish_reserved_coordinator_pid(
             pid_path,
@@ -2526,9 +2815,16 @@ def _launch_detached_plan_bound_coordinator(
                 except subprocess.TimeoutExpired:
                     pass
         _remove_reserved_coordinator_pid(pid_path, reserved_identity)
+        if capsule_parent is not None:
+            try:
+                shutil.rmtree(capsule_parent)
+            except OSError:
+                pass
         raise
     finally:
         os.close(descriptor)
+        if sealed is not None:
+            os.close(sealed.descriptor)
     assert process is not None
     return {
         "coordinator_pid": process.pid,
@@ -2542,6 +2838,8 @@ def _run_plan_bound_coordinator(
     *,
     implement: bool,
     duration_seconds: float,
+    accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
+    accepted_control_plane_descriptor: int = -1,
 ) -> int:
     """Publish and execute fresh exact waves until drain or the run bound."""
 
@@ -2602,6 +2900,10 @@ def _run_plan_bound_coordinator(
             duration_seconds=remaining,
             stamp=f"{base_stamp}-wave-{wave_index}",
             parallelism_receipt=receipt,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            accepted_control_plane_descriptor=(
+                accepted_control_plane_descriptor
+            ),
         )
         print(json.dumps(plan, indent=2, sort_keys=True))
         _apply_configured_board_environment(plan)
@@ -2669,15 +2971,66 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
+    control_plane_pin: AgentImplementationControlPlanePin | None = None
+    control_plane_descriptor = -1
+    control_plane_parent: Path | None = None
     try:
         board = load_configured_board(
             args.config,
             repo_root=args.repo_root,
         )
         preflight = preflight_configured_board(board)
+        has_control_plane = bool(args.accepted_control_plane_pin_json)
+        has_descriptor = args.accepted_control_plane_fd >= 3
+        has_parent = args.accepted_control_plane_capsule_parent is not None
+        if len({has_control_plane, has_descriptor, has_parent}) != 1:
+            raise ConfiguredBoardError(
+                "accepted control-plane launch fields are incomplete"
+            )
+        if has_control_plane:
+            try:
+                control_plane_pin = parse_accepted_control_plane_pin(
+                    args.accepted_control_plane_pin_json
+                )
+                control_plane_descriptor = int(
+                    args.accepted_control_plane_fd
+                )
+                verify_agent_implementation_sealed_control_plane(
+                    control_plane_pin,
+                    control_plane_descriptor,
+                )
+            except (OSError, ValueError) as exc:
+                raise ConfiguredBoardError(
+                    "accepted control-plane launch binding is invalid"
+                ) from exc
+            control_plane_parent = Path(
+                args.accepted_control_plane_capsule_parent
+            )
+            if (
+                control_plane_parent.parent != Path(tempfile.gettempdir())
+                or not control_plane_parent.name.startswith(
+                    "asref-configured-control-plane-"
+                )
+                or Path(control_plane_pin.capsule_root).parent
+                != control_plane_parent
+                or (
+                    control_plane_pin.source_head,
+                    control_plane_pin.source_tree,
+                )
+                != _git_identity(board.repo_root)
+            ):
+                raise ConfiguredBoardError(
+                    "accepted control-plane launch provenance is foreign"
+                )
         if args.accepted_tree_root is not None:
-            accepted_tree_root = args.accepted_tree_root.resolve()
-            module_tree_root = Path(__file__).resolve().parents[3]
+            accepted_tree_root = _canonical_no_symlink_root(
+                args.accepted_tree_root
+            )
+            module_tree_root = (
+                board.repo_root
+                if control_plane_pin is not None
+                else Path(__file__).resolve().parents[3]
+            )
             if (
                 accepted_tree_root != module_tree_root
                 or accepted_tree_root != board.repo_root.resolve()
@@ -2746,14 +3099,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 2
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
+        if control_plane_pin is None:
+            try:
+                return _launch_foreground_plan_bound_coordinator(
+                    board,
+                    implement=bool(args.implement),
+                    duration_seconds=float(args.duration_seconds),
+                )
+            except (ConfiguredBoardError, OSError, ValueError) as exc:
+                print(
+                    json.dumps(
+                        {
+                            "valid": False,
+                            "errors": [f"coordinator_launch: {exc}"],
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return 2
         try:
             return _run_plan_bound_coordinator(
                 board,
                 implement=bool(args.implement),
                 duration_seconds=float(args.duration_seconds),
+                accepted_control_plane_pin=control_plane_pin,
+                accepted_control_plane_descriptor=control_plane_descriptor,
             )
         finally:
             _remove_owned_coordinator_pid(board)
+            if control_plane_parent is not None:
+                _cleanup_plan_bound_control_plane(
+                    control_plane_pin,
+                    control_plane_parent,
+                )
 
     plan = configured_board_launch_plan(
         board,

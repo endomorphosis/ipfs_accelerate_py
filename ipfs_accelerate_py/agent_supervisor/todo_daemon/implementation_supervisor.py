@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import inspect
 import json
 import logging
@@ -20,6 +21,11 @@ from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ...llm_router import (
+    AgentImplementationControlPlanePin,
+    AgentImplementationSealedControlPlane,
+    verify_agent_implementation_sealed_control_plane,
+)
 from ..control.manual_completion_seal import (
     ManualCompletionSealError,
     verify_manual_completion_seal,
@@ -63,13 +69,21 @@ from ..objectives.scan_receipts import (
 )
 from ..prompt.prompt_workflow import RescueOperation, prompt_workflow_cid
 from ..proof.formal_verification_contracts import content_identity
-from ..rescue.rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
+from ..rescue.rescue_planner import (
+    RescuePlanner,
+    RescuePlannerPolicy,
+    RescuePlanningRequest,
+)
 from ..rescue.supervisor_watchdog import (
     AUTONOMOUS_UNSTALL_STATE_SCHEMA,
     AutonomousUnstallCoordinator,
     AutonomousUnstallPolicy,
 )
-from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from ..runtime.event_log import (
+    append_jsonl_event,
+    repair_jsonl_event_log,
+    unique_backup_path,
+)
 from ..runtime.resource_scheduler import evaluate_capacity_drift
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from .core import ManagedDaemonSpec, terminate_pid_tree
@@ -110,7 +124,11 @@ from .supervisor import (
     descendant_processes,
     worktree_phase_worker_status,
 )
-from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
+from .supervisor_loop import (
+    SupervisorLoop,
+    SupervisorLoopConfig,
+    SupervisorLoopDecision,
+)
 from .supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
@@ -1831,6 +1849,8 @@ class PortalSupervisorConfig:
     plan_bound_task_source_revision: str = ""
     plan_bound_configuration_root: str = ""
     plan_bound_accepted_tree_root: Path | None = None
+    accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
+    accepted_control_plane_descriptor: int = -1
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -1941,6 +1961,30 @@ class PortalSupervisorConfig:
             self.scheduler_config_path = scheduler_config
             self.todo_path = todo_path
             self.plan_bound_accepted_tree_root = root
+            if self.accepted_control_plane_pin is None:
+                raise PlanBoundDispatchError(
+                    "plan-bound supervisor lacks a sealed accepted control plane"
+                )
+            try:
+                verified_path = verify_agent_implementation_sealed_control_plane(
+                    self.accepted_control_plane_pin,
+                    self.accepted_control_plane_descriptor,
+                )
+            except ValueError as exc:
+                raise PlanBoundDispatchError(
+                    "plan-bound accepted control plane is invalid"
+                ) from exc
+            if (
+                verified_path
+                != f"/proc/self/fd/{self.accepted_control_plane_descriptor}"
+                or self.accepted_control_plane_pin.source_head
+                != self.plan_bound_source_head
+                or self.accepted_control_plane_pin.source_tree
+                != self.plan_bound_source_tree
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound accepted control-plane generation drifted"
+                )
         if (
             self.manual_completion_authority_revalidation_only
             and not self.manual_completion_authority_task_ids
@@ -11716,7 +11760,9 @@ class PortalImplementationSupervisor:
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
             default_objective_path,
         )
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
+            parse_goal_heap,
+        )
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_task_janitor import (
             DEFAULT_MISSION_TERMS,
             reconcile_objective_task_strategy,
@@ -12154,7 +12200,9 @@ class PortalImplementationSupervisor:
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
             default_objective_path,
         )
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
+            parse_goal_heap,
+        )
 
         objective_path = self.config.objective_path or default_objective_path(
             self.config.repo_root
@@ -13581,13 +13629,24 @@ class PortalImplementationSupervisor:
             )
         command = self._build_daemon_command()
         child_env = dict(os.environ)
-        child_env.update(_managed_daemon_child_environment())
+        pass_fds: tuple[int, ...] = ()
+        if self.config.plan_bound_dispatch:
+            child_env = {
+                name: value
+                for name, value in child_env.items()
+                if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+            }
+            child_env["PATH"] = "/usr/bin:/bin"
+            pass_fds = (self.config.accepted_control_plane_descriptor,)
+        else:
+            child_env.update(_managed_daemon_child_environment())
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
             env=child_env,
             text=True,
             start_new_session=True,
+            pass_fds=pass_fds,
         )
         try:
             self._write_managed_daemon_identity(
@@ -13974,10 +14033,6 @@ class PortalImplementationSupervisor:
                     "plan-bound dispatch forbids an uninspectable daemon script"
                 )
             command = [
-                sys.executable,
-                "-P",
-                "-m",
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
                 PLAN_BOUND_DAEMON_CHILD_MARKER,
                 "--daemon-entrypoint",
                 PLAN_BOUND_DAEMON_ENTRYPOINT,
@@ -14009,6 +14064,14 @@ class PortalImplementationSupervisor:
                 self.config.plan_bound_configuration_root,
                 "--plan-bound-accepted-tree-root",
                 str(self.config.plan_bound_accepted_tree_root or ""),
+                "--accepted-control-plane-pin-json",
+                json.dumps(
+                    self.config.accepted_control_plane_pin.as_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                "--accepted-control-plane-fd",
+                str(self.config.accepted_control_plane_descriptor),
             ]
             if self.config.plan_bound_reassignment_cid:
                 command.extend(
@@ -14172,6 +14235,24 @@ class PortalImplementationSupervisor:
             command.extend(["--execution-slice-task-cid", str(task_cid)])
         if self.config.plan_bound_dispatch:
             command.append("--once")
+            from ..runtime.multi_supervisor_runner import (
+                build_sealed_control_plane_module_command,
+            )
+
+            if self.config.accepted_control_plane_pin is None:
+                raise PlanBoundDispatchError(
+                    "plan-bound daemon launch lacks its sealed control plane"
+                )
+            command = build_sealed_control_plane_module_command(
+                python_executable=sys.executable,
+                pin=self.config.accepted_control_plane_pin,
+                descriptor=self.config.accepted_control_plane_descriptor,
+                module_name=(
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_supervisor"
+                ),
+                argv=command,
+            )
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -15407,6 +15488,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plan-bound-configuration-root", default="")
     parser.add_argument("--plan-bound-accepted-tree-root", type=Path, default=None)
     parser.add_argument(
+        "--accepted-control-plane-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--accepted-control-plane-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
         action="store_false",
@@ -15897,6 +15989,25 @@ def supervisor_config_from_args(
         )
         assert effective_scheduler_config is not None
         assert effective_todo_path is not None
+        from ..runtime.multi_supervisor_runner import (
+            parse_accepted_control_plane_pin,
+        )
+
+        try:
+            effective_control_plane_pin = parse_accepted_control_plane_pin(
+                getattr(args, "accepted_control_plane_pin_json", "")
+            )
+            effective_control_plane_descriptor = int(
+                getattr(args, "accepted_control_plane_fd", -1)
+            )
+            verify_agent_implementation_sealed_control_plane(
+                effective_control_plane_pin,
+                effective_control_plane_descriptor,
+            )
+        except (OSError, ValueError) as exc:
+            raise PlanBoundDispatchError(
+                "plan-bound control-plane launch binding is invalid"
+            ) from exc
     else:
         effective_repo_root = raw_repo_root.resolve()
         effective_state_dir = args.state_dir
@@ -15921,6 +16032,8 @@ def supervisor_config_from_args(
             events_path
             or args.state_dir / f"{args.state_prefix}_supervisor_events.jsonl"
         )
+        effective_control_plane_pin = None
+        effective_control_plane_descriptor = -1
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
     llm_merge_resolver_command = normalize_llm_merge_resolver_command(
@@ -16049,6 +16162,10 @@ def supervisor_config_from_args(
         ).strip(),
         plan_bound_accepted_tree_root=(
             effective_repo_root if plan_bound_dispatch else None
+        ),
+        accepted_control_plane_pin=effective_control_plane_pin,
+        accepted_control_plane_descriptor=(
+            effective_control_plane_descriptor
         ),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
@@ -16266,11 +16383,50 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     parser.add_argument("--plan-bound-task-source-revision", required=True)
     parser.add_argument("--plan-bound-configuration-root", required=True)
     parser.add_argument("--plan-bound-accepted-tree-root", type=Path, required=True)
+    parser.add_argument("--accepted-control-plane-pin-json", required=True)
+    parser.add_argument("--accepted-control-plane-fd", type=int, required=True)
     parser.add_argument("--plan-bound-task-id", action="append", default=[])
     parser.add_argument("--plan-bound-task-cid", action="append", default=[])
     pinned = parser.parse_args(binding_argv)
     if pinned.daemon_entrypoint != PLAN_BOUND_DAEMON_ENTRYPOINT:
         raise PlanBoundDispatchError("plan-bound daemon entrypoint is foreign")
+    from ..runtime.multi_supervisor_runner import (
+        parse_accepted_control_plane_pin,
+    )
+
+    try:
+        accepted_control_plane_pin = parse_accepted_control_plane_pin(
+            pinned.accepted_control_plane_pin_json
+        )
+        sealed_executable = verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            pinned.accepted_control_plane_fd,
+        )
+        accepted_control_plane_launch = AgentImplementationSealedControlPlane(
+            descriptor=pinned.accepted_control_plane_fd,
+            executable_path=sealed_executable,
+            archive_sha256=accepted_control_plane_pin.archive_sha256,
+            seals=int(
+                fcntl.fcntl(
+                    pinned.accepted_control_plane_fd,
+                    fcntl.F_GET_SEALS,
+                )
+            ),
+            capsule_id=accepted_control_plane_pin.capsule_id,
+        )
+    except (OSError, ValueError) as exc:
+        raise PlanBoundDispatchError(
+            "plan-bound daemon sealed control plane is invalid"
+        ) from exc
+    if (
+        accepted_control_plane_pin.source_head
+        != pinned.plan_bound_source_head
+        or accepted_control_plane_pin.source_tree
+        != pinned.plan_bound_source_tree
+    ):
+        raise PlanBoundDispatchError(
+            "plan-bound daemon control-plane generation drifted"
+        )
     task_ids = tuple(str(value).strip() for value in pinned.plan_bound_task_id)
     task_cids = tuple(str(value).strip() for value in pinned.plan_bound_task_cid)
     if (
@@ -16481,9 +16637,20 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     provider_records = tuple(
         dict(item) for item in providers if isinstance(item, Mapping)
     )
-    if len(provider_records) != len(providers) or not provider_records:
+    planned_profile_id = capacity.get("route_capacity_profile_id")
+    if (
+        len(provider_records) != len(providers)
+        or len(provider_records) != 1
+        or provider_records[0].get("schema")
+        != "ipfs_accelerate_py.agent_supervisor.implementation-route-capacity@2"
+        or not isinstance(planned_profile_id, str)
+        or not planned_profile_id
+        or provider_records[0].get("profile_id") != planned_profile_id
+        or provider_records[0].get("provider_id")
+        != revision.provider_contract.provider_requirement
+    ):
         raise PlanBoundDispatchError(
-            "active execution plan provider capacity is partial"
+            "active execution plan logical route capacity is partial"
         )
 
     # Re-observe capacity at the final accepted-tree daemon boundary.  The
@@ -16491,11 +16658,19 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     # cannot by itself authorize a provider spawn after capacity changes.
     from ..runtime.configured_board_scheduler import (
         configured_board_capacity_observation,
+        configured_board_route_capacity_projection,
     )
 
     try:
-        live_host, live_providers, live_now_ms = (
+        live_host, live_provider_observations, live_now_ms = (
             configured_board_capacity_observation(configured_board)
+        )
+        live_route_capacity, live_route = (
+            configured_board_route_capacity_projection(
+                configured_board,
+                provider_capacity_snapshots=live_provider_observations,
+                now_ms=live_now_ms,
+            )
         )
     except Exception as exc:
         raise PlanBoundDispatchError(
@@ -16522,22 +16697,26 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     provider_requirement = str(
         revision.provider_contract.provider_requirement or ""
     ).strip()
-    relevant_live_providers = tuple(
-        item
-        for item in live_providers
-        if not provider_requirement
-        or str(item.get("provider_id") or "").strip()
-        == provider_requirement
-    )
-    stale_live_capacity = not relevant_live_providers or any(
-        item.get("healthy") is not True
-        or int(item.get("observed_at_ms") or 0) <= 0
-        or live_now_ms - int(item.get("observed_at_ms") or 0)
-        > int(item.get("max_age_ms") or 0)
-        for item in relevant_live_providers
+    if live_route.route_id != provider_requirement:
+        raise PlanBoundDispatchError(
+            "live router route identity differs from the active revision"
+        )
+    relevant_live_providers = (live_route_capacity,)
+    stale_live_capacity = bool(
+        live_route_capacity.get("healthy") is not True
+        or live_route_capacity.get("schedulable") is not True
+        or not isinstance(live_route_capacity.get("fresh_until_ms"), int)
+        or live_now_ms >= int(live_route_capacity.get("fresh_until_ms") or 0)
     )
     live_capacity_id = content_identity(
-        {"host": live_host, "providers": list(live_providers)}
+        {
+            "host": live_host,
+            "providers": [live_route_capacity],
+            "provider_observations": [
+                dict(item) for item in live_provider_observations
+            ],
+            "route_capacity_profile_id": live_route_capacity["profile_id"],
+        }
     )
     capacity_decision = evaluate_capacity_drift(
         planned_width=planned_width,
@@ -17281,7 +17460,7 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             parallel_execution_plan=plan_payload,
             require_active_plan_revision=True,
             plan_capacity_snapshot=dict(live_host),
-            plan_provider_snapshots=tuple(live_providers),
+            plan_provider_snapshots=relevant_live_providers,
         )
         canonical_ref = daemon._canonical_ref
 
@@ -17324,6 +17503,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
         daemon._load_active_plan_binding = plan_bound_load_active_binding
         return daemon
 
+    original_imported_capsule = daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE
+    original_imported_launch = daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH
+    daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = accepted_control_plane_pin
+    daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = accepted_control_plane_launch
     daemon_module.PortalImplementationDaemon = plan_bound_daemon_factory
     daemon_module.parse_task_file = plan_bound_parse_task_file
     try:
@@ -17331,6 +17514,8 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     finally:
         daemon_module.parse_task_file = canonical_parse_task_file
         daemon_module.PortalImplementationDaemon = canonical_daemon_class
+        daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = original_imported_capsule
+        daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = original_imported_launch
     return 0
 
 
