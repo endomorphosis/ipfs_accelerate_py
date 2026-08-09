@@ -478,7 +478,7 @@ validation and evidence contract.
 
 ## LFP-015 Add parser registry, elaborator, typechecker, normalizer, and codec
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
