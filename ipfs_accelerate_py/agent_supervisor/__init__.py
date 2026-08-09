@@ -256,6 +256,7 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "goal_refinement_verification": "objectives",
     "grok_cli_runner": "runtime",
     "hyperproperty_verification": "proof",
+    "implementation_auto_rescue": "validation",
     "implementation_daemon_runner": "todo_daemon",
     "implementation_failure_review": "validation",
     "implementation_supervisor_runner": "todo_daemon",
