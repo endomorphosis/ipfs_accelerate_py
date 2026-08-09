@@ -323,7 +323,7 @@ validation and evidence contract.
 
 ## LFP-010 Establish provider-capability schemas and the canonical baseline catalog
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
