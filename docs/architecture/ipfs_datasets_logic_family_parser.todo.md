@@ -447,7 +447,7 @@ validation and evidence contract.
 
 ## LFP-014 Implement bounded lexing, diagnostics, source maps, and resource guards
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
