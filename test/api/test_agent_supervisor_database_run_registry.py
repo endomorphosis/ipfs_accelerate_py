@@ -475,7 +475,7 @@ def test_challenger_uses_ordinary_worktree_session_lease_identities(
         assert challenger.session_id.startswith("session:")
         assert challenger.lease_id.startswith("lease:")
 
-        with pytest.raises(ImprovementChallengerIdentityError):
+        with pytest.raises(ImprovementEpochConflictError):
             # Second challenger on same epoch violates isolation (max 1).
             repo.register_challenger(
                 epoch.epoch_id,
