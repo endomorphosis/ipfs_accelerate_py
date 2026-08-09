@@ -199,7 +199,7 @@ validation and evidence contract.
 
 ## LFP-006 Separate the canonical logic identity namespaces
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
