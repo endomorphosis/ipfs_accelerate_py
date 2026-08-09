@@ -1132,7 +1132,7 @@ this bootstrap is active.
 
 ## DQP-036 Compare quality, safety, throughput, and LLM churn with baseline
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
