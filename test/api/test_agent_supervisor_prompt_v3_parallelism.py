@@ -69,6 +69,29 @@ def test_slice_canonicalization_preserves_exact_id_cid_pairs() -> None:
     with pytest.raises(ExecutionPlanError, match="round trip"):
         ConfiguredBoardExecutionSlices.from_dict(payload)
 
+    duplicate_cid_slice = ConfiguredBoardExecutionSlice(
+        lane_index=1,
+        lane_id="lane-1",
+        task_ids=("TASK-C",),
+        task_cids=("cid-for-a",),
+        plan_root_cid="plan-root",
+        compiler_plan_id="compiler-plan",
+        capacity_snapshot_id="capacity",
+        repository_tree_id="tree",
+    )
+    with pytest.raises(ExecutionPlanError, match="task CIDs are duplicated"):
+        ConfiguredBoardExecutionSlices(
+            board_namespace="board",
+            plan_root_cid="plan-root",
+            compiler_plan_id="compiler-plan",
+            capacity_snapshot_id="capacity",
+            repository_tree_id="tree",
+            source_head="head",
+            task_source_revision="tasks",
+            configuration_root="configuration",
+            slices=(execution_slice, duplicate_cid_slice),
+        )
+
 
 def test_slice_and_reassignment_authority_decoders_are_closed_and_exact() -> None:
     execution_slice = ConfiguredBoardExecutionSlice(

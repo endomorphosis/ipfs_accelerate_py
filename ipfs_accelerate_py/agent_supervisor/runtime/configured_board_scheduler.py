@@ -48,6 +48,8 @@ from ..entrypoints.execution_plan import (
     ParallelismDecisionReceipt,
     ProductionParallelPlanAdapter,
     _load_plan_bound_execution_lease_locked,
+    _load_plan_bound_proposal_disposition_locked,
+    _load_plan_bound_wave_diff_barrier_locked,
     _secure_store_active,
     _secure_store_cas,
 )
@@ -691,7 +693,16 @@ def configured_board_capacity_observation(
     optional records exist for deterministic contract tests.
     """
 
-    current_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    if now_ms is None:
+        # Freshness is measured only against this process's trusted local
+        # clock.  Provider observations are evidence, never clock authority;
+        # in particular a future-dated record must not advance its own
+        # freshness boundary.
+        current_ms = int(time.time() * 1000)
+    elif isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms <= 0:
+        raise ConfiguredBoardError("capacity observation time is invalid")
+    else:
+        current_ms = now_ms
     host = dict(
         host_capacity_snapshot
         or sample_host_resources(
@@ -743,12 +754,6 @@ def configured_board_capacity_observation(
         providers = tuple(dict(item) for item in provider_capacity_snapshots)
     if not providers:
         raise ConfiguredBoardError("fresh provider capacity evidence is required")
-    if now_ms is None:
-        current_ms = max(
-            int(time.time() * 1000),
-            int(host.get("observed_at_ms") or 0),
-            *(int(provider.get("observed_at_ms") or 0) for provider in providers),
-        )
     return host, providers, current_ms
 
 
@@ -893,6 +898,8 @@ def materialize_configured_board_execution_plan(
     active = None
     prior_revision = None
     scope_drift_leases: list[tuple[str, Any]] = []
+    denied_wave_barrier: tuple[str, Any] | None = None
+    denied_wave_dispositions: list[tuple[str, Any]] = []
     try:
         with store._thread_lock:  # noqa: SLF001
             with store._guard():  # noqa: SLF001
@@ -917,13 +924,50 @@ def materialize_configured_board_execution_plan(
                         raise ExecutionPlanError(
                             "active slice manifest changed during typed decode"
                         )
+                    observed_barrier = _load_plan_bound_wave_diff_barrier_locked(
+                        store,
+                        revision_cid=active.revision_cid,
+                        slice_manifest_cid=(
+                            prior_revision.materialization_transaction_cid
+                        ),
+                    )
+                    if (
+                        observed_barrier is not None
+                        and observed_barrier[1].decision != "released"
+                    ):
+                        denied_wave_barrier = observed_barrier
+                        for row in observed_barrier[1].dispositions:
+                            disposition = (
+                                _load_plan_bound_proposal_disposition_locked(
+                                    store,
+                                    revision_cid=active.revision_cid,
+                                    slice_id=row["slice_id"],
+                                )
+                            )
+                            if (
+                                disposition is None
+                                or disposition[0] != row["disposition_cid"]
+                            ):
+                                raise ExecutionPlanError(
+                                    "denied wave lost proposal disposition evidence"
+                                )
+                            denied_wave_dispositions.append(disposition)
                     for execution_slice in prior_manifest.slices:
+                        reassignment = adapter._load_slice_reassignment_locked(  # noqa: SLF001
+                            revision_cid=active.revision_cid,
+                            slice_id=execution_slice.slice_id,
+                        )
+                        owner_lane_id = (
+                            reassignment[1].recipient_lane_id
+                            if reassignment is not None
+                            else execution_slice.lane_id
+                        )
                         execution_lease = (
                             _load_plan_bound_execution_lease_locked(
                                 store,
                                 revision_cid=active.revision_cid,
                                 slice_id=execution_slice.slice_id,
-                                lane_id=execution_slice.lane_id,
+                                lane_id=owner_lane_id,
                             )
                         )
                         if (
@@ -946,16 +990,40 @@ def materialize_configured_board_execution_plan(
         for _lease_cid, lease in scope_drift_leases
         for path in lease.actual_changed_paths
     }
+    observed_scope_paths.update(
+        path
+        for _disposition_cid, disposition in denied_wave_dispositions
+        for path in disposition.actual_changed_paths
+    )
     if prior_conflict_cid and prior_revision is not None:
         observed_scope_paths.update(
             prior_revision.conflict_contract.predicted_files
         )
     scope_drift_evidence_cid = prior_conflict_cid
-    if scope_drift_leases:
+    if scope_drift_leases or denied_wave_barrier is not None:
         scope_drift_evidence_cid = _identity(
             {
                 "kind": "plan-bound-actual-scope-drift",
                 "prior_conflict_surface_cid": prior_conflict_cid,
+                "wave_barrier_cid": (
+                    denied_wave_barrier[0]
+                    if denied_wave_barrier is not None
+                    else ""
+                ),
+                "wave_barrier_decision": (
+                    denied_wave_barrier[1].decision
+                    if denied_wave_barrier is not None
+                    else ""
+                ),
+                "wave_barrier_reason_codes": (
+                    list(denied_wave_barrier[1].reason_codes)
+                    if denied_wave_barrier is not None
+                    else []
+                ),
+                "proposal_disposition_cids": [
+                    disposition_cid
+                    for disposition_cid, _disposition in denied_wave_dispositions
+                ],
                 "execution_lease_cids": [
                     lease_cid for lease_cid, _lease in scope_drift_leases
                 ],

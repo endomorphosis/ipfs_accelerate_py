@@ -31,12 +31,26 @@ from ..control.manual_completion_seal import (
     verify_manual_completion_seal,
 )
 from ..entrypoints.execution_plan import (
+    MAX_PLAN_BOUND_WAVE_TRANSFERS,
+    PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
+    PLAN_BOUND_MERGE_ENQUEUE_INTENT_SCHEMA,
+    PLAN_BOUND_MERGE_QUEUE_RECEIPT_SCHEMA,
+    PLAN_BOUND_MERGE_RECOVERY_BIRTH_SCHEMA,
+    PLAN_BOUND_MERGE_TERMINAL_FAILURE_SCHEMA,
+    PLAN_BOUND_PROPOSAL_HANDOFF_SCHEMA,
     ConfiguredBoardExecutionSlices,
     PlanBoundExecutionLease,
+    PlanBoundProcessBirth,
+    PlanBoundProposalDisposition,
     ProductionParallelPlanAdapter,
     _load_plan_bound_execution_lease_locked,
+    _load_plan_bound_merge_terminal_failure_locked,
+    _load_plan_bound_process_birth_chain_locked,
+    _load_plan_bound_proposal_disposition_locked,
     _load_plan_revision_store_binding_locked,
     _publish_plan_bound_execution_lease_locked,
+    _publish_plan_bound_merge_terminal_failure_locked,
+    _publish_plan_bound_proposal_disposition_locked,
     _secure_store_active,
     _secure_store_cas,
     _secure_store_continuation,
@@ -243,6 +257,13 @@ class SupervisorSchedulerConfigError(ValueError):
 
 class PlanBoundDispatchError(RuntimeError):
     """A slice no longer matches the canonical active plan or source fence."""
+
+
+class PlanBoundReplanRequired(PlanBoundDispatchError):
+    """A typed plan-bound proposal result requires a fenced wave replan."""
+
+
+PLAN_BOUND_REPLAN_RETURN_CODE = 75
 
 
 def _canonical_plan_bound_repo_root(path: Path | str) -> Path:
@@ -3978,7 +3999,7 @@ class PortalImplementationSupervisor:
             ),
         }
 
-    def run_forever(self) -> None:
+    def run_forever(self) -> int:
         """Run continuously and fence the managed daemon on process signals."""
 
         stop_signal: int | None = None
@@ -3995,7 +4016,7 @@ class PortalImplementationSupervisor:
             previous_term = signal.signal(signal.SIGTERM, request_stop)
             previous_int = signal.signal(signal.SIGINT, request_stop)
         try:
-            self._run_forever_loop()
+            return self._run_forever_loop()
         finally:
             if stop_signal is not None:
                 cleanup = self._terminate_managed_daemon_tree()
@@ -4029,7 +4050,7 @@ class PortalImplementationSupervisor:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
 
-    def _run_forever_loop(self) -> None:
+    def _run_forever_loop(self) -> int:
         self.ensure_event_log_file()
         if (
             self.config.plan_bound_dispatch
@@ -4040,7 +4061,7 @@ class PortalImplementationSupervisor:
                 "plan_bound_empty_slice",
                 {"daemon_started": False},
             )
-            return
+            return 0
         if self.config.plan_bound_dispatch:
             self._validated_plan_bound_slice()
         managed_daemon_guard = self.ensure_managed_daemon_pid_file()
@@ -4099,9 +4120,14 @@ class PortalImplementationSupervisor:
             }
             self._record_event("supervisor_loop_finished", result_payload)
             if self.config.plan_bound_dispatch:
-                return
+                exit_code = result.last_exit_code
+                if exit_code is None:
+                    return 0
+                if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+                    return 1
+                return exit_code if 0 <= exit_code <= 255 else 1
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
-                return
+                return 0
 
             try:
                 recovery = self.run_once()
@@ -6856,16 +6882,6 @@ class PortalImplementationSupervisor:
             main_status = []
         max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
         dry_run = bool(self.config.worktree_reconciliation_dry_run)
-        try:
-            known_task_ids = tuple(
-                task.task_id
-                for task in parse_task_file(
-                    self.config.todo_path,
-                    self.config.task_prefix,
-                )
-            )
-        except (OSError, UnicodeDecodeError):
-            known_task_ids = ()
         scan_cache = self._load_worktree_scan_cache()
         scan_cache_hit_count = 0
         candidates: list[dict[str, Any]] = []
@@ -13715,10 +13731,9 @@ class PortalImplementationSupervisor:
             return
         task_ids = tuple(self.config.execution_slice_task_ids)
         task_cids = tuple(self.config.execution_slice_task_cids)
-        if not task_ids and not task_cids:
-            raise PlanBoundDispatchError("plan_bound_empty_slice")
         if (
-            len(task_ids) != len(task_cids)
+            len(task_ids) != 1
+            or len(task_cids) != 1
             or len(set(task_ids)) != len(task_ids)
             or len(set(task_cids)) != len(task_cids)
         ):
@@ -13775,10 +13790,6 @@ class PortalImplementationSupervisor:
         )
         store = PlanRevisionStore(validated_store_path)
         plan_adapter = ProductionParallelPlanAdapter(store)
-        birth_key = (
-            f"plan-bound-process-birth:{expected['revision_cid']}:"
-            f"{expected['slice_id']}:{expected['lane_id']}"
-        )
         with store._thread_lock:  # noqa: SLF001 - canonical store transaction
             with store._guard():  # noqa: SLF001 - canonical process guard
                 binding = _load_plan_revision_store_binding_locked(
@@ -13814,17 +13825,12 @@ class PortalImplementationSupervisor:
                     raise PlanBoundDispatchError(
                         "configured child revision fence does not own the canonical slice"
                     ) from exc
-                birth_pointer = _secure_store_continuation(store, birth_key)
-                if birth_pointer is not None and isinstance(
-                    birth_pointer.get("process_birth_cid"),
-                    str,
-                ):
-                    birth_record = _secure_store_cas(
-                        store,
-                        birth_pointer["process_birth_cid"],
-                    )
-                else:
-                    birth_record = None
+                birth_binding = _load_plan_bound_process_birth_chain_locked(
+                    store,
+                    revision_cid=expected["revision_cid"],
+                    slice_id=expected["slice_id"],
+                    lane_id=expected["lane_id"],
+                )
         observed_binding = {
             "revision_cid": binding.revision_cid,
             "plan_root_cid": binding.plan_root_cid,
@@ -13866,38 +13872,12 @@ class PortalImplementationSupervisor:
             raise PlanBoundDispatchError(
                 "configured child population differs from its CAS slice"
             )
-        if birth_pointer is None or set(birth_pointer) != {
-            "phase", "operation", "revision_cid", "slice_id", "lane_id",
-            "process_birth_cid",
-        }:
-            raise PlanBoundDispatchError(
-                "durable plan-bound process birth is absent or malformed"
-            )
-        if (
-            birth_pointer.get("phase") != "committed"
-            or birth_pointer.get("operation") != "plan_bound_process_birth"
-            or birth_pointer.get("revision_cid") != expected["revision_cid"]
-            or birth_pointer.get("slice_id") != expected["slice_id"]
-            or birth_pointer.get("lane_id") != expected["lane_id"]
-            or not isinstance(birth_pointer.get("process_birth_cid"), str)
-        ):
-            raise PlanBoundDispatchError(
-                "durable plan-bound process birth pointer is mixed"
-            )
-        if birth_record is None:
+        if birth_binding is None:
             raise PlanBoundDispatchError(
                 "durable plan-bound process birth record is absent"
             )
-        if set(birth_record) != {
-            "schema", "revision_cid", "plan_root_cid", "execution_plan_cid",
-            "capacity_snapshot_id", "slice_manifest_cid", "slice_id",
-            "lane_id", "task_ids", "task_cids", "configuration_root",
-            "accepted_tree_root", "profile", "process_birth",
-            "prior_process_birth_cid",
-        }:
-            raise PlanBoundDispatchError(
-                "durable plan-bound process birth record is malformed"
-            )
+        _birth_cid, typed_birth, _birth_chain = birth_binding
+        birth_record = typed_birth.to_dict()
         birth_expected = {
             "revision_cid": expected["revision_cid"],
             "plan_root_cid": expected["plan_root_cid"],
@@ -13910,9 +13890,7 @@ class PortalImplementationSupervisor:
             "accepted_tree_root": str(accepted_tree_root),
         }
         if (
-            birth_record.get("schema")
-            != "ipfs_accelerate_py/agent-supervisor/plan-bound-process-birth@1"
-            or any(
+            any(
                 birth_record.get(name) != value
                 for name, value in birth_expected.items()
             )
@@ -16430,8 +16408,8 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     task_ids = tuple(str(value).strip() for value in pinned.plan_bound_task_id)
     task_cids = tuple(str(value).strip() for value in pinned.plan_bound_task_cid)
     if (
-        not task_ids
-        or len(task_ids) != len(task_cids)
+        len(task_ids) != 1
+        or len(task_cids) != 1
         or len(set(task_ids)) != len(task_ids)
         or len(set(task_cids)) != len(task_cids)
         or any(not value for value in (*task_ids, *task_cids))
@@ -16469,83 +16447,14 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
         plan_revision_store_path=pinned.plan_revision_store_path,
         scheduler_config_path=pinned.scheduler_config,
         todo_path=daemon_args.todo_path,
-        require_live_module_root=True,
+        # The verified control-plane module is executing from its sealed
+        # archive, so its ``__file__`` is intentionally not beneath the
+        # mutable repository.  Repository authority is instead bound by the
+        # exact CLI paths plus the active PlanRevisionStore transaction below.
+        require_live_module_root=False,
     )
     assert scheduler_config_path is not None
     assert taskboard_path is not None
-    try:
-        from ..runtime.configured_board_scheduler import (
-            _git_identity as configured_board_git_identity,
-        )
-        from ..runtime.configured_board_scheduler import (
-            _tracked_head_snapshot,
-            load_configured_board,
-        )
-
-        observed_head, observed_tree = configured_board_git_identity(
-            accepted_tree_root
-        )
-        configured_board = load_configured_board(
-            scheduler_config_path,
-            repo_root=accepted_tree_root,
-        )
-        config_bytes, _config_revision = _tracked_head_snapshot(
-            repo_root=accepted_tree_root,
-            path=scheduler_config_path,
-            source_head=pinned.plan_bound_source_head,
-        )
-        _board_bytes, observed_task_source_revision = _tracked_head_snapshot(
-            repo_root=accepted_tree_root,
-            path=taskboard_path,
-            source_head=pinned.plan_bound_source_head,
-        )
-        configured_state_root = _plan_bound_contained_path(
-            accepted_tree_root,
-            configured_board.path(configured_board.runtime_paths["state"]),
-            field_name="configured runtime state root",
-            require_directory=True,
-        )
-        configured_taskboard = _plan_bound_contained_path(
-            accepted_tree_root,
-            configured_board.path(configured_board.taskboard_path),
-            field_name="configured task board",
-            require_existing=True,
-            require_regular=True,
-        )
-    except Exception as exc:
-        raise PlanBoundDispatchError(
-            "cannot re-observe tracked plan-bound config/task authority"
-        ) from exc
-    if (
-        observed_head != pinned.plan_bound_source_head
-        or observed_tree != pinned.plan_bound_source_tree
-    ):
-        raise PlanBoundDispatchError(
-            "repository identity crossed the plan-bound child fence"
-        )
-    if (
-        daemon_state_dir.parent != configured_state_root
-        or validated_store_path
-        != configured_state_root / "plan-revision-store"
-        or taskboard_path != configured_taskboard
-    ):
-        raise PlanBoundDispatchError(
-            "plan-bound child paths differ from the configured runtime authority"
-        )
-    if configured_board.configuration_root != pinned.plan_bound_configuration_root:
-        raise PlanBoundDispatchError(
-            "scheduler configuration crossed the plan-bound child fence"
-        )
-    if content_identity(
-        {"bytes_sha256": sha256(config_bytes).hexdigest()}
-    ) != pinned.plan_bound_configuration_root:
-        raise PlanBoundDispatchError(
-            "tracked scheduler bytes differ from the child configuration root"
-        )
-    if observed_task_source_revision != pinned.plan_bound_task_source_revision:
-        raise PlanBoundDispatchError(
-            "task source crossed the plan-bound child fence"
-        )
 
     store = PlanRevisionStore(validated_store_path)
     plan_adapter = ProductionParallelPlanAdapter(store)
@@ -16585,6 +16494,156 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 raise PlanBoundDispatchError(
                     "plan-bound daemon child does not own the canonical slice"
                 ) from exc
+            initial_execution = _load_plan_bound_execution_lease_locked(
+                store,
+                revision_cid=pinned.plan_bound_revision_cid,
+                slice_id=pinned.plan_bound_slice_id,
+                lane_id=pinned.plan_bound_lane_id,
+            )
+    recovery_phases = {
+        "proposal_ready",
+        "merge_enqueue_prepared",
+        "merge_enqueue_confirmed",
+        "merge_completed",
+    }
+    recovery_only = (
+        initial_execution is not None
+        and initial_execution[1].phase in recovery_phases
+    )
+    configured_board = None
+    _board_bytes = b""
+    if recovery_only:
+        assert initial_execution is not None
+        recovery_lease = initial_execution[1]
+        handoff = _secure_store_cas(
+            store,
+            recovery_lease.proposal_handoff_cid,
+        )
+        enqueue_fields = handoff.get("enqueue_fields")
+        enqueue_metadata = (
+            enqueue_fields.get("metadata")
+            if isinstance(enqueue_fields, Mapping)
+            else None
+        )
+        if not isinstance(enqueue_metadata, Mapping):
+            raise PlanBoundDispatchError(
+                "recoverable proposal handoff lacks canonical enqueue metadata"
+            )
+        recovery_paths = {
+            "repo_root": accepted_tree_root,
+            "todo_path": taskboard_path,
+            "state_path": (
+                daemon_state_dir
+                / f"{daemon_args.state_prefix}_task_state.json"
+            ),
+            "strategy_path": (
+                daemon_state_dir
+                / f"{daemon_args.state_prefix}_strategy.json"
+            ),
+            "events_path": (
+                daemon_state_dir
+                / f"{daemon_args.state_prefix}_events.jsonl"
+            ),
+        }
+        for name, expected_path in recovery_paths.items():
+            observed_path = enqueue_metadata.get(name)
+            if (
+                not isinstance(observed_path, str)
+                or Path(observed_path) != Path(expected_path)
+            ):
+                raise PlanBoundDispatchError(
+                    "recoverable proposal handoff path authority is mixed"
+                )
+        if (
+            daemon_state_dir.parent != validated_store_path.parent
+            or manifest.configuration_root
+            != pinned.plan_bound_configuration_root
+            or manifest.task_source_revision
+            != pinned.plan_bound_task_source_revision
+            or manifest.source_head != pinned.plan_bound_source_head
+            or manifest.repository_tree_id != pinned.plan_bound_source_tree
+        ):
+            raise PlanBoundDispatchError(
+                "recoverable proposal handoff lost its immutable plan roots"
+            )
+    else:
+        try:
+            from ..runtime.configured_board_scheduler import (
+                _git_identity as configured_board_git_identity,
+            )
+            from ..runtime.configured_board_scheduler import (
+                _tracked_head_snapshot,
+                load_configured_board,
+            )
+
+            observed_head, observed_tree = configured_board_git_identity(
+                accepted_tree_root
+            )
+            configured_board = load_configured_board(
+                scheduler_config_path,
+                repo_root=accepted_tree_root,
+            )
+            config_bytes, _config_revision = _tracked_head_snapshot(
+                repo_root=accepted_tree_root,
+                path=scheduler_config_path,
+                source_head=pinned.plan_bound_source_head,
+            )
+            _board_bytes, observed_task_source_revision = _tracked_head_snapshot(
+                repo_root=accepted_tree_root,
+                path=taskboard_path,
+                source_head=pinned.plan_bound_source_head,
+            )
+            configured_state_root = _plan_bound_contained_path(
+                accepted_tree_root,
+                configured_board.path(configured_board.runtime_paths["state"]),
+                field_name="configured runtime state root",
+                require_directory=True,
+            )
+            configured_taskboard = _plan_bound_contained_path(
+                accepted_tree_root,
+                configured_board.path(configured_board.taskboard_path),
+                field_name="configured task board",
+                require_existing=True,
+                require_regular=True,
+            )
+        except Exception as exc:
+            raise PlanBoundDispatchError(
+                "cannot re-observe tracked plan-bound config/task authority"
+            ) from exc
+        if (
+            observed_head != pinned.plan_bound_source_head
+            or observed_tree != pinned.plan_bound_source_tree
+        ):
+            raise PlanBoundDispatchError(
+                "repository identity crossed the plan-bound child fence"
+            )
+        if (
+            daemon_state_dir.parent != configured_state_root
+            or validated_store_path
+            != configured_state_root / "plan-revision-store"
+            or taskboard_path != configured_taskboard
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound child paths differ from the configured runtime authority"
+            )
+        if (
+            configured_board.configuration_root
+            != pinned.plan_bound_configuration_root
+        ):
+            raise PlanBoundDispatchError(
+                "scheduler configuration crossed the plan-bound child fence"
+            )
+        if content_identity(
+            {"bytes_sha256": sha256(config_bytes).hexdigest()}
+        ) != pinned.plan_bound_configuration_root:
+            raise PlanBoundDispatchError(
+                "tracked scheduler bytes differ from the child configuration root"
+            )
+        if observed_task_source_revision != pinned.plan_bound_task_source_revision:
+            raise PlanBoundDispatchError(
+                "task source crossed the plan-bound child fence"
+            )
+
     expected_binding = {
         "revision_cid": pinned.plan_bound_revision_cid,
         "plan_root_cid": pinned.plan_bound_plan_root_cid,
@@ -16653,92 +16712,103 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             "active execution plan logical route capacity is partial"
         )
 
-    # Re-observe capacity at the final accepted-tree daemon boundary.  The
-    # stored snapshot proves what was compiled; it is not live headroom and
-    # cannot by itself authorize a provider spawn after capacity changes.
-    from ..runtime.configured_board_scheduler import (
-        configured_board_capacity_observation,
-        configured_board_route_capacity_projection,
-    )
-
-    try:
-        live_host, live_provider_observations, live_now_ms = (
-            configured_board_capacity_observation(configured_board)
+    if recovery_only:
+        # Recovery may only consume the immutable proposal/queue handoff.  It
+        # must neither require fresh provider headroom nor reinterpret a later
+        # board/HEAD generation, because it cannot dispatch a provider and the
+        # canonical merge train owns rebase/revalidation against current HEAD.
+        live_host = dict(host)
+        relevant_live_providers = provider_records
+    else:
+        # Re-observe capacity at the final accepted-tree daemon boundary.  The
+        # stored snapshot proves what was compiled; it is not live headroom and
+        # cannot by itself authorize a new provider spawn after capacity changes.
+        from ..runtime.configured_board_scheduler import (
+            configured_board_capacity_observation,
+            configured_board_route_capacity_projection,
         )
-        live_route_capacity, live_route = (
-            configured_board_route_capacity_projection(
-                configured_board,
-                provider_capacity_snapshots=live_provider_observations,
-                now_ms=live_now_ms,
+
+        try:
+            live_host, live_provider_observations, live_now_ms = (
+                configured_board_capacity_observation(configured_board)
             )
-        )
-    except Exception as exc:
-        raise PlanBoundDispatchError(
-            "fresh live capacity evidence is unavailable"
-        ) from exc
-    if configured_board.board_namespace != manifest.board_namespace:
-        raise PlanBoundDispatchError(
-            "scheduler profile and slice manifest namespaces disagree"
-        )
+            live_route_capacity, live_route = (
+                configured_board_route_capacity_projection(
+                    configured_board,
+                    provider_capacity_snapshots=live_provider_observations,
+                    now_ms=live_now_ms,
+                )
+            )
+        except Exception as exc:
+            raise PlanBoundDispatchError(
+                "fresh live capacity evidence is unavailable"
+            ) from exc
+        if (
+            configured_board is None
+            or configured_board.board_namespace != manifest.board_namespace
+        ):
+            raise PlanBoundDispatchError(
+                "scheduler profile and slice manifest namespaces disagree"
+            )
 
-    widths = plan_payload.get("widths")
-    widths = widths if isinstance(widths, Mapping) else {}
-    planned_width = int(
-        widths.get("admitted")
-        or widths.get("resource")
-        or widths.get("conflict")
-        or widths.get("graph")
-        or len(binding.ready_wave_task_ids)
-        or 1
-    )
-    candidate_task_ids = tuple(binding.ready_wave_task_ids) or tuple(
-        task_id for item in manifest.nonempty for task_id in item.task_ids
-    )
-    provider_requirement = str(
-        revision.provider_contract.provider_requirement or ""
-    ).strip()
-    if live_route.route_id != provider_requirement:
-        raise PlanBoundDispatchError(
-            "live router route identity differs from the active revision"
+        widths = plan_payload.get("widths")
+        widths = widths if isinstance(widths, Mapping) else {}
+        planned_width = int(
+            widths.get("admitted")
+            or widths.get("resource")
+            or widths.get("conflict")
+            or widths.get("graph")
+            or len(binding.ready_wave_task_ids)
+            or 1
         )
-    relevant_live_providers = (live_route_capacity,)
-    stale_live_capacity = bool(
-        live_route_capacity.get("healthy") is not True
-        or live_route_capacity.get("schedulable") is not True
-        or not isinstance(live_route_capacity.get("fresh_until_ms"), int)
-        or live_now_ms >= int(live_route_capacity.get("fresh_until_ms") or 0)
-    )
-    live_capacity_id = content_identity(
-        {
-            "host": live_host,
-            "providers": [live_route_capacity],
-            "provider_observations": [
-                dict(item) for item in live_provider_observations
-            ],
-            "route_capacity_profile_id": live_route_capacity["profile_id"],
-        }
-    )
-    capacity_decision = evaluate_capacity_drift(
-        planned_width=planned_width,
-        planned_capacity_snapshot_id=binding.capacity_snapshot_id,
-        planned_capacity=host,
-        live_host=live_host,
-        live_providers=relevant_live_providers,
-        live_capacity_snapshot_id=live_capacity_id,
-        candidate_task_ids=candidate_task_ids,
-        provider_id=provider_requirement,
-        require_provider=True,
-        stale_capacity=stale_live_capacity,
-        current_time_ms=live_now_ms,
-    )
-    if (
-        not capacity_decision.may_dispatch
-        or not set(task_ids).issubset(capacity_decision.admitted_task_ids)
-    ):
-        raise PlanBoundDispatchError(
-            "live capacity drift fenced this slice for coordinator replan: "
-            + json.dumps(capacity_decision.to_dict(), sort_keys=True)
+        candidate_task_ids = tuple(binding.ready_wave_task_ids) or tuple(
+            task_id for item in manifest.nonempty for task_id in item.task_ids
         )
+        provider_requirement = str(
+            revision.provider_contract.provider_requirement or ""
+        ).strip()
+        if live_route.route_id != provider_requirement:
+            raise PlanBoundDispatchError(
+                "live router route identity differs from the active revision"
+            )
+        relevant_live_providers = (live_route_capacity,)
+        stale_live_capacity = bool(
+            live_route_capacity.get("healthy") is not True
+            or live_route_capacity.get("schedulable") is not True
+            or not isinstance(live_route_capacity.get("fresh_until_ms"), int)
+            or live_now_ms >= int(live_route_capacity.get("fresh_until_ms") or 0)
+        )
+        live_capacity_id = content_identity(
+            {
+                "host": live_host,
+                "providers": [live_route_capacity],
+                "provider_observations": [
+                    dict(item) for item in live_provider_observations
+                ],
+                "route_capacity_profile_id": live_route_capacity["profile_id"],
+            }
+        )
+        capacity_decision = evaluate_capacity_drift(
+            planned_width=planned_width,
+            planned_capacity_snapshot_id=binding.capacity_snapshot_id,
+            planned_capacity=host,
+            live_host=live_host,
+            live_providers=relevant_live_providers,
+            live_capacity_snapshot_id=live_capacity_id,
+            candidate_task_ids=candidate_task_ids,
+            provider_id=provider_requirement,
+            require_provider=True,
+            stale_capacity=stale_live_capacity,
+            current_time_ms=live_now_ms,
+        )
+        if (
+            not capacity_decision.may_dispatch
+            or not set(task_ids).issubset(capacity_decision.admitted_task_ids)
+        ):
+            raise PlanBoundDispatchError(
+                "live capacity drift fenced this slice for coordinator replan: "
+                + json.dumps(capacity_decision.to_dict(), sort_keys=True)
+            )
 
     canonical_daemon_class = daemon_module.PortalImplementationDaemon
     canonical_parse_task_file = daemon_module.parse_task_file
@@ -16747,7 +16817,51 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     def plan_bound_parse_task_file(*args: Any, **kwargs: Any) -> list[Any]:
         """Attach the immutable ID/CID pairs after exact board-byte validation."""
 
-        tasks = canonical_parse_task_file(*args, **kwargs)
+        if recovery_only:
+            requested_path = Path(
+                args[0] if args else kwargs.get("path", taskboard_path)
+            )
+            requested_prefix = str(
+                args[1]
+                if len(args) > 1
+                else kwargs.get(
+                    "task_header_prefix",
+                    daemon_module.TASK_HEADER_PREFIX,
+                )
+            )
+            if requested_path != taskboard_path or len(args) > 2:
+                raise PlanBoundDispatchError(
+                    "merge-only recovery requested a foreign task board"
+                )
+            try:
+                from ..runtime.configured_board_scheduler import (
+                    _git_identity as configured_board_git_identity,
+                )
+                from ..runtime.configured_board_scheduler import (
+                    _tracked_head_snapshot,
+                )
+
+                recovery_head, _recovery_tree = (
+                    configured_board_git_identity(accepted_tree_root)
+                )
+                recovery_board_bytes, _recovery_board_revision = (
+                    _tracked_head_snapshot(
+                        repo_root=accepted_tree_root,
+                        path=taskboard_path,
+                        source_head=recovery_head,
+                    )
+                )
+                tasks = daemon_module.parse_task_text(
+                    recovery_board_bytes.decode("utf-8"),
+                    path=taskboard_path,
+                    task_header_prefix=requested_prefix,
+                )
+            except Exception as exc:
+                raise PlanBoundDispatchError(
+                    "merge-only recovery lacks a stable current task board"
+                ) from exc
+        else:
+            tasks = canonical_parse_task_file(*args, **kwargs)
         observed_ids = {task.task_id for task in tasks}
         if not set(cid_by_id).issubset(observed_ids):
             raise PlanBoundDispatchError(
@@ -16987,6 +17101,26 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 )
             return observed
 
+        def _try_acquire_implementation_lock(
+            self,
+            lock_path: Path,
+            metadata: dict[str, Any],
+        ) -> tuple[bool, str, dict[str, Any] | None]:
+            """Seal the canonical global attempt lease at acquisition time."""
+
+            acquired, reason, existing = super()._try_acquire_implementation_lock(
+                lock_path,
+                metadata,
+            )
+            if acquired:
+                # The legacy primitive creates this owner-held JSON with an
+                # executable mode.  A plan-bound launch tightens its own newly
+                # acquired lease before task claim, provider, or recovery
+                # authority can observe it.  Recovery itself never repairs a
+                # pre-existing executable artifact.
+                seal_owned_effect_guard(lock_path)
+            return acquired, reason, existing
+
         def _try_acquire_implementation_task_claim(
             self,
             lock_path: Path,
@@ -17100,7 +17234,7 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             *,
             execution_lease: PlanBoundExecutionLease,
             workspace_path: Path,
-            required_state: str,
+            required_state: str | Sequence[str],
         ) -> tuple[dict[str, Any], Path, str]:
             from ..merge.worktree_lifecycle import WorkspaceLifecycleRecord
 
@@ -17115,9 +17249,21 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     "worktree lifecycle record is malformed"
                 ) from exc
             daemon_birth = self._current_daemon_birth()
+            allowed_states = (
+                {required_state}
+                if isinstance(required_state, str)
+                else set(required_state)
+            )
+            if not allowed_states or any(
+                not isinstance(value, str) or not value
+                for value in allowed_states
+            ):
+                raise PlanBoundDispatchError(
+                    "worktree lifecycle state requirement is invalid"
+                )
             if (
                 lifecycle.to_dict() != raw
-                or lifecycle.state.value != required_state
+                or lifecycle.state.value not in allowed_states
                 or lifecycle.task_id != execution_lease.active_task_id
                 or lifecycle.canonical_task_cid
                 != execution_lease.active_task_cid
@@ -17134,11 +17280,161 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 )
             return raw, lifecycle_path, raw_cid
 
+        @staticmethod
+        def _seal_owned_directory(path: Path) -> None:
+            """Seal one freshly created runtime directory to its exact owner."""
+
+            try:
+                before = os.lstat(path)
+            except OSError as exc:
+                raise PlanBoundDispatchError(
+                    "cannot inspect plan-bound workspace custody"
+                ) from exc
+            if (
+                stat.S_ISLNK(before.st_mode)
+                or not stat.S_ISDIR(before.st_mode)
+                or int(before.st_uid) != os.geteuid()
+                or bool(stat.S_IMODE(before.st_mode) & 0o7000)
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound workspace directory custody is unsafe"
+                )
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            flags |= getattr(os, "O_DIRECTORY", 0)
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(path, flags)
+            try:
+                opened = os.fstat(descriptor)
+                if (
+                    (opened.st_dev, opened.st_ino)
+                    != (before.st_dev, before.st_ino)
+                    or not stat.S_ISDIR(opened.st_mode)
+                    or int(opened.st_uid) != os.geteuid()
+                ):
+                    raise PlanBoundDispatchError(
+                        "plan-bound workspace directory changed before sealing"
+                    )
+                os.fchmod(descriptor, 0o700)
+                sealed = os.fstat(descriptor)
+            finally:
+                os.close(descriptor)
+            after = os.lstat(path)
+            if (
+                (after.st_dev, after.st_ino) != (sealed.st_dev, sealed.st_ino)
+                or stat.S_IMODE(after.st_mode) != 0o700
+                or int(after.st_uid) != os.geteuid()
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound workspace directory seal was not stable"
+                )
+
+        @staticmethod
+        def _seal_worktree_marker(path: Path) -> bytes:
+            """Read and seal one newly created Git worktree marker."""
+
+            try:
+                before = os.lstat(path)
+            except OSError as exc:
+                raise PlanBoundDispatchError(
+                    "cannot inspect plan-bound Git worktree marker"
+                ) from exc
+            if (
+                stat.S_ISLNK(before.st_mode)
+                or not stat.S_ISREG(before.st_mode)
+                or int(before.st_uid) != os.geteuid()
+                or int(before.st_nlink) != 1
+                or bool(stat.S_IMODE(before.st_mode) & 0o111)
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound Git worktree marker custody is unsafe"
+                )
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(path, flags)
+            try:
+                opened = os.fstat(descriptor)
+                if (
+                    (opened.st_dev, opened.st_ino)
+                    != (before.st_dev, before.st_ino)
+                    or not stat.S_ISREG(opened.st_mode)
+                    or int(opened.st_uid) != os.geteuid()
+                    or int(opened.st_nlink) != 1
+                ):
+                    raise PlanBoundDispatchError(
+                        "plan-bound Git worktree marker changed before sealing"
+                    )
+                payload = os.read(descriptor, 16_385)
+                if len(payload) > 16_384:
+                    raise PlanBoundDispatchError(
+                        "plan-bound Git worktree marker is oversized"
+                    )
+                os.fchmod(descriptor, 0o600)
+                sealed = os.fstat(descriptor)
+            finally:
+                os.close(descriptor)
+            after = os.lstat(path)
+            if (
+                (after.st_dev, after.st_ino) != (sealed.st_dev, sealed.st_ino)
+                or stat.S_IMODE(after.st_mode) != 0o600
+                or int(after.st_uid) != os.geteuid()
+                or int(after.st_nlink) != 1
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound Git worktree marker seal was not stable"
+                )
+            return payload
+
+        def _seal_plan_bound_workspace_custody(
+            self,
+            workspace_path: Path,
+        ) -> None:
+            """Seal the exact fresh worktree and its canonical Git custody."""
+
+            workspace = Path(os.path.abspath(workspace_path))
+            worktree_root = Path(os.path.abspath(self.worktree_root))
+            repository_root = Path(os.path.abspath(self.repo_root))
+            if workspace.parent != worktree_root or workspace == repository_root:
+                raise PlanBoundDispatchError(
+                    "plan-bound workspace escapes its configured runtime root"
+                )
+            self._seal_owned_directory(worktree_root)
+            self._seal_owned_directory(workspace)
+            marker = workspace / ".git"
+            marker_payload = self._seal_worktree_marker(marker)
+            try:
+                marker_text = marker_payload.decode("utf-8").strip()
+            except UnicodeDecodeError as exc:
+                raise PlanBoundDispatchError(
+                    "plan-bound Git worktree marker is not text"
+                ) from exc
+            if not marker_text.startswith("gitdir: "):
+                raise PlanBoundDispatchError(
+                    "plan-bound Git worktree marker is malformed"
+                )
+            raw_git_dir = Path(marker_text[8:])
+            git_dir = (
+                raw_git_dir
+                if raw_git_dir.is_absolute()
+                else workspace / raw_git_dir
+            )
+            git_dir = Path(os.path.abspath(git_dir))
+            git_root = repository_root / ".git"
+            worktree_git_root = git_root / "worktrees"
+            if git_dir.parent != worktree_git_root:
+                raise PlanBoundDispatchError(
+                    "plan-bound Git worktree custody escapes the repository"
+                )
+            for directory in (git_root, worktree_git_root, git_dir):
+                self._seal_owned_directory(directory)
+
         def _build_implementation_command(
             self,
             workspace_path: Path,
             *,
             task: Any | None = None,
+            prompt: str = "",
+            attempt: int = 0,
+            state: Any | None = None,
         ) -> list[str]:
             current_cid, current = self._load_execution_lease(
                 phases=("claimed",)
@@ -17152,6 +17448,7 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 raise PlanBoundDispatchError(
                     "worktree preparation crossed the canonical task pair"
                 )
+            self._seal_plan_bound_workspace_custody(workspace_path)
             with store._thread_lock:  # noqa: SLF001
                 with store._guard():  # noqa: SLF001
                     observed = _load_plan_bound_execution_lease_locked(
@@ -17206,6 +17503,9 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             return super()._build_implementation_command(
                 workspace_path,
                 task=task,
+                prompt=prompt,
+                attempt=attempt,
+                state=state,
             )
 
         def _arm_provider_effect(self, payload: Mapping[str, Any]) -> None:
@@ -17331,6 +17631,2771 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 guarded_provider_effect,
             )
 
+        def _resolved_git_commit(
+            self,
+            workspace_path: Path,
+            value: str,
+        ) -> str:
+            result = self._run_git(
+                ["rev-parse", "--verify", f"{value}^{{commit}}"],
+                cwd=workspace_path,
+            )
+            commit = result.stdout.strip()
+            if result.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+                raise PlanBoundDispatchError(
+                    "proposal barrier requires a resolved Git commit"
+                )
+            return commit
+
+        def _bind_settling_execution_lease(
+            self,
+        ) -> tuple[str, PlanBoundExecutionLease]:
+            """Adopt the daemon's exact ACTIVE->SETTLING lifecycle transition."""
+
+            current_cid, current = self._load_execution_lease(
+                phases=("provider_ready",)
+            )
+            claim_path = Path(current.canonical_claim_path)
+            lifecycle_path = Path(current.workspace_lifecycle_path)
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed is None or observed[0] != current_cid:
+                        raise PlanBoundDispatchError(
+                            "execution lease changed before settling bind"
+                        )
+                    with serialized_lock_update(claim_path):
+                        self._require_bound_claim(current)
+                        with serialized_lock_update(lifecycle_path):
+                            lifecycle_raw, observed_path, lifecycle_cid = (
+                                self._read_exact_worktree_lifecycle(
+                                    execution_lease=current,
+                                    workspace_path=Path(current.workspace_path),
+                                    required_state="settling",
+                                )
+                            )
+                            if (
+                                observed_path != lifecycle_path
+                                or str(lifecycle_raw.get("record_id") or "")
+                                != current.workspace_record_id
+                                or str(lifecycle_raw.get("lease_id") or "")
+                                != current.workspace_lease_id
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "worktree identity changed while settling"
+                                )
+                            observed_fence = int(lifecycle_raw.get("fence") or 0)
+                            if (
+                                observed_fence == current.workspace_fence
+                                and lifecycle_cid == current.workspace_lifecycle_cid
+                            ):
+                                return current_cid, current
+                            if observed_fence != current.workspace_fence + 1:
+                                raise PlanBoundDispatchError(
+                                    "worktree fence skipped before proposal barrier"
+                                )
+                            settled = replace(
+                                current,
+                                generation=current.generation + 1,
+                                prior_execution_lease_cid=current_cid,
+                                workspace_lifecycle_cid=lifecycle_cid,
+                                workspace_fence=observed_fence,
+                            )
+                            settled_cid = _publish_plan_bound_execution_lease_locked(
+                                store,
+                                settled,
+                                expected_current_cid=current_cid,
+                            )
+                            return settled_cid, settled
+
+        @staticmethod
+        def _proposal_barrier_timeout_ms(
+            execution_lease: PlanBoundExecutionLease,
+        ) -> int:
+            assignment = execution_lease.assignment_for(
+                execution_lease.active_task_id,
+                execution_lease.active_task_cid,
+            )
+            lease_ms = assignment.get("lease_duration_ms")
+            if (
+                isinstance(lease_ms, bool)
+                or not isinstance(lease_ms, int)
+                or not 50 <= lease_ms <= 86_400_000
+            ):
+                raise PlanBoundDispatchError(
+                    "compiled proposal barrier timing is invalid"
+                )
+            # This is the compiler's identity-bound execution limit, not a
+            # heartbeat heuristic.  Verified same-revision transfers may add
+            # one CAS-linked lease window per finite owner generation.
+            return lease_ms
+
+        def _publish_proposal_disposition_and_wait(
+            self,
+            *,
+            outcome: str,
+            baseline_ref: str,
+            implementation_commit: str,
+            proposal_id: str,
+            proposal_receipt_id: str,
+            reason_codes: Sequence[str],
+            actual_changed_paths: Sequence[str],
+            enqueue_fields: Mapping[str, Any] | None = None,
+            attempt: int = 0,
+            branch_name: str = "",
+        ) -> tuple[str, Any]:
+            """Publish one final lane result and wait for whole-wave authority."""
+
+            current_cid, current = self._bind_settling_execution_lease()
+            phase = (
+                "scope_drift"
+                if outcome == "rejected" and "path_outside_scope" in reason_codes
+                else "proposal_rejected"
+                if outcome == "rejected"
+                else "proposal_ready"
+            )
+            claim_path = Path(current.canonical_claim_path)
+            lifecycle_path = Path(current.workspace_lifecycle_path)
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed is None or observed != (current_cid, current):
+                        raise PlanBoundDispatchError(
+                            "execution lease changed before proposal publication"
+                        )
+                    with serialized_lock_update(claim_path):
+                        self._require_bound_claim(current)
+                        with serialized_lock_update(lifecycle_path):
+                            lifecycle_raw, observed_path, lifecycle_cid = (
+                                self._read_exact_worktree_lifecycle(
+                                    execution_lease=current,
+                                    workspace_path=Path(current.workspace_path),
+                                    required_state="settling",
+                                )
+                            )
+                            if (
+                                observed_path != lifecycle_path
+                                or lifecycle_cid != current.workspace_lifecycle_cid
+                                or int(lifecycle_raw.get("fence") or 0)
+                                != current.workspace_fence
+                                or str(lifecycle_raw.get("lease_id") or "")
+                                != current.workspace_lease_id
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "effect guards changed before proposal publication"
+                                )
+                            proposal_handoff_cid = ""
+                            if outcome in {"changed", "no_change"}:
+                                if (
+                                    not isinstance(enqueue_fields, Mapping)
+                                    or not enqueue_fields
+                                    or isinstance(attempt, bool)
+                                    or not isinstance(attempt, int)
+                                    or attempt < 1
+                                    or not branch_name
+                                ):
+                                    raise PlanBoundDispatchError(
+                                        "accepted proposal lacks a restart-stable handoff"
+                                    )
+                                handoff = {
+                                    "schema": PLAN_BOUND_PROPOSAL_HANDOFF_SCHEMA,
+                                    "revision_cid": current.revision_cid,
+                                    "plan_root_cid": current.plan_root_cid,
+                                    "execution_plan_cid": current.execution_plan_cid,
+                                    "capacity_snapshot_id": current.capacity_snapshot_id,
+                                    "slice_manifest_cid": current.slice_manifest_cid,
+                                    "slice_id": current.slice_id,
+                                    "lane_id": current.lane_id,
+                                    "reassignment_cid": current.reassignment_cid,
+                                    "task_id": current.active_task_id,
+                                    "task_cid": current.active_task_cid,
+                                    "source_execution_lease_cid": current_cid,
+                                    "process_birth_cid": current.process_birth_cid,
+                                    "canonical_claim_cid": current.canonical_claim_cid,
+                                    "canonical_claim_lease_id": (
+                                        current.canonical_claim_lease_id
+                                    ),
+                                    "workspace_lifecycle_cid": (
+                                        current.workspace_lifecycle_cid
+                                    ),
+                                    "workspace_record_id": current.workspace_record_id,
+                                    "workspace_path": current.workspace_path,
+                                    "workspace_lease_id": current.workspace_lease_id,
+                                    "workspace_fence": current.workspace_fence,
+                                    "attempt": attempt,
+                                    "branch_name": branch_name,
+                                    "baseline_ref": baseline_ref,
+                                    "implementation_commit": implementation_commit,
+                                    "actual_changed_paths": list(
+                                        actual_changed_paths
+                                    ),
+                                    "outcome": outcome,
+                                    "enqueue_fields": dict(enqueue_fields),
+                                    "enqueue_fields_cid": content_identity(
+                                        dict(enqueue_fields)
+                                    ),
+                                    "created_at_ms": int(time.time() * 1000),
+                                }
+                                proposal_handoff_cid = store.put_cas(handoff)
+                                if (
+                                    _secure_store_cas(
+                                        store,
+                                        proposal_handoff_cid,
+                                    )
+                                    != handoff
+                                ):
+                                    raise PlanBoundDispatchError(
+                                        "proposal handoff failed CAS round trip"
+                                    )
+                            proposal_ready = replace(
+                                current,
+                                generation=current.generation + 1,
+                                phase=phase,
+                                prior_execution_lease_cid=current_cid,
+                                proposal_id=proposal_id,
+                                proposal_receipt_id=proposal_receipt_id,
+                                proposal_reason_codes=tuple(reason_codes),
+                                actual_changed_paths=tuple(actual_changed_paths),
+                                merge_enqueue_reached=False,
+                                proposal_handoff_cid=proposal_handoff_cid,
+                            )
+                            ready_cid = _publish_plan_bound_execution_lease_locked(
+                                store,
+                                proposal_ready,
+                                expected_current_cid=current_cid,
+                            )
+                            disposition = PlanBoundProposalDisposition(
+                                revision_cid=current.revision_cid,
+                                plan_root_cid=current.plan_root_cid,
+                                execution_plan_cid=current.execution_plan_cid,
+                                capacity_snapshot_id=current.capacity_snapshot_id,
+                                slice_manifest_cid=current.slice_manifest_cid,
+                                slice_id=current.slice_id,
+                                lane_id=current.lane_id,
+                                reassignment_cid=current.reassignment_cid,
+                                task_id=current.active_task_id,
+                                task_cid=current.active_task_cid,
+                                execution_lease_cid=ready_cid,
+                                process_birth_cid=current.process_birth_cid,
+                                proposal_id=proposal_id,
+                                proposal_receipt_id=proposal_receipt_id,
+                                outcome=outcome,
+                                reason_codes=tuple(reason_codes),
+                                actual_changed_paths=tuple(actual_changed_paths),
+                                baseline_ref=baseline_ref,
+                                implementation_commit=implementation_commit,
+                            )
+                            disposition_cid = (
+                                _publish_plan_bound_proposal_disposition_locked(
+                                    store,
+                                    disposition,
+                                )
+                            )
+            barrier_cid, barrier = ProductionParallelPlanAdapter(
+                store
+            ).await_wave_diff_barrier(
+                revision_cid=current.revision_cid,
+                slice_manifest_cid=current.slice_manifest_cid,
+                timeout_ms=self._proposal_barrier_timeout_ms(proposal_ready),
+            )
+            if barrier.decision != "released":
+                raise PlanBoundReplanRequired(
+                    "whole-wave proposal barrier denied merge admission: "
+                    f"barrier_cid={barrier_cid} decision={barrier.decision}"
+                )
+            # Re-read every authority after the wait and immediately before
+            # the caller may enter the existing merge enqueue boundary.
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    exact_barrier = ProductionParallelPlanAdapter(
+                        store
+                    )._evaluate_wave_diff_barrier_locked(  # noqa: SLF001
+                        revision_cid=current.revision_cid,
+                        slice_manifest_cid=current.slice_manifest_cid,
+                        timeout_ms=self._proposal_barrier_timeout_ms(proposal_ready),
+                        now_ms=int(time.time() * 1000),
+                    )
+                    exact_disposition = (
+                        _publish_plan_bound_proposal_disposition_locked(
+                            store,
+                            disposition,
+                        )
+                    )
+                    exact_execution = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if (
+                        exact_barrier is None
+                        or exact_barrier[0] != barrier_cid
+                        or exact_barrier[1] != barrier
+                        or exact_disposition != disposition_cid
+                        or exact_execution != (ready_cid, proposal_ready)
+                    ):
+                        raise PlanBoundDispatchError(
+                            "proposal barrier changed before merge admission"
+                        )
+                    with serialized_lock_update(claim_path):
+                        self._require_bound_claim(proposal_ready)
+                        with serialized_lock_update(lifecycle_path):
+                            final_lifecycle, final_path, final_cid = (
+                                self._read_exact_worktree_lifecycle(
+                                    execution_lease=proposal_ready,
+                                    workspace_path=Path(
+                                        proposal_ready.workspace_path
+                                    ),
+                                    required_state="settling",
+                                )
+                            )
+                            if (
+                                final_path != lifecycle_path
+                                or final_cid
+                                != proposal_ready.workspace_lifecycle_cid
+                                or int(final_lifecycle.get("fence") or 0)
+                                != proposal_ready.workspace_fence
+                                or str(
+                                    final_lifecycle.get("lease_id") or ""
+                                )
+                                != proposal_ready.workspace_lease_id
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "effect guards changed after barrier release"
+                                )
+            return barrier_cid, barrier
+
+        @staticmethod
+        def _name_status_paths(payload: str) -> tuple[str, ...]:
+            """Decode every endpoint from one ``git --name-status -z`` result."""
+
+            tokens = payload.split("\0")
+            if tokens and tokens[-1] == "":
+                tokens.pop()
+            paths: list[str] = []
+            index = 0
+            while index < len(tokens):
+                status_code = tokens[index]
+                index += 1
+                path_count = 2 if status_code[:1] in {"R", "C"} else 1
+                if not status_code or index + path_count > len(tokens):
+                    raise PlanBoundDispatchError(
+                        "full proposal effect enumeration is malformed"
+                    )
+                for value in tokens[index : index + path_count]:
+                    normalized = value.replace("\\", "/").strip("/")
+                    if (
+                        not normalized
+                        or normalized != value
+                        or Path(normalized).as_posix() != normalized
+                        or "\x00" in normalized
+                        or ".." in Path(normalized).parts
+                    ):
+                        raise PlanBoundDispatchError(
+                            "full proposal effect path is unsafe"
+                        )
+                    paths.append(normalized)
+                index += path_count
+            return tuple(paths)
+
+        def _full_plan_bound_effect_paths(
+            self,
+            workspace_path: Path,
+            *,
+            baseline_ref: str,
+        ) -> tuple[str, ...]:
+            """Enumerate the unfiltered root and submodule effect endpoints.
+
+            The canonical proposal collector intentionally applies task-owned
+            scope policy.  Barrier evidence has the opposite job: observe all
+            actual effects before policy or merge, including both rename
+            endpoints, untracked files, dirty submodule children, and the
+            corresponding root gitlink.
+            """
+
+            def repository_paths(
+                repository: Path,
+                baseline: str,
+                *,
+                prefix: str = "",
+            ) -> tuple[str, ...]:
+                changed = self._run_git(
+                    [
+                        "diff",
+                        "--name-status",
+                        "-z",
+                        "--find-renames",
+                        "--ignore-submodules=none",
+                        baseline,
+                        "--",
+                    ],
+                    cwd=repository,
+                )
+                untracked = self._run_git(
+                    ["ls-files", "--others", "--exclude-standard", "-z"],
+                    cwd=repository,
+                )
+                if changed.returncode != 0 or untracked.returncode != 0:
+                    raise PlanBoundDispatchError(
+                        "cannot enumerate the full proposal effect set"
+                    )
+                values = [
+                    *self._name_status_paths(changed.stdout),
+                    *tuple(
+                        item
+                        for item in untracked.stdout.split("\0")
+                        if item
+                    ),
+                ]
+                result: list[str] = []
+                for value in values:
+                    normalized = value.replace("\\", "/").strip("/")
+                    if (
+                        not normalized
+                        or normalized != value
+                        or Path(normalized).as_posix() != normalized
+                        or "\x00" in normalized
+                        or ".." in Path(normalized).parts
+                    ):
+                        raise PlanBoundDispatchError(
+                            "full proposal effect path is unsafe"
+                        )
+                    result.append(
+                        f"{prefix}/{normalized}" if prefix else normalized
+                    )
+                return tuple(result)
+
+            try:
+                workspace_root = workspace_path.resolve(strict=True)
+                workspace_stat = os.lstat(workspace_path)
+            except (OSError, RuntimeError) as exc:
+                raise PlanBoundDispatchError(
+                    "cannot bind the proposal workspace for full effect enumeration"
+                ) from exc
+            if (
+                stat.S_ISLNK(workspace_stat.st_mode)
+                or not stat.S_ISDIR(workspace_stat.st_mode)
+            ):
+                raise PlanBoundDispatchError(
+                    "proposal workspace is not a lexical directory"
+                )
+            root_probe = self._run_git(
+                ["rev-parse", "--show-toplevel"],
+                cwd=workspace_root,
+            )
+            try:
+                observed_root = Path(root_probe.stdout.strip()).resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise PlanBoundDispatchError(
+                    "proposal workspace is not an exact Git worktree"
+                ) from exc
+            if root_probe.returncode != 0 or observed_root != workspace_root:
+                raise PlanBoundDispatchError(
+                    "proposal workspace is not an exact Git worktree"
+                )
+
+            paths = set(repository_paths(workspace_root, baseline_ref))
+            for raw_relative in tuple(self.worktree_submodule_paths):
+                raw_text = str(raw_relative)
+                relative = raw_text.replace("\\", "/").strip("/")
+                relative_path = Path(relative)
+                if (
+                    not relative
+                    or raw_text != relative
+                    or relative_path.as_posix() != relative
+                    or relative_path.is_absolute()
+                    or ".." in relative_path.parts
+                    or "." in relative_path.parts
+                ):
+                    raise PlanBoundDispatchError(
+                        "configured submodule effect path is unsafe"
+                    )
+                submodule = workspace_root
+                try:
+                    for part in relative_path.parts:
+                        submodule = submodule / part
+                        component = os.lstat(submodule)
+                        if (
+                            stat.S_ISLNK(component.st_mode)
+                            or not stat.S_ISDIR(component.st_mode)
+                        ):
+                            raise PlanBoundDispatchError(
+                                "configured submodule traverses a non-directory or symlink"
+                            )
+                    resolved_submodule = submodule.resolve(strict=True)
+                    resolved_submodule.relative_to(workspace_root)
+                except PlanBoundDispatchError:
+                    raise
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise PlanBoundDispatchError(
+                        "configured submodule escapes or is absent"
+                    ) from exc
+                child_root = self._run_git(
+                    ["rev-parse", "--show-toplevel"],
+                    cwd=resolved_submodule,
+                )
+                child_inside = self._run_git(
+                    ["rev-parse", "--is-inside-work-tree"],
+                    cwd=resolved_submodule,
+                )
+                try:
+                    observed_child_root = Path(
+                        child_root.stdout.strip()
+                    ).resolve(strict=True)
+                except (OSError, RuntimeError) as exc:
+                    raise PlanBoundDispatchError(
+                        "configured submodule is not an exact Git worktree"
+                    ) from exc
+                if (
+                    child_root.returncode != 0
+                    or child_inside.returncode != 0
+                    or child_inside.stdout.strip() != "true"
+                    or observed_child_root != resolved_submodule
+                ):
+                    raise PlanBoundDispatchError(
+                        "configured submodule is not an exact Git worktree"
+                    )
+                baseline_gitlink = self._run_git(
+                    ["rev-parse", "--verify", f"{baseline_ref}:{relative}"],
+                    cwd=workspace_root,
+                )
+                baseline_child = baseline_gitlink.stdout.strip()
+                if (
+                    baseline_gitlink.returncode != 0
+                    or len(baseline_child) != 40
+                    or any(character not in "0123456789abcdef" for character in baseline_child)
+                ):
+                    raise PlanBoundDispatchError(
+                        "cannot bind submodule effects to the proposal baseline"
+                    )
+                child_paths = repository_paths(
+                    resolved_submodule,
+                    baseline_child,
+                    prefix=relative,
+                )
+                if child_paths:
+                    paths.add(relative)
+                    paths.update(child_paths)
+            return tuple(sorted(paths))
+
+        def _commit_worktree_changes(
+            self,
+            worktree_path: Path,
+            task: Any,
+            attempt: int,
+            *,
+            baseline_ref: str = "",
+        ) -> dict[str, Any]:
+            """Carry no-change context to the canonical post-commit guard."""
+
+            result = super()._commit_worktree_changes(
+                worktree_path,
+                task,
+                attempt,
+                baseline_ref=baseline_ref,
+            )
+            if result.get("reason") != "no_changes":
+                return result
+            resolved_baseline = self._resolved_git_commit(
+                worktree_path,
+                baseline_ref,
+            )
+            current_head = self._resolved_git_commit(
+                worktree_path,
+                "HEAD",
+            )
+            actual_paths = self._full_plan_bound_effect_paths(
+                worktree_path,
+                baseline_ref=resolved_baseline,
+            )
+            if current_head != resolved_baseline or actual_paths:
+                raise PlanBoundDispatchError(
+                    "no-change proposal barrier observed a changed candidate"
+                )
+            self._plan_bound_pending_no_change = {
+                "workspace_path": worktree_path,
+                "task": task,
+                "attempt": attempt,
+                "baseline_ref": resolved_baseline,
+            }
+            return result
+
+        def _validated_no_change_completion_guard(
+            self,
+            *,
+            baseline_ref: str,
+            current_head: str,
+            expected_branch: str,
+            current_branch: str,
+            validation_result: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            """Publish no-change only after the canonical final guard allows it."""
+
+            result = super()._validated_no_change_completion_guard(
+                baseline_ref=baseline_ref,
+                current_head=current_head,
+                expected_branch=expected_branch,
+                current_branch=current_branch,
+                validation_result=validation_result,
+            )
+            pending = getattr(self, "_plan_bound_pending_no_change", None)
+            self._plan_bound_pending_no_change = None
+            if not isinstance(pending, Mapping):
+                raise PlanBoundDispatchError(
+                    "no-change guard lacks its exact commit context"
+                )
+            if not result.get("allowed"):
+                return result
+            workspace_path = pending.get("workspace_path")
+            task = pending.get("task")
+            resolved_baseline = str(pending.get("baseline_ref") or "")
+            if (
+                not isinstance(workspace_path, Path)
+                or task is None
+                or baseline_ref != resolved_baseline
+                or current_head != resolved_baseline
+                or self._resolved_git_commit(workspace_path, "HEAD")
+                != resolved_baseline
+                or self._git_current_branch(workspace_path) != current_branch
+            ):
+                raise PlanBoundDispatchError(
+                    "no-change candidate changed after its canonical guard"
+                )
+            actual_paths = self._full_plan_bound_effect_paths(
+                workspace_path,
+                baseline_ref=resolved_baseline,
+            )
+            if actual_paths:
+                raise PlanBoundDispatchError(
+                    "no-change guard observed a nonempty final candidate"
+                )
+            attempt = pending.get("attempt")
+            if isinstance(attempt, bool) or not isinstance(attempt, int):
+                raise PlanBoundDispatchError(
+                    "no-change guard attempt is malformed"
+                )
+            enqueue_fields = self._capture_plan_bound_enqueue_fields(
+                branch_name=current_branch,
+                implementation_commit=resolved_baseline,
+                baseline_ref=resolved_baseline,
+                worktree_path=workspace_path,
+                task=task,
+                attempt=attempt,
+                changed_submodule_paths=(),
+                validation_result=validation_result,
+            )
+            barrier_cid, _barrier = self._publish_proposal_disposition_and_wait(
+                outcome="no_change",
+                baseline_ref=resolved_baseline,
+                implementation_commit=resolved_baseline,
+                proposal_id="",
+                proposal_receipt_id="",
+                reason_codes=(),
+                actual_changed_paths=(),
+                enqueue_fields=enqueue_fields,
+                attempt=attempt,
+                branch_name=current_branch,
+            )
+            _turn_cid, turn_lease = self._load_execution_lease(
+                phases=("proposal_ready",)
+            )
+            self._await_plan_bound_merge_turn(turn_lease)
+            if (
+                self._resolved_git_commit(workspace_path, "HEAD")
+                != resolved_baseline
+                or self._git_current_branch(workspace_path) != current_branch
+                or self._full_plan_bound_effect_paths(
+                    workspace_path,
+                    baseline_ref=resolved_baseline,
+                )
+            ):
+                raise PlanBoundDispatchError(
+                    "no-change candidate changed after barrier release"
+                )
+            prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
+                enqueue_fields=enqueue_fields,
+                barrier_cid=barrier_cid,
+                worktree_path=workspace_path,
+                baseline_ref=resolved_baseline,
+                implementation_commit=resolved_baseline,
+                actual_paths=(),
+                branch_name=current_branch,
+                attempt=attempt,
+            )
+            request = self.merge_queue.enqueue(**enqueue_fields)
+            confirmed_cid, confirmed = self._confirm_plan_bound_merge_enqueue(
+                prepared_cid=prepared_cid,
+                prepared=prepared,
+                request=request,
+                enqueue_fields=enqueue_fields,
+            )
+            completed = self._drain_plan_bound_merge_request(
+                request_id=str(request.request_id),
+                execution_lease=confirmed,
+                enqueue_fields=enqueue_fields,
+            )
+            completed_cid, _completed_lease = (
+                self._mark_plan_bound_merge_completed(
+                    lease_cid=confirmed_cid,
+                    execution_lease=confirmed,
+                    request=completed,
+                )
+            )
+            self._plan_bound_no_change_queue_completion = {
+                "workspace_path": str(workspace_path),
+                "request_id": str(request.request_id),
+                "execution_lease_cid": completed_cid,
+                "status": completed.status,
+            }
+            return result
+
+        def _cleanup_merged_worktree(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            """Deny no-change paths that bypass the canonical final guard."""
+
+            if getattr(self, "_plan_bound_pending_no_change", None) is not None:
+                self._plan_bound_pending_no_change = None
+                raise PlanBoundReplanRequired(
+                    "no-change cleanup bypassed the canonical completion guard"
+                )
+            no_change_completion = getattr(
+                self,
+                "_plan_bound_no_change_queue_completion",
+                None,
+            )
+            if isinstance(no_change_completion, Mapping):
+                self._plan_bound_no_change_queue_completion = None
+                worktree_path = args[0] if args else kwargs.get("worktree_path")
+                if (
+                    str(worktree_path or "")
+                    != no_change_completion.get("workspace_path")
+                    or no_change_completion.get("status") != "completed"
+                ):
+                    raise PlanBoundReplanRequired(
+                        "no-change queue completion changed before cleanup"
+                    )
+                return {
+                    "cleaned": True,
+                    "reason": "plan_bound_no_change_merge_completed",
+                    "worktree_path": str(worktree_path),
+                    "request_id": no_change_completion["request_id"],
+                    "execution_lease_cid": no_change_completion[
+                        "execution_lease_cid"
+                    ],
+                }
+            return super()._cleanup_merged_worktree(*args, **kwargs)
+
+        @staticmethod
+        def _canonical_merge_enqueue_fields(
+            positional: Sequence[Any],
+            keyword: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            """Capture the complete canonical queue call before its effect."""
+
+            if positional:
+                raise PlanBoundDispatchError(
+                    "canonical merge enqueue used positional authority"
+                )
+            allowed = {
+                "branch_name",
+                "task_id",
+                "priority",
+                "lane_id",
+                "attempt",
+                "metadata",
+                "commit_sha",
+                "canonical_task_id",
+                "canonical_task_key",
+                "canonical_task_cid",
+                "target_repository_id",
+                "target_branch",
+            }
+            if not set(keyword).issubset(allowed):
+                raise PlanBoundDispatchError(
+                    "canonical merge enqueue fields changed"
+                )
+            fields = {
+                "branch_name": keyword.get("branch_name", ""),
+                "task_id": keyword.get("task_id", ""),
+                "priority": keyword.get("priority", "P2"),
+                "lane_id": keyword.get("lane_id", ""),
+                "attempt": keyword.get("attempt", 1),
+                "metadata": keyword.get("metadata", {}),
+                "commit_sha": keyword.get("commit_sha", ""),
+                "canonical_task_id": keyword.get("canonical_task_id", ""),
+                "canonical_task_key": keyword.get("canonical_task_key", ""),
+                "canonical_task_cid": keyword.get("canonical_task_cid", ""),
+                "target_repository_id": keyword.get(
+                    "target_repository_id", ""
+                ),
+                "target_branch": keyword.get("target_branch", ""),
+            }
+            text_names = allowed - {"attempt", "metadata"}
+            if (
+                any(not isinstance(fields[name], str) for name in text_names)
+                or isinstance(fields["attempt"], bool)
+                or not isinstance(fields["attempt"], int)
+                or fields["attempt"] < 1
+                or not isinstance(fields["metadata"], Mapping)
+            ):
+                raise PlanBoundDispatchError(
+                    "canonical merge enqueue field types changed"
+                )
+            fields["metadata"] = dict(fields["metadata"])
+            return fields
+
+        def _capture_plan_bound_enqueue_fields(
+            self,
+            *,
+            branch_name: str,
+            implementation_commit: str,
+            baseline_ref: str,
+            worktree_path: Path,
+            task: Any,
+            attempt: int,
+            changed_submodule_paths: Sequence[str],
+            validation_result: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            """Use the canonical candidate builder without crossing enqueue."""
+
+            captured: list[dict[str, Any]] = []
+            original_enqueue = self.merge_queue.enqueue
+            original_record_event = self._record_event
+
+            class CapturedRequest:
+                request_id = "plan-bound-prebarrier-capture"
+
+            def capture(*positional: Any, **keyword: Any) -> Any:
+                fields = self._canonical_merge_enqueue_fields(
+                    positional,
+                    keyword,
+                )
+                captured.append(fields)
+                return CapturedRequest()
+
+            def record_event(kind: str, payload: Mapping[str, Any]) -> Any:
+                if kind == "merge_candidate_enqueued":
+                    return None
+                return original_record_event(kind, payload)
+
+            self.merge_queue.enqueue = capture
+            self._record_event = record_event
+            try:
+                super()._enqueue_merge_candidate(
+                    branch_name=branch_name,
+                    implementation_commit=implementation_commit,
+                    baseline_ref=baseline_ref,
+                    worktree_path=worktree_path,
+                    task=task,
+                    attempt=attempt,
+                    changed_submodule_paths=changed_submodule_paths,
+                    validation_result=dict(validation_result),
+                    worktree_pool_handoff=False,
+                )
+            finally:
+                self._record_event = original_record_event
+                self.merge_queue.enqueue = original_enqueue
+            if len(captured) != 1:
+                raise PlanBoundDispatchError(
+                    "canonical candidate builder did not yield one enqueue"
+                )
+            return captured[0]
+
+        @staticmethod
+        def _require_queue_request_matches_intent(
+            request: Any,
+            enqueue_fields: Mapping[str, Any],
+        ) -> None:
+            """Require a deduplicated queue row to equal the stored intent."""
+
+            canonical_task_id = str(
+                enqueue_fields.get("canonical_task_id")
+                or enqueue_fields.get("canonical_task_cid")
+                or ""
+            )
+            expected = {
+                "branch_name": enqueue_fields["branch_name"],
+                "task_id": enqueue_fields["task_id"],
+                "priority": enqueue_fields["priority"],
+                "lane_id": enqueue_fields["lane_id"],
+                "commit_sha": enqueue_fields["commit_sha"],
+                "canonical_task_id": canonical_task_id,
+                "canonical_task_key": enqueue_fields["canonical_task_key"],
+            }
+            mismatched_fields = tuple(
+                name
+                for name, value in expected.items()
+                if getattr(request, name, None) != value
+            )
+            if mismatched_fields:
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue dedupe row differs from its intent: "
+                    + ",".join(mismatched_fields)
+                )
+            request_metadata = getattr(request, "metadata", None)
+            expected_metadata = dict(enqueue_fields["metadata"])
+            mutable_queue_metadata = {
+                "completion",
+                "failure_metadata",
+                "deferrals",
+                "quarantine",
+            }
+            if (
+                not isinstance(request_metadata, Mapping)
+                or any(
+                    request_metadata.get(name) != value
+                    for name, value in expected_metadata.items()
+                )
+                or set(request_metadata)
+                - set(expected_metadata)
+                - mutable_queue_metadata
+            ):
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue metadata differs from its intent"
+                )
+            # MergeQueue.attempt is mutable retry state, not immutable enqueue
+            # authority.  It advances once with each retry failure.  Bind it
+            # to the original implementation attempt carried by the intent
+            # and the queue's durable failure counter instead of falsely
+            # requiring the initial value after another canonical train has
+            # already retried the row.
+            request_attempt = getattr(request, "attempt", None)
+            failure_count = getattr(request, "failure_count", None)
+            original_attempt = enqueue_fields["attempt"]
+            if (
+                isinstance(request_attempt, bool)
+                or not isinstance(request_attempt, int)
+                or isinstance(failure_count, bool)
+                or not isinstance(failure_count, int)
+                or failure_count < 0
+                or request_attempt < original_attempt
+                or request_attempt > original_attempt + failure_count
+                or original_attempt + failure_count - request_attempt > 1
+            ):
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue retry state differs from its intent "
+                    f"({request_attempt!r}!={original_attempt!r}+"
+                    f"{failure_count!r})"
+                )
+            identity = str(
+                expected["canonical_task_key"]
+                or expected["canonical_task_id"]
+                or expected["task_id"]
+            ).strip().casefold()
+            commit = str(expected["commit_sha"]).strip().casefold()
+            dedupe_parts = [identity, commit]
+            target_repository_id = str(
+                enqueue_fields["target_repository_id"]
+            ).strip()
+            target_branch = str(enqueue_fields["target_branch"]).strip()
+            if target_repository_id or target_branch:
+                if not target_repository_id or not target_branch:
+                    raise PlanBoundReplanRequired(
+                        "merge queue intent target binding is partial"
+                    )
+                dedupe_parts.extend((target_repository_id, target_branch))
+            expected_dedupe = sha256(
+                "\0".join(dedupe_parts).encode("utf-8")
+            ).hexdigest()
+            if (
+                not commit
+                or str(getattr(request, "dedupe_key", "")) != expected_dedupe
+            ):
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue dedupe identity changed"
+                )
+
+        def _quarantine_merge_request_mismatch(
+            self,
+            request: Any,
+            *,
+            prepared: PlanBoundExecutionLease,
+            reason: str,
+        ) -> None:
+            """Fence a mismatched canonical row before another train uses it."""
+
+            status = str(getattr(request, "status", "") or "")
+            if status not in {"pending", "processing"}:
+                raise PlanBoundReplanRequired(
+                    "irreconcilable merge row is already terminal: " + reason
+                )
+            try:
+                receipt_path = self.merge_queue.quarantine(
+                    request,
+                    reason="plan_bound_merge_enqueue_mismatch",
+                    metadata={
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "plan-bound-merge-enqueue-quarantine@1"
+                        ),
+                        "revision_cid": prepared.revision_cid,
+                        "slice_manifest_cid": prepared.slice_manifest_cid,
+                        "slice_id": prepared.slice_id,
+                        "lane_id": prepared.lane_id,
+                        "merge_authorization_cid": (
+                            prepared.merge_authorization_cid
+                        ),
+                        "merge_enqueue_intent_cid": (
+                            prepared.merge_enqueue_intent_cid
+                        ),
+                        "reason": reason,
+                    },
+                )
+                observed = self.merge_queue.get(str(request.request_id))
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "irreconcilable merge row could not be quarantined"
+                ) from exc
+            if (
+                receipt_path is None
+                or observed is None
+                or observed.status != "quarantined"
+            ):
+                raise PlanBoundReplanRequired(
+                    "irreconcilable merge row quarantine is not durable"
+                )
+            self._publish_plan_bound_merge_terminal_failure(
+                execution_lease=prepared,
+                request=observed,
+                reason_codes=(
+                    "merge_queue_intent_mismatch",
+                    reason,
+                ),
+            )
+
+        def _publish_plan_bound_merge_terminal_failure(
+            self,
+            *,
+            execution_lease: PlanBoundExecutionLease,
+            request: Any,
+            reason_codes: Sequence[str],
+        ) -> str:
+            """Bind one canonical failed/quarantined row to the wave slice."""
+
+            status = str(getattr(request, "status", "") or "")
+            if status not in {"failed", "quarantined"}:
+                raise PlanBoundReplanRequired(
+                    "merge terminal evidence is not a terminal queue row"
+                )
+            if not hasattr(request, "to_dict"):
+                raise PlanBoundReplanRequired(
+                    "merge terminal evidence lacks canonical serialization"
+                )
+            raw_reason_codes = tuple(reason_codes)
+            canonical_reasons = sorted(
+                {
+                    str(value).strip()
+                    for value in raw_reason_codes
+                    if isinstance(value, str) and value.strip()
+                }
+            )
+            failure_reason = str(
+                getattr(request, "failure_reason", "") or ""
+            ).strip()
+            if failure_reason:
+                canonical_reasons.append(failure_reason)
+                canonical_reasons = sorted(set(canonical_reasons))
+            if not canonical_reasons:
+                canonical_reasons = ["canonical_merge_request_failed"]
+            queue_payload = request.to_dict()
+            if not isinstance(queue_payload, Mapping):
+                raise PlanBoundReplanRequired(
+                    "merge terminal queue serialization is not an object"
+                )
+            queue_json = json.dumps(
+                dict(queue_payload),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    current = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=execution_lease.revision_cid,
+                        slice_id=execution_lease.slice_id,
+                        lane_id=execution_lease.lane_id,
+                    )
+                    if current is None or current[1] != execution_lease:
+                        raise PlanBoundReplanRequired(
+                            "merge terminal outcome lost its execution lease"
+                        )
+                    intent = _secure_store_cas(
+                        store,
+                        execution_lease.merge_enqueue_intent_cid,
+                    )
+                    observed_at_ms = max(
+                        int(time.time() * 1000),
+                        int(intent["prepared_at_ms"]),
+                    )
+                    record = {
+                        "schema": PLAN_BOUND_MERGE_TERMINAL_FAILURE_SCHEMA,
+                        "revision_cid": execution_lease.revision_cid,
+                        "plan_root_cid": execution_lease.plan_root_cid,
+                        "execution_plan_cid": (
+                            execution_lease.execution_plan_cid
+                        ),
+                        "capacity_snapshot_id": (
+                            execution_lease.capacity_snapshot_id
+                        ),
+                        "slice_manifest_cid": (
+                            execution_lease.slice_manifest_cid
+                        ),
+                        "slice_id": execution_lease.slice_id,
+                        "lane_id": execution_lease.lane_id,
+                        "reassignment_cid": execution_lease.reassignment_cid,
+                        "task_id": execution_lease.active_task_id,
+                        "task_cid": execution_lease.active_task_cid,
+                        "execution_lease_cid": current[0],
+                        "proposal_handoff_cid": (
+                            execution_lease.proposal_handoff_cid
+                        ),
+                        "merge_authorization_cid": (
+                            execution_lease.merge_authorization_cid
+                        ),
+                        "merge_enqueue_intent_cid": (
+                            execution_lease.merge_enqueue_intent_cid
+                        ),
+                        "enqueue_fields_cid": intent["enqueue_fields_cid"],
+                        "request_id": str(request.request_id),
+                        "queue_status": status,
+                        "queue_dedupe_key": str(request.dedupe_key),
+                        "queue_request_json": queue_json,
+                        "queue_request_sha256": (
+                            "sha256:"
+                            + sha256(queue_json.encode("utf-8")).hexdigest()
+                        ),
+                        "reason_codes": canonical_reasons,
+                        "observed_at_ms": observed_at_ms,
+                    }
+                    return _publish_plan_bound_merge_terminal_failure_locked(
+                        store,
+                        record,
+                    )
+
+        def _prepare_plan_bound_merge_enqueue(
+            self,
+            *,
+            enqueue_fields: Mapping[str, Any],
+            barrier_cid: str,
+            worktree_path: Path,
+            baseline_ref: str,
+            implementation_commit: str,
+            actual_paths: tuple[str, ...],
+            branch_name: str,
+            attempt: int,
+            recovery_birth_cid: str = "",
+        ) -> tuple[str, PlanBoundExecutionLease]:
+            """Persist exact authorization and queue intent before enqueue."""
+
+            metadata = enqueue_fields.get("metadata")
+            task_payload = (
+                metadata.get("task") if isinstance(metadata, Mapping) else None
+            )
+            if (
+                enqueue_fields.get("branch_name") != branch_name
+                or enqueue_fields.get("task_id") != task_ids[0]
+                or enqueue_fields.get("attempt") != attempt
+                or enqueue_fields.get("commit_sha") != implementation_commit
+                or enqueue_fields.get("canonical_task_id") != task_cids[0]
+                or enqueue_fields.get("target_repository_id")
+                != self.merge_target_repository_id
+                or enqueue_fields.get("target_branch")
+                != self.resolved_merge_target_branch
+                or not isinstance(metadata, Mapping)
+                or metadata.get("baseline_ref") != baseline_ref
+                or metadata.get("implementation_commit")
+                != implementation_commit
+                or not isinstance(task_payload, Mapping)
+                or task_payload.get("task_id") != task_ids[0]
+            ):
+                raise PlanBoundDispatchError(
+                    "canonical merge enqueue differs from final authorization"
+                )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    disposition = _load_plan_bound_proposal_disposition_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                    )
+                    if (
+                        observed is None
+                        or observed[1].phase != "proposal_ready"
+                        or disposition is None
+                        or disposition[1].execution_lease_cid != observed[0]
+                        or disposition[1].outcome
+                        not in {"changed", "no_change"}
+                    ):
+                        raise PlanBoundDispatchError(
+                            "merge authorization lost its proposal disposition"
+                        )
+                    current_cid, current = observed
+                    recovery_birth: Mapping[str, Any] | None = None
+                    if recovery_birth_cid:
+                        recovery_birth = _secure_store_cas(
+                            store,
+                            recovery_birth_cid,
+                        )
+                        recovery_fields = {
+                            "schema",
+                            "revision_cid",
+                            "slice_manifest_cid",
+                            "slice_id",
+                            "lane_id",
+                            "generation",
+                            "execution_lease_cid",
+                            "proposal_handoff_cid",
+                            "merge_authorization_cid",
+                            "merge_enqueue_intent_cid",
+                            "supervisor_process_birth_cid",
+                            "prior_supervisor_process_birth_cid",
+                            "canonical_claim_cid",
+                            "canonical_claim_lease_id",
+                            "custody_kind",
+                            "authorized_workspace_lifecycle_cid",
+                            "lifecycle_owner_process_birth",
+                            "prior_recovery_daemon_process_birth",
+                            "daemon_process_birth",
+                            "workspace_lifecycle_path",
+                            "workspace_lifecycle_cid",
+                            "workspace_lifecycle_json",
+                            "prior_recovery_birth_cid",
+                            "observed_at_ms",
+                        }
+                        recovery_generation = recovery_birth.get("generation")
+                        if (
+                            set(recovery_birth) != recovery_fields
+                            or recovery_birth.get("schema")
+                            != PLAN_BOUND_MERGE_RECOVERY_BIRTH_SCHEMA
+                            or isinstance(recovery_generation, bool)
+                            or not isinstance(recovery_generation, int)
+                            or not 1
+                            <= recovery_generation
+                            <= MAX_PLAN_BOUND_WAVE_TRANSFERS
+                            or recovery_birth.get("revision_cid")
+                            != current.revision_cid
+                            or recovery_birth.get("slice_id")
+                            != current.slice_id
+                            or recovery_birth.get("lane_id") != current.lane_id
+                            or recovery_birth.get("execution_lease_cid")
+                            != current_cid
+                            or recovery_birth.get("proposal_handoff_cid")
+                            != current.proposal_handoff_cid
+                            or recovery_birth.get("canonical_claim_cid")
+                            != current.canonical_claim_cid
+                            or recovery_birth.get("canonical_claim_lease_id")
+                            != current.canonical_claim_lease_id
+                            or recovery_birth.get("custody_kind")
+                            != "settling_candidate"
+                            or recovery_birth.get(
+                                "authorized_workspace_lifecycle_cid"
+                            )
+                            != current.workspace_lifecycle_cid
+                            or recovery_birth.get("workspace_lifecycle_path")
+                            != current.workspace_lifecycle_path
+                            or recovery_birth.get("workspace_lifecycle_cid")
+                            != current.workspace_lifecycle_cid
+                            or recovery_birth.get("daemon_process_birth")
+                            != self._current_daemon_birth()
+                        ):
+                            raise PlanBoundDispatchError(
+                                "proposal recovery birth is mixed"
+                            )
+                    proposal_handoff = _secure_store_cas(
+                        store,
+                        current.proposal_handoff_cid,
+                    )
+                    if (
+                        proposal_handoff.get("outcome")
+                        != disposition[1].outcome
+                        or proposal_handoff.get("enqueue_fields")
+                        != dict(enqueue_fields)
+                        or proposal_handoff.get("branch_name") != branch_name
+                        or proposal_handoff.get("baseline_ref") != baseline_ref
+                        or proposal_handoff.get("implementation_commit")
+                        != implementation_commit
+                        or proposal_handoff.get("actual_changed_paths")
+                        != list(actual_paths)
+                    ):
+                        raise PlanBoundDispatchError(
+                            "proposal handoff changed before merge authorization"
+                        )
+                    barrier_payload = _secure_store_cas(store, barrier_cid)
+                    if (
+                        barrier_payload.get("revision_cid")
+                        != current.revision_cid
+                        or barrier_payload.get("slice_manifest_cid")
+                        != current.slice_manifest_cid
+                        or barrier_payload.get("decision") != "released"
+                    ):
+                        raise PlanBoundDispatchError(
+                            "merge authorization lost its released wave barrier"
+                        )
+                    claim_path = Path(current.canonical_claim_path)
+                    lifecycle_path = Path(current.workspace_lifecycle_path)
+                    with serialized_lock_update(claim_path):
+                        if recovery_birth is None:
+                            self._require_bound_claim(current)
+                        else:
+                            recovery_claim = stable_effect_json(claim_path)
+                            if (
+                                content_identity(recovery_claim)
+                                != current.canonical_claim_cid
+                                or recovery_claim.get("lease_id")
+                                != current.canonical_claim_lease_id
+                                or recovery_claim.get("task_id")
+                                != current.active_task_id
+                                or recovery_claim.get("canonical_task_cid")
+                                != current.active_task_cid
+                                or recovery_claim.get("pid")
+                                != current.daemon_process_birth.get("pid")
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "proposal recovery claim authority changed"
+                                )
+                        with serialized_lock_update(lifecycle_path):
+                            if recovery_birth is None:
+                                lifecycle_raw, observed_path, lifecycle_cid = (
+                                    self._read_exact_worktree_lifecycle(
+                                        execution_lease=current,
+                                        workspace_path=worktree_path,
+                                        required_state="settling",
+                                    )
+                                )
+                            else:
+                                from ..merge.worktree_lifecycle import (
+                                    WorkspaceLifecycleRecord,
+                                )
+
+                                lifecycle_raw, lifecycle_cid = (
+                                    stable_effect_record(lifecycle_path)
+                                )
+                                lifecycle = WorkspaceLifecycleRecord.from_dict(
+                                    lifecycle_raw
+                                )
+                                observed_path = (
+                                    self.worktree_lifecycle.workspace_path_for(
+                                        worktree_path
+                                    )
+                                )
+                                if (
+                                    lifecycle.state.value != "settling"
+                                    or lifecycle.owner.to_dict()
+                                    != current.daemon_process_birth
+                                    or lifecycle.workspace_path
+                                    != str(worktree_path)
+                                    or recovery_birth.get(
+                                        "workspace_lifecycle_json"
+                                    )
+                                    != (
+                                        json.dumps(
+                                            lifecycle_raw,
+                                            indent=2,
+                                            sort_keys=True,
+                                        )
+                                        + "\n"
+                                    )
+                                    or recovery_birth.get(
+                                        "workspace_lifecycle_cid"
+                                    )
+                                    != lifecycle_cid
+                                ):
+                                    raise PlanBoundDispatchError(
+                                        "proposal recovery lifecycle is not an "
+                                        "exact dead-owner settling record"
+                                    )
+                            final_head = self._resolved_git_commit(
+                                worktree_path,
+                                "HEAD",
+                            )
+                            final_paths = self._full_plan_bound_effect_paths(
+                                worktree_path,
+                                baseline_ref=baseline_ref,
+                            )
+                            if (
+                                observed_path != lifecycle_path
+                                or lifecycle_cid
+                                != current.workspace_lifecycle_cid
+                                or int(lifecycle_raw.get("fence") or 0)
+                                != current.workspace_fence
+                                or str(lifecycle_raw.get("lease_id") or "")
+                                != current.workspace_lease_id
+                                or final_head != implementation_commit
+                                or final_paths != actual_paths
+                            ):
+                                raise PlanBoundDispatchError(
+                                    "candidate or effect guards changed at merge enqueue"
+                                )
+                            authorized_at_ms = int(time.time() * 1000)
+                            authorization = {
+                                "schema": PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
+                                "revision_cid": current.revision_cid,
+                                "plan_root_cid": current.plan_root_cid,
+                                "execution_plan_cid": current.execution_plan_cid,
+                                "capacity_snapshot_id": current.capacity_snapshot_id,
+                                "slice_manifest_cid": current.slice_manifest_cid,
+                                "slice_id": current.slice_id,
+                                "lane_id": current.lane_id,
+                                "reassignment_cid": current.reassignment_cid,
+                                "task_id": current.active_task_id,
+                                "task_cid": current.active_task_cid,
+                                "process_birth_cid": current.process_birth_cid,
+                                "execution_lease_cid": current_cid,
+                                "proposal_handoff_cid": (
+                                    current.proposal_handoff_cid
+                                ),
+                                "recovery_birth_cid": recovery_birth_cid,
+                                "disposition_cid": disposition[0],
+                                "barrier_cid": barrier_cid,
+                                "outcome": disposition[1].outcome,
+                                "canonical_claim_cid": current.canonical_claim_cid,
+                                "workspace_lifecycle_cid": (
+                                    current.workspace_lifecycle_cid
+                                ),
+                                "workspace_fence": current.workspace_fence,
+                                "workspace_lease_id": current.workspace_lease_id,
+                                "workspace_path": current.workspace_path,
+                                "attempt": attempt,
+                                "branch_name": branch_name,
+                                "baseline_ref": baseline_ref,
+                                "implementation_commit": implementation_commit,
+                                "actual_changed_paths": list(actual_paths),
+                                "authorized_at_ms": authorized_at_ms,
+                            }
+                            authorization_cid = store.put_cas(authorization)
+                            if _secure_store_cas(store, authorization_cid) != authorization:
+                                raise PlanBoundDispatchError(
+                                    "merge authorization failed CAS round trip"
+                                )
+                            enqueue_fields_dict = dict(enqueue_fields)
+                            intent = {
+                                "schema": PLAN_BOUND_MERGE_ENQUEUE_INTENT_SCHEMA,
+                                "authorization_cid": authorization_cid,
+                                "enqueue_fields": enqueue_fields_dict,
+                                "enqueue_fields_cid": content_identity(
+                                    enqueue_fields_dict
+                                ),
+                                "prepared_at_ms": authorized_at_ms,
+                            }
+                            intent_cid = store.put_cas(intent)
+                            if _secure_store_cas(store, intent_cid) != intent:
+                                raise PlanBoundDispatchError(
+                                    "merge enqueue intent failed CAS round trip"
+                                )
+                            prepared = replace(
+                                current,
+                                generation=current.generation + 1,
+                                phase="merge_enqueue_prepared",
+                                prior_execution_lease_cid=current_cid,
+                                merge_enqueue_reached=True,
+                                merge_authorization_cid=authorization_cid,
+                                merge_enqueue_intent_cid=intent_cid,
+                            )
+                            prepared_cid = (
+                                _publish_plan_bound_execution_lease_locked(
+                                    store,
+                                    prepared,
+                                    expected_current_cid=current_cid,
+                                )
+                            )
+                            return prepared_cid, prepared
+
+        def _await_plan_bound_merge_turn(
+            self,
+            execution_lease: PlanBoundExecutionLease,
+        ) -> None:
+            """Serialize canonical queue handoff in immutable manifest order.
+
+            Provider work and proposal validation remain parallel.  The merge
+            train is globally serialized, but it can otherwise dequeue a dead
+            sibling's newly committed row before that sibling's CAS-bound
+            recovery child adopts its SETTLING lifecycle.  Requiring every
+            earlier manifest slice to reach authoritative ``merge_completed``
+            keeps the canonical train on the row whose exact owner is alive;
+            a crashed predecessor is restarted by the outer runner while later
+            lanes wait outside every store/claim/lifecycle lock.
+            """
+
+            timeout_ms = self._proposal_barrier_timeout_ms(execution_lease)
+            deadline = time.monotonic() + timeout_ms / 1000.0
+            adapter = ProductionParallelPlanAdapter(store)
+            while True:
+                pending: list[str] = []
+                with store._thread_lock:  # noqa: SLF001
+                    with store._guard():  # noqa: SLF001
+                        manifest_payload = _secure_store_cas(
+                            store,
+                            execution_lease.slice_manifest_cid,
+                        )
+                        manifest = ConfiguredBoardExecutionSlices.from_dict(
+                            manifest_payload
+                        )
+                        ordered = tuple(
+                            sorted(
+                                manifest.nonempty,
+                                key=lambda item: (item.lane_index, item.slice_id),
+                            )
+                        )
+                        terminal_failures = tuple(
+                            item.slice_id
+                            for item in ordered
+                            if _load_plan_bound_merge_terminal_failure_locked(
+                                store,
+                                revision_cid=execution_lease.revision_cid,
+                                slice_id=item.slice_id,
+                            )
+                            is not None
+                        )
+                        if terminal_failures:
+                            raise PlanBoundReplanRequired(
+                                "wave contains terminal canonical merge failure: "
+                                f"{sorted(terminal_failures)!r}"
+                            )
+                        current_indexes = tuple(
+                            index
+                            for index, item in enumerate(ordered)
+                            if item.slice_id == execution_lease.slice_id
+                        )
+                        if len(current_indexes) != 1:
+                            raise PlanBoundReplanRequired(
+                                "merge turn lost its immutable manifest slice"
+                            )
+                        for prior_slice in ordered[: current_indexes[0]]:
+                            reassignment = adapter._load_slice_reassignment_locked(  # noqa: SLF001
+                                revision_cid=execution_lease.revision_cid,
+                                slice_id=prior_slice.slice_id,
+                            )
+                            owner_lane = (
+                                prior_slice.lane_id
+                                if reassignment is None
+                                else reassignment[1].recipient_lane_id
+                            )
+                            prior = _load_plan_bound_execution_lease_locked(
+                                store,
+                                revision_cid=execution_lease.revision_cid,
+                                slice_id=prior_slice.slice_id,
+                                lane_id=owner_lane,
+                            )
+                            if prior is None or prior[1].phase != "merge_completed":
+                                pending.append(prior_slice.slice_id)
+                if not pending:
+                    return
+                if time.monotonic() >= deadline:
+                    raise PlanBoundReplanRequired(
+                        "canonical merge turn exceeded its compiled execution "
+                        f"bound waiting for slices {sorted(pending)!r}"
+                    )
+                time.sleep(0.05)
+
+        def _confirm_plan_bound_merge_enqueue(
+            self,
+            *,
+            prepared_cid: str,
+            prepared: PlanBoundExecutionLease,
+            request: Any,
+            enqueue_fields: Mapping[str, Any],
+        ) -> tuple[str, PlanBoundExecutionLease]:
+            """Persist the exact canonical queue receipt after enqueue."""
+
+            try:
+                self._require_queue_request_matches_intent(
+                    request,
+                    enqueue_fields,
+                )
+            except PlanBoundReplanRequired as exc:
+                self._quarantine_merge_request_mismatch(
+                    request,
+                    prepared=prepared,
+                    reason=f"enqueue_return_differs_from_intent:{exc}",
+                )
+                raise
+            durable_request = self.merge_queue.get(str(request.request_id))
+            if durable_request is None:
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue receipt is absent after enqueue"
+                )
+            try:
+                self._require_queue_request_matches_intent(
+                    durable_request,
+                    enqueue_fields,
+                )
+            except PlanBoundReplanRequired as exc:
+                self._quarantine_merge_request_mismatch(
+                    durable_request,
+                    prepared=prepared,
+                    reason=f"durable_queue_row_differs_from_intent:{exc}",
+                )
+                raise
+            if durable_request.status not in {
+                "pending",
+                "processing",
+                "completed",
+            }:
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue receipt is terminally unusable"
+                )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    observed = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+                    if observed != (prepared_cid, prepared):
+                        if (
+                            observed is not None
+                            and observed[1].phase == "merge_enqueue_confirmed"
+                            and observed[1].merge_request_id
+                            == str(durable_request.request_id)
+                        ):
+                            return observed
+                        raise PlanBoundReplanRequired(
+                            "merge enqueue confirmation lost its execution CAS"
+                        )
+                    intent = _secure_store_cas(
+                        store,
+                        prepared.merge_enqueue_intent_cid,
+                    )
+                    confirmed_at_ms = max(
+                        int(time.time() * 1000),
+                        int(intent["prepared_at_ms"]),
+                    )
+                    receipt = {
+                        "schema": PLAN_BOUND_MERGE_QUEUE_RECEIPT_SCHEMA,
+                        "authorization_cid": prepared.merge_authorization_cid,
+                        "intent_cid": prepared.merge_enqueue_intent_cid,
+                        "enqueue_fields_cid": intent["enqueue_fields_cid"],
+                        "request_id": str(durable_request.request_id),
+                        "dedupe_key": str(durable_request.dedupe_key),
+                        "observed_status": str(durable_request.status),
+                        "confirmed_at_ms": confirmed_at_ms,
+                    }
+                    receipt_cid = store.put_cas(receipt)
+                    if _secure_store_cas(store, receipt_cid) != receipt:
+                        raise PlanBoundReplanRequired(
+                            "merge queue receipt failed CAS round trip"
+                        )
+                    confirmed = replace(
+                        prepared,
+                        generation=prepared.generation + 1,
+                        phase="merge_enqueue_confirmed",
+                        prior_execution_lease_cid=prepared_cid,
+                        merge_request_id=str(durable_request.request_id),
+                        merge_queue_receipt_cid=receipt_cid,
+                    )
+                    confirmed_cid = _publish_plan_bound_execution_lease_locked(
+                        store,
+                        confirmed,
+                        expected_current_cid=prepared_cid,
+                    )
+                    return confirmed_cid, confirmed
+
+        def _bind_current_merge_recovery_birth_locked(
+            self,
+            *,
+            execution_lease_cid: str,
+            execution_lease: PlanBoundExecutionLease,
+        ) -> str:
+            """CAS-bind merge-only cleanup custody without replaying provider work.
+
+            The canonical lifecycle store has no process-identity adoption API.
+            Its cleanup capability is the exact lease/fence pair, so a recovery
+            child may use that pair only after this canonical-store record proves
+            the prior recovery process dead, the original claimant dead, and the
+            claim plus SETTLING lifecycle byte-identical under store -> claim ->
+            lifecycle guards.  The lifecycle itself is not rewritten here; the
+            existing canonical merge cleanup consumes its fence exactly once.
+            """
+
+            from ..control.lifecycle_orchestrator import (
+                ProcessIdentity as SupervisorProcessIdentity,
+            )
+            from ..merge.worktree_lifecycle import (
+                OwnerLiveness as WorktreeOwnerLiveness,
+            )
+            from ..merge.worktree_lifecycle import (
+                ProcessBirthIdentity as WorktreeProcessBirthIdentity,
+            )
+            from ..merge.worktree_lifecycle import (
+                WorkspaceLifecycleRecord,
+                current_process_birth,
+                owner_liveness,
+            )
+            from ..runtime.multi_supervisor_runner import (
+                LifecycleProfile,
+                _strict_plan_bound_process_fence_observation,
+            )
+
+            birth_binding = _load_plan_bound_process_birth_chain_locked(
+                store,
+                revision_cid=pinned.plan_bound_revision_cid,
+                slice_id=pinned.plan_bound_slice_id,
+                lane_id=pinned.plan_bound_lane_id,
+            )
+            if birth_binding is None:
+                raise PlanBoundReplanRequired(
+                    "merge recovery lacks a current accepted process birth"
+                )
+            current_birth_cid, typed_birth, birth_chain = birth_binding
+            birth = typed_birth.to_dict()
+            birth_chain_by_cid = dict(birth_chain)
+
+            def dead_supervisor_birth_chain_reaches(
+                start_cid: object,
+                expected_cid: str,
+            ) -> bool:
+                """Accept only bounded, exact, effectless supervisor restarts."""
+
+                current_cid = start_cid
+                seen: set[str] = set()
+                if expected_cid not in birth_chain_by_cid:
+                    return False
+                for _generation in range(MAX_PLAN_BOUND_WAVE_TRANSFERS + 1):
+                    if current_cid == expected_cid:
+                        return True
+                    if (
+                        not isinstance(current_cid, str)
+                        or not current_cid
+                        or current_cid in seen
+                    ):
+                        return False
+                    seen.add(current_cid)
+                    try:
+                        intermediate = birth_chain_by_cid.get(current_cid)
+                        if intermediate is None:
+                            return False
+                        intermediate_profile = LifecycleProfile.from_dict(
+                            intermediate.profile
+                        )
+                        intermediate_birth = (
+                            SupervisorProcessIdentity.from_dict(
+                                intermediate.process_birth
+                            )
+                        )
+                        intermediate_state, intermediate_tree = (
+                            _strict_plan_bound_process_fence_observation(
+                                intermediate_profile,
+                                intermediate_birth,
+                            )
+                        )
+                    except Exception:
+                        return False
+                    if (
+                        intermediate_state != "dead"
+                        or intermediate_tree is None
+                        or intermediate_tree.members
+                    ):
+                        return False
+                    current_cid = intermediate.prior_process_birth_cid
+                return current_cid == expected_cid
+
+            if (
+                birth.get("revision_cid") != pinned.plan_bound_revision_cid
+                or birth.get("slice_manifest_cid")
+                != pinned.plan_bound_slice_manifest_cid
+                or birth.get("slice_id") != pinned.plan_bound_slice_id
+                or birth.get("lane_id") != pinned.plan_bound_lane_id
+                or birth.get("task_ids") != list(task_ids)
+                or birth.get("task_cids") != list(task_cids)
+            ):
+                raise PlanBoundReplanRequired(
+                    "merge recovery process birth is mixed"
+                )
+            try:
+                supervisor_profile = LifecycleProfile.from_dict(
+                    birth["profile"]
+                )
+                supervisor_birth = SupervisorProcessIdentity.from_dict(
+                    birth["process_birth"]
+                )
+                original_daemon_birth = (
+                    WorktreeProcessBirthIdentity.from_dict(
+                        execution_lease.daemon_process_birth
+                    )
+                )
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "merge recovery supervisor birth is malformed"
+                ) from exc
+            daemon_birth = current_process_birth()
+            recovery_key = (
+                "plan-bound-merge-recovery-birth:"
+                f"{pinned.plan_bound_revision_cid}:"
+                f"{pinned.plan_bound_slice_id}:"
+                f"{pinned.plan_bound_lane_id}"
+            )
+            previous = _secure_store_continuation(store, recovery_key)
+            prior_recovery_birth_cid = ""
+            prior_recovery: Mapping[str, Any] | None = None
+            prior_recovery_daemon = original_daemon_birth
+            prior_supervisor_process_birth_cid = execution_lease.process_birth_cid
+            recovery_generation = 1
+            custody_kind = (
+                "canonical_queue"
+                if execution_lease.phase == "merge_enqueue_confirmed"
+                else "settling_candidate"
+            )
+            expected_recovery_fields = {
+                "schema",
+                "revision_cid",
+                "slice_manifest_cid",
+                "slice_id",
+                "lane_id",
+                "generation",
+                "execution_lease_cid",
+                "proposal_handoff_cid",
+                "merge_authorization_cid",
+                "merge_enqueue_intent_cid",
+                "supervisor_process_birth_cid",
+                "prior_supervisor_process_birth_cid",
+                "canonical_claim_cid",
+                "canonical_claim_lease_id",
+                "custody_kind",
+                "authorized_workspace_lifecycle_cid",
+                "lifecycle_owner_process_birth",
+                "prior_recovery_daemon_process_birth",
+                "daemon_process_birth",
+                "workspace_lifecycle_path",
+                "workspace_lifecycle_cid",
+                "workspace_lifecycle_json",
+                "prior_recovery_birth_cid",
+                "observed_at_ms",
+            }
+            if previous is not None:
+                if set(previous) != {
+                    "phase",
+                    "operation",
+                    "revision_cid",
+                    "slice_id",
+                    "lane_id",
+                    "recovery_birth_cid",
+                } or (
+                    previous.get("phase") != "committed"
+                    or previous.get("operation")
+                    != "plan_bound_merge_recovery_birth"
+                    or previous.get("revision_cid")
+                    != pinned.plan_bound_revision_cid
+                    or previous.get("slice_id")
+                    != pinned.plan_bound_slice_id
+                    or previous.get("lane_id")
+                    != pinned.plan_bound_lane_id
+                ):
+                    raise PlanBoundReplanRequired(
+                        "merge recovery birth pointer is malformed"
+                    )
+                prior_recovery_birth_cid = str(
+                    previous.get("recovery_birth_cid") or ""
+                )
+                prior = _secure_store_cas(store, prior_recovery_birth_cid)
+                if (
+                    set(prior) != expected_recovery_fields
+                    or prior.get("schema")
+                    != PLAN_BOUND_MERGE_RECOVERY_BIRTH_SCHEMA
+                    or prior.get("revision_cid")
+                    != pinned.plan_bound_revision_cid
+                    or prior.get("slice_manifest_cid")
+                    != pinned.plan_bound_slice_manifest_cid
+                    or prior.get("slice_id") != pinned.plan_bound_slice_id
+                    or prior.get("lane_id") != pinned.plan_bound_lane_id
+                    or prior.get("proposal_handoff_cid")
+                    != execution_lease.proposal_handoff_cid
+                    or prior.get("canonical_claim_cid")
+                    != execution_lease.canonical_claim_cid
+                    or prior.get("canonical_claim_lease_id")
+                    != execution_lease.canonical_claim_lease_id
+                    or prior.get("custody_kind")
+                    not in {"settling_candidate", "canonical_queue"}
+                    or prior.get("authorized_workspace_lifecycle_cid")
+                    != execution_lease.workspace_lifecycle_cid
+                    or prior.get("workspace_lifecycle_path")
+                    != execution_lease.workspace_lifecycle_path
+                    or not isinstance(prior.get("workspace_lifecycle_json"), str)
+                    or not isinstance(prior.get("daemon_process_birth"), Mapping)
+                    or (
+                        prior.get("custody_kind") == "settling_candidate"
+                        and (
+                            prior.get("workspace_lifecycle_cid")
+                            != execution_lease.workspace_lifecycle_cid
+                            or not prior.get("workspace_lifecycle_json")
+                        )
+                    )
+                    or (
+                        prior.get("custody_kind") == "canonical_queue"
+                        and (
+                            prior.get("workspace_lifecycle_cid") != ""
+                            or prior.get("workspace_lifecycle_json") != ""
+                        )
+                    )
+                ):
+                    raise PlanBoundReplanRequired(
+                        "prior merge recovery birth is malformed or mixed"
+                    )
+                prior_generation = prior.get("generation")
+                if (
+                    isinstance(prior_generation, bool)
+                    or not isinstance(prior_generation, int)
+                    or not 1 <= prior_generation < MAX_PLAN_BOUND_WAVE_TRANSFERS
+                ):
+                    raise PlanBoundReplanRequired(
+                        "prior merge recovery generation exhausted its bound"
+                    )
+                recovery_generation = prior_generation + 1
+                prior_recovery = prior
+                prior_recovery_daemon = WorktreeProcessBirthIdentity.from_dict(
+                    prior["daemon_process_birth"]
+                )
+                prior_supervisor_process_birth_cid = str(
+                    prior["supervisor_process_birth_cid"]
+                )
+
+            supervisor_state, _tree = (
+                _strict_plan_bound_process_fence_observation(
+                    supervisor_profile,
+                    supervisor_birth,
+                )
+            )
+            same_recovery_process = bool(
+                prior_recovery is not None
+                and prior_recovery_daemon.to_dict() == daemon_birth.to_dict()
+                and prior_supervisor_process_birth_cid
+                == current_birth_cid
+                and prior_recovery.get("execution_lease_cid")
+                == execution_lease_cid
+                and prior_recovery.get("custody_kind") == custody_kind
+            )
+            dead_supervisor_predecessors = (
+                same_recovery_process
+                or dead_supervisor_birth_chain_reaches(
+                    birth.get("prior_process_birth_cid"),
+                    prior_supervisor_process_birth_cid,
+                )
+            )
+            if (
+                supervisor_state != "alive"
+                or supervisor_birth.to_dict() != birth["process_birth"]
+                or (
+                    not same_recovery_process
+                    and not dead_supervisor_predecessors
+                )
+                or daemon_birth.pid != os.getpid()
+                or daemon_birth.parent_pid != supervisor_birth.pid
+                or daemon_birth.start_time_ticks <= 0
+                or (
+                    not same_recovery_process
+                    and owner_liveness(prior_recovery_daemon)
+                    is not WorktreeOwnerLiveness.DEAD
+                )
+                or owner_liveness(original_daemon_birth)
+                is not WorktreeOwnerLiveness.DEAD
+            ):
+                raise PlanBoundReplanRequired(
+                    "merge recovery lacks an exact dead predecessor and live "
+                    "gated process tree"
+                )
+
+            lifecycle_path = Path(execution_lease.workspace_lifecycle_path)
+            lifecycle: WorkspaceLifecycleRecord | None = None
+            lifecycle_cid = ""
+            lifecycle_json = ""
+            if custody_kind == "settling_candidate":
+                claim_path = Path(execution_lease.canonical_claim_path)
+                with serialized_lock_update(claim_path):
+                    claim = stable_effect_json(claim_path)
+                    if (
+                        content_identity(claim)
+                        != execution_lease.canonical_claim_cid
+                        or claim.get("lease_id")
+                        != execution_lease.canonical_claim_lease_id
+                        or claim.get("task_id")
+                        != execution_lease.active_task_id
+                        or claim.get("canonical_task_cid")
+                        != execution_lease.active_task_cid
+                        or claim.get("pid") != original_daemon_birth.pid
+                    ):
+                        raise PlanBoundReplanRequired(
+                            "merge recovery canonical task claim changed"
+                        )
+                    with serialized_lock_update(lifecycle_path):
+                        lifecycle_raw, lifecycle_cid = stable_effect_record(
+                            lifecycle_path
+                        )
+                        lifecycle_json = (
+                            json.dumps(
+                                lifecycle_raw,
+                                indent=2,
+                                sort_keys=True,
+                            )
+                            + "\n"
+                        )
+                        try:
+                            lifecycle = WorkspaceLifecycleRecord.from_dict(
+                                lifecycle_raw
+                            )
+                        except Exception as exc:
+                            raise PlanBoundReplanRequired(
+                                "merge recovery lifecycle is malformed"
+                            ) from exc
+                        if (
+                            lifecycle.to_dict() != lifecycle_raw
+                            or lifecycle.state.value != "settling"
+                            or lifecycle.task_id
+                            != execution_lease.active_task_id
+                            or lifecycle.canonical_task_cid
+                            != execution_lease.active_task_cid
+                            or lifecycle.owner.to_dict()
+                            != original_daemon_birth.to_dict()
+                            or lifecycle_path
+                            != self.worktree_lifecycle.workspace_path_for(
+                                execution_lease.workspace_path
+                            )
+                            or lifecycle.workspace_path
+                            != execution_lease.workspace_path
+                            or lifecycle.record_id
+                            != execution_lease.workspace_record_id
+                            or lifecycle.lease_id
+                            != execution_lease.workspace_lease_id
+                            or lifecycle.fence
+                            != execution_lease.workspace_fence
+                            or lifecycle_cid
+                            != execution_lease.workspace_lifecycle_cid
+                            or lifecycle.state_dir
+                            != str(
+                                self.state_path.parent.resolve(strict=False)
+                            )
+                            or lifecycle.repo_root
+                            != str(self.repo_root.resolve(strict=False))
+                        ):
+                            raise PlanBoundReplanRequired(
+                                "merge recovery lifecycle changed before custody"
+                            )
+
+            if same_recovery_process:
+                assert prior_recovery is not None
+                if (
+                    prior_recovery.get("workspace_lifecycle_json")
+                    != lifecycle_json
+                ):
+                    raise PlanBoundReplanRequired(
+                        "current merge recovery lifecycle evidence changed"
+                    )
+                if lifecycle is not None:
+                    self._active_worktree_lifecycle = lifecycle
+                return prior_recovery_birth_cid
+
+            observed_at_ms = int(time.time() * 1000)
+            recovery = {
+                "schema": PLAN_BOUND_MERGE_RECOVERY_BIRTH_SCHEMA,
+                "revision_cid": pinned.plan_bound_revision_cid,
+                "slice_manifest_cid": pinned.plan_bound_slice_manifest_cid,
+                "slice_id": pinned.plan_bound_slice_id,
+                "lane_id": pinned.plan_bound_lane_id,
+                "generation": recovery_generation,
+                "execution_lease_cid": execution_lease_cid,
+                "proposal_handoff_cid": execution_lease.proposal_handoff_cid,
+                "merge_authorization_cid": (
+                    execution_lease.merge_authorization_cid
+                ),
+                "merge_enqueue_intent_cid": (
+                    execution_lease.merge_enqueue_intent_cid
+                ),
+                "supervisor_process_birth_cid": current_birth_cid,
+                "prior_supervisor_process_birth_cid": (
+                    prior_supervisor_process_birth_cid
+                ),
+                "canonical_claim_cid": execution_lease.canonical_claim_cid,
+                "canonical_claim_lease_id": (
+                    execution_lease.canonical_claim_lease_id
+                ),
+                "custody_kind": custody_kind,
+                "authorized_workspace_lifecycle_cid": (
+                    execution_lease.workspace_lifecycle_cid
+                ),
+                "lifecycle_owner_process_birth": (
+                    original_daemon_birth.to_dict()
+                ),
+                "prior_recovery_daemon_process_birth": (
+                    prior_recovery_daemon.to_dict()
+                ),
+                "daemon_process_birth": daemon_birth.to_dict(),
+                "workspace_lifecycle_path": str(lifecycle_path),
+                "workspace_lifecycle_cid": lifecycle_cid,
+                "workspace_lifecycle_json": lifecycle_json,
+                "prior_recovery_birth_cid": prior_recovery_birth_cid,
+                "observed_at_ms": observed_at_ms,
+            }
+            recovery_birth_cid = store.put_cas(recovery)
+            if _secure_store_cas(store, recovery_birth_cid) != recovery:
+                raise PlanBoundReplanRequired(
+                    "merge recovery birth failed CAS round trip"
+                )
+            continuation = {
+                "phase": "committed",
+                "operation": "plan_bound_merge_recovery_birth",
+                "revision_cid": pinned.plan_bound_revision_cid,
+                "slice_id": pinned.plan_bound_slice_id,
+                "lane_id": pinned.plan_bound_lane_id,
+                "recovery_birth_cid": recovery_birth_cid,
+            }
+            store.put_continuation(recovery_key, continuation)
+            if _secure_store_continuation(store, recovery_key) != continuation:
+                raise PlanBoundReplanRequired(
+                    "merge recovery birth pointer failed durable round trip"
+                )
+            # Only the process named by the durable recovery record receives
+            # the canonical lifecycle capability in memory.  No provider or
+            # task-claim authority is transferred.
+            if lifecycle is not None:
+                self._active_worktree_lifecycle = lifecycle
+            return recovery_birth_cid
+
+        def _drain_plan_bound_merge_request(
+            self,
+            *,
+            request_id: str,
+            execution_lease: PlanBoundExecutionLease,
+            enqueue_fields: Mapping[str, Any],
+        ) -> Any:
+            """Drive one confirmed request through the canonical merge train.
+
+            Whole-wave release allows all disjoint lanes to enqueue together.
+            A train lease may make an individual lane's first opportunistic
+            consume defer, so that lane must remain alive (or be restart-
+            adoptable) until its own durable row is terminal.  Every attempt
+            below delegates to the existing serialized train, which performs
+            the target rebase, validation, and completion callback.
+            """
+
+            timeout_ms = self._proposal_barrier_timeout_ms(execution_lease)
+            deadline = time.monotonic() + timeout_ms / 1000.0
+            last_exception: Exception | None = None
+            last_result: Mapping[str, Any] = {}
+            while True:
+                request = self.merge_queue.get(request_id)
+                if request is None:
+                    raise PlanBoundReplanRequired(
+                        "confirmed canonical merge request disappeared"
+                    )
+                try:
+                    self._require_queue_request_matches_intent(
+                        request,
+                        enqueue_fields,
+                    )
+                except PlanBoundReplanRequired as exc:
+                    self._quarantine_merge_request_mismatch(
+                        request,
+                        prepared=execution_lease,
+                        reason=f"merge_drain_row_differs_from_intent:{exc}",
+                    )
+                    raise
+                if request.status == "completed":
+                    return request
+                if request.status not in {"pending", "processing"}:
+                    result_reason = str(
+                        last_result.get("reason")
+                        or (
+                            last_result.get("merge_result", {}).get("reason")
+                            if isinstance(
+                                last_result.get("merge_result"), Mapping
+                            )
+                            else ""
+                        )
+                        or getattr(request, "failure_reason", "")
+                        or request.status
+                    )
+                    self._publish_plan_bound_merge_terminal_failure(
+                        execution_lease=execution_lease,
+                        request=request,
+                        reason_codes=(
+                            "canonical_merge_request_terminal",
+                            result_reason,
+                        ),
+                    )
+                    raise PlanBoundReplanRequired(
+                        "canonical merge request became terminally unusable: "
+                        + result_reason
+                    )
+                if time.monotonic() >= deadline:
+                    detail = (
+                        ""
+                        if last_exception is None
+                        else f" ({type(last_exception).__name__})"
+                    )
+                    raise PlanBoundReplanRequired(
+                        "canonical merge request exceeded its compiled "
+                        f"execution bound{detail}"
+                    )
+                try:
+                    consume_result = self._consume_one_merge_candidate()
+                    if isinstance(consume_result, Mapping):
+                        last_result = dict(consume_result)
+                    last_exception = None
+                except Exception as exc:
+                    # Another canonical train may own the lease.  Poll the
+                    # durable row outside all queue/store/lifecycle locks and
+                    # retry within the compiler-owned execution bound.
+                    last_exception = exc
+                time.sleep(0.05)
+
+        def _mark_plan_bound_merge_completed(
+            self,
+            *,
+            lease_cid: str,
+            execution_lease: PlanBoundExecutionLease,
+            request: Any,
+        ) -> tuple[str, PlanBoundExecutionLease]:
+            """Bind queue completion and canonical task acceptance in one CAS."""
+
+            if str(getattr(request, "status", "")) != "completed":
+                raise PlanBoundReplanRequired(
+                    "merge completion transition lacks a completed queue row"
+                )
+            # Recovery deliberately disables the daemon's ordinary task
+            # loader so it cannot reselect/replay provider work.  Completion
+            # still needs authoritative evidence that the canonical merge
+            # callback accepted the exact task.  Read one clean, tracked board
+            # blob from the *current* HEAD and parse those very bytes; a peer
+            # may legitimately have advanced HEAD after the immutable wave
+            # was compiled.
+            try:
+                from ..runtime.configured_board_scheduler import (
+                    _git_identity as configured_board_git_identity,
+                )
+                from ..runtime.configured_board_scheduler import (
+                    _tracked_head_snapshot,
+                )
+
+                completion_head, _completion_tree = (
+                    configured_board_git_identity(accepted_tree_root)
+                )
+                completion_board_bytes, _completion_board_revision = (
+                    _tracked_head_snapshot(
+                        repo_root=accepted_tree_root,
+                        path=taskboard_path,
+                        source_head=completion_head,
+                    )
+                )
+                tasks = daemon_module.parse_task_text(
+                    completion_board_bytes.decode("utf-8"),
+                    path=taskboard_path,
+                    task_header_prefix=self.task_header_prefix,
+                )
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "completed merge row lacks a stable current board"
+                ) from exc
+            matching = [
+                task
+                for task in tasks
+                if task.task_id == execution_lease.active_task_id
+                and self._canonical_ref(task)
+                == execution_lease.active_task_cid
+            ]
+            if len(matching) != 1 or str(matching[0].status) != "completed":
+                raise PlanBoundReplanRequired(
+                    "completed merge row lacks canonical task acceptance"
+                )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    current = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=execution_lease.revision_cid,
+                        slice_id=execution_lease.slice_id,
+                        lane_id=execution_lease.lane_id,
+                    )
+                    if current is not None and current[1].phase == "merge_completed":
+                        return current
+                    if current != (lease_cid, execution_lease):
+                        raise PlanBoundReplanRequired(
+                            "merge completion lost its execution lease CAS"
+                        )
+                    intent = _secure_store_cas(
+                        store,
+                        execution_lease.merge_enqueue_intent_cid,
+                    )
+                    completed_at_ms = max(
+                        int(time.time() * 1000),
+                        int(intent["prepared_at_ms"]),
+                    )
+                    receipt = {
+                        "schema": PLAN_BOUND_MERGE_QUEUE_RECEIPT_SCHEMA,
+                        "authorization_cid": (
+                            execution_lease.merge_authorization_cid
+                        ),
+                        "intent_cid": execution_lease.merge_enqueue_intent_cid,
+                        "enqueue_fields_cid": intent["enqueue_fields_cid"],
+                        "request_id": execution_lease.merge_request_id,
+                        "dedupe_key": str(request.dedupe_key),
+                        "observed_status": "completed",
+                        "confirmed_at_ms": completed_at_ms,
+                    }
+                    receipt_cid = store.put_cas(receipt)
+                    if _secure_store_cas(store, receipt_cid) != receipt:
+                        raise PlanBoundReplanRequired(
+                            "merge completion receipt failed CAS round trip"
+                        )
+                    completed = replace(
+                        execution_lease,
+                        generation=execution_lease.generation + 1,
+                        phase="merge_completed",
+                        prior_execution_lease_cid=lease_cid,
+                        merge_queue_receipt_cid=receipt_cid,
+                    )
+                    completed_cid = _publish_plan_bound_execution_lease_locked(
+                        store,
+                        completed,
+                        expected_current_cid=lease_cid,
+                    )
+                    return completed_cid, completed
+
+        def _recover_plan_bound_merge_enqueue(
+            self,
+            lease_cid: str,
+            lease: PlanBoundExecutionLease,
+        ) -> dict[str, Any]:
+            """Adopt a prepared/confirmed queue handoff without provider replay."""
+
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    recovery_birth_cid = (
+                        self._bind_current_merge_recovery_birth_locked(
+                            execution_lease_cid=lease_cid,
+                            execution_lease=lease,
+                        )
+                    )
+                    intent = _secure_store_cas(
+                        store,
+                        lease.merge_enqueue_intent_cid,
+                    )
+                    enqueue_fields = dict(intent["enqueue_fields"])
+            if lease.phase == "merge_enqueue_prepared":
+                try:
+                    request = self.merge_queue.enqueue(**enqueue_fields)
+                except Exception as exc:
+                    raise PlanBoundReplanRequired(
+                        "canonical merge enqueue recovery failed"
+                    ) from exc
+                try:
+                    self._require_queue_request_matches_intent(
+                        request,
+                        enqueue_fields,
+                    )
+                except PlanBoundReplanRequired as exc:
+                    self._quarantine_merge_request_mismatch(
+                        request,
+                        prepared=lease,
+                        reason=(
+                            "deduplicated_queue_row_differs_from_intent:"
+                            f"{exc}"
+                        ),
+                    )
+                    raise
+                lease_cid, lease = self._confirm_plan_bound_merge_enqueue(
+                    prepared_cid=lease_cid,
+                    prepared=lease,
+                    request=request,
+                    enqueue_fields=enqueue_fields,
+                )
+            else:
+                request = self.merge_queue.get(lease.merge_request_id)
+                if request is None:
+                    raise PlanBoundReplanRequired(
+                        "confirmed canonical merge request disappeared"
+                    )
+                try:
+                    self._require_queue_request_matches_intent(
+                        request,
+                        enqueue_fields,
+                    )
+                except PlanBoundReplanRequired as exc:
+                    self._quarantine_merge_request_mismatch(
+                        request,
+                        prepared=lease,
+                        reason=f"confirmed_queue_row_differs_from_intent:{exc}",
+                    )
+                    raise
+            completed_request = self._drain_plan_bound_merge_request(
+                request_id=str(request.request_id),
+                execution_lease=lease,
+                enqueue_fields=enqueue_fields,
+            )
+            completed_cid, _completed_lease = (
+                self._mark_plan_bound_merge_completed(
+                    lease_cid=lease_cid,
+                    execution_lease=lease,
+                    request=completed_request,
+                )
+            )
+            return {
+                "reason": "plan_bound_merge_enqueue_recovered",
+                "request_id": str(request.request_id),
+                "execution_lease_cid": completed_cid,
+                "merge_recovery_birth_cid": recovery_birth_cid,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "merge_request_status": completed_request.status,
+            }
+
+        def _recover_plan_bound_proposal_ready(
+            self,
+            lease_cid: str,
+            lease: PlanBoundExecutionLease,
+        ) -> dict[str, Any]:
+            """Resume an accepted pre-barrier candidate without provider replay."""
+
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    recovery_birth_cid = (
+                        self._bind_current_merge_recovery_birth_locked(
+                            execution_lease_cid=lease_cid,
+                            execution_lease=lease,
+                        )
+                    )
+                    handoff = _secure_store_cas(
+                        store,
+                        lease.proposal_handoff_cid,
+                    )
+                    disposition = (
+                        _load_plan_bound_proposal_disposition_locked(
+                            store,
+                            revision_cid=lease.revision_cid,
+                            slice_id=lease.slice_id,
+                        )
+                    )
+                    if (
+                        disposition is None
+                        or disposition[1].execution_lease_cid != lease_cid
+                        or disposition[1].outcome != handoff.get("outcome")
+                    ):
+                        raise PlanBoundReplanRequired(
+                            "proposal recovery lost its immutable disposition"
+                        )
+                    enqueue_fields = dict(handoff["enqueue_fields"])
+                    timeout_ms = self._proposal_barrier_timeout_ms(lease)
+            barrier_cid, barrier = ProductionParallelPlanAdapter(
+                store
+            ).await_wave_diff_barrier(
+                revision_cid=lease.revision_cid,
+                slice_manifest_cid=lease.slice_manifest_cid,
+                timeout_ms=timeout_ms,
+            )
+            if barrier.decision != "released":
+                raise PlanBoundReplanRequired(
+                    "recovered proposal barrier denied merge admission"
+                )
+            self._await_plan_bound_merge_turn(lease)
+            prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
+                enqueue_fields=enqueue_fields,
+                barrier_cid=barrier_cid,
+                worktree_path=Path(str(handoff["workspace_path"])),
+                baseline_ref=str(handoff["baseline_ref"]),
+                implementation_commit=str(handoff["implementation_commit"]),
+                actual_paths=tuple(handoff["actual_changed_paths"]),
+                branch_name=str(handoff["branch_name"]),
+                attempt=int(handoff["attempt"]),
+                recovery_birth_cid=recovery_birth_cid,
+            )
+            try:
+                request = self.merge_queue.enqueue(**enqueue_fields)
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "recovered proposal canonical enqueue failed"
+                ) from exc
+            confirmed_cid, confirmed = self._confirm_plan_bound_merge_enqueue(
+                prepared_cid=prepared_cid,
+                prepared=prepared,
+                request=request,
+                enqueue_fields=enqueue_fields,
+            )
+            completed_request = self._drain_plan_bound_merge_request(
+                request_id=str(request.request_id),
+                execution_lease=confirmed,
+                enqueue_fields=enqueue_fields,
+            )
+            completed_cid, _completed = self._mark_plan_bound_merge_completed(
+                lease_cid=confirmed_cid,
+                execution_lease=confirmed,
+                request=completed_request,
+            )
+            return {
+                "reason": "plan_bound_proposal_recovered",
+                "request_id": str(request.request_id),
+                "execution_lease_cid": completed_cid,
+                "merge_recovery_birth_cid": recovery_birth_cid,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "merge_request_status": completed_request.status,
+            }
+
+        def run_once(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            """Resume only a durable merge handoff before ordinary selection."""
+
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    current = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=pinned.plan_bound_revision_cid,
+                        slice_id=pinned.plan_bound_slice_id,
+                        lane_id=pinned.plan_bound_lane_id,
+                    )
+            if current is not None and current[1].phase in {
+                "merge_enqueue_prepared",
+                "merge_enqueue_confirmed",
+            }:
+                return self._recover_plan_bound_merge_enqueue(*current)
+            if current is not None and current[1].phase == "proposal_ready":
+                return self._recover_plan_bound_proposal_ready(*current)
+            if current is not None and current[1].phase == "merge_completed":
+                return {
+                    "reason": "plan_bound_merge_already_completed",
+                    "execution_lease_cid": current[0],
+                    "request_id": current[1].merge_request_id,
+                    "provider_dispatched": False,
+                    "attempt_consumed": False,
+                    "merge_request_status": "completed",
+                }
+            return super().run_once(*args, **kwargs)
+
+        def _enqueue_validated_worktree(
+            self,
+            *,
+            state: Any,
+            task: Any,
+            attempt: int,
+            branch_name: str,
+            baseline_ref: str,
+            worktree_path: Path,
+            implementation_commit: str,
+            commit_result: Mapping[str, Any],
+            validation_result: Mapping[str, Any],
+            changed_submodule_paths: Sequence[str] | None = None,
+        ) -> dict[str, Any]:
+            """Release the existing merge enqueue only after whole-wave ALLOW."""
+
+            resolved_baseline = self._resolved_git_commit(
+                worktree_path,
+                baseline_ref,
+            )
+            resolved_implementation = self._resolved_git_commit(
+                worktree_path,
+                implementation_commit,
+            )
+            current_head = self._resolved_git_commit(
+                worktree_path,
+                "HEAD",
+            )
+            if current_head != resolved_implementation:
+                raise PlanBoundDispatchError(
+                    "candidate HEAD changed before proposal barrier"
+                )
+            actual_paths = self._full_plan_bound_effect_paths(
+                worktree_path,
+                baseline_ref=resolved_baseline,
+            )
+            proposal_gate = validation_result.get("proposal_gate")
+            if not isinstance(proposal_gate, Mapping):
+                raise PlanBoundDispatchError(
+                    "validated candidate lacks canonical proposal evidence"
+                )
+            proposal_id = str(proposal_gate.get("proposal_id") or "")
+            proposal_receipt_id = str(proposal_gate.get("receipt_id") or "")
+            compact_paths = {
+                str(path).strip()
+                for path in tuple(proposal_gate.get("changed_paths") or ())
+                if str(path).strip()
+            }
+            owned_scope = self._proposal_scope_paths(task)
+            full_paths_owned = all(
+                any(
+                    self._path_matches_scope(path, pattern)
+                    for pattern in owned_scope
+                )
+                for path in actual_paths
+            )
+            if (
+                proposal_gate.get("accepted") is True
+                and proposal_id
+                and proposal_receipt_id
+                and actual_paths
+                and not full_paths_owned
+            ):
+                self._publish_proposal_disposition_and_wait(
+                    outcome="rejected",
+                    baseline_ref=resolved_baseline,
+                    implementation_commit=resolved_implementation,
+                    proposal_id=proposal_id,
+                    proposal_receipt_id=proposal_receipt_id,
+                    reason_codes=(
+                        "full_diff_path_outside_scope",
+                        "path_outside_scope",
+                    ),
+                    actual_changed_paths=actual_paths,
+                )
+                raise PlanBoundReplanRequired(
+                    "independent full diff crossed the plan-bound task scope"
+                )
+            if (
+                proposal_gate.get("accepted") is not True
+                or not proposal_id
+                or not proposal_receipt_id
+                or not actual_paths
+                or not compact_paths.issubset(set(actual_paths))
+            ):
+                raise PlanBoundDispatchError(
+                    "validated candidate proposal evidence is partial"
+                )
+            canonical_submodule_paths = tuple(
+                changed_submodule_paths
+                if changed_submodule_paths is not None
+                else self._committed_submodule_paths(
+                    commit_result.get("submodule_results") or []
+                )
+            )
+            proposal_enqueue_fields = (
+                self._capture_plan_bound_enqueue_fields(
+                    branch_name=branch_name,
+                    implementation_commit=resolved_implementation,
+                    baseline_ref=resolved_baseline,
+                    worktree_path=worktree_path,
+                    task=task,
+                    attempt=attempt,
+                    changed_submodule_paths=canonical_submodule_paths,
+                    validation_result=validation_result,
+                )
+            )
+            barrier_cid, _barrier = self._publish_proposal_disposition_and_wait(
+                outcome="changed",
+                baseline_ref=resolved_baseline,
+                implementation_commit=resolved_implementation,
+                proposal_id=proposal_id,
+                proposal_receipt_id=proposal_receipt_id,
+                reason_codes=(),
+                actual_changed_paths=actual_paths,
+                enqueue_fields=proposal_enqueue_fields,
+                attempt=attempt,
+                branch_name=branch_name,
+            )
+            _turn_cid, turn_lease = self._load_execution_lease(
+                phases=("proposal_ready",)
+            )
+            self._await_plan_bound_merge_turn(turn_lease)
+            original_enqueue = self.merge_queue.enqueue
+            captured_enqueue_fields: dict[str, Any] = {}
+
+            def guarded_enqueue(*positional: Any, **keyword: Any) -> Any:
+                enqueue_fields = self._canonical_merge_enqueue_fields(
+                    positional,
+                    keyword,
+                )
+                if enqueue_fields != proposal_enqueue_fields:
+                    raise PlanBoundReplanRequired(
+                        "canonical enqueue fields changed after wave release"
+                    )
+                captured_enqueue_fields.update(enqueue_fields)
+                prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
+                    enqueue_fields=enqueue_fields,
+                    barrier_cid=barrier_cid,
+                    worktree_path=worktree_path,
+                    baseline_ref=resolved_baseline,
+                    implementation_commit=resolved_implementation,
+                    actual_paths=actual_paths,
+                    branch_name=branch_name,
+                    attempt=attempt,
+                )
+                request = original_enqueue(**enqueue_fields)
+                self._confirm_plan_bound_merge_enqueue(
+                    prepared_cid=prepared_cid,
+                    prepared=prepared,
+                    request=request,
+                    enqueue_fields=enqueue_fields,
+                )
+                return request
+
+            self.merge_queue.enqueue = guarded_enqueue
+            try:
+                result = super()._enqueue_validated_worktree(
+                    state=state,
+                    task=task,
+                    attempt=attempt,
+                    branch_name=branch_name,
+                    baseline_ref=resolved_baseline,
+                    worktree_path=worktree_path,
+                    implementation_commit=resolved_implementation,
+                    commit_result=commit_result,
+                    validation_result=validation_result,
+                    changed_submodule_paths=changed_submodule_paths,
+                )
+            finally:
+                self.merge_queue.enqueue = original_enqueue
+            confirmed = self._load_execution_lease(
+                phases=("merge_enqueue_confirmed",)
+            )
+            if str(result.get("request_id") or "") != confirmed[1].merge_request_id:
+                raise PlanBoundReplanRequired(
+                    "canonical merge result differs from its durable receipt"
+                )
+            completed_request = self._drain_plan_bound_merge_request(
+                request_id=confirmed[1].merge_request_id,
+                execution_lease=confirmed[1],
+                enqueue_fields=captured_enqueue_fields,
+            )
+            self._mark_plan_bound_merge_completed(
+                lease_cid=confirmed[0],
+                execution_lease=confirmed[1],
+                request=completed_request,
+            )
+            return result
+
+        def _release_pooled_worktree_lease(
+            self,
+            worktree_path: Path,
+            *,
+            reason: str,
+            reusable: bool = True,
+            finalize_lifecycle: bool = True,
+        ) -> dict[str, Any]:
+            """Keep the exact candidate lease alive through queue admission.
+
+            The canonical daemon ordinarily releases a pooled checkout before
+            it constructs the merge request.  A plan-bound child must still
+            revalidate the exact SETTLING lifecycle and complete diff at that
+            last pre-enqueue boundary, so its checkout stays owned until the
+            canonical post-enqueue lifecycle handoff/merge cleanup.
+            """
+
+            if reason == "merge_queue_handoff" and not finalize_lifecycle:
+                return {
+                    "attempted": False,
+                    "released": False,
+                    "reason": "plan_bound_queue_authorization_pending",
+                    "worktree_path": str(worktree_path),
+                }
+            return super()._release_pooled_worktree_lease(
+                worktree_path,
+                reason=reason,
+                reusable=reusable,
+                finalize_lifecycle=finalize_lifecycle,
+            )
+
         def _validate_implementation_patch(
             self,
             workspace_path: Path,
@@ -17352,98 +20417,36 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     }
                 )
             )
-            if (
-                bool(getattr(result, "accepted", False))
-                or "path_outside_scope" not in reason_codes
-            ):
+            if bool(getattr(result, "accepted", False)):
                 return result
 
             proposal = getattr(result, "proposal", None)
             receipt = getattr(result, "receipt", None)
             proposal_id = str(getattr(proposal, "proposal_id", "") or "")
             receipt_id = str(getattr(receipt, "receipt_id", "") or "")
-            changed_paths = tuple(
-                sorted(
-                    {
-                        str(path).strip()
-                        for path in tuple(
-                            getattr(proposal, "changed_paths", ()) or ()
-                        )
-                        if str(path).strip()
-                    }
-                )
-            )
-            if not proposal_id or not receipt_id or not changed_paths:
+            if not proposal_id or not receipt_id or not reason_codes:
                 raise PlanBoundDispatchError(
-                    "typed proposal scope rejection is missing canonical evidence"
+                    "typed proposal rejection is missing canonical evidence"
                 )
-            current_cid, current = self._load_execution_lease(
-                phases=("provider_ready",)
+            resolved_baseline = self._resolved_git_commit(
+                workspace_path,
+                str(kwargs.get("baseline_ref") or "HEAD"),
             )
-            task_pair = (
-                str(getattr(task, "task_id", "") or ""),
-                str(self._canonical_ref(task) or ""),
+            changed_paths = self._full_plan_bound_effect_paths(
+                workspace_path,
+                baseline_ref=resolved_baseline,
             )
-            if task_pair != (current.active_task_id, current.active_task_cid):
-                raise PlanBoundDispatchError(
-                    "proposal scope rejection crossed the canonical task pair"
-                )
-            claim_path = Path(current.canonical_claim_path)
-            lifecycle_path = Path(current.workspace_lifecycle_path)
-            with store._thread_lock:  # noqa: SLF001
-                with store._guard():  # noqa: SLF001
-                    observed = _load_plan_bound_execution_lease_locked(
-                        store,
-                        revision_cid=pinned.plan_bound_revision_cid,
-                        slice_id=pinned.plan_bound_slice_id,
-                        lane_id=pinned.plan_bound_lane_id,
-                    )
-                    if observed is None or observed[0] != current_cid:
-                        raise PlanBoundDispatchError(
-                            "execution lease changed before proposal rejection"
-                        )
-                    with serialized_lock_update(claim_path):
-                        self._require_bound_claim(current)
-                        with serialized_lock_update(lifecycle_path):
-                            lifecycle_raw, observed_path, lifecycle_cid = (
-                                self._read_exact_worktree_lifecycle(
-                                    execution_lease=current,
-                                    workspace_path=Path(current.workspace_path),
-                                    required_state="active",
-                                )
-                            )
-                            if (
-                                observed_path != lifecycle_path
-                                or str(lifecycle_raw.get("record_id") or "")
-                                != current.workspace_record_id
-                                or str(lifecycle_raw.get("lease_id") or "")
-                                != current.workspace_lease_id
-                                or int(lifecycle_raw.get("fence") or 0)
-                                != current.workspace_fence
-                            ):
-                                raise PlanBoundDispatchError(
-                                    "effect guards changed before proposal rejection"
-                                )
-                            rejected = replace(
-                                current,
-                                generation=current.generation + 1,
-                                phase="scope_drift",
-                                prior_execution_lease_cid=current_cid,
-                                workspace_lifecycle_cid=lifecycle_cid,
-                                proposal_id=proposal_id,
-                                proposal_receipt_id=receipt_id,
-                                proposal_reason_codes=reason_codes,
-                                actual_changed_paths=changed_paths,
-                                merge_enqueue_reached=False,
-                            )
-                            _publish_plan_bound_execution_lease_locked(
-                                store,
-                                rejected,
-                                expected_current_cid=current_cid,
-                            )
+            self._publish_proposal_disposition_and_wait(
+                outcome="rejected",
+                baseline_ref=resolved_baseline,
+                implementation_commit="",
+                proposal_id=proposal_id,
+                proposal_receipt_id=receipt_id,
+                reason_codes=reason_codes,
+                actual_changed_paths=changed_paths,
+            )
             raise PlanBoundDispatchError(
-                "actual candidate scope drift fenced before merge enqueue: "
-                f"proposal_id={proposal_id} receipt_id={receipt_id}"
+                "rejected proposal unexpectedly received wave release"
             )
 
     def plan_bound_daemon_factory(**kwargs: Any) -> Any:
@@ -17454,14 +20457,34 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             raise PlanBoundDispatchError(
                 "daemon constructor slice differs from the plan-bound slice"
             )
-        daemon = PlanBoundImplementationDaemon(
-            **kwargs,
-            plan_revision_store=store_view,
-            parallel_execution_plan=plan_payload,
-            require_active_plan_revision=True,
-            plan_capacity_snapshot=dict(live_host),
-            plan_provider_snapshots=relevant_live_providers,
+        reclaim_env_name = (
+            daemon_module.WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV
         )
+        prior_reclaim = os.environ.get(reclaim_env_name)
+        if recovery_only:
+            # The generic daemon startup recovery cannot distinguish an
+            # abandoned candidate from this plan-bound, CAS-authorized merge
+            # handoff.  Keep it from terminalizing the exact SETTLING record
+            # before the adapter proves the dead predecessor and binds the
+            # new process birth in `_bind_current_merge_recovery_birth_locked`.
+            # This dedicated child restores the process environment
+            # immediately after construction.
+            os.environ[reclaim_env_name] = "0"
+        try:
+            daemon = PlanBoundImplementationDaemon(
+                **kwargs,
+                plan_revision_store=store_view,
+                parallel_execution_plan=plan_payload,
+                require_active_plan_revision=True,
+                plan_capacity_snapshot=dict(live_host),
+                plan_provider_snapshots=relevant_live_providers,
+            )
+        finally:
+            if recovery_only:
+                if prior_reclaim is None:
+                    os.environ.pop(reclaim_env_name, None)
+                else:
+                    os.environ[reclaim_env_name] = prior_reclaim
         canonical_ref = daemon._canonical_ref
 
         def plan_bound_canonical_ref(task: Any) -> str:
@@ -17510,13 +20533,39 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     daemon_module.PortalImplementationDaemon = plan_bound_daemon_factory
     daemon_module.parse_task_file = plan_bound_parse_task_file
     try:
-        daemon_module.main(daemon_argv)
+        try:
+            result = daemon_module.main(daemon_argv)
+        except PlanBoundReplanRequired as exc:
+            logger.warning(
+                "Plan-bound daemon requested a fenced replan: %s",
+                exc,
+            )
+            return PLAN_BOUND_REPLAN_RETURN_CODE
     finally:
         daemon_module.parse_task_file = canonical_parse_task_file
         daemon_module.PortalImplementationDaemon = canonical_daemon_class
         daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = original_imported_capsule
         daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = original_imported_launch
-    return 0
+    with store._thread_lock:  # noqa: SLF001
+        with store._guard():  # noqa: SLF001
+            terminal_merge_failure = any(
+                _load_plan_bound_merge_terminal_failure_locked(
+                    store,
+                    revision_cid=pinned.plan_bound_revision_cid,
+                    slice_id=execution_slice.slice_id,
+                )
+                is not None
+                for execution_slice in manifest.nonempty
+            )
+    if terminal_merge_failure:
+        return PLAN_BOUND_REPLAN_RETURN_CODE
+    barrier = ProductionParallelPlanAdapter(store).load_wave_diff_barrier(
+        revision_cid=pinned.plan_bound_revision_cid,
+        slice_manifest_cid=pinned.plan_bound_slice_manifest_cid,
+    )
+    if barrier is not None and barrier[1].decision != "released":
+        return PLAN_BOUND_REPLAN_RETURN_CODE
+    return int(result or 0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17543,8 +20592,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
         return 0
-    supervisor.run_forever()
-    return 0
+    return supervisor.run_forever()
 
 
 if __name__ == "__main__":
