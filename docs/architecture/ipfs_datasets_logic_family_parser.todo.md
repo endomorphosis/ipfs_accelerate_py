@@ -230,7 +230,7 @@ validation and evidence contract.
 
 ## LFP-007 Define compositional semantic profiles and family extensions
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
