@@ -180,6 +180,89 @@
     "ASE3-023": ["ASE3-030", "ASE3-031", "ASE3-032"],
     "ASE3-022": ["ASE3-030", "ASE3-031", "ASE3-032"]
   },
+  "neutral_contract_layering": {
+    "task_id": "ASE3-029",
+    "task_contract_sha256": "sha256:ea0eae512a86fc9e6098e329d58fcd0963c1706ec621b4da45b1cbdee6f08061",
+    "canonical_task_cid": "baguqeerapt2k36spo3uom3rhn5rucmvnlkqbk5k3nxznd2wetwznq4rg6h2a",
+    "depends_on": ["ASE3-022"],
+    "accepted_tree_inventory": {
+      "source_task_id": "ASE3-023",
+      "source_head_required": true,
+      "source_tree_required": true,
+      "analyzer_implementation_sha256_required": true,
+      "normalized_edge_records_required": true,
+      "inventory_sha256_required": true,
+      "roadmap_fixed_edge_or_importer_count_allowed": false
+    },
+    "neutral_contract_files": [
+      "ipfs_accelerate_py/agent_supervisor/contracts/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/contracts/authority.py",
+      "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
+      "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py"
+    ],
+    "lower_effect_owners": {
+      "provider_attempt_cas": "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "profile_key_lifecycle": "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "plan_store_transactions": "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py"
+    },
+    "compatibility_entrypoint_wrappers": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py"
+    ],
+    "explicit_injection_roots": [
+      "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py"
+    ],
+    "ambient_effect_registry_allowed": false,
+    "zero_runtime_or_todo_daemon_entrypoint_imports_required": true,
+    "neutral_import_time_io_allowed": false,
+    "capsule_security_critical_paths": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py"
+    ],
+    "protected_route_invariants": {
+      "unchanged_types": [
+        "AgentImplementationRoutePlan",
+        "AgentImplementationFallbackDecision"
+      ],
+      "capacity_projection_dispatch_authorized": false,
+      "independent_protected_review_required": true
+    },
+    "scheduler_authorization_baseline": {
+      "schema": "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@2",
+      "signed_lifecycle_witness_required": true,
+      "lifecycle_root_pin_required": true,
+      "group_or_other_writable_allowed": false,
+      "all_affected_suites_green_before_relocation": true
+    },
+    "daemon_runner_authorization_baseline": {
+      "test_path": "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+      "stale_test_name": "test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+      "ambient_only_route_fixture_allowed": false,
+      "canonical_signed_accepted_route_authorization_and_binding_required": true,
+      "accepted_public_artifact_mode": "0400",
+      "owned_regular_nonsymlink_required": true,
+      "private_signer_material_secure_mode_required": true,
+      "complete_file_must_pass": true,
+      "test_deselection_allowed": false,
+      "route_verifier_bypass_allowed": false,
+      "route_weakening_allowed": false
+    },
+    "downstream_task_id": "ASE3-028",
+    "downstream_requires_accepted_ase3_029": true
+  },
   "protected_identity_acceptance": {
     "task_id": "ASE3-030",
     "status": "reserved",

@@ -747,10 +747,10 @@ _PROGRAM_EXPANSION_TASKS: Final = {
     "ASE3-029": {
         "title": "Lower shared supervisor contracts into a neutral package",
         "contract_sha256": (
-            "sha256:d34914edefc3d3625d36662b3a08882569937ee924bc1e65e9fb26250ee40b4e"
+            "sha256:ea0eae512a86fc9e6098e329d58fcd0963c1706ec621b4da45b1cbdee6f08061"
         ),
         "canonical_task_cid": (
-            "baguqeeraaft6esbryems3slsxxeav7sioahafs2nuoighml2muu5r2mfh5qa"
+            "baguqeerapt2k36spo3uom3rhn5rucmvnlkqbk5k3nxznd2wetwznq4rg6h2a"
         ),
         "goal id": "ASE3-G020",
         "depends on": ("ASE3-022",),
@@ -759,24 +759,61 @@ _PROGRAM_EXPANSION_TASKS: Final = {
             "ipfs_accelerate_py/agent_supervisor/contracts/authority.py",
             "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
             "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py",
+            "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+            "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py",
             "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
             "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
             "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
             "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/llm_router.py",
             "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
             "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
             "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
             "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
             "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
             "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_provider_auto.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py",
             "test/api/test_agent_supervisor_contract_layering.py",
+            "test/api/test_agent_supervisor_configured_board_scheduler.py",
+            "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+            "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
         ),
         "validation": (
             "python -m pytest test/api/test_agent_supervisor_contract_layering.py "
             "test/api/test_agent_supervisor_configured_board_scheduler.py "
+            "test/api/test_agent_supervisor_implementation_daemon_runner.py "
             "test/api/test_agent_supervisor_implementation_supervisor_runner.py "
             "test/api/test_agent_supervisor_implementation_provider_receipts.py "
-            "test/api/test_implementation_provider_auto.py -q"
+            "test/api/test_implementation_provider_auto.py "
+            "test/api/test_agent_supervisor_entrypoint_contracts.py "
+            "test/api/test_agent_supervisor_prompt_v3_parallelism.py "
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py "
+            "test/api/test_agent_supervisor_profile_resolver.py "
+            "test/api/test_agent_supervisor_control_plane_capsule_identity.py "
+            "test/api/test_llm_router_agent_implementation_route.py "
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py "
+            "test/api/test_agent_supervisor_grok_quota_terra_gate.py -q"
+        ),
+        "requirements": (
+            "roadmap supplies no expected import count",
+            "canonical signed lifecycle-bound provider fallback authorization@2",
+            (
+                "test_agent_supervisor_implementation_daemon_runner.py::"
+                "test_daemon_resolves_relative_worktree_root_for_runner_workspace"
+            ),
+            "canonical signed accepted route authorization and binding",
+            "owned regular nonsymlinks at mode `0400`",
+            "without deselection, verifier bypass, or route weakening",
+            "an ambient registry, service locator, import hook",
+            "control.provider_attempt_store",
+            "control.profile_authority",
+            "control.plan_execution_store",
+            "AgentImplementationRoutePlan",
+            "AgentImplementationFallbackDecision",
+            "dispatch_authorized=False",
         ),
     },
     "ASE3-030": {
@@ -1044,6 +1081,11 @@ _NATIVE_DUCKDB_OBJECTIVE_CONTRACT_SHA256S: Final = {
         "sha256:5bd12c7f100336e81b239720b4499e2aa459f39fbacd52b3fc0c450f7c3be8a5"
     ),
 }
+_CONTRACT_LAYERING_OBJECTIVE_CONTRACT_SHA256S: Final = {
+    "ASE3-G020": (
+        "sha256:c8489e0556271d8ed3f7f372f4f6f132f4d8e9286545592e492f4c0a3e37e595"
+    ),
+}
 _NATIVE_DUCKDB_GATE_CONFIG_SHA256S: Final = {
     "protected_native_dependency_launch_authorization": (
         "sha256:ebedb3eca63414a5d1deb856d41eda3ae3fbd2b8fff135cbfef979956ac2df96"
@@ -1079,6 +1121,115 @@ _NATIVE_DUCKDB_ACCEPTANCE_SEQUENCE: Final = {
     "same_phase_status_dependencies_forbidden": True,
     "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
 }
+_CONTRACT_LAYERING_POLICY: Final = {
+    "task_id": "ASE3-029",
+    "task_contract_sha256": (
+        "sha256:ea0eae512a86fc9e6098e329d58fcd0963c1706ec621b4da45b1cbdee6f08061"
+    ),
+    "canonical_task_cid": (
+        "baguqeerapt2k36spo3uom3rhn5rucmvnlkqbk5k3nxznd2wetwznq4rg6h2a"
+    ),
+    "depends_on": ["ASE3-022"],
+    "accepted_tree_inventory": {
+        "source_task_id": "ASE3-023",
+        "source_head_required": True,
+        "source_tree_required": True,
+        "analyzer_implementation_sha256_required": True,
+        "normalized_edge_records_required": True,
+        "inventory_sha256_required": True,
+        "roadmap_fixed_edge_or_importer_count_allowed": False,
+    },
+    "neutral_contract_files": [
+        "ipfs_accelerate_py/agent_supervisor/contracts/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/contracts/authority.py",
+        "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
+        "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py",
+    ],
+    "lower_effect_owners": {
+        "provider_attempt_cas": (
+            "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py"
+        ),
+        "profile_key_lifecycle": (
+            "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py"
+        ),
+        "plan_store_transactions": (
+            "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py"
+        ),
+    },
+    "compatibility_entrypoint_wrappers": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+    ],
+    "explicit_injection_roots": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_daemon_runner.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_supervisor_runner.py"
+        ),
+    ],
+    "ambient_effect_registry_allowed": False,
+    "zero_runtime_or_todo_daemon_entrypoint_imports_required": True,
+    "neutral_import_time_io_allowed": False,
+    "capsule_security_critical_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py",
+    ],
+    "protected_route_invariants": {
+        "unchanged_types": [
+            "AgentImplementationRoutePlan",
+            "AgentImplementationFallbackDecision",
+        ],
+        "capacity_projection_dispatch_authorized": False,
+        "independent_protected_review_required": True,
+    },
+    "scheduler_authorization_baseline": {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "provider-fallback-policy-authorization@2"
+        ),
+        "signed_lifecycle_witness_required": True,
+        "lifecycle_root_pin_required": True,
+        "group_or_other_writable_allowed": False,
+        "all_affected_suites_green_before_relocation": True,
+    },
+    "daemon_runner_authorization_baseline": {
+        "test_path": (
+            "test/api/test_agent_supervisor_implementation_daemon_runner.py"
+        ),
+        "stale_test_name": (
+            "test_daemon_resolves_relative_worktree_root_for_runner_workspace"
+        ),
+        "ambient_only_route_fixture_allowed": False,
+        "canonical_signed_accepted_route_authorization_and_binding_required": True,
+        "accepted_public_artifact_mode": "0400",
+        "owned_regular_nonsymlink_required": True,
+        "private_signer_material_secure_mode_required": True,
+        "complete_file_must_pass": True,
+        "test_deselection_allowed": False,
+        "route_verifier_bypass_allowed": False,
+        "route_weakening_allowed": False,
+    },
+    "downstream_task_id": "ASE3-028",
+    "downstream_requires_accepted_ase3_029": True,
+}
+_CONTRACT_LAYERING_POLICY_CONFIG_SHA256: Final = (
+    "sha256:3a3df93ce151db0404a958bc226b1f32a82620d1fbf9540792521db74cea5326"
+)
 _PROTECTED_RUNTIME_ACTIVATION_CONFIG_SHA256: Final = (
     "sha256:f33ff19c7611fbfda288e5951515aa4feb12f1e2241866f84ee35a1e36c58d4b"
 )
@@ -1115,6 +1266,48 @@ _NATIVE_DUCKDB_PLAN_SECTION_END_HEADING: Final = (
 )
 _NATIVE_DUCKDB_PLAN_SECTION_CONTRACT_SHA256: Final = (
     "sha256:1693ea6477822be1f65e60fe433a2011f50e0d028d2f7b20e0b1a91188debb86"
+)
+_CONTRACT_LAYERING_PLAN_CONTAINING_HEADING: Final = "## 10. Implementation waves"
+_CONTRACT_LAYERING_PLAN_SECTION_HEADING: Final = (
+    "### 10.3 ASE3-029 content-bound layering correction"
+)
+_CONTRACT_LAYERING_PLAN_SECTION_END_HEADING: Final = "## 11. Verification gates"
+_CONTRACT_LAYERING_PLAN_SECTION_CONTRACT_SHA256: Final = (
+    "sha256:ddeb7ba904712db080bbeda8effb6cd502b71d2db2a32e27eddf482f25264e72"
+)
+_CONTRACT_LAYERING_PLAN_OUTER_SECTION_CONTRACTS: Final = (
+    (
+        "audit_finding",
+        "## 2. Audit finding and why v3 is required",
+        "# Agent Supervisor Prompt-Only Self-Improvement v3 Plan",
+        "## 3. Product contract",
+        "sha256:19fd4824e6c96b169b30ebf31464ae5f8caa26597844458b51e4e253ea752d91",
+    ),
+    (
+        "wave_ordering",
+        "### 10.2 Existing repair, transition, and downstream ordering",
+        "## 10. Implementation waves",
+        "### 10.3 ASE3-029 content-bound layering correction",
+        "sha256:2390412a3228a019556d37edba9f86f12a5f330f3fadac408f4c921c685f0dcb",
+    ),
+    (
+        "verification_gates",
+        "## 11. Verification gates",
+        "# Agent Supervisor Prompt-Only Self-Improvement v3 Plan",
+        "## 12. Rollout and rollback",
+        "sha256:30b4475c5329217d15e557ffece17b528d7282894345d5e338f6fa44f788d755",
+    ),
+)
+_CONTRACT_LAYERING_PLAN_REQUIREMENTS: Final = (
+    "roadmap-fixed count",
+    "canonical signed lifecycle-bound authorization@2",
+    "control.provider_attempt_store",
+    "control.profile_authority",
+    "control.plan_execution_store",
+    "ambient registries, service locators",
+    "AgentImplementationRoutePlan",
+    "AgentImplementationFallbackDecision",
+    "dispatch_authorized=False",
 )
 _ASE3_019_TITLE: Final = (
     "Seal signed provider authority, authentication lifecycle, and once-only fallback"
@@ -3722,6 +3915,56 @@ def _validate_program_scheduler_projection(
                     f"{prefix}.plan.ASE3-031-032.contract_sha256: exact "
                     "normalized native DuckDB gate section required"
                 )
+        try:
+            contract_layering_section_hash = (
+                _normalized_markdown_section_contract_sha256(
+                    plan_text,
+                    section_heading=_CONTRACT_LAYERING_PLAN_SECTION_HEADING,
+                    containing_heading=_CONTRACT_LAYERING_PLAN_CONTAINING_HEADING,
+                    end_heading=_CONTRACT_LAYERING_PLAN_SECTION_END_HEADING,
+                )
+            )
+        except ValueError as exc:
+            errors.append(f"{prefix}.plan.ASE3-029.section: {exc}")
+        else:
+            if (
+                contract_layering_section_hash
+                != _CONTRACT_LAYERING_PLAN_SECTION_CONTRACT_SHA256
+            ):
+                errors.append(
+                    f"{prefix}.plan.ASE3-029.contract_sha256: exact normalized "
+                    "content-bound contract-layering section required"
+                )
+        for (
+            projection_name,
+            section_heading,
+            containing_heading,
+            end_heading,
+            expected_hash,
+        ) in _CONTRACT_LAYERING_PLAN_OUTER_SECTION_CONTRACTS:
+            projection_prefix = (
+                f"{prefix}.plan.ASE3-029.{projection_name}"
+            )
+            try:
+                observed_hash = _normalized_markdown_section_contract_sha256(
+                    plan_text,
+                    section_heading=section_heading,
+                    containing_heading=containing_heading,
+                    end_heading=end_heading,
+                )
+            except ValueError as exc:
+                errors.append(f"{projection_prefix}.section: {exc}")
+            else:
+                if observed_hash != expected_hash:
+                    errors.append(
+                        f"{projection_prefix}.contract_sha256: exact normalized "
+                        "ASE3-029 normative plan projection required"
+                    )
+        for requirement in _CONTRACT_LAYERING_PLAN_REQUIREMENTS:
+            if requirement not in plan_text:
+                errors.append(
+                    f"{prefix}.plan.ASE3-029.contract: missing {requirement!r}"
+                )
         for field, fragment in {
             "hermetic_identity_acceptance_receipt": (
                 HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH
@@ -3845,6 +4088,20 @@ def _validate_program_scheduler_projection(
                     f"{prefix}.objectives.{goal_id}.contract_sha256: exact "
                     "native DuckDB goal contract required"
                 )
+        for goal_id, expected_hash in (
+            _CONTRACT_LAYERING_OBJECTIVE_CONTRACT_SHA256S.items()
+        ):
+            goal = goals.get(goal_id)
+            if goal is None:
+                errors.append(
+                    f"{prefix}.objectives.{goal_id}: missing sealed contract-"
+                    "layering goal"
+                )
+            elif _task_contract_sha256(goal) != expected_hash:
+                errors.append(
+                    f"{prefix}.objectives.{goal_id}.contract_sha256: exact "
+                    "contract-layering goal contract required"
+                )
 
     dependencies = config.get("task_dependencies")
     if not isinstance(dependencies, Mapping):
@@ -3869,6 +4126,62 @@ def _validate_program_scheduler_projection(
             f"{prefix}.acceptance_prerequisites: exact ASE3-030/031/032 "
             "fail-closed acceptance join required"
         )
+
+    layering_policy = config.get("neutral_contract_layering")
+    layering_prefix = f"{prefix}.neutral_contract_layering"
+    if type(layering_policy) is not dict:
+        errors.append(f"{layering_prefix}: expected exact JSON object")
+    else:
+        if not _exact_json_contract_value(
+            layering_policy,
+            _CONTRACT_LAYERING_POLICY,
+        ):
+            errors.append(
+                f"{layering_prefix}: exact content-bound lower-effect contract "
+                "required"
+            )
+        try:
+            layering_policy_hash = _mapping_contract_sha256(layering_policy)
+        except (TypeError, ValueError):
+            errors.append(f"{layering_prefix}.contract_sha256: noncanonical JSON")
+        else:
+            if (
+                layering_policy_hash
+                != _CONTRACT_LAYERING_POLICY_CONFIG_SHA256
+            ):
+                errors.append(
+                    f"{layering_prefix}.contract_sha256: exact parsed policy "
+                    "contract required"
+                )
+        layering_task = tasks.get("ASE3-029")
+        if layering_task is None:
+            errors.append(f"{layering_prefix}.task_id: ASE3-029 task is missing")
+        else:
+            observed_contract = _task_contract_sha256(layering_task)
+            if layering_policy.get("task_contract_sha256") != observed_contract:
+                errors.append(
+                    f"{layering_prefix}.task_contract_sha256: taskboard mismatch"
+                )
+            try:
+                observed_task_cid = _canonical_task_cid_from_metadata(
+                    layering_task
+                )
+            except ValueError as exc:
+                errors.append(f"{layering_prefix}.canonical_task_cid: {exc}")
+            else:
+                if layering_policy.get("canonical_task_cid") != observed_task_cid:
+                    errors.append(
+                        f"{layering_prefix}.canonical_task_cid: taskboard mismatch"
+                    )
+        router_task = tasks.get("ASE3-028")
+        if router_task is None or _taskboard_csv(
+            router_task,
+            "depends on",
+        ) != ("ASE3-029",):
+            errors.append(
+                f"{layering_prefix}.downstream_task_id: ASE3-028 must remain "
+                "sequential after ASE3-029"
+            )
 
     expected_identity_acceptance = {
         "task_id": "ASE3-030",

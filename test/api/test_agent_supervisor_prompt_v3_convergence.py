@@ -2101,6 +2101,7 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     initial = config["initial_projection"]
     groups = config["task_groups"]
     dependencies = config["task_dependencies"]
+    contract_layering = config["neutral_contract_layering"]
     identity_acceptance = config["protected_identity_acceptance"]
     native_authorization = config["protected_native_dependency_launch_authorization"]
     native_acceptance = config["protected_native_dependency_acceptance"]
@@ -2114,6 +2115,7 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert isinstance(initial, dict)
     assert isinstance(groups, dict)
     assert isinstance(dependencies, dict)
+    assert isinstance(contract_layering, dict)
     assert isinstance(identity_acceptance, dict)
     assert isinstance(native_authorization, dict)
     assert isinstance(native_acceptance, dict)
@@ -2142,6 +2144,45 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
         "ASE3-023": ["ASE3-030", "ASE3-031", "ASE3-032"],
         "ASE3-022": ["ASE3-030", "ASE3-031", "ASE3-032"],
     }
+    assert contract_layering == convergence_module._CONTRACT_LAYERING_POLICY
+    assert (
+        convergence_module._mapping_contract_sha256(contract_layering)
+        == convergence_module._CONTRACT_LAYERING_POLICY_CONFIG_SHA256
+    )
+    accepted_inventory = contract_layering["accepted_tree_inventory"]
+    assert isinstance(accepted_inventory, dict)
+    assert accepted_inventory["source_task_id"] == "ASE3-023"
+    assert accepted_inventory["roadmap_fixed_edge_or_importer_count_allowed"] is False
+    assert contract_layering["ambient_effect_registry_allowed"] is False
+    assert contract_layering["neutral_import_time_io_allowed"] is False
+    assert contract_layering["capsule_security_critical_paths"] == [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py",
+    ]
+    assert contract_layering["daemon_runner_authorization_baseline"] == {
+        "test_path": (
+            "test/api/test_agent_supervisor_implementation_daemon_runner.py"
+        ),
+        "stale_test_name": (
+            "test_daemon_resolves_relative_worktree_root_for_runner_workspace"
+        ),
+        "ambient_only_route_fixture_allowed": False,
+        "canonical_signed_accepted_route_authorization_and_binding_required": True,
+        "accepted_public_artifact_mode": "0400",
+        "owned_regular_nonsymlink_required": True,
+        "private_signer_material_secure_mode_required": True,
+        "complete_file_must_pass": True,
+        "test_deselection_allowed": False,
+        "route_verifier_bypass_allowed": False,
+        "route_weakening_allowed": False,
+    }
+    assert contract_layering["downstream_task_id"] == "ASE3-028"
+    assert contract_layering["downstream_requires_accepted_ase3_029"] is True
     assert identity_acceptance == {
         "task_id": "ASE3-030",
         "status": "reserved",
@@ -2278,6 +2319,29 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert monitor["prompt_may_override_observation_window"] is False
 
 
+def test_ase3_029_daemon_runner_repair_scope_is_exact() -> None:
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+    task = tasks["ASE3-029"]
+    outputs = convergence_module._taskboard_csv(task, "outputs")
+    predicted = convergence_module._taskboard_csv(task, "predicted files")
+    validation = str(task["validation"])
+    daemon_runner_test = (
+        "test/api/test_agent_supervisor_implementation_daemon_runner.py"
+    )
+    supervisor_runner_test = (
+        "test/api/test_agent_supervisor_implementation_supervisor_runner.py"
+    )
+
+    assert daemon_runner_test in outputs
+    assert daemon_runner_test in predicted
+    assert validation.split().count(daemon_runner_test) == 1
+    assert supervisor_runner_test not in outputs
+    assert supervisor_runner_test not in predicted
+    assert validation.split().count(supervisor_runner_test) == 1
+
+
 @pytest.mark.parametrize(
     "task_id",
     (
@@ -2394,10 +2458,11 @@ def test_required_program_task_cannot_complete_without_evidence(
         (
             "ASE3-029",
             (
-                "The neutral package may define immutable DTOs, codecs, validation, "
-                "and verifier protocols but no key storage"
+                "Concrete lower `control.provider_attempt_store`, "
+                "`control.profile_authority`, and `control.plan_execution_store` "
+                "services alone own the displaced CAS persistence"
             ),
-            "The neutral package may store keys and execute lifecycle effects",
+            "Entrypoints alone retain every concrete effect implementation",
         ),
         (
             "ASE3-030",
@@ -2903,6 +2968,81 @@ def test_scheduler_dependency_projection_tampering_fails_closed(
 
 
 @pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    (
+        (
+            "accepted_tree_inventory",
+            "roadmap_fixed_edge_or_importer_count_allowed",
+            True,
+        ),
+        ("accepted_tree_inventory", "analyzer_implementation_sha256_required", False),
+        ("", "ambient_effect_registry_allowed", True),
+        ("", "neutral_import_time_io_allowed", 0),
+        (
+            "",
+            "capsule_security_critical_paths",
+            ["ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py"],
+        ),
+        (
+            "daemon_runner_authorization_baseline",
+            "ambient_only_route_fixture_allowed",
+            True,
+        ),
+        (
+            "daemon_runner_authorization_baseline",
+            "accepted_public_artifact_mode",
+            "0644",
+        ),
+        (
+            "daemon_runner_authorization_baseline",
+            "test_deselection_allowed",
+            True,
+        ),
+        ("protected_route_invariants", "capacity_projection_dispatch_authorized", True),
+        ("scheduler_authorization_baseline", "group_or_other_writable_allowed", True),
+        ("", "downstream_requires_accepted_ase3_029", False),
+        ("", "task_contract_sha256", "sha256:" + "0" * 64),
+    ),
+)
+def test_contract_layering_scheduler_policy_tampering_fails_closed(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    replacement: object,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    policy = config["neutral_contract_layering"]
+    assert isinstance(policy, dict)
+    target = policy
+    if section:
+        nested = policy[section]
+        assert isinstance(nested, dict)
+        target = nested
+    target[field] = replacement
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert any(
+        "program_scheduler_projection.neutral_contract_layering: exact "
+        "content-bound lower-effect contract required" in error
+        or "program_scheduler_projection.neutral_contract_layering.contract_sha256"
+        in error
+        or "program_scheduler_projection.neutral_contract_layering."
+        "task_contract_sha256: taskboard mismatch" in error
+        for error in errors
+    ), errors
+
+
+@pytest.mark.parametrize(
     ("section", "field", "replacement", "error_fragment"),
     (
         (
@@ -3190,6 +3330,48 @@ def test_monitor_strategy_objective_contract_mutation_fails_closed(
     assert (
         f"program_scheduler_projection.objectives.{goal_id}.contract_sha256: "
         "exact monitor-strategy goal contract required"
+    ) in errors
+
+
+def test_contract_layering_objective_contract_mutation_fails_closed(
+    tmp_path: Path,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    objectives_path = tmp_path / convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH
+    text = objectives_path.read_text(encoding="utf-8")
+    needle = (
+        "concrete CAS/profile/plan-store effects live only in the three declared "
+        "lower control services"
+    )
+    assert text.count(needle) == 1
+    objectives_path.write_text(
+        text.replace(
+            needle,
+            "entrypoints retain every concrete effect implementation",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.objectives.ASE3-G020.contract_sha256: "
+        "exact contract-layering goal contract required"
     ) in errors
 
 
@@ -3616,9 +3798,11 @@ def test_ase3_026_plan_semantic_contradiction_retaining_tokens_fails_closed(
             "duckdb_connection_policy_acceptance_schema",
         ),
         (
-            "Q→R(root pin)→P019(witness+provider auth@2+manifest)→A019→"
-            "A030→P031(native auth+manifest)→A031→A032→A023/027→"
-            "L(ASE3-022 reload authorization)",
+            (
+                "Q→R(root pin)→P019(witness+provider auth@2+manifest)→A019→"
+                "A030→P031(native auth+manifest)→A031→A032→A023/027→"
+                "L(ASE3-022 reload authorization)"
+            ),
             "native_duckdb_acceptance_sequence",
         ),
     ),
@@ -3691,6 +3875,137 @@ def test_native_duckdb_plan_semantic_contradiction_fails_full_section_seal(
         "program_scheduler_projection.plan.ASE3-031-032.contract_sha256: exact "
         "normalized native DuckDB gate section required"
     ) in errors
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    (
+        (
+            (
+                "a count\ncopied from a rehearsal, moving repair worktree, or older "
+                "prospective tree must\nfail validation"
+            ),
+            "a roadmap-fixed count is authoritative and may bypass inventory",
+        ),
+        (
+            "canonical signed lifecycle-bound authorization@2",
+            "unsigned provider fallback authorization@1",
+        ),
+        (
+            "ambient registries, service locators,",
+            "ambient registries and service locators are permitted,",
+        ),
+        ("`dispatch_authorized=False`", "`dispatch_authorized=True`"),
+    ),
+)
+def test_contract_layering_plan_semantic_tampering_fails_full_section_seal(
+    tmp_path: Path,
+    needle: str,
+    replacement: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    start = text.index(convergence_module._CONTRACT_LAYERING_PLAN_SECTION_HEADING)
+    end = text.index(convergence_module._CONTRACT_LAYERING_PLAN_SECTION_END_HEADING)
+    block = text[start:end]
+    assert block.count(needle) == 1
+    plan_path.write_text(
+        text[:start] + block.replace(needle, replacement, 1) + text[end:],
+        encoding="utf-8",
+    )
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.plan.ASE3-029.contract_sha256: exact "
+        "normalized content-bound contract-layering section required"
+    ) in errors
+
+
+@pytest.mark.parametrize(
+    ("projection_name", "needle", "replacement"),
+    (
+        (
+            "audit_finding",
+            (
+                "the final accepted ASE3-023 tree must produce a content-bound exact "
+                "AST\n  inventory of every runtime/todo-daemon import of entrypoints; "
+                "a roadmap-fixed\n  count from any prospective tree is stale evidence"
+            ),
+            (
+                "the prospective ASE3-019/023 tree has a fixed exact AST inventory "
+                "of\n  eleven runtime/todo-daemon imports of entrypoints; that "
+                "roadmap-fixed\n  count is authoritative evidence"
+            ),
+        ),
+        (
+            "wave_ordering",
+            "concrete CAS/profile/plan-store implementations to lower control services",
+            "concrete CAS/profile/plan-store implementations back into entrypoints",
+        ),
+        (
+            "verification_gates",
+            "no ambient registry exists, and all provider policy remains in `llm_router`;",
+            (
+                "an ambient registry supplies lower effects, and all provider policy "
+                "remains in `llm_router`;"
+            ),
+        ),
+        (
+            "wave_ordering",
+            "ASE3-028\nremains strictly later and focuses only",
+            "ASE3-028\nruns before ASE3-029 and focuses only",
+        ),
+    ),
+)
+def test_contract_layering_normative_plan_projection_tampering_fails_full_validation(
+    tmp_path: Path,
+    projection_name: str,
+    needle: str,
+    replacement: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_TASKBOARD_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    assert text.count(needle) == 1
+    plan_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        repo_root=tmp_path,
+        check_repository=False,
+    )
+
+    assert report.valid is False
+    assert (
+        "program_scheduler_projection.plan.ASE3-029."
+        f"{projection_name}.contract_sha256: exact normalized ASE3-029 normative "
+        "plan projection required"
+    ) in report.errors
 
 
 def test_canary_task_cannot_shorten_signed_observation_window(

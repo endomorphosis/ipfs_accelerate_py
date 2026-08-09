@@ -66,11 +66,13 @@ contract is not available on current `main`:
 - generic implementation auto-routing imports upward into entrypoints and owns
   ranking/classification behavior that belongs in `llm_router`, violating both
   the package dependency direction and the single routing-policy boundary;
-- the prospective ASE3-019/023 integration exposes eleven imports from six
-  runtime/todo-daemon files into five entrypoint modules; shared authority,
-  execution-slice, invocation-budget, and provider-capacity records must be
-  lowered into a neutral side-effect-free contracts package before routing
-  policy can be consolidated without another import cycle;
+- the final accepted ASE3-023 tree must produce a content-bound exact AST
+  inventory of every runtime/todo-daemon import of entrypoints; a roadmap-fixed
+  count from any prospective tree is stale evidence, and shared authority,
+  execution-slice, invocation-budget, provider-attempt, and provider-capacity
+  records must be lowered into a neutral side-effect-free contracts package
+  while concrete CAS/profile/plan-store effects move to explicitly injected
+  lower control services before routing policy can be consolidated;
 - the accepted control-plane capsule does not yet include the full CID helper
   closure: `utils/cid_utils.py` imports the optional `multiformats` package,
   which is unavailable to a real `python -I` capsule even when present in the
@@ -717,17 +719,17 @@ dependency, ASE3-032 locked DuckDB policy, and the ASE3-023/027 repair chains
 are accepted and jointly revalidated. Its final receipt must bind the attempt-2 incident, operator
 salvage, accepted control plane, exact stopped generation, and transition
 daemon/scheduler blobs. The same namespace is then relaunched once from that
-completion commit. ASE3-029 then removes all eleven audited upward-import sites
-by lowering shared authority DTO/verifier, invocation-budget/execution-slice,
-and non-authoritative provider-capacity contracts into a neutral package. It
-updates the six current lower-domain importers while retaining local-profile
-key/lifecycle effects in `local_profile`, orchestration and compatibility
-re-exports in entrypoints, and provider decisions in `llm_router`; an exact AST
+completion commit. ASE3-029 then lowers pure shared contracts and moves the
+concrete CAS/profile/plan-store implementations to lower control services,
+using an exact accepted-tree inventory rather than a roadmap-fixed import
+count. Entrypoints remain compatibility/orchestration APIs, process roots use
+explicit constructor injection without an ambient registry, and an after AST
 inventory must report zero runtime/todo-daemon imports of entrypoints. ASE3-028
-then focuses only on removing duplicated provider ranking and classification
-from `implementation_provider_auto` and `capability_resolver`, with both
-consuming one content-addressed `RouterOwnedProviderDecision` from
-`llm_router`. ASE3-024 installs a separate signed planning-policy artifact, a
+remains strictly later and focuses only on removing duplicated provider ranking
+and classification from `implementation_provider_auto` and
+`capability_resolver`, with both consuming one content-addressed
+`RouterOwnedProviderDecision` from `llm_router`. ASE3-024 installs a separate
+signed planning-policy artifact, a
 multiprocess durable encrypted prompt broker, and a planning-specific once-only
 CAS with durable `UNKNOWN`/`PROMPT_REPLAY_REQUIRED` behavior. ASE3-025 commits
 the authoritative program revision to DuckDB first, preserves embedded task
@@ -759,6 +761,59 @@ ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and
 content identities prevent stale v2 receipts from satisfying v3 dependencies.
 
+### 10.3 ASE3-029 content-bound layering correction
+
+ASE3-029 begins only after the final accepted ASE3-023 commit is immutable. Its
+before receipt records that commit's HEAD and tree, the AST analyzer
+implementation digest, canonical normalized edge records, and the inventory
+SHA-256. The taskboard intentionally carries no expected import count: a count
+copied from a rehearsal, moving repair worktree, or older prospective tree must
+fail validation even if it happens to equal the accepted-tree count. The after
+inventory scans every package Python file and rejects direct, relative,
+aliased, constant-dynamic, and re-exported runtime/todo-daemon imports of
+entrypoints.
+
+Before relocating contracts, the configured-scheduler regression helper must
+stop hand-writing the obsolete provider fallback authorization@1. It must build
+the canonical signed lifecycle-bound authorization@2, root pin, and witness,
+make each accepted artifact non-group/other-writable independently of ambient
+umask, and pass all affected baseline suites. A red pre-relocation baseline is
+not attributable to contract lowering and cannot authorize implementation.
+The daemon-runner baseline has a second exact prerequisite:
+`test_daemon_resolves_relative_worktree_root_for_runner_workspace` currently
+relies on ambient provider selection alone and therefore fails against the
+production accepted-route resolver. Repair that test to create the canonical
+signed accepted route authorization and binding, store accepted public
+artifacts as owned regular nonsymlinks at mode `0400`, retain private signer
+material at secure mode `0600`, and run the complete daemon-runner file without
+deselection, verifier bypass, or route weakening before relocation begins.
+
+The ownership boundary is exact:
+
+- `agent_supervisor.contracts` owns only immutable DTOs, codecs, validation,
+  and verifier/effect-port protocols, with no import-time I/O or effects;
+- `control.provider_attempt_store`, `control.profile_authority`, and
+  `control.plan_execution_store` own the concrete CAS persistence, profile
+  key/lifecycle, and plan-store transaction effects respectively, but no
+  provider decision or scheduling policy;
+- entrypoint contract, execution-plan, provider-attempt-store, and local-profile
+  modules remain orchestration and exact-object-identity compatibility APIs;
+- existing runtime/todo-daemon process roots, including the implementation
+  daemon and supervisor builders, construct and inject the lower services
+  explicitly through neutral protocols; ambient registries, service locators,
+  import hooks, environment-selected implementations, and hidden dynamic
+  entrypoint imports are forbidden.
+
+Because these lower services become security-critical fallback dependencies,
+`llm_router` must explicitly inventory both the old compatibility wrappers and
+all three lower implementations in the sealed control-plane capsule. The whole
+tree remains Git-bound, and an independent protected review must prove that
+`AgentImplementationRoutePlan`, `AgentImplementationFallbackDecision`, route
+authorization/binding behavior, and the capacity projection's
+`dispatch_authorized=False` boundary are unchanged. ASE3-028 may start only
+after this corrected ASE3-029 contract, exact inventory receipt, capsule review,
+and expanded authority/profile/capsule/parallelism suite are accepted.
+
 ## 11. Verification gates
 
 The release candidate must prove:
@@ -771,9 +826,19 @@ The release candidate must prove:
   durable pre-effect CAS; two processes share one broker/effect winner, and an
   unknown provider outcome becomes durable `UNKNOWN` plus
   `PROMPT_REPLAY_REQUIRED` without provider replay;
-- the exact package AST has zero runtime/todo-daemon imports of entrypoints,
-  while neutral DTO/re-export identity and serialized compatibility remain
-  unchanged and all provider policy remains in `llm_router`;
+- the exact final-accepted-ASE3-023 HEAD/tree and analyzer digest bind the
+  pre-lowering AST inventory without a roadmap-fixed count; the exact current
+  package AST then has zero runtime/todo-daemon imports of entrypoints, while
+  neutral DTO/re-export identity and serialized compatibility remain unchanged,
+  concrete effects are owned by explicitly injected lower control services,
+  no ambient registry exists, and all provider policy remains in `llm_router`;
+- the configured-scheduler authorization@2 fixture uses the canonical signed
+  lifecycle binding with no group/other-writable accepted artifact; the
+  daemon-runner fixture uses canonical signed accepted route authorization and
+  binding with owned regular nonsymlink mode-`0400` public artifacts and
+  securely mode-restricted private signer material; the complete affected
+  files pass without test deselection, verifier bypass, or route weakening
+  before contract relocation;
 - the exact Git-bound control-plane capsule recursively includes its in-tree
   identity dependency closure, imports every allowed module solely from its
   sealed fd, and mints/validates known raw and DAG-JSON CID vectors under
