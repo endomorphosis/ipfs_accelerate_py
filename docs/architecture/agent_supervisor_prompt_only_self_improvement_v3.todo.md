@@ -645,7 +645,7 @@ Closeout:           ASE3-014
 
 ## ASE3-027 Repair production canonical resolver composition and verified trust evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
