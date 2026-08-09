@@ -470,7 +470,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-503 Add lazy fusepy/libfuse loading and bounded Linux capability doctor
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
