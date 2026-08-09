@@ -23,6 +23,7 @@ import os
 import tempfile
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, Final, Iterable, Mapping, Protocol, Sequence, runtime_checkable
@@ -4887,10 +4888,953 @@ def load_active_plan_binding_from_store(
     )
 
 
+# ---------------------------------------------------------------------------
+# State authority modes (DQP-030 / StateAuthorityMode@1)
+# ---------------------------------------------------------------------------
+#
+# Closed compatibility/authority modes de-authorize legacy MD/JSON/JSONL/PID/
+# status projections. Under Quack authority those files may exist as exports
+# or dual-observation shadows but never grant scheduling or lifecycle power.
+# Legacy import is explicit only; server failure never falls back to files.
+
+STATE_AUTHORITY_MODE_INTERFACE: Final = "StateAuthorityMode@1"
+STATE_AUTHORITY_MODE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/state-authority-mode@1"
+)
+STATE_AUTHORITY_MODE_POLICY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/state-authority-mode-policy@1"
+)
+STATE_AUTHORITY_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/state-authority-mode-transition@1"
+)
+SCHEDULE_AUTHORITY_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/schedule-authority-decision@1"
+)
+EXPORT_NON_AUTHORITY_MARKER: Final = (
+    "NON-AUTHORITATIVE EXPORT — runtime decisions must not read this artifact. "
+    "Database snapshot identity is the sole authority."
+)
+EXPORT_NON_AUTHORITY_MARKER_KEY: Final = "non_authority_marker"
+EXPORT_AUTHORITY_CLASS_KEY: Final = "authority_class"
+EXPORT_AUTHORITY_CLASS_VALUE: Final = "export"
+
+# Projection families that historically claimed authority and are now demoted.
+LEGACY_PROJECTION_KINDS: Final = frozenset(
+    {
+        "markdown",
+        "md",
+        "json",
+        "jsonl",
+        "pid",
+        "status",
+        "taskboard",
+        "objectives",
+        "events",
+        "lock",
+    }
+)
+
+
+class StateAuthorityMode(str, Enum):
+    """Closed state-authority modes for every supervisor path (DQP-030)."""
+
+    LEGACY_IMPORT = "legacy_import"
+    EMBEDDED_MAINTENANCE = "embedded_maintenance"
+    QUACK_SHADOW = "quack_shadow"
+    QUACK_AUTHORITATIVE = "quack_authoritative"
+    EXPORT_ONLY = "export_only"
+
+
+class ScheduleAuthoritySource(str, Enum):
+    """Closed sources that may authorize scheduling or lifecycle decisions."""
+
+    DATABASE = "database"
+    LEGACY_IMPORT = "legacy_import"
+    NONE = "none"
+
+
+class AuthorityAvailability(str, Enum):
+    """Server / authority availability disposition under a mode."""
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    RECOVERY_REQUIRED = "recovery_required"
+
+
+class StateAuthorityModeError(TaskSourceError, ValueError):
+    """Closed mode misuse, implicit legacy import, or forbidden transition."""
+
+
+class ImplicitLegacyImportError(StateAuthorityModeError):
+    """Legacy import was attempted without an explicit operator request."""
+
+
+class StateAuthorityTransitionError(StateAuthorityModeError):
+    """Requested authority-mode transition is not on the closed kill-switch graph."""
+
+
+class StateAuthorityUnavailableError(StateAuthorityModeError):
+    """Database/Quack authority is unavailable and file fallback is refused."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        availability: AuthorityAvailability = AuthorityAvailability.UNAVAILABLE,
+        recovery_required: bool = False,
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.availability = availability
+        self.recovery_required = bool(recovery_required) or (
+            availability is AuthorityAvailability.RECOVERY_REQUIRED
+        )
+        self.reason_codes = tuple(str(item) for item in reason_codes)
+
+
+# Allowed kill-switch transitions. Rollback never rewrites database history;
+# it only changes the authority/read route and records a receipt.
+_STATE_AUTHORITY_TRANSITIONS: Final[
+    Mapping[StateAuthorityMode, frozenset[StateAuthorityMode]]
+] = MappingProxyType(
+    {
+        StateAuthorityMode.LEGACY_IMPORT: frozenset(
+            {
+                StateAuthorityMode.EMBEDDED_MAINTENANCE,
+                StateAuthorityMode.QUACK_SHADOW,
+                StateAuthorityMode.EXPORT_ONLY,
+            }
+        ),
+        StateAuthorityMode.EMBEDDED_MAINTENANCE: frozenset(
+            {
+                StateAuthorityMode.LEGACY_IMPORT,
+                StateAuthorityMode.QUACK_SHADOW,
+                StateAuthorityMode.QUACK_AUTHORITATIVE,
+                StateAuthorityMode.EXPORT_ONLY,
+            }
+        ),
+        StateAuthorityMode.QUACK_SHADOW: frozenset(
+            {
+                StateAuthorityMode.EMBEDDED_MAINTENANCE,
+                StateAuthorityMode.QUACK_AUTHORITATIVE,
+                StateAuthorityMode.EXPORT_ONLY,
+            }
+        ),
+        StateAuthorityMode.QUACK_AUTHORITATIVE: frozenset(
+            {
+                StateAuthorityMode.QUACK_SHADOW,
+                StateAuthorityMode.EMBEDDED_MAINTENANCE,
+                StateAuthorityMode.EXPORT_ONLY,
+            }
+        ),
+        StateAuthorityMode.EXPORT_ONLY: frozenset(
+            {
+                StateAuthorityMode.QUACK_SHADOW,
+                StateAuthorityMode.QUACK_AUTHORITATIVE,
+                StateAuthorityMode.EMBEDDED_MAINTENANCE,
+            }
+        ),
+    }
+)
+
+
+def closed_state_authority_modes() -> tuple[str, ...]:
+    """Return the closed StateAuthorityMode@1 vocabulary in stable order."""
+
+    return tuple(item.value for item in StateAuthorityMode)
+
+
+def parse_state_authority_mode(value: Any) -> StateAuthorityMode:
+    """Parse a closed authority mode token; unknown values fail closed."""
+
+    if isinstance(value, StateAuthorityMode):
+        return value
+    text = str(value or "").strip().lower().replace("-", "_")
+    if not text:
+        raise StateAuthorityModeError(
+            "state authority mode is required; no implicit default exists"
+        )
+    try:
+        return StateAuthorityMode(text)
+    except ValueError as exc:
+        raise StateAuthorityModeError(
+            f"unsupported state authority mode {value!r}; closed set is "
+            f"{', '.join(closed_state_authority_modes())}"
+        ) from exc
+
+
+@dataclass(frozen=True)
+class StateAuthorityModePolicy:
+    """Observable policy for one closed StateAuthorityMode.
+
+    Interface projection for StateAuthorityMode@1.
+    """
+
+    SCHEMA: ClassVar[str] = STATE_AUTHORITY_MODE_POLICY_SCHEMA
+    INTERFACE: ClassVar[str] = STATE_AUTHORITY_MODE_INTERFACE
+
+    mode: StateAuthorityMode
+    scheduling_source: ScheduleAuthoritySource
+    lifecycle_source: ScheduleAuthoritySource
+    file_watch_enabled: bool
+    file_write_enabled: bool
+    projections_authoritative: bool
+    requires_explicit_legacy_import: bool
+    allows_implicit_legacy_import: bool
+    allows_file_fallback_on_server_failure: bool
+    dual_observation: bool
+    export_only: bool
+    quack_authority: bool
+    description: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "mode": self.mode.value,
+            "scheduling_source": self.scheduling_source.value,
+            "lifecycle_source": self.lifecycle_source.value,
+            "file_watch_enabled": self.file_watch_enabled,
+            "file_write_enabled": self.file_write_enabled,
+            "projections_authoritative": self.projections_authoritative,
+            "requires_explicit_legacy_import": self.requires_explicit_legacy_import,
+            "allows_implicit_legacy_import": self.allows_implicit_legacy_import,
+            "allows_file_fallback_on_server_failure": (
+                self.allows_file_fallback_on_server_failure
+            ),
+            "dual_observation": self.dual_observation,
+            "export_only": self.export_only,
+            "quack_authority": self.quack_authority,
+            "description": self.description,
+            "export_non_authority_marker": EXPORT_NON_AUTHORITY_MARKER,
+            "export_authority_class": EXPORT_AUTHORITY_CLASS_VALUE,
+        }
+
+
+_STATE_AUTHORITY_POLICIES: Final[Mapping[StateAuthorityMode, StateAuthorityModePolicy]] = (
+    MappingProxyType(
+        {
+            StateAuthorityMode.LEGACY_IMPORT: StateAuthorityModePolicy(
+                mode=StateAuthorityMode.LEGACY_IMPORT,
+                scheduling_source=ScheduleAuthoritySource.LEGACY_IMPORT,
+                lifecycle_source=ScheduleAuthoritySource.LEGACY_IMPORT,
+                file_watch_enabled=False,
+                file_write_enabled=False,
+                projections_authoritative=False,
+                requires_explicit_legacy_import=True,
+                allows_implicit_legacy_import=False,
+                allows_file_fallback_on_server_failure=False,
+                dual_observation=False,
+                export_only=False,
+                quack_authority=False,
+                description=(
+                    "Explicit one-shot import of legacy MD/JSON/JSONL/SQLite/"
+                    "DuckDB artifacts under an operator manifest; never implicit."
+                ),
+            ),
+            StateAuthorityMode.EMBEDDED_MAINTENANCE: StateAuthorityModePolicy(
+                mode=StateAuthorityMode.EMBEDDED_MAINTENANCE,
+                scheduling_source=ScheduleAuthoritySource.DATABASE,
+                lifecycle_source=ScheduleAuthoritySource.DATABASE,
+                file_watch_enabled=False,
+                file_write_enabled=False,
+                projections_authoritative=False,
+                requires_explicit_legacy_import=True,
+                allows_implicit_legacy_import=False,
+                allows_file_fallback_on_server_failure=False,
+                dual_observation=False,
+                export_only=False,
+                quack_authority=False,
+                description=(
+                    "Exclusive embedded database maintenance under a proved "
+                    "lease; MD/JSON/JSONL/PID/status files are non-authority."
+                ),
+            ),
+            StateAuthorityMode.QUACK_SHADOW: StateAuthorityModePolicy(
+                mode=StateAuthorityMode.QUACK_SHADOW,
+                scheduling_source=ScheduleAuthoritySource.DATABASE,
+                lifecycle_source=ScheduleAuthoritySource.DATABASE,
+                file_watch_enabled=False,
+                file_write_enabled=False,
+                projections_authoritative=False,
+                requires_explicit_legacy_import=True,
+                allows_implicit_legacy_import=False,
+                allows_file_fallback_on_server_failure=False,
+                dual_observation=True,
+                export_only=False,
+                quack_authority=True,
+                description=(
+                    "Database is authoritative while legacy projections may be "
+                    "dual-observed; file mutations never change schedule/lifecycle."
+                ),
+            ),
+            StateAuthorityMode.QUACK_AUTHORITATIVE: StateAuthorityModePolicy(
+                mode=StateAuthorityMode.QUACK_AUTHORITATIVE,
+                scheduling_source=ScheduleAuthoritySource.DATABASE,
+                lifecycle_source=ScheduleAuthoritySource.DATABASE,
+                file_watch_enabled=False,
+                file_write_enabled=False,
+                projections_authoritative=False,
+                requires_explicit_legacy_import=True,
+                allows_implicit_legacy_import=False,
+                allows_file_fallback_on_server_failure=False,
+                dual_observation=False,
+                export_only=False,
+                quack_authority=True,
+                description=(
+                    "Quack/database is sole authority; file watching and writes "
+                    "are disabled; server failure returns recovery-required."
+                ),
+            ),
+            StateAuthorityMode.EXPORT_ONLY: StateAuthorityModePolicy(
+                mode=StateAuthorityMode.EXPORT_ONLY,
+                scheduling_source=ScheduleAuthoritySource.NONE,
+                lifecycle_source=ScheduleAuthoritySource.NONE,
+                file_watch_enabled=False,
+                file_write_enabled=True,
+                projections_authoritative=False,
+                requires_explicit_legacy_import=True,
+                allows_implicit_legacy_import=False,
+                allows_file_fallback_on_server_failure=False,
+                dual_observation=False,
+                export_only=True,
+                quack_authority=False,
+                description=(
+                    "Read-only export rendering path; destinations are never "
+                    "watched as input and always carry the non-authority marker."
+                ),
+            ),
+        }
+    )
+)
+
+
+def state_authority_mode_policy(
+    mode: StateAuthorityMode | str,
+) -> StateAuthorityModePolicy:
+    """Return the closed, observable policy for ``mode``."""
+
+    selected = parse_state_authority_mode(mode)
+    return _STATE_AUTHORITY_POLICIES[selected]
+
+
+def is_quack_authority_mode(mode: StateAuthorityMode | str) -> bool:
+    """Return True when Quack/database is the scheduling authority."""
+
+    return state_authority_mode_policy(mode).quack_authority
+
+
+def file_watch_enabled_for_mode(mode: StateAuthorityMode | str) -> bool:
+    """Return whether filesystem watches are permitted under ``mode``."""
+
+    return state_authority_mode_policy(mode).file_watch_enabled
+
+
+def file_write_enabled_for_mode(mode: StateAuthorityMode | str) -> bool:
+    """Return whether non-export filesystem writes are permitted under ``mode``."""
+
+    policy = state_authority_mode_policy(mode)
+    # Export destinations may be written under export_only; runtime state files
+    # remain forbidden under every Quack and maintenance mode.
+    return policy.file_write_enabled and policy.export_only
+
+
+def require_explicit_legacy_import(
+    mode: StateAuthorityMode | str | None = None,
+    *,
+    explicit: bool = False,
+    operation: str = "legacy_import",
+) -> None:
+    """Fail closed when legacy import would run without an explicit request.
+
+    Implicit discovery, cold open, dual observation, and mode defaults never
+    trigger import. Callers must pass ``explicit=True`` from an operator API.
+    """
+
+    if not explicit:
+        selected = (
+            parse_state_authority_mode(mode)
+            if mode is not None
+            else None
+        )
+        raise ImplicitLegacyImportError(
+            f"{operation} cannot run implicitly"
+            + (
+                f" under mode {selected.value}"
+                if selected is not None
+                else ""
+            )
+            + "; pass explicit=True from an operator-initiated import API"
+        )
+    if mode is not None:
+        selected = parse_state_authority_mode(mode)
+        if selected is not StateAuthorityMode.LEGACY_IMPORT:
+            raise StateAuthorityModeError(
+                f"{operation} requires mode {StateAuthorityMode.LEGACY_IMPORT.value}, "
+                f"got {selected.value}"
+            )
+
+
+def gate_legacy_import(
+    *,
+    mode: StateAuthorityMode | str,
+    explicit: bool = False,
+    operation: str = "legacy_import",
+) -> StateAuthorityMode:
+    """Validate and return the mode for an explicit legacy import path."""
+
+    selected = parse_state_authority_mode(mode)
+    require_explicit_legacy_import(
+        selected, explicit=explicit, operation=operation
+    )
+    return selected
+
+
+def export_non_authority_marker() -> str:
+    """Return the stable non-authority marker embedded in every export."""
+
+    return EXPORT_NON_AUTHORITY_MARKER
+
+
+def attach_export_non_authority_marker(
+    payload: Mapping[str, Any] | None = None,
+    *,
+    media_type: str = "json",
+) -> dict[str, Any] | str:
+    """Attach the non-authority marker to an export payload or banner text.
+
+    Machine exports receive structured fields; Markdown/text receives the
+    banner. Authority class is always ``export`` and never ``authoritative``.
+    """
+
+    media = str(media_type or "json").strip().lower()
+    if media in {"markdown", "md", "text", "banner"}:
+        body = dict(payload or {})
+        banner = EXPORT_NON_AUTHORITY_MARKER
+        if not body:
+            return banner
+        if body.get(EXPORT_AUTHORITY_CLASS_KEY) == "authoritative":
+            raise StateAuthorityModeError(
+                "export payload cannot be labeled authoritative"
+            )
+        # Marker fields always win over caller-supplied labels.
+        body.update(
+            {
+                EXPORT_AUTHORITY_CLASS_KEY: EXPORT_AUTHORITY_CLASS_VALUE,
+                EXPORT_NON_AUTHORITY_MARKER_KEY: banner,
+                "authoritative": False,
+            }
+        )
+        return body
+
+    document = dict(payload or {})
+    if document.get(EXPORT_AUTHORITY_CLASS_KEY) == "authoritative":
+        raise StateAuthorityModeError(
+            "export payload cannot be labeled authoritative"
+        )
+    document[EXPORT_AUTHORITY_CLASS_KEY] = EXPORT_AUTHORITY_CLASS_VALUE
+    document[EXPORT_NON_AUTHORITY_MARKER_KEY] = EXPORT_NON_AUTHORITY_MARKER
+    document["authoritative"] = False
+    document.setdefault("schema", STATE_AUTHORITY_MODE_SCHEMA + "/export-marker@1")
+    return document
+
+
+def _normalize_projection_kind(kind: Any) -> str:
+    text = str(kind or "").strip().lower().replace("-", "_")
+    if text.endswith(".md"):
+        return "markdown"
+    if text.endswith(".jsonl"):
+        return "jsonl"
+    if text.endswith(".json"):
+        return "json"
+    if text.endswith(".pid"):
+        return "pid"
+    if text in {"status.json", "status_file", "daemon_status"}:
+        return "status"
+    if text in LEGACY_PROJECTION_KINDS:
+        return "markdown" if text == "md" else text
+    return text
+
+
+@dataclass(frozen=True)
+class ProjectionAuthorityDecision:
+    """Whether a legacy projection can influence schedule/lifecycle."""
+
+    SCHEMA: ClassVar[str] = (
+        "ipfs_accelerate_py/agent-supervisor/projection-authority-decision@1"
+    )
+
+    mode: StateAuthorityMode
+    projection_kind: str
+    authoritative: bool
+    influences_scheduling: bool
+    influences_lifecycle: bool
+    reason_codes: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "mode": self.mode.value,
+            "projection_kind": self.projection_kind,
+            "authoritative": self.authoritative,
+            "influences_scheduling": self.influences_scheduling,
+            "influences_lifecycle": self.influences_lifecycle,
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+def evaluate_projection_authority(
+    mode: StateAuthorityMode | str,
+    projection_kind: str,
+) -> ProjectionAuthorityDecision:
+    """Classify one MD/JSON/JSONL/PID/status projection under ``mode``.
+
+    Under every closed mode after cutover, legacy projections are non-
+    authoritative. Quack modes additionally disable file watch/write so a
+    change or delete cannot affect scheduling or lifecycle.
+    """
+
+    selected = parse_state_authority_mode(mode)
+    policy = state_authority_mode_policy(selected)
+    kind = _normalize_projection_kind(projection_kind)
+    reasons: list[str] = [f"mode:{selected.value}", f"projection:{kind}"]
+    if kind in LEGACY_PROJECTION_KINDS or kind in {
+        "markdown",
+        "json",
+        "jsonl",
+        "pid",
+        "status",
+    }:
+        reasons.append("legacy_projection_deauthorized")
+    if policy.quack_authority:
+        reasons.append("quack_authority_ignores_file_projections")
+    if not policy.file_watch_enabled:
+        reasons.append("file_watch_disabled")
+    if not policy.file_write_enabled or policy.export_only:
+        reasons.append("runtime_file_write_disabled")
+    return ProjectionAuthorityDecision(
+        mode=selected,
+        projection_kind=kind or "unknown",
+        authoritative=False,
+        influences_scheduling=False,
+        influences_lifecycle=False,
+        reason_codes=tuple(dict.fromkeys(reasons)),
+    )
+
+
+@dataclass(frozen=True)
+class ScheduleAuthorityDecision:
+    """Resolved scheduling/lifecycle authority under a closed mode.
+
+    Changing or deleting MD/JSON/JSONL/PID/status projections never mutates
+    the ``schedule`` or ``lifecycle`` views when Quack is authoritative.
+    """
+
+    SCHEMA: ClassVar[str] = SCHEDULE_AUTHORITY_DECISION_SCHEMA
+
+    mode: StateAuthorityMode
+    availability: AuthorityAvailability
+    recovery_required: bool
+    scheduling_source: ScheduleAuthoritySource
+    lifecycle_source: ScheduleAuthoritySource
+    schedule: Mapping[str, Any]
+    lifecycle: Mapping[str, Any]
+    file_projections_ignored: bool
+    file_watch_enabled: bool
+    file_write_enabled: bool
+    used_file_fallback: bool
+    reason_codes: tuple[str, ...]
+    export_marker: str = EXPORT_NON_AUTHORITY_MARKER
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "schedule", MappingProxyType(dict(self.schedule)))
+        object.__setattr__(self, "lifecycle", MappingProxyType(dict(self.lifecycle)))
+        object.__setattr__(
+            self, "reason_codes", tuple(str(item) for item in self.reason_codes)
+        )
+        if self.used_file_fallback:
+            raise StateAuthorityModeError(
+                "schedule authority decision cannot record file fallback"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "mode": self.mode.value,
+            "availability": self.availability.value,
+            "recovery_required": self.recovery_required,
+            "scheduling_source": self.scheduling_source.value,
+            "lifecycle_source": self.lifecycle_source.value,
+            "schedule": dict(self.schedule),
+            "lifecycle": dict(self.lifecycle),
+            "file_projections_ignored": self.file_projections_ignored,
+            "file_watch_enabled": self.file_watch_enabled,
+            "file_write_enabled": self.file_write_enabled,
+            "used_file_fallback": self.used_file_fallback,
+            "reason_codes": list(self.reason_codes),
+            "export_marker": self.export_marker,
+            "export_authority_class": EXPORT_AUTHORITY_CLASS_VALUE,
+        }
+
+
+def _mapping_view(value: Mapping[str, Any] | None) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise StateAuthorityModeError("authority view must be a mapping")
+    return {str(key): member for key, member in value.items()}
+
+
+def evaluate_schedule_authority(
+    mode: StateAuthorityMode | str,
+    *,
+    database_schedule: Mapping[str, Any] | None = None,
+    database_lifecycle: Mapping[str, Any] | None = None,
+    file_projections: Mapping[str, Any] | None = None,
+    server_available: bool = True,
+    recovery_required: bool = False,
+    explicit_legacy_import: bool = False,
+    raise_on_unavailable: bool = False,
+) -> ScheduleAuthorityDecision:
+    """Select schedule/lifecycle authority under a closed mode.
+
+    Acceptance invariants:
+
+    * Under Quack authority, file projection change/delete is ignored.
+    * Server failure returns unavailable/recovery-required, never file fallback.
+    * Legacy import cannot run implicitly.
+    * Export marker is always present on the decision envelope.
+    """
+
+    selected = parse_state_authority_mode(mode)
+    policy = state_authority_mode_policy(selected)
+    db_schedule = _mapping_view(database_schedule)
+    db_lifecycle = _mapping_view(database_lifecycle)
+    files = _mapping_view(file_projections)
+    reasons: list[str] = [f"mode:{selected.value}"]
+
+    if selected is StateAuthorityMode.LEGACY_IMPORT:
+        require_explicit_legacy_import(
+            selected, explicit=explicit_legacy_import
+        )
+        # Explicit import path may read legacy artifacts once; they still do
+        # not remain authoritative after import into the database.
+        reasons.append("explicit_legacy_import_accepted")
+        schedule = dict(files.get("schedule") or files or db_schedule)
+        lifecycle = dict(files.get("lifecycle") or db_lifecycle)
+        return ScheduleAuthorityDecision(
+            mode=selected,
+            availability=AuthorityAvailability.AVAILABLE,
+            recovery_required=False,
+            scheduling_source=ScheduleAuthoritySource.LEGACY_IMPORT,
+            lifecycle_source=ScheduleAuthoritySource.LEGACY_IMPORT,
+            schedule=schedule,
+            lifecycle=lifecycle,
+            file_projections_ignored=False,
+            file_watch_enabled=False,
+            file_write_enabled=False,
+            used_file_fallback=False,
+            reason_codes=tuple(reasons),
+        )
+
+    if selected is StateAuthorityMode.EXPORT_ONLY:
+        reasons.append("export_only_no_schedule_authority")
+        return ScheduleAuthorityDecision(
+            mode=selected,
+            availability=AuthorityAvailability.AVAILABLE,
+            recovery_required=False,
+            scheduling_source=ScheduleAuthoritySource.NONE,
+            lifecycle_source=ScheduleAuthoritySource.NONE,
+            schedule={},
+            lifecycle={},
+            file_projections_ignored=True,
+            file_watch_enabled=False,
+            file_write_enabled=True,
+            used_file_fallback=False,
+            reason_codes=tuple(reasons),
+        )
+
+    # Database-backed modes: embedded_maintenance, quack_shadow, quack_authoritative.
+    server_down = not bool(server_available)
+    needs_recovery = bool(recovery_required) or server_down
+    if server_down or recovery_required:
+        reasons.append("server_unavailable")
+        if needs_recovery:
+            reasons.append("recovery_required")
+        reasons.append("file_fallback_refused")
+        if files:
+            reasons.append("legacy_projections_present_but_ignored")
+        availability = (
+            AuthorityAvailability.RECOVERY_REQUIRED
+            if needs_recovery
+            else AuthorityAvailability.UNAVAILABLE
+        )
+        decision = ScheduleAuthorityDecision(
+            mode=selected,
+            availability=availability,
+            recovery_required=True,
+            scheduling_source=ScheduleAuthoritySource.DATABASE,
+            lifecycle_source=ScheduleAuthoritySource.DATABASE,
+            schedule={},
+            lifecycle={},
+            file_projections_ignored=True,
+            file_watch_enabled=False,
+            file_write_enabled=False,
+            used_file_fallback=False,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+        )
+        if raise_on_unavailable:
+            raise StateAuthorityUnavailableError(
+                "database authority unavailable; recovery required "
+                "(file fallback refused)",
+                availability=availability,
+                recovery_required=True,
+                reason_codes=decision.reason_codes,
+            )
+        return decision
+
+    if files:
+        reasons.append("legacy_projections_ignored_for_schedule")
+        reasons.append("legacy_projections_ignored_for_lifecycle")
+    if policy.dual_observation:
+        reasons.append("dual_observation_non_authoritative")
+    if policy.quack_authority:
+        reasons.append("quack_authority")
+    else:
+        reasons.append("embedded_database_authority")
+
+    return ScheduleAuthorityDecision(
+        mode=selected,
+        availability=AuthorityAvailability.AVAILABLE,
+        recovery_required=False,
+        scheduling_source=ScheduleAuthoritySource.DATABASE,
+        lifecycle_source=ScheduleAuthoritySource.DATABASE,
+        schedule=db_schedule,
+        lifecycle=db_lifecycle,
+        file_projections_ignored=True,
+        file_watch_enabled=False,
+        file_write_enabled=False,
+        used_file_fallback=False,
+        reason_codes=tuple(dict.fromkeys(reasons)),
+    )
+
+
+def projection_mutation_affects_schedule(
+    mode: StateAuthorityMode | str,
+    *,
+    before_projections: Mapping[str, Any] | None,
+    after_projections: Mapping[str, Any] | None,
+    database_schedule: Mapping[str, Any] | None,
+    database_lifecycle: Mapping[str, Any] | None = None,
+    server_available: bool = True,
+) -> bool:
+    """Return whether a projection mutation changed schedule/lifecycle authority.
+
+    Under Quack authority this is always False when the database view is
+    stable, even if every MD/JSON/JSONL/PID/status file is rewritten or deleted.
+    """
+
+    before = evaluate_schedule_authority(
+        mode,
+        database_schedule=database_schedule,
+        database_lifecycle=database_lifecycle,
+        file_projections=before_projections,
+        server_available=server_available,
+    )
+    after = evaluate_schedule_authority(
+        mode,
+        database_schedule=database_schedule,
+        database_lifecycle=database_lifecycle,
+        file_projections=after_projections,
+        server_available=server_available,
+    )
+    return (
+        dict(before.schedule) != dict(after.schedule)
+        or dict(before.lifecycle) != dict(after.lifecycle)
+        or before.scheduling_source != after.scheduling_source
+        or before.lifecycle_source != after.lifecycle_source
+    )
+
+
+@dataclass(frozen=True)
+class StateAuthorityModeTransition:
+    """Receipt for an explicit mode transition or rollback."""
+
+    SCHEMA: ClassVar[str] = STATE_AUTHORITY_TRANSITION_SCHEMA
+
+    from_mode: StateAuthorityMode
+    to_mode: StateAuthorityMode
+    reason: str
+    rollback: bool
+    receipt_id: str
+    reason_codes: tuple[str, ...]
+    from_policy: Mapping[str, Any]
+    to_policy: Mapping[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "from_mode": self.from_mode.value,
+            "to_mode": self.to_mode.value,
+            "reason": self.reason,
+            "rollback": self.rollback,
+            "receipt_id": self.receipt_id,
+            "reason_codes": list(self.reason_codes),
+            "from_policy": dict(self.from_policy),
+            "to_policy": dict(self.to_policy),
+        }
+
+
+def allowed_state_authority_transitions(
+    mode: StateAuthorityMode | str,
+) -> tuple[str, ...]:
+    """Return allowed target modes from ``mode`` (kill-switch graph)."""
+
+    selected = parse_state_authority_mode(mode)
+    targets = _STATE_AUTHORITY_TRANSITIONS[selected]
+    return tuple(sorted(item.value for item in targets))
+
+
+def transition_state_authority_mode(
+    from_mode: StateAuthorityMode | str,
+    to_mode: StateAuthorityMode | str,
+    *,
+    reason: str = "",
+    rollback: bool = False,
+) -> StateAuthorityModeTransition:
+    """Transition between closed modes or fail closed on an unknown edge.
+
+    Rollback is a re-route of authority/read path only; database history is
+    never rewritten or discarded by this receipt.
+    """
+
+    source = parse_state_authority_mode(from_mode)
+    target = parse_state_authority_mode(to_mode)
+    if source is target:
+        raise StateAuthorityTransitionError(
+            f"authority mode is already {source.value}"
+        )
+    allowed = _STATE_AUTHORITY_TRANSITIONS[source]
+    if target not in allowed:
+        raise StateAuthorityTransitionError(
+            f"transition {source.value} -> {target.value} is not allowed; "
+            f"permitted targets: {', '.join(allowed_state_authority_transitions(source))}"
+        )
+    note = str(reason or "").strip() or (
+        "rollback_to_last_proved_mode" if rollback else "operator_mode_transition"
+    )
+    reasons = [
+        f"from:{source.value}",
+        f"to:{target.value}",
+        "history_preserved",
+    ]
+    if rollback:
+        reasons.append("rollback")
+    if state_authority_mode_policy(target).quack_authority:
+        reasons.append("file_watch_disabled")
+        reasons.append("file_write_disabled")
+    receipt_id = _operation_id(
+        {
+            "schema": STATE_AUTHORITY_TRANSITION_SCHEMA,
+            "from_mode": source.value,
+            "to_mode": target.value,
+            "reason": note,
+            "rollback": bool(rollback),
+        }
+    )
+    return StateAuthorityModeTransition(
+        from_mode=source,
+        to_mode=target,
+        reason=note,
+        rollback=bool(rollback),
+        receipt_id=receipt_id,
+        reason_codes=tuple(reasons),
+        from_policy=state_authority_mode_policy(source).to_dict(),
+        to_policy=state_authority_mode_policy(target).to_dict(),
+    )
+
+
+def open_task_source_for_authority_mode(
+    source: Any,
+    *,
+    mode: StateAuthorityMode | str,
+    kind: str = "",
+    root: Path | str | None = None,
+    expected_identity: TaskSourceIdentity | Mapping[str, Any] | None = None,
+    expected_root_id: str = "",
+    expected_repository_root_id: str = "",
+    explicit_legacy_import: bool = False,
+    server_available: bool = True,
+    recovery_required: bool = False,
+    **backend_options: Any,
+) -> CanonicalTaskSource | DualTaskSource:
+    """Open a task source under an explicit closed authority mode.
+
+    * ``legacy_import`` requires ``explicit_legacy_import=True``.
+    * Quack modes refuse open when the server is unavailable (no file fallback).
+    * ``export_only`` cannot open a mutable scheduling source.
+    """
+
+    selected = parse_state_authority_mode(mode)
+    policy = state_authority_mode_policy(selected)
+    if selected is StateAuthorityMode.LEGACY_IMPORT:
+        require_explicit_legacy_import(
+            selected, explicit=explicit_legacy_import, operation="open_task_source"
+        )
+    if selected is StateAuthorityMode.EXPORT_ONLY:
+        raise StateAuthorityModeError(
+            "export_only mode cannot open a scheduling task source"
+        )
+    if policy.quack_authority and (
+        not server_available or recovery_required
+    ):
+        raise StateAuthorityUnavailableError(
+            "refusing task-source open under Quack authority while server is "
+            "unavailable; recovery required (file fallback refused)",
+            availability=AuthorityAvailability.RECOVERY_REQUIRED,
+            recovery_required=True,
+            reason_codes=(
+                f"mode:{selected.value}",
+                "server_unavailable",
+                "recovery_required",
+                "file_fallback_refused",
+            ),
+        )
+    # Never silently promote a Markdown path under Quack authority.
+    selected_kind = str(kind or "").strip().lower()
+    if policy.quack_authority and not selected_kind:
+        if isinstance(source, (str, Path)):
+            path = Path(source)
+            if path.suffix.lower() not in {".duckdb", ".ddb"}:
+                raise StateAuthorityModeError(
+                    "Quack authority requires an explicit duckdb/dual kind; "
+                    "refusing implicit markdown open"
+                )
+            selected_kind = "duckdb"
+        elif isinstance(source, DualTaskSource):
+            selected_kind = "dual"
+        elif isinstance(source, CanonicalTaskSource):
+            selected_kind = source.source_kind
+    if policy.quack_authority and selected_kind == "markdown":
+        raise StateAuthorityModeError(
+            "Quack authority refuses markdown as the scheduling source"
+        )
+    return open_task_source(
+        source,
+        kind=selected_kind,
+        root=root,
+        expected_identity=expected_identity,
+        expected_root_id=expected_root_id,
+        expected_repository_root_id=expected_repository_root_id,
+        **backend_options,
+    )
+
+
 __all__ = [
     "ACTIVE_PLAN_BINDING_SCHEMA",
     "ActivePlanBinding",
     "ActivePlanRevisionError",
+    "AuthorityAvailability",
     "CANONICAL_PROJECTION_SNAPSHOT_SCHEMA",
     "CanonicalTaskSource",
     "CanonicalProjectionSnapshot",
@@ -4901,9 +5845,15 @@ __all__ = [
     "DUAL_TASK_SOURCE_TRANSACTION_SCHEMA",
     "DualTaskSource",
     "DualTaskSourcePartialError",
+    "EXPORT_AUTHORITY_CLASS_KEY",
+    "EXPORT_AUTHORITY_CLASS_VALUE",
+    "EXPORT_NON_AUTHORITY_MARKER",
+    "EXPORT_NON_AUTHORITY_MARKER_KEY",
     "ExecutionSliceViolationError",
     "FakeParallelExecutionError",
+    "ImplicitLegacyImportError",
     "ImmutableClaimRevisionError",
+    "LEGACY_PROJECTION_KINDS",
     "MAX_QUERY_LIMIT",
     "MAX_SNAPSHOT_TASKS",
     "MissingActivePlanRevisionError",
@@ -4913,7 +5863,21 @@ __all__ = [
     "PLAN_RUNTIME_DISPATCH_RECEIPT_SCHEMA",
     "PartialPlanRevisionError",
     "PlanRuntimeDispatchDecision",
+    "ProjectionAuthorityDecision",
+    "SCHEDULE_AUTHORITY_DECISION_SCHEMA",
+    "STATE_AUTHORITY_MODE_INTERFACE",
+    "STATE_AUTHORITY_MODE_POLICY_SCHEMA",
+    "STATE_AUTHORITY_MODE_SCHEMA",
+    "STATE_AUTHORITY_TRANSITION_SCHEMA",
     "SUPPORTED_SOURCE_KINDS",
+    "ScheduleAuthorityDecision",
+    "ScheduleAuthoritySource",
+    "StateAuthorityMode",
+    "StateAuthorityModeError",
+    "StateAuthorityModePolicy",
+    "StateAuthorityModeTransition",
+    "StateAuthorityTransitionError",
+    "StateAuthorityUnavailableError",
     "SupersededPlanRevisionError",
     "TASK_SOURCE_IDENTITY_SCHEMA",
     "TASK_SOURCE_MIGRATION_RECEIPT_SCHEMA",
@@ -4939,23 +5903,39 @@ __all__ = [
     "UnsupportedTaskSourceError",
     "VerifiedCanonicalTaskSourceSnapshot",
     "adapt_task_source",
+    "allowed_state_authority_transitions",
     "assert_claim_retains_original_revision",
     "assert_fake_parallel_not_concurrent",
     "assert_no_conflict_with_active",
     "assert_revision_is_active",
     "assert_task_in_execution_slice",
+    "attach_export_non_authority_marker",
     "bind_active_plan_revision",
     "canonical_projection_snapshot",
+    "closed_state_authority_modes",
     "compare_task_source_projections",
     "compare_task_sources",
     "compiled_claim_preconditions",
     "evaluate_plan_runtime_dispatch",
+    "evaluate_projection_authority",
+    "evaluate_schedule_authority",
+    "export_non_authority_marker",
+    "file_watch_enabled_for_mode",
+    "file_write_enabled_for_mode",
+    "gate_legacy_import",
+    "is_quack_authority_mode",
     "load_active_plan_binding_from_store",
     "migrate_task_source_projection",
     "open_task_source",
+    "open_task_source_for_authority_mode",
     "order_ready_by_fairness_and_critical_path",
+    "parse_state_authority_mode",
+    "projection_mutation_affects_schedule",
     "rebuild_task_source_projection",
     "recompute_readiness_statuses",
     "recompute_status_cas",
+    "require_explicit_legacy_import",
+    "state_authority_mode_policy",
+    "transition_state_authority_mode",
 ]
 
