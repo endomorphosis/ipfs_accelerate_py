@@ -181,7 +181,7 @@ def _request(
         "operation": operation,
         **binding,
         "parameters": params,
-        "bounds": ControlBounds(max_items=100),
+        "bounds": ControlBounds(max_items=100, max_paths=100, max_effects=64),
         "dry_run": dry_run,
     }
     needs_guards = (
