@@ -1,10 +1,16 @@
-"""Reviewed MCP++ contract catalog (SCA-040).
+"""Reviewed MCP++ contract catalog (SCA-040 / DCR-014).
 
 Interface: ``McpContractCatalog@1``
 
 Defines versioned contract source records, explicit authority classes, review
 state, closed claim families, contradiction retention, and complete source /
 schema-version invalidators for MCP++ declarations and implementations.
+
+DCR-014 reuses this catalog for SwissKnife desktop expected contracts. Desktop
+UI/UX IR (``UIIRDocument``), MCP-IDL, and ORB projections bind through the same
+authority ladder: versioned IDL/schema/typed interfaces and reviewed
+registration/manifest sources authorize contracts; documentation, inferred
+prose, archive, and generated material may only nominate.
 
 Normative rules:
 
@@ -23,6 +29,8 @@ contract patterns; retain one assurance lattice (no parallel authority model).
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -33,6 +41,11 @@ from ..proof.formal_verification_contracts import content_identity
 
 
 MCP_CONTRACT_CATALOG_INTERFACE: Final = "McpContractCatalog@1"
+# Desktop mediation interfaces bound by DCR-014 (projection only; no extra
+# authority lattice).
+UIIR_DOCUMENT_INTERFACE: Final = "UIIRDocument"
+MCP_IDL_INTERFACE: Final = "MCP-IDL"
+ORB_INTERFACE: Final = "ORB"
 MCP_CONTRACT_CATALOG_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-contract-catalog@1"
 )
@@ -348,18 +361,33 @@ def is_prose_or_unreviewed_source(
     return False
 
 
+def _contains_nl_marker(text: str) -> str:
+    """Return the first NL marker that appears as a whole token, else empty."""
+
+    normalized = text.strip().lower().replace("-", "_")
+    if not normalized:
+        return ""
+    for marker in _NL_MARKERS:
+        # Token match avoids false positives on field paths like freeform_touch.
+        if re.search(
+            rf"(?<![a-z0-9_]){re.escape(marker)}(?![a-z0-9_])",
+            normalized,
+        ):
+            return marker
+    return ""
+
+
 def reject_natural_language_claim(payload: Mapping[str, Any] | str | None) -> None:
     """Fail closed when freeform / natural-language claim markers are present."""
 
     if payload is None:
         return
     if isinstance(payload, str):
-        lowered = payload.strip().lower()
-        for marker in _NL_MARKERS:
-            if marker in lowered.replace("-", "_"):
-                raise UnreviewedContractError(
-                    f"natural-language / unreviewed prose fails closed: {marker}"
-                )
+        marker = _contains_nl_marker(payload)
+        if marker:
+            raise UnreviewedContractError(
+                f"natural-language / unreviewed prose fails closed: {marker}"
+            )
         return
     if not isinstance(payload, Mapping):
         raise McpContractCatalogError("claim payload must be a mapping or string")
@@ -371,11 +399,11 @@ def reject_natural_language_claim(payload: Mapping[str, Any] | str | None) -> No
         elif value is True or value == 1:
             blob_parts.append(str(key).lower())
     blob = " ".join(blob_parts)
-    for marker in _NL_MARKERS:
-        if marker in blob.replace("-", "_"):
-            raise UnreviewedContractError(
-                f"natural-language / unreviewed prose fails closed: {marker}"
-            )
+    marker = _contains_nl_marker(blob)
+    if marker:
+        raise UnreviewedContractError(
+            f"natural-language / unreviewed prose fails closed: {marker}"
+        )
     # Explicit freeform statement without a reviewed family fails closed.
     if payload.get("freeform_statement") or payload.get("prose"):
         raise UnreviewedContractError(
@@ -1832,6 +1860,9 @@ DEFAULT_MCP_CONTRACT_CATALOG = build_default_mcp_contract_catalog()
 
 __all__ = [
     "MCP_CONTRACT_CATALOG_INTERFACE",
+    "UIIR_DOCUMENT_INTERFACE",
+    "MCP_IDL_INTERFACE",
+    "ORB_INTERFACE",
     "MCP_CONTRACT_CATALOG_SCHEMA",
     "MCP_CONTRACT_SOURCE_SCHEMA",
     "MCP_CONTRACT_RECORD_SCHEMA",
