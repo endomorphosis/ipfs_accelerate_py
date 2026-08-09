@@ -1470,7 +1470,7 @@ validation and evidence contract.
 
 ## LFP-047 Seal the logic-parser release receipt
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
