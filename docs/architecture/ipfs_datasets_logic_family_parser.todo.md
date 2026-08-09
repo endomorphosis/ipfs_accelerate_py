@@ -571,7 +571,7 @@ validation and evidence contract.
 
 ## LFP-018 Implement SMT-LIB2 reader, elaborator, printer, and SMT bridge
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
