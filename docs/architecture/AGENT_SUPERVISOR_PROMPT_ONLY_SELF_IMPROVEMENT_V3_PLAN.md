@@ -136,6 +136,13 @@ the same resolver, prompt broker, planner, materializer, scheduler, refill,
 monitor, and run-registry backends. In-process fake-service injection and
 schema-only tool registration do not satisfy product conformance.
 
+RUNNING is a joined evidence state, not a launch acknowledgment. The shared
+composition returns it only when immutable registry history proves same-revision
+lifecycle and monitor process births, leases, fences, fresh heartbeats, and
+monotonic cursors. The durable monitor is guarded by the independently reviewed
+host-namespace `ReviewedHostNamespaceReconciler`; no transport session or
+monitor self-report may substitute for that join.
+
 ### 3.2 Trust boundary
 
 The prompt is intent, never authority. It may describe desired outcomes and
@@ -304,10 +311,20 @@ Refill first refreshes current-tree evidence and reconciles goal completion.
 It derives the smallest residual gaps, deduplicates them by goal/evidence/scope
 CID, and emits bounded child goals or atomic tasks with the same canonical
 schema as the initial generated program. It may append only through an
-epoch/revision CAS; the winning append invalidates the active plan, recompiles
-against the new program revision, and dispatches the admitted descendant
-through the real configured scheduler. It never silently rewrites the
-canonical board a live scheduler is reading.
+epoch/revision CAS and one durable refill saga cursor. The exact progression is
+`EVALUATING -> APPEND_RESERVED -> APPENDED -> PLAN_INVALIDATED -> RECOMPILED
+-> DISPATCHED`, with `ADOPTED` as the terminal recovery alternative when the
+same append, plan, or dispatch already won. Each transition binds its
+predecessor, current tree, program/plan roots, reservation, and a phase-specific
+monitor deadline before work begins. A crash resumes the first incomplete
+phase or adopts the identical winner; it never skips a phase or blindly
+replays an uncertain effect. It never silently rewrites the canonical board a
+live scheduler is reading.
+
+The sealed compact cursor name is
+`EVALUATING→APPEND_RESERVED→APPENDED→PLAN_INVALIDATED→RECOMPILED→DISPATCHED/ADOPTED`;
+all transports, the registry, the configured scheduler, and the monitor use
+that same sequence and phase identity.
 
 Guardrails are mandatory: maximum findings per scan, maximum new work per
 epoch, maximum refinement depth, cooldown, retry and provider budgets,
@@ -315,10 +332,13 @@ equivalence/deduplication, oscillation detection, and a circuit breaker.
 Healthy exhaustion is allowed only when the root goal is evidence-complete.
 Otherwise the run enters `refilling`, `blocked`, or `failed`, never `complete`.
 
-ASE3-021 lands this complete event-to-append-to-replan-to-dispatch path dormant.
-Only the operator-owned ASE3-026 protected activation may enable scoped
-prompt-program/objective refill and reload the runtime generation. Broad
-legacy codebase refill remains disabled.
+ASE3-021 lands this complete durable cursor/deadline path dormant. ASE3-008
+depends directly on it so the monitor cannot ship against process-local refill
+progress. Only a validated operator-owned ASE3-026 pre-effect authorization
+may be consumed to enable scoped prompt-program/objective refill and reload the
+runtime generation; that authorization does not prove the effect ran. Broad
+legacy codebase refill remains disabled, and a separate post-activation
+observation must prove actual refill dispatch or adoption.
 
 When enabled by that signed protected profile, the controller also registers the existing
 Planner Doctor and self-improvement epoch evaluator as real production hooks.
@@ -336,6 +356,14 @@ Task completion requires all of the following on one exact run revision:
 - the accepted commit is reachable from the current integration head;
 - post-merge validation passes on that head;
 - no stale lease, fence, tree, profile, policy, or provider identity exists.
+
+ASE3-020 makes DuckDB authoritative for immutable append-only run-history
+vectors, monotonic lifecycle/monitor/refill cursor vectors, and monitor-ready
+effect reservations. A history entry binds its predecessor and content; a
+cursor cannot move backward or fork. If an external effect may have happened
+but cannot be identified exactly after a crash, the reservation becomes
+durable `UNKNOWN`: recovery may adopt exact observed evidence or return typed
+operator action, but may not replay the effect.
 
 The durable state progression is `proposed -> ready -> claimed -> implemented
 -> merged -> validation_passed -> review_pending -> accepted`, with explicit
@@ -356,17 +384,27 @@ v2 work only on its rescue branch.
 
 ## 9. Progress monitoring and deterministic recovery
 
-The monitor is a detached durable lifecycle effect, not a client-owned loop.
-`run` persists monitor intent before returning RUNNING and starts or adopts one
-monitor generation with its own verified process birth, lease, fence,
-heartbeat, and event cursor. CLI exit, MCP disconnect, or Python object loss
-does not stop it; monitor death has one bounded adoption/restart winner, and a
-terminal receipt stops only the exact owned generation. The monitor evaluates
-progress, not just process liveness. It watches:
+The monitor is a detached durable lifecycle effect, not a client-owned loop or
+its own survival authority. `ReviewedHostNamespaceReconciler` is the named,
+independently reviewed host-namespace guardian. It consumes the exact run
+registry and durable-process contracts to start or adopt one monitor generation
+even when the CLI, MCP connection, Python object, lifecycle coordinator, or
+monitor itself disappears. The monitor cannot attest to or restart its own
+guardian.
 
-- supervisor and worker process-birth identities;
-- heartbeat age and monotonic event cursor;
-- DuckDB run revision and registry ownership;
+`run` persists a monitor-ready effect reservation before any external effect.
+It may return RUNNING only after one same-revision join proves both lifecycle
+and monitor process births, leases, fences, fresh heartbeats, and monotonic
+event cursors. Any missing, stale, cross-generation, synthetic, projection-only,
+or self-attested member denies RUNNING. Monitor death has one bounded guardian
+adoption/restart winner, unknown effect outcomes are adopted or become typed
+operator action without replay, and a terminal receipt stops only the exact
+owned monitor generation. The configured scheduler publishes semantic phase
+and cursor movement; the monitor watches:
+
+- lifecycle, monitor, supervisor, and worker process-birth identities;
+- joined lifecycle/monitor lease, fence, heartbeat age, and monotonic cursors;
+- DuckDB immutable history vectors, run revision, and registry ownership;
 - task claim, attempt, log, validation, review, and merge progress ages;
 - ready/active/waiting/blocked counts and conflict reasons;
 - lease/fence freshness and current integration tree;
@@ -385,10 +423,14 @@ The public health states are `starting`, `running`, `refilling`, `blocked`,
 |---|---|---|
 | status says running, process identity is dead | stale projection | fence old owner, repair projection from registry/events, adopt or restart |
 | ready tasks exist but no worker is claimed | scheduler stall | refresh conflicts/resources, restart scheduler once, then Doctor/rescue |
-| active task has no event/log/revision progress | worker stall | capture diagnostics, terminate exact process tree, retry/rescue within budget |
+| active task has no semantic phase/cursor/revision progress | worker stall | capture diagnostics, terminate exact process tree, retry/rescue within budget |
 | no ready tasks and an objective is open | false idle | force completion reconciliation and refill scan |
 | tasks complete but commits are not reachable | soft completion | reopen convergence work; prohibit closeout |
 | lease/fence/tree changes during an effect | stale authority | deny effect, quarantine attempt, re-resolve |
+| provider is saturated but bounded work remains | resource wait | persist deadline/cursor, re-evaluate capacity after bounded backoff |
+| monotonic source rolls back or cursor regresses | clock/cursor corruption | fail closed, preserve history, require a fresh verified clock generation |
+| merge or refill phase exceeds its durable deadline | merge/refill stall | adopt an exact winner or recover once from the persisted saga phase |
+| client disconnects or monitor dies | guardian continuity | keep lifecycle alive; one host-guardian adoption/restart winner |
 | repeated equivalent rescue/refill | oscillation | open one incident, trip circuit breaker, require operator decision |
 
 `status` returns a bounded snapshot, `follow` streams durable events from a
@@ -396,10 +438,22 @@ cursor, `explain` reports inference and scheduling decisions, and `doctor`
 returns findings plus previewable repairs. Recovery actions are idempotent,
 rate-limited, receipt-bound, and never gain broader authority than the launch
 plan. Lane PID/status files are projections and are repaired when contradicted
-by process-birth and registry evidence. ASE3-026 is the operator-owned protected
-transition that atomically validates its activation receipt, enables the
-detached monitor and scoped refill, fences the old generation, and reloads one
-new exact-tree generation before public facades become selectable.
+by process-birth and registry evidence.
+
+### 9.1 ASE3-026 protected activation authorization and observation
+
+ASE3-026 is a two-evidence protected
+transition. First, an operator-reviewed commit validates a signed
+`ipfs_accelerate_py.agent_supervisor.protected-runtime-activation-authorization@1`
+receipt bound to the inactive exact tree, old generation, target old+1 CAS/lease,
+guardian, flags, quiescence proof, and expiry. It must state
+`authorization_effect_observed: false` and cannot claim a birth, heartbeat,
+cursor, refill, reload, or completion. Only after that commit validates may one
+CAS/lease winner activate the exact old+1 generation. A separate
+`ipfs_accelerate_py.agent_supervisor.protected-runtime-post-activation-observation@1`
+receipt then joins actual lifecycle/monitor births, leases, fences, heartbeats,
+cursors, and refill dispatch/adoption to that generation. Authorization alone
+never proves activation and cannot make public facades selectable.
 
 ## 10. Implementation waves
 
@@ -566,21 +620,27 @@ CAS with durable `UNKNOWN`/`PROMPT_REPLAY_REQUIRED` behavior. ASE3-025 commits
 the authoritative program revision to DuckDB first, preserves embedded task
 CIDs and subgoal owners through a generated-source observer, constructs a
 namespace-independent runtime profile, and proves genuine configured runtime
-subprocess execution without a Git-tracked board. ASE3-021 lands event-driven
-refill dormant; ASE3-020 closes the actual-parser and transactional saga
-fan-in; and ASE3-008 makes the monitor a durable detached lifecycle. The legacy
-objective and codebase refill flags remain disabled through those
-implementation waves.
+subprocess execution without a Git-tracked board. ASE3-021 lands the durable
+refill saga cursor and monitor phase deadlines dormant; ASE3-020 closes the
+actual-parser fan-in plus immutable history/cursor vectors, monitor-ready
+reservations, and UNKNOWN adoption; and ASE3-008 directly depends on both,
+owns the configured-scheduler semantic-progress integration, and composes the
+reviewed `ReviewedHostNamespaceReconciler` guardian with the detached monitor.
+The legacy objective and codebase refill flags and the monitor flag remain
+disabled through those implementation waves.
 
 ASE3-026 is a second, distinct operator boundary. It is a canonical producer
 for the monitoring goal but remains blocked, non-schedulable, and review-only
-because it owns the protected scheduler config, convergence validator,
-manifest binding, and live generation reload. In one operator-reviewed commit
-it must add strict validation for the activation receipt, enable only scoped
+because it owns protected authorization/config validation and the later
+post-effect observation. One operator-reviewed pre-effect commit may add only
+strict authorization validation and manifest binding for the inactive exact
+tree; its signed receipt cannot claim the generation already ran. After that
+commit validates, one target-old+1 CAS/lease winner may enable only scoped
 prompt-program/objective refill plus the autonomous monitor, disable legacy
 hash sharding for active slices, retain broad legacy codebase refill as false,
-and bind the stopped and replacement generations. ASE3-009 cannot become ready
-until this protected receipt is valid.
+and reload via the reviewed host guardian. A later separately bound observation
+must prove the actual replacement lifecycle, monitor, heartbeat/cursor, and
+refill effects. ASE3-009 cannot become ready from authorization alone.
 
 ASE3-000 selectively ports or rewrites preserved v2 work. No task may claim
 historical ASE/ASE2 completion based on old state files. Fresh task IDs and
@@ -615,16 +675,19 @@ The release candidate must prove:
   DuckDB, observation, claim, effect, and receipt;
 - at least two independent tasks execute concurrently, while conflicting tasks
   never overlap and all claims are fenced;
-- a real supported `run` starts or adopts a real lifecycle process; no default
-  in-memory-completed or no-op-effect path is reachable in production mode;
+- a real supported `run` starts or adopts real lifecycle and monitor processes;
+  RUNNING requires their same-revision births, leases, fences, fresh heartbeats,
+  and monotonic cursors, and no default in-memory-completed, projection-only,
+  or no-op-effect path is reachable in production mode;
 - low-water, drained-open-goal, failed-validation, and drift cases each prove
-  event -> residual -> append/adopt -> plan invalidation -> recompile -> real
-  descendant dispatch;
+  `EVALUATING -> APPEND_RESERVED -> APPENDED -> PLAN_INVALIDATED -> RECOMPILED
+  -> DISPATCHED/ADOPTED` with durable predecessor links and phase deadlines;
 - a drained evidence-complete goal does not refill;
 - stale PID, stale heartbeat, frozen worker, dead scheduler, duplicate launch,
-  dead monitor, client disconnect, crash-at-boundary, lease loss, branch-only
-  completion, and corrupt projection cases recover or fail closed
-  deterministically;
+  dead monitor, client disconnect, provider saturation, monotonic-clock rollback,
+  merge/refill stalls, repeated oscillation, crash-at-boundary, lease loss,
+  branch-only completion, UNKNOWN effect outcome, and corrupt projection cases
+  recover/adopt once or fail closed deterministically without replay;
 - raw prompt/secret leak scans, path/authority injection, UCAN attenuation,
   provider fallback, retry, resource, and budget adversarial tests pass;
 - existing expert CLI and low-level MCP compatibility suites pass;
@@ -634,10 +697,11 @@ The release candidate must prove:
   derives every program/effect CID from the prompt root, dispatches a refill
   descendant, and accepts a reviewed non-sentinel repository change;
 - final evidence is produced on the exact current integration tree and the
-  canary stays continuously healthy for at least the signed config
-  `monitor_policy.canary_observation_seconds: 900` window, proven by monotonic
-  start, end, and health evidence; prompt input and wall-clock-only claims
-  cannot shorten or satisfy the window.
+  canary stays continuously healthy after its final recovery for at least the
+  signed config `monitor_policy.canary_observation_seconds: 900` window, proven
+  by monotonic start, end, and health evidence; prompt input and wall-clock-only
+  claims cannot shorten or satisfy the window, and an unhealthy sample resets
+  it.
 
 Quantitative release targets: 100% public-operation parity, zero unauthorized
 effects, zero duplicate task effects, zero accepted branch-unreachable commits,
@@ -653,15 +717,22 @@ bounded recovery/refill decision for every injected incident.
    compare all transports without starting effects.
 3. **Assist:** enable real isolated-worktree runs with explicit local profiles;
    keep expert entrypoints available as rollback.
-4. **Protected activation:** after the dormant refill and autonomous monitor
-   implementations pass together, fence the old generation and atomically bind
-   the strict activation receipt, scoped flags, and one replacement generation.
-5. **Self-host canary:** use the new prompt path from a fresh empty state
+4. **Protected authorization:** after the dormant refill and autonomous monitor
+   implementations pass together, bind a signed pre-effect authorization for
+   an inactive exact tree, old-generation quiescence, target old+1 CAS/lease,
+   reviewed guardian, and scoped flags. It must not claim an effect ran.
+5. **Activation and observation:** one CAS/lease winner consumes that
+   authorization, fences the old generation, activates the scoped flags and
+   replacement through the guardian, then a separate post-effect receipt proves
+   actual lifecycle, monitor, heartbeat/cursor, and refill dispatch/adoption
+   evidence.
+6. **Self-host canary:** use the new prompt path from a fresh empty state
    namespace to perform one bounded
    improvement against this package while a separate monitor observes progress,
-   refill, branch convergence, and recovery for at least the signed config
-   `monitor_policy.canary_observation_seconds: 900` continuous-health window.
-6. **Local auto:** promote only after exact-tree conformance, chaos, load, and
+   refill, branch convergence, and recovery; after the final recovery it must
+   remain continuously healthy for at least the signed config
+   `monitor_policy.canary_observation_seconds: 900` window.
+7. **Local auto:** promote only after exact-tree conformance, chaos, load, and
    sustained canary gates pass. Remote mutation remains separately authorized.
 
 Rollback disables the prompt-only profile, fences its active run revision,
@@ -677,6 +748,8 @@ ASE3-019/027 recovery, ASE3-030 hermetic identity closure, ASE3-023 adaptive
 acceptance, and ASE3-022 operator transition first. Then execute
 ASE3-029 -> ASE3-028 -> ASE3-024 -> ASE3-025 -> ASE3-021 -> ASE3-020 ->
 ASE3-008. Keep refill and the detached monitor dormant until operator-owned
-ASE3-026 validates and reloads the exact generation. Only then build the public
-facades and use the completed prompt path, with no seed board, for ASE3-013's
-self-hosted canary.
+ASE3-026 validates pre-effect authorization, one exact old+1 CAS/lease winner
+activates the generation, and a separate post-activation observation proves
+the joined lifecycle/monitor/refill effects. Only then build the public facades
+and run ASE3-013, which directly depends on ASE3-026, from no seed board and
+requires 900 uninterrupted healthy seconds after its final injected recovery.

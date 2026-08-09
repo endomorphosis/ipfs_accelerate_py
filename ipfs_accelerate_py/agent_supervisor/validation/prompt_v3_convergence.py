@@ -134,6 +134,21 @@ PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH: Final = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     + PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
 )
+PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "protected-runtime-activation-authorization@1"
+)
+PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME: Final = (
+    "protected_runtime_post_activation_observation_receipt.json"
+)
+PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH: Final = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+    + PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME
+)
+PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "protected-runtime-post-activation-observation@1"
+)
 HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_FILENAME: Final = (
     "hermetic_control_plane_identity_acceptance_receipt.json"
 )
@@ -749,16 +764,16 @@ _PROGRAM_EXPANSION_TASKS: Final = {
     },
 }
 _PROGRAM_AMENDED_TASK_CIDS: Final = {
-    "ASE3-008": "baguqeeraps4yiytww7kf5e7ybn3ctmtjjeacvwao2vvdzlpcq664l3ihpo6q",
+    "ASE3-008": "baguqeerajytqcnamiixnkiekvawxnupxkdf2u2oeciswxhsrw3ylo5bjlr7q",
     "ASE3-009": "baguqeera7ly4s4ddus5vo5iyaobxuz5mmlmoi4g3ajcvcuycrpfihtzlbykq",
     "ASE3-012": "baguqeerakpgeugpi6adjmmkv3vsqgaznlotedao7srb2fnynsco3rbgzjcpa",
-    "ASE3-013": "baguqeeraxkgeu5kylsecwjoxwhi3pnjw3fnwddvtcmvj7heecl7qepwvwseq",
-    "ASE3-020": "baguqeeraeofnvkxowsyssyahrjh362aembsxtbcmq6mv2drims225tnkggya",
-    "ASE3-021": "baguqeeraycuz4hddho6gr2bqbl3pknpz5e2pqjuvgqtluo63j343gkq52jsq",
+    "ASE3-013": "baguqeerayddnpog5ef4uzdgh3ku67pm6nkm3kpyh75jjzc6oezr2nxiuxdva",
+    "ASE3-020": "baguqeerafvtiifgsb4yavhrq27rxbyw3ngymszm4znfwwboonfehggflkzia",
+    "ASE3-021": "baguqeeraheqxu3slnx5dhc73yitbn2zdtrpsqtwfpesdblth72qz23djw3ya",
 }
 _PROGRAM_AMENDED_TASK_CONTRACT_SHA256S: Final = {
     "ASE3-008": (
-        "sha256:2243ee5c6e3e749f3ef23ebba14676ece081b1bd015fee7354812670bf819e8f"
+        "sha256:a265387dfd68e8509ac9f1e63fd59aae2d67844cb29da083aa376b1bfed5378e"
     ),
     "ASE3-009": (
         "sha256:82e0a373cc1423b6b2aa9dd1d750cb5f44e8955c20f4b2e25b12bb44b7ab1e5f"
@@ -767,13 +782,13 @@ _PROGRAM_AMENDED_TASK_CONTRACT_SHA256S: Final = {
         "sha256:0b35be7e0aacbb9eb3e0540610e0b564969f5888a13d409be33a406ed3430b30"
     ),
     "ASE3-013": (
-        "sha256:7869721e77a17ecc7b15be092478e733bb0d18833fbe042195707c850d685f23"
+        "sha256:1403cd1dc370787c31ab1c4943336c65e9403600f3ae614909c077fa1dbbf738"
     ),
     "ASE3-020": (
-        "sha256:1532bbae10cc65268df2f0ca87512f37375e557aafeaf6b63030e2071033f1d1"
+        "sha256:58b759da5f8ba34ae8d7d460d64eba03c99de67cfcc76355306c9a41854757c0"
     ),
     "ASE3-021": (
-        "sha256:39c2c005fb56b4190b00ebf63b95098e678146054469bcebe69047950272baac"
+        "sha256:0067a1c53aa3d471bcabd3551991eded661d8e29da23ff861edb7a88fdbd6484"
     ),
 }
 _PROGRAM_UNCHANGED_FUTURE_TASK_CONTRACT_SHA256S: Final = {
@@ -788,10 +803,10 @@ _PROGRAM_UNCHANGED_FUTURE_TASK_CONTRACT_SHA256S: Final = {
     ),
 }
 _PROGRAM_AMENDED_TASK_DEPENDENCIES: Final = {
-    "ASE3-008": ("ASE3-006", "ASE3-020"),
+    "ASE3-008": ("ASE3-006", "ASE3-020", "ASE3-021"),
     "ASE3-009": ("ASE3-005", "ASE3-008", "ASE3-026"),
     "ASE3-012": ("ASE3-010", "ASE3-011"),
-    "ASE3-013": ("ASE3-008", "ASE3-012"),
+    "ASE3-013": ("ASE3-008", "ASE3-012", "ASE3-026"),
     "ASE3-020": (
         "ASE3-003",
         "ASE3-005",
@@ -813,32 +828,112 @@ _PROGRAM_AMENDED_TASK_DEPENDENCIES: Final = {
     ),
 }
 _PROGRAM_AMENDED_TASK_REQUIREMENTS: Final = {
-    "ASE3-008": ("DurableMonitorRunner", "client disconnect"),
+    "ASE3-008": (
+        "ReviewedHostNamespaceReconciler",
+        "configured-scheduler semantic-progress publication",
+        (
+            "one same-revision join of verified lifecycle and monitor births, "
+            "leases, fences, fresh heartbeats, and monotonic event cursors"
+        ),
+        "unknown external-effect outcomes are adopted",
+    ),
     "ASE3-009": ("ProductionServiceCompositionManifest", "ASE3-026"),
     "ASE3-012": ("black-box", "production composition CID"),
     "ASE3-013": (
         "no preseeded objective or taskboard",
         "non-sentinel",
         "monitor_policy.canary_observation_seconds: 900",
-    ),
-    "ASE3-020": ("RequiredArgumentCoverageReceipt", "actual supervisor and daemon parsers"),
-    "ASE3-021": (
         (
-            "event -> current-tree residual -> append/adopt CAS -> active-plan "
-            "invalidation -> recompile -> real descendant dispatch"
+            "Client disconnect, monitor death, provider saturation, clock "
+            "rollback, merge/refill stalls, and oscillation"
         ),
-        "ASE3-025 canonical supervisor schema",
+        "The 900-second clock begins only after the final recovery",
+    ),
+    "ASE3-020": (
+        "ImmutableRunHistoryVector",
+        "MonitorProgressCursorVector",
+        "MonitorReadyEffectReservation",
+        "UnknownOutcomeAdoptionReceipt",
+        "persist UNKNOWN, prohibit replay",
+        "actual supervisor/daemon parsers",
+    ),
+    "ASE3-021": (
+        "DurableRefillSagaCursor",
+        "EVALUATING→APPEND_RESERVED→APPENDED→PLAN_INVALIDATED→RECOMPILED→DISPATCHED/ADOPTED",
+        "phase-specific monitor deadlines",
+        "all refill flags remain dormant",
     ),
 }
 _PROTECTED_RUNTIME_ACTIVATION_TASK_ID: Final = "ASE3-026"
+_PROTECTED_RUNTIME_ACTIVATION_TASK_TITLE: Final = (
+    "Authorize, activate, and observe the durable refill and autonomous monitor "
+    "runtime"
+)
 _PROTECTED_RUNTIME_ACTIVATION_BLOCKED_REASON: Final = (
     "protected runtime activation receipt not yet accepted"
 )
 _PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256: Final = (
-    "sha256:b2f4f5afeecfdce68ace7509b072646c8f762ffd53692adc9e98431a4a9fe6ce"
+    "sha256:84d70803f2e42a6e96725b0a01db05a2673e63a68bac218d43bac09e835bde6d"
 )
 _PROTECTED_RUNTIME_ACTIVATION_TASK_CID: Final = (
-    "baguqeerah5rwdashtgibn3xqzdlo6w4ft4gy567vmov6zfq5vpxsekqxkqra"
+    "baguqeerampybtjmxsa6zwz6eibyh6sa6agxik2f6kpsrfwz34jipcdul5aoa"
+)
+_PROTECTED_RUNTIME_ACTIVATION_DEPENDENCIES: Final = (
+    "ASE3-008",
+    "ASE3-020",
+    "ASE3-021",
+    "ASE3-025",
+)
+_PROTECTED_RUNTIME_ACTIVATION_REQUIREMENTS: Final = (
+    "ProtectedRuntimeActivationAuthorization",
+    "ProtectedRuntimePostActivationObservation",
+    "authorization_effect_observed",
+    "authorization alone never proves the effect ran",
+    "ReviewedHostNamespaceReconciler",
+)
+_MONITOR_STRATEGY_OBJECTIVE_CONTRACT_SHA256S: Final = {
+    "ASE3-G000": (
+        "sha256:0020d994975637671f492b609e2042735de60d3a534499b61b32318d5d98dbce"
+    ),
+    "ASE3-G050": (
+        "sha256:e3a3f34ac7693ec8cc99a1673a5c64a1dd845962f79beb662a8683937b77df93"
+    ),
+    "ASE3-G055": (
+        "sha256:0c72d637cd78301ec8969d1aaf0fa5a0c73cb991c229eb7089b8aebf91cf87e2"
+    ),
+    "ASE3-G060": (
+        "sha256:b14fa7c4449e1106525236d60a156ee23b7b6e642897ea0a26a8022518342d29"
+    ),
+    "ASE3-G080": (
+        "sha256:44256fe901e73323fa5eab9cc7a57a6c755703777212a12b368ec36984677658"
+    ),
+}
+_PROTECTED_RUNTIME_ACTIVATION_CONFIG_SHA256: Final = (
+    "sha256:f33ff19c7611fbfda288e5951515aa4feb12f1e2241866f84ee35a1e36c58d4b"
+)
+_REFILL_POLICY_CONFIG_SHA256: Final = (
+    "sha256:722cf566d64764785aeb1a9f0e68c18a01b80ae82ed24cc081b4e8cc6d55dd3c"
+)
+_MONITOR_POLICY_CONFIG_SHA256: Final = (
+    "sha256:9cbf35362cf2dab3f1c447dac79015ed0c37fe758117e10305ef28c55f6c4a4c"
+)
+_MONITOR_STRATEGY_PLAN_REQUIREMENTS: Final = (
+    "ReviewedHostNamespaceReconciler",
+    (
+        "EVALUATING→APPEND_RESERVED→APPENDED→PLAN_INVALIDATED→RECOMPILED→"
+        "DISPATCHED/ADOPTED"
+    ),
+    "900 uninterrupted healthy seconds after its final injected recovery",
+)
+_ASE3_026_PLAN_CONTAINING_HEADING: Final = (
+    "## 9. Progress monitoring and deterministic recovery"
+)
+_ASE3_026_PLAN_SECTION_HEADING: Final = (
+    "### 9.1 ASE3-026 protected activation authorization and observation"
+)
+_ASE3_026_PLAN_SECTION_END_HEADING: Final = "## 10. Implementation waves"
+_ASE3_026_PLAN_SECTION_CONTRACT_SHA256: Final = (
+    "sha256:23d6ab54a9f58b69c052b294113198ae9256b177287f099c3a9f7c647d5a6f78"
 )
 _ASE3_019_TITLE: Final = (
     "Seal signed provider authority, authentication lifecycle, and once-only fallback"
@@ -2559,6 +2654,64 @@ def _task_contract_sha256(metadata: Mapping[str, str]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _mapping_contract_sha256(payload: Mapping[str, Any]) -> str:
+    """Hash one JSON-compatible policy mapping with the sealed canonical form."""
+
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _exact_json_contract_value(actual: Any, expected: Any) -> bool:
+    """Compare parsed JSON without Python's bool/int equality aliasing."""
+
+    if type(expected) is bool:
+        return type(actual) is bool and actual is expected
+    if type(actual) is not type(expected):
+        return False
+    if type(expected) is list:
+        return len(actual) == len(expected) and all(
+            _exact_json_contract_value(actual_item, expected_item)
+            for actual_item, expected_item in zip(actual, expected, strict=True)
+        )
+    if type(expected) is dict:
+        return set(actual) == set(expected) and all(
+            _exact_json_contract_value(actual[key], expected_value)
+            for key, expected_value in expected.items()
+        )
+    return bool(actual == expected)
+
+
+def _normalized_markdown_section_contract_sha256(
+    text: str,
+    *,
+    section_heading: str,
+    containing_heading: str,
+    end_heading: str,
+) -> str:
+    """Hash one uniquely bounded Markdown section after whitespace normalization."""
+
+    if text.count(section_heading) != 1:
+        raise ValueError(f"expected exactly one heading {section_heading!r}")
+    containing_start = text.find(containing_heading)
+    section_start = text.find(section_heading)
+    section_end = text.find(end_heading, section_start + len(section_heading))
+    if (
+        containing_start < 0
+        or section_start <= containing_start
+        or section_end <= section_start
+    ):
+        raise ValueError("section is not inside its required heading boundary")
+    bounded = text[section_start:section_end]
+    normalized = re.sub(r"\s+", " ", bounded).strip()
+    return "sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _normalize_identity_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
 
@@ -3076,13 +3229,30 @@ def _validate_program_plan_expansion(
         errors.append(f"{prefix}.ASE3-026.receipt: unable to inspect: {exc}")
     else:
         errors.append(
-            f"{prefix}.ASE3-026.receipt: present without strict validation and "
-            "convergence-manifest binding"
+            f"{prefix}.ASE3-026.authorization_receipt: present without strict "
+            "validation and convergence-manifest binding"
+        )
+    observation_path = (
+        artifact_root
+        / PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME
+    )
+    try:
+        observation_path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.append(f"{prefix}.ASE3-026.observation_receipt: unable to inspect: {exc}")
+    else:
+        errors.append(
+            f"{prefix}.ASE3-026.observation_receipt: present without strict "
+            "post-activation validation and convergence-manifest binding"
         )
     activation = tasks.get(_PROTECTED_RUNTIME_ACTIVATION_TASK_ID)
     if activation is None:
         errors.append(f"{prefix}.ASE3-026: expected exactly one activation task")
     else:
+        if activation.get(_TASK_TITLE_KEY) != _PROTECTED_RUNTIME_ACTIVATION_TASK_TITLE:
+            errors.append(f"{prefix}.ASE3-026.title: exact split activation title required")
         if (
             _task_contract_sha256(activation)
             != _PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256
@@ -3105,6 +3275,11 @@ def _validate_program_plan_expansion(
                     f"{prefix}.ASE3-026.{field.replace(' ', '_')}: "
                     f"expected {expected_value!r}"
                 )
+        if (
+            _taskboard_csv(activation, "depends on")
+            != _PROTECTED_RUNTIME_ACTIVATION_DEPENDENCIES
+        ):
+            errors.append(f"{prefix}.ASE3-026.depends_on: exact expansion required")
         try:
             activation_cid = _canonical_task_cid_from_metadata(activation)
         except ValueError as exc:
@@ -3116,7 +3291,23 @@ def _validate_program_plan_expansion(
             activation,
             "outputs",
         ):
-            errors.append(f"{prefix}.ASE3-026.outputs: activation receipt required")
+            errors.append(
+                f"{prefix}.ASE3-026.outputs: activation authorization receipt required"
+            )
+        if (
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH
+            not in _taskboard_csv(activation, "outputs")
+        ):
+            errors.append(
+                f"{prefix}.ASE3-026.outputs: post-activation observation receipt "
+                "required"
+            )
+        searchable = " ".join(activation.values())
+        for requirement in _PROTECTED_RUNTIME_ACTIVATION_REQUIREMENTS:
+            if requirement not in searchable:
+                errors.append(
+                    f"{prefix}.ASE3-026.contract: missing {requirement!r}"
+                )
 
     dependency_graph = {
         task_id: _taskboard_csv(metadata, "depends on")
@@ -3228,6 +3419,28 @@ def _validate_program_scheduler_projection(
                 f"{prefix}.plan.canary_observation_seconds: exact signed "
                 "900-second policy required"
             )
+        for requirement in _MONITOR_STRATEGY_PLAN_REQUIREMENTS:
+            if requirement not in plan_text:
+                errors.append(
+                    f"{prefix}.plan.monitor_strategy: missing {requirement!r}"
+                )
+        try:
+            activation_section_hash = (
+                _normalized_markdown_section_contract_sha256(
+                    plan_text,
+                    section_heading=_ASE3_026_PLAN_SECTION_HEADING,
+                    containing_heading=_ASE3_026_PLAN_CONTAINING_HEADING,
+                    end_heading=_ASE3_026_PLAN_SECTION_END_HEADING,
+                )
+            )
+        except ValueError as exc:
+            errors.append(f"{prefix}.plan.ASE3-026.section: {exc}")
+        else:
+            if activation_section_hash != _ASE3_026_PLAN_SECTION_CONTRACT_SHA256:
+                errors.append(
+                    f"{prefix}.plan.ASE3-026.contract_sha256: exact normalized "
+                    "protected activation section required"
+                )
         for field, fragment in {
             "hermetic_identity_acceptance_receipt": (
                 HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH
@@ -3301,6 +3514,17 @@ def _validate_program_scheduler_projection(
                     f"{prefix}.objectives.{goal_id}.producing_tasks: task-group "
                     "mismatch"
                 )
+        for goal_id, expected_hash in (
+            _MONITOR_STRATEGY_OBJECTIVE_CONTRACT_SHA256S.items()
+        ):
+            goal = goals.get(goal_id)
+            if goal is None:
+                errors.append(f"{prefix}.objectives.{goal_id}: missing sealed goal")
+            elif _task_contract_sha256(goal) != expected_hash:
+                errors.append(
+                    f"{prefix}.objectives.{goal_id}.contract_sha256: exact "
+                    "monitor-strategy goal contract required"
+                )
 
     dependencies = config.get("task_dependencies")
     if not isinstance(dependencies, Mapping):
@@ -3344,11 +3568,64 @@ def _validate_program_scheduler_projection(
         "task_id": "ASE3-026",
         "status": "blocked",
         "receipt_path": PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH,
+        "receipt_schema": PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA,
+        "receipt_phase": "pre_effect_authorization",
+        "authorization_may_claim_activation_effect": False,
+        "post_activation_observation_receipt_path": (
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH
+        ),
+        "post_activation_observation_receipt_schema": (
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA
+        ),
+        "post_activation_observation_required_for_completion": True,
+        "post_activation_required_observations": [
+            "lifecycle_process_birth",
+            "lifecycle_lease_fence_heartbeat_and_cursor",
+            "monitor_process_birth",
+            "monitor_lease_fence_heartbeat_and_cursor",
+            "refill_append_recompile_dispatch_or_adoption",
+        ],
+        "one_generation_cas_lease_required": True,
         "operator_review_required": True,
         "strict_validator_and_manifest_binding_required": True,
     }
-    if config.get("protected_runtime_activation") != expected_activation:
-        errors.append(f"{prefix}.protected_runtime_activation: exact gate required")
+    activation_config = config.get("protected_runtime_activation")
+    if type(activation_config) is not dict:
+        errors.append(
+            f"{prefix}.protected_runtime_activation: expected exact JSON object"
+        )
+    else:
+        if set(activation_config) != set(expected_activation):
+            errors.append(
+                f"{prefix}.protected_runtime_activation.keys: exact population "
+                "required"
+            )
+        for field in sorted(set(activation_config) & set(expected_activation)):
+            actual_value = activation_config[field]
+            expected_value = expected_activation[field]
+            if type(expected_value) is bool:
+                if type(actual_value) is not bool or actual_value is not expected_value:
+                    errors.append(
+                        f"{prefix}.protected_runtime_activation.{field}: expected "
+                        f"exact JSON boolean {str(expected_value).lower()}"
+                    )
+            elif not _exact_json_contract_value(actual_value, expected_value):
+                errors.append(
+                    f"{prefix}.protected_runtime_activation.{field}: expected "
+                    f"exact JSON {type(expected_value).__name__} contract"
+                )
+        if not _exact_json_contract_value(activation_config, expected_activation):
+            errors.append(
+                f"{prefix}.protected_runtime_activation: exact typed gate required"
+            )
+        if (
+            _mapping_contract_sha256(activation_config)
+            != _PROTECTED_RUNTIME_ACTIVATION_CONFIG_SHA256
+        ):
+            errors.append(
+                f"{prefix}.protected_runtime_activation.contract_sha256: exact "
+                "parsed gate contract required"
+            )
     if config.get("strict_task_sharding") is not True:
         errors.append(f"{prefix}.strict_task_sharding: must remain true before gate")
     if config.get("objective_refill_enabled") is not False:
@@ -3361,13 +3638,43 @@ def _validate_program_scheduler_projection(
     if not isinstance(refill, Mapping):
         errors.append(f"{prefix}.refill_policy: expected object")
     else:
-        for field, expected in {
+        expected_refill_policy = {
             "enable_after_task": "ASE3-026",
             "activation_task_id": "ASE3-026",
             "prompt_program_refill_enabled": False,
-        }.items():
+            "saga_schema": "ipfs_accelerate_py.agent_supervisor.durable-refill-saga@1",
+            "saga_cursor_states": [
+                "EVALUATING",
+                "APPEND_RESERVED",
+                "APPENDED",
+                "PLAN_INVALIDATED",
+                "RECOMPILED",
+                "DISPATCHED",
+                "ADOPTED",
+            ],
+            "saga_terminal_states": ["DISPATCHED", "ADOPTED"],
+            "saga_terminal_states_are_alternatives": True,
+            "saga_cursor_durable": True,
+            "monitor_phase_deadlines_required": True,
+            "max_goals_per_epoch": 8,
+            "max_tasks_per_epoch": 24,
+            "max_open_tasks": 48,
+            "max_depth": 3,
+            "max_epochs": 3,
+            "max_attempts_per_task": 2,
+            "unchanged_residual_cooldown_seconds": 3600,
+            "mutate_seed_board": False,
+        }
+        for field, expected in expected_refill_policy.items():
             if refill.get(field) != expected:
                 errors.append(f"{prefix}.refill_policy.{field}: expected {expected!r}")
+        if refill != expected_refill_policy:
+            errors.append(f"{prefix}.refill_policy: exact dormant saga required")
+        if _mapping_contract_sha256(refill) != _REFILL_POLICY_CONFIG_SHA256:
+            errors.append(
+                f"{prefix}.refill_policy.contract_sha256: exact sealed policy "
+                "required"
+            )
     monitor = config.get("monitor_policy")
     if not isinstance(monitor, Mapping):
         errors.append(f"{prefix}.monitor_policy: expected object")
@@ -3376,6 +3683,10 @@ def _validate_program_scheduler_projection(
             "enabled": False,
             "detached": True,
             "activation_task_id": "ASE3-026",
+            "durable_guardian": "ReviewedHostNamespaceReconciler",
+            "guardian_scope": "host_namespace",
+            "guardian_review_required": True,
+            "semantic_progress_source": "configured_board_scheduler",
             "heartbeat_seconds": 5,
             "stale_control_seconds": 30,
             "semantic_progress_seconds": 300,
@@ -3383,16 +3694,38 @@ def _validate_program_scheduler_projection(
             "recovery_window_seconds": 1800,
             "canary_task_id": "ASE3-013",
             "canary_observation_seconds": 900,
+            "post_recovery_continuous_health_seconds": 900,
             "continuous_health_required": True,
             "monotonic_elapsed_receipt_required": True,
             "prompt_may_override_observation_window": False,
-            "running_requires_process_birth_lease_fence_and_heartbeat": True,
+            "running_requires_joined_lifecycle_monitor_evidence": True,
+            "running_join_fields": [
+                "lifecycle_process_birth",
+                "lifecycle_lease",
+                "lifecycle_fence",
+                "lifecycle_heartbeat",
+                "lifecycle_event_cursor",
+                "monitor_process_birth",
+                "monitor_lease",
+                "monitor_fence",
+                "monitor_heartbeat",
+                "monitor_event_cursor",
+            ],
+            "immutable_history_and_cursor_vectors_required": True,
+            "unknown_outcome_effect_replay_authorized": False,
             "queue_drain_is_completion": False,
             "branch_local_completion_is_completion": False,
         }
         for field, expected in expected_monitor_policy.items():
             if monitor.get(field) != expected:
                 errors.append(f"{prefix}.monitor_policy.{field}: expected {expected!r}")
+        if monitor != expected_monitor_policy:
+            errors.append(f"{prefix}.monitor_policy: exact dormant guardian policy required")
+        if _mapping_contract_sha256(monitor) != _MONITOR_POLICY_CONFIG_SHA256:
+            errors.append(
+                f"{prefix}.monitor_policy.contract_sha256: exact sealed policy "
+                "required"
+            )
     return errors
 
 

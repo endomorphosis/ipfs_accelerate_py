@@ -38,7 +38,11 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     POST_WAVE3_RESIDUAL_FILENAME,
     PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
     PROMPT_V3_TASKBOARD_RELATIVE_PATH,
+    PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA,
     PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME,
+    PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME,
+    PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH,
+    PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_FILENAME,
     PROVIDER_ATTEMPT_DAEMON_RELOAD_RECEIPT_RELATIVE_PATH,
     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME,
@@ -2106,6 +2110,8 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert len(canonical) == len(set(canonical)) == 27
     assert initial["noncanonical_transition_task_ids"] == ["ASE3-022"]
     assert set(dependencies) == set(canonical)
+    assert dependencies["ASE3-008"] == ["ASE3-006", "ASE3-020", "ASE3-021"]
+    assert dependencies["ASE3-013"] == ["ASE3-008", "ASE3-012", "ASE3-026"]
     assert {
         task_id
         for task_ids in groups.values()
@@ -2130,6 +2136,24 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
             "data/agent_supervisor/prompt_only_self_improvement_v3/"
             "convergence/protected_runtime_activation_receipt.json"
         ),
+        "receipt_schema": PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA,
+        "receipt_phase": "pre_effect_authorization",
+        "authorization_may_claim_activation_effect": False,
+        "post_activation_observation_receipt_path": (
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH
+        ),
+        "post_activation_observation_receipt_schema": (
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA
+        ),
+        "post_activation_observation_required_for_completion": True,
+        "post_activation_required_observations": [
+            "lifecycle_process_birth",
+            "lifecycle_lease_fence_heartbeat_and_cursor",
+            "monitor_process_birth",
+            "monitor_lease_fence_heartbeat_and_cursor",
+            "refill_append_recompile_dispatch_or_adoption",
+        ],
+        "one_generation_cas_lease_required": True,
         "operator_review_required": True,
         "strict_validator_and_manifest_binding_required": True,
     }
@@ -2138,11 +2162,44 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert config["codebase_refill_enabled"] is False
     assert refill["enable_after_task"] == "ASE3-026"
     assert refill["prompt_program_refill_enabled"] is False
+    assert refill["saga_cursor_states"] == [
+        "EVALUATING",
+        "APPEND_RESERVED",
+        "APPENDED",
+        "PLAN_INVALIDATED",
+        "RECOMPILED",
+        "DISPATCHED",
+        "ADOPTED",
+    ]
+    assert refill["saga_terminal_states"] == ["DISPATCHED", "ADOPTED"]
+    assert refill["saga_terminal_states_are_alternatives"] is True
+    assert refill["saga_cursor_durable"] is True
+    assert refill["monitor_phase_deadlines_required"] is True
     assert monitor["enabled"] is False
     assert monitor["detached"] is True
     assert monitor["activation_task_id"] == "ASE3-026"
+    assert monitor["durable_guardian"] == "ReviewedHostNamespaceReconciler"
+    assert monitor["guardian_scope"] == "host_namespace"
+    assert monitor["guardian_review_required"] is True
+    assert monitor["semantic_progress_source"] == "configured_board_scheduler"
+    assert monitor["running_join_fields"] == [
+        "lifecycle_process_birth",
+        "lifecycle_lease",
+        "lifecycle_fence",
+        "lifecycle_heartbeat",
+        "lifecycle_event_cursor",
+        "monitor_process_birth",
+        "monitor_lease",
+        "monitor_fence",
+        "monitor_heartbeat",
+        "monitor_event_cursor",
+    ]
+    assert monitor["running_requires_joined_lifecycle_monitor_evidence"] is True
+    assert monitor["immutable_history_and_cursor_vectors_required"] is True
+    assert monitor["unknown_outcome_effect_replay_authorized"] is False
     assert monitor["canary_task_id"] == "ASE3-013"
     assert monitor["canary_observation_seconds"] == 900
+    assert monitor["post_recovery_continuous_health_seconds"] == 900
     assert monitor["continuous_health_required"] is True
     assert monitor["monotonic_elapsed_receipt_required"] is True
     assert monitor["prompt_may_override_observation_window"] is False
@@ -2315,14 +2372,126 @@ def test_amended_task_identity_and_activation_dependency_are_pinned(
     )
 
 
+@pytest.mark.parametrize(
+    ("task_id", "needle", "replacement"),
+    (
+        (
+            "ASE3-008",
+            "- Depends on: ASE3-006, ASE3-020, ASE3-021",
+            "- Depends on: ASE3-006, ASE3-020",
+        ),
+        (
+            "ASE3-013",
+            "- Depends on: ASE3-008, ASE3-012, ASE3-026",
+            "- Depends on: ASE3-008, ASE3-012",
+        ),
+    ),
+)
+def test_monitor_strategy_direct_dependency_tampering_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+    needle: str,
+    replacement: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    start = text.index(f"## {task_id} ")
+    end = text.find("\n## ASE3-", start + 1)
+    if end < 0:
+        end = len(text)
+    block = text[start:end]
+    assert block.count(needle) == 1
+    taskboard.write_text(
+        text[:start] + block.replace(needle, replacement, 1) + text[end:],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert (
+        f"program_plan_expansion.{task_id}.depends_on: exact expansion required"
+        in report.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_id", "needle", "replacement"),
+    (
+        (
+            "ASE3-008",
+            "ReviewedHostNamespaceReconciler",
+            "ClientOwnedMonitorGuardian",
+        ),
+        (
+            "ASE3-013",
+            "The 900-second clock begins only after the final recovery",
+            "The 900-second clock begins before recovery",
+        ),
+        (
+            "ASE3-020",
+            "persist UNKNOWN, prohibit replay",
+            "replay an unknown effect",
+        ),
+        (
+            "ASE3-021",
+            (
+                "EVALUATING→APPEND_RESERVED→APPENDED→PLAN_INVALIDATED→"
+                "RECOMPILED→DISPATCHED/ADOPTED"
+            ),
+            "EVALUATING→APPENDED→DISPATCHED",
+        ),
+        (
+            "ASE3-026",
+            "authorization_effect_observed: false",
+            "authorization_effect_observed: true",
+        ),
+    ),
+)
+def test_monitor_strategy_task_contract_mutation_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+    needle: str,
+    replacement: str,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    start = text.index(f"## {task_id} ")
+    end = text.find("\n## ASE3-", start + 1)
+    if end < 0:
+        end = len(text)
+    block = text[start:end]
+    assert needle in block
+    taskboard.write_text(
+        text[:start] + block.replace(needle, replacement, 1) + text[end:],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert any(
+        f"program_plan_expansion.{task_id}.contract_sha256" in error
+        for error in report.errors
+    )
+
+
 def test_protected_runtime_activation_stays_blocked_without_strict_receipt(
     tmp_path: Path,
 ) -> None:
     taskboard = tmp_path / "prompt-v3.todo.md"
     text = TASKBOARD_PATH.read_text(encoding="utf-8")
     needle = (
-        "## ASE3-026 Activate and reload the durable refill and autonomous "
-        "monitor runtime\n\n- Status: blocked\n"
+        "## ASE3-026 Authorize, activate, and observe the durable refill and "
+        "autonomous monitor runtime\n\n- Status: blocked\n"
     )
     assert text.count(needle) == 1
     taskboard.write_text(
@@ -2364,7 +2533,31 @@ def test_unvalidated_protected_runtime_activation_receipt_is_reserved(
 
     assert report.valid is False
     assert any(
-        "ASE3-026.receipt: present without strict validation" in error
+        "ASE3-026.authorization_receipt: present without strict validation" in error
+        for error in report.errors
+    )
+
+
+def test_unvalidated_post_activation_observation_receipt_is_reserved(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    (root / PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME).write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-026.observation_receipt: present without strict post-activation"
+        in error
         for error in report.errors
     )
 
@@ -2444,6 +2637,297 @@ def test_scheduler_dependency_projection_tampering_fails_closed(
     assert (
         "program_scheduler_projection.task_dependencies.ASE3-025: "
         "taskboard mismatch"
+    ) in errors
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement", "error_fragment"),
+    (
+        (
+            "protected_runtime_activation",
+            "authorization_may_claim_activation_effect",
+            True,
+            "program_scheduler_projection.protected_runtime_activation",
+        ),
+        (
+            "protected_runtime_activation",
+            "post_activation_observation_required_for_completion",
+            False,
+            "program_scheduler_projection.protected_runtime_activation",
+        ),
+        (
+            "refill_policy",
+            "saga_cursor_states",
+            ["EVALUATING", "APPENDED", "DISPATCHED"],
+            "program_scheduler_projection.refill_policy.saga_cursor_states",
+        ),
+        (
+            "refill_policy",
+            "monitor_phase_deadlines_required",
+            False,
+            "program_scheduler_projection.refill_policy.monitor_phase_deadlines_required",
+        ),
+        (
+            "refill_policy",
+            "saga_terminal_states_are_alternatives",
+            False,
+            (
+                "program_scheduler_projection.refill_policy."
+                "saga_terminal_states_are_alternatives"
+            ),
+        ),
+        (
+            "monitor_policy",
+            "durable_guardian",
+            "ClientOwnedMonitorGuardian",
+            "program_scheduler_projection.monitor_policy.durable_guardian",
+        ),
+        (
+            "monitor_policy",
+            "running_join_fields",
+            ["lifecycle_process_birth", "monitor_process_birth"],
+            "program_scheduler_projection.monitor_policy.running_join_fields",
+        ),
+        (
+            "monitor_policy",
+            "unknown_outcome_effect_replay_authorized",
+            True,
+            (
+                "program_scheduler_projection.monitor_policy."
+                "unknown_outcome_effect_replay_authorized"
+            ),
+        ),
+        (
+            "monitor_policy",
+            "post_recovery_continuous_health_seconds",
+            899,
+            (
+                "program_scheduler_projection.monitor_policy."
+                "post_recovery_continuous_health_seconds"
+            ),
+        ),
+        (
+            "",
+            "objective_refill_enabled",
+            True,
+            "program_scheduler_projection.objective_refill_enabled",
+        ),
+        (
+            "monitor_policy",
+            "enabled",
+            True,
+            "program_scheduler_projection.monitor_policy.enabled",
+        ),
+    ),
+)
+def test_monitor_strategy_scheduler_contract_mutation_fails_closed(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    replacement: object,
+    error_fragment: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config = _load(config_path)
+    target: dict[str, object] = config
+    if section:
+        nested = config[section]
+        assert isinstance(nested, dict)
+        target = nested
+    target[field] = replacement
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert any(error_fragment in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    (
+        ("authorization_may_claim_activation_effect", False),
+        ("post_activation_observation_required_for_completion", True),
+        ("one_generation_cas_lease_required", True),
+        ("operator_review_required", True),
+        ("strict_validator_and_manifest_binding_required", True),
+    ),
+)
+@pytest.mark.parametrize("replacement_kind", ("integer", "string", "null"))
+def test_protected_activation_boolean_json_type_aliases_fail_closed(
+    tmp_path: Path,
+    field: str,
+    expected: bool,
+    replacement_kind: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config = _load(config_path)
+    activation = config["protected_runtime_activation"]
+    assert isinstance(activation, dict)
+    assert type(activation[field]) is bool
+    assert activation[field] is expected
+    replacement: object
+    if replacement_kind == "integer":
+        replacement = int(expected)
+    elif replacement_kind == "string":
+        replacement = str(expected).lower()
+    else:
+        assert replacement_kind == "null"
+        replacement = None
+    assert type(replacement) is not bool
+    activation[field] = replacement
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        f"program_scheduler_projection.protected_runtime_activation.{field}: "
+        f"expected exact JSON boolean {str(expected).lower()}"
+    ) in errors
+    assert any(
+        "protected_runtime_activation.contract_sha256: exact parsed gate"
+        in error
+        for error in errors
+    )
+
+
+@pytest.mark.parametrize("mutation", ("missing_key", "extra_key"))
+def test_protected_activation_exact_key_population_fails_closed(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config = _load(config_path)
+    activation = config["protected_runtime_activation"]
+    assert isinstance(activation, dict)
+    if mutation == "missing_key":
+        activation.pop("operator_review_required")
+    else:
+        assert mutation == "extra_key"
+        activation["unsealed_extra"] = False
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.protected_runtime_activation.keys: exact "
+        "population required"
+    ) in errors
+    assert any(
+        "protected_runtime_activation.contract_sha256: exact parsed gate"
+        in error
+        for error in errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("goal_id", "needle", "replacement"),
+    (
+        (
+            "ASE3-G050",
+            "durable EVALUATING to APPEND_RESERVED",
+            "process-local EVALUATING to APPEND_RESERVED",
+        ),
+        (
+            "ASE3-G055",
+            "immutable nonforking history and monotonic cursor vectors",
+            "mutable history and optional cursor vectors",
+        ),
+        (
+            "ASE3-G060",
+            "ReviewedHostNamespaceReconciler",
+            "ClientOwnedMonitorGuardian",
+        ),
+        (
+            "ASE3-G080",
+            "after the final recovery",
+            "before the final recovery",
+        ),
+    ),
+)
+def test_monitor_strategy_objective_contract_mutation_fails_closed(
+    tmp_path: Path,
+    goal_id: str,
+    needle: str,
+    replacement: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    objectives_path = tmp_path / convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH
+    text = objectives_path.read_text(encoding="utf-8")
+    start = text.index(f"## {goal_id} ")
+    end = text.find("\n## ASE3-G", start + 1)
+    if end < 0:
+        end = len(text)
+    block = text[start:end]
+    assert needle in block
+    objectives_path.write_text(
+        text[:start] + block.replace(needle, replacement, 1) + text[end:],
+        encoding="utf-8",
+    )
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        f"program_scheduler_projection.objectives.{goal_id}.contract_sha256: "
+        "exact monitor-strategy goal contract required"
     ) in errors
 
 
@@ -2555,6 +3039,109 @@ def test_plan_canary_observation_policy_tampering_fails_closed(
     assert (
         "program_scheduler_projection.plan.canary_observation_seconds: exact "
         "signed 900-second policy required"
+    ) in errors
+
+
+@pytest.mark.parametrize(
+    "needle",
+    (
+        "ReviewedHostNamespaceReconciler",
+        (
+            "EVALUATING→APPEND_RESERVED→APPENDED→PLAN_INVALIDATED→RECOMPILED→"
+            "DISPATCHED/ADOPTED"
+        ),
+        "900 uninterrupted healthy seconds after its final injected recovery",
+    ),
+)
+def test_plan_monitor_strategy_contract_tampering_fails_closed(
+    tmp_path: Path,
+    needle: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    assert needle in text
+    plan_path.write_text(
+        text.replace(needle, "forged-monitor-strategy-contract"),
+        encoding="utf-8",
+    )
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert any(
+        "program_scheduler_projection.plan.monitor_strategy: missing" in error
+        for error in errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    (
+        (
+            "and cannot claim a birth, heartbeat,",
+            "and may claim a birth, heartbeat,",
+        ),
+        (
+            "CAS/lease winner activate the exact old+1 generation.",
+            (
+                "CAS/lease winner may activate any generation, including exact "
+                "old+1 generation."
+            ),
+        ),
+    ),
+)
+def test_ase3_026_plan_semantic_contradiction_retaining_tokens_fails_closed(
+    tmp_path: Path,
+    needle: str,
+    replacement: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    assert text.count(needle) == 1
+    mutated = text.replace(needle, replacement, 1)
+    for retained_token in (
+        "authorization_effect_observed: false",
+        PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA,
+        PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA,
+        "old+1",
+    ):
+        assert retained_token in mutated
+    plan_path.write_text(mutated, encoding="utf-8")
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.plan.ASE3-026.contract_sha256: exact "
+        "normalized protected activation section required"
     ) in errors
 
 
