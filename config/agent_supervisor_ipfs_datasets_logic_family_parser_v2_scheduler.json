@@ -80,8 +80,6 @@
     "scripts/validate_ipfs_datasets_logic_family_parser_board.py",
     "ipfs_datasets_py/docs/architecture/logic/LOGIC_FAMILY_PARSER_RELEASE.md",
     "ipfs_datasets_py/data/logic/conformance/logic_family_parser_release.json",
-    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/fixed_point_receipt.json",
-    "data/agent_supervisor/ipfs_datasets_logic_family_parser/refill/gap_ledger.jsonl",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",

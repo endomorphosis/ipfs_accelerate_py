@@ -627,6 +627,60 @@ def _gitlink_commit(
     return match.group(1) if match else ""
 
 
+def _control_file_is_tracked(
+    board: ConfiguredBoard,
+    relative: str,
+) -> bool:
+    """Recognize control files tracked by the outer or an owned submodule."""
+
+    if (
+        _git(
+            board,
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            relative,
+        ).returncode
+        == 0
+    ):
+        return True
+    relative_path = PurePosixPath(relative)
+    for submodule in sorted(
+        board.worktree_submodule_paths,
+        key=lambda value: len(PurePosixPath(value).parts),
+        reverse=True,
+    ):
+        submodule_path = PurePosixPath(submodule)
+        prefix = submodule_path.parts
+        if (
+            relative_path.parts[: len(prefix)] != prefix
+            or len(relative_path.parts) == len(prefix)
+        ):
+            continue
+        if (
+            _git(
+                board,
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                submodule,
+            ).returncode
+            != 0
+        ):
+            return False
+        nested_root = board.path(submodule)
+        inner = PurePosixPath(*relative_path.parts[len(prefix) :]).as_posix()
+        return (
+            _run(
+                ("git", "ls-files", "--error-unmatch", "--", inner),
+                cwd=nested_root,
+                timeout=60.0,
+            ).returncode
+            == 0
+        )
+    return False
+
+
 def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     """Prove that a scheduler document can safely launch from this checkout."""
 
@@ -730,14 +784,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     tracked = [
         relative
         for relative in sorted(required_files)
-        if _git(
-            board,
-            "ls-files",
-            "--error-unmatch",
-            "--",
-            relative,
-        ).returncode
-        == 0
+        if _control_file_is_tracked(board, relative)
     ]
     untracked_control = sorted(required_files - set(tracked))
     _append_check(
