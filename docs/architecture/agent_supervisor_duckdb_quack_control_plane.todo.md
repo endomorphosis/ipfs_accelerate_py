@@ -791,7 +791,7 @@ this bootstrap is active.
 
 ## DQP-025 Invert artifact, dataset, proof, and cache stores to database-first authority
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
