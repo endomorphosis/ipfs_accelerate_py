@@ -8,6 +8,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
     build_inline_provider_rescue_prompt,
+    derive_materialize_commands,
     plan_automatic_implementation_rescue,
 )
 
@@ -163,6 +164,96 @@ def test_plan_stage_after_proposal_accept_when_outputs_incomplete() -> None:
     assert after_stage.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
 
 
+def test_derive_materialize_commands_from_validate_cli() -> None:
+    commands = derive_materialize_commands(
+        (
+            "PYTHONPATH=external/ipfs_accelerate python3 -m "
+            "external.ipfs_accelerate.ipfs_accelerate_py.agent_supervisor.analysis."
+            "deterministic_desktop_expectations validate --workspace . "
+            "--artifact data/agent_supervisor/deterministic_contract_repair/"
+            "desktop-expectations.json",
+        )
+    )
+    assert commands
+    assert any(" materialize " in command for command in commands)
+    assert all(" validate " not in command for command in commands)
+
+
+def test_plan_materialize_when_expected_artifact_missing() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "reason": "proposal_gate_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": [
+                    "incomplete_expected_outputs",
+                    "proposal_gate_failed",
+                ],
+                "finding_codes": ["expected_output_ignored_or_unstaged"],
+                "missing_expected_outputs": [
+                    "data/agent_supervisor/deterministic_contract_repair/"
+                    "desktop-expectations.json"
+                ],
+            },
+        },
+        expected_outputs=(
+            "data/agent_supervisor/deterministic_contract_repair/"
+            "desktop-expectations.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/"
+            "analysis/deterministic_desktop_expectations.py",
+        ),
+        validation_commands=(
+            "python3 -m pkg.mod validate --workspace . --artifact "
+            "data/agent_supervisor/deterministic_contract_repair/"
+            "desktop-expectations.json",
+        ),
+        missing_expected_outputs=(
+            "data/agent_supervisor/deterministic_contract_repair/"
+            "desktop-expectations.json",
+        ),
+        expected_outputs_present_on_disk=False,
+    )
+    assert plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE
+    assert plan.materialize_commands
+    assert "desktop-expectations.json" in " ".join(plan.missing_expected_outputs)
+
+
+def test_plan_provider_rescue_after_stage_for_residual_incomplete() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "reason": "proposal_gate_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": [
+                    "incomplete_expected_outputs",
+                    "proposal_gate_failed",
+                ],
+                "finding_codes": ["expected_output_ignored_or_unstaged"],
+                "missing_expected_outputs": [
+                    "data/agent_supervisor/deterministic_contract_repair/"
+                    "desktop-expectations.json"
+                ],
+            },
+        },
+        expected_outputs=(
+            "data/agent_supervisor/deterministic_contract_repair/"
+            "desktop-expectations.json",
+        ),
+        stage_rescue_used=True,
+        materialize_rescue_used=True,
+        allow_provider_rescue=True,
+        expected_outputs_present_on_disk=False,
+        missing_expected_outputs=(
+            "data/agent_supervisor/deterministic_contract_repair/"
+            "desktop-expectations.json",
+        ),
+    )
+    assert plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
+    assert "residual" in plan.reason or "incomplete" in plan.reason
+
+
 def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     hard = plan_automatic_implementation_rescue(
         validation_result={
@@ -188,6 +279,7 @@ def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
         },
         expected_outputs_present_on_disk=True,
         stage_rescue_used=True,
+        materialize_rescue_used=True,
         provider_rescue_passes_used=1,
         already_auto_rescued=True,
     )
