@@ -69,8 +69,12 @@ from .implementation_daemon import (
     PortalTaskState,
     ReconciliationLifecycleBlockedError,
     _prepare_provider_route_receipt,
+    _provider_state_boundary_required,
+    _provider_filesystem_boundary_receipt_path,
+    _require_packaged_provider_fallback_runner,
     _uses_packaged_provider_fallback_runner,
     _validated_provider_route_receipt,
+    _validated_provider_filesystem_boundary_receipt,
     consume_stale_active_attempt,
     load_json_dict,
     normalize_focus_tracks,
@@ -2591,10 +2595,14 @@ class PortalImplementationSupervisor:
                 unmerged_paths=unmerged_paths,
             )
             result["llm_merge_resolver"] = self._compact_resolver_result(llm_result)
-            route_receipt_valid = not bool(
-                llm_result.get("provider_route_receipt_error")
+            resolver_accepted = bool(
+                llm_result.get("applied") is True
+                and not llm_result.get("provider_route_receipt_error")
+                and not llm_result.get(
+                    "provider_filesystem_boundary_receipt_error"
+                )
             )
-            if route_receipt_valid and self._git_merge_head(repo_root):
+            if resolver_accepted and self._git_merge_head(repo_root):
                 commit_result = self._commit_supervisor_resolved_merge(repo_root)
                 result["commit_result"] = commit_result
                 if commit_result.get("completed") or commit_result.get("reason") == "resolver_committed_merge":
@@ -2608,7 +2616,7 @@ class PortalImplementationSupervisor:
                     )
                     self._record_event("main_checkout_merge_state_repair", result)
                     return result
-            elif route_receipt_valid and not self._git_unmerged_paths(repo_root):
+            elif resolver_accepted and not self._git_unmerged_paths(repo_root):
                 result.update(
                     {
                         "repaired": True,
@@ -4147,6 +4155,18 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
 
+        try:
+            _require_packaged_provider_fallback_runner(
+                self.config.llm_merge_resolver_command
+            )
+        except RuntimeError:
+            return {
+                "attempted": False,
+                "applied": False,
+                "reason": "provider_filesystem_boundary_required",
+                "infrastructure_failure": True,
+            }
+
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
         active_attempt = 0
@@ -4233,6 +4253,38 @@ class PortalImplementationSupervisor:
             **route_arguments,
         )
         if route_receipt_path is not None:
+            if _provider_state_boundary_required():
+                try:
+                    boundary_receipt = (
+                        _validated_provider_filesystem_boundary_receipt(
+                            route_receipt_path,
+                            task_id=route_task_id,
+                            attempt=active_attempt,
+                            stage="semantic_merge",
+                            checkpoint_writable=False,
+                        )
+                    )
+                except RuntimeError:
+                    result = {
+                        **result,
+                        "applied": False,
+                        "apply_error": (
+                            "provider filesystem boundary receipt validation failed"
+                        ),
+                        "provider_filesystem_boundary_receipt_error": (
+                            "invalid_provider_filesystem_boundary_receipt"
+                        ),
+                    }
+                else:
+                    result = {
+                        **result,
+                        "provider_filesystem_boundary_receipt_path": str(
+                            _provider_filesystem_boundary_receipt_path(
+                                route_receipt_path
+                            )
+                        ),
+                        "provider_filesystem_boundary_receipt": boundary_receipt,
+                    }
             try:
                 route_receipt = _validated_provider_route_receipt(
                     route_receipt_path,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -116,9 +117,10 @@ def test_grok_codex_policy_builds_router_owned_safe_route(
     )
     assert _json_command(command, "--primary-command-json") == grok_command
     fallback = _json_command(command, "--fallback-command-json")
-    assert fallback[:4] == [
+    assert fallback[:5] == [
         "/provider/codex",
         "exec",
+        "--ephemeral",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
     ]
@@ -458,6 +460,39 @@ raise SystemExit({returncode})
     path.chmod(0o700)
 
 
+def _write_state_mutating_readiness_probe(
+    path: Path,
+    *,
+    expected_args: list[str],
+    output: str,
+    protected_target: Path,
+    result_path: Path,
+) -> None:
+    path.write_text(
+        f"""\
+#!/usr/bin/env python3
+import pathlib
+import sys
+
+if sys.argv[1:] != {expected_args!r}:
+    raise SystemExit(2)
+try:
+    pathlib.Path({str(protected_target)!r}).write_text(
+        "forged-by-readiness-probe\\n", encoding="utf-8"
+    )
+except OSError as exc:
+    outcome = f"denied:{{exc.errno}}"
+else:
+    outcome = "allowed"
+pathlib.Path({str(result_path)!r}).write_text(outcome, encoding="utf-8")
+print({output!r})
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o700)
+
+
 def _write_parent_cmdline_tampering_fallback(path: Path) -> None:
     path.write_text(
         """\
@@ -566,6 +601,7 @@ def _run_fallback_runner(
     probe_route_readiness: bool = False,
     probe_grok_bin: Path | None = None,
     probe_codex_bin: Path | None = None,
+    environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
@@ -620,6 +656,7 @@ def _run_fallback_runner(
         text=True,
         capture_output=True,
         check=False,
+        env=environment,
     )
 
 
@@ -635,6 +672,422 @@ def _provider_route_records(stderr: str) -> list[dict[str, object]]:
         ):
             records.append(payload)
     return records
+
+
+def _protected_provider_fixture(tmp_path: Path) -> dict[str, Path]:
+    root = tmp_path / "proof-backed-test-reuse-v9"
+    historical = tmp_path / "proof-backed-test-reuse-v8"
+    workspace = root / "worktrees" / "ptr_lane_0" / "workspace-boundary"
+    checkpoint = (
+        root
+        / "state"
+        / "ptr_lane_0"
+        / "implementation_checkpoints"
+        / "ptr-route-deadbeef0000"
+    )
+    receipt_dir = root / "state" / "ptr_lane_0" / "provider_route_receipts"
+    control = root / "state" / "ptr_lane_0" / "task_state.json"
+    historical_control = historical / "state" / "ptr_lane_0" / "events.jsonl"
+    for directory in (
+        workspace,
+        checkpoint,
+        receipt_dir,
+        control.parent,
+        historical_control.parent,
+    ):
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    control.write_text("current-control\n", encoding="utf-8")
+    historical_control.write_text("historical-control\n", encoding="utf-8")
+    return {
+        "checkpoint": checkpoint,
+        "control": control,
+        "historical_control": historical_control,
+        "receipt": receipt_dir / "provider-route-attempt-3.json",
+        "root": root,
+        "workspace": workspace,
+    }
+
+
+def _protected_provider_environment(
+    fixture: dict[str, Path],
+    *,
+    home: Path,
+) -> dict[str, str]:
+    home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "HOME": str(home),
+            "IPFS_ACCELERATE_AGENT_PROTECTED_STATE_ROOT": str(
+                fixture["root"]
+            ),
+            "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR": str(
+                fixture["checkpoint"]
+            ),
+            "IPFS_PROOF_REUSE_STATE_ROOT": "",
+        }
+    )
+    environment.pop("CODEX_HOME", None)
+    environment.pop("GROK_HOME", None)
+    return environment
+
+
+def _write_provider_boundary_probe(path: Path) -> None:
+    path.write_text(
+        """\
+from __future__ import annotations
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+workspace, checkpoint, control, historical, route, record = map(pathlib.Path, sys.argv[1:])
+
+def attempt(target: pathlib.Path, text: str) -> str:
+    try:
+        target.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        return f"denied:{exc.errno}"
+    return "allowed"
+
+escape = workspace / "control-link"
+escape.symlink_to(control)
+grandchild = subprocess.run(
+    [sys.executable, "-c", "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('grandchild', encoding='utf-8')", str(control)],
+    text=True,
+    capture_output=True,
+    check=False,
+)
+workspace_result = attempt(workspace / "provider-write.txt", "workspace-ok\\n")
+git_status = subprocess.run(
+    ["git", "status", "--short"], cwd=workspace, text=True, capture_output=True, check=False
+)
+git_add = subprocess.run(
+    ["git", "add", "provider-write.txt"], cwd=workspace, text=True, capture_output=True, check=False
+)
+home = pathlib.Path(os.environ["HOME"])
+tmpdir = pathlib.Path(os.environ["TMPDIR"])
+payload = {
+    "workspace": workspace_result,
+    "checkpoint": attempt(checkpoint / "progress.json", "checkpoint-ok\\n"),
+    "current_control": attempt(control, "forged-current\\n"),
+    "historical_control": attempt(historical, "forged-historical\\n"),
+    "route_receipt": attempt(route, "forged-route\\n"),
+    "symlink_control": attempt(escape, "forged-symlink\\n"),
+    "grandchild_returncode": grandchild.returncode,
+    "home": attempt(home / "provider-home-write", "home-ok\\n"),
+    "tmp": attempt(tmpdir / "provider-tmp-write", "tmp-ok\\n"),
+    "git_status_returncode": git_status.returncode,
+    "git_add_returncode": git_add.returncode,
+    "proof_root_env": os.environ.get("IPFS_PROOF_REUSE_STATE_ROOT", "missing"),
+    "protected_root_env": os.environ.get("IPFS_ACCELERATE_AGENT_PROTECTED_STATE_ROOT", "missing"),
+}
+with open("/dev/null", "w", encoding="utf-8") as sink:
+    sink.write("device-ok")
+record.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+
+
+def test_runner_fence_denies_proof_state_and_preserves_task_scratch(
+    tmp_path: Path,
+) -> None:
+    fixture = _protected_provider_fixture(tmp_path)
+    workspace = fixture["workspace"]
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    _git(main_repo, "init")
+    _git(main_repo, "config", "user.name", "Test User")
+    _git(main_repo, "config", "user.email", "test@example.invalid")
+    (main_repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _git(main_repo, "add", "README.md")
+    _git(main_repo, "commit", "-m", "seed")
+    workspace.rmdir()
+    _git(main_repo, "worktree", "add", "-b", "provider-boundary", str(workspace))
+
+    probe = tmp_path / "provider_probe.py"
+    _write_provider_boundary_probe(probe)
+    record = workspace / "probe-result.json"
+    environment = _protected_provider_environment(
+        fixture, home=tmp_path / "operator-home"
+    )
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="bounded provider prompt\n",
+        primary_command=[],
+        fallback_command=[
+            sys.executable,
+            str(probe),
+            str(workspace),
+            str(fixture["checkpoint"]),
+            str(fixture["control"]),
+            str(fixture["historical_control"]),
+            str(fixture["receipt"]),
+            str(record),
+        ],
+        primary_unavailable_kind="authentication_failure",
+        route_receipt_path=fixture["receipt"],
+        environment=environment,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(record.read_text(encoding="utf-8"))
+    assert payload["workspace"] == "allowed"
+    assert payload["checkpoint"] == "allowed"
+    assert payload["home"] == "allowed"
+    assert payload["tmp"] == "allowed"
+    for field in (
+        "current_control",
+        "historical_control",
+        "route_receipt",
+        "symlink_control",
+    ):
+        assert str(payload[field]).startswith("denied:")
+    assert payload["grandchild_returncode"] != 0
+    assert payload["git_status_returncode"] == 0
+    assert payload["git_add_returncode"] != 0
+    assert payload["proof_root_env"] == ""
+    assert payload["protected_root_env"] == ""
+    assert fixture["control"].read_text(encoding="utf-8") == "current-control\n"
+    assert fixture["historical_control"].read_text(encoding="utf-8") == (
+        "historical-control\n"
+    )
+    assert fixture["receipt"].is_file()
+    boundary_path = implementation_daemon_module._provider_filesystem_boundary_receipt_path(
+        fixture["receipt"]
+    )
+    boundary = implementation_daemon_module._validated_provider_filesystem_boundary_receipt(
+        fixture["receipt"],
+        task_id="PTR-ROUTE",
+        attempt=3,
+        checkpoint_writable=True,
+    )
+    assert boundary_path.stat().st_mode & 0o777 == 0o600
+    assert boundary["provider_descendants_fenced"] is True
+    assert boundary["proof_authoritative"] is False
+    assert _git(workspace, "add", "provider-write.txt") == ""
+    assert _git(workspace, "diff", "--cached", "--name-only") == (
+        "provider-write.txt"
+    )
+
+
+def test_runner_fence_rejects_preexisting_hardlink_before_provider_launch(
+    tmp_path: Path,
+) -> None:
+    fixture = _protected_provider_fixture(tmp_path)
+    alias = fixture["workspace"] / "forged-alias.json"
+    os.link(fixture["control"], alias)
+    marker = fixture["workspace"] / "provider-launched"
+    provider = tmp_path / "provider.py"
+    provider.write_text(
+        "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('launched')\n",
+        encoding="utf-8",
+    )
+    environment = _protected_provider_environment(
+        fixture, home=tmp_path / "operator-home"
+    )
+
+    result = _run_fallback_runner(
+        workspace=fixture["workspace"],
+        prompt="must not launch\n",
+        primary_command=[],
+        fallback_command=[sys.executable, str(provider), str(marker)],
+        primary_unavailable_kind="launch_failure",
+        route_receipt_path=fixture["receipt"],
+        environment=environment,
+    )
+
+    assert result.returncode == 75
+    assert not marker.exists()
+    assert not fixture["receipt"].exists()
+    assert "filesystem boundary is unavailable" in result.stderr
+
+
+def test_runner_fence_rejects_hardlink_hidden_in_unreadable_directory(
+    tmp_path: Path,
+) -> None:
+    fixture = _protected_provider_fixture(tmp_path)
+    hidden = fixture["workspace"] / "hidden"
+    hidden.mkdir()
+    os.link(fixture["control"], hidden / "forged-alias.json")
+    hidden.chmod(0)
+    marker = fixture["workspace"] / "provider-launched"
+    provider = tmp_path / "provider.py"
+    provider.write_text(
+        "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('launched')\n",
+        encoding="utf-8",
+    )
+    environment = _protected_provider_environment(
+        fixture, home=tmp_path / "operator-home"
+    )
+    try:
+        result = _run_fallback_runner(
+            workspace=fixture["workspace"],
+            prompt="unreadable inventory must fail closed\n",
+            primary_command=[],
+            fallback_command=[sys.executable, str(provider), str(marker)],
+            primary_unavailable_kind="launch_failure",
+            route_receipt_path=fixture["receipt"],
+            environment=environment,
+        )
+    finally:
+        hidden.chmod(0o700)
+
+    assert result.returncode == 75
+    assert not marker.exists()
+    assert "filesystem boundary is unavailable" in result.stderr
+
+
+def test_runner_fence_rejects_non_task_checkpoint_scope(
+    tmp_path: Path,
+) -> None:
+    fixture = _protected_provider_fixture(tmp_path)
+    marker = fixture["workspace"] / "provider-launched"
+    provider = tmp_path / "provider.py"
+    provider.write_text(
+        "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('launched')\n",
+        encoding="utf-8",
+    )
+    environment = _protected_provider_environment(
+        fixture, home=tmp_path / "operator-home"
+    )
+    environment["IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR"] = str(
+        fixture["checkpoint"].parent
+    )
+
+    result = _run_fallback_runner(
+        workspace=fixture["workspace"],
+        prompt="must not launch\n",
+        primary_command=[],
+        fallback_command=[sys.executable, str(provider), str(marker)],
+        primary_unavailable_kind="launch_failure",
+        route_receipt_path=fixture["receipt"],
+        environment=environment,
+    )
+
+    assert result.returncode == 75
+    assert not marker.exists()
+
+
+def test_runner_fence_rejects_control_state_masquerading_as_workspace(
+    tmp_path: Path,
+) -> None:
+    fixture = _protected_provider_fixture(tmp_path)
+    rogue_workspace = (
+        fixture["root"] / "state" / "ptr_lane_0" / "rogue-workspace"
+    )
+    rogue_workspace.mkdir()
+    marker = rogue_workspace / "provider-launched"
+    provider = tmp_path / "provider.py"
+    provider.write_text(
+        "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('launched')\n",
+        encoding="utf-8",
+    )
+    environment = _protected_provider_environment(
+        fixture, home=tmp_path / "operator-home"
+    )
+
+    result = _run_fallback_runner(
+        workspace=rogue_workspace,
+        prompt="control state is not a worktree\n",
+        primary_command=[],
+        fallback_command=[sys.executable, str(provider), str(marker)],
+        primary_unavailable_kind="launch_failure",
+        route_receipt_path=fixture["receipt"],
+        environment=environment,
+    )
+
+    assert result.returncode == 75
+    assert not marker.exists()
+    assert "filesystem boundary is unavailable" in result.stderr
+
+
+def test_runner_dynamic_readiness_probes_inherit_provider_fence(
+    tmp_path: Path,
+) -> None:
+    fixture = _protected_provider_fixture(tmp_path)
+    workspace = fixture["workspace"]
+    primary_record = workspace / "primary.json"
+    fallback_record = workspace / "fallback.json"
+    grok = tmp_path / "grok.py"
+    codex = tmp_path / "codex.py"
+    grok_probe = tmp_path / "grok-probe.py"
+    codex_probe = tmp_path / "codex-probe.py"
+    grok_probe_result = workspace / "grok-probe-result"
+    codex_probe_result = workspace / "codex-probe-result"
+    _write_fake_grok(grok, record_path=primary_record, returncode=0)
+    _write_fake_codex(codex)
+    _write_state_mutating_readiness_probe(
+        grok_probe,
+        expected_args=["models"],
+        output="Login successful; available model grok-4.5",
+        protected_target=fixture["control"],
+        result_path=grok_probe_result,
+    )
+    _write_state_mutating_readiness_probe(
+        codex_probe,
+        expected_args=["login", "status"],
+        output="Logged in using ChatGPT",
+        protected_target=fixture["historical_control"],
+        result_path=codex_probe_result,
+    )
+    environment = _protected_provider_environment(
+        fixture, home=tmp_path / "operator-home"
+    )
+
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="fenced readiness probes\n",
+        primary_command=_grok_command(workspace, grok),
+        fallback_command=[
+            sys.executable,
+            str(codex),
+            str(fallback_record),
+            "0",
+        ],
+        probe_route_readiness=True,
+        probe_grok_bin=grok_probe,
+        probe_codex_bin=codex_probe,
+        route_receipt_path=fixture["receipt"],
+        environment=environment,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert primary_record.is_file()
+    assert not fallback_record.exists()
+    assert grok_probe_result.read_text(encoding="utf-8").startswith("denied:")
+    assert codex_probe_result.read_text(encoding="utf-8").startswith("denied:")
+    assert fixture["control"].read_text(encoding="utf-8") == "current-control\n"
+    assert fixture["historical_control"].read_text(encoding="utf-8") == (
+        "historical-control\n"
+    )
+    boundary = implementation_daemon_module._validated_provider_filesystem_boundary_receipt(
+        fixture["receipt"],
+        task_id="PTR-ROUTE",
+        attempt=3,
+        checkpoint_writable=True,
+    )
+    assert boundary["provider_descendants_fenced"] is True
+
+
+def test_packaged_runner_gate_rejects_untrusted_interpreter_prefix(
+    tmp_path: Path,
+) -> None:
+    malicious = tmp_path / "malicious-interpreter"
+    malicious.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    malicious.chmod(0o700)
+    assert implementation_daemon_module._uses_packaged_provider_fallback_runner(
+        shlex.join([sys.executable, str(RUNNER_PATH)])
+    )
+    assert implementation_daemon_module._uses_packaged_provider_fallback_runner(
+        shlex.join([str(RUNNER_PATH)])
+    )
+    assert not implementation_daemon_module._uses_packaged_provider_fallback_runner(
+        shlex.join([str(malicious), str(RUNNER_PATH)])
+    )
 
 
 def test_provider_stderr_sanitizer_is_chunk_safe_and_reserved_record_safe() -> None:

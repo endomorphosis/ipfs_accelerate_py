@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import select
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,14 @@ from ipfs_accelerate_py.llm_router import (  # noqa: E402
 from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (  # noqa: E402
     TRUSTED_FAILURE_RECEIPT_FD_ENV,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (  # noqa: E402
+    PROOF_REUSE_STATE_ROOT_ENV,
+    PROVIDER_PROTECTED_STATE_ROOT_ENV,
+    LANDLOCK_APPLIED_ACK_FD_ENV,
+    ProviderFilesystemBoundaryReceipt,
+    ValidationRuntimeError,
+    provider_readonly_state_command,
+)
 
 AGENT_ROUTE_POLICY = GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY
 
@@ -63,6 +72,137 @@ _PROVIDER_ROUTE_SCHEMA = AGENT_CLI_PROVIDER_ROUTE_SCHEMA
 class _ProviderExecution:
     result: AgentCLIProviderResult
     trusted_failure_receipt: str = ""
+    boundary_applied: bool = False
+
+
+@dataclass
+class _ProviderBoundaryRuntime:
+    """Prepared child-only filesystem boundary for one route invocation."""
+
+    command_prefix: tuple[str, ...]
+    environment: dict[str, str]
+    receipt: ProviderFilesystemBoundaryReceipt | None
+    temporary_home: tempfile.TemporaryDirectory[str] | None = None
+    state_root: Path | None = None
+
+
+def _provider_boundary_receipt_path(route_receipt_path: Path) -> Path:
+    name = route_receipt_path.name
+    if name.startswith("provider-route-"):
+        name = "provider-filesystem-boundary-" + name[len("provider-route-") :]
+    else:
+        name = "provider-filesystem-boundary-" + name
+    return route_receipt_path.with_name(name)
+
+
+def _provider_profile_paths(original_home: Path) -> tuple[Path, ...]:
+    configured = (
+        os.environ.get("CODEX_HOME", "").strip(),
+        os.environ.get("GROK_HOME", "").strip(),
+    )
+    candidates = (
+        Path(configured[0]).expanduser() if configured[0] else original_home / ".codex",
+        Path(configured[1]).expanduser() if configured[1] else original_home / ".grok",
+    )
+    profiles: list[Path] = []
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved.is_dir():
+            profiles.append(resolved)
+    return tuple(dict.fromkeys(profiles))
+
+
+def _prepare_provider_boundary_runtime(
+    *,
+    workspace: Path,
+) -> _ProviderBoundaryRuntime:
+    """Prepare a private HOME and inherited child-only Landlock prefix."""
+
+    protected_text = str(
+        os.environ.get(PROVIDER_PROTECTED_STATE_ROOT_ENV) or ""
+    ).strip()
+    exposed_text = str(os.environ.get(PROOF_REUSE_STATE_ROOT_ENV) or "").strip()
+    if protected_text and exposed_text:
+        protected = Path(protected_text).resolve(strict=True)
+        exposed = Path(exposed_text).resolve(strict=True)
+        if protected != exposed:
+            raise ValidationRuntimeError(
+                "provider protected-state roots disagree"
+            )
+    state_root_text = protected_text or exposed_text
+    child_environment = dict(os.environ)
+    child_environment[PROOF_REUSE_STATE_ROOT_ENV] = ""
+    child_environment[PROVIDER_PROTECTED_STATE_ROOT_ENV] = ""
+    if not state_root_text:
+        return _ProviderBoundaryRuntime((), child_environment, None)
+
+    original_home_text = str(os.environ.get("HOME") or "").strip()
+    if not original_home_text:
+        raise ValidationRuntimeError("provider HOME is unavailable")
+    original_home = Path(original_home_text).resolve(strict=True)
+    profiles = _provider_profile_paths(original_home)
+    temporary_home = tempfile.TemporaryDirectory(
+        prefix="ipfs-accelerate-provider-home-"
+    )
+    private_home = Path(temporary_home.name).resolve(strict=True)
+    private_home.chmod(0o700)
+    for relative in (
+        ".cache",
+        ".config",
+        ".local/share",
+        ".local/state",
+        ".tmp",
+    ):
+        (private_home / relative).mkdir(mode=0o700, parents=True, exist_ok=True)
+    profile_by_name = {profile.name: profile for profile in profiles}
+    for name in (".codex", ".grok"):
+        profile = profile_by_name.get(name)
+        if profile is not None:
+            (private_home / name).symlink_to(profile, target_is_directory=True)
+
+    child_environment.update(
+        {
+            "HOME": str(private_home),
+            "XDG_CACHE_HOME": str(private_home / ".cache"),
+            "XDG_CONFIG_HOME": str(private_home / ".config"),
+            "XDG_DATA_HOME": str(private_home / ".local/share"),
+            "XDG_STATE_HOME": str(private_home / ".local/state"),
+            "TMPDIR": str(private_home / ".tmp"),
+            "TMP": str(private_home / ".tmp"),
+            "TEMP": str(private_home / ".tmp"),
+            "GIT_OPTIONAL_LOCKS": "0",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    codex_profile = profile_by_name.get(".codex")
+    grok_profile = profile_by_name.get(".grok")
+    if codex_profile is not None:
+        child_environment["CODEX_HOME"] = str(codex_profile)
+    if grok_profile is not None:
+        child_environment["GROK_HOME"] = str(grok_profile)
+
+    checkpoint_text = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR") or ""
+    ).strip()
+    wrapped, receipt = provider_readonly_state_command(
+        ["/bin/true"],
+        state_root_path=state_root_text,
+        workspace_path=workspace,
+        private_home_path=private_home,
+        checkpoint_path=(checkpoint_text or None),
+        provider_profile_paths=profiles,
+        environment=child_environment,
+    )
+    return _ProviderBoundaryRuntime(
+        tuple(wrapped[:-1]),
+        child_environment,
+        receipt,
+        temporary_home,
+        Path(state_root_text).resolve(strict=True),
+    )
 
 
 def _command_from_json(
@@ -126,6 +266,8 @@ def _run_provider(
     workspace: Path,
     prompt: str,
     provider_name: str,
+    command_prefix: Sequence[str] = (),
+    child_environment: dict[str, str] | None = None,
 ) -> _ProviderExecution:
     """Run one child with exact stdin/cwd and private-safe output replay."""
 
@@ -133,17 +275,26 @@ def _run_provider(
     stderr_sanitizer = AgentCLIStderrSanitizer()
     trusted_read_fd = -1
     trusted_write_fd = -1
+    boundary_read_fd = -1
+    boundary_write_fd = -1
     popen_kwargs: dict[str, object] = {}
-    child_env: dict[str, str] | None = None
+    child_env = dict(child_environment or os.environ)
+    pass_fds: list[int] = []
     if provider_name.lower() == "grok" and _uses_packaged_grok_adapter(command):
         trusted_read_fd, trusted_write_fd = os.pipe()
-        child_env = dict(os.environ)
         child_env[TRUSTED_FAILURE_RECEIPT_FD_ENV] = str(trusted_write_fd)
-        popen_kwargs["env"] = child_env
-        popen_kwargs["pass_fds"] = (trusted_write_fd,)
+        pass_fds.append(trusted_write_fd)
+    if command_prefix:
+        boundary_read_fd, boundary_write_fd = os.pipe()
+        child_env[LANDLOCK_APPLIED_ACK_FD_ENV] = str(boundary_write_fd)
+        pass_fds.append(boundary_write_fd)
+    popen_kwargs["env"] = child_env
+    popen_kwargs["close_fds"] = True
+    if pass_fds:
+        popen_kwargs["pass_fds"] = tuple(pass_fds)
     try:
         process = subprocess.Popen(
-            list(command),
+            [*command_prefix, *command],
             cwd=workspace,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -154,7 +305,12 @@ def _run_provider(
             **popen_kwargs,
         )
     except OSError as exc:
-        for descriptor in (trusted_read_fd, trusted_write_fd):
+        for descriptor in (
+            trusted_read_fd,
+            trusted_write_fd,
+            boundary_read_fd,
+            boundary_write_fd,
+        ):
             if descriptor >= 0:
                 try:
                     os.close(descriptor)
@@ -174,6 +330,42 @@ def _run_provider(
         )
     if trusted_write_fd >= 0:
         os.close(trusted_write_fd)
+    if boundary_write_fd >= 0:
+        os.close(boundary_write_fd)
+    boundary_applied = not command_prefix
+    if boundary_read_fd >= 0:
+        acknowledged, _, _ = select.select(
+            [boundary_read_fd], [], [], 10.0
+        )
+        acknowledgement = (
+            os.read(boundary_read_fd, 64) if acknowledged else b""
+        )
+        os.close(boundary_read_fd)
+        boundary_read_fd = -1
+        boundary_applied = acknowledgement == b"landlock-applied-v1\n"
+        if not boundary_applied:
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+            diagnostic = stderr_sanitizer.feed(
+                "provider filesystem boundary did not acknowledge application\n"
+            ) + stderr_sanitizer.finish()
+            sys.stderr.write(diagnostic)
+            sys.stderr.flush()
+            return _ProviderExecution(
+                AgentCLIProviderResult(
+                    75,
+                    stderr=diagnostic,
+                    launched=False,
+                    activity_state=AgentCLIActivityState.PRE_DISPATCH,
+                ),
+                boundary_applied=False,
+            )
     assert process.stdin is not None
     assert process.stdout is not None
     assert process.stderr is not None
@@ -245,6 +437,7 @@ def _run_provider(
             activity_state=AgentCLIActivityState.UNKNOWN,
         ),
         trusted_receipt,
+        boundary_applied,
     )
 
 
@@ -340,6 +533,86 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
+    try:
+        boundary_runtime = _prepare_provider_boundary_runtime(
+            workspace=workspace
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(
+            "provider filesystem boundary is unavailable: "
+            f"{type(exc).__name__}",
+            file=sys.stderr,
+        )
+        return 75
+    boundary_receipt_path: Path | None = None
+    boundary_record = ""
+    if boundary_runtime.receipt is not None:
+        if (
+            args.route_receipt_path is None
+            or not args.route_task_id
+            or args.route_attempt is None
+            or not args.route_stage
+            or boundary_runtime.state_root is None
+        ):
+            print(
+                "protected provider route is missing its bound receipt path",
+                file=sys.stderr,
+            )
+            return 75
+        route_destination = Path(
+            os.path.abspath(args.route_receipt_path.expanduser())
+        )
+        try:
+            route_relative = route_destination.relative_to(
+                boundary_runtime.state_root
+            )
+        except ValueError:
+            print(
+                "provider route receipt is outside protected state",
+                file=sys.stderr,
+            )
+            return 75
+        if (
+            len(route_relative.parts) not in {4, 5}
+            or route_relative.parts[0] != "state"
+            or not route_relative.parts[1].startswith("ptr_lane_")
+            or route_relative.parts[2] != "provider_route_receipts"
+        ):
+            print(
+                "provider route receipt is not in trusted receipt storage",
+                file=sys.stderr,
+            )
+            return 75
+        boundary_receipt_path = _provider_boundary_receipt_path(
+            route_destination
+        )
+        boundary_record = json.dumps(
+            boundary_runtime.receipt.to_dict(
+                task_id=args.route_task_id,
+                attempt=args.route_attempt,
+                stage=args.route_stage,
+            ),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    boundary_persisted = False
+
+    def persist_applied_boundary(execution: _ProviderExecution) -> bool:
+        nonlocal boundary_persisted
+        if boundary_runtime.receipt is None:
+            return True
+        if not execution.boundary_applied or boundary_receipt_path is None:
+            return False
+        if boundary_persisted:
+            return True
+        try:
+            _write_route_receipt(boundary_receipt_path, boundary_record)
+        except (OSError, LLMRouterError):
+            return False
+        boundary_persisted = True
+        return True
+
     primary_unavailable_kind = str(args.primary_unavailable_kind or "")
     if args.probe_route_readiness:
         try:
@@ -353,6 +626,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 codex_reasoning_effort=str(
                     args.probe_codex_reasoning_effort or "high"
                 ),
+                command_prefix=boundary_runtime.command_prefix,
+                environment=boundary_runtime.environment,
             )
         except Exception:
             print("agent route readiness probe failed terminally", file=sys.stderr)
@@ -398,7 +673,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             workspace=workspace,
             prompt=prompt,
             provider_name=primary_provider,
+            command_prefix=boundary_runtime.command_prefix,
+            child_environment=boundary_runtime.environment,
         )
+        if not persist_applied_boundary(primary_execution):
+            print(
+                "provider filesystem boundary did not apply",
+                file=sys.stderr,
+            )
+            return 75
         if primary_execution.result.returncode == 0:
             return 0
         after = snapshot_agent_cli_workspace(workspace)
@@ -449,7 +732,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         workspace=workspace,
         prompt=prompt,
         provider_name=fallback_provider,
+        command_prefix=boundary_runtime.command_prefix,
+        child_environment=boundary_runtime.environment,
     )
+    if not persist_applied_boundary(fallback_execution):
+        print(
+            "provider filesystem boundary did not apply",
+            file=sys.stderr,
+        )
+        return 75
     if args.route_receipt_path is not None:
         try:
             _write_route_receipt(args.route_receipt_path, route_record)

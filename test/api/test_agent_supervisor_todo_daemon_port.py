@@ -16521,6 +16521,135 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     assert any(event["type"] == "implementation_timeout_salvaged" for event in events)
 
 
+def test_implementation_daemon_rejects_timeout_salvage_without_provider_boundary_receipt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    protected_root = tmp_path / "proof-backed-test-reuse-v9"
+    protected_root.mkdir()
+    monkeypatch.setenv(
+        implementation_daemon_module.PROOF_REUSE_STATE_ROOT_ENV,
+        str(protected_root),
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+    task = PortalTask(
+        task_id="ACCEL-BOUNDARY-001",
+        title="Reject unauthenticated timeout salvage",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["test -f candidate.txt"],
+    )
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "candidate.txt").write_text(
+            "untrusted timeout output\n", encoding="utf-8"
+        )
+        return "baseline"
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_require_packaged_provider_fallback_runner",
+        lambda _command: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        timeout_runner,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_implementation_patch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an unbounded timeout must not reach proposal validation"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an unbounded timeout must not run declared validation"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an unbounded timeout must not commit a candidate"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_validated_worktree",
+        lambda **_kwargs: pytest.fail(
+            "an unbounded timeout must not enqueue a candidate"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_timed_out_worktree",
+        lambda *_args, **_kwargs: {
+            "commit_result": {"committed": False},
+            "cleanup_result": {"cleaned": False, "reason": "preserved"},
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 124
+    assert result["timeout_result"]["salvaged"] is False
+    assert result["timeout_result"]["reason"] == (
+        "provider_filesystem_boundary_unverified_after_timeout"
+    )
+    assert result["validation_result"]["reason"] == (
+        "provider_filesystem_boundary_unverified_after_timeout"
+    )
+    assert "provider_filesystem_boundary_receipt" not in result
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_timeout_salvage_failed"
+        for event in events
+    )
+
+
 def test_implementation_daemon_preserves_timed_out_work_on_rescue_branch(
     tmp_path,
     monkeypatch,

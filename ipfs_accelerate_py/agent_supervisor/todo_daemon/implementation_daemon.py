@@ -18485,6 +18485,12 @@ class PortalImplementationDaemon:
                     ),
                     "salvaged": timeout_result.get("salvaged") is True,
                 }
+                # Preserve explicit salvage-boundary reasons when present so
+                # callers can distinguish unverified provider fences from a
+                # plain hard timeout without reopening the full timeout blob.
+                timeout_reason_code = str(timeout_result.get("reason") or "").strip()
+                if timeout_reason_code:
+                    safe_timeout_result["reason"] = timeout_reason_code
                 result["timeout_result"] = safe_timeout_result
                 terminal_payload = {
                     "task_id": task.task_id,

@@ -985,15 +985,18 @@ def _bounded_agent_cli_probe(
     command: Sequence[str],
     *,
     timeout_seconds: float,
+    command_prefix: Sequence[str] = (),
+    environment: Optional[Mapping[str, str]] = None,
 ) -> tuple[int | None, str, AgentCLIProviderFailureKind | None]:
     sanitizer = AgentCLIStderrSanitizer()
     try:
         with tempfile.TemporaryFile(mode="w+b") as output:
             completed = subprocess.run(
-                list(command),
+                [*command_prefix, *command],
                 stdin=subprocess.DEVNULL,
                 stdout=output,
                 stderr=subprocess.STDOUT,
+                env=(None if environment is None else dict(environment)),
                 timeout=max(0.1, float(timeout_seconds)),
                 check=False,
             )
@@ -1021,6 +1024,8 @@ def probe_grok_codex_agent_route_readiness(
     codex_model: str = "gpt-5.6-terra",
     codex_reasoning_effort: str = "high",
     timeout_seconds: float = 10.0,
+    command_prefix: Sequence[str] = (),
+    environment: Optional[Mapping[str, str]] = None,
 ) -> AgentCLIRouteReadiness:
     """Probe auth/model readiness without dispatching an agent task."""
 
@@ -1034,7 +1039,10 @@ def probe_grok_codex_agent_route_readiness(
         grok_reason = "grok_cli_unavailable"
     else:
         grok_rc, grok_output, probe_failure = _bounded_agent_cli_probe(
-            [grok, "models"], timeout_seconds=timeout_seconds
+            [grok, "models"],
+            timeout_seconds=timeout_seconds,
+            command_prefix=command_prefix,
+            environment=environment,
         )
         if probe_failure is not None:
             grok_failure = probe_failure
@@ -1054,7 +1062,10 @@ def probe_grok_codex_agent_route_readiness(
     codex_ready = False
     if codex:
         codex_rc, codex_output, codex_probe_failure = _bounded_agent_cli_probe(
-            [codex, "login", "status"], timeout_seconds=timeout_seconds
+            [codex, "login", "status"],
+            timeout_seconds=timeout_seconds,
+            command_prefix=command_prefix,
+            environment=environment,
         )
         negative = re.search(
             r"\b(?:not\s+(?:logged\s+in|authenticated)|logged\s+out|"
