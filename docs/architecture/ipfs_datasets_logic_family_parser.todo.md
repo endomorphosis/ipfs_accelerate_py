@@ -881,7 +881,7 @@ validation and evidence contract.
 
 ## LFP-028 Import legacy TDFOL, CEC/DCEC, event-calculus, legal, and modal syntax
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
