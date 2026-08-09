@@ -1,6 +1,7 @@
 """Strict DAG-JSON / CIDv1 / multihash identity bridge for the agent supervisor.
 
-This module wraps :mod:`ipfs_datasets_py.utils.cid_utils` so supervisor code can
+This module wraps the sealed in-tree
+:mod:`ipfs_accelerate_py.utils.cid_utils` implementation so supervisor code can
 mint and validate content addresses under a single frozen profile:
 
 * CIDv1
@@ -11,9 +12,10 @@ mint and validate content addresses under a single frozen profile:
 Existing supervisor identities (``content_identity`` CIDs and
 ``runtime-artifact:sha256:…`` / ``sha256:…`` digests) are preserved.  Typed
 :class:`IdentityLink` records connect those local IDs to multiformats CIDs
-without silently replacing either side.  Cross-package drift is fail-closed:
-independent construction via ``cid_utils`` and the ``multiformats`` library
-must agree, and double-hashing of an already-computed digest is rejected.
+without silently replacing either side.  The implementation is dependency-free
+at launch, validates the complete CID wire form, and rejects double-hashing of
+an already-computed digest.  External multiformats libraries are optional
+test-only parity oracles and never become execution authority.
 
 The executable profile descriptor and exact discovery term
 ``vfs/cid-profile@1`` are the VFS-G141 evidence surface.  VFS-087 binds that
@@ -53,15 +55,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-try:
-    # Preferred shared encoder when the datasets package is present.
-    from ipfs_datasets_py.utils import cid_utils as _cid_utils
-except ImportError:  # pragma: no cover - exercised under hermetic validation
-    # Hermetic validation uses PYTHONNOUSERSITE and worktree submodule
-    # placeholders (empty ``ipfs_datasets_py/`` dirs) that shadow the real
-    # optional package.  Fall back to the in-tree helpers so entrypoint
-    # contracts remain importable without user-site editable installs.
-    from ipfs_accelerate_py.utils import cid_utils as _cid_utils
+from ipfs_accelerate_py.utils import cid_utils as _cid_utils
 
 MULTIFORMATS_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/multiformats-identity@1"
@@ -445,8 +439,8 @@ def canonical_dag_json_bytes(
     """
 
     _validate_dag_json_value(obj, reject_temporal_keys=for_identity)
-    # Prefer the shared package encoder so bytes match cid_utils exactly, then
-    # re-validate that its output is the unique sorted/compact form.
+    # Use the sealed in-tree encoder, then re-validate that its output is the
+    # unique sorted/compact form.
     encoded = _cid_utils.canonical_dag_json_bytes(obj)
     return require_canonical_dag_json_bytes(encoded)
 
@@ -471,7 +465,7 @@ def require_canonical_dag_json_bytes(data: bytes) -> bytes:
             "DAG-JSON bytes are not valid JSON"
         ) from exc
     _validate_dag_json_value(parsed)
-    # Reconstruct with the shared encoder — never default=repr.
+    # Reconstruct with the sealed encoder — never default=repr.
     expected = _cid_utils.canonical_dag_json_bytes(parsed)
     if data != expected:
         raise MultiformatsIdentityError(
@@ -558,13 +552,13 @@ def cid_for_dag_json(
         mh_type=mh_type,
         version=version,
     )
-    # Cross-check against the package helper and an independent multiformats build.
+    # Exercise both in-tree entry points over the exact same canonical bytes.
     package_cid = _cid_utils.cid_for_dag_json(
         obj, base=base, mh_type=mh_type, version=version
     )
     if package_cid != cid:
         raise MultiformatsIdentityError(
-            "cross-package codec drift: cid_utils dag-json CID mismatch"
+            "sealed codec drift: cid_utils dag-json CID mismatch"
         )
     return _cross_check_cid_for_bytes(encoded, cid, codec="dag-json")
 
@@ -592,7 +586,7 @@ def validate_cid(
         raise MultiformatsIdentityError(
             f"codecs must be a nonempty subset of {sorted(ALLOWED_CODECS)}"
         )
-    # Reject obvious truncated / pseudo forms before multiformats decode.
+    # Reject obvious truncated / pseudo forms before strict wire decoding.
     if len(value) < 16 or not value.startswith("b"):
         raise MultiformatsIdentityError(
             "CID is truncated or not canonical lowercase base32 CIDv1"
@@ -623,50 +617,38 @@ def _validate_cid_with_multiformats(
     version: int,
     base: str,
 ) -> None:
-    """Independent multiformats-library check for cross-package drift."""
+    """Validate the full CID wire form through the sealed implementation.
 
+    The private name is retained for compatibility with older diagnostic code;
+    external :mod:`multiformats` packages no longer participate here.
+    """
+
+    allowed = tuple(codecs)
     try:
-        from multiformats import CID, multihash
-    except ImportError as exc:  # pragma: no cover - environment must provide it
-        raise MultiformatsIdentityError(
-            "multiformats package is required for independent CID validation"
-        ) from exc
-    try:
-        parsed = CID.decode(value)
-    except Exception as exc:
-        raise MultiformatsIdentityError("CID is not decodable") from exc
-    expected_size = multihash.get(mh_type).max_digest_size
-    if expected_size is None:
-        expected_size = DIGEST_SIZE
-    if (
-        parsed.version != version
-        or parsed.codec.name not in frozenset(codecs)
-        or parsed.hashfun.name != mh_type
-        or len(parsed.raw_digest) != expected_size
-        or parsed.base.name != base
-        or str(parsed) != value
-    ):
-        raise MultiformatsIdentityError(
-            "CID must use the requested canonical version/base/codec/multihash"
+        _cid_utils.validate_cid(
+            value,
+            codecs=allowed,
+            mh_type=mh_type,
+            version=version,
+            base=base,
         )
+        digest = _cid_utils.digest_bytes_from_cid(value, codecs=allowed)
+    except (TypeError, ValueError) as exc:
+        raise MultiformatsIdentityError(str(exc) or "CID is not decodable") from exc
+    if len(digest) != DIGEST_SIZE:
+        raise MultiformatsIdentityError("CID multihash digest size is not 32 bytes")
 
 
 def _cross_check_cid_for_bytes(data: bytes, cid: str, *, codec: str) -> str:
-    """Ensure cid_utils and multiformats agree on the same bytes/codec."""
+    """Ensure minting, digest wrapping, and strict decoding agree."""
 
     validated = validate_cid(cid, codecs=(codec,))
-    try:
-        from multiformats import CID, multihash
-    except ImportError as exc:  # pragma: no cover
-        raise MultiformatsIdentityError(
-            "multiformats package is required for independent CID construction"
-        ) from exc
-    independent = str(
-        CID(CID_BASE, CID_VERSION, codec, multihash.digest(data, MH_TYPE))
+    independent = _cid_utils.cid_from_sha256_digest(
+        hashlib.sha256(data).digest(), codec=codec
     )
     if independent != validated:
         raise MultiformatsIdentityError(
-            "cross-package codec drift: multiformats CID disagrees with cid_utils"
+            "sealed codec drift: payload CID disagrees with wrapped digest"
         )
     return validated
 
@@ -678,14 +660,14 @@ def digest_hex_from_cid(
 ) -> str:
     """Return the lowercase sha2-256 hex digest carried by a validated CID."""
 
-    canonical = validate_cid(value, codecs=codecs)
-    from multiformats import CID
-
-    parsed = CID.decode(canonical)
-    digest = bytes(parsed.raw_digest)
-    if len(digest) != DIGEST_SIZE:
-        raise MultiformatsIdentityError("CID multihash digest size is not 32 bytes")
-    return digest.hex()
+    allowed = tuple(codecs)
+    canonical = validate_cid(value, codecs=allowed)
+    try:
+        return _cid_utils.digest_hex_from_cid(canonical, codecs=allowed)
+    except (TypeError, ValueError) as exc:
+        raise MultiformatsIdentityError(
+            str(exc) or "CID multihash digest is invalid"
+        ) from exc
 
 
 def cid_from_sha256_digest(
@@ -726,20 +708,12 @@ def cid_from_sha256_digest(
         raise MultiformatsIdentityError(
             f"sha2-256 digest must be exactly {DIGEST_SIZE} bytes"
         )
-    try:
-        from multiformats import CID, multihash
-    except ImportError as exc:  # pragma: no cover
-        raise MultiformatsIdentityError(
-            "multiformats package is required to wrap digests"
-        ) from exc
-    # multihash.wrap embeds the digest; multihash.digest would hash it again.
-    wrapped = multihash.wrap(digest_bytes, MH_TYPE)
-    double_hashed = multihash.digest(digest_bytes, MH_TYPE)
-    if bytes(wrapped) == bytes(double_hashed):
-        raise MultiformatsIdentityError(
-            "malformed multihash: wrap and digest produced identical bytes"
-        )
-    probe = str(CID(CID_BASE, CID_VERSION, codec, wrapped))
+    # Wrapping embeds the digest.  Hashing ``digest_bytes`` would address a
+    # different payload and is deliberately kept as a negative comparison.
+    probe = _cid_utils.cid_from_sha256_digest(digest_bytes, codec=codec)
+    double_hashed = _cid_utils.cid_for_bytes(digest_bytes, codec=codec)
+    if probe == double_hashed:
+        raise MultiformatsIdentityError("malformed multihash: digest was re-hashed")
     # The raw digest inside the wrapped multihash must be the caller's digest,
     # not a re-hash of it.
     if digest_hex_from_cid(probe, codecs=(codec,)) != digest_bytes.hex():
@@ -1022,7 +996,7 @@ def independent_round_trip_cid(
     *,
     codec: str = "raw",
 ) -> str:
-    """Build a CID via cid_utils and multiformats independently; require equality."""
+    """Round-trip mint, strict decode, digest extraction, and digest wrapping."""
 
     _require_codec(codec)
     payload = _reject_ambiguous_raw_input(data)
@@ -1033,14 +1007,12 @@ def independent_round_trip_cid(
         mh_type=MH_TYPE,
         version=CID_VERSION,
     )
-    from multiformats import CID, multihash
-
-    via_multi = str(
-        CID(CID_BASE, CID_VERSION, codec, multihash.digest(payload, MH_TYPE))
+    via_digest = _cid_utils.cid_from_sha256_digest(
+        hashlib.sha256(payload).digest(), codec=codec
     )
-    if via_utils != via_multi:
+    if via_utils != via_digest:
         raise MultiformatsIdentityError(
-            "independent round trip failed: cid_utils and multiformats disagree"
+            "independent round trip failed: mint and digest wrapping disagree"
         )
     return validate_cid(via_utils, codecs=(codec,))
 
