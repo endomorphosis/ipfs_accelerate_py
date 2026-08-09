@@ -1005,7 +1005,7 @@ validation and evidence contract.
 
 ## LFP-032 Implement separation, concurrency, session, relational, and refinement syntax
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
