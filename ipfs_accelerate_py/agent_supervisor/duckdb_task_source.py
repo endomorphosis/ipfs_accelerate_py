@@ -21,7 +21,7 @@ import json
 import os
 import re
 import time
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -2455,6 +2455,7 @@ class DuckDBTaskSource:
         *,
         writer_id: str | None = None,
         fencing_token: int | None = None,
+        write_precondition: Callable[[], None] | None = None,
     ) -> CASResult:
         key = _task_key(task_cid_or_alias)
         if (
@@ -2518,6 +2519,8 @@ class DuckDBTaskSource:
                     "receipt": receipt_record,
                 }
             )
+            if write_precondition is not None:
+                write_precondition()
             connection.execute(
                 "UPDATE tasks SET status = ?, revision = ? "
                 "WHERE task_cid = ? AND revision = ?",
@@ -2567,6 +2570,9 @@ class DuckDBTaskSource:
         fence: int | None = None,
         *,
         writer_id: str | None = None,
+        write_precondition: Callable[[], None] | None = None,
+        expected_task_status: str | None = None,
+        expected_task_revision: int | None = None,
     ) -> Mapping[str, Any]:
         body = _as_mapping(event, noun="task event")
         task_key = _identifier(
@@ -2580,6 +2586,21 @@ class DuckDBTaskSource:
                 "status_changed is reserved for compare_and_set_status"
             )
         lease_record = _as_mapping(lease or {}, noun="event lease")
+        if (expected_task_status is None) != (expected_task_revision is None):
+            raise ValueError(
+                "expected_task_status and expected_task_revision must be supplied together"
+            )
+        selected_task_status = (
+            _status(expected_task_status)
+            if expected_task_status is not None
+            else None
+        )
+        if expected_task_revision is not None and (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 1
+        ):
+            raise ValueError("expected_task_revision must be a positive integer")
         selected_fence = fence
         if selected_fence is None and lease_record:
             raw_fence = lease_record.get("fencing_token", lease_record.get("fence"))
@@ -2590,7 +2611,8 @@ class DuckDBTaskSource:
             writer_id=writer_id, fencing_token=selected_fence
         ) as (connection, metadata):
             task_row = connection.execute(
-                "SELECT task_cid FROM tasks WHERE task_cid = ? OR task_alias = ? "
+                "SELECT task_cid, status, revision FROM tasks "
+                "WHERE task_cid = ? OR task_alias = ? "
                 "ORDER BY task_cid LIMIT 2",
                 [task_key, task_key],
             ).fetchall()
@@ -2599,6 +2621,13 @@ class DuckDBTaskSource:
                     "event must reference exactly one existing task"
                 )
             task_cid = str(task_row[0][0])
+            if selected_task_status is not None and (
+                str(task_row[0][1]) != selected_task_status
+                or int(task_row[0][2]) != expected_task_revision
+            ):
+                raise TaskSourceConflictError(
+                    "event task status/revision precondition is stale"
+                )
             current_revision = int(_meta_value(metadata, "revision"))
             sequence = int(_meta_value(metadata, "event_sequence")) + 1
             if sequence > MAX_EVENTS:
@@ -2635,6 +2664,8 @@ class DuckDBTaskSource:
                     "changed": False,
                 }
             new_revision = current_revision + 1
+            if write_precondition is not None:
+                write_precondition()
             _insert_many(
                 connection,
                 "task_events",

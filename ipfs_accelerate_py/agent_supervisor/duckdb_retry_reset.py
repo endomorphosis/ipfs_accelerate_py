@@ -23,11 +23,12 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Final
 
 from .authorization_logic import ControlMutationAuthorizer, ControlMutationPolicy
-from .checkout_lock import checkout_repository_id
+from .checkout_lock import checkout_mutation_lock_path, checkout_repository_id
 from .control_contracts import (
     AuthorizationDecision,
     EffectKind,
@@ -51,6 +52,15 @@ RETRY_RESET_RECEIPT_SCHEMA: Final = (
 RETRY_RESET_EVENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/duckdb-retry-reset-event@1"
 )
+RETRY_RESET_EXECUTION_INTENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/duckdb-retry-reset-execution-intent@1"
+)
+RETRY_RESET_EXECUTION_INTENT_EVENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/duckdb-retry-reset-execution-intent-event@1"
+)
+RETRY_RESET_EXECUTION_INTENT_BINDING_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/duckdb-retry-reset-execution-intent-binding@1"
+)
 RETRY_RESET_POLICY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-policy@1"
 )
@@ -63,6 +73,7 @@ MAX_SIDECAR_BYTES: Final = 8 * 1024 * 1024
 MAX_LANES: Final = 64
 MAX_OWNER_PATHS: Final = 32
 MAX_DISCOVERED_SIDECARS: Final = 512
+MAX_EXECUTION_INTENTS: Final = 512
 _PREFIX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _RETRY_FIELDS: Final = (
     "selection_penalty",
@@ -598,11 +609,22 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"non-finite JSON number {value} is forbidden")
 
 
+def _reject_duplicate_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r} is forbidden")
+        result[key] = value
+    return result
+
+
 def _read_bounded_json(path: Path, noun: str) -> dict[str, Any]:
     encoded = _read_bounded_bytes(path, noun)
     try:
         payload = json.loads(
-            encoded.decode("utf-8"), parse_constant=_reject_json_constant
+            encoded.decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object,
         )
     except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise DuckDBRetryResetCorruptionError(f"{noun} is malformed: {path}") from exc
@@ -1308,8 +1330,12 @@ def _live_pids(path: Path) -> tuple[int, ...]:
     if not text:
         raise DuckDBRetryResetQuiescenceError(f"owner path is empty: {path}")
     try:
-        value: Any = json.loads(text)
-    except json.JSONDecodeError:
+        value: Any = json.loads(
+            text,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object,
+        )
+    except (json.JSONDecodeError, ValueError):
         try:
             value = {"pid": int(text)}
         except ValueError as exc:
@@ -1488,7 +1514,9 @@ def _load_policy(
         )
     try:
         payload = json.loads(
-            encoded.decode("utf-8"), parse_constant=_reject_json_constant
+            encoded.decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object,
         )
     except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise DuckDBRetryResetAuthorizationError(
@@ -1527,6 +1555,905 @@ def _load_policy(
         raise DuckDBRetryResetAuthorizationError(
             "trusted mutation policy is malformed"
         ) from exc
+
+
+def _request_canonical_evidence(request: OperationRequest) -> dict[str, str]:
+    """Return the exact request bytes used to authorize a durable intent."""
+
+    try:
+        encoded = bytes(request.canonical_bytes())
+        canonical_json = encoded.decode("utf-8")
+    except (AttributeError, TypeError, UnicodeError, ValueError) as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry request lacks canonical UTF-8 bytes"
+        ) from exc
+    return {
+        "canonical_json": canonical_json,
+        "digest": _digest_bytes(encoded),
+    }
+
+
+def _policy_payload(policy: ControlMutationPolicy) -> dict[str, Any]:
+    return {
+        "schema": RETRY_RESET_POLICY_SCHEMA,
+        "policy_id": policy.policy_id,
+        "policy_revision": policy.policy_revision,
+        "permits": [item.to_record() for item in policy.permits],
+        "current_tree_ids": dict(policy.current_tree_ids),
+        "current_objective_revisions": dict(policy.current_objective_revisions),
+        "active_lease_fences": dict(policy.active_lease_fences),
+    }
+
+
+def _git_output(repository_root: Path, *arguments: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=repository_root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DuckDBRetryResetConflict("cannot inspect repository generation") from exc
+    if result.returncode != 0:
+        raise DuckDBRetryResetConflict("cannot inspect repository generation")
+    return result.stdout
+
+
+def _repository_generation(repository_root: Path) -> dict[str, Any]:
+    head_commit, head_tree = _git_head_binding(repository_root)
+    status = _git_output(
+        repository_root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    )
+    if status:
+        raise DuckDBRetryResetConflict(
+            "retry execution intent requires a clean repository generation"
+        )
+    submodules = _git_output(repository_root, "submodule", "status", "--recursive")
+    for line in submodules.splitlines():
+        if line and line[0] in {"-", "+", "U"}:
+            raise DuckDBRetryResetConflict(
+                "retry execution intent requires exact clean submodule gitlinks"
+            )
+    return {
+        "repository_head_commit": head_commit,
+        "repository_head_tree": head_tree,
+        "worktree_status": status,
+        "worktree_status_digest": _digest_bytes(status.encode("utf-8")),
+        "submodule_status": submodules,
+        "submodule_status_digest": _digest_bytes(submodules.encode("utf-8")),
+    }
+
+
+def _parent_intent_material(parent: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": parent.get("schema"),
+        "program_id": parent.get("program_id"),
+        "request_id": parent.get("request_id"),
+        "request_digest": parent.get("request_digest"),
+        "repository_root": parent.get("repository_root"),
+        "runtime_root": parent.get("runtime_root"),
+        "database_path": parent.get("database_path"),
+        "plan_root_cid": parent.get("plan_root_cid"),
+        "task_source_repository_tree_id": parent.get(
+            "task_source_repository_tree_id"
+        ),
+        "repository_head_commit": parent.get("repository_head_commit"),
+        "repository_head_tree": parent.get("repository_head_tree"),
+        "checkout_binding": parent.get("checkout_binding"),
+        "task": parent.get("task"),
+        "writer": parent.get("writer"),
+        "owner_configuration": parent.get("owner_configuration"),
+        "policy": parent.get("policy"),
+        "authorization": parent.get("authorization"),
+        "environment": parent.get("environment"),
+        "old_master": parent.get("old_master"),
+        "old_process_tree": parent.get("old_process_tree"),
+    }
+
+
+def _parent_intent_cid(parent: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        _parent_intent_material(parent),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _parent_phase_cid(namespace: str, payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        {"namespace": namespace, **dict(payload)},
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _parent_drain_cid(parent: Mapping[str, Any]) -> str:
+    return _parent_phase_cid(
+        "duckdb-quack-retry-drain",
+        {
+            "intent_cid": parent.get("intent_cid"),
+            "drain_process_tree": parent.get("drain_process_tree"),
+            "drain_started_at": parent.get("drain_started_at"),
+        },
+    )
+
+
+def _parent_drained_cid(parent: Mapping[str, Any]) -> str:
+    return _parent_phase_cid(
+        "duckdb-quack-retry-drained",
+        {
+            "drain_cid": parent.get("drain_cid"),
+            "drained_at": parent.get("drained_at"),
+        },
+    )
+
+
+_PARENT_PREPARED_REQUIRED_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "program_id",
+        "phase",
+        "request_id",
+        "request_digest",
+        "request_file_digest",
+        "repository_root",
+        "runtime_root",
+        "database_path",
+        "plan_root_cid",
+        "task_source_repository_tree_id",
+        "repository_head_commit",
+        "repository_head_tree",
+        "checkout_binding",
+        "task",
+        "writer",
+        "owner_configuration",
+        "policy",
+        "authorization",
+        "environment",
+        "old_master",
+        "old_process_tree",
+        "lifecycle_owners",
+        "created_at",
+        "updated_at",
+        "intent_cid",
+    }
+)
+
+_PARENT_LIFECYCLE_SCHEMA: Final = (
+    "ipfs_datasets_py/duckdb-quack-retry-lifecycle-journal@1"
+)
+_PARENT_PROGRAM_ID: Final = "ipfs-datasets-duckdb-quack-v1"
+_PARENT_LIFECYCLE_PHASE_RANK: Final = {
+    "prepared": 0,
+    "draining": 1,
+    "drained": 2,
+    "leased": 3,
+    "reset_committed": 4,
+    "relaunching": 5,
+    "finalizing": 6,
+    "completed": 7,
+}
+_PARENT_LIFECYCLE_ALLOWED_FIELDS: Final = frozenset(
+    {
+        *_PARENT_PREPARED_REQUIRED_FIELDS,
+        "execution_intent",
+        "drain_process_tree",
+        "drain_started_at",
+        "drain_cid",
+        "drained_at",
+        "drained_cid",
+        "retry_reset_receipt",
+        "retry_reset_anchor",
+        "reset_committed_at",
+        "reset_commit_cid",
+        "relaunch",
+        "relaunch_intent_cid",
+        "new_master",
+        "checkout_leases",
+        "checkout_leased_at",
+        "checkout_lease_set_cid",
+        "checkout_finalization",
+        "checkout_release_tombstones",
+        "checkout_release_receipt",
+        "lifecycle_receipt",
+    }
+)
+_PROCESS_IDENTITY_FIELDS: Final = frozenset(
+    {"pid", "boot_id", "start_ticks", "cmdline_sha256", "argv"}
+)
+_MASTER_STORED_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "program_id",
+        "repository_root",
+        "master_root",
+        "master_pid_path",
+        "plan_root_cid",
+        "repository_tree_id",
+        "execution_slice_sha256",
+        "execution_slice_task_count",
+        "authorization_held_set_sha256",
+        "authorization_held_task_count",
+        "lane_count",
+        "created_at",
+        "python_environment_sha256",
+        "pid",
+        "boot_id",
+        "start_ticks",
+        "cmdline_sha256",
+    }
+)
+_ENVIRONMENT_EVIDENCE_FIELDS: Final = frozenset(
+    {
+        "receipt_path",
+        "receipt_sha256",
+        "receipt_id",
+        "environment_root",
+        "sealed_python_launcher_path",
+        "sealed_python_launcher_sha256",
+        "base_python_sha256",
+        "site_packages_manifest_sha256",
+        "duckdb_version",
+        "duckdb_record_evidence_sha256",
+    }
+)
+_CHECKOUT_BINDING_FIELDS: Final = frozenset(
+    {
+        "role",
+        "repository_root",
+        "repository_id",
+        "lock_path",
+        "branch",
+        "head_commit",
+        "head_tree",
+        "parent_accelerator_gitlink",
+    }
+)
+
+
+def _aware_iso8601(value: Any, noun: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise DuckDBRetryResetAuthorizationError(f"{noun} is missing")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise DuckDBRetryResetAuthorizationError(f"{noun} is malformed") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise DuckDBRetryResetAuthorizationError(f"{noun} lacks a timezone")
+    return value
+
+
+def _strict_process_identity(value: Any, noun: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != _PROCESS_IDENTITY_FIELDS:
+        raise DuckDBRetryResetAuthorizationError(f"{noun} shape is malformed")
+    identity = dict(value)
+    pid = identity.get("pid")
+    ticks = identity.get("start_ticks")
+    argv = identity.get("argv")
+    if (
+        not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or pid <= 0
+        or not isinstance(ticks, int)
+        or isinstance(ticks, bool)
+        or ticks <= 0
+        or not isinstance(identity.get("boot_id"), str)
+        or not identity.get("boot_id")
+        or not isinstance(identity.get("cmdline_sha256"), str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", identity["cmdline_sha256"])
+        or isinstance(argv, (str, bytes, Mapping))
+        or not isinstance(argv, Sequence)
+        or not argv
+        or any(not isinstance(item, str) or not item for item in argv)
+    ):
+        raise DuckDBRetryResetAuthorizationError(f"{noun} is malformed")
+    identity["argv"] = list(argv)
+    return identity
+
+
+def _argv_option(argv: Sequence[str], name: str) -> str:
+    for index, item in enumerate(argv):
+        if item == name and index + 1 < len(argv):
+            return argv[index + 1]
+        prefix = name + "="
+        if item.startswith(prefix):
+            return item[len(prefix) :]
+    return ""
+
+
+def _master_execution_slice(argv: Sequence[str]) -> list[str]:
+    aliases: list[str] = []
+    marker = "--common-arg=--execution-slice-task-id"
+    for index, item in enumerate(argv[:-1]):
+        if item != marker:
+            continue
+        selected = argv[index + 1]
+        prefix = "--common-arg="
+        if not selected.startswith(prefix) or not selected[len(prefix) :]:
+            raise DuckDBRetryResetAuthorizationError(
+                "parent PREPARED master execution slice is malformed"
+            )
+        aliases.append(selected[len(prefix) :])
+    if len(aliases) != len(set(aliases)):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master execution slice is duplicated"
+        )
+    return aliases
+
+
+def _live_process_identity(pid: int) -> dict[str, Any] | None:
+    try:
+        os.kill(pid, 0)
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="utf-8"
+        ).strip()
+        stat_text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        start_ticks = int(stat_text.rsplit(") ", 1)[1].split()[19])
+        command_bytes = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except (OSError, IndexError, ValueError):
+        return None
+    return {
+        "pid": pid,
+        "boot_id": boot_id,
+        "start_ticks": start_ticks,
+        "cmdline_sha256": _digest_bytes(command_bytes),
+        "argv": [
+            item.decode("utf-8", errors="replace")
+            for item in command_bytes.split(b"\0")
+            if item
+        ],
+    }
+
+
+def _process_session_members(session_id: int) -> tuple[int, ...]:
+    if session_id <= 0:
+        raise DuckDBRetryResetCorruptionError(
+            "parent execution intent has an invalid process session"
+        )
+    members: list[int] = []
+    try:
+        entries = tuple(Path("/proc").iterdir())
+    except OSError as exc:
+        raise DuckDBRetryResetQuiescenceError(
+            "cannot inspect the drained master process session"
+        ) from exc
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        try:
+            if os.getsid(pid) == session_id:
+                members.append(pid)
+        except ProcessLookupError:
+            continue
+        except OSError as exc:
+            raise DuckDBRetryResetQuiescenceError(
+                "cannot inspect a member of the drained master process session"
+            ) from exc
+    return tuple(sorted(members))
+
+
+def _validate_checkout_generation(
+    value: Any,
+    *,
+    request: OperationRequest,
+) -> list[dict[str, Any]]:
+    if (
+        isinstance(value, (str, bytes, Mapping))
+        or not isinstance(value, Sequence)
+        or len(value) != 2
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent checkout binding is malformed"
+        )
+    records: list[dict[str, Any]] = []
+    roles: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != _CHECKOUT_BINDING_FIELDS:
+            raise DuckDBRetryResetAuthorizationError(
+                "parent checkout binding shape is malformed"
+            )
+        record = dict(item)
+        role = record.get("role")
+        root_text = record.get("repository_root")
+        if role not in {"parent", "accelerator"} or role in roles:
+            raise DuckDBRetryResetAuthorizationError(
+                "parent checkout binding roles are invalid"
+            )
+        roles.add(str(role))
+        if not isinstance(root_text, str) or str(Path(root_text).resolve()) != root_text:
+            raise DuckDBRetryResetAuthorizationError(
+                "parent checkout root is not canonical"
+            )
+        root = Path(root_text)
+        actual_head, actual_tree = _git_head_binding(root)
+        actual_branch = _git_output(root, "branch", "--show-current").strip()
+        status = _git_output(root, "status", "--porcelain=v1")
+        lock_path = Path(checkout_mutation_lock_path(root))
+        canonical_lock = lock_path.parent.resolve() / lock_path.name
+        if (
+            not actual_branch
+            or status
+            or record.get("repository_id") != checkout_repository_id(root)
+            or record.get("lock_path") != str(canonical_lock)
+            or record.get("branch") != actual_branch
+            or record.get("head_commit") != actual_head
+            or record.get("head_tree") != actual_tree
+            or not re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}",
+                str(record.get("parent_accelerator_gitlink") or ""),
+            )
+        ):
+            raise DuckDBRetryResetAuthorizationError(
+                "parent checkout binding differs from the clean live checkout"
+            )
+        records.append(record)
+    if roles != {"parent", "accelerator"}:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent checkout binding must cover parent and accelerator"
+        )
+    parent = next(item for item in records if item["role"] == "parent")
+    if (
+        parent["repository_root"] != request.repository_root
+        or parent["repository_id"] != request.repository_id
+        or parent["head_commit"]
+        != request.parameters.get("repository_head_commit")
+        or parent["head_tree"] != request.tree_id
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent checkout does not bind the retry request"
+        )
+    accelerator = next(item for item in records if item["role"] == "accelerator")
+    expected_accelerator = (Path(request.repository_root) / "ipfs_accelerate_py").resolve()
+    parent_gitlink = _git_output(
+        Path(request.repository_root), "rev-parse", "HEAD:ipfs_accelerate_py"
+    ).strip()
+    if (
+        accelerator["repository_root"] != str(expected_accelerator)
+        or accelerator["head_commit"] != parent_gitlink
+        or accelerator["head_commit"] != parent["parent_accelerator_gitlink"]
+        or accelerator["parent_accelerator_gitlink"]
+        != parent["parent_accelerator_gitlink"]
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "accelerator checkout differs from the parent gitlink"
+        )
+    return sorted(records, key=lambda item: str(item["lock_path"]))
+
+
+def _validate_environment_generation(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != _ENVIRONMENT_EVIDENCE_FIELDS:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent environment generation shape is malformed"
+        )
+    evidence = dict(value)
+    receipt_path = evidence.get("receipt_path")
+    if (
+        not isinstance(receipt_path, str)
+        or str(Path(receipt_path).resolve()) != receipt_path
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent environment receipt path is not canonical"
+        )
+    receipt_bytes = _read_bounded_bytes(
+        Path(receipt_path), "sealed execution-environment receipt"
+    )
+    try:
+        receipt = json.loads(
+            receipt_bytes.decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "sealed execution-environment receipt is malformed"
+        ) from exc
+    digest_fields = {
+        "receipt_sha256",
+        "sealed_python_launcher_sha256",
+        "base_python_sha256",
+        "site_packages_manifest_sha256",
+        "duckdb_record_evidence_sha256",
+    }
+    probe = receipt.get("probe") if isinstance(receipt, Mapping) else None
+    probe_binding = {
+        name: evidence.get(name)
+        for name in (
+            "environment_root",
+            "sealed_python_launcher_path",
+            "sealed_python_launcher_sha256",
+            "base_python_sha256",
+            "site_packages_manifest_sha256",
+            "duckdb_version",
+            "duckdb_record_evidence_sha256",
+        )
+    }
+    if (
+        not isinstance(receipt, Mapping)
+        or evidence.get("receipt_sha256") != _digest_bytes(receipt_bytes)
+        or receipt.get("receipt_id") != evidence.get("receipt_id")
+        or not isinstance(probe, Mapping)
+        or any(probe.get(name) != value for name, value in probe_binding.items())
+        or any(
+            not isinstance(evidence.get(name), str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", str(evidence.get(name)))
+            for name in digest_fields
+        )
+        or any(
+            not isinstance(evidence.get(name), str) or not evidence.get(name)
+            for name in (
+                "receipt_id",
+                "environment_root",
+                "sealed_python_launcher_path",
+                "duckdb_version",
+            )
+        )
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent environment generation is not receipt-bound"
+        )
+    return evidence
+
+
+def _request_file_evidence(
+    encoded: bytes,
+    *,
+    request: OperationRequest,
+) -> dict[str, str]:
+    if not encoded or len(encoded) > MAX_SIDECAR_BYTES:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry request file bytes have an invalid size"
+        )
+    try:
+        raw_json = encoded.decode("utf-8")
+        payload = json.loads(
+            raw_json,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object,
+        )
+        decoded = decode_operation_request(payload)
+    except (UnicodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry request file bytes are malformed"
+        ) from exc
+    if decoded != request:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry request file bytes decode to another request"
+        )
+    return {"raw_json": raw_json, "digest": _digest_bytes(encoded)}
+
+
+def _validate_parent_prepared(
+    parent: Mapping[str, Any],
+    *,
+    request: OperationRequest,
+    binding: RetryResetBinding,
+    trusted_owner: RetryResetOwnerConfig,
+    owner_digest: str,
+    policy_digest: str,
+    repository_generation: Mapping[str, Any],
+    request_file_evidence: Mapping[str, str],
+    require_live_identities: bool,
+) -> dict[str, Any]:
+    """Validate the complete pre-drain lifecycle record supplied by its owner."""
+
+    if set(parent) != _PARENT_PREPARED_REQUIRED_FIELDS:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED lifecycle material has an unsupported shape"
+        )
+    try:
+        material = json.loads(_canonical_bytes(parent).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED lifecycle material is not canonical JSON"
+        ) from exc
+    request_evidence = _request_canonical_evidence(request)
+    task = material.get("task")
+    writer = material.get("writer")
+    owner = material.get("owner_configuration")
+    policy = material.get("policy")
+    authorization = material.get("authorization")
+    old_master = material.get("old_master")
+    process_tree = material.get("old_process_tree")
+    checkout_binding = _validate_checkout_generation(
+        material.get("checkout_binding"), request=request
+    )
+    environment = _validate_environment_generation(material.get("environment"))
+    if not isinstance(old_master, Mapping) or set(old_master) != {
+        "stored",
+        "actual",
+        "lane_count",
+        "duration_seconds",
+        "execution_slice",
+        "dedicated_session_id",
+    }:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master binding shape is malformed"
+        )
+    actual_master = _strict_process_identity(
+        old_master.get("actual"), "parent PREPARED actual master"
+    )
+    stored_master = old_master.get("stored")
+    if not isinstance(stored_master, Mapping) or set(stored_master) != _MASTER_STORED_FIELDS:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED stored master shape is malformed"
+        )
+    duration_text = old_master.get("duration_seconds")
+    execution_slice = old_master.get("execution_slice")
+    try:
+        duration_seconds = float(duration_text)
+    except (TypeError, ValueError) as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master duration is malformed"
+        ) from exc
+    actual_argv = actual_master["argv"]
+    derived_execution_slice = _master_execution_slice(actual_argv)
+    try:
+        derived_lane_count = int(
+            _argv_option(
+                actual_argv, "--implementation-supervisor-lanes-per-track"
+            )
+        )
+    except ValueError as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master lane topology is malformed"
+        ) from exc
+    stored_digest_fields = (
+        "execution_slice_sha256",
+        "authorization_held_set_sha256",
+        "python_environment_sha256",
+    )
+    if (
+        not isinstance(duration_text, str)
+        or not duration_seconds > 0
+        or isinstance(execution_slice, (str, bytes, Mapping))
+        or not isinstance(execution_slice, Sequence)
+        or not execution_slice
+        or any(not isinstance(item, str) or not item for item in execution_slice)
+        or list(execution_slice) != derived_execution_slice
+        or _argv_option(actual_argv, "--duration-seconds") != duration_text
+        or derived_lane_count != len(binding.lanes)
+        or old_master.get("dedicated_session_id") != actual_master["pid"]
+        or (
+            require_live_identities
+            and (
+                os.getsid(actual_master["pid"]) != actual_master["pid"]
+                or _live_process_identity(actual_master["pid"]) != actual_master
+            )
+        )
+        or any(
+            stored_master.get(name) != actual_master.get(name)
+            for name in ("pid", "boot_id", "start_ticks", "cmdline_sha256")
+        )
+        or stored_master.get("schema")
+        != "ipfs_datasets_py/duckdb-quack-master-identity@2"
+        or stored_master.get("program_id") != _PARENT_PROGRAM_ID
+        or stored_master.get("repository_root") != request.repository_root
+        or stored_master.get("master_root")
+        != str((Path(request.state_root) / "master").resolve())
+        or stored_master.get("master_pid_path")
+        != str((Path(request.state_root) / "master/supervisor.pid").resolve())
+        or stored_master.get("plan_root_cid") != binding.plan_root_cid
+        or stored_master.get("repository_tree_id")
+        != binding.task_source_repository_tree_id
+        or stored_master.get("lane_count") != len(binding.lanes)
+        or stored_master.get("execution_slice_task_count") != len(execution_slice)
+        or not isinstance(stored_master.get("authorization_held_task_count"), int)
+        or isinstance(stored_master.get("authorization_held_task_count"), bool)
+        or stored_master.get("authorization_held_task_count", -1) < 0
+        or any(
+            not isinstance(stored_master.get(name), str)
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored_master.get(name))
+            )
+            for name in stored_digest_fields
+        )
+        or not _aware_iso8601(
+            stored_master.get("created_at"), "stored master creation time"
+        )
+        or old_master.get("lane_count") != len(binding.lanes)
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED master binding is not live and canonical"
+        )
+    if (
+        isinstance(process_tree, (str, bytes, Mapping))
+        or not isinstance(process_tree, Sequence)
+        or not process_tree
+        or len(process_tree) > 4_096
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED process tree is malformed"
+        )
+    identities = [
+        _strict_process_identity(item, "parent PREPARED process identity")
+        for item in process_tree
+    ]
+    if (
+        identities[0] != actual_master
+        or len({item["pid"] for item in identities}) != len(identities)
+        or (
+            require_live_identities
+            and any(
+                _live_process_identity(item["pid"]) != item for item in identities
+            )
+        )
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED process tree is not an exact live snapshot"
+        )
+    owners = material.get("lifecycle_owners")
+    if not isinstance(owners, list) or len(owners) != 1:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED lifecycle owner chain is malformed"
+        )
+    owner_identities: list[dict[str, Any]] = []
+    for owner_record in owners:
+        if not isinstance(owner_record, Mapping) or set(owner_record) != {
+            "adopted_at",
+            *_PROCESS_IDENTITY_FIELDS,
+        }:
+            raise DuckDBRetryResetAuthorizationError(
+                "parent PREPARED lifecycle owner record is malformed"
+            )
+        _aware_iso8601(owner_record.get("adopted_at"), "owner adoption time")
+        owner_identities.append(
+            _strict_process_identity(
+                {key: owner_record[key] for key in _PROCESS_IDENTITY_FIELDS},
+                "parent PREPARED lifecycle owner",
+            )
+        )
+    if (
+        len(
+            {
+                (item["pid"], item["boot_id"], item["start_ticks"])
+                for item in owner_identities
+            }
+        )
+        != len(owner_identities)
+        or (
+            require_live_identities
+            and (
+                owner_identities[-1]["pid"] != os.getpid()
+                or _live_process_identity(os.getpid()) != owner_identities[-1]
+                or os.getpid() in {item["pid"] for item in identities}
+            )
+        )
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED lifecycle owner chain is not caller-bound"
+        )
+    created_at = _aware_iso8601(
+        material.get("created_at"), "parent PREPARED creation time"
+    )
+    updated_at = _aware_iso8601(
+        material.get("updated_at"), "parent PREPARED update time"
+    )
+    decision = request.authorization
+    if decision is None or decision.expires_at_ms is None:
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED lifecycle requires a finite authorization"
+        )
+    created_at_ms = int(
+        datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+        * 1_000
+    )
+    if (
+        material.get("schema") != _PARENT_LIFECYCLE_SCHEMA
+        or material.get("program_id") != _PARENT_PROGRAM_ID
+        or material.get("phase") != "prepared"
+        or material.get("request_id") != request.request_id
+        or material.get("request_digest") != request_evidence["digest"]
+        or material.get("request_file_digest")
+        != request_file_evidence.get("digest")
+        or material.get("repository_root") != request.repository_root
+        or material.get("runtime_root") != request.state_root
+        or material.get("database_path")
+        != str((Path(request.state_root) / binding.database_path).resolve())
+        or material.get("plan_root_cid") != binding.plan_root_cid
+        or material.get("task_source_repository_tree_id")
+        != binding.task_source_repository_tree_id
+        or material.get("repository_head_commit")
+        != repository_generation.get("repository_head_commit")
+        or material.get("repository_head_tree")
+        != repository_generation.get("repository_head_tree")
+        or material.get("checkout_binding") != checkout_binding
+        or task
+        != {
+            "task_cid": binding.task_cid,
+            "task_alias": binding.task_alias,
+            "status": binding.expected_status,
+            "revision": binding.task_revision,
+        }
+        or writer
+        != {
+            "writer_id": binding.writer_id,
+            "fencing_token": binding.writer_fencing_token,
+        }
+        or not isinstance(owner, Mapping)
+        or owner.get("path")
+        != str(Path(request.state_root) / RETRY_RESET_OWNER_FILE)
+        or owner.get("digest") != owner_digest
+        or owner.get("payload") != trusted_owner.to_dict()
+        or not isinstance(policy, Mapping)
+        or policy.get("path")
+        != str((Path(request.state_root) / trusted_owner.policy_path).resolve())
+        or policy.get("digest") != policy_digest
+        or policy.get("policy_id") != request.policy_id
+        or policy.get("policy_revision") != request.policy_revision
+        or policy.get("authorization_decision_id")
+        != (request.authorization.decision_id if request.authorization else "")
+        or not isinstance(authorization, Mapping)
+        or authorization
+        != {
+            "decision_id": request.authorization.decision_id,
+            "evaluated_at_ms": request.authorization.evaluated_at_ms,
+            "expires_at_ms": request.authorization.expires_at_ms,
+            "lease_id": request.lease_id,
+            "fencing_epoch": request.fencing_epoch,
+        }
+        or material.get("environment") != environment
+        or created_at != updated_at
+        or owners[0].get("adopted_at") != created_at
+        or not decision.evaluated_at_ms <= created_at_ms < decision.expires_at_ms
+        or material.get("intent_cid") != _parent_intent_cid(material)
+    ):
+        raise DuckDBRetryResetAuthorizationError(
+            "parent PREPARED lifecycle material is not exactly authority-bound"
+        )
+    return material
+
+
+def _execution_intent_root(state_root: Path) -> Path:
+    return _resolve_under(state_root, "duckdb-retry-reset/execution-intents")
+
+
+def _execution_intent_material_cid(material: Mapping[str, Any]) -> str:
+    return content_identity(
+        {"namespace": "duckdb-retry-reset-execution-intent", **dict(material)}
+    )
+
+
+def _execution_intent_binding(projection: Mapping[str, Any]) -> dict[str, Any]:
+    event = projection.get("preparation_event")
+    if not isinstance(event, Mapping):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution intent lacks its preparation event"
+        )
+    return {
+        "schema": RETRY_RESET_EXECUTION_INTENT_BINDING_SCHEMA,
+        "execution_intent_cid": projection.get("execution_intent_cid"),
+        "projection_path": projection.get("projection_path"),
+        "request_digest": projection.get("request", {}).get("digest")
+        if isinstance(projection.get("request"), Mapping)
+        else None,
+        "parent_intent_cid": projection.get("parent_prepared", {}).get("intent_cid")
+        if isinstance(projection.get("parent_prepared"), Mapping)
+        else None,
+        "preparation_event": {
+            name: event.get(name) for name in ("event_cid", "sequence", "revision")
+        },
+    }
+
+
+def retry_reset_execution_intent_binding(
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project the immutable fields a parent lifecycle journal must bind."""
+
+    return _execution_intent_binding(projection)
 
 
 def _binding_from_journal(value: Any) -> RetryResetBinding:
@@ -1615,6 +2542,1084 @@ def _find_event_by_cid(
     )
 
 
+def _all_execution_intent_events(
+    source: DuckDBTaskSource,
+) -> tuple[dict[str, Any], ...]:
+    """Return every bounded durable pre-effect authorization event."""
+
+    cursor = 0
+    scanned = 0
+    matches: list[dict[str, Any]] = []
+    while scanned < 100_000:
+        page = source.events(cursor=cursor, limit=1_000)
+        if not page.events:
+            break
+        for event in page.events:
+            scanned += 1
+            body = event.get("body")
+            if (
+                event.get("event_type")
+                == "retry_reset_execution_intent_prepared"
+            ):
+                matches.append(dict(event))
+                if len(matches) > MAX_EXECUTION_INTENTS:
+                    raise DuckDBRetryResetCorruptionError(
+                        "retry execution-intent population exceeds its governed bound"
+                    )
+        if page.cursor <= cursor:
+            raise DuckDBRetryResetCorruptionError(
+                "task event cursor did not advance"
+            )
+        cursor = page.cursor
+        if len(page.events) < 1_000:
+            break
+    if scanned >= 100_000:
+        raise DuckDBRetryResetCorruptionError(
+            "task event history exceeds its governed bound"
+        )
+    return tuple(matches)
+
+
+def _execution_intent_events(
+    source: DuckDBTaskSource, *, request_id: str
+) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        event
+        for event in _all_execution_intent_events(source)
+        if isinstance(event.get("body"), Mapping)
+        and event["body"].get("request_id") == request_id
+    )
+
+
+def _current_trust_evidence(
+    *,
+    state_root: Path,
+    trusted_policy: ControlMutationPolicy,
+    trusted_owner: RetryResetOwnerConfig,
+) -> dict[str, Any]:
+    owner_path = _resolve_under(state_root, RETRY_RESET_OWNER_FILE)
+    owner_bytes = _read_bounded_bytes(
+        owner_path, "retry-reset owner configuration"
+    )
+    loaded_owner = _load_owner_config(state_root)
+    if loaded_owner != trusted_owner:
+        raise DuckDBRetryResetAuthorizationError(
+            "current owner configuration differs from the pinned owner"
+        )
+    policy_path = _resolve_under(state_root, trusted_owner.policy_path)
+    policy_bytes = _read_bounded_bytes(policy_path, "trusted mutation policy")
+    if _digest_bytes(policy_bytes) != trusted_owner.policy_digest:
+        raise DuckDBRetryResetAuthorizationError(
+            "current policy differs from the owner-pinned digest"
+        )
+    loaded_policy = _load_policy(
+        policy_path, expected_digest=trusted_owner.policy_digest
+    )
+    if _policy_payload(loaded_policy) != _policy_payload(trusted_policy):
+        raise DuckDBRetryResetAuthorizationError(
+            "current policy differs from the supplied pinned policy"
+        )
+    policy_payload = _policy_payload(loaded_policy)
+    owner_payload = loaded_owner.to_dict()
+    return {
+        "owner": loaded_owner,
+        "owner_path": str(owner_path),
+        "owner_file_digest": _digest_bytes(owner_bytes),
+        "owner_payload": owner_payload,
+        "owner_payload_digest": _digest_bytes(_canonical_bytes(owner_payload)),
+        "policy": loaded_policy,
+        "policy_path": str(policy_path),
+        "policy_file_digest": _digest_bytes(policy_bytes),
+        "policy_payload": policy_payload,
+        "policy_payload_digest": _digest_bytes(_canonical_bytes(policy_payload)),
+    }
+
+
+def _validate_retry_request_static(
+    request: OperationRequest,
+    *,
+    trusted_policy: ControlMutationPolicy,
+    trusted_owner: RetryResetOwnerConfig,
+    clock_ms: Callable[[], int],
+    require_fresh: bool,
+) -> dict[str, Any]:
+    if request.operation is not Operation.RETRY or request.dry_run:
+        raise DuckDBRetryResetError(
+            "retry reset requires a real Operation.RETRY request"
+        )
+    decision = request.authorization
+    if decision is None:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry reset requires an authorization decision"
+        )
+    if require_fresh:
+        try:
+            ControlMutationAuthorizer(trusted_policy, clock_ms=clock_ms).validate(
+                request
+            )
+        except Exception as exc:
+            raise DuckDBRetryResetAuthorizationError(str(exc)) from exc
+    else:
+        registered = {
+            item.decision_id: item for item in trusted_policy.permits
+        }.get(decision.decision_id)
+        if registered is None or registered != decision:
+            raise DuckDBRetryResetAuthorizationError(
+                "permit decision was not issued by the current policy"
+            )
+        if (
+            request.policy_id != trusted_policy.policy_id
+            or request.policy_revision != trusted_policy.policy_revision
+            or trusted_policy.current_tree_ids.get(request.repository_id)
+            != request.tree_id
+            or trusted_policy.current_objective_revisions.get(request.objective_id)
+            != request.objective_revision
+            or trusted_policy.active_lease_fences.get(request.lease_id)
+            != request.fencing_epoch
+        ):
+            raise DuckDBRetryResetAuthorizationError(
+                "retry request no longer matches the current pinned policy"
+            )
+    binding = _binding_from_parameters(request.parameters)
+    _assert_owner_binding(request, binding, trusted_owner)
+    if request.fencing_epoch != binding.writer_fencing_token:
+        raise DuckDBRetryResetAuthorizationError(
+            "request fencing_epoch does not bind the DuckDB writer fence"
+        )
+    required_grants = {RETRY_RESET_GRANT, f"grant:duckdb-writer:{binding.writer_id}"}
+    if not required_grants.issubset(decision.grant_ids):
+        raise DuckDBRetryResetAuthorizationError(
+            "permit lacks retry-reset writer grants"
+        )
+    expected_effect = retry_reset_expected_effect(
+        repository_root=request.repository_root,
+        state_root=request.state_root,
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        parameters=request.parameters,
+    )
+    if request.expected_effects != (expected_effect,):
+        raise DuckDBRetryResetAuthorizationError(
+            "request effect is not the exact retry-reset binding"
+        )
+    repository_root = Path(request.repository_root).resolve()
+    state_root = Path(request.state_root).resolve()
+    if (
+        str(repository_root) != request.repository_root
+        or str(state_root) != request.state_root
+    ):
+        raise DuckDBRetryResetConflict(
+            "request roots are not canonical resolved paths"
+        )
+    if checkout_repository_id(repository_root) != request.repository_id:
+        raise DuckDBRetryResetConflict(
+            "repository root does not match repository_id"
+        )
+    generation = _repository_generation(repository_root)
+    if (
+        generation["repository_head_commit"] != binding.repository_head_commit
+        or generation["repository_head_tree"] != request.tree_id
+    ):
+        raise DuckDBRetryResetConflict(
+            "request does not bind the repository's current clean generation"
+        )
+    trust = _current_trust_evidence(
+        state_root=state_root,
+        trusted_policy=trusted_policy,
+        trusted_owner=trusted_owner,
+    )
+    return {
+        "binding": binding,
+        "decision": decision,
+        "expected_effect": expected_effect,
+        "repository_root": repository_root,
+        "state_root": state_root,
+        "repository_generation": generation,
+        "trust": trust,
+    }
+
+
+def _execution_intent_from_event(
+    event: Mapping[str, Any],
+    *,
+    state_root: Path,
+) -> dict[str, Any]:
+    body = event.get("body")
+    if not isinstance(body, Mapping):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent event body is malformed"
+        )
+    required_body = {
+        "schema",
+        "event_type",
+        "task_cid",
+        "request_id",
+        "repository_id",
+        "repository_tree_id",
+        "repository_head_commit",
+        "task_source_repository_tree_id",
+        "plan_root_cid",
+        "writer_id",
+        "writer_fencing_token",
+        "execution_intent_cid",
+        "intent",
+        "lease",
+    }
+    material = body.get("intent")
+    intent_cid = body.get("execution_intent_cid")
+    authorization = material.get("authorization") if isinstance(material, Mapping) else None
+    decision = authorization.get("decision") if isinstance(authorization, Mapping) else None
+    database = material.get("database") if isinstance(material, Mapping) else None
+    writer = database.get("writer") if isinstance(database, Mapping) else None
+    task = database.get("task") if isinstance(database, Mapping) else None
+    request_record = material.get("request") if isinstance(material, Mapping) else None
+    repository_generation = (
+        material.get("repository_generation") if isinstance(material, Mapping) else None
+    )
+    parent = material.get("parent_prepared") if isinstance(material, Mapping) else None
+    parent_checkout = (
+        parent.get("checkout_binding") if isinstance(parent, Mapping) else None
+    )
+    parent_repository = next(
+        (
+            item
+            for item in parent_checkout
+            if isinstance(item, Mapping) and item.get("role") == "parent"
+        ),
+        None,
+    ) if isinstance(parent_checkout, list) else None
+    expected_lease = {
+        "lease_id": decision.get("lease_id") if isinstance(decision, Mapping) else None,
+        "fencing_token": writer.get("fencing_token")
+        if isinstance(writer, Mapping)
+        else None,
+    }
+    expected_event_cid = content_identity(dict(body))
+    if (
+        set(body) != required_body
+        or body.get("schema") != RETRY_RESET_EXECUTION_INTENT_EVENT_SCHEMA
+        or body.get("event_type")
+        != "retry_reset_execution_intent_prepared"
+        or event.get("event_type") != body.get("event_type")
+        or event.get("task_cid") != body.get("task_cid")
+        or event.get("event_cid") != expected_event_cid
+        or not isinstance(task, Mapping)
+        or not isinstance(writer, Mapping)
+        or not isinstance(repository_generation, Mapping)
+        or body.get("task_cid") != task.get("task_cid")
+        or not isinstance(request_record, Mapping)
+        or body.get("request_id") != request_record.get("request_id")
+        or not isinstance(decision, Mapping)
+        or body.get("repository_id") != decision.get("repository_id")
+        or body.get("repository_tree_id") != decision.get("tree_id")
+        or body.get("repository_head_commit")
+        != repository_generation.get("repository_head_commit")
+        or body.get("task_source_repository_tree_id")
+        != database.get("task_source_repository_tree_id")
+        or body.get("plan_root_cid") != database.get("plan_root_cid")
+        or body.get("writer_id") != writer.get("writer_id")
+        or body.get("writer_fencing_token") != writer.get("fencing_token")
+        or body.get("lease") != expected_lease
+        or not isinstance(material, Mapping)
+        or material.get("schema") != RETRY_RESET_EXECUTION_INTENT_SCHEMA
+        or not isinstance(parent, Mapping)
+        or parent.get("request_id") != request_record.get("request_id")
+        or not isinstance(parent_repository, Mapping)
+        or parent_repository.get("repository_id") != body.get("repository_id")
+        or parent_repository.get("head_commit")
+        != body.get("repository_head_commit")
+        or parent_repository.get("head_tree") != body.get("repository_tree_id")
+        or parent.get("task") != task
+        or parent.get("writer") != writer
+        or parent.get("repository_head_commit")
+        != repository_generation.get("repository_head_commit")
+        or parent.get("repository_head_tree")
+        != repository_generation.get("repository_head_tree")
+        or parent.get("plan_root_cid") != database.get("plan_root_cid")
+        or parent.get("task_source_repository_tree_id")
+        != database.get("task_source_repository_tree_id")
+        or _execution_intent_material_cid(material) != intent_cid
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent event is not content-bound"
+        )
+    projection_path = _execution_intent_root(state_root) / f"{intent_cid}.json"
+    projection = {
+        **dict(material),
+        "execution_intent_cid": intent_cid,
+        "projection_path": str(projection_path),
+        "preparation_event": {
+            name: event.get(name) for name in ("event_cid", "sequence", "revision")
+        },
+    }
+    return projection
+
+
+def _verify_execution_intent_projection(
+    projection: Mapping[str, Any],
+    *,
+    request: OperationRequest,
+    trusted_policy: ControlMutationPolicy,
+    trusted_owner: RetryResetOwnerConfig,
+    expected_parent_journal_path: Path,
+    source: DuckDBTaskSource,
+    require_original_task: bool,
+) -> dict[str, Any]:
+    context = _validate_retry_request_static(
+        request,
+        trusted_policy=trusted_policy,
+        trusted_owner=trusted_owner,
+        clock_ms=lambda: 0,
+        require_fresh=False,
+    )
+    intent_cid = projection.get("execution_intent_cid")
+    projection_path = _execution_intent_root(context["state_root"]) / f"{intent_cid}.json"
+    preparation_event = projection.get("preparation_event")
+    material = {
+        key: value
+        for key, value in projection.items()
+        if key
+        not in {"execution_intent_cid", "projection_path", "preparation_event"}
+    }
+    if (
+        not isinstance(intent_cid, str)
+        or not intent_cid
+        or projection.get("projection_path") != str(projection_path)
+        or _execution_intent_material_cid(material) != intent_cid
+        or not isinstance(preparation_event, Mapping)
+        or not isinstance(preparation_event.get("event_cid"), str)
+        or not preparation_event.get("event_cid")
+        or not isinstance(preparation_event.get("sequence"), int)
+        or isinstance(preparation_event.get("sequence"), bool)
+        or not isinstance(preparation_event.get("revision"), int)
+        or isinstance(preparation_event.get("revision"), bool)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent projection is not content-bound"
+        )
+    request_evidence = _request_canonical_evidence(request)
+    request_file_record = material.get("request_file")
+    if (
+        not isinstance(request_file_record, Mapping)
+        or set(request_file_record) != {"raw_json", "digest"}
+        or not isinstance(request_file_record.get("raw_json"), str)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent request-file evidence is malformed"
+        )
+    request_file = _request_file_evidence(
+        request_file_record["raw_json"].encode("utf-8"), request=request
+    )
+    decision = context["decision"]
+    effect = context["expected_effect"]
+    trust = context["trust"]
+    parent = material.get("parent_prepared")
+    parent_path = material.get("parent_journal_path")
+    database = material.get("database")
+    if (
+        material.get("schema") != RETRY_RESET_EXECUTION_INTENT_SCHEMA
+        or material.get("request")
+        != {
+            "request_id": request.request_id,
+            **request_evidence,
+        }
+        or dict(request_file_record) != request_file
+        or material.get("authorization")
+        != {
+            "decision": decision.to_record(),
+            "decision_digest": decision.decision_id,
+            "evaluated_at_ms": decision.evaluated_at_ms,
+            "expires_at_ms": decision.expires_at_ms,
+        }
+        or material.get("policy")
+        != {
+            "path": trust["policy_path"],
+            "file_digest": trust["policy_file_digest"],
+            "payload_digest": trust["policy_payload_digest"],
+            "payload": trust["policy_payload"],
+        }
+        or material.get("owner")
+        != {
+            "path": trust["owner_path"],
+            "file_digest": trust["owner_file_digest"],
+            "payload_digest": trust["owner_payload_digest"],
+            "payload": trust["owner_payload"],
+        }
+        or material.get("expected_effect")
+        != {
+            "effect": effect.to_record(),
+            "effect_id": effect.effect_id,
+        }
+        or material.get("idempotency")
+        != {
+            "record": request.idempotency.to_record(),
+            "content_id": request.idempotency.content_id,
+        }
+        or material.get("repository_generation")
+        != context["repository_generation"]
+        or parent_path != str(expected_parent_journal_path)
+        or not isinstance(parent, Mapping)
+        or parent.get("environment") != material.get("environment_generation")
+        or parent.get("old_master") != material.get("old_master")
+        or parent.get("old_process_tree") != material.get("old_process_tree")
+        or material.get("lanes")
+        != [lane.to_dict() for lane in context["binding"].lanes]
+        or not isinstance(database, Mapping)
+        or database.get("plan_root_cid") != context["binding"].plan_root_cid
+        or database.get("task_source_repository_tree_id")
+        != context["binding"].task_source_repository_tree_id
+        or database.get("task")
+        != {
+            "task_cid": context["binding"].task_cid,
+            "task_alias": context["binding"].task_alias,
+            "status": context["binding"].expected_status,
+            "revision": context["binding"].task_revision,
+        }
+        or database.get("writer")
+        != {
+            "writer_id": context["binding"].writer_id,
+            "fencing_token": context["binding"].writer_fencing_token,
+        }
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent authority binding changed"
+        )
+    _validate_parent_prepared(
+        parent,
+        request=request,
+        binding=context["binding"],
+        trusted_owner=trusted_owner,
+        owner_digest=trust["owner_file_digest"],
+        policy_digest=trust["policy_file_digest"],
+        repository_generation=context["repository_generation"],
+        request_file_evidence=request_file,
+        require_live_identities=False,
+    )
+    prepared_at_ms = material.get("prepared_at_ms")
+    if (
+        not isinstance(prepared_at_ms, int)
+        or isinstance(prepared_at_ms, bool)
+        or decision.expires_at_ms is None
+        or not decision.evaluated_at_ms <= prepared_at_ms < decision.expires_at_ms
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution intent was not prepared under a finite fresh permit"
+        )
+    events = _execution_intent_events(source, request_id=request.request_id)
+    if len(events) != 1:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution intent requires exactly one durable preparation event"
+        )
+    event_body = events[0].get("body")
+    database_task = database.get("task") if isinstance(database, Mapping) else None
+    if (
+        not isinstance(event_body, Mapping)
+        or not isinstance(database_task, Mapping)
+        or event_body.get("task_cid") != database_task.get("task_cid")
+        or event_body.get("request_id") != request.request_id
+        or event_body.get("repository_id") != request.repository_id
+        or event_body.get("repository_tree_id") != request.tree_id
+        or event_body.get("repository_head_commit")
+        != context["binding"].repository_head_commit
+        or event_body.get("task_source_repository_tree_id")
+        != context["binding"].task_source_repository_tree_id
+        or event_body.get("plan_root_cid") != context["binding"].plan_root_cid
+        or event_body.get("writer_id") != context["binding"].writer_id
+        or event_body.get("writer_fencing_token")
+        != context["binding"].writer_fencing_token
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent event envelope is cross-bound incorrectly"
+        )
+    derived = _execution_intent_from_event(events[0], state_root=context["state_root"])
+    if derived != dict(projection):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent projection differs from durable event history"
+        )
+    current_task = source.get_task(context["binding"].task_cid)
+    if current_task is None or current_task.task_alias != context["binding"].task_alias:
+        raise DuckDBRetryResetConflict("retry execution-intent task disappeared")
+    if require_original_task and (
+        current_task.status != context["binding"].expected_status
+        or current_task.revision != context["binding"].task_revision
+    ):
+        raise DuckDBRetryResetConflict(
+            "retry execution-intent task status/revision changed"
+        )
+    writer = source.current_writer_fence()
+    if (writer.writer_id, writer.fencing_token) != (
+        context["binding"].writer_id,
+        context["binding"].writer_fencing_token,
+    ):
+        raise DuckDBRetryResetConflict(
+            "retry execution-intent writer owner/fence changed"
+        )
+    return dict(projection)
+
+
+def prepare_duckdb_retry_reset_execution_intent(
+    request: OperationRequest,
+    *,
+    trusted_policy: ControlMutationPolicy,
+    trusted_owner: RetryResetOwnerConfig,
+    parent_prepared: Mapping[str, Any],
+    parent_journal_path: str | os.PathLike[str],
+    request_file_bytes: bytes,
+    clock_ms: Callable[[], int] | None = None,
+    lock_timeout_seconds: float = 30.0,
+    fault_injector: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Durably authorize one later quiescent reset while its permit is fresh.
+
+    The custom DuckDB event is the authorization boundary.  It is deliberately
+    distinct from the later reset intent/status event and contains enough exact
+    parent material to recover a crash before the parent journal is published.
+    """
+
+    selected_clock = clock_ms or (lambda: time.time_ns() // 1_000_000)
+    context = _validate_retry_request_static(
+        request,
+        trusted_policy=trusted_policy,
+        trusted_owner=trusted_owner,
+        clock_ms=selected_clock,
+        require_fresh=True,
+    )
+    decision = context["decision"]
+    if decision.expires_at_ms is None:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry execution intent requires an explicitly finite permit"
+        )
+    request_file = _request_file_evidence(request_file_bytes, request=request)
+    parent_path = Path(parent_journal_path)
+    expected_parent_root = _resolve_under(
+        context["state_root"], "duckdb-retry-reset/journals/lifecycle"
+    )
+    expected_parent_path = expected_parent_root / (
+        _request_canonical_evidence(request)["digest"].removeprefix("sha256:")
+        + ".json"
+    )
+    if parent_path != expected_parent_path or not parent_path.is_absolute():
+        raise DuckDBRetryResetAuthorizationError(
+            "parent lifecycle journal path is not canonical for this request"
+        )
+    trust = context["trust"]
+    parent = _validate_parent_prepared(
+        parent_prepared,
+        request=request,
+        binding=context["binding"],
+        trusted_owner=trusted_owner,
+        owner_digest=trust["owner_file_digest"],
+        policy_digest=trust["policy_file_digest"],
+        repository_generation=context["repository_generation"],
+        request_file_evidence=request_file,
+        require_live_identities=True,
+    )
+    database_path = _resolve_under(
+        context["state_root"], context["binding"].database_path
+    )
+    _assert_regular_path(database_path, "DuckDB task source")
+    lifecycle_lock = _resolve_under(
+        context["state_root"], ".duckdb-retry-reset.lifecycle.lock"
+    )
+    with exclusive_file_lock(
+        lifecycle_lock, timeout_seconds=lock_timeout_seconds
+    ):
+        # Re-read every mutable authority immediately adjacent to the append.
+        context = _validate_retry_request_static(
+            request,
+            trusted_policy=trusted_policy,
+            trusted_owner=trusted_owner,
+            clock_ms=selected_clock,
+            require_fresh=True,
+        )
+        trust = context["trust"]
+        parent = _validate_parent_prepared(
+            parent,
+            request=request,
+            binding=context["binding"],
+            trusted_owner=trusted_owner,
+            owner_digest=trust["owner_file_digest"],
+            policy_digest=trust["policy_file_digest"],
+            repository_generation=context["repository_generation"],
+            request_file_evidence=request_file,
+            require_live_identities=True,
+        )
+        source = DuckDBTaskSource(
+            database_path,
+            expected_plan_root_cid=context["binding"].plan_root_cid,
+            expected_repository_tree_id=context["binding"].task_source_repository_tree_id,
+            writer_id=context["binding"].writer_id,
+            fencing_token=context["binding"].writer_fencing_token,
+            lock_timeout_seconds=lock_timeout_seconds,
+        )
+        snapshot = source.snapshot()
+        task = source.get_task(context["binding"].task_cid)
+        writer = source.current_writer_fence()
+        if (
+            snapshot.plan_root_cid != context["binding"].plan_root_cid
+            or snapshot.repository_tree_id
+            != context["binding"].task_source_repository_tree_id
+            or task is None
+            or task.task_alias != context["binding"].task_alias
+            or task.status != context["binding"].expected_status
+            or task.revision != context["binding"].task_revision
+            or (writer.writer_id, writer.fencing_token)
+            != (
+                context["binding"].writer_id,
+                context["binding"].writer_fencing_token,
+            )
+        ):
+            raise DuckDBRetryResetConflict(
+                "retry execution-intent DuckDB binding changed before append"
+            )
+        existing_events = _execution_intent_events(
+            source, request_id=request.request_id
+        )
+        if len(existing_events) > 1:
+            raise DuckDBRetryResetConflict(
+                "retry request has conflicting execution-intent events"
+            )
+        if existing_events:
+            projection = _execution_intent_from_event(
+                existing_events[0], state_root=context["state_root"]
+            )
+            projection_path = Path(str(projection["projection_path"]))
+            if projection.get("parent_prepared") != parent:
+                raise DuckDBRetryResetConflict(
+                    "retry request was already prepared for another parent intent"
+                )
+            if projection_path.exists():
+                stored = _read_bounded_json(
+                    projection_path, "retry execution-intent projection"
+                )
+                if stored != projection:
+                    raise DuckDBRetryResetConflict(
+                        "retry execution-intent projection conflicts with event history"
+                    )
+            else:
+                _write_json_durable(projection_path, projection)
+            return _verify_execution_intent_projection(
+                projection,
+                request=request,
+                trusted_policy=trusted_policy,
+                trusted_owner=trusted_owner,
+                expected_parent_journal_path=expected_parent_path,
+                source=source,
+                require_original_task=True,
+            )
+        prepared_at_ms = selected_clock()
+        # This check is deliberately repeated after all reads and immediately
+        # before constructing/appending the durable authorization event.
+        try:
+            ControlMutationAuthorizer(
+                trust["policy"], clock_ms=lambda: prepared_at_ms
+            ).validate(request)
+        except Exception as exc:
+            raise DuckDBRetryResetAuthorizationError(str(exc)) from exc
+        request_evidence = _request_canonical_evidence(request)
+        decision = context["decision"]
+        effect = context["expected_effect"]
+        assert request.idempotency is not None
+        intent_material: dict[str, Any] = {
+            "schema": RETRY_RESET_EXECUTION_INTENT_SCHEMA,
+            "prepared_at_ms": prepared_at_ms,
+            "request": {
+                "request_id": request.request_id,
+                **request_evidence,
+            },
+            "request_file": request_file,
+            "authorization": {
+                "decision": decision.to_record(),
+                "decision_digest": decision.decision_id,
+                "evaluated_at_ms": decision.evaluated_at_ms,
+                "expires_at_ms": decision.expires_at_ms,
+            },
+            "policy": {
+                "path": trust["policy_path"],
+                "file_digest": trust["policy_file_digest"],
+                "payload_digest": trust["policy_payload_digest"],
+                "payload": trust["policy_payload"],
+            },
+            "owner": {
+                "path": trust["owner_path"],
+                "file_digest": trust["owner_file_digest"],
+                "payload_digest": trust["owner_payload_digest"],
+                "payload": trust["owner_payload"],
+            },
+            "expected_effect": {
+                "effect": effect.to_record(),
+                "effect_id": effect.effect_id,
+            },
+            "idempotency": {
+                "record": request.idempotency.to_record(),
+                "content_id": request.idempotency.content_id,
+            },
+            "repository_generation": context["repository_generation"],
+            "database": {
+                "database_path": str(database_path),
+                "plan_root_cid": snapshot.plan_root_cid,
+                "task_source_repository_tree_id": snapshot.repository_tree_id,
+                "revision_before": snapshot.revision,
+                "event_cursor_before": snapshot.event_cursor,
+                "task": {
+                    "task_cid": task.task_cid,
+                    "task_alias": task.task_alias,
+                    "status": task.status,
+                    "revision": task.revision,
+                },
+                "writer": {
+                    "writer_id": writer.writer_id,
+                    "fencing_token": writer.fencing_token,
+                },
+            },
+            "lanes": [lane.to_dict() for lane in context["binding"].lanes],
+            "environment_generation": parent["environment"],
+            "old_master": parent["old_master"],
+            "old_process_tree": parent["old_process_tree"],
+            "parent_journal_path": str(expected_parent_path),
+            "parent_prepared": parent,
+        }
+        intent_cid = _execution_intent_material_cid(intent_material)
+
+        def assert_preparation_write_precondition() -> None:
+            """Revalidate mutable authority while the task-source lock is held."""
+
+            boundary = _validate_retry_request_static(
+                request,
+                trusted_policy=trusted_policy,
+                trusted_owner=trusted_owner,
+                clock_ms=selected_clock,
+                require_fresh=True,
+            )
+            if (
+                boundary["binding"] != context["binding"]
+                or boundary["repository_generation"]
+                != context["repository_generation"]
+                or boundary["trust"]["owner_file_digest"]
+                != trust["owner_file_digest"]
+                or boundary["trust"]["policy_file_digest"]
+                != trust["policy_file_digest"]
+            ):
+                raise DuckDBRetryResetConflict(
+                    "retry execution-intent authority changed at the write boundary"
+                )
+
+        appended = source.append_event(
+            {
+                "schema": RETRY_RESET_EXECUTION_INTENT_EVENT_SCHEMA,
+                "event_type": "retry_reset_execution_intent_prepared",
+                "task_cid": context["binding"].task_cid,
+                "request_id": request.request_id,
+                "repository_id": request.repository_id,
+                "repository_tree_id": request.tree_id,
+                "repository_head_commit": context["binding"].repository_head_commit,
+                "task_source_repository_tree_id": (
+                    context["binding"].task_source_repository_tree_id
+                ),
+                "plan_root_cid": context["binding"].plan_root_cid,
+                "writer_id": context["binding"].writer_id,
+                "writer_fencing_token": (
+                    context["binding"].writer_fencing_token
+                ),
+                "execution_intent_cid": intent_cid,
+                "intent": intent_material,
+            },
+            lease={
+                "lease_id": request.lease_id,
+                "fencing_token": context["binding"].writer_fencing_token,
+            },
+            fence=context["binding"].writer_fencing_token,
+            writer_id=context["binding"].writer_id,
+            write_precondition=assert_preparation_write_precondition,
+            expected_task_status=context["binding"].expected_status,
+            expected_task_revision=context["binding"].task_revision,
+        )
+        if fault_injector:
+            fault_injector("execution_intent_event_appended")
+        projection = {
+            **intent_material,
+            "execution_intent_cid": intent_cid,
+            "projection_path": str(
+                _execution_intent_root(context["state_root"])
+                / f"{intent_cid}.json"
+            ),
+            "preparation_event": {
+                name: appended[name]
+                for name in ("event_cid", "sequence", "revision")
+            },
+        }
+        projection_path = Path(str(projection["projection_path"]))
+        if projection_path.exists():
+            existing = _read_bounded_json(
+                projection_path, "retry execution-intent projection"
+            )
+            if existing != projection:
+                raise DuckDBRetryResetConflict(
+                    "retry execution-intent projection conflicts with event history"
+                )
+        else:
+            _write_json_durable(projection_path, projection)
+            if fault_injector:
+                fault_injector("execution_intent_projection_written")
+        return _verify_execution_intent_projection(
+            projection,
+            request=request,
+            trusted_policy=trusted_policy,
+            trusted_owner=trusted_owner,
+            expected_parent_journal_path=expected_parent_path,
+            source=source,
+            require_original_task=True,
+        )
+
+
+def recover_duckdb_retry_reset_execution_intent(
+    request: OperationRequest,
+    *,
+    trusted_policy: ControlMutationPolicy,
+    trusted_owner: RetryResetOwnerConfig,
+    expected_parent_journal_path: str | os.PathLike[str],
+    lock_timeout_seconds: float = 30.0,
+    repair_projection: bool = True,
+) -> dict[str, Any] | None:
+    """Recover and verify the one pre-effect event for a request, if present."""
+
+    context = _validate_retry_request_static(
+        request,
+        trusted_policy=trusted_policy,
+        trusted_owner=trusted_owner,
+        clock_ms=lambda: 0,
+        require_fresh=False,
+    )
+    parent_path = Path(expected_parent_journal_path)
+    database_path = _resolve_under(
+        context["state_root"], context["binding"].database_path
+    )
+    source = DuckDBTaskSource(
+        database_path,
+        expected_plan_root_cid=context["binding"].plan_root_cid,
+        expected_repository_tree_id=context["binding"].task_source_repository_tree_id,
+        writer_id=context["binding"].writer_id,
+        fencing_token=context["binding"].writer_fencing_token,
+        lock_timeout_seconds=lock_timeout_seconds,
+    )
+    lifecycle_lock = _resolve_under(
+        context["state_root"], ".duckdb-retry-reset.lifecycle.lock"
+    )
+    with exclusive_file_lock(
+        lifecycle_lock, timeout_seconds=lock_timeout_seconds
+    ):
+        events = _execution_intent_events(source, request_id=request.request_id)
+        if not events:
+            return None
+        if len(events) != 1:
+            raise DuckDBRetryResetConflict(
+                "retry request has duplicate execution-intent events"
+            )
+        projection = _execution_intent_from_event(
+            events[0], state_root=context["state_root"]
+        )
+        projection_path = Path(str(projection["projection_path"]))
+        if projection_path.exists():
+            stored = _read_bounded_json(
+                projection_path, "retry execution-intent projection"
+            )
+            if stored != projection:
+                raise DuckDBRetryResetCorruptionError(
+                    "retry execution-intent projection differs from its event"
+                )
+        elif repair_projection:
+            # Event-before-projection is a safe pre-effect crash boundary: the
+            # writer-fenced event embeds the complete immutable projection.
+            _write_json_durable(projection_path, projection)
+        return _verify_execution_intent_projection(
+            projection,
+            request=request,
+            trusted_policy=trusted_policy,
+            trusted_owner=trusted_owner,
+            expected_parent_journal_path=parent_path,
+            source=source,
+            require_original_task=True,
+        )
+
+
+def _load_bound_execution_intent(
+    binding_record: Mapping[str, Any],
+    *,
+    state_root: Path,
+) -> dict[str, Any]:
+    if set(binding_record) != {
+        "schema",
+        "execution_intent_cid",
+        "projection_path",
+        "request_digest",
+        "parent_intent_cid",
+        "preparation_event",
+    } or binding_record.get("schema") != RETRY_RESET_EXECUTION_INTENT_BINDING_SCHEMA:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent parent binding is malformed"
+        )
+    intent_cid = binding_record.get("execution_intent_cid")
+    if not isinstance(intent_cid, str) or not re.fullmatch(
+        r"b[a-z2-7]{20,100}", intent_cid
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent CID is malformed"
+        )
+    expected_path = _execution_intent_root(state_root) / f"{intent_cid}.json"
+    if binding_record.get("projection_path") != str(expected_path):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent projection path is not canonical"
+        )
+    projection = _read_bounded_json(
+        expected_path, "retry execution-intent projection"
+    )
+    if _execution_intent_binding(projection) != dict(binding_record):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent parent binding changed"
+        )
+    return projection
+
+
+def _validate_drained_parent_journal(
+    parent_journal: Mapping[str, Any],
+    *,
+    projection: Mapping[str, Any],
+    binding_record: Mapping[str, Any],
+) -> None:
+    prepared = projection.get("parent_prepared")
+    if not isinstance(prepared, Mapping):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution intent lacks parent PREPARED material"
+        )
+    immutable_prepared = {
+        key: value
+        for key, value in prepared.items()
+        if key not in {"phase", "updated_at", "lifecycle_owners"}
+    }
+    prepared_owners = prepared.get("lifecycle_owners")
+    current_owners = parent_journal.get("lifecycle_owners")
+    if (
+        any(
+            parent_journal.get(key) != value
+            for key, value in immutable_prepared.items()
+        )
+        or not isinstance(prepared_owners, list)
+        or not isinstance(current_owners, list)
+        or current_owners[: len(prepared_owners)] != prepared_owners
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "drained parent journal differs from its durable PREPARED event"
+        )
+    if (
+        parent_journal.get("phase") != "leased"
+        or parent_journal.get("intent_cid") != prepared.get("intent_cid")
+        or parent_journal.get("execution_intent") != dict(binding_record)
+        or not isinstance(parent_journal.get("drain_process_tree"), list)
+        or not isinstance(parent_journal.get("drain_started_at"), str)
+        or not parent_journal.get("drain_started_at")
+        or not isinstance(parent_journal.get("drain_cid"), str)
+        or parent_journal.get("drain_cid") != _parent_drain_cid(parent_journal)
+        or not isinstance(parent_journal.get("drained_at"), str)
+        or not parent_journal.get("drained_at")
+        or not isinstance(parent_journal.get("drained_cid"), str)
+        or parent_journal.get("drained_cid")
+        != _parent_drained_cid(parent_journal)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution requires an exact quiescent leased parent lifecycle"
+        )
+    drain_tree = parent_journal.get("drain_process_tree")
+    assert isinstance(drain_tree, list)
+    if len(drain_tree) > 4_096:
+        raise DuckDBRetryResetCorruptionError(
+            "drained parent process tree exceeds its governed bound"
+        )
+    drain_identities = [
+        _strict_process_identity(item, "drained parent process identity")
+        for item in drain_tree
+    ]
+    old_master = prepared.get("old_master")
+    old_tree = prepared.get("old_process_tree")
+    if not isinstance(old_master, Mapping) or not isinstance(old_tree, list):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution intent lost its old process identities"
+        )
+    master_identity = _strict_process_identity(
+        old_master.get("actual"), "drained parent master identity"
+    )
+    old_identities = [
+        _strict_process_identity(item, "old parent process identity")
+        for item in old_tree
+    ]
+    if (
+        drain_identities
+        and drain_identities[0] != master_identity
+        or len({item["pid"] for item in drain_identities})
+        != len(drain_identities)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "drained parent process tree is not an exact identity snapshot"
+        )
+    captured = old_identities + drain_identities
+    still_live = sorted(
+        {
+            item["pid"]
+            for item in captured
+            if _live_process_identity(item["pid"]) == item
+        }
+    )
+    if still_live:
+        raise DuckDBRetryResetQuiescenceError(
+            "drained parent process identities remain live: "
+            + ", ".join(str(pid) for pid in still_live)
+        )
+    session_id = old_master.get("dedicated_session_id")
+    if (
+        not isinstance(session_id, int)
+        or isinstance(session_id, bool)
+        or session_id != master_identity["pid"]
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "drained parent session identity is malformed"
+        )
+    session_members = _process_session_members(session_id)
+    if session_members:
+        raise DuckDBRetryResetQuiescenceError(
+            "drained parent process session remains live: "
+            + ", ".join(str(pid) for pid in session_members)
+        )
+    expected_path = Path(str(projection.get("parent_journal_path") or ""))
+    stored = _read_bounded_json(expected_path, "drained parent lifecycle journal")
+    if stored != dict(parent_journal):
+        raise DuckDBRetryResetCorruptionError(
+            "drained parent lifecycle changed at the reset boundary"
+        )
+
+
+def _verify_checkout_lease_assertion(
+    assertion: Mapping[str, Any] | None,
+    verifier: Callable[[Mapping[str, Any]], bool] | None,
+) -> None:
+    if not isinstance(assertion, Mapping) or not assertion:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry execution intent requires a checkout-lease assertion record"
+        )
+    if verifier is None:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry execution intent requires a checkout-lease verifier"
+        )
+    try:
+        verified = verifier(assertion)
+    except Exception as exc:
+        raise DuckDBRetryResetAuthorizationError(
+            "checkout-lease assertion could not be verified"
+        ) from exc
+    if verified is not True:
+        raise DuckDBRetryResetAuthorizationError(
+            "checkout-lease assertion was not accepted"
+        )
+
+
 def _verify_completed_journal(
     *, state_root: Path, path: Path, journal: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -1648,6 +3653,7 @@ def _verify_completed_journal(
         {
             "namespace": "duckdb-retry-reset-intent",
             "request_id": journal.get("request_id"),
+            "execution_intent": journal.get("execution_intent"),
             "binding": binding.to_dict(),
             "database_before": dict(database_before),
             "lane_before": dict(lane_before),
@@ -1672,6 +3678,11 @@ def _verify_completed_journal(
         "status_changed": bool(database_after.get("status_changed")),
         "writer_id": binding.writer_id,
         "writer_fencing_token": binding.writer_fencing_token,
+        "execution_intent_cid": (
+            journal.get("execution_intent", {}).get("execution_intent_cid")
+            if isinstance(journal.get("execution_intent"), Mapping)
+            else None
+        ),
         "intent_cid": expected_intent_cid,
         "status_receipt_cid": database_after.get("status_receipt_cid"),
     }
@@ -1721,13 +3732,37 @@ def _verify_completed_journal(
             )
     database_path = _resolve_under(state_root, binding.database_path)
     _assert_regular_path(database_path, "DuckDB task source")
-    source = DuckDBTaskSource(
-        database_path,
-        expected_plan_root_cid=binding.plan_root_cid,
-        expected_repository_tree_id=binding.task_source_repository_tree_id,
-        writer_id=binding.writer_id,
-        fencing_token=binding.writer_fencing_token,
-    )
+    # Completion is historical authority.  Later governed plan/writer rollover
+    # must not erase an already committed one-shot result; the original
+    # generation is verified from the content-bound receipt and event bodies.
+    source = DuckDBTaskSource(database_path)
+    execution_binding = journal.get("execution_intent")
+    if execution_binding is not None:
+        if not isinstance(execution_binding, Mapping):
+            raise DuckDBRetryResetCorruptionError(
+                "completed retry-reset execution intent is malformed"
+            )
+        events = _execution_intent_events(
+            source, request_id=str(journal.get("request_id") or "")
+        )
+        if len(events) != 1:
+            raise DuckDBRetryResetCorruptionError(
+                "completed retry-reset lacks its durable execution-intent event"
+            )
+        event_projection = _execution_intent_from_event(
+            events[0], state_root=state_root
+        )
+        if _execution_intent_binding(event_projection) != dict(execution_binding):
+            raise DuckDBRetryResetCorruptionError(
+                "completed retry-reset execution-intent event changed"
+            )
+        projection_path = Path(str(event_projection["projection_path"]))
+        if projection_path.exists() and _read_bounded_json(
+            projection_path, "retry execution-intent projection"
+        ) != event_projection:
+            raise DuckDBRetryResetCorruptionError(
+                "completed retry-reset projection conflicts with event history"
+            )
     recorded_event = journal.get("completion_event")
     if not isinstance(recorded_event, Mapping):
         raise DuckDBRetryResetCorruptionError("retry-reset completion event is missing")
@@ -1751,6 +3786,8 @@ def _verify_completed_journal(
         or body.get("intent_cid") != journal.get("intent_cid")
         or body.get("writer_id") != binding.writer_id
         or body.get("writer_fencing_token") != binding.writer_fencing_token
+        or body.get("execution_intent_cid")
+        != receipt.get("execution_intent_cid")
         or body.get("plan_root_cid") != binding.plan_root_cid
         or body.get("repository_id") != journal.get("repository_id")
         or body.get("repository_tree_id") != journal.get("repository_tree_id")
@@ -1785,49 +3822,599 @@ def _verify_completed_journal(
     return receipt
 
 
+def _execution_intent_request(projection: Mapping[str, Any]) -> OperationRequest:
+    """Decode and rederive the canonical request embedded in one intent."""
+
+    record = projection.get("request")
+    if not isinstance(record, Mapping) or set(record) != {
+        "request_id",
+        "canonical_json",
+        "digest",
+    }:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent request evidence is malformed"
+        )
+    raw_json = record.get("canonical_json")
+    if not isinstance(raw_json, str) or not raw_json:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent canonical request is missing"
+        )
+    try:
+        payload = json.loads(
+            raw_json,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object,
+        )
+        request = decode_operation_request(payload)
+    except Exception as exc:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent canonical request is malformed"
+        ) from exc
+    if (
+        _request_canonical_evidence(request) != {
+            "canonical_json": raw_json,
+            "digest": record.get("digest"),
+        }
+        or record.get("request_id") != request.request_id
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent request evidence is not canonical"
+        )
+    return request
+
+
+def _validate_historical_execution_intent_projection(
+    projection: Mapping[str, Any],
+    *,
+    request: OperationRequest,
+    state_root: Path,
+    database_path: Path,
+    expected_parent_path: Path,
+) -> None:
+    """Validate immutable intent authority without requiring live policy freshness."""
+
+    decision = request.authorization
+    idempotency = request.idempotency
+    if decision is None or idempotency is None or len(request.expected_effects) != 1:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent request lacks immutable mutation authority"
+        )
+    binding = _binding_from_parameters(request.parameters)
+    authorization = projection.get("authorization")
+    expected_effect = projection.get("expected_effect")
+    idempotency_record = projection.get("idempotency")
+    request_file_record = projection.get("request_file")
+    database = projection.get("database")
+    repository_generation = projection.get("repository_generation")
+    owner_record = projection.get("owner")
+    policy_record = projection.get("policy")
+    parent = projection.get("parent_prepared")
+    prepared_at_ms = projection.get("prepared_at_ms")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (
+            authorization,
+            expected_effect,
+            idempotency_record,
+            request_file_record,
+            database,
+            repository_generation,
+            owner_record,
+            policy_record,
+            parent,
+        )
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent immutable authority is malformed"
+        )
+    assert isinstance(authorization, Mapping)
+    assert isinstance(expected_effect, Mapping)
+    assert isinstance(idempotency_record, Mapping)
+    assert isinstance(request_file_record, Mapping)
+    assert isinstance(database, Mapping)
+    assert isinstance(repository_generation, Mapping)
+    assert isinstance(owner_record, Mapping)
+    assert isinstance(policy_record, Mapping)
+    assert isinstance(parent, Mapping)
+    effect = request.expected_effects[0]
+    try:
+        request_file = _request_file_evidence(
+            str(request_file_record.get("raw_json") or "").encode("utf-8"),
+            request=request,
+        )
+    except DuckDBRetryResetError as exc:
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent request-file evidence changed"
+        ) from exc
+    owner_payload = owner_record.get("payload")
+    policy_payload = policy_record.get("payload")
+    if not isinstance(owner_payload, Mapping) or not isinstance(
+        policy_payload, Mapping
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent historical trust payload is malformed"
+        )
+    parent_owner = parent.get("owner_configuration")
+    parent_policy = parent.get("policy")
+    policy_permits = policy_payload.get("permits")
+    current_trees = policy_payload.get("current_tree_ids")
+    current_objectives = policy_payload.get("current_objective_revisions")
+    active_fences = policy_payload.get("active_lease_fences")
+    if (
+        not isinstance(parent_owner, Mapping)
+        or not isinstance(parent_policy, Mapping)
+        or not isinstance(current_trees, Mapping)
+        or not isinstance(current_objectives, Mapping)
+        or not isinstance(active_fences, Mapping)
+        or projection.get("schema") != RETRY_RESET_EXECUTION_INTENT_SCHEMA
+        or request.state_root != str(state_root)
+        or projection.get("parent_journal_path") != str(expected_parent_path)
+        or projection.get("request") != {
+            "request_id": request.request_id,
+            **_request_canonical_evidence(request),
+        }
+        or dict(request_file_record) != request_file
+        or dict(authorization)
+        != {
+            "decision": decision.to_record(),
+            "decision_digest": decision.decision_id,
+            "evaluated_at_ms": decision.evaluated_at_ms,
+            "expires_at_ms": decision.expires_at_ms,
+        }
+        or dict(expected_effect)
+        != {"effect": effect.to_record(), "effect_id": effect.effect_id}
+        or dict(idempotency_record)
+        != {
+            "record": idempotency.to_record(),
+            "content_id": idempotency.content_id,
+        }
+        or not isinstance(prepared_at_ms, int)
+        or isinstance(prepared_at_ms, bool)
+        or decision.expires_at_ms is None
+        or not decision.evaluated_at_ms <= prepared_at_ms < decision.expires_at_ms
+        or owner_record.get("payload_digest")
+        != _digest_bytes(_canonical_bytes(owner_payload))
+        or policy_record.get("payload_digest")
+        != _digest_bytes(_canonical_bytes(policy_payload))
+        or parent_owner.get("payload") != owner_payload
+        or parent_owner.get("digest") != owner_record.get("file_digest")
+        or parent_policy.get("digest") != policy_record.get("file_digest")
+        or owner_payload.get("schema") != RETRY_RESET_OWNER_SCHEMA
+        or owner_payload.get("repository_root") != request.repository_root
+        or owner_payload.get("repository_id") != request.repository_id
+        or owner_payload.get("database_path") != binding.database_path
+        or owner_payload.get("task_source_repository_tree_id")
+        != binding.task_source_repository_tree_id
+        or owner_payload.get("policy_digest") != policy_record.get("file_digest")
+        or owner_payload.get("lanes")
+        != [
+            {
+                "state_prefix": lane.state_prefix,
+                "state_path": lane.state_path,
+                "queue_path": lane.queue_path,
+            }
+            for lane in binding.lanes
+        ]
+        or owner_payload.get("lifecycle_owner_paths")
+        != list(binding.lifecycle_owner_paths)
+        or policy_payload.get("schema") != RETRY_RESET_POLICY_SCHEMA
+        or policy_payload.get("policy_id") != request.policy_id
+        or policy_payload.get("policy_revision") != request.policy_revision
+        or not isinstance(policy_permits, list)
+        or decision.to_record() not in policy_permits
+        or current_trees.get(request.repository_id) != request.tree_id
+        or current_objectives.get(request.objective_id)
+        != request.objective_revision
+        or active_fences.get(request.lease_id)
+        != request.fencing_epoch
+        or database.get("database_path") != str(database_path)
+        or database.get("plan_root_cid") != binding.plan_root_cid
+        or database.get("task_source_repository_tree_id")
+        != binding.task_source_repository_tree_id
+        or database.get("task")
+        != {
+            "task_cid": binding.task_cid,
+            "task_alias": binding.task_alias,
+            "status": binding.expected_status,
+            "revision": binding.task_revision,
+        }
+        or database.get("writer")
+        != {
+            "writer_id": binding.writer_id,
+            "fencing_token": binding.writer_fencing_token,
+        }
+        or repository_generation.get("repository_head_commit")
+        != binding.repository_head_commit
+        or repository_generation.get("repository_head_tree") != request.tree_id
+        or repository_generation.get("worktree_status") != ""
+        or repository_generation.get("worktree_status_digest")
+        != _digest_bytes(b"")
+        or not isinstance(repository_generation.get("submodule_status"), str)
+        or repository_generation.get("submodule_status_digest")
+        != _digest_bytes(
+            str(repository_generation.get("submodule_status") or "").encode("utf-8")
+        )
+        or projection.get("lanes") != [lane.to_dict() for lane in binding.lanes]
+        or parent.get("environment") != projection.get("environment_generation")
+        or parent.get("old_master") != projection.get("old_master")
+        or parent.get("old_process_tree") != projection.get("old_process_tree")
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution-intent historical authority is not content-bound"
+        )
+
+
+def _canonical_parent_journal_path(
+    state_root: Path, request: OperationRequest
+) -> Path:
+    digest = _request_canonical_evidence(request)["digest"]
+    return _resolve_under(
+        state_root, "duckdb-retry-reset/journals/lifecycle"
+    ) / f"{digest.removeprefix('sha256:')}.json"
+
+
+def _assert_owner_controlled_journal(path: Path, state_root: Path) -> None:
+    try:
+        root_metadata = state_root.lstat()
+        metadata = path.lstat()
+    except OSError as exc:
+        raise DuckDBRetryResetCorruptionError(
+            f"retry lifecycle journal is unavailable: {path}"
+        ) from exc
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != root_metadata.st_uid
+        or metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            f"retry lifecycle journal is not owner-controlled: {path}"
+        )
+
+
+def _validate_parent_execution_intent_correlation(
+    parent: Mapping[str, Any],
+    *,
+    projection: Mapping[str, Any],
+    binding_record: Mapping[str, Any],
+) -> str:
+    """Verify that a current parent journal descends from the embedded PREPARED state."""
+
+    prepared = projection.get("parent_prepared")
+    if not isinstance(prepared, Mapping):
+        raise DuckDBRetryResetCorruptionError(
+            "retry execution intent lacks parent PREPARED material"
+        )
+    phase = parent.get("phase")
+    if (
+        not isinstance(phase, str)
+        or phase not in _PARENT_LIFECYCLE_PHASE_RANK
+        or set(parent).difference(_PARENT_LIFECYCLE_ALLOWED_FIELDS)
+        or parent.get("schema") != _PARENT_LIFECYCLE_SCHEMA
+        or parent.get("program_id") != _PARENT_PROGRAM_ID
+        or parent.get("intent_cid") != prepared.get("intent_cid")
+        or parent.get("execution_intent") != dict(binding_record)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry parent lifecycle journal is not canonical"
+        )
+    immutable_prepared = {
+        key: value
+        for key, value in prepared.items()
+        if key not in {"phase", "updated_at", "lifecycle_owners"}
+    }
+    prepared_owners = prepared.get("lifecycle_owners")
+    current_owners = parent.get("lifecycle_owners")
+    if (
+        any(parent.get(key) != value for key, value in immutable_prepared.items())
+        or not isinstance(prepared_owners, list)
+        or not isinstance(current_owners, list)
+        or current_owners[: len(prepared_owners)] != prepared_owners
+        or len(current_owners) > MAX_OWNER_PATHS
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry parent lifecycle differs from its durable PREPARED event"
+        )
+    rank = _PARENT_LIFECYCLE_PHASE_RANK[phase]
+    if rank >= 1:
+        drain_tree = parent.get("drain_process_tree")
+        if (
+            not isinstance(drain_tree, list)
+            or len(drain_tree) > 4_096
+            or not isinstance(parent.get("drain_started_at"), str)
+            or not parent.get("drain_started_at")
+            or parent.get("drain_cid") != _parent_drain_cid(parent)
+        ):
+            raise DuckDBRetryResetCorruptionError(
+                "retry parent drain evidence is not content-bound"
+            )
+        for identity in drain_tree:
+            _strict_process_identity(identity, "drained parent process identity")
+    if rank >= 2 and (
+        not isinstance(parent.get("drained_at"), str)
+        or not parent.get("drained_at")
+        or parent.get("drained_cid") != _parent_drained_cid(parent)
+    ):
+        raise DuckDBRetryResetCorruptionError(
+            "retry parent quiescence evidence is not content-bound"
+        )
+    return phase
+
+
 def inspect_incomplete_retry_resets(
     state_root: str | os.PathLike[str],
 ) -> tuple[dict[str, Any], ...]:
-    """Verify every reset journal and return non-completed launch blockers."""
+    """Verify journals plus DuckDB pre-effect events and return launch blockers."""
 
     state = Path(state_root).resolve()
     root = _resolve_under(state, "duckdb-retry-reset/journals")
-    if not root.exists():
-        return ()
-    if root.is_symlink() or not root.is_dir():
-        raise DuckDBRetryResetCorruptionError("retry-reset journal root is unsafe")
     result: list[dict[str, Any]] = []
-    for path in sorted(root.glob("*.json")):
-        payload = _read_bounded_json(path, "retry-reset journal")
-        if payload.get("schema") != RETRY_RESET_JOURNAL_SCHEMA:
-            raise DuckDBRetryResetCorruptionError(
-                f"foreign retry-reset journal: {path}"
+    journals: dict[Path, dict[str, Any]] = {}
+    completed_receipts: dict[Path, dict[str, Any]] = {}
+    if root.exists():
+        if root.is_symlink() or not root.is_dir():
+            raise DuckDBRetryResetCorruptionError("retry-reset journal root is unsafe")
+        journal_entries = tuple(sorted(root.iterdir(), key=lambda item: item.name))
+        reset_entries = tuple(
+            path
+            for path in journal_entries
+            if not (
+                path.name == "lifecycle"
+                and path.is_dir()
+                and not path.is_symlink()
             )
-        if payload.get("phase") not in _PHASES:
+        )
+        if len(reset_entries) > MAX_EXECUTION_INTENTS:
             raise DuckDBRetryResetCorruptionError(
-                f"retry-reset journal phase is invalid: {path}"
+                "retry-reset journal population exceeds its governed bound"
             )
-        _binding_from_journal(payload.get("binding"))
-        idempotency = payload.get("idempotency")
+        for path in reset_entries:
+            if path.suffix != ".json" or path.is_symlink() or not path.is_file():
+                raise DuckDBRetryResetCorruptionError(
+                    f"foreign retry-reset journal entry: {path}"
+                )
+            payload = _read_bounded_json(path, "retry-reset journal")
+            if payload.get("schema") != RETRY_RESET_JOURNAL_SCHEMA:
+                raise DuckDBRetryResetCorruptionError(
+                    f"foreign retry-reset journal: {path}"
+                )
+            if payload.get("phase") not in _PHASES:
+                raise DuckDBRetryResetCorruptionError(
+                    f"retry-reset journal phase is invalid: {path}"
+                )
+            _binding_from_journal(payload.get("binding"))
+            idempotency = payload.get("idempotency")
+            if (
+                not isinstance(idempotency, Mapping)
+                or _journal_key_cid(idempotency) != path.stem
+                or payload.get("journal_key_cid") != path.stem
+            ):
+                raise DuckDBRetryResetCorruptionError(
+                    f"retry-reset journal filename is not content-bound: {path}"
+                )
+            journals[path] = payload
+            if payload.get("phase") == "completed":
+                completed_receipts[path] = _verify_completed_journal(
+                    state_root=state, path=path, journal=payload
+                )
+            else:
+                result.append(
+                    {
+                        "path": str(path),
+                        "phase": payload["phase"],
+                        "request_id": payload.get("request_id", ""),
+                        "task_cid": payload.get("binding", {}).get("task_cid", ""),
+                    }
+                )
+
+    owner_path = _resolve_under(state, RETRY_RESET_OWNER_FILE)
+    projection_root = _execution_intent_root(state)
+    if not owner_path.exists():
+        evidence_paths = (
+            root.parent,
+            _resolve_under(state, ".duckdb-retry-reset.lifecycle.lock"),
+        )
+        governed_evidence = bool(journals)
+        for path in evidence_paths:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise DuckDBRetryResetCorruptionError(
+                    f"cannot inspect retry-reset runtime evidence: {path}"
+                ) from exc
+            governed_evidence = True
+        if state.exists():
+            if state.is_symlink() or not state.is_dir():
+                raise DuckDBRetryResetCorruptionError(
+                    "retry-reset state root is unsafe"
+                )
+            try:
+                top_level_entries = state.iterdir()
+                governed_evidence = governed_evidence or any(
+                    entry.name.endswith((".duckdb", ".duckdb.lock"))
+                    for entry in top_level_entries
+                )
+            except OSError as exc:
+                raise DuckDBRetryResetCorruptionError(
+                    "cannot inspect retry-reset state root"
+                ) from exc
+        if governed_evidence:
+            raise DuckDBRetryResetAuthorizationError(
+                "governed DuckDB/runtime evidence has no canonical owner configuration"
+            )
+        return tuple(result)
+
+    owner = _load_owner_config(state)
+    policy_path = _resolve_under(state, owner.policy_path)
+    policy = _load_policy(policy_path, expected_digest=owner.policy_digest)
+    database_path = _resolve_under(state, owner.database_path)
+    _assert_regular_path(database_path, "DuckDB task source")
+    source = DuckDBTaskSource(
+        database_path,
+        expected_repository_tree_id=owner.task_source_repository_tree_id,
+    )
+    events = _all_execution_intent_events(source)
+    seen_request_ids: set[str] = set()
+    seen_intent_cids: set[str] = set()
+    seen_projection_paths: set[Path] = set()
+    seen_reset_paths: set[Path] = set()
+
+    for event in events:
+        projection = _execution_intent_from_event(event, state_root=state)
+        request = _execution_intent_request(projection)
+        intent_cid = str(projection.get("execution_intent_cid") or "")
         if (
-            not isinstance(idempotency, Mapping)
-            or _journal_key_cid(idempotency) != path.stem
-            or payload.get("journal_key_cid") != path.stem
+            request.repository_root != owner.repository_root
+            or request.repository_id != owner.repository_id
+            or request.request_id in seen_request_ids
+            or intent_cid in seen_intent_cids
         ):
             raise DuckDBRetryResetCorruptionError(
-                f"retry-reset journal filename is not content-bound: {path}"
+                "retry execution-intent history conflicts with canonical ownership"
             )
-        if payload.get("phase") == "completed":
-            _verify_completed_journal(state_root=state, path=path, journal=payload)
-        else:
+        seen_request_ids.add(request.request_id)
+        seen_intent_cids.add(intent_cid)
+
+        expected_parent_path = _canonical_parent_journal_path(state, request)
+        projection_path = Path(str(projection.get("projection_path") or ""))
+        seen_projection_paths.add(projection_path)
+        assert request.idempotency is not None
+        reset_path = root / (
+            _journal_key_cid(request.idempotency.to_dict()) + ".json"
+        )
+        seen_reset_paths.add(reset_path)
+        reset_journal = journals.get(reset_path)
+        _validate_historical_execution_intent_projection(
+            projection,
+            request=request,
+            state_root=state,
+            database_path=database_path,
+            expected_parent_path=expected_parent_path,
+        )
+        if reset_journal is None or reset_journal.get("phase") != "completed":
+            _verify_execution_intent_projection(
+                projection,
+                request=request,
+                trusted_policy=policy,
+                trusted_owner=owner,
+                expected_parent_journal_path=expected_parent_path,
+                source=source,
+                require_original_task=reset_journal is None,
+            )
+
+        projection_missing = not projection_path.exists()
+        if not projection_missing:
+            stored_projection = _read_bounded_json(
+                projection_path, "retry execution-intent projection"
+            )
+            if stored_projection != projection:
+                raise DuckDBRetryResetCorruptionError(
+                    "retry execution-intent projection conflicts with event history"
+                )
+
+        if not expected_parent_path.exists():
+            if reset_journal is not None:
+                raise DuckDBRetryResetCorruptionError(
+                    "retry reset has no canonical parent lifecycle journal"
+                )
             result.append(
                 {
-                    "path": str(path),
-                    "phase": payload["phase"],
-                    "request_id": payload.get("request_id", ""),
-                    "task_cid": payload.get("binding", {}).get("task_cid", ""),
+                    "path": str(projection_path),
+                    "phase": (
+                        "execution_intent_event_appended"
+                        if projection_missing
+                        else "execution_intent_prepared"
+                    ),
+                    "request_id": request.request_id,
+                    "task_cid": event.get("task_cid", ""),
                 }
             )
+            continue
+
+        _assert_owner_controlled_journal(expected_parent_path, state)
+        parent = _read_bounded_json(
+            expected_parent_path, "retry parent lifecycle journal"
+        )
+        binding_record = _execution_intent_binding(projection)
+        parent_phase = _validate_parent_execution_intent_correlation(
+            parent,
+            projection=projection,
+            binding_record=binding_record,
+        )
+
+        if reset_journal is None:
+            result.append(
+                {
+                    "path": str(expected_parent_path),
+                    "phase": (
+                        "execution_intent_projection_missing"
+                        if projection_missing
+                        else f"parent_{parent_phase}"
+                    ),
+                    "request_id": request.request_id,
+                    "task_cid": event.get("task_cid", ""),
+                }
+            )
+            continue
+        if (
+            reset_journal.get("request_id") != request.request_id
+            or reset_journal.get("execution_intent") != binding_record
+        ):
+            raise DuckDBRetryResetCorruptionError(
+                "retry-reset journal conflicts with its execution-intent event"
+            )
+        if reset_journal.get("phase") == "completed":
+            receipt = completed_receipts[reset_path]
+            parent_receipt = parent.get("retry_reset_receipt")
+            if _PARENT_LIFECYCLE_PHASE_RANK[parent_phase] >= 4 and (
+                not isinstance(parent_receipt, Mapping)
+                or dict(parent_receipt) != receipt
+            ):
+                raise DuckDBRetryResetCorruptionError(
+                    "retry parent terminal evidence conflicts with the reset receipt"
+                )
+        if projection_missing:
+            result.append(
+                {
+                    "path": str(projection_path),
+                    "phase": "execution_intent_projection_missing",
+                    "request_id": request.request_id,
+                    "task_cid": event.get("task_cid", ""),
+                }
+            )
+
+    for path, journal in journals.items():
+        execution_binding = journal.get("execution_intent")
+        if execution_binding is not None and path not in seen_reset_paths:
+            raise DuckDBRetryResetCorruptionError(
+                "retry-reset journal lacks its durable execution-intent event"
+            )
+
+    if projection_root.exists():
+        if projection_root.is_symlink() or not projection_root.is_dir():
+            raise DuckDBRetryResetCorruptionError(
+                "retry execution-intent projection root is unsafe"
+            )
+        projection_entries = tuple(
+            sorted(projection_root.iterdir(), key=lambda item: item.name)
+        )
+        if len(projection_entries) > MAX_EXECUTION_INTENTS:
+            raise DuckDBRetryResetCorruptionError(
+                "retry execution-intent projection population exceeds its governed bound"
+            )
+        for path in projection_entries:
+            if (
+                path.suffix != ".json"
+                or path.is_symlink()
+                or not path.is_file()
+                or path not in seen_projection_paths
+            ):
+                raise DuckDBRetryResetCorruptionError(
+                    f"orphan retry execution-intent projection: {path}"
+                )
+
     return tuple(result)
 
 
@@ -1865,6 +4452,10 @@ def execute_duckdb_retry_reset(
     *,
     trusted_policy: ControlMutationPolicy,
     trusted_owner: RetryResetOwnerConfig,
+    execution_intent: Mapping[str, Any] | None = None,
+    parent_journal: Mapping[str, Any] | None = None,
+    checkout_lease_assertion: Mapping[str, Any] | None = None,
+    checkout_lease_verifier: Callable[[Mapping[str, Any]], bool] | None = None,
     clock_ms: Callable[[], int] | None = None,
     lock_timeout_seconds: float = 30.0,
     fault_injector: Callable[[str], None] | None = None,
@@ -1875,11 +4466,55 @@ def execute_duckdb_retry_reset(
         raise DuckDBRetryResetError(
             "retry reset requires a real Operation.RETRY request"
         )
+    if not isinstance(execution_intent, Mapping):
+        raise DuckDBRetryResetAuthorizationError(
+            "retry reset execution requires a durable execution intent"
+        )
+    if not isinstance(parent_journal, Mapping):
+        raise DuckDBRetryResetAuthorizationError(
+            "retry reset execution requires its parent lifecycle journal"
+        )
+    if not isinstance(checkout_lease_assertion, Mapping) or not checkout_lease_assertion:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry reset execution requires a checkout-lease assertion record"
+        )
+    if checkout_lease_verifier is None:
+        raise DuckDBRetryResetAuthorizationError(
+            "retry reset execution requires a checkout-lease verifier"
+        )
     now_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+    selected_now_ms = now_ms()
+    fresh_at_entry = True
     try:
-        ControlMutationAuthorizer(trusted_policy, clock_ms=now_ms).validate(request)
+        ControlMutationAuthorizer(
+            trusted_policy, clock_ms=lambda: selected_now_ms
+        ).validate(request)
     except Exception as exc:
-        raise DuckDBRetryResetAuthorizationError(str(exc)) from exc
+        decision = request.authorization
+        expired_execution = bool(
+            decision is not None
+            and decision.expires_at_ms is not None
+            and selected_now_ms >= decision.expires_at_ms
+        )
+        if not expired_execution:
+            raise DuckDBRetryResetAuthorizationError(str(exc)) from exc
+        fresh_at_entry = False
+
+    def assert_boundary_authorization(label: str) -> None:
+        boundary_now_ms = now_ms()
+        try:
+            _validate_retry_request_static(
+                request,
+                trusted_policy=trusted_policy,
+                trusted_owner=trusted_owner,
+                clock_ms=lambda: boundary_now_ms,
+                require_fresh=fresh_at_entry,
+            )
+        except Exception as exc:
+            raise DuckDBRetryResetAuthorizationError(
+                f"retry permit expired or changed {label}: {exc}"
+            ) from exc
+
     binding = _binding_from_parameters(request.parameters)
     _assert_owner_binding(request, binding, trusted_owner)
     if request.fencing_epoch != binding.writer_fencing_token:
@@ -1947,6 +4582,7 @@ def execute_duckdb_retry_reset(
             locks.enter_context(
                 exclusive_file_lock(path, timeout_seconds=lock_timeout_seconds)
             )
+        assert_boundary_authorization("while awaiting mutation locks")
         lane_states = {
             lane.state_path: _strict_state(_resolve_under(state_root, lane.state_path))
             for lane in binding.lanes
@@ -1982,6 +4618,32 @@ def execute_duckdb_retry_reset(
                 "task CID/alias binding does not resolve exactly"
             )
 
+        projection = _load_bound_execution_intent(
+            execution_intent, state_root=state_root
+        )
+        reset_journal_exists = journal_path.exists()
+        _verify_execution_intent_projection(
+            projection,
+            request=request,
+            trusted_policy=trusted_policy,
+            trusted_owner=trusted_owner,
+            expected_parent_journal_path=Path(
+                str(projection.get("parent_journal_path") or "")
+            ),
+            source=source,
+            require_original_task=not reset_journal_exists,
+        )
+        _validate_drained_parent_journal(
+            parent_journal,
+            projection=projection,
+            binding_record=execution_intent,
+        )
+        _verify_checkout_lease_assertion(
+            checkout_lease_assertion,
+            checkout_lease_verifier,
+        )
+        assert_boundary_authorization("at the mutation boundary")
+
         journal: dict[str, Any] | None = None
         if journal_path.exists():
             journal = _read_bounded_json(journal_path, "retry-reset journal")
@@ -1998,6 +4660,7 @@ def execute_duckdb_retry_reset(
                 != binding.repository_head_commit
                 or journal.get("task_source_repository_tree_id")
                 != binding.task_source_repository_tree_id
+                or journal.get("execution_intent") != dict(execution_intent)
             ):
                 raise DuckDBRetryResetConflict(
                     "idempotency journal belongs to another request"
@@ -2044,6 +4707,7 @@ def execute_duckdb_retry_reset(
                 "repository_tree_id": request.tree_id,
                 "repository_head_commit": binding.repository_head_commit,
                 "task_source_repository_tree_id": binding.task_source_repository_tree_id,
+                "execution_intent": dict(execution_intent),
                 "binding": binding.to_dict(),
                 "database_before": {
                     "revision": snapshot.revision,
@@ -2064,6 +4728,7 @@ def execute_duckdb_retry_reset(
             {
                 "namespace": "duckdb-retry-reset-intent",
                 "request_id": request.request_id,
+                "execution_intent": journal.get("execution_intent"),
                 "binding": binding.to_dict(),
                 "database_before": journal["database_before"],
                 "lane_before": journal["lane_before"],
@@ -2082,6 +4747,9 @@ def execute_duckdb_retry_reset(
                     "request_id": request.request_id,
                     "intent_cid": intent_cid,
                     "authorization_decision_id": decision.decision_id,
+                    "execution_intent_cid": execution_intent.get(
+                        "execution_intent_cid"
+                    ),
                     "plan_root_cid": binding.plan_root_cid,
                     "repository_id": request.repository_id,
                     "repository_tree_id": request.tree_id,
@@ -2107,6 +4775,11 @@ def execute_duckdb_retry_reset(
                         },
                         fence=binding.writer_fencing_token,
                         writer_id=binding.writer_id,
+                        write_precondition=lambda: assert_boundary_authorization(
+                            "while awaiting the DuckDB task-source write lock"
+                        ),
+                        expected_task_status=binding.expected_status,
+                        expected_task_revision=binding.task_revision,
                     )
                     database_after = {
                         "task_status": task.status,
@@ -2122,6 +4795,11 @@ def execute_duckdb_retry_reset(
                         binding.task_revision,
                         "retrying",
                         intent_receipt,
+                        writer_id=binding.writer_id,
+                        fencing_token=binding.writer_fencing_token,
+                        write_precondition=lambda: assert_boundary_authorization(
+                            "while awaiting the DuckDB task-source write lock"
+                        ),
                     )
                     database_after = {
                         "task_status": cas.task.status,
@@ -2249,6 +4927,9 @@ def execute_duckdb_retry_reset(
                 "status_changed": bool(journal["database_after"]["status_changed"]),
                 "writer_id": binding.writer_id,
                 "writer_fencing_token": binding.writer_fencing_token,
+                "execution_intent_cid": execution_intent.get(
+                    "execution_intent_cid"
+                ),
                 "intent_cid": intent_cid,
                 "status_receipt_cid": journal["database_after"]["status_receipt_cid"],
                 "lifecycle_owner_paths": [
@@ -2289,6 +4970,9 @@ def execute_duckdb_retry_reset(
                     "task_source_repository_tree_id": binding.task_source_repository_tree_id,
                     "writer_id": binding.writer_id,
                     "writer_fencing_token": binding.writer_fencing_token,
+                    "execution_intent_cid": execution_intent.get(
+                        "execution_intent_cid"
+                    ),
                     "lane_state_digests": [
                         item["state_digest_after"] for item in receipt["lanes"]
                     ],
@@ -2322,15 +5006,40 @@ def execute_duckdb_retry_reset(
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--request-file", type=Path)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "Mutation is lifecycle-owner-only. --request-file validates trust "
+            "inputs but exits nonzero because a CLI process cannot supply the "
+            "in-process checkout-lease verifier."
+        ),
+    )
+    parser.add_argument(
+        "--request-file",
+        type=Path,
+        help=(
+            "request to validate and refuse for direct mutation; use the parent "
+            "retry lifecycle owner to execute"
+        ),
+    )
     parser.add_argument("--inspect-state-root", type=Path)
-    parser.add_argument("--lock-timeout-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--lock-timeout-seconds",
+        type=float,
+        default=30.0,
+        help=(
+            "reserved for lifecycle-owned execution; direct CLI mutation "
+            "remains disabled"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.inspect_state_root is None and args.request_file is None:
-        parser.error("execute mode requires --request-file")
+        parser.error(
+            "choose --inspect-state-root or --request-file trust validation; "
+            "direct mutation is lifecycle-owner-only"
+        )
     if args.inspect_state_root is not None and args.request_file is not None:
-        parser.error("--inspect-state-root cannot be combined with execute mode")
+        parser.error("--inspect-state-root cannot be combined with --request-file")
     return args
 
 
@@ -2349,18 +5058,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if str(state_root.resolve()) != request.state_root:
             raise DuckDBRetryResetConflict("request state_root is not canonical")
         owner = _load_owner_config(state_root)
-        policy = _load_policy(
+        _load_policy(
             _resolve_under(state_root, owner.policy_path),
             expected_digest=owner.policy_digest,
         )
-        receipt = execute_duckdb_retry_reset(
-            request,
-            trusted_policy=policy,
-            trusted_owner=owner,
-            lock_timeout_seconds=args.lock_timeout_seconds,
+        raise DuckDBRetryResetAuthorizationError(
+            "direct CLI retry mutation is lifecycle-owner-only; the parent "
+            "lifecycle must call execute_duckdb_retry_reset with its durable "
+            "execution intent and in-process checkout-lease verifier"
         )
-        print(json.dumps(receipt, indent=2, sort_keys=True))
-        return 0
     except Exception as exc:
         payload = {"ok": False, "error": type(exc).__name__, "message": str(exc)}
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -2378,6 +5084,9 @@ __all__ = [
     "DuckDBRetryResetError",
     "DuckDBRetryResetQuiescenceError",
     "LaneBinding",
+    "RETRY_RESET_EXECUTION_INTENT_BINDING_SCHEMA",
+    "RETRY_RESET_EXECUTION_INTENT_EVENT_SCHEMA",
+    "RETRY_RESET_EXECUTION_INTENT_SCHEMA",
     "RETRY_RESET_GRANT",
     "RETRY_RESET_OWNER_FILE",
     "RETRY_RESET_OWNER_SCHEMA",
@@ -2385,5 +5094,8 @@ __all__ = [
     "RetryResetOwnerConfig",
     "execute_duckdb_retry_reset",
     "inspect_incomplete_retry_resets",
+    "prepare_duckdb_retry_reset_execution_intent",
+    "recover_duckdb_retry_reset_execution_intent",
+    "retry_reset_execution_intent_binding",
     "retry_reset_expected_effect",
 ]

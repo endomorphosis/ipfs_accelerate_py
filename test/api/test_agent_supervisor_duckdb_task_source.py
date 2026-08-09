@@ -324,6 +324,56 @@ def test_cas_revision_events_watch_and_status_independent_identity(
         source.compare_and_set_status("REF-275", task.revision, "failed")
 
 
+def test_write_preconditions_rollback_cas_and_event_inserts(tmp_path: Path) -> None:
+    source = _materialized(tmp_path)
+    task = source.get_task("REF-275")
+    assert task is not None
+    before = source.snapshot()
+    calls: list[str] = []
+
+    def reject() -> None:
+        calls.append("checked")
+        raise RuntimeError("write authority expired")
+
+    with pytest.raises(RuntimeError, match="authority expired"):
+        source.compare_and_set_status(
+            task.task_cid,
+            task.revision,
+            "completed",
+            write_precondition=reject,
+        )
+    with pytest.raises(RuntimeError, match="authority expired"):
+        source.append_event(
+            {
+                "event_type": "test_precondition",
+                "task_cid": task.task_cid,
+                "value": "must not commit",
+            },
+            write_precondition=reject,
+        )
+    with pytest.raises(
+        TaskSourceConflictError, match="status/revision precondition"
+    ):
+        source.append_event(
+            {
+                "event_type": "test_stale_task_precondition",
+                "task_cid": task.task_cid,
+            },
+            expected_task_status="completed",
+            expected_task_revision=task.revision,
+        )
+
+    after = source.snapshot()
+    unchanged = source.get_task(task.task_cid)
+    assert calls == ["checked", "checked"]
+    assert unchanged is not None
+    assert (unchanged.status, unchanged.revision) == (task.status, task.revision)
+    assert (after.revision, after.event_cursor) == (
+        before.revision,
+        before.event_cursor,
+    )
+
+
 def test_writer_fencing_rejects_stale_and_concurrent_writers(tmp_path: Path) -> None:
     first = _materialized(tmp_path)
     second = DuckDBTaskSource(
