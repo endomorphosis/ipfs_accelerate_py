@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     load_configured_board,
 )
@@ -28,6 +29,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.prompt_v3_convergence import
     FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
     FALSE_COMPLETION_MERGE_RECEIPT_018_FILENAME,
     FALSE_COMPLETION_RECOVERY_FILENAME,
+    HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_FILENAME,
+    HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+    HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
     MANIFEST_FILENAME,
     MAX_EVIDENCE_SNAPSHOT_BYTES,
     OPERATOR_SALVAGE_RECEIPT_019_FILENAME,
@@ -283,17 +287,23 @@ def test_false_completion_recovery_tampering_fails_closed(
             "merge_result.todo_update_result.protected_board_postcondition",
             "trusted",
             False,
-            "false_completion_merge_receipt.ASE3-018."
-            "protected_board_postcondition.trusted",
+            (
+                "false_completion_merge_receipt.ASE3-018."
+                "protected_board_postcondition.trusted"
+            ),
         ),
         (
             FALSE_COMPLETION_MERGE_RECEIPT_006_FILENAME,
-            "merge_result.todo_update_result.protected_board_postcondition."
-            "release_proof",
+            (
+                "merge_result.todo_update_result.protected_board_postcondition."
+                "release_proof"
+            ),
             "clean",
             False,
-            "false_completion_merge_receipt.ASE3-006."
-            "protected_board_postcondition.release_proof.clean",
+            (
+                "false_completion_merge_receipt.ASE3-006."
+                "protected_board_postcondition.release_proof.clean"
+            ),
         ),
         (
             FAILED_VALIDATION_EVENT_019_FILENAME,
@@ -1232,10 +1242,14 @@ def test_ase3_019_must_name_llm_router_and_its_dedicated_route_test(
             "ASE3-023.repairs_task",
         ),
         (
-            "- Is schedulable: true\n- Review only: false\n- Priority: P0\n"
-            "- Track: ambient-inference-production-repair\n",
-            "- Is schedulable: false\n- Review only: false\n- Priority: P0\n"
-            "- Track: ambient-inference-production-repair\n",
+            (
+                "- Is schedulable: true\n- Review only: false\n- Priority: P0\n"
+                "- Track: ambient-inference-production-repair\n"
+            ),
+            (
+                "- Is schedulable: false\n- Review only: false\n- Priority: P0\n"
+                "- Track: ambient-inference-production-repair\n"
+            ),
             "ASE3-027.is_schedulable",
         ),
         (
@@ -1244,16 +1258,22 @@ def test_ase3_019_must_name_llm_router_and_its_dedicated_route_test(
             "ASE3-022.depends_on",
         ),
         (
-            "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
-            "and once-only fallback\n",
+            (
+                "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
+                "and once-only fallback\n"
+            ),
             "## ASE3-019 Changed identity\n",
             "provider_fallback_task_contract.ASE3-019.title",
         ),
         (
-            "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
-            "and once-only fallback\n\n- Status: todo\n",
-            "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
-            "and once-only fallback\n\n- Status: completed\n",
+            (
+                "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
+                "and once-only fallback\n\n- Status: todo\n"
+            ),
+            (
+                "## ASE3-019 Seal signed provider authority, authentication lifecycle, "
+                "and once-only fallback\n\n- Status: completed\n"
+            ),
             "provider_fallback_task_contract.ASE3-019.contract_sha256",
         ),
         (
@@ -2068,20 +2088,22 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     initial = config["initial_projection"]
     groups = config["task_groups"]
     dependencies = config["task_dependencies"]
+    identity_acceptance = config["protected_identity_acceptance"]
     activation = config["protected_runtime_activation"]
     refill = config["refill_policy"]
     monitor = config["monitor_policy"]
     assert isinstance(initial, dict)
     assert isinstance(groups, dict)
     assert isinstance(dependencies, dict)
+    assert isinstance(identity_acceptance, dict)
     assert isinstance(activation, dict)
     assert isinstance(refill, dict)
     assert isinstance(monitor, dict)
 
     canonical = initial["canonical_task_ids"]
-    assert initial["task_count"] == 25
+    assert initial["task_count"] == 27
     assert isinstance(canonical, list)
-    assert len(canonical) == len(set(canonical)) == 25
+    assert len(canonical) == len(set(canonical)) == 27
     assert initial["noncanonical_transition_task_ids"] == ["ASE3-022"]
     assert set(dependencies) == set(canonical)
     assert {
@@ -2089,6 +2111,18 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
         for task_ids in groups.values()
         for task_id in task_ids
     } == set(canonical)
+    assert config["acceptance_prerequisites"] == {
+        "ASE3-023": ["ASE3-030"],
+        "ASE3-022": ["ASE3-030"],
+    }
+    assert identity_acceptance == {
+        "task_id": "ASE3-030",
+        "status": "reserved",
+        "receipt_path": HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+        "receipt_schema": HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
+        "strict_validator_and_manifest_binding_required": True,
+        "required_before_task_acceptance": ["ASE3-023", "ASE3-022"],
+    }
     assert activation == {
         "task_id": "ASE3-026",
         "status": "blocked",
@@ -2107,9 +2141,17 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert monitor["enabled"] is False
     assert monitor["detached"] is True
     assert monitor["activation_task_id"] == "ASE3-026"
+    assert monitor["canary_task_id"] == "ASE3-013"
+    assert monitor["canary_observation_seconds"] == 900
+    assert monitor["continuous_health_required"] is True
+    assert monitor["monotonic_elapsed_receipt_required"] is True
+    assert monitor["prompt_may_override_observation_window"] is False
 
 
-@pytest.mark.parametrize("task_id", ("ASE3-024", "ASE3-025", "ASE3-028"))
+@pytest.mark.parametrize(
+    "task_id",
+    ("ASE3-024", "ASE3-025", "ASE3-028", "ASE3-029", "ASE3-030"),
+)
 def test_program_expansion_task_identity_tampering_fails_closed(
     tmp_path: Path,
     task_id: str,
@@ -2152,6 +2194,8 @@ def test_program_expansion_task_identity_tampering_fails_closed(
         "ASE3-024",
         "ASE3-025",
         "ASE3-028",
+        "ASE3-029",
+        "ASE3-030",
     ),
 )
 def test_required_program_task_cannot_complete_without_evidence(
@@ -2201,11 +2245,24 @@ def test_required_program_task_cannot_complete_without_evidence(
         ),
         (
             "ASE3-028",
-            "all provider selection, authorization, freshness, failure "
-            "classification, and fallback allow/deny decisions remain solely in "
-            "`ipfs_accelerate_py.llm_router`",
-            "provider selection and fallback decisions may be delegated to lower "
-            "layers",
+            (
+                "both callers may normalize bounded non-authoritative inputs and "
+                "execute one typed router decision"
+            ),
+            "both callers may independently rerank the router decision",
+        ),
+        (
+            "ASE3-029",
+            (
+                "The neutral package may define immutable DTOs, codecs, validation, "
+                "and verifier protocols but no key storage"
+            ),
+            "The neutral package may store keys and execute lifecycle effects",
+        ),
+        (
+            "ASE3-030",
+            "without importing `multiformats` or mutable repository/candidate code",
+            "by importing user-site `multiformats` and mutable candidate code",
         ),
     ),
 )
@@ -2312,6 +2369,59 @@ def test_unvalidated_protected_runtime_activation_receipt_is_reserved(
     )
 
 
+def test_unvalidated_hermetic_identity_acceptance_receipt_is_reserved(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "convergence"
+    shutil.copytree(DEFAULT_ARTIFACT_ROOT, root)
+    (root / HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_FILENAME).write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        root,
+        check_repository=False,
+        taskboard_path=TASKBOARD_PATH,
+    )
+
+    assert report.valid is False
+    assert any(
+        "ASE3-030.acceptance_receipt: present without a strict schema validator"
+        in error
+        for error in report.errors
+    )
+
+
+def test_hermetic_identity_completion_requires_reserved_receipt_binding(
+    tmp_path: Path,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    task_start = text.index(
+        "## ASE3-030 Seal hermetic control-plane identity dependency closure\n"
+    )
+    status_start = text.index("- Status: todo\n", task_start)
+    taskboard.write_text(
+        text[:status_start]
+        + "- Status: completed\n"
+        + text[status_start + len("- Status: todo\n") :],
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert report.valid is False
+    assert (
+        "program_plan_expansion.ASE3-030.status: completion requires the strict "
+        "reserved receipt validator and convergence-manifest binding"
+    ) in report.errors
+
+
 def test_scheduler_dependency_projection_tampering_fails_closed(
     tmp_path: Path,
 ) -> None:
@@ -2335,6 +2445,188 @@ def test_scheduler_dependency_projection_tampering_fails_closed(
         "program_scheduler_projection.task_dependencies.ASE3-025: "
         "taskboard mismatch"
     ) in errors
+
+
+@pytest.mark.parametrize("task_id", ("ASE3-023", "ASE3-022"))
+def test_hermetic_identity_acceptance_prerequisite_tampering_fails_closed(
+    tmp_path: Path,
+    task_id: str,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    prerequisites = config["acceptance_prerequisites"]
+    assert isinstance(prerequisites, dict)
+    prerequisites[task_id] = []
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.acceptance_prerequisites: exact ASE3-030 "
+        "fail-closed acceptance join required"
+    ) in errors
+
+
+def test_hermetic_identity_protected_acceptance_tampering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    acceptance = config["protected_identity_acceptance"]
+    assert isinstance(acceptance, dict)
+    acceptance["receipt_schema"] = "forged@1"
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.protected_identity_acceptance: exact "
+        "reserved ASE3-030 receipt contract required"
+    ) in errors
+
+
+def test_signed_canary_observation_policy_tampering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH
+    config_path.parent.mkdir(parents=True)
+    config = _load(CONFIG_PATH)
+    monitor = config["monitor_policy"]
+    assert isinstance(monitor, dict)
+    monitor["canary_observation_seconds"] = 30
+    _write(config_path, config)
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.monitor_policy.canary_observation_seconds: "
+        "expected 900"
+    ) in errors
+
+
+def test_plan_canary_observation_policy_tampering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    assert "`monitor_policy.canary_observation_seconds: 900`" in text
+    plan_path.write_text(
+        text.replace("`monitor_policy.canary_observation_seconds: 900`", "30 seconds"),
+        encoding="utf-8",
+    )
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        "program_scheduler_projection.plan.canary_observation_seconds: exact "
+        "signed 900-second policy required"
+    ) in errors
+
+
+@pytest.mark.parametrize(
+    ("needle", "field"),
+    (
+        (
+            HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_RELATIVE_PATH,
+            "hermetic_identity_acceptance_receipt",
+        ),
+        (
+            HERMETIC_IDENTITY_ACCEPTANCE_RECEIPT_SCHEMA,
+            "hermetic_identity_acceptance_schema",
+        ),
+        ("Q→R→P→A", "hermetic_identity_acceptance_fan_in"),
+    ),
+)
+def test_plan_hermetic_identity_acceptance_contract_tampering_fails_closed(
+    tmp_path: Path,
+    needle: str,
+    field: str,
+) -> None:
+    for relative in (
+        PROMPT_V3_SCHEDULER_CONFIG_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_OBJECTIVES_RELATIVE_PATH,
+        convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH,
+    ):
+        source = REPO_ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    plan_path = tmp_path / convergence_module.PROMPT_V3_PLAN_RELATIVE_PATH
+    text = plan_path.read_text(encoding="utf-8")
+    assert needle in text
+    plan_path.write_text(text.replace(needle, "forged", 1), encoding="utf-8")
+    tasks = convergence_module._parse_taskboard_metadata(
+        TASKBOARD_PATH.read_text(encoding="utf-8")
+    )
+
+    errors = convergence_module._validate_program_scheduler_projection(
+        repo_root=tmp_path,
+        tasks=tasks,
+    )
+
+    assert (
+        f"program_scheduler_projection.plan.{field}: exact protected join required"
+        in errors
+    )
+
+
+def test_canary_task_cannot_shorten_signed_observation_window(
+    tmp_path: Path,
+) -> None:
+    taskboard = tmp_path / "prompt-v3.todo.md"
+    text = TASKBOARD_PATH.read_text(encoding="utf-8")
+    needle = "signed config `monitor_policy.canary_observation_seconds: 900` window"
+    assert text.count(needle) == 1
+    taskboard.write_text(
+        text.replace(needle, "caller-selected 30-second policy window", 1),
+        encoding="utf-8",
+    )
+
+    report = validate_convergence_artifacts(
+        DEFAULT_ARTIFACT_ROOT,
+        check_repository=False,
+        taskboard_path=taskboard,
+    )
+
+    assert (
+        "program_plan_expansion.ASE3-013.contract_sha256: exact amended "
+        "metadata/prose required"
+    ) in report.errors
 
 
 def test_check_all_cli_emits_the_sealed_preflight_contract() -> None:

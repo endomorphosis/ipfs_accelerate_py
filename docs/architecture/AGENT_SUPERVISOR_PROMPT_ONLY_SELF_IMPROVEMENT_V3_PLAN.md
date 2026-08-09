@@ -66,6 +66,16 @@ contract is not available on current `main`:
 - generic implementation auto-routing imports upward into entrypoints and owns
   ranking/classification behavior that belongs in `llm_router`, violating both
   the package dependency direction and the single routing-policy boundary;
+- the prospective ASE3-019/023 integration exposes eleven imports from six
+  runtime/todo-daemon files into five entrypoint modules; shared authority,
+  execution-slice, invocation-budget, and provider-capacity records must be
+  lowered into a neutral side-effect-free contracts package before routing
+  policy can be consolidated without another import cycle;
+- the accepted control-plane capsule does not yet include the full CID helper
+  closure: `utils/cid_utils.py` imports the optional `multiformats` package,
+  which is unavailable to a real `python -I` capsule even when present in the
+  user site; adaptive-runtime acceptance therefore needs an in-tree canonical
+  CID implementation and a Git-bound recursive capsule dependency proof;
 - durable refill primitives are not joined to real scheduler events,
   active-plan invalidation, recompilation, and descendant dispatch, while the
   protected production refill flags remain disabled;
@@ -163,6 +173,13 @@ Every resolved field records value, source, freshness, alternatives, confidence,
 policy decision, and a content identity. `explain` shows this receipt with
 secrets and raw prompt content redacted.
 
+Planning policy is not another field on `SignedSupervisorProfile`. A separately
+versioned, signed, content-addressed planning-policy artifact binds planning
+route bounds, prompt-retention limits, replay behavior, expiry, signer
+generation, and revocation. The local profile may identify the authorized
+signer and maximum effect ceiling, but changing planning policy cannot mutate
+the profile schema or its signed bytes.
+
 ## 5. Prompt-to-taskboard compilation
 
 The runtime pipeline is:
@@ -172,7 +189,8 @@ prompt
   -> run-bound encrypted prompt broker continuation
   -> trusted invocation-context resolution
   -> preview and authority/effect intersection
-  -> durable logical planning-effect reservation
+  -> separately signed planning-policy verification
+  -> multiprocess durable broker lease and planning-specific effect CAS
   -> llm_router-owned planning route and terminal-output adoption
   -> typed objective planner
   -> root goal + subgoal DAG + atomic task DAG
@@ -180,19 +198,27 @@ prompt
   -> DuckDB authoritative program revision CAS
   -> bounded Markdown operator projection
   -> immutable IPLD/Parquet history receipt
-  -> generated per-run scheduler profile
+  -> revision-fenced generated-source observer
+  -> namespace-independent generated per-run scheduler profile
   -> real configured-scheduler launch/adopt and parallel dispatch
 ```
 
 Raw prompts remain confidential and short-lived, but crash recovery cannot rely
-on process memory. Before planning, the broker stores a run-bound encrypted
-intent behind an expiring, single-use continuation lease and the effect store
-reserves the logical planning attempt. A crash adopts the exact terminal output
-and program root, or returns `PROMPT_REPLAY_REQUIRED` before another provider
-effect. Prompt bytes and bearer capabilities are zeroized after admitted
-materialization or bounded expiry. Persist only a prompt digest, redacted
-summary, and derived contracts; never place full bodies or capabilities in
-taskboards, argv, logs, branch names, receipts, or public immutable replicas.
+on process memory. Before planning, a multiprocess-hardened broker stores a
+run/context/policy-bound encrypted intent behind an expiring, single-use,
+fenced continuation lease. Its durable store uses bounded reads, private
+ownership/modes, no-follow regular-file or transactional-database invariants,
+interprocess exclusion, and atomic commit/recovery. A planning-specific CAS,
+distinct from provider-fallback attempt accounting, reserves the logical
+planning attempt before any provider effect and advances through `RESERVED`,
+`EFFECT_STARTED`, `TERMINAL_OBSERVED`, and `ADMITTED`. A crash adopts the exact
+terminal output and program root. If an effect may have happened but no exact
+terminal receipt is recoverable, the CAS records `UNKNOWN`, denies any second
+provider call, and returns `PROMPT_REPLAY_REQUIRED`. Prompt bytes and bearer
+capabilities are zeroized after admitted materialization or bounded expiry.
+Persist only a prompt digest, redacted summary, and derived contracts; never
+place full bodies or capabilities in taskboards, argv, logs, branch names,
+receipts, or public immutable replicas.
 
 Each generated goal contains a stable goal ID, parent IDs, goal dependencies,
 priority, track, evidence requirements, evidence-source policy, producing task
@@ -210,13 +236,21 @@ provider route, and validation policy.
 
 DuckDB is the sole mutable source of planning reservations, authoritative
 program/run heads, task claims, CAS revisions, leases, and fences. The program
-revision is committed before Markdown and immutable projections and is adopted
-without reinvoking the planner. Markdown is a bounded human-readable
-projection. Parquet, IPLD, and IPFS are immutable evidence/history and read
-replicas; none may claim tasks or authorize effects. The generated program must
-then drive the real configured scheduler and implementation daemon; a wrapper,
-fake claim store, hard-coded ASE3 prefix, or preseeded taskboard is not a
-production materialization proof.
+revision is transactionally committed before Markdown and immutable
+projections and is adopted without reinvoking the planner. A revision-fenced
+generated-source observer exposes that authoritative source directly to the
+configured runtime; generated Markdown need not be Git-tracked, clean, or even
+present for execution. Markdown is a bounded human-readable projection.
+Parquet, IPLD, and IPFS are immutable evidence/history and read replicas; none
+may claim tasks or authorize effects. Embedded task CIDs and subgoal ownership
+survive storage, observation, claim, and receipts without being recomputed from
+a projection. `GeneratedBoardRuntimeProfile` derives its namespace from the
+admitted revision and accepts arbitrary valid namespaces; it cannot encode an
+ASE3 seed assumption. The generated program must then drive genuine configured
+scheduler, implementation-supervisor, and implementation-daemon subprocesses;
+a wrapper, monkeypatch/in-process callback, fake claim store, Git-tracked-board
+requirement, hard-coded namespace, or preseeded taskboard is not a production
+materialization proof.
 
 ## 6. Parallel execution
 
@@ -381,15 +415,17 @@ Wave 2:            ASE3-004 prompt-to-goal/task materializer
 Wave 3 (parallel): ASE3-005 real runtime/lifecycle saga
                    ASE3-006 conflict-aware parallel scheduler
                    ASE3-007 bounded objective/task refill
-Wave 3b repair (parallel): ASE3-023 production adaptive-scheduler wiring
-                           ASE3-027 production resolver composition
+Wave 3b repair (parallel): ASE3-027 production resolver composition
                            ASE3-019 operator-salvaged authority/provider repair
+Wave 3b identity:  ASE3-030 hermetic control-plane CID dependency closure
+Wave 3b adaptive:  ASE3-023 production adaptive-scheduler acceptance
 Wave 3c gate:      ASE3-022 operator-owned provider-generation reload
-Wave 3d:           ASE3-028 router ownership and package dependency direction
-Wave 3e:           ASE3-024 crash-safe prompt/planning transaction
-Wave 3f:           ASE3-025 generated-board production runtime proof
-Wave 3g:           ASE3-021 durable refill event/append/replan/dispatch wiring
-Wave 3h:           ASE3-020 transactional run truth and crash-safe saga
+Wave 3d:           ASE3-029 neutral shared-contract lowering and import-DAG gate
+Wave 3e:           ASE3-028 single router-owned provider decision
+Wave 3f:           ASE3-024 crash-safe prompt/planning transaction
+Wave 3g:           ASE3-025 generated-board production runtime proof
+Wave 3h:           ASE3-021 durable refill event/append/replan/dispatch wiring
+Wave 3i:           ASE3-020 transactional run truth and crash-safe saga
 Wave 4:            ASE3-008 autonomous progress watchdog/Doctor/recovery
 Wave 4b gate:      ASE3-026 protected refill/monitor activation and reload
 Wave 5:            ASE3-009 Python facade, service composition, package exports
@@ -488,19 +524,53 @@ disjoint: ASE3-023 is forbidden from touching `implementation_daemon.py` or
 provider authority files, and ASE3-027 is forbidden from touching ASE3-019
 profile, router, or daemon surfaces. That process generation is now fenced;
 interrupted ASE3-023/027 candidates require controlled acceptance or rejection.
+The next-wave readiness audit additionally found that ASE3-019's control-plane
+capsule omits a hermetic CID dependency closure: `utils/cid_utils.py` delegates
+to optional user-site `multiformats`, which `python -I` cannot load. Because the
+ASE3-019/022/023/027 task blocks are protected identity contracts, ASE3-030 is
+added without rewriting them. It depends on ASE3-019, and the scheduler config
+contains a separately sealed acceptance-prerequisite join preventing ASE3-023
+acceptance or ASE3-022 transition until ASE3-030 proves that the Git-bound
+capsule recursively includes every in-tree dependency, imports every allowed
+module from its sealed fd, and mints/validates canonical CIDv1 lowercase-base32
+raw and DAG-JSON sha2-256 identities under `python -I` without user site or
+`PYTHONPATH`. The path
+`data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json`
+is reserved and must remain absent while its schema
+`ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1`
+lacks a strict validator and convergence-manifest binding. ASE3-030 remains
+`todo` until an immediately preceding protected acceptance commit adds that
+validator, binds source HEAD/tree/blob/archive/root and suite digests, and
+atomically accepts the task. That commit joins ASE3-030 into the same protected
+Q→R→P→A fan-in before ASE3-022 completion. ASE3-023 implementation may be
+inspected in parallel, but cannot be accepted early.
+
 ASE3-022 keeps ASE3-021 machine-blocked until the operator-salvaged unchanged-
-CID ASE3-019 and the ASE3-023/027 repair chains are accepted and jointly
-revalidated. Its final receipt must bind the attempt-2 incident, operator
+CID ASE3-019, ASE3-030 hermetic identity closure, and the ASE3-023/027 repair
+chains are accepted and jointly revalidated. Its final receipt must bind the attempt-2 incident, operator
 salvage, accepted control plane, exact stopped generation, and transition
 daemon/scheduler blobs. The same namespace is then relaunched once from that
-completion commit. ASE3-028 then removes the residual lower-to-entrypoints
-dependency and consolidates generic route choice/classification in
-`llm_router`; ASE3-024 reserves and adopts prompt-planning effects; ASE3-025
-proves their generated program reaches the real adaptive runtime; ASE3-021
-lands event-driven refill dormant; ASE3-020 closes the actual-parser and
-transactional saga fan-in; and ASE3-008 makes the monitor a durable detached
-lifecycle. The legacy objective and codebase refill flags remain disabled
-through those implementation waves.
+completion commit. ASE3-029 then removes all eleven audited upward-import sites
+by lowering shared authority DTO/verifier, invocation-budget/execution-slice,
+and non-authoritative provider-capacity contracts into a neutral package. It
+updates the six current lower-domain importers while retaining local-profile
+key/lifecycle effects in `local_profile`, orchestration and compatibility
+re-exports in entrypoints, and provider decisions in `llm_router`; an exact AST
+inventory must report zero runtime/todo-daemon imports of entrypoints. ASE3-028
+then focuses only on removing duplicated provider ranking and classification
+from `implementation_provider_auto` and `capability_resolver`, with both
+consuming one content-addressed `RouterOwnedProviderDecision` from
+`llm_router`. ASE3-024 installs a separate signed planning-policy artifact, a
+multiprocess durable encrypted prompt broker, and a planning-specific once-only
+CAS with durable `UNKNOWN`/`PROMPT_REPLAY_REQUIRED` behavior. ASE3-025 commits
+the authoritative program revision to DuckDB first, preserves embedded task
+CIDs and subgoal owners through a generated-source observer, constructs a
+namespace-independent runtime profile, and proves genuine configured runtime
+subprocess execution without a Git-tracked board. ASE3-021 lands event-driven
+refill dormant; ASE3-020 closes the actual-parser and transactional saga
+fan-in; and ASE3-008 makes the monitor a durable detached lifecycle. The legacy
+objective and codebase refill flags remain disabled through those
+implementation waves.
 
 ASE3-026 is a second, distinct operator boundary. It is a canonical producer
 for the monitoring goal but remains blocked, non-schedulable, and review-only
@@ -523,11 +593,26 @@ The release candidate must prove:
 - cold `--help` and package import perform no IPFS/provider/process startup;
 - Python, CLI, MCP, and MCP++ compile equivalent canonical requests and results;
 - one prompt produces a valid root goal, subgoals, atomic tasks, and dual
-  DuckDB/Markdown projections with matching identities, after one durable
-  pre-effect planning reservation and without provider replay after an unknown
-  outcome;
-- a fresh generated non-ASE3 board, rather than this seed board or a wrapper,
-  is consumed by the real configured scheduler and implementation daemon;
+  DuckDB/Markdown projections with matching identities, after verification of
+  an independently signed planning-policy artifact and one planning-specific
+  durable pre-effect CAS; two processes share one broker/effect winner, and an
+  unknown provider outcome becomes durable `UNKNOWN` plus
+  `PROMPT_REPLAY_REQUIRED` without provider replay;
+- the exact package AST has zero runtime/todo-daemon imports of entrypoints,
+  while neutral DTO/re-export identity and serialized compatibility remain
+  unchanged and all provider policy remains in `llm_router`;
+- the exact Git-bound control-plane capsule recursively includes its in-tree
+  identity dependency closure, imports every allowed module solely from its
+  sealed fd, and mints/validates known raw and DAG-JSON CID vectors under
+  `python -I` with user site and `PYTHONPATH` unavailable; missing, substituted,
+  extra, or externally resolved members fail before effects;
+- a fresh generated arbitrary-namespace board, rather than this seed board or
+  a wrapper, is committed authoritatively to DuckDB before projections and is
+  consumed through a revision-fenced generated-source observer by genuine real
+  configured scheduler, implementation-supervisor, and implementation-daemon
+  subprocesses without requiring Git-tracked Markdown;
+- embedded task CIDs and subgoal owners are identical from admission through
+  DuckDB, observation, claim, effect, and receipt;
 - at least two independent tasks execute concurrently, while conflicting tasks
   never overlap and all claims are fenced;
 - a real supported `run` starts or adopts a real lifecycle process; no default
@@ -549,7 +634,10 @@ The release candidate must prove:
   derives every program/effect CID from the prompt root, dispatches a refill
   descendant, and accepts a reviewed non-sentinel repository change;
 - final evidence is produced on the exact current integration tree and the
-  canary stays healthy through a sustained observation window.
+  canary stays continuously healthy for at least the signed config
+  `monitor_policy.canary_observation_seconds: 900` window, proven by monotonic
+  start, end, and health evidence; prompt input and wall-clock-only claims
+  cannot shorten or satisfy the window.
 
 Quantitative release targets: 100% public-operation parity, zero unauthorized
 effects, zero duplicate task effects, zero accepted branch-unreachable commits,
@@ -571,7 +659,8 @@ bounded recovery/refill decision for every injected incident.
 5. **Self-host canary:** use the new prompt path from a fresh empty state
    namespace to perform one bounded
    improvement against this package while a separate monitor observes progress,
-   refill, branch convergence, and recovery.
+   refill, branch convergence, and recovery for at least the signed config
+   `monitor_policy.canary_observation_seconds: 900` continuous-health window.
 6. **Local auto:** promote only after exact-tree conformance, chaos, load, and
    sustained canary gates pass. Remote mutation remains separately authorized.
 
@@ -584,9 +673,10 @@ user work or treat cleanup as authorization to reset a checkout.
 
 Do not restart the old prompt-only scheduler and do not activate its staged
 rollout. Preserve the accepted ASE3-000 convergence base and complete the
-ASE3-019/023/027 recovery plus ASE3-022 operator transition first. Then execute
-ASE3-028 -> ASE3-024 -> ASE3-025 -> ASE3-021 -> ASE3-020 -> ASE3-008. Keep
-refill and the detached monitor dormant until operator-owned ASE3-026 validates
-and reloads the exact generation. Only then build the public facades and use
-the completed prompt path, with no seed board, for ASE3-013's self-hosted
-canary.
+ASE3-019/027 recovery, ASE3-030 hermetic identity closure, ASE3-023 adaptive
+acceptance, and ASE3-022 operator transition first. Then execute
+ASE3-029 -> ASE3-028 -> ASE3-024 -> ASE3-025 -> ASE3-021 -> ASE3-020 ->
+ASE3-008. Keep refill and the detached monitor dormant until operator-owned
+ASE3-026 validates and reloads the exact generation. Only then build the public
+facades and use the completed prompt path, with no seed board, for ASE3-013's
+self-hosted canary.
