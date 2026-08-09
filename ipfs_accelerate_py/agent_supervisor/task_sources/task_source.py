@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Any, Final, Iterable, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, ClassVar, Final, Iterable, Mapping, Protocol, Sequence, runtime_checkable
 
 
 TASK_SOURCE_PROTOCOL_SCHEMA: Final = (
