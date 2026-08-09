@@ -1067,7 +1067,7 @@ validation and evidence contract.
 
 ## LFP-034 Migrate security_ir formal views to canonical typed logic
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
