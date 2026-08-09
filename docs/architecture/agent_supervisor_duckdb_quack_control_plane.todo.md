@@ -574,7 +574,7 @@ this bootstrap is active.
 
 ## DQP-018 Cut the implementation daemon over to database-authoritative execution
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
