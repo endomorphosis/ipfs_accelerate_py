@@ -1497,7 +1497,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-048 Implement reachable-gap scoring and strict derived-task admission
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
