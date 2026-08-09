@@ -236,6 +236,7 @@ class PortalSupervisorConfig:
     max_restarts: int = 10
     max_task_attempts: int = 0
     daemon_interval: float = 300.0
+    managed_python_executable: str = ""
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
     reconciliation_only: bool = False
@@ -7064,10 +7065,13 @@ class PortalImplementationSupervisor:
 
     def _build_daemon_command(self) -> list[str]:
         daemon_script_path = self.config.daemon_script_path
+        python_executable = (
+            self.config.managed_python_executable.strip() or sys.executable
+        )
         if daemon_script_path is None:
-            command = [sys.executable, "-m", "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"]
+            command = [python_executable, "-m", "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"]
         else:
-            command = [sys.executable, str(daemon_script_path)]
+            command = [python_executable, str(daemon_script_path)]
         command.extend(
             [
                 "--interval",
@@ -7664,6 +7668,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Python script used to launch the managed daemon instead of the package module.",
     )
     parser.add_argument(
+        "--managed-python-executable",
+        default="",
+        help=(
+            "Exact Python launcher used for the managed daemon. Defaults to "
+            "the supervisor interpreter; wrappers may pin a sealed launcher."
+        ),
+    )
+    parser.add_argument(
         "--supervisor-script-path",
         type=Path,
         default=None,
@@ -8235,6 +8247,9 @@ def supervisor_config_from_args(
         max_restarts=args.max_restarts,
         max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         daemon_interval=args.daemon_interval,
+        managed_python_executable=str(
+            getattr(args, "managed_python_executable", "") or ""
+        ),
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
         reconciliation_only=reconciliation_only,

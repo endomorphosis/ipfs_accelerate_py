@@ -88,6 +88,32 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
 
+def test_supervisor_uses_explicit_managed_python_launcher(tmp_path: Path):
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    sealed_launcher = tmp_path / "bin" / "dqk-sealed-python"
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--managed-python-executable",
+            str(sealed_launcher),
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    command = PortalImplementationSupervisor(config)._build_daemon_command()
+
+    assert config.managed_python_executable == str(sealed_launcher)
+    assert command[0] == str(sealed_launcher)
+    assert command[1:3] == [
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    ]
+
+
 def test_supervisor_propagates_canonical_duckdb_task_source_contract(
     tmp_path: Path,
 ) -> None:
