@@ -788,7 +788,7 @@ validation and evidence contract.
 
 ## LFP-025 Add controlled transition-system and TLA property adapters
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
