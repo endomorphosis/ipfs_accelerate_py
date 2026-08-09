@@ -540,7 +540,7 @@ validation and evidence contract.
 
 ## LFP-017 Implement canonical many-sorted FOL parser and printer
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
