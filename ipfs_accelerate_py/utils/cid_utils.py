@@ -10,8 +10,10 @@ CID codecs instead of importing :mod:`multiformats`:
 
 Decoding is deliberately strict.  Non-minimal or overflowing uvarints,
 non-canonical base32, trailing bytes, and every profile deviation fail closed.
-External multiformats libraries may be used by tests as an independent parity
-oracle, but never participate in production construction or validation.
+The historical generic public API is retained: requests outside that closed
+profile lazily delegate to :mod:`multiformats` when it is installed.  The
+supervisor never makes such a request, so an external package can neither
+approve nor deny sealed execution.
 """
 
 from __future__ import annotations
@@ -220,36 +222,86 @@ def _cid_from_digest(digest: bytes, *, codec: str) -> str:
     return _base32_multibase_encode(binary)
 
 
+def _byteslike_payload(data: bytes | bytearray | memoryview) -> bytes:
+    """Normalize the bytes-like domain historically accepted by multihash."""
+
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError("CID input must be bytes, bytearray, or memoryview")
+    return bytes(data)
+
+
+def _closed_profile(
+    *,
+    base: str,
+    codec: str,
+    mh_type: str,
+    version: int,
+) -> bool:
+    return (
+        base == _CID_BASE
+        and codec in _CODEC_CODES
+        and mh_type == _MH_TYPE
+        and type(version) is int
+        and version == _CID_VERSION
+    )
+
+
+def _external_cid_for_bytes(
+    data: bytes | bytearray | memoryview,
+    *,
+    base: str,
+    codec: str,
+    mh_type: str,
+    version: int,
+) -> str:
+    """Use the historical generic implementation only outside the seal."""
+
+    from multiformats import CID, multihash
+
+    digest = multihash.digest(data, mh_type)
+    return str(CID(base, version, codec, digest))
+
+
 def cid_for_bytes(
-    data: bytes,
+    data: bytes | bytearray | memoryview,
     *,
     base: str = _CID_BASE,
     codec: str = "raw",
     mh_type: str = _MH_TYPE,
     version: int = _CID_VERSION,
 ) -> str:
-    """Compute a canonical CID for exact bytes without external packages."""
+    """Compute a CID while keeping the sealed profile dependency-free.
 
-    if type(data) is not bytes:
-        raise TypeError("CID input must be exact bytes")
-    if (
-        base != _CID_BASE
-        or mh_type != _MH_TYPE
-        or type(version) is not int
-        or version != _CID_VERSION
+    The exact supervisor profile uses the in-tree fast path.  All other
+    profiles retain the original lazy :mod:`multiformats` behavior and its
+    exception types.
+    """
+
+    if _closed_profile(
+        base=base,
+        codec=codec,
+        mh_type=mh_type,
+        version=version,
     ):
-        raise ValueError("only CIDv1/base32/sha2-256 is supported")
-    return _cid_from_digest(hashlib.sha256(data).digest(), codec=codec)
+        payload = _byteslike_payload(data)
+        return _cid_from_digest(hashlib.sha256(payload).digest(), codec=codec)
+    return _external_cid_for_bytes(
+        data,
+        base=base,
+        codec=codec,
+        mh_type=mh_type,
+        version=version,
+    )
 
 
 def cid_from_sha256_digest(
-    digest: bytes,
+    digest: bytes | bytearray | memoryview,
     *,
     codec: str = "raw",
 ) -> str:
     """Wrap one already-computed sha2-256 digest without hashing it again."""
 
-    return _cid_from_digest(digest, codec=codec)
+    return _cid_from_digest(_byteslike_payload(digest), codec=codec)
 
 
 def cid_for_obj(
@@ -297,24 +349,48 @@ def validate_cid(
     version: int = _CID_VERSION,
     base: str = _CID_BASE,
 ) -> str:
-    """Validate and return one canonical CID in the closed profile."""
+    """Validate a canonical CID through the closed or generic profile."""
 
-    if (
-        mh_type != _MH_TYPE
-        or type(version) is not int
-        or version != _CID_VERSION
-        or base != _CID_BASE
-    ):
-        raise ValueError("only CIDv1/base32/sha2-256 validation is supported")
+    if not isinstance(value, str) or not value:
+        raise ValueError("CID must be a nonempty string")
+    allowed = frozenset(codecs)
+    closed = (
+        mh_type == _MH_TYPE
+        and type(version) is int
+        and version == _CID_VERSION
+        and base == _CID_BASE
+        and bool(allowed)
+        and allowed.issubset(_CODEC_CODES)
+    )
+    if closed:
+        if value != value.lower():
+            raise ValueError("CID must use canonical lowercase base32")
+        decoded = _decode_cid(value)
+        if decoded.codec not in allowed:
+            raise ValueError("CID codec is outside the requested profile")
+        return value
+
+    from multiformats import CID, multihash
+
     try:
-        allowed = frozenset(codecs)
-    except TypeError as exc:
-        raise ValueError("codecs must be an iterable of codec names") from exc
-    if not allowed or not allowed.issubset(_CODEC_CODES):
-        raise ValueError("codecs must be a nonempty subset of raw and dag-json")
-    decoded = _decode_cid(value)
-    if decoded.codec not in allowed:
-        raise ValueError("CID codec is outside the requested profile")
+        parsed = CID.decode(value)
+    except Exception as exc:
+        raise ValueError("CID is not decodable") from exc
+    expected_digest_size = multihash.get(mh_type).max_digest_size
+    if (
+        parsed.version != version
+        or parsed.codec.name not in allowed
+        or parsed.hashfun.name != mh_type
+        or (
+            expected_digest_size is not None
+            and len(parsed.raw_digest) != expected_digest_size
+        )
+        or parsed.base.name != base
+        or str(parsed) != value
+    ):
+        raise ValueError(
+            "CID must use the requested canonical version/base/codec/multihash"
+        )
     return value
 
 
