@@ -71,7 +71,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-002 Inventory shared-AST bypasses and raw logic boundaries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
