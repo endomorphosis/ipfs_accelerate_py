@@ -1098,7 +1098,7 @@ validation and evidence contract.
 
 ## LFP-035 Migrate crypto_ir cryptocurrency-network views to canonical typed logic
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
