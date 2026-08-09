@@ -7937,7 +7937,9 @@ class PortalImplementationDaemon:
         state: PortalTaskState,
         *,
         task_id: str,
+        canonical_task_key: str,
         canonical_task_cid: str,
+        board_namespace: str,
         attempt: int,
     ) -> tuple[WorkspaceLifecycleRecord | None, str, str]:
         """Prove the task revision and its exact worktree are terminal."""
@@ -7959,6 +7961,9 @@ class PortalImplementationDaemon:
                 else "task_claim_worktree_lifecycle_missing"
             )
             return None, "", reason
+        raw_record = self._load_exact_json_object(record_path)
+        if raw_record is None or raw_record != record.to_dict():
+            return None, "", "task_claim_worktree_lifecycle_malformed"
         expected_state_dir = normalize_workspace_path(
             self.state_path.parent.resolve()
         )
@@ -7990,6 +7995,13 @@ class PortalImplementationDaemon:
             return record, "", "canonical_task_revision_not_unique"
         if matches[0].task_id != task_id:
             return record, "", "canonical_task_display_id_mismatch"
+        current_identity = self._identity_for_task(matches[0])
+        if (
+            current_identity.canonical_task_key != canonical_task_key
+            or current_identity.canonical_task_cid != canonical_task_cid
+            or current_identity.board_namespace != board_namespace
+        ):
+            return record, "", "canonical_task_identity_mismatch"
         status = normalize_status(matches[0].status)
         if status not in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
             return record, status, "canonical_task_not_terminal"
@@ -8019,6 +8031,288 @@ class PortalImplementationDaemon:
             / IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
             / f"canonical-task-{digest}-a{attempt}.json"
         )
+
+    @staticmethod
+    def _load_exact_json_object(path: Path) -> dict[str, Any] | None:
+        """Load a regular JSON object without coercion or duplicate keys."""
+
+        if path.is_symlink() or not path.is_file():
+            return None
+
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        try:
+            payload = json.loads(
+                path.read_text(encoding="utf-8"),
+                object_pairs_hook=unique_object,
+            )
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _released_unfinished_attempt_evidence(
+        self,
+        state: PortalTaskState,
+        *,
+        claim: Mapping[str, Any],
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        display_attempt: int,
+        canonical_attempt: int,
+    ) -> dict[str, Any] | None:
+        """Bind a decremented attempt counter to its exact recovery event.
+
+        ``run_once`` releases an unfinished attempt before clearing stale
+        execution state.  A task claim can therefore still name attempt N
+        while both durable counters correctly name N-1.  Accept that shape
+        only when strict state bytes and one authoritative event history bind
+        the same claim start, task revision, attempt, worktree, and branch.
+        Every other counter mismatch remains fail closed.
+        """
+
+        def exact_int(value: Any) -> int | None:
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+            return None
+
+        if (
+            attempt <= 1
+            or display_attempt != attempt - 1
+            or canonical_attempt != display_attempt
+            or exact_int(claim.get("attempt")) != attempt
+        ):
+            return None
+
+        raw_state = self._load_exact_json_object(self.state_path)
+        if raw_state is None:
+            return None
+        raw_display_attempts = raw_state.get("implementation_attempts")
+        raw_canonical_attempts = raw_state.get(
+            "implementation_attempts_by_cid"
+        )
+        if (
+            not isinstance(raw_display_attempts, dict)
+            or task_id not in raw_display_attempts
+            or exact_int(raw_display_attempts[task_id]) != display_attempt
+            or not isinstance(raw_canonical_attempts, dict)
+            or canonical_task_cid not in raw_canonical_attempts
+            or exact_int(raw_canonical_attempts[canonical_task_cid])
+            != canonical_attempt
+        ):
+            return None
+
+        canonical_task_key = claim.get("canonical_task_key")
+        board_namespace = claim.get("board_namespace")
+        claim_started_at = claim.get("started_at")
+        state_started_at = state.last_implementation_started_at
+        if (
+            not isinstance(canonical_task_key, str)
+            or not canonical_task_key
+            or canonical_task_key
+            != state.last_implementation_task_key
+            or raw_state.get("last_implementation_task_key")
+            != canonical_task_key
+            or not isinstance(board_namespace, str)
+            or not board_namespace
+            or not isinstance(claim_started_at, str)
+            or not claim_started_at
+            or claim_started_at != state_started_at
+            or raw_state.get("last_implementation_started_at")
+            != claim_started_at
+            or raw_state.get("last_implementation_task_id") != task_id
+            or raw_state.get("last_implementation_task_cid")
+            != canonical_task_cid
+        ):
+            return None
+        raw_task_identities = raw_state.get("task_identities")
+        raw_task_identity = (
+            raw_task_identities.get(task_id)
+            if isinstance(raw_task_identities, dict)
+            else None
+        )
+        if (
+            not isinstance(raw_task_identity, dict)
+            or raw_task_identity.get("display_task_id") != task_id
+            or raw_task_identity.get("canonical_task_key")
+            != canonical_task_key
+            or raw_task_identity.get("canonical_task_cid")
+            != canonical_task_cid
+            or raw_task_identity.get("board_namespace")
+            != board_namespace
+        ):
+            return None
+        claim_started = parse_timestamp(claim_started_at)
+        if claim_started is None:
+            return None
+
+        expected_worktree = str(
+            state.last_implementation_worktree_path or ""
+        ).strip()
+        expected_branch = str(
+            state.last_implementation_branch or ""
+        ).strip()
+        if not expected_worktree or not expected_branch:
+            return None
+
+        try:
+            events = self._iter_merge_lifecycle_events()
+        except CursorReplayError:
+            return None
+
+        matches: list[dict[str, Any]] = []
+        for event in events:
+            recovery = event.get("attempt_recovery")
+            if not isinstance(recovery, Mapping):
+                continue
+            event_attempt = exact_int(event.get("attempt"))
+            recovery_attempt = exact_int(recovery.get("attempt"))
+            previous_display = exact_int(
+                recovery.get("previous_display_count")
+            )
+            previous_canonical = exact_int(
+                recovery.get("previous_cid_count")
+            )
+            released_to = exact_int(recovery.get("released_to"))
+            sequence = exact_int(event.get("sequence"))
+            event_id = event.get("event_id")
+            stream_id = event.get("stream_id")
+            snapshot_id = event.get("snapshot_id")
+            recovery_timestamp = event.get("timestamp")
+            recovered_at = (
+                parse_timestamp(recovery_timestamp)
+                if isinstance(recovery_timestamp, str)
+                else None
+            )
+            if (
+                event.get("type")
+                != "implementation_state_recovered"
+                or event.get("reason")
+                != "inflight_process_missing"
+                or event.get("finished_attempt") is not False
+                or event_attempt != attempt
+                or event.get("task_id") != task_id
+                or event.get("canonical_task_key")
+                != canonical_task_key
+                or event.get("canonical_task_cid")
+                != canonical_task_cid
+                or event.get("board_namespace") != board_namespace
+                or not isinstance(event.get("worktree_path"), str)
+                or normalize_workspace_path(
+                    event["worktree_path"]
+                )
+                != normalize_workspace_path(expected_worktree)
+                or event.get("branch") != expected_branch
+                or recovery.get("released") is not True
+                or recovery.get("consumed") is not False
+                or recovery_attempt != attempt
+                or recovery.get("task_id") != task_id
+                or recovery.get("canonical_task_cid")
+                != canonical_task_cid
+                or previous_display != attempt
+                or previous_canonical != attempt
+                or released_to != display_attempt
+                or sequence is None
+                or sequence <= 0
+                or not isinstance(event_id, str)
+                or not event_id.startswith("sha256:")
+                or not isinstance(stream_id, str)
+                or not stream_id
+                or not isinstance(snapshot_id, str)
+                or not snapshot_id
+                or recovered_at is None
+                or recovered_at < claim_started
+            ):
+                continue
+
+            starts = []
+            conflicting_later_events = []
+            for candidate in events:
+                candidate_sequence = exact_int(candidate.get("sequence"))
+                candidate_attempt = exact_int(candidate.get("attempt"))
+                if (
+                    candidate_sequence is None
+                    or candidate_attempt != attempt
+                    or candidate.get("canonical_task_cid")
+                    != canonical_task_cid
+                ):
+                    continue
+                if (
+                    candidate.get("type") == "implementation_started"
+                    and candidate_sequence < sequence
+                    and candidate.get("task_id") == task_id
+                    and candidate.get("canonical_task_key")
+                    == canonical_task_key
+                    and candidate.get("board_namespace")
+                    == board_namespace
+                    and candidate.get("worktree_path")
+                    == expected_worktree
+                    and candidate.get("branch") == expected_branch
+                ):
+                    started_timestamp = candidate.get("timestamp")
+                    started_at = (
+                        parse_timestamp(started_timestamp)
+                        if isinstance(started_timestamp, str)
+                        else None
+                    )
+                    if (
+                        started_at is not None
+                        and claim_started <= started_at <= recovered_at
+                    ):
+                        starts.append(candidate)
+                if (
+                    candidate_sequence > sequence
+                    and candidate.get("type")
+                    in {
+                        "implementation_started",
+                        "implementation_finished",
+                        "implementation_provider_exhausted",
+                        "implementation_skipped",
+                        "implementation_state_recovered",
+                        "implementation_task_claim_released",
+                        "implementation_terminated",
+                        "implementation_timeout",
+                    }
+                ):
+                    conflicting_later_events.append(candidate)
+            if len(starts) != 1 or conflicting_later_events:
+                continue
+            start = starts[0]
+            matches.append(
+                {
+                    "event_id": event_id,
+                    "stream_id": stream_id,
+                    "snapshot_id": snapshot_id,
+                    "sequence": sequence,
+                    "timestamp": recovery_timestamp,
+                    "start_event_id": start["event_id"],
+                    "start_sequence": start["sequence"],
+                    "started_at": start["timestamp"],
+                    "claim_started_at": claim_started_at,
+                    "canonical_task_key": canonical_task_key,
+                    "board_namespace": board_namespace,
+                    "released_from": attempt,
+                    "released_to": released_to,
+                    "worktree_path": expected_worktree,
+                    "branch": expected_branch,
+                }
+            )
+        if len(matches) != 1:
+            return None
+        return matches[0]
 
     def _reconcile_quiesced_implementation_task_claim(
         self,
@@ -8053,7 +8347,7 @@ class PortalImplementationDaemon:
             }
 
         with serialized_lock_update(claim_path):
-            claim = load_json_dict(claim_path)
+            claim = self._load_exact_json_object(claim_path)
             if claim is None:
                 if claim_path.exists() or claim_path.is_symlink():
                     return blocked("task_claim_metadata_unreadable")
@@ -8116,6 +8410,22 @@ class PortalImplementationDaemon:
             expected_state_path = normalize_workspace_path(
                 self.state_path.resolve()
             )
+            exact_attempt_counters = (
+                attempt == display_attempt == canonical_attempt
+            )
+            released_attempt_evidence = None
+            if not exact_attempt_counters:
+                released_attempt_evidence = (
+                    self._released_unfinished_attempt_evidence(
+                        state,
+                        claim=claim,
+                        task_id=task_id,
+                        canonical_task_cid=canonical_task_cid,
+                        attempt=attempt,
+                        display_attempt=display_attempt,
+                        canonical_attempt=canonical_attempt,
+                    )
+                )
             if (
                 str(claim.get("kind") or "")
                 != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
@@ -8123,8 +8433,10 @@ class PortalImplementationDaemon:
                 or str(claim.get("canonical_task_cid") or "")
                 != canonical_task_cid
                 or attempt <= 0
-                or attempt != display_attempt
-                or attempt != canonical_attempt
+                or (
+                    not exact_attempt_counters
+                    and released_attempt_evidence is None
+                )
                 or pid <= 0
                 or not lease_id
                 or not claim_state_dir
@@ -8179,7 +8491,13 @@ class PortalImplementationDaemon:
                 self._terminal_authority_for_quiesced_task_claim(
                     state,
                     task_id=task_id,
+                    canonical_task_key=str(
+                        claim.get("canonical_task_key") or ""
+                    ),
                     canonical_task_cid=canonical_task_cid,
+                    board_namespace=str(
+                        claim.get("board_namespace") or ""
+                    ),
                     attempt=attempt,
                 )
             )
@@ -8187,6 +8505,16 @@ class PortalImplementationDaemon:
                 return blocked(
                     authority_reason,
                     observed_task_status=task_status,
+                )
+            if (
+                released_attempt_evidence is not None
+                and record.branch
+                != released_attempt_evidence["branch"]
+            ):
+                return blocked(
+                    "task_claim_recovery_lifecycle_branch_mismatch",
+                    lifecycle_branch=record.branch,
+                    recovery_branch=released_attempt_evidence["branch"],
                 )
 
             claim_id = content_identity(claim)
@@ -8218,6 +8546,10 @@ class PortalImplementationDaemon:
                 },
                 "task_source_identity": self._task_source_identity_record(),
             }
+            if released_attempt_evidence is not None:
+                basis["released_unfinished_attempt"] = (
+                    released_attempt_evidence
+                )
             operation_id = content_identity(basis)
             receipt_path = self._task_claim_release_receipt_path(
                 canonical_task_cid=canonical_task_cid,
@@ -8255,7 +8587,7 @@ class PortalImplementationDaemon:
                     "prepared_at": prepared_at,
                 },
             )
-            current = load_json_dict(claim_path)
+            current = self._load_exact_json_object(claim_path)
             if (
                 current is None
                 or content_identity(current) != claim_id
@@ -8304,6 +8636,10 @@ class PortalImplementationDaemon:
             "receipt_id": receipt_id,
             "receipt_path": str(receipt_path),
         }
+        if released_attempt_evidence is not None:
+            result["released_unfinished_attempt"] = (
+                released_attempt_evidence
+            )
         self._record_event("implementation_task_claim_released", result)
         return result
 
