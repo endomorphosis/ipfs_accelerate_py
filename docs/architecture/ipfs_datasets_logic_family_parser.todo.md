@@ -1036,7 +1036,7 @@ validation and evidence contract.
 
 ## LFP-033 Join protocol, program, and proof-assistant target surfaces
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
