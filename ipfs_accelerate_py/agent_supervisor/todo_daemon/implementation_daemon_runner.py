@@ -1138,6 +1138,54 @@ def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(timeout_seconds)
 
 
+def apply_database_program_defaults(
+    argv: Sequence[str],
+    *,
+    database_program: Mapping[str, Any] | object | None,
+) -> list[str]:
+    """Inject DatabaseProgramConfig@1 CLI flags when absent from ``argv``."""
+
+    args = list(argv)
+    if database_program is None:
+        return args
+    if hasattr(database_program, "cli_args"):
+        program_args = list(database_program.cli_args())  # type: ignore[operator]
+    elif isinstance(database_program, Mapping):
+        from ..runtime.multi_supervisor_runner import DatabaseProgramConfig
+
+        program_args = DatabaseProgramConfig.from_mapping(database_program).cli_args()
+    else:
+        return args
+    # Prefer existing explicit flags; only fill missing authority bindings.
+    present = set(args)
+    index = 0
+    while index < len(program_args):
+        flag = program_args[index]
+        if not str(flag).startswith("--"):
+            index += 1
+            continue
+        if flag in present or any(
+            str(item).startswith(f"{flag}=") for item in args
+        ):
+            # Skip flag and its value when the value is a separate token.
+            if index + 1 < len(program_args) and not str(
+                program_args[index + 1]
+            ).startswith("--"):
+                index += 2
+            else:
+                index += 1
+            continue
+        args.append(flag)
+        if index + 1 < len(program_args) and not str(
+            program_args[index + 1]
+        ).startswith("--"):
+            args.append(str(program_args[index + 1]))
+            index += 2
+        else:
+            index += 1
+    return args
+
+
 def build_portal_implementation_daemon_from_args(
     parsed: argparse.Namespace,
     *,
@@ -1152,6 +1200,9 @@ def build_portal_implementation_daemon_from_args(
     from .implementation_daemon import (
         DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         PortalImplementationDaemon,
+        database_authority_mode_active,
+        database_program_from_daemon_namespace,
+        open_database_implementation_daemon,
     )
 
     apply_merge_resolver_environment(parsed)
@@ -1166,8 +1217,58 @@ def build_portal_implementation_daemon_from_args(
         or default_implementation_protected_paths
         or None
     )
+    database_program = database_program_from_daemon_namespace(parsed)
+    database_implementation = None
+    if database_program is not None and database_authority_mode_active(
+        database_program.authority_mode
+    ):
+        store_path = getattr(parsed, "database_store_path", None)
+        if store_path is None:
+            todo = Path(parsed.todo_path)
+            if todo.suffix.lower() in {".duckdb", ".ddb"}:
+                store_path = todo
+            else:
+                store_path = (
+                    Path(parsed.state_dir)
+                    / f"{parsed.state_prefix}_coordination.duckdb"
+                )
+        database_implementation = open_database_implementation_daemon(
+            store_path,
+            database_program=database_program,
+            markdown_board_path=(
+                parsed.todo_path
+                if Path(parsed.todo_path).suffix.lower()
+                in {".md", ".markdown"}
+                else None
+            ),
+            projection_paths={
+                "status": state_paths["state_path"],
+                "events": state_paths["events_path"],
+                "queue": Path(parsed.state_dir) / "task_queue.json",
+                "pid": Path(parsed.state_dir) / f"{parsed.state_prefix}.pid",
+            },
+        )
+    task_source_kind = str(getattr(parsed, "task_source_kind", "") or "")
     daemon = PortalImplementationDaemon(
         todo_path=parsed.todo_path,
+        task_source=(
+            parsed.todo_path
+            if task_source_kind in {"markdown", "duckdb"}
+            else None
+        ),
+        task_source_kind=(
+            task_source_kind
+            if task_source_kind in {"markdown", "duckdb"}
+            else ""
+        ),
+        expected_task_source_root_id=str(
+            getattr(parsed, "expected_task_source_root", "") or ""
+        ),
+        expected_task_source_repository_root_id=str(
+            getattr(parsed, "expected_task_source_repository_root", "") or ""
+        ),
+        database_program=database_program,
+        database_implementation=database_implementation,
         state_path=state_paths["state_path"],
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
