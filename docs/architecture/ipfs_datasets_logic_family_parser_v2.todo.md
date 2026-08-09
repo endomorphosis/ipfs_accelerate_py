@@ -164,7 +164,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-005 Join the Wave-2 baseline and publish lifecycle maturity rules
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
