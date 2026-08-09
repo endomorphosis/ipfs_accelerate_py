@@ -3649,6 +3649,25 @@ class PortalImplementationSupervisor:
                 )
             )
         try:
+            managed_daemon_pid = int(managed_daemon_guard.get("pid") or 0)
+        except (TypeError, ValueError):
+            managed_daemon_pid = 0
+        if managed_daemon_pid <= 0 or not process_is_running(
+            managed_daemon_pid
+        ):
+            startup_reconciliation = (
+                self._reconcile_quiesced_task_claim_at_startup()
+            )
+            if startup_reconciliation.get("blocked", False):
+                self._record_event(
+                    "supervisor_startup_reconciliation_blocked",
+                    startup_reconciliation,
+                )
+                raise RuntimeError(
+                    "quiesced implementation startup reconciliation blocked: "
+                    + str(startup_reconciliation.get("reason") or "unknown")
+                )
+        try:
             preflight = self.run_once(include_refill=False)
         except Exception as exc:
             self._record_event(
@@ -8410,6 +8429,25 @@ class PortalImplementationSupervisor:
                 "reconciled": False,
                 "blocked": True,
                 "reason": "shutdown_attempt_reconciliation_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+
+    def _reconcile_quiesced_task_claim_at_startup(self) -> dict[str, Any]:
+        """Replay only terminal claim cleanup before starting a new daemon."""
+
+        try:
+            daemon = self._build_worktree_reconciliation_daemon()
+            return daemon.reconcile_quiesced_implementation_task_claim()
+        except Exception as exc:
+            logger.exception(
+                "Could not reconcile a quiesced implementation task claim "
+                "during supervisor startup"
+            )
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "startup_task_claim_reconciliation_failed",
                 "error_type": type(exc).__name__,
                 "error": str(exc),
             }

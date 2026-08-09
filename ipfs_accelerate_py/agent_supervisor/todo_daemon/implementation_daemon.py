@@ -102,6 +102,7 @@ from ..merge.worktree_lifecycle import (
     LifecycleFailureKind,
     OwnerLiveness,
     OwnershipError,
+    ProcessBirthIdentity,
     WorkspaceLifecycleRecord,
     WorkspaceLifecycleState,
     WorktreeLifecycleError,
@@ -342,6 +343,16 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "quiesced-implementation-task-claim-release@1"
+)
+IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME = (
+    "implementation-task-claim-release-receipts"
+)
+IMPLEMENTATION_TASK_TERMINAL_STATUSES = frozenset(
+    {"completed", "cancelled", "skipped", "failed", "quarantined"}
+)
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
 )
@@ -7921,6 +7932,389 @@ class PortalImplementationDaemon:
             "terminal_reason": terminal.terminal_reason,
         }
 
+    def _terminal_authority_for_quiesced_task_claim(
+        self,
+        state: PortalTaskState,
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+    ) -> tuple[WorkspaceLifecycleRecord | None, str, str]:
+        """Prove the task revision and its exact worktree are terminal."""
+
+        workspace = str(
+            state.last_implementation_worktree_path
+            or state.active_worktree_path
+            or ""
+        ).strip()
+        if not workspace:
+            return None, "", "task_claim_worktree_lifecycle_unbound"
+        workspace_path = Path(workspace)
+        record_path = self.worktree_lifecycle.workspace_path_for(workspace_path)
+        record = self.worktree_lifecycle.load_workspace(workspace_path)
+        if record is None:
+            reason = (
+                "task_claim_worktree_lifecycle_malformed"
+                if record_path.exists()
+                else "task_claim_worktree_lifecycle_missing"
+            )
+            return None, "", reason
+        expected_state_dir = normalize_workspace_path(
+            self.state_path.parent.resolve()
+        )
+        if (
+            not record.is_terminal
+            or record.task_id != task_id
+            or record.canonical_task_cid != canonical_task_cid
+            or record.attempt != attempt
+            or normalize_workspace_path(record.repo_root)
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(record.state_dir) != expected_state_dir
+            or normalize_workspace_path(record.workspace_path)
+            != normalize_workspace_path(workspace_path)
+        ):
+            return (
+                None,
+                "",
+                "task_claim_worktree_lifecycle_not_exact_terminal",
+            )
+        try:
+            matches = [
+                task
+                for task in self._load_tasks()
+                if self._canonical_ref(task) == canonical_task_cid
+            ]
+        except Exception as exc:
+            return record, "", f"task_source_read_failed:{type(exc).__name__}"
+        if len(matches) != 1:
+            return record, "", "canonical_task_revision_not_unique"
+        if matches[0].task_id != task_id:
+            return record, "", "canonical_task_display_id_mismatch"
+        status = normalize_status(matches[0].status)
+        if status not in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
+            return record, status, "canonical_task_not_terminal"
+        projected_status = normalize_status(
+            state.task_statuses.get(task_id, "")
+        )
+        if projected_status and projected_status != status:
+            return (
+                record,
+                status,
+                "task_claim_state_projection_status_mismatch",
+            )
+        return record, status, ""
+
+    def _task_claim_release_receipt_path(
+        self,
+        *,
+        canonical_task_cid: str,
+        attempt: int,
+        lease_id: str,
+    ) -> Path:
+        digest = hashlib.sha256(
+            f"{canonical_task_cid}\0{attempt}\0{lease_id}".encode("utf-8")
+        ).hexdigest()[:24]
+        return (
+            self.state_path.parent
+            / IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
+            / f"canonical-task-{digest}-a{attempt}.json"
+        )
+
+    def _reconcile_quiesced_implementation_task_claim(
+        self,
+        state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Release one exact dead claim after terminal lane/task proof."""
+
+        task_id = str(state.last_implementation_task_id or "").strip()
+        canonical_task_cid = str(
+            state.last_implementation_task_cid or ""
+        ).strip()
+        if not task_id or not canonical_task_cid:
+            return {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "no_task_claim_identity",
+            }
+        claim_path = self._implementation_task_claim_path(
+            task_id,
+            canonical_task_cid=canonical_task_cid,
+        )
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": reason,
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "claim_path": str(claim_path),
+                **extra,
+            }
+
+        with serialized_lock_update(claim_path):
+            claim = load_json_dict(claim_path)
+            if claim is None:
+                if claim_path.exists() or claim_path.is_symlink():
+                    return blocked("task_claim_metadata_unreadable")
+                return {
+                    "reconciled": False,
+                    "blocked": False,
+                    "reason": "no_task_claim",
+                    "task_id": task_id,
+                    "canonical_task_cid": canonical_task_cid,
+                    "claim_path": str(claim_path),
+                }
+
+            active_state = {
+                "implementation_in_progress": bool(
+                    state.implementation_in_progress
+                ),
+                "active_task_id": str(state.active_task_id or ""),
+                "active_task_cid": str(state.active_task_cid or ""),
+                "active_attempt": int(state.active_attempt or 0),
+                "active_worktree_path": str(
+                    state.active_worktree_path or ""
+                ),
+                "active_branch": str(state.active_branch or ""),
+            }
+            if any(active_state.values()):
+                return blocked(
+                    "task_claim_lane_state_not_quiesced",
+                    active_state=active_state,
+                )
+            try:
+                attempt = int(claim.get("attempt") or 0)
+                display_attempt = int(
+                    state.implementation_attempts.get(task_id, 0) or 0
+                )
+                canonical_attempt = int(
+                    state.implementation_attempts_by_cid.get(
+                        canonical_task_cid,
+                        0,
+                    )
+                    or 0
+                )
+                pid = int(claim.get("pid") or 0)
+                shard_count = int(claim.get("task_shard_count") or 0)
+                shard_index = int(claim.get("task_shard_index") or 0)
+            except (TypeError, ValueError):
+                return blocked("task_claim_numeric_binding_invalid")
+
+            lease_id = str(claim.get("lease_id") or "").strip()
+            claim_state_dir = str(claim.get("state_dir") or "").strip()
+            claim_state_path = str(claim.get("state_path") or "").strip()
+            claim_repository_id = str(
+                claim.get("repository_id") or ""
+            ).strip()
+            claim_worktree_root = str(
+                claim.get("worktree_root") or ""
+            ).strip()
+            expected_state_dir = normalize_workspace_path(
+                self.state_path.parent.resolve()
+            )
+            expected_state_path = normalize_workspace_path(
+                self.state_path.resolve()
+            )
+            if (
+                str(claim.get("kind") or "")
+                != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+                or str(claim.get("task_id") or "") != task_id
+                or str(claim.get("canonical_task_cid") or "")
+                != canonical_task_cid
+                or attempt <= 0
+                or attempt != display_attempt
+                or attempt != canonical_attempt
+                or pid <= 0
+                or not lease_id
+                or not claim_state_dir
+                or normalize_workspace_path(claim_state_dir)
+                != expected_state_dir
+                or not claim_state_path
+                or normalize_workspace_path(claim_state_path)
+                != expected_state_path
+                or not claim_repository_id
+                or claim_repository_id != self.merge_target_repository_id
+                or not claim_worktree_root
+                or normalize_workspace_path(claim_worktree_root)
+                != normalize_workspace_path(self.repo_root)
+                or shard_count != self.task_shard_count
+                or shard_index != self.task_shard_index
+                or (
+                    state.last_implementation_started_at
+                    and str(claim.get("started_at") or "")
+                    != state.last_implementation_started_at
+                )
+            ):
+                return blocked(
+                    "task_claim_identity_mismatch",
+                    attempt=attempt,
+                    claim_lease_id=lease_id,
+                    claim_state_dir=claim_state_dir,
+                )
+            owner = ProcessBirthIdentity(pid=pid, start_time_ticks=0)
+            liveness = owner_liveness(
+                owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            if liveness is not OwnerLiveness.DEAD:
+                return blocked(
+                    "task_claim_owner_still_active"
+                    if liveness is OwnerLiveness.ALIVE
+                    else "task_claim_owner_liveness_unknown",
+                    owner_pid=pid,
+                    owner_liveness=liveness.value,
+                )
+            protected_fences = (
+                implementation_task_claim_protected_fence_paths(claim)
+            )
+            if protected_fences:
+                return blocked(
+                    "task_claim_protected_fence_present",
+                    protected_fence_paths=list(protected_fences),
+                )
+            record, task_status, authority_reason = (
+                self._terminal_authority_for_quiesced_task_claim(
+                    state,
+                    task_id=task_id,
+                    canonical_task_cid=canonical_task_cid,
+                    attempt=attempt,
+                )
+            )
+            if record is None or authority_reason:
+                return blocked(
+                    authority_reason,
+                    observed_task_status=task_status,
+                )
+
+            claim_id = content_identity(claim)
+            basis = {
+                "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
+                "operation": "release_quiesced_implementation_task_claim",
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": attempt,
+                "task_status": task_status,
+                "claim": {
+                    "path": str(claim_path),
+                    "claim_id": claim_id,
+                    "lease_id": lease_id,
+                    "owner_pid": pid,
+                    "state_dir": expected_state_dir,
+                    "state_path": expected_state_path,
+                },
+                "worktree_lifecycle": {
+                    "record_id": record.record_id,
+                    "lease_id": record.lease_id,
+                    "fence": record.fence,
+                    "state": record.state.value,
+                    "workspace_path": record.workspace_path,
+                    "terminal_reason": record.terminal_reason,
+                },
+                "task_source_identity": self._task_source_identity_record(),
+            }
+            operation_id = content_identity(basis)
+            receipt_path = self._task_claim_release_receipt_path(
+                canonical_task_cid=canonical_task_cid,
+                attempt=attempt,
+                lease_id=lease_id,
+            )
+            existing_receipt = load_json_dict(receipt_path)
+            if existing_receipt is None and (
+                receipt_path.exists() or receipt_path.is_symlink()
+            ):
+                return blocked(
+                    "task_claim_release_receipt_unreadable",
+                    receipt_path=str(receipt_path),
+                )
+            if existing_receipt is not None and (
+                str(existing_receipt.get("operation_id") or "")
+                != operation_id
+                or str(existing_receipt.get("phase") or "") != "prepared"
+            ):
+                return blocked(
+                    "task_claim_release_receipt_conflict",
+                    receipt_path=str(receipt_path),
+                )
+            prepared_at = (
+                str(existing_receipt.get("prepared_at") or "")
+                if existing_receipt is not None
+                else utc_now()
+            )
+            write_json_atomic(
+                receipt_path,
+                {
+                    **basis,
+                    "operation_id": operation_id,
+                    "phase": "prepared",
+                    "prepared_at": prepared_at,
+                },
+            )
+            current = load_json_dict(claim_path)
+            if (
+                current is None
+                or content_identity(current) != claim_id
+                or str(current.get("lease_id") or "") != lease_id
+                or str(current.get("canonical_task_cid") or "")
+                != canonical_task_cid
+            ):
+                return blocked(
+                    "task_claim_compare_and_delete_lost",
+                    attempt=attempt,
+                    claim_lease_id=lease_id,
+                    receipt_path=str(receipt_path),
+                )
+            claim_path.unlink()
+
+        released_at = utc_now()
+        receipt_body = {
+            **basis,
+            "operation_id": operation_id,
+            "phase": "released",
+            "prepared_at": prepared_at,
+            "released_at": released_at,
+        }
+        receipt_id = content_identity(receipt_body)
+        write_json_atomic(
+            receipt_path,
+            {**receipt_body, "receipt_id": receipt_id},
+        )
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "task_status": task_status,
+            "claim_path": str(claim_path),
+            "claim_id": claim_id,
+            "claim_lease_id": lease_id,
+            "owner_pid": pid,
+            "state_dir": expected_state_dir,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+            "operation_id": operation_id,
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(receipt_path),
+        }
+        self._record_event("implementation_task_claim_released", result)
+        return result
+
+    def reconcile_quiesced_implementation_task_claim(self) -> dict[str, Any]:
+        """Reconcile only the repo-wide claim for already-clean lane state."""
+
+        result = self._reconcile_quiesced_implementation_task_claim(
+            PortalTaskState.load(self.state_path)
+        )
+        if result.get("blocked", False):
+            self._record_event(
+                "implementation_task_claim_reconciliation_blocked",
+                result,
+            )
+        return result
+
     def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
@@ -8042,7 +8436,11 @@ class PortalImplementationDaemon:
             return result
 
         task_id = state.active_task_id or state.last_implementation_task_id
-        attempt = int(state.active_attempt or 0)
+        attempt = int(
+            state.active_attempt
+            or state.implementation_attempts.get(task_id, 0)
+            or 0
+        )
         had_active_state = bool(
             state.implementation_in_progress
             or state.active_task_id
@@ -8061,6 +8459,32 @@ class PortalImplementationDaemon:
             state.save(self.state_path)
         else:
             reconciled_at = utc_now()
+
+        task_claim_reconciliation = (
+            self._reconcile_quiesced_implementation_task_claim(state)
+        )
+        if task_claim_reconciliation.get("blocked", False):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "task_claim_reconciliation_blocked",
+                "reconciled_at": reconciled_at,
+                "task_id": task_id,
+                "attempt": attempt,
+                "attempt_recovery": attempt_recovery,
+                "task_claim_reconciliation": task_claim_reconciliation,
+                "protected_path_reconciliation": (
+                    protected_path_reconciliation
+                ),
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
 
         stale_lock_cleared = False
         if lock_path.exists():
@@ -8082,6 +8506,7 @@ class PortalImplementationDaemon:
             "task_id": task_id,
             "attempt": attempt,
             "attempt_recovery": attempt_recovery,
+            "task_claim_reconciliation": task_claim_reconciliation,
             "protected_path_reconciliation": (
                 protected_path_reconciliation
             ),
