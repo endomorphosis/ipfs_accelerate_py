@@ -28,7 +28,7 @@ import stat
 import subprocess
 import tempfile
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -64,6 +64,7 @@ from .services import (
 PROOF_REUSE_CONTROLLER_PUBLICATION_INTERFACE: Final = (
     "ProofReuseControllerPublicationTransaction@1"
 )
+CONTROLLER_CANDIDATE_PUBLISHER_INTERFACE: Final = "ControllerCandidatePublisher@2"
 ISSUED_CERTIFICATE_PUBLICATION_RESULT_INTERFACE: Final = (
     "IssuedCertificatePublicationResult@1"
 )
@@ -2327,8 +2328,421 @@ class ProofReuseControllerPublicationTransaction:
         )
 
 
+class ControllerCandidatePublisher:
+    """Controller-only signed-receipt and candidate publication authority (PTR-164).
+
+    Implements ``ControllerCandidatePublisher@2``.
+
+    * Only the controller role may sign terminal setup/call/teardown passes.
+    * Workers supply bounded public envelopes and never private keys or witnesses.
+    * Signing produces public runner-attestation bytes retained with the candidate.
+    * Publication delegates to
+      :class:`ProofReuseControllerPublicationTransaction` so partial or racing
+      writes never become skip-authorizing index entries.
+    * Private key material is never serialized into intents, packets, or logs.
+    """
+
+    interface: str = CONTROLLER_CANDIDATE_PUBLISHER_INTERFACE
+
+    def __init__(
+        self,
+        *,
+        role: str = "controller",
+        private_key: Any = None,
+        trust_policy: Any = None,
+        nonce_registry: Any = None,
+        transaction: ProofReuseControllerPublicationTransaction | None = None,
+        store: Any = None,
+        candidate_store: Any = None,
+        issuer: Any = None,
+        owner_id: str = "",
+        artifact_bindings: Groth16ArtifactIdentityBindings | None = None,
+        metrics: Any = None,
+        clock: Callable[[], int] | None = None,
+        test_only_verification_backend: Any = None,
+    ) -> None:
+        self.role = _bounded_text(role, max_chars=32).lower() or "controller"
+        self._private_key = private_key
+        self._trust_policy = trust_policy
+        self._nonce_registry = nonce_registry
+        self._transaction = transaction
+        self._store = store
+        self._candidate_store = candidate_store
+        self._issuer = issuer
+        self._owner_id = _bounded_text(owner_id, max_chars=128)
+        self._artifact_bindings = artifact_bindings
+        self._metrics = metrics
+        self._clock = clock
+        self._test_only_verification_backend = test_only_verification_backend
+        self._lock = threading.RLock()
+        self._signed_intents: set[str] = set()
+
+    @property
+    def is_controller(self) -> bool:
+        return self.role in {"controller", "master", "gwmaster", ""}
+
+    @property
+    def can_sign(self) -> bool:
+        return (
+            self.is_controller
+            and self._private_key is not None
+            and self._trust_policy is not None
+        )
+
+    @property
+    def can_publish(self) -> bool:
+        return self.is_controller
+
+    def _ensure_transaction(self) -> ProofReuseControllerPublicationTransaction:
+        if self._transaction is not None:
+            return self._transaction
+        self._transaction = ProofReuseControllerPublicationTransaction(
+            store=self._store,
+            candidate_store=self._candidate_store,
+            issuer=self._issuer,
+            owner_id=self._owner_id,
+            artifact_bindings=self._artifact_bindings,
+            metrics=self._metrics,
+            test_only_verification_backend=self._test_only_verification_backend,
+        )
+        return self._transaction
+
+    def sign_complete_pass(
+        self,
+        receipt: Any,
+        *,
+        candidate_context_cid: str,
+        issuance_nonce: str | None = None,
+        issued_at: int | None = None,
+    ) -> tuple[Any | None, str]:
+        """Controller-sign one admitted complete pass; workers always fail.
+
+        Returns ``(attestation_or_none, reason_code)``.  Never raises.  Never
+        returns private key material.
+        """
+
+        if not self.is_controller:
+            return None, "worker_cannot_sign"
+        if self._private_key is None or self._trust_policy is None:
+            return None, "controller_signing_material_unavailable"
+        try:
+            from ...agent_supervisor.proof.test_execution_contracts import (
+                TestPassReceipt,
+            )
+            from .runner_pass_attestation import attest_test_pass_receipt
+
+            if not isinstance(receipt, TestPassReceipt):
+                if isinstance(receipt, Mapping):
+                    receipt = TestPassReceipt.from_dict(receipt)
+                else:
+                    return None, "receipt_invalid"
+            if not receipt.admitted or not receipt.all_phases_pass:
+                return None, "receipt_not_complete_pass"
+            now = (
+                int(issued_at)
+                if issued_at is not None
+                else (int(self._clock()) if self._clock is not None else None)
+            )
+            attestation = attest_test_pass_receipt(
+                receipt,
+                private_key=self._private_key,
+                policy=self._trust_policy,
+                candidate_context_cid=str(candidate_context_cid or ""),
+                issuance_nonce=issuance_nonce,
+                issued_at=now,
+                nonce_registry=self._nonce_registry,
+            )
+            return attestation, "signed"
+        except Exception as exc:
+            return None, f"controller_sign_failed:{type(exc).__name__}"[:128]
+
+    def public_attestation_envelope(
+        self,
+        attestation: Any,
+        *,
+        signed_receipt: Any = None,
+    ) -> dict[str, Any] | None:
+        """Project attestation to a public-only mapping (no private fields)."""
+
+        try:
+            payload: dict[str, Any] = {}
+            if attestation is None:
+                return None
+            if hasattr(attestation, "to_dict"):
+                raw = attestation.to_dict()
+                if isinstance(raw, Mapping):
+                    payload = {
+                        key: value
+                        for key, value in raw.items()
+                        if "private" not in str(key).lower()
+                        and "secret" not in str(key).lower()
+                        and "witness" not in str(key).lower()
+                        and "seed" not in str(key).lower()
+                    }
+            elif isinstance(attestation, Mapping):
+                payload = {
+                    key: value
+                    for key, value in attestation.items()
+                    if "private" not in str(key).lower()
+                    and "secret" not in str(key).lower()
+                    and "witness" not in str(key).lower()
+                }
+            else:
+                return None
+            if signed_receipt is not None and hasattr(signed_receipt, "to_dict"):
+                try:
+                    payload["signed_receipt"] = signed_receipt.to_dict()
+                except Exception:
+                    pass
+            # Never include private key handles.
+            payload.pop("private_key", None)
+            payload.pop("signing_key", None)
+            return payload
+        except Exception:
+            return None
+
+    def retain_signed_attestation(
+        self,
+        *,
+        attestation: Any,
+        receipt: Any = None,
+    ) -> tuple[bool, str]:
+        """Retain immutable public attestation/receipt bytes without indexing."""
+
+        if not self.is_controller:
+            return False, "worker_cannot_publish"
+        store = self._candidate_store
+        if store is None:
+            return False, "candidate_store_unavailable"
+        put_bytes = getattr(store, "put_canonical_bytes", None)
+        if not callable(put_bytes):
+            return False, "put_canonical_bytes_unavailable"
+        retained = False
+        try:
+            for material in (attestation, receipt):
+                if material is None:
+                    continue
+                raw = None
+                if isinstance(material, (bytes, bytearray)):
+                    raw = bytes(material)
+                else:
+                    canonical = getattr(material, "canonical_bytes", None)
+                    if callable(canonical):
+                        raw = bytes(canonical())
+                if raw:
+                    put_bytes(raw)
+                    retained = True
+            return retained, "retained" if retained else "nothing_to_retain"
+        except Exception:
+            return False, "retain_failed"
+
+    def publish(
+        self,
+        intent: Any,
+        *,
+        store: Any = None,
+        candidate_store: Any = None,
+        issuer: Any = None,
+        deferred_request: Mapping[str, Any] | None = None,
+        candidate_components: Mapping[str, bytes] | None = None,
+        publication_envelope: Any = None,
+        candidate_context_cid: str = "",
+        sign: bool = True,
+    ) -> IssuedCertificatePublicationResult:
+        """Controller-only sign (optional) then atomic publish.
+
+        Workers always receive a non-published RUN result.  Partial or racing
+        writes never produce an indexed skip-authorizing candidate.
+        """
+
+        if not self.is_controller:
+            return IssuedCertificatePublicationResult(
+                published=False,
+                indexed=False,
+                put_candidate_called=False,
+                status="run",
+                reason_code="worker_cannot_publish",
+                action="RUN",
+                diagnostics=MappingProxyType(
+                    {
+                        "stage": "controller_only",
+                        "role": self.role,
+                    }
+                ),
+            )
+
+        with self._lock:
+            # Optional controller signature of the terminal pass receipt.
+            attestation = None
+            sign_reason = "not_requested"
+            if sign and self.can_sign:
+                receipt = getattr(intent, "receipt", intent)
+                context_cid = (
+                    candidate_context_cid
+                    or str(
+                        getattr(publication_envelope, "candidate_context_cid", "")
+                        or getattr(intent, "locator_cid", "")
+                        or ""
+                    )
+                )
+                attestation, sign_reason = self.sign_complete_pass(
+                    receipt,
+                    candidate_context_cid=context_cid,
+                )
+                if attestation is not None:
+                    self.retain_signed_attestation(
+                        attestation=attestation,
+                        receipt=receipt,
+                    )
+                    # Attach public attestation bytes into candidate components
+                    # for later warm-path trust verification.
+                    try:
+                        att_bytes = bytes(attestation.canonical_bytes())
+                        components = dict(candidate_components or {})
+                        components["runner_attestation"] = att_bytes
+                        candidate_components = components
+                    except Exception:
+                        pass
+
+            transaction = self._ensure_transaction()
+            try:
+                outcome = transaction.publish_intent(
+                    intent,
+                    store=store if store is not None else self._store,
+                    candidate_store=(
+                        candidate_store
+                        if candidate_store is not None
+                        else self._candidate_store
+                    ),
+                    issuer=issuer if issuer is not None else self._issuer,
+                    deferred_request=deferred_request,
+                    candidate_components=candidate_components,
+                    publication_envelope=publication_envelope,
+                )
+            except Exception as exc:
+                return IssuedCertificatePublicationResult(
+                    published=False,
+                    indexed=False,
+                    put_candidate_called=False,
+                    status="run",
+                    reason_code="controller_publish_exception",
+                    action="RUN",
+                    diagnostics=MappingProxyType(
+                        {
+                            "stage": "controller_publish",
+                            "exception_type": type(exc).__name__[:64],
+                            "controller_sign_reason": sign_reason,
+                            "controller_signed": attestation is not None,
+                        }
+                    ),
+                )
+            # Annotate diagnostics with signing disposition (public only).
+            diagnostics = dict(getattr(outcome, "diagnostics", {}) or {})
+            diagnostics["controller_sign_reason"] = sign_reason
+            diagnostics["controller_signed"] = attestation is not None
+            if attestation is not None:
+                diagnostics["runner_attestation_cid"] = _bounded_text(
+                    getattr(attestation, "cid", "")
+                )
+            return IssuedCertificatePublicationResult(
+                interface=getattr(
+                    outcome,
+                    "interface",
+                    ISSUED_CERTIFICATE_PUBLICATION_RESULT_INTERFACE,
+                ),
+                published=bool(getattr(outcome, "published", False)),
+                status=str(getattr(outcome, "status", "deferred") or "deferred"),
+                reason_code=str(getattr(outcome, "reason_code", "") or ""),
+                receipt_cid=str(getattr(outcome, "receipt_cid", "") or ""),
+                certificate_cid=str(getattr(outcome, "certificate_cid", "") or ""),
+                candidate_context_cid=str(
+                    getattr(outcome, "candidate_context_cid", "") or ""
+                ),
+                indexed=bool(getattr(outcome, "indexed", False)),
+                put_candidate_called=bool(
+                    getattr(outcome, "put_candidate_called", False)
+                ),
+                non_authoritative_retained=bool(
+                    getattr(outcome, "non_authoritative_retained", False)
+                ),
+                action=str(getattr(outcome, "action", "DEFERRED") or "DEFERRED"),
+                diagnostics=MappingProxyType(diagnostics),
+            )
+
+    def reject_worker_private_material(
+        self, payload: Mapping[str, Any] | None
+    ) -> tuple[bool, str]:
+        """Return ``(accepted, reason)`` after scanning for private markers."""
+
+        if payload is None:
+            return True, "empty"
+        if not isinstance(payload, Mapping):
+            return False, "payload_not_mapping"
+        private_markers = (
+            "private",
+            "secret",
+            "witness",
+            "seed",
+            "proving_key",
+            "signing_key",
+            "private_key",
+        )
+        stack: list[Any] = [payload]
+        seen = 0
+        while stack and seen < 256:
+            seen += 1
+            current = stack.pop()
+            if isinstance(current, Mapping):
+                for key, value in current.items():
+                    lowered = str(key).lower().replace("-", "_")
+                    if any(marker in lowered for marker in private_markers):
+                        return False, f"private_field:{lowered[:64]}"
+                    if isinstance(value, (Mapping, list, tuple)):
+                        stack.append(value)
+            elif isinstance(current, (list, tuple)):
+                stack.extend(list(current)[:64])
+        return True, "public_only"
+
+
+def build_controller_candidate_publisher(
+    *,
+    role: str = "controller",
+    private_key: Any = None,
+    trust_policy: Any = None,
+    nonce_registry: Any = None,
+    transaction: ProofReuseControllerPublicationTransaction | None = None,
+    store: Any = None,
+    candidate_store: Any = None,
+    issuer: Any = None,
+    owner_id: str = "",
+    artifact_bindings: Groth16ArtifactIdentityBindings | None = None,
+    metrics: Any = None,
+    clock: Callable[[], int] | None = None,
+    test_only_verification_backend: Any = None,
+) -> ControllerCandidatePublisher:
+    """Factory for the controller-only candidate publisher."""
+
+    return ControllerCandidatePublisher(
+        role=role,
+        private_key=private_key,
+        trust_policy=trust_policy,
+        nonce_registry=nonce_registry,
+        transaction=transaction,
+        store=store,
+        candidate_store=candidate_store,
+        issuer=issuer,
+        owner_id=owner_id,
+        artifact_bindings=artifact_bindings,
+        metrics=metrics,
+        clock=clock,
+        test_only_verification_backend=test_only_verification_backend,
+    )
+
+
 __all__ = [
+    "CONTROLLER_CANDIDATE_PUBLISHER_INTERFACE",
     "CONTROLLER_V2_VERIFICATION_CONTEXT_INTERFACE",
+    "ControllerCandidatePublisher",
     "ControllerV2VerificationContext",
     "GROTH16_ARTIFACT_IDENTITY_BINDINGS_INTERFACE",
     "Groth16ArtifactIdentityBindings",
@@ -2336,5 +2750,6 @@ __all__ = [
     "IssuedCertificatePublicationResult",
     "PROOF_REUSE_CONTROLLER_PUBLICATION_INTERFACE",
     "ProofReuseControllerPublicationTransaction",
+    "build_controller_candidate_publisher",
     "verify_test_execution_certificate_v2_for_publication",
 ]

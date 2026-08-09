@@ -5024,6 +5024,10 @@ def compose_default_proof_reuse_services(
         try:
             from .lookup import build_proof_reuse_two_stage_lookup
 
+            # PTR-164: two-stage warm lookup implements TwoStageCandidateLookup@2
+            # with an optional signed-receipt trust gate before proof work.
+            # Trust policy material is session-provisioned; absence fails open
+            # to RUN on the warm path rather than blocking composition.
             resolved_lookup = build_proof_reuse_two_stage_lookup(
                 candidate_context_store=resolved_candidate_store,
                 certificate_provider=resolved_provider,
