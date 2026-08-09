@@ -3113,17 +3113,35 @@ def test_review_policy_denies_codex_openai_revoked_and_self_review(
     assert any(error_fragment in error for error in errors)
 
 
-def test_ase3_027_stale_final_blob_freeze_fails_closed_before_acceptance(
+def test_ase3_027_final_blob_freeze_is_sealed_and_validates_implementation(
 ) -> None:
-    payload, _, authority = _operator_repair_receipt_027()
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-027"
+    ]
+    assert final_values["ready"] is True
+    assert final_values["pending"] is None
+    assert final_values["validation_passed_count"] == 174
+    assert len(final_values["generations"]) == 2
+    assert len(final_values["final_blobs"]) == 5
 
+    payload, _, authority = _operator_repair_receipt_027()
     errors = validate_operator_repair_acceptance_receipt(
         payload,
         task_id="ASE3-027",
         repo_root=REPO_ROOT,
         lifecycle_authority=authority,
     )
-    assert any("final product values are not populated" in error for error in errors)
+    assert not any(
+        "final product values are not populated" in error for error in errors
+    )
+    # Implementation topology and final blobs are sealed; remaining errors (if
+    # any) must not be the pre-freeze sentinel gate.
+    impl_errors = [
+        error
+        for error in errors
+        if "implementation" in error and "final product values" in error
+    ]
+    assert impl_errors == []
 
     recovery = payload["recovery"]
     assert isinstance(recovery, dict)
@@ -3138,12 +3156,23 @@ def test_ase3_027_stale_final_blob_freeze_fails_closed_before_acceptance(
         "ASE3-027.recovery: exact key population required" in error
         for error in errors
     )
-    assert (
-        convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES["ASE3-027"][
-            "pending"
-        ]
-        == convergence_module._FINAL_VALUE_PENDING_027_FINAL_BLOBS
+
+
+def test_ase3_027_final_blob_tamper_fails_closed_after_freeze() -> None:
+    payload, _, authority = _operator_repair_receipt_027()
+    implementation = payload["implementation"]
+    assert isinstance(implementation, dict)
+    blobs = dict(implementation["final_blobs"])
+    first_path = next(iter(blobs))
+    blobs[first_path] = "0" * 40
+    implementation["final_blobs"] = blobs
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-027",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
     )
+    assert any("final_blobs" in error for error in errors)
 
 
 def test_ase3_027_generation_rejects_wrong_patch_path_and_topology() -> None:

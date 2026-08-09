@@ -2070,10 +2070,10 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
     "evidence rather than being rewritten or reclassified."
 )
 
-# Acceptance phase constants are deliberately gathered here.  Historical
-# ASE3-027 generations are reconstructable, but its final P-tree blob map is
-# not frozen yet.  ASE3-019, ASE3-023, ASE3-030, and the reload generation also
-# need final integration identities.  These sentinels must be replaced in the
+# Acceptance phase constants are deliberately gathered here.  ASE3-027
+# source/integrated generations and final P-tree blob map are frozen against
+# Git.  ASE3-019, ASE3-023, ASE3-030, and the reload generation still need
+# final integration identities.  Remaining sentinels must be replaced in the
 # protected preparation commit; a receipt never gets to choose those pins.
 #
 # The lifecycle schemas are fixed, but the protected root/profile/authorship
@@ -3228,8 +3228,8 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
         "validation_passed_count": -1,
     },
     "ASE3-027": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_027_FINAL_BLOBS,
+        "ready": True,
+        "pending": None,
         "generations": (
             {
                 "role": "product",
