@@ -974,7 +974,7 @@ validation and evidence contract.
 
 ## LFP-031 Implement Hoare, contract, dynamic-logic, and verification-condition syntax
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
