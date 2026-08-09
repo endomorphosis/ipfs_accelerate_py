@@ -1346,7 +1346,7 @@ validation and evidence contract.
 
 ## LFP-043 Join differential, metamorphic, reconstruction, and end-to-end evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
