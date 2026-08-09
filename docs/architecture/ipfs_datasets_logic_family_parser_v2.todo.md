@@ -381,7 +381,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-012 Converge TPTP and TSTP on shared typed artifacts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
