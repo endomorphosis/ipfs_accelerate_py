@@ -106,11 +106,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     birth = subcommands.add_parser("birth", help="perform exactly birth")
     birth.add_argument(
+        "--repo-root",
+        default=".",
+        help="repository root (default: cwd)",
+    )
+    birth.add_argument(
+        "--target-ref",
+        default="refs/heads/main",
+        help="protected target ref to publish (default: refs/heads/main)",
+    )
+    birth.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="build and validate the birth candidate without publishing",
+    )
+    birth.add_argument(
         "--evidence",
         action="append",
         type=_evidence,
-        required=True,
-        help="inline canonical bounded evidence-handle JSON; repeatable",
+        default=[],
+        help="optional bounded evidence handles (compat)",
     )
     return parser
 
@@ -232,6 +247,15 @@ def main(
                 build_parser().error(
                     f"advance-one-phase does not yet auto-compose phase {phase}"
                 )
+        elif arguments.command == "birth":
+            from .protected_acceptance_advance_birth import advance_prompt_v3_birth
+
+            result = advance_prompt_v3_birth(
+                repo_root=getattr(arguments, "repo_root", "."),
+                target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
+                dry_run=bool(getattr(arguments, "dry_run", False)),
+                publish=not bool(getattr(arguments, "dry_run", False)),
+            )
         elif arguments.command != "inspect":
             build_parser().error(
                 "production command requires injected protected composition"
