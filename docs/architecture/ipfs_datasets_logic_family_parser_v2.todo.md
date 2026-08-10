@@ -443,7 +443,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-014 Converge protocol, Tamarin, and program frontends
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
