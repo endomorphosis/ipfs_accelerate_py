@@ -10875,6 +10875,86 @@ class PortalImplementationDaemon:
                 validation_proof["validation_receipt_ids"] = list(
                     dict.fromkeys([receipt_id, *prior_ids])
                 )
+        # Rebuild the execution receipt so completion binding still matches
+        # the rebound tree / proof digests / receipt id set.
+        proposal_receipt_id = str(proposal_gate.get("receipt_id") or "").strip()
+        results = validation_proof.get("results")
+        if not isinstance(results, Sequence) or isinstance(
+            results, (str, bytes, bytearray)
+        ):
+            results = (
+                rebound.get("validation_report", {}).get("results")
+                if isinstance(rebound.get("validation_report"), Mapping)
+                else ()
+            )
+        result_records = [
+            item for item in (results or ()) if isinstance(item, Mapping)
+        ]
+        validation_result_digests = tuple(
+            str(item.get("validation_result_digest") or "").strip()
+            for item in result_records
+            if str(item.get("validation_result_digest") or "").strip()
+        )
+        validation_ids = tuple(
+            str(item.get("validation_id") or "").strip()
+            for item in result_records
+            if str(item.get("validation_id") or "").strip()
+        )
+        if (
+            proposal_receipt_id
+            and result_records
+            and len(validation_result_digests) == len(result_records)
+            and len(validation_ids) == len(result_records)
+        ):
+            task_cid = str(
+                metadata.get("canonical_task_cid")
+                or getattr(task, "task_cid", "")
+                or ""
+            ).strip()
+            source_identity = metadata.get("task_source_identity")
+            source_identity_id = (
+                str(source_identity.get("identity_id") or "").strip()
+                if isinstance(source_identity, Mapping)
+                else str(self.task_source.identity.identity_id or "").strip()
+            )
+            selection = validation_proof.get("selection")
+            selection_scope = (
+                str(selection.get("scope") or "")
+                if isinstance(selection, Mapping)
+                else "pre_merge"
+            )
+            if not isinstance(validation_proof.get("results"), list):
+                validation_proof["results"] = list(result_records)
+            execution_receipt = DuckDBValidationExecutionReceipt(
+                task_cid=task_cid,
+                task_source_identity_id=source_identity_id,
+                target_commit=str(candidate_commit or "").strip().lower(),
+                target_tree=merge_tree_id,
+                selection_scope=selection_scope,
+                validation_result_digests=validation_result_digests,
+                validation_ids=validation_ids,
+                proposal_receipt_id=proposal_receipt_id,
+                compact_proof_digest=_duckdb_compact_validation_proof_digest(
+                    validation_proof
+                ),
+            )
+            validation_proof["validation_execution_receipt"] = (
+                execution_receipt.to_record()
+            )
+            receipt_ids = [
+                str(item).strip()
+                for item in (validation_proof.get("validation_receipt_ids") or ())
+                if str(item).strip()
+            ]
+            validation_proof["validation_receipt_ids"] = list(
+                dict.fromkeys(
+                    [
+                        *receipt_ids,
+                        execution_receipt.receipt_id,
+                    ]
+                )
+            )
+
         metadata["validation_proof"] = validation_proof
         metadata["candidate_tree"] = merge_tree_id
         metadata["repository_tree_id"] = expected_tree_id
