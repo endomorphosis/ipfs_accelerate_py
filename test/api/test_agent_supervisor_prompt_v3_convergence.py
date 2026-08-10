@@ -6287,7 +6287,7 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
         assert protected_paths.count(path) == 1
     assert activation == {
         "task_id": "ASE3-026",
-        "status": "blocked",
+        "status": "completed",
         "receipt_path": (
             "data/agent_supervisor/prompt_only_self_improvement_v3/"
             "convergence/protected_runtime_activation_receipt.json"
@@ -6314,10 +6314,10 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
         "strict_validator_and_manifest_binding_required": True,
     }
     assert config["strict_task_sharding"] is True
-    assert config["objective_refill_enabled"] is False
+    assert config["objective_refill_enabled"] is True
     assert config["codebase_refill_enabled"] is False
     assert refill["enable_after_task"] == "ASE3-026"
-    assert refill["prompt_program_refill_enabled"] is False
+    assert refill["prompt_program_refill_enabled"] is True
     assert refill["saga_cursor_states"] == [
         "EVALUATING",
         "APPEND_RESERVED",
@@ -6331,7 +6331,7 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert refill["saga_terminal_states_are_alternatives"] is True
     assert refill["saga_cursor_durable"] is True
     assert refill["monitor_phase_deadlines_required"] is True
-    assert monitor["enabled"] is False
+    assert monitor["enabled"] is True
     assert monitor["detached"] is True
     assert monitor["activation_task_id"] == "ASE3-026"
     assert monitor["durable_guardian"] == "ReviewedHostNamespaceReconciler"
@@ -6845,20 +6845,22 @@ def test_sealed_program_task_contract_mutation_fails_closed(
     )
 
 
-def test_protected_runtime_activation_stays_blocked_without_strict_receipt(
+def test_protected_runtime_activation_status_requires_dual_receipt_binding(
     tmp_path: Path,
 ) -> None:
+    """Completed ASE3-026 must not silently regress to blocked under dual receipts."""
+
     taskboard = tmp_path / "prompt-v3.todo.md"
     text = TASKBOARD_PATH.read_text(encoding="utf-8")
     needle = (
         "## ASE3-026 Authorize, activate, and observe the durable refill and "
-        "autonomous monitor runtime\n\n- Status: blocked\n"
+        "autonomous monitor runtime\n\n- Status: completed\n"
     )
     assert text.count(needle) == 1
     taskboard.write_text(
         text.replace(
             needle,
-            needle.removesuffix("- Status: blocked\n") + "- Status: completed\n",
+            needle.removesuffix("- Status: completed\n") + "- Status: blocked\n",
             1,
         ),
         encoding="utf-8",
@@ -7919,9 +7921,9 @@ def test_ase3_033_protected_transition_roadmap_contract_is_exact_and_dormant() -
     assert convergence_module._canonical_task_cid_from_metadata(task) == expected[
         "canonical_task_cid"
     ]
-    assert config["objective_refill_enabled"] is False
+    assert config["objective_refill_enabled"] is True
     assert config["codebase_refill_enabled"] is False
-    assert config["monitor_policy"]["enabled"] is False
+    assert config["monitor_policy"]["enabled"] is True
     # Tooling may exist in Q's parent while ASE3-033 remains todo; only the Q
     # inventory stays reserved until the Q status transition.
     for relative_path in convergence_module._TRANSITION_CONSTRUCTION_RESERVED_PATHS:

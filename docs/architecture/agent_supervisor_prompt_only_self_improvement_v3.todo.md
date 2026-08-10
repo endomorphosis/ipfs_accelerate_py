@@ -844,7 +844,7 @@ Closeout:           ASE3-014
 
 ## ASE3-026 Authorize, activate, and observe the durable refill and autonomous monitor runtime
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
