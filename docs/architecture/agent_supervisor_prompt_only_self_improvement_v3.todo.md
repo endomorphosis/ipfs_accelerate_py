@@ -771,7 +771,7 @@ Closeout:           ASE3-014
 
 ## ASE3-025 Prove canonical generated boards execute through the real adaptive runtime
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
