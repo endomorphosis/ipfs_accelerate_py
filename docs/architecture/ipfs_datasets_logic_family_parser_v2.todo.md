@@ -1280,7 +1280,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-041 Add mu-calculus syntax and controlled CTL-star lowering
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
