@@ -3407,12 +3407,20 @@ class PortalImplementationDaemon:
         DQK-056 authenticates via a typed manual-gate CAS receipt rather than
         merge-train post-merge evidence. After repository rebind, that receipt
         remains restart-admissible when the pin is still first-parent history.
+
+        DQK-081 unchanged-generation refinement is the same class of gate: the
+        CAS event stores a content-bound rollover binding without an effect
+        commit. Admit those when the binding identity is present and the event
+        revision matches the completed task.
         """
 
         if self.task_source is None or self.task_source.source_kind != "duckdb":
             return set()
         events = self._duckdb_completed_status_events()
         exempt: set[str] = set()
+        rollover_binding_schema = (
+            "ipfs_datasets_py/duckdb-quack-manual-gate-rollover-binding@2"
+        )
         for task in completed:
             event = events.get(task.task_cid)
             if not isinstance(event, Mapping):
@@ -3428,16 +3436,23 @@ class PortalImplementationDaemon:
             effect = receipt.get("effect_receipt")
             if not isinstance(effect, Mapping):
                 continue
-            effect_commit = str(effect.get("effect_commit") or "").strip().lower()
-            if not re.fullmatch(r"[0-9a-f]{40}", effect_commit):
-                continue
-            if not self._git_ref_is_ancestor(
-                effect_commit, self.resolved_merge_target_branch
-            ):
-                continue
             if int(body.get("task_revision") or 0) != int(task.revision):
                 continue
-            exempt.add(task.task_cid)
+            effect_commit = str(effect.get("effect_commit") or "").strip().lower()
+            if re.fullmatch(r"[0-9a-f]{40}", effect_commit):
+                if self._git_ref_is_ancestor(
+                    effect_commit, self.resolved_merge_target_branch
+                ):
+                    exempt.add(task.task_cid)
+                continue
+            # Unchanged-generation refinement (DQK-081): content-bound binding.
+            binding_id = str(effect.get("binding_id") or "").strip()
+            if (
+                effect.get("generation_changed") is False
+                and str(effect.get("schema") or "") == rollover_binding_schema
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", binding_id) is not None
+            ):
+                exempt.add(task.task_cid)
         return exempt
 
     def _load_tasks(self) -> list[PortalTask]:
