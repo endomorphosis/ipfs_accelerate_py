@@ -3175,6 +3175,63 @@ def test_ase3_027_final_blob_tamper_fails_closed_after_freeze() -> None:
     assert any("final_blobs" in error for error in errors)
 
 
+
+def test_ase3_019_source_and_salvage_freeze_is_sealed() -> None:
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-019"
+    ]
+    assert final_values["ready"] is True
+    assert final_values["pending"] is None
+    assert final_values["validation_passed_count"] == 160
+    source = final_values["source_candidate"]
+    assert source["source_commit"] == (
+        convergence_module._ASE3_019_ATTEMPT2_PRIOR_SEED["source_commit"]
+    )
+    assert source["source_tree"] == (
+        convergence_module._ASE3_019_ATTEMPT2_PRIOR_SEED["source_tree"]
+    )
+    salvage = final_values["salvage_base"]
+    assert salvage["branch"] == "agent/prompt-self-improvement-v3"
+    # Salvage tip is a main-reachable integrated product commit.
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO_ROOT),
+                "merge-base",
+                "--is-ancestor",
+                salvage["head"],
+                "HEAD",
+            ],
+            check=False,
+        ).returncode
+        == 0
+    )
+    tree = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", f"{salvage['head']}^{{tree}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert tree == salvage["tree"]
+    # Source remains available for incident reconstruction.
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO_ROOT),
+                "cat-file",
+                "-e",
+                f"{source['source_commit']}^{{commit}}",
+            ],
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
 def test_ase3_027_generation_rejects_wrong_patch_path_and_topology() -> None:
     expected = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
         "ASE3-027"

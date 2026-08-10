@@ -2072,9 +2072,11 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
 
 # Acceptance phase constants are deliberately gathered here.  ASE3-027
 # source/integrated generations and final P-tree blob map are frozen against
-# Git.  ASE3-019, ASE3-023, ASE3-030, and the reload generation still need
-# final integration identities.  Remaining sentinels must be replaced in the
-# protected preparation commit; a receipt never gets to choose those pins.
+# Git.  ASE3-019 source-candidate/salvage-base identities are frozen against
+# the attempt-2 seed and main-reachable provider-fallback integration tip.
+# ASE3-023, ASE3-030, and the reload generation still need final identities.
+# Remaining sentinels must be replaced in the protected preparation commit; a
+# receipt never gets to choose those pins.
 #
 # The lifecycle schemas are fixed, but the protected root/profile/authorship
 # values cannot be populated until the ASE3-019 generation is integrated.
@@ -3205,20 +3207,22 @@ _ACCEPTANCE_REVIEWER_FINAL_VALUES: Final = {
 }
 _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
     "ASE3-019": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_019,
+        "ready": True,
+        "pending": None,
+        # Attempt-2 incident seed (independent non-ancestor of Q parents).
         "source_candidate": {
-            "source_commit": _FINAL_VALUE_PENDING_019,
-            "source_tree": _FINAL_VALUE_PENDING_019,
+            "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+            "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
         },
+        # Main-reachable integrated tip of the provider-fallback product seal.
         "salvage_base": {
-            "head": _FINAL_VALUE_PENDING_019,
-            "tree": _FINAL_VALUE_PENDING_019,
-            "branch": _FINAL_VALUE_PENDING_019,
+            "head": "1bd07b7261c86e4cf8301b34dbaf9728fc6e7818",
+            "tree": "e20cf0acc9fe5d17ac439b9c9ddff6332810e583",
+            "branch": "agent/prompt-self-improvement-v3",
         },
         "generations": (),
         "final_blobs": {},
-        "validation_passed_count": -1,
+        "validation_passed_count": 160,
     },
     "ASE3-023": {
         "ready": False,

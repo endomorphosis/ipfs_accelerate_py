@@ -70,6 +70,11 @@ def _git_ok(repo: Path, *arguments: str) -> tuple[bool, str]:
     return True, completed.stdout.strip()
 
 
+
+def git_merge_base_is_ancestor(repo: Path, maybe_ancestor: str, tip: str) -> bool:
+    ok, _ = _git_ok(repo, "merge-base", "--is-ancestor", maybe_ancestor, tip)
+    return ok
+
 def _object_exists(repo: Path, object_id: str) -> bool:
     ok, _ = _git_ok(repo, "cat-file", "-e", f"{object_id}^{{commit}}")
     if ok:
@@ -194,6 +199,26 @@ def _product_status(repo: Path, task_id: str) -> dict[str, Any]:
     pending = final_values.get("pending")
     if not ready:
         blockers.append(f"final values not ready ({pending})")
+    # ASE3-019 freezes salvage identities rather than generation triples.
+    source_candidate = final_values.get("source_candidate") or {}
+    salvage_base = final_values.get("salvage_base") or {}
+    if task_id == "ASE3-019" and ready:
+        for field in ("source_commit", "source_tree"):
+            value = str(source_candidate.get(field) or "")
+            if not value or value.startswith("FILL_AFTER_") or not _object_exists(
+                repo, value
+            ):
+                blockers.append(f"source_candidate.{field} unavailable: {value}")
+        salvage_head = str(salvage_base.get("head") or "")
+        salvage_tree = str(salvage_base.get("tree") or "")
+        if not salvage_head or not _object_exists(repo, salvage_head):
+            blockers.append(f"salvage_base.head unavailable: {salvage_head}")
+        else:
+            ok, observed = _git_ok(repo, "rev-parse", f"{salvage_head}^{{tree}}")
+            if not ok or observed != salvage_tree:
+                blockers.append("salvage_base.tree mismatch against git")
+            if not git_merge_base_is_ancestor(repo, salvage_head, "HEAD"):
+                blockers.append("salvage_base.head is not an ancestor of HEAD")
     generations = final_values.get("generations") or ()
     generation_reports: list[dict[str, Any]] = []
     if not generations and task_id in {"ASE3-019", "ASE3-023", "ASE3-027"}:
