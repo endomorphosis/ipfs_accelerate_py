@@ -10971,6 +10971,23 @@ class PortalImplementationDaemon:
             "prior_packet_id": str(prior_evidence.get("packet_id") or ""),
             "rebound_packet_id": str(rebound.get("packet_id") or ""),
         }
+        # Verify reloads the claim from the queue; persist rebound evidence so
+        # completion and integrated-receipt checks see the tip-correct packet.
+        update_metadata = getattr(self.merge_queue, "update_claim_metadata", None)
+        if callable(update_metadata):
+            try:
+                update_metadata(request, metadata)
+            except Exception as exc:
+                self._record_event(
+                    "post_merge_evidence_tip_rebind_failed",
+                    {
+                        "task_id": task.task_id,
+                        "mode": "persist_claim_metadata",
+                        "error": f"{type(exc).__name__}: {exc}"[-2000:],
+                        "merge_tree": merge_tree_id,
+                    },
+                )
+                return None
         self._record_event(
             "post_merge_evidence_tip_rebound",
             {

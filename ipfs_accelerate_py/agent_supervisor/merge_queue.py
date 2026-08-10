@@ -869,6 +869,65 @@ class MergeQueue:
                 "claim token, generation, owner, or state is stale"
             )
 
+    def update_claim_metadata(
+        self,
+        request: MergeRequest,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        """Persist claim metadata for a live processing lease.
+
+        Used when tip-sensitive gates rebind sealed evidence against the current
+        merge-tree so later claim rereads observe the rebound packet.
+        """
+
+        if not isinstance(metadata, Mapping):
+            raise TypeError("metadata must be a mapping")
+        now = self._clock()
+        payload = json.dumps(
+            dict(metadata),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                raise MergeQueueFenceError(
+                    f"update_claim_metadata rejected for request "
+                    f"{request.request_id}: missing"
+                )
+            self._require_row_target(
+                row,
+                operation="update_claim_metadata",
+                request_id=request.request_id,
+            )
+            self._require_claim(row, request, operation="update_claim_metadata")
+            connection.execute(
+                """UPDATE merge_requests SET metadata_json=?, updated_at=?
+                   WHERE request_id=? AND status='processing'
+                     AND claim_token=? AND claim_generation=? AND consumer_id=?""",
+                (
+                    payload,
+                    now,
+                    request.request_id,
+                    request.claim_token,
+                    request.claim_generation,
+                    request.consumer_id,
+                ),
+            )
+            connection.commit()
+        # Keep the live claim object aligned with the durable row.
+        if isinstance(getattr(request, "metadata", None), dict):
+            request.metadata.clear()
+            request.metadata.update(dict(metadata))
+        else:
+            object.__setattr__(request, "metadata", dict(metadata))
+
     def complete(self, request: MergeRequest, metadata: Mapping[str, Any] | None = None) -> None:
         """Mark a claimed request complete; duplicate completion is harmless."""
 
