@@ -28,6 +28,22 @@ from types import MappingProxyType
 from typing import Any, Callable, Final, Iterable, Mapping, Sequence
 
 from .formal_replanner import RepairTransition
+from .deterministic_failure_memory import (
+    AttemptRouteKind,
+    DCR_REPLAN_EVIDENCE,
+    FAILURE_MEMORY_INTERFACE,
+    FailureAttempt,
+    FailureClass,
+    FailureMemory,
+    FailureMemoryError,
+    FailureMemoryReceipt,
+    REPLAN_DECISION_INTERFACE,
+    ReplanDecision,
+    ReplanDisposition,
+    RetryMeasure,
+    decide_replan,
+    is_provider_or_model_route,
+)
 from ..proof.formal_verification_contracts import canonical_json, content_identity
 from ..objectives.adaptive_goal_refiner import (
     NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
@@ -2750,10 +2766,22 @@ class HardConstrainedPlanSelectionReceipt:
 class AdaptivePlanner:
     """Select an admissible branch for one frozen goal and emit its evidence."""
 
-    def __init__(self, *, max_candidates: int = 32) -> None:
+    def __init__(
+        self,
+        *,
+        max_candidates: int = 32,
+        failure_memory: FailureMemory | None = None,
+    ) -> None:
         self.max_candidates = _integer(
             max_candidates, "max_candidates", minimum=1
         )
+        if failure_memory is not None and not isinstance(
+            failure_memory, FailureMemory
+        ):
+            raise AdaptivePlannerValidationError(
+                "failure_memory must be deterministic FailureMemory or None"
+            )
+        self.failure_memory = failure_memory or FailureMemory()
 
     def select_hard_constrained(
         self,
@@ -3052,18 +3080,48 @@ class AdaptivePlanner:
         model_provider: Callable[[Any], Any] | None = None,
         model_provider_id: str = "model-proposal",
         allow_model: bool = True,
+        replan_attempt: FailureAttempt | Mapping[str, Any] | None = None,
+        proposed_candidate_cid: str = "",
+        proposed_route_kind: AttemptRouteKind | str = AttemptRouteKind.DETERMINISTIC_REPLAN,
     ) -> Any:
         """Generate, independently gate, evaluate, and select bounded plans.
 
         Supplying an ``ObligationGraph@1`` activates the deterministic-first
         symbolic portfolio.  Context-only callers retain the established
         adaptive routing behavior.
+
+        When ``replan_attempt`` is provided, DCR-063 typed failure memory is
+        consulted first: unchanged inputs emit no work, provider/model routes
+        are rejected, and refuted candidates cannot be reselected.
         """
 
         if not isinstance(frozen_goal, FrozenPlanningGoal):
             raise AdaptivePlannerValidationError(
                 "frozen_goal must be FrozenPlanningGoal"
             )
+        typed_memory = (
+            _coerce_typed_failure_memory(failure_memory) or self.failure_memory
+        )
+        replan_gate = None
+        if replan_attempt is not None:
+            replan_gate = self.decide_replan(
+                replan_attempt,
+                failure_memory=typed_memory,
+                proposed_candidate_cid=proposed_candidate_cid,
+                proposed_route_kind=proposed_route_kind,
+                record=True,
+            )
+            decision = (
+                replan_gate.decision
+                if isinstance(replan_gate, FailureMemoryReceipt)
+                else replan_gate
+            )
+            if not decision.should_replan:
+                return replan_gate
+            # Retry/rescue never escalates to a provider/model route.
+            allow_model = False
+            model_provider = None
+            providers = None
         if obligation_graph is not None:
             if baseline_factory is not None:
                 raise AdaptivePlannerValidationError(
@@ -3074,7 +3132,7 @@ class AdaptivePlanner:
                 obligation_graph,
                 context,
                 bounds=symbolic_bounds,
-                failure_memory=failure_memory,
+                failure_memory=failure_memory if typed_memory is None else typed_memory,
                 failure_scope=failure_scope,
                 model_provider=model_provider,
                 provider_id=model_provider_id,
@@ -3136,6 +3194,9 @@ class AdaptivePlanner:
         this module's established candidate, receipt, and evaluator contracts,
         while the legacy adaptive import surface remains acyclic and model
         client free.
+
+        Typed :class:`FailureMemory` instances force ``allow_model=False`` on
+        retry/rescue paths so provider/model nodes remain unreachable.
         """
 
         from .symbolic_candidate_planner import (
@@ -3143,6 +3204,11 @@ class AdaptivePlanner:
             SymbolicCandidatePlanner,
         )
 
+        typed_memory = _coerce_typed_failure_memory(failure_memory)
+        if typed_memory is not None and typed_memory.refuted_candidate_cids:
+            # Presence of typed refutations means we are on a retry path.
+            allow_model = False
+            model_provider = None
         resolved_bounds = (
             bounds
             if bounds is not None
@@ -3162,13 +3228,62 @@ class AdaptivePlanner:
             obligation_graph,
             frozen_goal,
             context,
-            failure_memory=failure_memory,
+            failure_memory=failure_memory if typed_memory is None else failure_memory,
             failure_scope=failure_scope,
             model_provider=model_provider,
             provider_id=provider_id,
             allow_model=allow_model,
             hard_gate_evaluator=hard_gate_evaluator,
         )
+
+    def decide_replan(
+        self,
+        attempt: FailureAttempt | Mapping[str, Any],
+        *,
+        failure_memory: FailureMemory | None = None,
+        proposed_candidate_cid: str = "",
+        proposed_route_kind: AttemptRouteKind | str = AttemptRouteKind.DETERMINISTIC_REPLAN,
+        record: bool = True,
+        observed_at_milliseconds: int = 1,
+    ) -> ReplanDecision | FailureMemoryReceipt:
+        """Adaptive entry point for DCR-063 non-thrashing replan decisions."""
+
+        memory = failure_memory or self.failure_memory
+        if not isinstance(memory, FailureMemory):
+            raise AdaptivePlannerValidationError(
+                "failure_memory must be deterministic FailureMemory"
+            )
+        try:
+            if record:
+                return memory.record_attempt(
+                    attempt,
+                    observed_at_milliseconds=observed_at_milliseconds,
+                    proposed_candidate_cid=proposed_candidate_cid,
+                    proposed_route_kind=proposed_route_kind,
+                )
+            return decide_replan(
+                attempt,
+                memory=memory,
+                proposed_candidate_cid=proposed_candidate_cid,
+                proposed_route_kind=proposed_route_kind,
+            )
+        except FailureMemoryError as exc:
+            raise AdaptivePlannerValidationError(str(exc)) from exc
+
+    def filter_refuted_candidates(
+        self,
+        candidate_cids: Iterable[str],
+        *,
+        failure_memory: FailureMemory | None = None,
+    ) -> tuple[str, ...]:
+        """Exclude candidates already refuted by typed failure memory."""
+
+        memory = failure_memory or self.failure_memory
+        if not isinstance(memory, FailureMemory):
+            raise AdaptivePlannerValidationError(
+                "failure_memory must be deterministic FailureMemory"
+            )
+        return memory.filter_admissible_candidates(tuple(candidate_cids))
 
 
 class AdaptivePlanReceiptStore:
@@ -4727,6 +4842,16 @@ def select_hard_constrained_plan(
     )
 
 
+def _coerce_typed_failure_memory(value: Any) -> FailureMemory | None:
+    """Accept only DCR-063 typed memory; leave plan-failure snapshots alone."""
+
+    if value is None:
+        return None
+    if isinstance(value, FailureMemory):
+        return value
+    return None
+
+
 def plan_adaptively(
     frozen_goal: FrozenPlanningGoal,
     context: Mapping[str, Any],
@@ -4745,6 +4870,9 @@ def plan_adaptively(
     model_provider: Callable[[Any], Any] | None = None,
     model_provider_id: str = "model-proposal",
     allow_model: bool = True,
+    replan_attempt: FailureAttempt | Mapping[str, Any] | None = None,
+    proposed_candidate_cid: str = "",
+    proposed_route_kind: AttemptRouteKind | str = AttemptRouteKind.DETERMINISTIC_REPLAN,
 ) -> Any:
     """Functional full-pipeline wrapper around :meth:`AdaptivePlanner.plan`."""
 
@@ -4761,6 +4889,9 @@ def plan_adaptively(
         model_provider=model_provider,
         model_provider_id=model_provider_id,
         allow_model=allow_model,
+        replan_attempt=replan_attempt,
+        proposed_candidate_cid=proposed_candidate_cid,
+        proposed_route_kind=proposed_route_kind,
     )
 
 
@@ -4805,6 +4936,7 @@ __all__ = [
     "AND_OR_SEARCH_REQUIREMENT_ID",
     "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
     "AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID",
+    "DCR_REPLAN_EVIDENCE",
     "EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA",
     "EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS",
     "EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA",
@@ -4812,6 +4944,8 @@ __all__ = [
     "EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION",
     "EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS",
     "EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS",
+    "FAILURE_MEMORY_INTERFACE",
+    "REPLAN_DECISION_INTERFACE",
     "AdaptivePlanCandidate",
     "AdaptivePlanReceiptStore",
     "AdaptivePlanSelectionReceipt",
@@ -4829,21 +4963,32 @@ __all__ = [
     "AndOrProvider",
     "AndOrSearchBounds",
     "AndOrSearchReceipt",
+    "AttemptRouteKind",
     "AuthorityNonCompensationEvidence",
     "EvidenceAwarePlanningCompletionEvidence",
+    "FailureAttempt",
+    "FailureClass",
+    "FailureMemory",
+    "FailureMemoryError",
+    "FailureMemoryReceipt",
     "FrozenPlanningGoal",
     "GateProducerKind",
     "HardConstraintReceipt",
     "HardConstrainedPlanSelectionReceipt",
     "HardGateEvaluator",
     "HardPlanConstraint",
+    "ReplanDecision",
+    "ReplanDisposition",
+    "RetryMeasure",
     "adaptive_plan_candidate_snapshot_id",
     "compile_and_or_plan_graph",
     "compile_typed_goal",
     "compile_typed_goal_to_and_or_graph",
+    "decide_replan",
     "deterministic_hard_gate_receipts",
     "evaluate_and_or_plan_promotion",
     "evaluate_and_or_planner_promotion",
+    "is_provider_or_model_route",
     "plan_adaptively",
     "plan_symbolically",
     "plan_typed_goal",
@@ -4852,3 +4997,4 @@ __all__ = [
     "select_adaptive_plan",
     "select_hard_constrained_plan",
 ]
+

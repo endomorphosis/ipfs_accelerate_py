@@ -62,6 +62,23 @@ from .plan_failure_memory import (
     PlanFailureMemory,
     PlanFailureMemoryError,
 )
+from .deterministic_failure_memory import (
+    AttemptRouteKind,
+    DCR_REPLAN_EVIDENCE,
+    FAILURE_MEMORY_INTERFACE,
+    FailureAttempt,
+    FailureClass,
+    FailureMemory,
+    FailureMemoryError,
+    FailureMemoryPolicy,
+    FailureMemoryReceipt,
+    REPLAN_DECISION_INTERFACE,
+    ReplanDecision,
+    ReplanDisposition,
+    RetryMeasure,
+    decide_replan as decide_typed_replan,
+    is_provider_or_model_route,
+)
 
 
 FORMAL_REPLANNER_VERSION: Final = 1
@@ -2463,6 +2480,10 @@ class FormalReplanner:
     repair proposal.  Counterexample witnesses remain open until
     :class:`VerifierBackedRepairClosure` records a fresh matching verifier
     receipt.  Plan consistency is never treated as semantic verification.
+
+    Typed :class:`FailureMemory` (DCR-063) makes retry/rescue non-thrashing:
+    unchanged inputs emit no duplicate work, provider/model routes are
+    forbidden, and refuted candidate CIDs cannot be selected again.
     """
 
     def __init__(
@@ -2474,6 +2495,7 @@ class FormalReplanner:
         admission_callback: Callable[[RepairTransition], bool | None] | None = None,
         verifier: Callable[[Mapping[str, Any]], Any] | None = None,
         verifier_available: bool | None = None,
+        failure_memory: FailureMemory | None = None,
     ) -> None:
         self.compiler = compiler or FormalPlanCompiler()
         self.validator = validator or FormalPlanValidator()
@@ -2493,6 +2515,11 @@ class FormalReplanner:
         self.admission_callback = admission_callback
         self.verifier = verifier
         self.verifier_available = verifier_available
+        if failure_memory is not None and not isinstance(failure_memory, FailureMemory):
+            raise ReplannerValidationError(
+                "failure_memory must be deterministic FailureMemory or None"
+            )
+        self.failure_memory = failure_memory or FailureMemory()
         self._seen_semantic_ids: set[str] = set()
         self._attempts: dict[str, int] = {}
 
@@ -2500,14 +2527,62 @@ class FormalReplanner:
     def seen_semantic_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._seen_semantic_ids))
 
+    @property
+    def refuted_candidate_cids(self) -> tuple[str, ...]:
+        return self.failure_memory.refuted_candidate_cids
+
     def reset_history(self, counterexample_id: str | None = None) -> None:
-        """Clear bounded retry history, normally after external state changes."""
+        """Clear bounded retry history, normally after external state changes.
+
+        Typed failure memory is intentionally retained: counterexamples and
+        refuted candidates must survive process-local history resets.
+        """
 
         if counterexample_id is None:
             self._seen_semantic_ids.clear()
             self._attempts.clear()
             return
         self._attempts.pop(str(counterexample_id), None)
+
+    def decide_replan(
+        self,
+        attempt: FailureAttempt | Mapping[str, Any],
+        *,
+        proposed_candidate_cid: str = "",
+        proposed_route_kind: AttemptRouteKind | str = AttemptRouteKind.DETERMINISTIC_REPLAN,
+        record: bool = True,
+        observed_at_milliseconds: int = 1,
+    ) -> ReplanDecision | FailureMemoryReceipt:
+        """Non-thrashing replan gate over typed failure memory.
+
+        When ``record`` is true the attempt is persisted and a
+        :class:`FailureMemoryReceipt` is returned.  Pure decisions leave memory
+        unchanged.
+        """
+
+        try:
+            if record:
+                return self.failure_memory.record_attempt(
+                    attempt,
+                    observed_at_milliseconds=observed_at_milliseconds,
+                    proposed_candidate_cid=proposed_candidate_cid,
+                    proposed_route_kind=proposed_route_kind,
+                )
+            return decide_typed_replan(
+                attempt,
+                memory=self.failure_memory,
+                proposed_candidate_cid=proposed_candidate_cid,
+                proposed_route_kind=proposed_route_kind,
+            )
+        except FailureMemoryError as exc:
+            raise ReplannerValidationError(str(exc)) from exc
+
+    def filter_refuted_candidates(
+        self, candidate_cids: Iterable[str]
+    ) -> tuple[str, ...]:
+        """Drop previously refuted candidates from a proposed retry set."""
+
+        return self.failure_memory.filter_admissible_candidates(tuple(candidate_cids))
 
     def replan_if_changed(
         self,
@@ -3146,11 +3221,20 @@ class FormalReplanner:
                 parsed_operations.append(operation)
             operations = tuple(parsed_operations)
         operations = operations[: self.limits.max_candidates]
+        # DCR-063: never re-evaluate a previously refuted repair candidate.
+        refuted = set(self.failure_memory.refuted_candidate_cids)
+        if refuted:
+            operations = tuple(
+                item
+                for item in operations
+                if item.semantic_id not in refuted
+                and item.repair_id not in refuted
+            )
         known = {
             str(item).strip()
             for item in prior_semantic_ids
             if str(item).strip()
-        } | self._seen_semantic_ids
+        } | self._seen_semantic_ids | refuted
         candidates: list[RepairCandidate] = []
         for operation in operations:
             if _cancelled(cancelled):
@@ -3167,6 +3251,58 @@ class FormalReplanner:
             candidates.append(candidate)
             known.add(operation.semantic_id)
             self._seen_semantic_ids.add(operation.semantic_id)
+            if candidate.status in {
+                RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
+                RepairCandidateStatus.CHECK_REJECTED,
+                RepairCandidateStatus.GOAL_REJECTED,
+                RepairCandidateStatus.COMPILE_REJECTED,
+                RepairCandidateStatus.ADMISSION_REJECTED,
+                RepairCandidateStatus.NO_PROGRESS,
+                RepairCandidateStatus.DUPLICATE,
+            }:
+                try:
+                    self.failure_memory.record_attempt(
+                        FailureAttempt(
+                            failure_class=FailureClass.VALIDATION
+                            if candidate.status
+                            in {
+                                RepairCandidateStatus.CHECK_REJECTED,
+                                RepairCandidateStatus.GOAL_REJECTED,
+                                RepairCandidateStatus.COMPILE_REJECTED,
+                            }
+                            else FailureClass.PROOF
+                            if candidate.status
+                            is RepairCandidateStatus.COUNTEREXAMPLE_REJECTED
+                            else FailureClass.CONFLICT,
+                            prior_candidate_cid=operation.semantic_id,
+                            evidence_cid=value.semantic_id,
+                            measure=RetryMeasure(
+                                open_counterexamples=1,
+                                validation_findings=len(
+                                    candidate.rejection_reasons
+                                ),
+                                remaining_candidates=max(
+                                    0, self.limits.max_candidates - len(candidates)
+                                ),
+                            ),
+                            route_kind=AttemptRouteKind.DETERMINISTIC_REPLAN,
+                            scope_id=str(
+                                source.get("repository_tree_id")
+                                or source.get("tree_id")
+                                or "scope:formal-replan"
+                            ),
+                            plan_id=compilation.plan_id,
+                            counterexample_ids=(value.semantic_id,),
+                            refuted=True,
+                            operator_kind=operation.kind.value,
+                        ),
+                        observed_at_milliseconds=max(1, retry_attempt + 1),
+                        proposed_route_kind=AttemptRouteKind.DETERMINISTIC_REPLAN,
+                    )
+                except FailureMemoryError:
+                    # Memory bounds must not abort an otherwise valid replan
+                    # result; the candidate is still rejected in-band.
+                    pass
         admissible = [item for item in candidates if item.admissible]
         selected = min(admissible, key=self._rank) if admissible else None
         packet: CodexRepairPacket | None = None
@@ -4461,18 +4597,22 @@ __all__ = [
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
+    "DCR_REPLAN_EVIDENCE",
     "DELTA_PLAN_SCHEMA",
     "DELTA_REPLAN_DECISION_SCHEMA",
     "DELTA_REPLAN_REQUIREMENT_ID",
     "DIAGNOSTIC_RECEIPT_SCHEMA",
+    "FAILURE_MEMORY_INTERFACE",
     "FORMAL_REPLANNER_VERSION",
     "OBJECTIVE_COMPLETION_EVIDENCE_ROLES",
     "REPAIR_CANDIDATE_SCHEMA",
     "REPAIR_TRANSITION_SCHEMA",
+    "REPLAN_DECISION_INTERFACE",
     "REPLAN_RESULT_SCHEMA",
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA",
+    "AttemptRouteKind",
     "CodexRepairPacket",
     "CounterexampleDeltaReplanner",
     "DeltaPlan",
@@ -4485,6 +4625,12 @@ __all__ = [
     "DeltaReplanResult",
     "DeltaReplanStopReason",
     "DiagnosticReceipt",
+    "FailureAttempt",
+    "FailureClass",
+    "FailureMemory",
+    "FailureMemoryError",
+    "FailureMemoryPolicy",
+    "FailureMemoryReceipt",
     "FormalDeltaReplanner",
     "FormalPlanReplanner",
     "FormalReplanner",
@@ -4498,22 +4644,48 @@ __all__ = [
     "RepairTransition",
     "ReplanBudget",
     "ReplanCancelled",
+    "ReplanDecision",
+    "ReplanDisposition",
     "ReplanLimits",
     "ReplanResult",
     "ReplanStopReason",
     "ReplannerValidationError",
     "ResponsiveReplanDecision",
+    "RetryMeasure",
     "VerifierBackedRepairClosure",
     "VerifierClosureReceipt",
     "WitnessClosureStatus",
     "PlanSnapshot",
     "PlanStep",
+    "decide_replan",
     "delta_replan",
     "evaluate_verifier_backed_closure",
     "generate_plan_repairs",
+    "is_provider_or_model_route",
     "replan_plan_delta",
     "replan_if_changed",
     "replan_critique",
     "replan_for_signal",
     "replan_from_counterexample",
 ]
+
+
+def decide_replan(
+    attempt: FailureAttempt | Mapping[str, Any],
+    *,
+    failure_memory: FailureMemory | None = None,
+    proposed_candidate_cid: str = "",
+    proposed_route_kind: AttemptRouteKind | str = AttemptRouteKind.DETERMINISTIC_REPLAN,
+    record: bool = False,
+    observed_at_milliseconds: int = 1,
+) -> ReplanDecision | FailureMemoryReceipt:
+    """Module-level non-thrashing replan gate (DCR-063)."""
+
+    return FormalReplanner(failure_memory=failure_memory).decide_replan(
+        attempt,
+        proposed_candidate_cid=proposed_candidate_cid,
+        proposed_route_kind=proposed_route_kind,
+        record=record,
+        observed_at_milliseconds=observed_at_milliseconds,
+    )
+
