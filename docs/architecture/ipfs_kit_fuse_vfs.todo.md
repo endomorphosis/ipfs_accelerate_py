@@ -110,7 +110,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-200 Implement persistent ranged VFS storage boundaries and backend adapters
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
