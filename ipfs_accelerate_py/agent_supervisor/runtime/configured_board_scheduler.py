@@ -988,6 +988,9 @@ def configured_board_common_args(
         "--no-objective-task-janitor",
         "--no-objective-goal-completion-reconcile",
         "--no-objective-goal-migration",
+        # DCR boards use an exact finite task population; reconciliation-guardrail
+        # ops rows (DCR-10x) break validator wave equality and authoring seals.
+        "--no-reconciliation-guardrail",
         "--log-level",
         "INFO",
     ]
