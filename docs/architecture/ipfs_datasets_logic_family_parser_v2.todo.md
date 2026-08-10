@@ -1125,7 +1125,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-036 Wire runtime MTL to real monitoring and verdict replay
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
