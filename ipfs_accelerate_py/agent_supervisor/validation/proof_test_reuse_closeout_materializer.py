@@ -876,7 +876,7 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# PTR-122 current-tree gate materialization from live premises
+# PTR-169 authenticated current-tree gate materialization from live premises
 # ---------------------------------------------------------------------------
 
 CURRENT_TREE_GATE_MATERIALIZER_SCHEMA: Final = (
@@ -903,7 +903,7 @@ def materialize_current_tree_gate_bundle(
     clock: Callable[[], float] | None = None,
     allow_failed_decision: bool = True,
 ) -> dict[str, Any]:
-    """Evaluate and persist a PTR-122 gate bundle from live closeout premises.
+    """Evaluate and persist a PTR-169 authenticated gate bundle from live premises.
 
     Builds an ``evaluate_packet`` from retained task evidence and produced
     analyzer/population inputs, then runs
@@ -920,15 +920,23 @@ def materialize_current_tree_gate_bundle(
         verify_benchmark_receipt,
     )
     from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
+        AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT,
+        AUTHENTICATED_CURRENT_TREE_REPAIR_ID,
+        AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID,
+        AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS,
+        FINAL_GATE_GOAL_ID,
         PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
         PRODUCTION_RUNTIME_ACTIVATION_ID,
         PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
         PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
         REQUIRED_CHILD_GOAL_IDS,
+        REQUIRED_GRAPH_GOAL_IDS,
         REQUIRED_PTR_TASK_IDS,
+        ROOT_GOAL_ID,
         SEALED_PRODUCTION_TASK_COUNT,
         TaskCompletionProvenanceKind,
         ProofTestReuseCurrentTreeGate,
+        build_authenticated_current_tree_repair_evidence,
     )
     from ipfs_accelerate_py.testing.proof_reuse.rollout import (
         ProofReusePromotionEvidence,
@@ -1250,65 +1258,166 @@ def materialize_current_tree_gate_bundle(
                 encoding="utf-8",
             )
         repair_body = dict(activation.repair_evidence)
-        # Start from gate-bound shell, then overlay probed claims.
-        repair_evidence = _bound(
-            evidence_cid=str(
-                repair_body.get("evidence_cid") or "repair:production-runtime-activation-probe"
-            ),
+        # 78-task authenticated gate admits only PTR-169 repair evidence
+        # (PTR-160…PTR-171).  Map honest probe claims into that shell; never
+        # re-admit historical PTR-149 / 66-task production-activation packets.
+        gap_present = bool(
+            repair_body.get("activation_gap")
+            or repair_body.get("activation_gap_present")
         )
-        repair_evidence.update(repair_body)
-        # Rebind to evaluating gate policy/tree identity.
-        repair_evidence["policy_cid"] = gate.policy_cid
-        repair_evidence["repository_id"] = gate.repository_id
-        repair_evidence["tree_id"] = gate.tree_id
-        repair_evidence["commit_id"] = gate.commit_id
-        repair_evidence["gitlink_state_cid"] = gate.gitlink_state_cid
-        repair_evidence["repository_forest_cid"] = gate.repository_forest_cid
-        repair_evidence["objective_completion_tree_id"] = gate.objective_completion_tree_id
-        repair_evidence["capability_cid"] = gate.capability_cid
-        repair_evidence["verifying_key_cid"] = gate.verifying_key_cid
-        repair_evidence["circuit_cid"] = gate.circuit_cid
-        repair_evidence["gitlink_closure_complete"] = True
-        repair_evidence["observed_at_ms"] = now_ms - 1_000
-        repair_evidence["fresh_until_ms"] = fresh_until
-        repair_evidence["authority"] = str(repair_body.get("authority") or "none")
+        def _claim(name: str, default: bool = False) -> bool:
+            if name in repair_body:
+                return bool(repair_body.get(name))
+            return default
+
+        repair_evidence = build_authenticated_current_tree_repair_evidence(
+            repository_id=gate.repository_id,
+            tree_id=gate.tree_id,
+            commit_id=gate.commit_id,
+            gitlink_state_cid=gate.gitlink_state_cid,
+            repository_forest_cid=gate.repository_forest_cid,
+            capability_cid=gate.capability_cid,
+            verifying_key_cid=gate.verifying_key_cid,
+            circuit_cid=gate.circuit_cid,
+            policy_cid=gate.policy_cid,
+            objective_completion_tree_id=gate.objective_completion_tree_id,
+            observed_at_ms=now_ms - 1_000,
+            fresh_until_ms=fresh_until,
+            evidence_cid=str(
+                repair_body.get("evidence_cid")
+                or "repair:authenticated-current-tree-probe"
+            ),
+            false_skips=int(repair_body.get("false_skips") or 0),
+            activation_e2e_passed=_claim("activation_e2e_passed"),
+            zero_injection_default_path=_claim("zero_injection_default_path"),
+            three_repository_cold_warm=_claim("three_repository_cold_warm"),
+            real_groth16_certificate=_claim("real_groth16_certificate"),
+            measured_subprocess_benchmark=_claim("measured_subprocess_benchmark"),
+            historical_activation_claims_superseded=_claim(
+                "historical_activation_claims_superseded", True
+            ),
+            zero_false_skip_assurance=_claim("zero_false_skip_assurance"),
+            controller_owned_receipt_candidate_context=_claim(
+                "controller_owned_receipt_candidate_context"
+            ),
+            retained_proof_bearing_issuance_material=_claim(
+                "retained_proof_bearing_issuance_material"
+            ),
+            exact_reviewed_source_binary_capability_circuit_key_identities=_claim(
+                "exact_reviewed_source_binary_capability_circuit_key_identities"
+            ),
+            locally_verified_current_v4_certificate=_claim(
+                "locally_verified_current_v4_certificate"
+            ),
+            # Authenticated-only premises: inherit when probe supplies them,
+            # otherwise leave false until measured/proved on this tree.
+            trusted_signed_receipts=_claim("trusted_signed_receipts"),
+            locally_verified_real_proofs=_claim(
+                "locally_verified_real_proofs",
+                _claim("locally_verified_current_v4_certificate"),
+            ),
+            genuine_three_repository_e2e=_claim(
+                "genuine_three_repository_e2e",
+                _claim("three_repository_cold_warm"),
+            ),
+            forced_replay_agrees=_claim("forced_replay_agrees"),
+            zero_false_skips=_claim(
+                "zero_false_skips", _claim("zero_false_skip_assurance")
+            ),
+            benchmark_meets_threshold=_claim(
+                "benchmark_meets_threshold",
+                _claim("measured_subprocess_benchmark"),
+            ),
+            optional_capability_gaps_truthful=_claim(
+                "optional_capability_gaps_truthful", True
+            ),
+            supervisor_healthy=bool(
+                repair_body.get("supervisor_healthy", supervisor_healthy)
+            ),
+            activation_gap=gap_present,
+            activation_gap_present=gap_present,
+            injected=bool(repair_body.get("injected") or False),
+            pseudo_certificate=bool(repair_body.get("pseudo_certificate") or False),
+            synthetic_timing=bool(repair_body.get("synthetic_timing") or False),
+            service_injection=bool(repair_body.get("service_injection") or False),
+            structural_only_verification=bool(
+                repair_body.get("structural_only_verification") or False
+            ),
+            passed=False,
+        )
+        # Carry probe diagnostics without changing repair identity.
+        for key in (
+            "probe_schema",
+            "live_activation_blocker_codes",
+            "live_activation_gap_reason",
+        ):
+            if key in repair_body:
+                repair_evidence[key] = repair_body[key]
+        if gap_present or not repair_evidence.get("passed"):
+            repair_evidence["authority"] = "none"
+            repair_evidence["passed"] = False
     except Exception as activation_exc:
         activation_probe_summary = {
             "ok": False,
             "error": f"{type(activation_exc).__name__}: {activation_exc}",
         }
-        repair_evidence = _bound(
-            authority="none",
-            repair_id=PRODUCTION_RUNTIME_ACTIVATION_ID,
-            producer_task_id=PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
-            repair_task_ids=sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS),
-            passed=False,
+        repair_evidence = build_authenticated_current_tree_repair_evidence(
+            repository_id=gate.repository_id,
+            tree_id=gate.tree_id,
+            commit_id=gate.commit_id,
+            gitlink_state_cid=gate.gitlink_state_cid,
+            repository_forest_cid=gate.repository_forest_cid,
+            capability_cid=gate.capability_cid,
+            verifying_key_cid=gate.verifying_key_cid,
+            circuit_cid=gate.circuit_cid,
+            policy_cid=gate.policy_cid,
+            objective_completion_tree_id=gate.objective_completion_tree_id,
+            observed_at_ms=now_ms - 1_000,
+            fresh_until_ms=fresh_until,
+            evidence_cid="repair:authenticated-current-tree-gap",
             false_skips=0,
-            zero_false_skip_assurance=False,
             activation_e2e_passed=False,
             zero_injection_default_path=False,
             three_repository_cold_warm=False,
             real_groth16_certificate=False,
             measured_subprocess_benchmark=False,
             historical_activation_claims_superseded=True,
+            zero_false_skip_assurance=False,
             controller_owned_receipt_candidate_context=False,
             retained_proof_bearing_issuance_material=False,
             exact_reviewed_source_binary_capability_circuit_key_identities=False,
             locally_verified_current_v4_certificate=False,
+            trusted_signed_receipts=False,
+            locally_verified_real_proofs=False,
+            genuine_three_repository_e2e=False,
+            forced_replay_agrees=False,
+            zero_false_skips=False,
+            benchmark_meets_threshold=False,
+            optional_capability_gaps_truthful=True,
             supervisor_healthy=bool(supervisor_healthy),
-            sealed_task_count=SEALED_PRODUCTION_TASK_COUNT,
-            requirement_id=PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
-            evidence_cid="repair:production-runtime-activation-gap",
             activation_gap=True,
             activation_gap_present=True,
-            injected=False,
-            pseudo_certificate=False,
+            passed=False,
+        )
+        repair_evidence["authority"] = "none"
+        repair_evidence["passed"] = False
+        # Keep historical constants referenced so import surface stays stable
+        # for unit tests that assert the 66-task packet is never re-emitted.
+        _ = (
+            PRODUCTION_RUNTIME_ACTIVATION_ID,
+            PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
+            PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
+            PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+            AUTHENTICATED_CURRENT_TREE_REPAIR_ID,
+            AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID,
+            AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS,
+            AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT,
         )
 
     objective_graph = _bound(
         objective_revision=gate.objective_revision,
         task_ids=sorted(REQUIRED_PTR_TASK_IDS),
-        goal_ids=sorted(set(REQUIRED_CHILD_GOAL_IDS) | {"PTR-G000", "PTR-G110"}),
+        goal_ids=sorted(REQUIRED_GRAPH_GOAL_IDS),
     )
 
     def _integerize(value: Any) -> Any:

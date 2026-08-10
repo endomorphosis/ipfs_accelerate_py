@@ -839,11 +839,17 @@ def test_live_datasets_offline_conformance_backend_when_available() -> None:
     )
     backend = ConformanceBackend(backend_id, proof_system_id)
 
-    # Sanity: datasets path itself verifies.
+    # V1–V4 certificates remain cryptographically checkable for serialization
+    # conformance, but production skip authority is sealed to TestPassStatementV5.
+    from ipfs_datasets_py.logic.zkp.test_execution_certificate import (
+        CertificateVerificationReason,
+    )
+
     direct = verify_test_execution_certificate(
         datasets_certificate, binding, backend
     )
-    assert direct.verified is True
+    assert direct.verified is False
+    assert direct.reason is CertificateVerificationReason.LEGACY_FORMAT
 
     # Build accelerator-side envelope + a synthetic admitted receipt matching pins.
     locator = TestLocatorKey(
@@ -936,9 +942,11 @@ def test_live_datasets_offline_conformance_backend_when_available() -> None:
         "expected_public_inputs": public_inputs,
     }
     result = provider.verify(accel_cert, receipt, requirements)
-    assert result.verified is True
-    assert result.can_authorize_skip is True
-    assert result.test_action == "skip"
+    # Provider must not grant skip authority on legacy V1–V4 certificates.
+    assert result.verified is False
+    assert result.can_authorize_skip is False
+    assert result.test_action == "run"
+    # Crypto verifier still ran before the legacy-format seal.
     assert backend.calls >= 1
 
 
