@@ -135,7 +135,8 @@ def test_declared_validator_accepts_the_sealed_projection() -> None:
     assert report["pending_operational_task_ids"] == []
     assert report["goal_count"] == 9
     assert report["initial_ready_task_ids"] == list(INITIAL_READY)
-    assert report["ready_task_ids"] == ["KVFS-811"]
+    assert report["completed_task_ids"] == sorted(TASK_IDS)
+    assert report["ready_task_ids"] == []
     assert report["initial_shards"] == {str(key): value for key, value in INITIAL_SHARDS.items()}
 
 
@@ -163,7 +164,8 @@ def test_production_parsers_consume_exact_tasks_goals_and_dependencies() -> None
         if by_id[task_id].status == "todo"
         and all(dependency in completed for dependency in by_id[task_id].depends_on)
     )
-    assert ready == ("KVFS-811",)
+    assert completed == set(TASK_IDS)
+    assert ready == ()
 
 
 def test_native_scheduler_loader_and_strict_shards_match() -> None:
@@ -654,8 +656,8 @@ def test_operational_appendices_do_not_change_canonical_ownership_or_projection(
     assert report["valid"] is True
     assert report["task_count"] == len(TASK_IDS)
     assert report["parsed_task_count"] == len(TASK_IDS) + 3
-    assert report["completed_task_ids"] == sorted(set(TASK_IDS) - {"KVFS-811"})
-    assert report["ready_task_ids"] == ["KVFS-811"]
+    assert report["completed_task_ids"] == sorted(TASK_IDS)
+    assert report["ready_task_ids"] == []
 
 
 def test_validator_rejects_initial_completion_regression(
