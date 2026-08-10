@@ -2586,6 +2586,8 @@ def main(argv=None, *, agent_control_service=None, agent_service_factory=None):
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
+  ipfs-accelerate supervisor run "Improve validation gates"
+  ipfs-accelerate supervisor status --run-id RUN --output-json
   ipfs-accelerate agent capabilities --request-file request.json --output-json
   ipfs-accelerate agent status --request-file request.json --watch-count 5
   ipfs-accelerate agent pause --request-file authorized-pause.json --output-json
@@ -2609,6 +2611,13 @@ Examples:
         # starts no process until a command is actually dispatched.
         from ipfs_accelerate_py.agent_supervisor.control.control_cli import register_agent_cli
         agent_parser = register_agent_cli(subparsers)
+
+        # Prompt-first product supervisor group (ASE3-010). Parser-only at
+        # discovery time; facade loads only when a command is dispatched.
+        from ipfs_accelerate_py.agent_supervisor.entrypoints.cli import (
+            register_supervisor_cli,
+        )
+        supervisor_parser = register_supervisor_cli(subparsers)
         
         # MCP commands
         mcp_parser = subparsers.add_parser('mcp', help='MCP server management')
@@ -2866,6 +2875,15 @@ Examples:
                 service=agent_control_service,
                 service_factory=agent_service_factory,
             )
+
+        if args.command == 'supervisor':
+            if not getattr(args, 'supervisor_command', None):
+                supervisor_parser.print_help()
+                return 1
+            from ipfs_accelerate_py.agent_supervisor.entrypoints.cli import (
+                run_supervisor_cli,
+            )
+            return run_supervisor_cli(args)
 
         cli = IPFSAccelerateCLI()
 
