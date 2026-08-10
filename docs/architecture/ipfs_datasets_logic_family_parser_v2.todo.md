@@ -505,7 +505,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-016 Implement the compositional TranslationPath planner
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
