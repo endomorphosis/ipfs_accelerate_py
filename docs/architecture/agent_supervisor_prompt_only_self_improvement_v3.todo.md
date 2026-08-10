@@ -537,7 +537,7 @@ Closeout:           ASE3-014
 
 ## ASE3-031 Seal the reviewed DuckDB native extension for isolated supervisor launch
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
