@@ -650,7 +650,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-701 Build a dedicated minimally privileged Linux FUSE image and Compose profile
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
