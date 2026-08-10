@@ -190,7 +190,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-203 Extend CanonicalVFSService over storage, namespace, metadata, and handles
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
