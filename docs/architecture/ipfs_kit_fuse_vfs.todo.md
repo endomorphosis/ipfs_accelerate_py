@@ -170,7 +170,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-204 Implement bounded file handles and per-handle staged extents
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
