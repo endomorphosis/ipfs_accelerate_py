@@ -1435,7 +1435,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-046 Join process-backed vertical slices, differential alignment, replay, and reconstruction
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
