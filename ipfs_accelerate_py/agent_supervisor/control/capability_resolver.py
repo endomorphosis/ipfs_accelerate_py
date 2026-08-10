@@ -1356,7 +1356,80 @@ class CapabilityResolver:
             )
             return route, None, decision, tuple(degradations)
 
-        if grok.ready:
+        # ASE3-028: sole provider-policy decision lives in llm_router.
+        # This method only normalizes non-authoritative observations and
+        # adapts the returned RouterOwnedProviderDecision into route receipts.
+        from ipfs_accelerate_py.llm_router import (
+            ROUTER_OWNED_COMPATIBILITY_CANONICAL,
+            RouterOwnedProviderObservation,
+            RouterOwnedProviderReason,
+            decide_router_owned_implementation_provider,
+        )
+
+        def _observation_for(
+            provider: ProviderCapabilityEvidence,
+        ) -> RouterOwnedProviderObservation:
+            hard_quota = (
+                provider.capability is PreferredProviderCapability.QUOTA_EXHAUSTED
+            )
+            capacity_latched = (
+                provider.capability
+                is PreferredProviderCapability.CAPACITY_UNAVAILABLE
+            )
+            # Expand readiness without re-authorizing: capability AVAILABLE is
+            # an observation of preferred health, not a dispatch grant.
+            ready = (
+                provider.policy_allowed
+                and provider.healthy
+                and provider.authenticated
+                and provider.capability is PreferredProviderCapability.AVAILABLE
+                and provider.request_headroom > 0
+                and provider.max_concurrency > 0
+            )
+            return RouterOwnedProviderObservation(
+                provider_id=provider.provider_id,
+                ready=ready,
+                authenticated=provider.authenticated,
+                binary_available=True,
+                hard_quota_exhausted=hard_quota,
+                capacity_latched=capacity_latched,
+                request_headroom=provider.request_headroom,
+                source="capability_evidence",
+                reason_codes=(provider.capability.value,),
+            )
+
+        router_observations = [_observation_for(grok)]
+        if codex is not None:
+            router_observations.append(_observation_for(codex))
+
+        router_decision = decide_router_owned_implementation_provider(
+            router_observations,
+            preferred_provider=PREFERRED_PROVIDER,
+            fallback_provider=FALLBACK_PROVIDER,
+            secondary_providers=(FALLBACK_PROVIDER,),
+            global_capacity_latched=False,
+            allow_secondary_without_preferred_quota=False,
+            compatibility_mode=ROUTER_OWNED_COMPATIBILITY_CANONICAL,
+        )
+
+        selected_provider = str(router_decision.selected_provider or "")
+        reason_codes = set(router_decision.reason_codes)
+
+        # Map router classification of preferred state onto the protected
+        # fallback-reason vocabulary without re-deciding authorization.
+        if grok.capability is PreferredProviderCapability.AVAILABLE and not grok.ready:
+            preferred_reason = ProviderFallbackReason.PREFERRED_UNAVAILABLE
+        elif grok.capability is PreferredProviderCapability.AVAILABLE:
+            preferred_reason = ProviderFallbackReason.NONE
+        else:
+            preferred_reason = map_preferred_capability_to_fallback_reason(
+                grok.capability
+            )
+
+        if (
+            selected_provider == PREFERRED_PROVIDER
+            and router_decision.authorized
+        ):
             route = ProviderRouteProvenance(
                 preferred_provider=PREFERRED_PROVIDER,
                 fallback_provider=FALLBACK_PROVIDER,
@@ -1403,27 +1476,21 @@ class CapabilityResolver:
                 reason_codes=(
                     "preferred_provider_healthy",
                     "preferred_provider_policy_allowed",
+                    router_decision.decision_cid,
                 ),
                 effect=DecisionEffect.CONFIGURATION,
             )
             return route, None, decision, tuple(degradations)
-
-        # Preferred Grok is not ready. Codex is a fallback only for confirmed
-        # quota exhaustion; authentication, availability, capacity, and
-        # pre-effect failures fail closed even when Codex itself is ready.
-        if grok.capability is PreferredProviderCapability.AVAILABLE:
-            # Capability says available but readiness failed (auth, health,
-            # policy, concurrency, or headroom). Treat as unavailable.
-            reason = ProviderFallbackReason.PREFERRED_UNAVAILABLE
-        else:
-            reason = map_preferred_capability_to_fallback_reason(grok.capability)
 
         degradations.append(
             CapabilityDegradationCode.PREFERRED_PROVIDER_DEGRADED.value
         )
 
         if (
-            reason is ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
+            selected_provider == FALLBACK_PROVIDER
+            and router_decision.authorized
+            and preferred_reason
+            is ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
             and codex is not None
             and codex.ready
         ):
@@ -1449,7 +1516,7 @@ class CapabilityResolver:
             receipt = ProviderFallbackReceipt(
                 preferred_provider=PREFERRED_PROVIDER,
                 fallback_provider=FALLBACK_PROVIDER,
-                reason_code=reason,
+                reason_code=preferred_reason,
                 observed_capability_cid=grok.observed_capability_cid,
                 task_revision_cid=evidence.task_revision_cid,
                 budget_cid=grok.budget_cid,
@@ -1463,7 +1530,7 @@ class CapabilityResolver:
                 preferred_provider=PREFERRED_PROVIDER,
                 fallback_provider=FALLBACK_PROVIDER,
                 selected_provider=ProviderSelection.CODEX,
-                fallback_reason=reason,
+                fallback_reason=preferred_reason,
                 fallback_receipt_cid=receipt.content_id,
                 observed_capability_cid=codex.observed_capability_cid,
                 usage_evidence_cid=codex.usage_evidence_cid,
@@ -1495,14 +1562,20 @@ class CapabilityResolver:
                         source=ResolutionSource.BUILTIN_DEFAULT,
                         precedence=90,
                         evidence_cid=grok.observed_capability_cid,
-                        rejection_reason=reason.value,
+                        rejection_reason=preferred_reason.value,
                     ),
                 ),
-                reason_codes=(reason.value, "codex_fallback_selected"),
+                reason_codes=(
+                    preferred_reason.value,
+                    "codex_fallback_selected",
+                    router_decision.decision_cid,
+                ),
                 effect=DecisionEffect.CONFIGURATION,
             )
             return route, receipt, decision, tuple(sorted(set(degradations)))
 
+        # Router denied dispatch (backoff/unavailable) or selected a provider
+        # the capability surface cannot represent: fail closed.
         codex_ready_but_forbidden = codex is not None and codex.ready
         degradations.append(
             (
@@ -1511,7 +1584,19 @@ class CapabilityResolver:
                 else CapabilityDegradationCode.PROVIDERS_UNAVAILABLE.value
             )
         )
-        unavailable_reason = reason
+        unavailable_reason = (
+            preferred_reason
+            if preferred_reason is not ProviderFallbackReason.NONE
+            else ProviderFallbackReason.PREFERRED_UNAVAILABLE
+        )
+        # Transient capacity backoff is still a fail-closed unavailable route.
+        if (
+            RouterOwnedProviderReason.PREFERRED_TRANSIENT_CAPACITY
+            in reason_codes
+        ):
+            unavailable_reason = (
+                ProviderFallbackReason.PREFERRED_CAPACITY_UNAVAILABLE
+            )
         route = ProviderRouteProvenance(
             preferred_provider=PREFERRED_PROVIDER,
             fallback_provider=FALLBACK_PROVIDER,
@@ -1569,6 +1654,7 @@ class CapabilityResolver:
                     if codex_ready_but_forbidden
                     else "implementation_providers_unavailable"
                 ),
+                router_decision.decision_cid,
             ),
             effect=DecisionEffect.CONFIGURATION,
         )
