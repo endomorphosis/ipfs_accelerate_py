@@ -1528,7 +1528,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-049 Establish two quiet reachable-gap epochs at current identity
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
