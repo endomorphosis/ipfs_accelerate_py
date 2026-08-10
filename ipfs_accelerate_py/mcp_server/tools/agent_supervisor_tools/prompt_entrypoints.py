@@ -98,12 +98,13 @@ def _authorize_repository(repository: str | None) -> Path | None:
 
 
 def _open_supervisor(*, repository: str | None = None) -> Any:
+    # Always enforce allowlist policy before any facade use (including tests).
+    root = _authorize_repository(repository)
     with _lock:
         if _injected_supervisor is not None:
             return _injected_supervisor
     from ipfs_accelerate_py.agent_supervisor.entrypoints.facade import Supervisor
 
-    root = _authorize_repository(repository)
     return Supervisor.open(repository=root)
 
 
