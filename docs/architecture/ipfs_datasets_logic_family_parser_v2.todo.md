@@ -660,7 +660,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-021 Join translation edges and controlled protocol/kernel-target compilers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
