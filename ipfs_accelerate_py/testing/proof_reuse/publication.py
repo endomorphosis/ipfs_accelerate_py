@@ -51,6 +51,7 @@ from .services import (
     PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV,
     TEST_PASS_GROTH16_CIRCUIT_CID,
     TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256,
+    TEST_PASS_GROTH16_CIRCUIT_INTERFACE,
     TEST_PASS_GROTH16_CIRCUIT_VERSION,
     TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
     TEST_PASS_GROTH16_RULESET_ID,
@@ -82,7 +83,8 @@ _PRODUCTION_READY_REASON: Final = "ready"
 _TEST_PASS_CIRCUIT_VERSION: Final = TEST_PASS_GROTH16_CIRCUIT_VERSION
 _GROTH16_MANIFEST_MAX_BYTES: Final = 64 * 1024
 _GROTH16_RECEIPT_MAX_BYTES: Final = 64 * 1024
-_GROTH16_KEY_MAX_BYTES: Final = 64 * 1024 * 1024
+# V5 exact-byte proving keys are ~169 MiB.
+_GROTH16_KEY_MAX_BYTES: Final = 256 * 1024 * 1024
 _GROTH16_BINARY_MAX_BYTES: Final = 128 * 1024 * 1024
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}")
 _TEST_PASS_CID_PROFILE: Final = "cidv1-base32-dag-json-sha2-256"
@@ -247,7 +249,7 @@ def _load_pinned_groth16_manifest(
         return None, manifest_path, actual_digest, "artifact_manifest_circuit_mismatch"
     identity = {
         "backend_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
-        "interface": "TestPassGroth16CircuitV4",
+        "interface": TEST_PASS_GROTH16_CIRCUIT_INTERFACE,
         "proof_system": "groth16",
         "ruleset_id": TEST_PASS_GROTH16_RULESET_ID,
         "statement_interface": TEST_PASS_GROTH16_STATEMENT_INTERFACE,
@@ -277,8 +279,8 @@ def _load_pinned_groth16_manifest(
     }:
         return None, manifest_path, actual_digest, "artifact_manifest_keys_mismatch"
     expected_relatives = {
-        "proving_key": "v4/proving_key.bin",
-        "verifying_key": "v4/verifying_key.bin",
+        "proving_key": f"v{TEST_PASS_GROTH16_CIRCUIT_VERSION}/proving_key.bin",
+        "verifying_key": f"v{TEST_PASS_GROTH16_CIRCUIT_VERSION}/verifying_key.bin",
     }
     for name, expected_relative in expected_relatives.items():
         artifact = artifacts.get(name)
@@ -1696,18 +1698,44 @@ class Groth16ArtifactIdentityBindings:
                     "reviewed_provider_source_mismatch",
                     manifest_sha256=manifest_digest,
                 )
-            expected_provider_constants = {
-                "TEST_PASS_GROTH16_CIRCUIT_VERSION": _TEST_PASS_CIRCUIT_VERSION,
-                "TEST_PASS_GROTH16_RULESET_ID": TEST_PASS_GROTH16_RULESET_ID,
-            }
-            if any(
-                getattr(provider, name, None) != value
-                for name, value in expected_provider_constants.items()
-            ):
+            # Legacy provider re-exported circuit version/ruleset constants.
+            # V5 native provider exports TestPassStatementV5 version instead.
+            legacy_version = getattr(provider, "TEST_PASS_GROTH16_CIRCUIT_VERSION", None)
+            legacy_ruleset = getattr(provider, "TEST_PASS_GROTH16_RULESET_ID", None)
+            v5_version = getattr(provider, "TEST_PASS_STATEMENT_V5_VERSION", None)
+            v5_ruleset = getattr(provider, "TEST_PASS_V5_RULESET_ID", None)
+            if legacy_version is not None or legacy_ruleset is not None:
+                if (
+                    legacy_version != _TEST_PASS_CIRCUIT_VERSION
+                    or legacy_ruleset != TEST_PASS_GROTH16_RULESET_ID
+                ):
+                    return cls.unready("reviewed_provider_identity_mismatch")
+            elif v5_version is not None or v5_ruleset is not None:
+                if (
+                    v5_version != _TEST_PASS_CIRCUIT_VERSION
+                    or v5_ruleset != TEST_PASS_GROTH16_RULESET_ID
+                ):
+                    return cls.unready("reviewed_provider_identity_mismatch")
+            else:
                 return cls.unready("reviewed_provider_identity_mismatch")
             try:
-                circuit_cid = provider.reviewed_circuit_cid()
-                verifying_key_cid = provider.verifying_key_cid_for_bytes(vk_bytes)
+                # Prefer provider helpers when present; otherwise derive from
+                # accelerate-reviewed circuit constants + verifying-key bytes.
+                if hasattr(provider, "reviewed_circuit_cid") and hasattr(
+                    provider, "verifying_key_cid_for_bytes"
+                ):
+                    circuit_cid = provider.reviewed_circuit_cid()
+                    verifying_key_cid = provider.verifying_key_cid_for_bytes(vk_bytes)
+                else:
+                    circuit_cid = TEST_PASS_GROTH16_CIRCUIT_CID
+                    verifying_key_cid = _dag_json_cid(
+                        {
+                            "artifact": "groth16_verifying_key",
+                            "backend_circuit_version": _TEST_PASS_CIRCUIT_VERSION,
+                            "sha256": vk_digest,
+                            "size": len(vk_bytes),
+                        }
+                    )
             except Exception as exc:
                 return cls.unready(
                     "cid_derivation_failed",

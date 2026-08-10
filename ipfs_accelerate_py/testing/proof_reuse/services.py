@@ -59,8 +59,9 @@ GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE: Final = (
     "Groth16TestPassArtifactManifest@1"
 )
 GROTH16_NATIVE_BUILD_RECEIPT_INTERFACE: Final = "Groth16NativeBuildReceipt@2"
-TEST_PASS_GROTH16_CIRCUIT_VERSION: Final = 4
-TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS: Final = (1, 2, 3, 4)
+# Exact-byte test-pass circuit (native binary profiles 1/2/3/5; no v4).
+TEST_PASS_GROTH16_CIRCUIT_VERSION: Final = 5
+TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS: Final = (1, 2, 3, 5)
 TEST_PASS_GROTH16_PROVIDER_RELATIVE_PATH: Final = (
     "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py"
 )
@@ -68,14 +69,16 @@ TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256: Final = (
     "6bd6aad7d24cb983c42c9b6913257cec26dd492792a53fdfd11ae20769bd8b9f"
 )
 TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256: Final = (
-    "c674f630154212abd5e77ebeb4614dace5890b29ea7eddce44d92d5280ca472a"
+    "9bc5575e3cd8f775ac9a2440533cb6dcaf9d6dd1743ec14ad5d34837a0282c5a"
 )
 TEST_PASS_GROTH16_CIRCUIT_CID: Final = (
-    "baguqeerayz2pmmaviijkxvphp27liyknvtsysczj5j7n3tse3ewvfagki4va"
+    "baguqeeratpcvoxr43d3xlle2erafgpfw3sxz23oroq7mcswv2nedpibifrna"
 )
-TEST_PASS_GROTH16_RULESET_ID: Final = "test_pass_v2"
-TEST_PASS_GROTH16_STATEMENT_INTERFACE: Final = "TestPassStatementV2"
-TEST_PASS_GROTH16_STATEMENT_VERSION: Final = 2
+TEST_PASS_GROTH16_CIRCUIT_INTERFACE: Final = "TestPassGroth16CircuitV5"
+TEST_PASS_GROTH16_PROFILE: Final = "test-pass-exact-byte-v5-groth16@1"
+TEST_PASS_GROTH16_RULESET_ID: Final = "test_pass_exact_byte_v5"
+TEST_PASS_GROTH16_STATEMENT_INTERFACE: Final = "TestPassStatementV5"
+TEST_PASS_GROTH16_STATEMENT_VERSION: Final = 5
 
 # Exact reviewed datasets tip for PTR-G140 closeout (conftest cacheprovider guard).
 # Labels never substitute for the byte/object checks below.
@@ -224,7 +227,8 @@ DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES: Final[
     Mapping[str, tuple[int, ...]]
 ] = MappingProxyType(
     {
-        "linux-aarch64": (1, 2, 3, 4, 5),
+        # Matches bundled ``groth16 capabilities`` profiles (v4 removed).
+        "linux-aarch64": (1, 2, 3, 5),
     }
 )
 DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256: Final[Mapping[str, str]] = (
@@ -239,8 +243,9 @@ DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256: Final[Mapping[str, str]] = (
 DATASETS_GROTH16_CAPABILITY_PAYLOADS_SHA256: Final[Mapping[str, str]] = (
     MappingProxyType(
         {
+            # Exact ``groth16 capabilities --json`` bytes from reviewed bundled binary.
             "linux-aarch64": (
-                "7625046099fc44760dd858af3f976bd37341ff1ca327fad30e0654ee8ad6109f"
+                "4d127d670dad9f6c9a393da081ac1a1187979035bf4c8c5883207ac28f9982fd"
             ),
         }
     )
@@ -249,18 +254,20 @@ DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY: Final = (
     "sha256:93dbdcb273114f6ec578f8f80bea185ac57f67f0b86daa6f0ff1d2575903691c"
 )
 DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256: Final = (
-    "7625046099fc44760dd858af3f976bd37341ff1ca327fad30e0654ee8ad6109f"
+    "4d127d670dad9f6c9a393da081ac1a1187979035bf4c8c5883207ac28f9982fd"
 )
-# Development-branch local e2e only: approved-format manifest digest for the
-# local nonproduction v4 keys under datasets artifacts/v4 (see
+# Development-branch local e2e only: approved-format manifest digests for the
+# local nonproduction v5 keys under datasets artifacts/v5 (see
 # LOCAL_NONPRODUCTION_APPROVED_FORMAT_MANIFEST.json + LOCAL_NONPRODUCTION_SETUP.txt).
 # Mainline / production ceremony branches must keep this empty until an
 # operator-reviewed trusted-setup publishes exact digests.  Self-pinned env
 # alone still cannot invent approval — the digest must appear here.
+# Populated after local materialize of operational v5 keys + reviewed bundled binary.
 DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256: Final[frozenset[str]] = frozenset(
     {
-        # Local operational v4 keys + reviewed bundled linux-aarch64 binary.
-        "9ea0b41d2c857c064dedc7d20fde628ccdb0b2cc9c1ab52f9c5e8ffdebe6c1ef",
+        # Local operational v5 keys + reviewed bundled linux-aarch64 binary
+        # (seed=42 setup under PTR_CLOSEOUT_LOCAL_SETUP; not production ceremony).
+        "9c8f9b7b423dbefc8e0f224632317e738fa858a0848bbbb4aa7a396b337dedb2",
     }
 )
 
@@ -270,7 +277,13 @@ def validate_groth16_capability_payload(
     *,
     required_circuit_version: int = TEST_PASS_GROTH16_CIRCUIT_VERSION,
 ) -> bool:
-    """Validate the exact PTR-151 artifact-free native capability document."""
+    """Validate reviewed native capability document bytes.
+
+    Accepts either:
+    * the tip ``ipfs-datasets/groth16-capabilities@1`` document produced by the
+      reviewed bundled binary's ``capabilities --json`` (exact digests pinned), or
+    * the legacy PTR-151 locked-source capability document.
+    """
 
     if (
         type(payload) is not bytes
@@ -278,15 +291,35 @@ def validate_groth16_capability_payload(
         or len(payload) >= 16_384
         or not payload.endswith(b"\n")
         or payload.count(b"\n") != 1
-        or hashlib.sha256(payload).hexdigest()
-        != DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
     ):
         return False
+    digest = hashlib.sha256(payload).hexdigest()
     try:
         document = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return False
     if not isinstance(document, dict):
+        return False
+
+    # Tip / V5 native capabilities schema from the reviewed bundled binary.
+    if document.get("schema") == "ipfs-datasets/groth16-capabilities@1":
+        if digest not in set(DATASETS_GROTH16_CAPABILITY_PAYLOADS_SHA256.values()) and (
+            digest != DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
+        ):
+            return False
+        profiles = document.get("profiles")
+        if not isinstance(profiles, dict):
+            return False
+        for item in profiles.values():
+            if (
+                isinstance(item, dict)
+                and item.get("circuit_version") == required_circuit_version
+            ):
+                return True
+        return False
+
+    # Legacy PTR-151 locked-source capability document.
+    if digest != DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256:
         return False
     if (
         document.get("locked_source_identity")
@@ -305,7 +338,7 @@ def validate_groth16_capability_payload(
     if required_circuit_version == TEST_PASS_GROTH16_CIRCUIT_VERSION:
         if required != {
             "version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
-            "profile": "test-pass-v2",
+            "profile": TEST_PASS_GROTH16_PROFILE,
             "ruleset_id": TEST_PASS_GROTH16_RULESET_ID,
             "can_setup": True,
             "can_prove": True,
@@ -381,11 +414,12 @@ def validate_groth16_release_manifest_payload(
         and manifest.get("test_pass_circuit")
         == {
             "version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
-            "profile": "test-pass-v2",
+            "profile": TEST_PASS_GROTH16_PROFILE,
             "ruleset_id": TEST_PASS_GROTH16_RULESET_ID,
         }
         and manifest.get("trusted_setup_included") is False
         and manifest.get("v4_keys_included") is False
+        and manifest.get("v5_keys_included") is not True
     )
 DATASETS_GROTH16_REVIEWED_ARTIFACTS_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -4221,7 +4255,7 @@ TEST_CERTIFICATE_AUTHORITY_PROBE_INTERFACE: Final = (
 )
 # Pre-PTR-144 generic circuit family — never certificate-authority alone.
 _GENERIC_KNOWLEDGE_OF_AXIOMS_CIRCUIT_PREFIX: Final = "knowledge_of_axioms@"
-_TEST_PASS_ARTIFACT_VERSION: Final = 4
+_TEST_PASS_ARTIFACT_VERSION: Final = TEST_PASS_GROTH16_CIRCUIT_VERSION
 
 
 def _service_handle_probe(value: Any) -> dict[str, Any]:
