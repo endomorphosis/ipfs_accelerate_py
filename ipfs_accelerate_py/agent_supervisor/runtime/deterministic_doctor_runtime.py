@@ -187,6 +187,26 @@ _STAGE_REMEDIATIONS: Final[Mapping[DoctorRuntimeStage, str]] = MappingProxyType(
     }
 )
 
+# Production composition (DCR-050) requires these stage backends to be real
+# callables, never empty slots or deferred placeholders.
+MANDATORY_PRODUCTION_BACKENDS: Final[tuple[str, ...]] = (
+    "diagnose",
+    "plan",
+    "retrieve",
+    "tactician",
+    "proof",
+    "transaction",
+)
+
+# Lazy stages that may remain deferred until typed inputs arrive.  Deferred
+# production stages report unavailable / abstain — never successful completion.
+OPTIONAL_DEFERRED_BACKENDS: Final[tuple[str, ...]] = (
+    "synthesis",
+    "impact",
+    "fixed_point",
+    "explain",
+)
+
 
 @dataclass(frozen=True)
 class DoctorStageCapability:
@@ -614,6 +634,9 @@ class DeterministicDoctorRuntime:
         self._evidence: DeterministicDoctorEvidenceBundle | None = None
         self._stage_receipts: dict[str, Mapping[str, Any]] = {}
         self._lock = threading.RLock()
+        # Production composition (DCR-050): mandatory backends are real stage
+        # adapters bound at construction.  Optional later stages may defer with
+        # typed unavailability — never empty slots or silent success.
         self._service: DeterministicDoctorService = create_deterministic_doctor_service(
             policy=policy,
             receipt_store=receipt_store,
@@ -621,17 +644,18 @@ class DeterministicDoctorRuntime:
             backends=DoctorStageBackends(
                 diagnose=self._diagnose_backend,
                 plan=self._plan_backend,
+                retrieve=self._retrieve_backend,
+                tactician=self._tactician_backend,
+                proof=self._proof_backend,
+                transaction=self._transaction_backend,
                 synthesis=self._deferred_stage_backend(
                     DoctorRuntimeStage.SYNTHESIS_PREVIEW
                 ),
                 impact=self._deferred_stage_backend(DoctorRuntimeStage.IMPACT),
-                transaction=self._transaction_backend,
                 fixed_point=self._deferred_stage_backend(DoctorRuntimeStage.FIXED_POINT),
-                retrieve=self._deferred_stage_backend(DoctorRuntimeStage.RETRIEVE),
-                tactician=self._deferred_stage_backend(DoctorRuntimeStage.TACTICIAN),
-                proof=self._deferred_stage_backend(DoctorRuntimeStage.PROOF),
             ),
         )
+        self._composition_handles: Mapping[str, Any] | None = None
 
     @staticmethod
     def discovery() -> dict[str, Any]:
@@ -657,6 +681,48 @@ class DeterministicDoctorRuntime:
     def evidence(self) -> DeterministicDoctorEvidenceBundle | None:
         return self._evidence
 
+    @property
+    def composition_handles(self) -> Mapping[str, Any] | None:
+        """Optional production composition handles attached by the factory."""
+
+        return self._composition_handles
+
+    def attach_composition_handles(self, handles: Mapping[str, Any]) -> None:
+        """Attach body-free production composition handles (idempotent)."""
+
+        if not isinstance(handles, Mapping):
+            raise DeterministicDoctorRuntimeError(
+                "invalid_composition_handles",
+                "composition handles must be a mapping",
+            )
+        self._composition_handles = MappingProxyType(dict(handles))
+
+    def mandatory_backends_bound(self) -> tuple[str, ...]:
+        """Return mandatory backends that are non-empty and non-deferred."""
+
+        available = set(self._service.backends_available)
+        bound: list[str] = []
+        for name in MANDATORY_PRODUCTION_BACKENDS:
+            backend = getattr(self._service._backends, name, None)  # noqa: SLF001
+            if backend is None or name not in available:
+                continue
+            if bool(getattr(backend, "doctor_deferred_backend", False)):
+                continue
+            bound.append(name)
+        return tuple(bound)
+
+    def assert_mandatory_backends_production_ready(self) -> None:
+        """Fail closed when any mandatory backend is empty or deferred."""
+
+        bound = set(self.mandatory_backends_bound())
+        missing = [name for name in MANDATORY_PRODUCTION_BACKENDS if name not in bound]
+        if missing:
+            raise DeterministicDoctorRuntimeError(
+                "mandatory_backend_unavailable",
+                "mandatory production backends are empty or deferred: "
+                + ", ".join(missing),
+            )
+
     def capability_graph(self) -> dict[str, Any]:
         """Report current lazy state without loading an unrequested stage."""
 
@@ -664,6 +730,9 @@ class DeterministicDoctorRuntime:
             "interface": DETERMINISTIC_DOCTOR_BACKEND_FACTORY_INTERFACE,
             "stages": [item.to_dict() for item in self._factory.capabilities()],
             "loaded_stages": list(self._factory.loaded_stages),
+            "mandatory_backends": list(MANDATORY_PRODUCTION_BACKENDS),
+            "mandatory_backends_bound": list(self.mandatory_backends_bound()),
+            "optional_deferred_backends": list(OPTIONAL_DEFERRED_BACKENDS),
             "providers_started": False,
             "network_routes_allowed": False,
             "model_routes_allowed": False,
@@ -910,14 +979,50 @@ class DeterministicDoctorRuntime:
             corpus_root_id=view.sca_snapshot.snapshot_id,
         )
         digest_by_path = {item.path: item.content_digest for item in inventory}
-        source_units = tuple(
-            diagnostics_module.DoctorSourceUnit(
-                path=path,
-                source_bytes=b"",
-                blob_identity=digest_by_path[path],
+        byte_count_by_path = {item.path: item.byte_count for item in inventory}
+        # Production composition (DCR-050): empty source bytes are unavailable,
+        # not successful.  Load exact admitted bytes from the checkout inventory.
+        source_units_list: list[Any] = []
+        for path in diagnostic_paths:
+            candidate = self.checkout_root.joinpath(*PurePosixPath(path).parts)
+            try:
+                if candidate.is_symlink() or not candidate.is_file():
+                    raise DeterministicDoctorRuntimeError(
+                        "source_became_unreadable",
+                        f"admitted diagnostic source is not a regular file: {path}",
+                    )
+                payload = candidate.read_bytes()
+            except OSError as exc:
+                raise DeterministicDoctorRuntimeError(
+                    "source_became_unreadable",
+                    f"admitted diagnostic source became unreadable: {path}",
+                ) from exc
+            if not payload:
+                # Empty bodies cannot establish production diagnostic evidence.
+                raise DeterministicDoctorRuntimeError(
+                    "empty_source_unavailable",
+                    f"admitted diagnostic source has empty bytes: {path}",
+                )
+            digest = _sha256(payload)
+            expected = digest_by_path.get(path, "")
+            if expected and digest != expected:
+                raise DeterministicDoctorRuntimeError(
+                    "source_identity_mismatch",
+                    f"admitted source changed after snapshot: {path}",
+                )
+            if byte_count_by_path.get(path, -1) not in {-1, len(payload)}:
+                raise DeterministicDoctorRuntimeError(
+                    "source_identity_mismatch",
+                    f"admitted source size drifted after inventory: {path}",
+                )
+            source_units_list.append(
+                diagnostics_module.DoctorSourceUnit(
+                    path=path,
+                    source_bytes=payload,
+                    blob_identity=digest,
+                )
             )
-            for path in diagnostic_paths
-        )
+        source_units = tuple(source_units_list)
         diag_snapshot = diagnose(
             sources=source_units,
             repository_root=str(self.checkout_root),
@@ -1059,13 +1164,14 @@ class DeterministicDoctorRuntime:
             del policy
             try:
                 self._factory.get(stage)
-                reason = "awaiting_typed_stage_inputs"
+                # Typed inputs still open: unavailable, never successful.
+                reason = "stage_unavailable_awaiting_typed_inputs"
                 remediation = _STAGE_REMEDIATIONS[stage]
             except DoctorRuntimeStageUnavailable as exc:
                 reason = exc.reason_code
                 remediation = exc.remediation
             self._stage_receipts[stage.value] = {
-                "status": "deferred",
+                "status": "unavailable",
                 "reason_code": reason,
                 "remediation": remediation,
             }
@@ -1081,13 +1187,118 @@ class DeterministicDoctorRuntime:
                     DoctorServiceCapabilityCode.CAPABILITY_UNAVAILABLE.value,
                     reason,
                 ),
-                explanation=f"{stage.value} deferred: {remediation}",
+                explanation=(
+                    f"{stage.value} unavailable (not successful): {remediation}"
+                ),
                 changed=False,
-                status={"stage": stage.value, "automatic_fallback": False},
+                status={
+                    "stage": stage.value,
+                    "automatic_fallback": False,
+                    "production_success": False,
+                },
                 stage_refs={stage.value: reason},
             )
 
+        # Mark optional deferred adapters so production composition can reject
+        # them as mandatory-backend candidates.
+        setattr(backend, "doctor_deferred_backend", True)
+        setattr(backend, "doctor_stage_name", stage.value)
         return backend
+
+    def _mandatory_stage_backend(
+        self, stage: DoctorRuntimeStage
+    ) -> Callable[..., DoctorOperationResult]:
+        """Bind a mandatory stage: wire the class, abstain only on open inputs."""
+
+        def backend(
+            request: DoctorOperationRequest,
+            *,
+            policy: DeterministicDoctorPolicy,
+            policy_decision: Any,
+        ) -> DoctorOperationResult:
+            del policy
+            try:
+                self._factory.get(stage)
+                reason = "awaiting_typed_stage_inputs"
+                remediation = _STAGE_REMEDIATIONS[stage]
+                status = "wired"
+            except DoctorRuntimeStageUnavailable as exc:
+                # Dependency gap is typed unavailability, never empty success.
+                reason = exc.reason_code
+                remediation = exc.remediation
+                status = "unavailable"
+            self._stage_receipts[stage.value] = {
+                "status": status,
+                "reason_code": reason,
+                "remediation": remediation,
+            }
+            return DoctorOperationResult(
+                request_id=request.request_id,
+                operation=request.operation,
+                mode=request.mode,
+                disposition=DoctorRepairDisposition.ABSTAIN,
+                incident_id=request.incident_cid(),
+                read_only=request.is_read_only,
+                policy_decision=policy_decision,
+                reason_codes=(
+                    DoctorServiceCapabilityCode.CAPABILITY_UNAVAILABLE.value
+                    if status == "unavailable"
+                    else DoctorServiceCapabilityCode.STAGE_BACKEND_MISSING.value,
+                    reason,
+                ),
+                explanation=(
+                    f"{stage.value} bound; {remediation}"
+                    if status == "wired"
+                    else f"{stage.value} unavailable: {remediation}"
+                ),
+                changed=False,
+                status={
+                    "stage": stage.value,
+                    "automatic_fallback": False,
+                    "production_success": False,
+                    "mandatory": True,
+                    "deferred": False,
+                },
+                stage_refs={stage.value: reason},
+            )
+
+        setattr(backend, "doctor_deferred_backend", False)
+        setattr(backend, "doctor_stage_name", stage.value)
+        setattr(backend, "doctor_mandatory_backend", True)
+        return backend
+
+    def _retrieve_backend(
+        self,
+        request: DoctorOperationRequest,
+        *,
+        policy: DeterministicDoctorPolicy,
+        policy_decision: Any,
+    ) -> DoctorOperationResult:
+        return self._mandatory_stage_backend(DoctorRuntimeStage.RETRIEVE)(
+            request, policy=policy, policy_decision=policy_decision
+        )
+
+    def _tactician_backend(
+        self,
+        request: DoctorOperationRequest,
+        *,
+        policy: DeterministicDoctorPolicy,
+        policy_decision: Any,
+    ) -> DoctorOperationResult:
+        return self._mandatory_stage_backend(DoctorRuntimeStage.TACTICIAN)(
+            request, policy=policy, policy_decision=policy_decision
+        )
+
+    def _proof_backend(
+        self,
+        request: DoctorOperationRequest,
+        *,
+        policy: DeterministicDoctorPolicy,
+        policy_decision: Any,
+    ) -> DoctorOperationResult:
+        return self._mandatory_stage_backend(DoctorRuntimeStage.PROOF)(
+            request, policy=policy, policy_decision=policy_decision
+        )
 
     def _transaction_backend(
         self,
@@ -1096,15 +1307,52 @@ class DeterministicDoctorRuntime:
         policy: DeterministicDoctorPolicy,
         policy_decision: Any,
     ) -> DoctorOperationResult:
-        # Loading the class proves wiring only.  A production mutation needs
-        # real adapters and the service's control dependency, never defaults.
-        self._factory.get(DoctorRuntimeStage.TRANSACTION)
-        if self._control_service is None:
-            return self._deferred_stage_backend(DoctorRuntimeStage.TRANSACTION)(
-                request, policy=policy, policy_decision=policy_decision
+        # Loading the class proves wiring.  Mutation still needs real adapters
+        # and the service's control dependency — never claim success without them.
+        del policy
+        try:
+            self._factory.get(DoctorRuntimeStage.TRANSACTION)
+            wired = True
+            reason = "awaiting_typed_stage_inputs"
+            remediation = _STAGE_REMEDIATIONS[DoctorRuntimeStage.TRANSACTION]
+        except DoctorRuntimeStageUnavailable as exc:
+            wired = False
+            reason = exc.reason_code
+            remediation = exc.remediation
+        if self._control_service is None and wired:
+            reason = "control_service_required"
+            remediation = (
+                "bind a control-plane permit/effect adapter before transaction apply"
             )
-        return self._deferred_stage_backend(DoctorRuntimeStage.TRANSACTION)(
-            request, policy=policy, policy_decision=policy_decision
+            wired = False
+        status = "wired" if wired else "unavailable"
+        self._stage_receipts[DoctorRuntimeStage.TRANSACTION.value] = {
+            "status": status,
+            "reason_code": reason,
+            "remediation": remediation,
+        }
+        return DoctorOperationResult(
+            request_id=request.request_id,
+            operation=request.operation,
+            mode=request.mode,
+            disposition=DoctorRepairDisposition.ABSTAIN,
+            incident_id=request.incident_cid(),
+            read_only=request.is_read_only,
+            policy_decision=policy_decision,
+            reason_codes=(
+                DoctorServiceCapabilityCode.CAPABILITY_UNAVAILABLE.value,
+                reason,
+            ),
+            explanation=f"transaction {status}: {remediation}",
+            changed=False,
+            status={
+                "stage": DoctorRuntimeStage.TRANSACTION.value,
+                "automatic_fallback": False,
+                "production_success": False,
+                "mandatory": True,
+                "deferred": False,
+            },
+            stage_refs={DoctorRuntimeStage.TRANSACTION.value: reason},
         )
 
 
