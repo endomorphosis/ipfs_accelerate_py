@@ -65,7 +65,35 @@
     "v3_seed_goals": 9,
     "v3_seed_tasks": 15
   },
+  "reload": {
+    "acceptance_head": "aca0e4a0c25940419cb404f135e90a2a2fdcff70",
+    "acceptance_tree": "c863d58843296db26bd0e4453d5662f45534ab14",
+    "accepted_task_statuses": {
+      "ASE3-019": "completed",
+      "ASE3-023": "completed",
+      "ASE3-027": "completed",
+      "ASE3-030": "completed",
+      "ASE3-031": "completed",
+      "ASE3-032": "completed"
+    },
+    "launch_authorization_only": true,
+    "phase": "provider_attempt_daemon_reload",
+    "post_launch_birth_receipt_required": true,
+    "post_launch_birth_receipt_schema": "ipfs_accelerate_py.agent_supervisor.provider-attempt-generation-birth@1",
+    "receipt": {
+      "provider_attempt_daemon_reload_receipt.json": "sha256:8c885efd128385f200aa55388724efd4dbf2c461003b387b6bcc88660283924f"
+    },
+    "reload_gate_completed": true,
+    "task": {
+      "blocked_contract_sha256": "sha256:e38d159c1a30ebf74e171a1d7a00f7dba0773058dd17f96eca34e01f09810e4b",
+      "canonical_task_cid": "baguqeeradovptvx4kagyourgywrwno4kehcajrsyzduqzu7sr2bcd6vtn3na",
+      "completed_contract_sha256": "sha256:21535aad10d951add2781d705e996c502a579466ba3bc7674f27a5f95e68b16d",
+      "status_after": "completed",
+      "status_before": "blocked",
+      "task_id": "ASE3-022"
+    }
+  },
   "rescue_bulk_merge_allowed": false,
-  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2",
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@3",
   "task_id": "ASE3-000"
 }

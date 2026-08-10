@@ -671,7 +671,7 @@ Closeout:           ASE3-014
 
 ## ASE3-022 Accept the provider-attempt daemon reload boundary
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
