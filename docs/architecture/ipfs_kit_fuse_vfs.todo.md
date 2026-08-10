@@ -310,7 +310,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-309 Bind staged VFS mutation effects to the WAL coordinator
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
