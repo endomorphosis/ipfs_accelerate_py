@@ -690,7 +690,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-702 Add mount/doctor/status/unmount CLI, status schema, and observability
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
