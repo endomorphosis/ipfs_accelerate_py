@@ -796,7 +796,7 @@ Closeout:           ASE3-014
 
 ## ASE3-021 Wire durable production refill, append/adoption CAS, and completion authority
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
