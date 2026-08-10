@@ -350,7 +350,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-301 Implement pre-ready recovery, idempotent replay, orphan-stage reclamation, and leases
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
