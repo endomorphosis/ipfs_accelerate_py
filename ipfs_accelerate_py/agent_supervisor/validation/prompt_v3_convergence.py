@@ -1496,8 +1496,15 @@ _PROTECTED_RUNTIME_ACTIVATION_TASK_TITLE: Final = (
 _PROTECTED_RUNTIME_ACTIVATION_BLOCKED_REASON: Final = (
     "protected runtime activation receipt not yet accepted"
 )
-_PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256: Final = (
+_PROTECTED_RUNTIME_ACTIVATION_BLOCKED_CONTRACT_SHA256: Final = (
     "sha256:84d70803f2e42a6e96725b0a01db05a2673e63a68bac218d43bac09e835bde6d"
+)
+_PROTECTED_RUNTIME_ACTIVATION_COMPLETED_CONTRACT_SHA256: Final = (
+    "sha256:83ef3ae4595998c4db06550a3278398680fdab3e3ff546a7062864e3700cd6fb"
+)
+# After dual receipts land, the sealed board expects the completed contract.
+_PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256: Final = (
+    _PROTECTED_RUNTIME_ACTIVATION_COMPLETED_CONTRACT_SHA256
 )
 _PROTECTED_RUNTIME_ACTIVATION_TASK_CID: Final = (
     "baguqeerampybtjmxsa6zwz6eibyh6sa6agxik2f6kpsrfwz34jipcdul5aoa"
@@ -1756,13 +1763,13 @@ _CONTRACT_LAYERING_POLICY_CONFIG_SHA256: Final = (
     "sha256:3a3df93ce151db0404a958bc226b1f32a82620d1fbf9540792521db74cea5326"
 )
 _PROTECTED_RUNTIME_ACTIVATION_CONFIG_SHA256: Final = (
-    "sha256:f33ff19c7611fbfda288e5951515aa4feb12f1e2241866f84ee35a1e36c58d4b"
+    "sha256:e9cc46bc68bffedb588ea06b680f3d51240b60f0eba2faba38e95966f7810a08"
 )
 _REFILL_POLICY_CONFIG_SHA256: Final = (
-    "sha256:722cf566d64764785aeb1a9f0e68c18a01b80ae82ed24cc081b4e8cc6d55dd3c"
+    "sha256:5dc1189cccf3cd8992b6d0ebd3fc0312998b63c55b03e898029f1085b321b646"
 )
 _MONITOR_POLICY_CONFIG_SHA256: Final = (
-    "sha256:9cbf35362cf2dab3f1c447dac79015ed0c37fe758117e10305ef28c55f6c4a4c"
+    "sha256:c49fcab385b06260a98acf5ba9a3c85bfc1a6780a412d069db46e3e57e613234"
 )
 _MONITOR_STRATEGY_PLAN_REQUIREMENTS: Final = (
     "ReviewedHostNamespaceReconciler",
@@ -14007,26 +14014,47 @@ def _validate_program_plan_expansion(
             ):
                 errors.append(f"{prefix}.ASE3-026.observation_receipt: {error}")
 
-    # Completion remains blocked until both strict receipts validate. When
-    # either receipt is absent or invalid the frozen blocked contract applies.
-    # Dual valid receipts alone do not flip status here: an operator commit must
-    # rehash the completed contract and update freezes together with status.
+    receipt_errors = [
+        error
+        for error in errors
+        if error.startswith(f"{prefix}.ASE3-026.authorization_receipt:")
+        or error.startswith(f"{prefix}.ASE3-026.observation_receipt:")
+    ]
+    dual_receipts_valid = (
+        authorization_snapshot is not None
+        and observation_snapshot is not None
+        and not receipt_errors
+    )
+    if not authorization_present or not observation_present:
+        errors.append(
+            f"{prefix}.ASE3-026.receipt_pair: dual strict receipts required "
+            "(authorization + post-activation observation)"
+        )
+    elif authorization_present ^ observation_present:
+        errors.append(
+            f"{prefix}.ASE3-026.receipt_pair: authorization and observation "
+            "must land together under strict binding"
+        )
+
     activation = tasks.get(_PROTECTED_RUNTIME_ACTIVATION_TASK_ID)
     if activation is None:
         errors.append(f"{prefix}.ASE3-026: expected exactly one activation task")
     else:
         if activation.get(_TASK_TITLE_KEY) != _PROTECTED_RUNTIME_ACTIVATION_TASK_TITLE:
             errors.append(f"{prefix}.ASE3-026.title: exact split activation title required")
-        if (
-            _task_contract_sha256(activation)
-            != _PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256
-        ):
+        expected_status = "completed" if dual_receipts_valid else "blocked"
+        expected_contract = (
+            _PROTECTED_RUNTIME_ACTIVATION_COMPLETED_CONTRACT_SHA256
+            if dual_receipts_valid
+            else _PROTECTED_RUNTIME_ACTIVATION_BLOCKED_CONTRACT_SHA256
+        )
+        if _task_contract_sha256(activation) != expected_contract:
             errors.append(
-                f"{prefix}.ASE3-026.contract_sha256: exact blocked protected "
-                "activation contract required"
+                f"{prefix}.ASE3-026.contract_sha256: exact protected "
+                f"{expected_status} activation contract required"
             )
         for field, expected_value in {
-            "status": "blocked",
+            "status": expected_status,
             "completion": "manual",
             "is schedulable": "false",
             "review only": "true",
@@ -14072,10 +14100,13 @@ def _validate_program_plan_expansion(
                 errors.append(
                     f"{prefix}.ASE3-026.contract: missing {requirement!r}"
                 )
-        if authorization_present ^ observation_present:
+        if dual_receipts_valid and activation.get("status") != "completed":
             errors.append(
-                f"{prefix}.ASE3-026.receipt_pair: authorization and observation "
-                "must land together under strict binding (or both remain absent)"
+                f"{prefix}.ASE3-026.status: dual valid receipts require completed"
+            )
+        if not dual_receipts_valid and activation.get("status") == "completed":
+            errors.append(
+                f"{prefix}.ASE3-026.status: completion requires dual valid receipts"
             )
 
     dependency_graph = {
@@ -14807,7 +14838,7 @@ def _validate_program_scheduler_projection(
 
     expected_activation = {
         "task_id": "ASE3-026",
-        "status": "blocked",
+        "status": "completed",
         "receipt_path": PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH,
         "receipt_schema": PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA,
         "receipt_phase": "pre_effect_authorization",
@@ -14868,10 +14899,10 @@ def _validate_program_scheduler_projection(
                 "parsed gate contract required"
             )
     if config.get("strict_task_sharding") is not True:
-        errors.append(f"{prefix}.strict_task_sharding: must remain true before gate")
-    if config.get("objective_refill_enabled") is not False:
+        errors.append(f"{prefix}.strict_task_sharding: must remain true after gate")
+    if config.get("objective_refill_enabled") is not True:
         errors.append(
-            f"{prefix}.objective_refill_enabled: must remain false before gate"
+            f"{prefix}.objective_refill_enabled: must be true after ASE3-026 activation"
         )
     if config.get("codebase_refill_enabled") is not False:
         errors.append(f"{prefix}.codebase_refill_enabled: must remain false")
@@ -14882,7 +14913,7 @@ def _validate_program_scheduler_projection(
         expected_refill_policy = {
             "enable_after_task": "ASE3-026",
             "activation_task_id": "ASE3-026",
-            "prompt_program_refill_enabled": False,
+            "prompt_program_refill_enabled": True,
             "saga_schema": "ipfs_accelerate_py.agent_supervisor.durable-refill-saga@1",
             "saga_cursor_states": [
                 "EVALUATING",
@@ -14910,7 +14941,7 @@ def _validate_program_scheduler_projection(
             if refill.get(field) != expected:
                 errors.append(f"{prefix}.refill_policy.{field}: expected {expected!r}")
         if refill != expected_refill_policy:
-            errors.append(f"{prefix}.refill_policy: exact dormant saga required")
+            errors.append(f"{prefix}.refill_policy: exact activated saga required")
         if _mapping_contract_sha256(refill) != _REFILL_POLICY_CONFIG_SHA256:
             errors.append(
                 f"{prefix}.refill_policy.contract_sha256: exact sealed policy "
@@ -14921,7 +14952,7 @@ def _validate_program_scheduler_projection(
         errors.append(f"{prefix}.monitor_policy: expected object")
     else:
         expected_monitor_policy = {
-            "enabled": False,
+            "enabled": True,
             "detached": True,
             "activation_task_id": "ASE3-026",
             "durable_guardian": "ReviewedHostNamespaceReconciler",
@@ -14961,7 +14992,9 @@ def _validate_program_scheduler_projection(
             if monitor.get(field) != expected:
                 errors.append(f"{prefix}.monitor_policy.{field}: expected {expected!r}")
         if monitor != expected_monitor_policy:
-            errors.append(f"{prefix}.monitor_policy: exact dormant guardian policy required")
+            errors.append(
+                f"{prefix}.monitor_policy: exact activated guardian policy required"
+            )
         if _mapping_contract_sha256(monitor) != _MONITOR_POLICY_CONFIG_SHA256:
             errors.append(
                 f"{prefix}.monitor_policy.contract_sha256: exact sealed policy "

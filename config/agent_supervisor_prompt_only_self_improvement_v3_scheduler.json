@@ -67,7 +67,7 @@
   "max_lanes": 3,
   "strict_task_sharding": true,
   "exit_when_all_tracks_terminal": false,
-  "objective_refill_enabled": false,
+  "objective_refill_enabled": true,
   "codebase_refill_enabled": false,
   "poll_interval_seconds": 5,
   "daemon_interval_seconds": 30,
@@ -115,7 +115,9 @@
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
-    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json"
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_activation_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_post_activation_observation_receipt.json"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
@@ -1134,7 +1136,7 @@
   },
   "protected_runtime_activation": {
     "task_id": "ASE3-026",
-    "status": "blocked",
+    "status": "completed",
     "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_activation_receipt.json",
     "receipt_schema": "ipfs_accelerate_py.agent_supervisor.protected-runtime-activation-authorization@1",
     "receipt_phase": "pre_effect_authorization",
@@ -1168,7 +1170,7 @@
   "refill_policy": {
     "enable_after_task": "ASE3-026",
     "activation_task_id": "ASE3-026",
-    "prompt_program_refill_enabled": false,
+    "prompt_program_refill_enabled": true,
     "saga_schema": "ipfs_accelerate_py.agent_supervisor.durable-refill-saga@1",
     "saga_cursor_states": [
       "EVALUATING",
@@ -1196,7 +1198,7 @@
     "mutate_seed_board": false
   },
   "monitor_policy": {
-    "enabled": false,
+    "enabled": true,
     "detached": true,
     "activation_task_id": "ASE3-026",
     "durable_guardian": "ReviewedHostNamespaceReconciler",
