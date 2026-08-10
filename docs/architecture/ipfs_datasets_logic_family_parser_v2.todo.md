@@ -815,7 +815,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-026 Maintain an exact-source-gated UI and accessibility logic adapter
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
