@@ -908,7 +908,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-029 Execute TLC and Apalache with typed state/temporal semantics
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
