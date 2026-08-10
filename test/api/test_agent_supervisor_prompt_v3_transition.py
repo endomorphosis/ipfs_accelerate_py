@@ -930,6 +930,9 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     assert ase3027["final_blob_count"] == 5
     assert ase3027["blob_errors"] == []
     # Still blocked for Q: product-generation@1 needs independent replay role.
+    assert products["ASE3-019"]["sealed_ready_flag"] is True
+    # 019 still lacks product-generation@1 triples (empty generations list).
+    assert products["ASE3-019"]["generation_count"] == 0
     assert any("ASE3-019" in item for item in report["blockers"])
     assert any(
         "ASE3-027" in item and "product-generation@1" in item
