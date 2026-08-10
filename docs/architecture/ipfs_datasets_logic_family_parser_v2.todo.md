@@ -629,7 +629,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-020 Add bounded HyperLTL self-composition routes
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
