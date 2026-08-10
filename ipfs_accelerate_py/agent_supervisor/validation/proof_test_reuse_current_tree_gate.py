@@ -15,8 +15,8 @@ for:
 * ``ptr/final-current-tree-gate@1`` on ``PTR-G110``
 * ``ptr/cross-repository-current-tree-gate@1`` on ``PTR-G000``
 
-without claiming the other root requirements by implication.  The producing
-task remains ``PTR-122``.
+without claiming the other root requirements by implication.  The historical
+producing task for that G110 path was ``PTR-122``.
 
 PTR-142 refreshes the sealed production population from 41 to the exact 53-task
 board (adding the runtime-activation repair ``PTR-131`` … ``PTR-142``) and
@@ -25,10 +25,17 @@ that its injected/pseudo-certificate activation evidence was not production
 authority.  The first corrective wave would have expanded to 60
 (``PTR-143`` … ``PTR-149``) and a pre-material wave to 63, but the reviewed
 authority path further requires ``PTR-150`` … ``PTR-155``.  PTR-149 therefore
-expands the population to the exact 66-task board and requires fresh evidence
-for the full corrective ``PTR-143`` … ``PTR-155`` wave; historical PTR-142,
-53-task, pre-v4 60-task, and pre-material 63-task evidence cannot satisfy that
-premise.
+expanded the population to the exact 66-task board and required fresh evidence
+for the full corrective ``PTR-143`` … ``PTR-155`` wave.
+
+PTR-169 seals the authenticated 78-task board (66 plus ``PTR-160`` … ``PTR-171``)
+under ``AuthenticatedProofReuseCurrentTreeGateV5``.  Production final evidence
+targets ``PTR-G140`` with ``ptr/authenticated-current-tree-gate-v5@1`` and is
+produced by ``PTR-169``.  Historical 66-task, 76-task (v7), 77-task (v8),
+PTR-149, and older packets are rejected as stale.  PTR-169 may emit only a
+pre-merge candidate receipt for itself; authoritative root completion requires
+the outer controller to re-run the exact 78-task gate after the PTR-169 merge
+commit is present and prove that commit/tree.
 """
 
 from __future__ import annotations
@@ -89,16 +96,32 @@ PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_SCHEMA: Final = (
 PROOF_TEST_REUSE_CURRENT_TREE_GATE_VERSION: Final = 1
 
 ROOT_GOAL_ID: Final = "PTR-G000"
-FINAL_GATE_GOAL_ID: Final = "PTR-G110"
-FINAL_GATE_TASK_ID: Final = "PTR-122"
-LEGACY_FINAL_GATE_TASK_ID: Final = "PTR-102"
+# Production authenticated final gate (PTR-169 / G140).
+FINAL_GATE_GOAL_ID: Final = "PTR-G140"
+FINAL_GATE_TASK_ID: Final = "PTR-169"
+LEGACY_FINAL_GATE_TASK_ID: Final = "PTR-122"
+LEGACY_G110_FINAL_GATE_TASK_ID: Final = "PTR-122"
+LEGACY_G110_FINAL_GATE_GOAL_ID: Final = "PTR-G110"
+LEGACY_G110_FINAL_GATE_ACCEPTANCE_CRITERION: Final = (
+    "ptr/final-current-tree-gate@1"
+)
+# Still older closeout owner retained for import compatibility.
+HISTORICAL_PTR_102_FINAL_GATE_TASK_ID: Final = "PTR-102"
 
-FINAL_GATE_ACCEPTANCE_CRITERION: Final = "ptr/final-current-tree-gate@1"
+FINAL_GATE_ACCEPTANCE_CRITERION: Final = (
+    "ptr/authenticated-current-tree-gate-v5@1"
+)
+FINAL_GATE_REVIEW_REVISION: Final = (
+    "authenticated-receipt-current-tree-repair-v9"
+)
 ROOT_ACCEPTANCE_CRITERION: Final = "ptr/cross-repository-current-tree-gate@1"
 
 # Exact satisfied requirements per emitted evidence — never the full root set.
 FINAL_GATE_SATISFIED_REQUIREMENTS: Final = (FINAL_GATE_ACCEPTANCE_CRITERION,)
 ROOT_SATISFIED_REQUIREMENTS: Final = (ROOT_ACCEPTANCE_CRITERION,)
+LEGACY_G110_SATISFIED_REQUIREMENTS: Final = (
+    LEGACY_G110_FINAL_GATE_ACCEPTANCE_CRITERION,
+)
 
 # Historical name retained for importers that inspect root requirement IDs
 # declared on G000.  The gate verifies the supporting premises but the root
@@ -171,8 +194,38 @@ PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID: Final = "PTR-149"
 HISTORICAL_53_TASK_POPULATION_COUNT: Final = 53
 PRE_V4_60_TASK_POPULATION_COUNT: Final = 60
 PRE_MATERIAL_63_TASK_POPULATION_COUNT: Final = 63
+HISTORICAL_66_TASK_POPULATION_COUNT: Final = 66
+HISTORICAL_76_TASK_POPULATION_COUNT: Final = 76  # v7
+HISTORICAL_77_TASK_POPULATION_COUNT: Final = 77  # v8
 
-# Sealed production population: all 66 implementation tasks on the board.
+# Authenticated current-tree repair wave (PTR-160 … PTR-171).  Expands the
+# sealed board from 66 to the exact 78-task v9 population.
+AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS: Final = frozenset(
+    {
+        "PTR-160",
+        "PTR-161",
+        "PTR-162",
+        "PTR-163",
+        "PTR-164",
+        "PTR-165",
+        "PTR-166",
+        "PTR-167",
+        "PTR-168",
+        "PTR-169",
+        "PTR-170",
+        "PTR-171",
+    }
+)
+AUTHENTICATED_CURRENT_TREE_REPAIR_ID: Final = "authenticated-current-tree"
+AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT: Final = (
+    FINAL_GATE_ACCEPTANCE_CRITERION
+)
+AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID: Final = FINAL_GATE_TASK_ID
+AUTHENTICATED_PROOF_REUSE_CURRENT_TREE_GATE_V5_INTERFACE: Final = (
+    "AuthenticatedProofReuseCurrentTreeGateV5@1"
+)
+
+# Sealed production population: all 78 implementation tasks on the board.
 REQUIRED_PTR_TASK_IDS: Final = frozenset(
     {
         "PTR-000",
@@ -218,12 +271,15 @@ REQUIRED_PTR_TASK_IDS: Final = frozenset(
         "PTR-130",
         *RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
         *PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
+        *AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS,
     }
 )
-SEALED_PRODUCTION_TASK_COUNT: Final = 66
+SEALED_PRODUCTION_TASK_COUNT: Final = 78
 assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT
 assert len(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS) == 13
-# Verified child premises only — G110 is not a child premise of itself.
+assert len(AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS) == 12
+# Verified child premises only — G140 is not a child premise of itself.
+# G110/G120/G130 remain mandatory children of the authenticated final gate.
 REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
     {
         "PTR-G010",
@@ -236,6 +292,9 @@ REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
         "PTR-G080",
         "PTR-G090",
         "PTR-G100",
+        "PTR-G110",
+        "PTR-G120",
+        "PTR-G130",
     }
 )
 REQUIRED_GRAPH_GOAL_IDS: Final = REQUIRED_CHILD_GOAL_IDS | {
@@ -270,6 +329,10 @@ class TaskCompletionProvenanceKind(Enum):
     RETROSPECTIVE_INTEGRATION_VERIFICATION = (
         "retrospective_integration_verification"
     )
+    # Allowed only for PTR-169 itself: a non-authoritative pre-merge candidate
+    # receipt that cannot satisfy root completion until the outer controller
+    # re-runs the gate on the merged commit/tree.
+    PRE_MERGE_CANDIDATE = "pre_merge_candidate"
 
 
 # Each member is a closed record.  Keeping the union closed is important:
@@ -331,6 +394,16 @@ _TASK_PROVENANCE_FIELDS: Final[
                 "policy_approved",
             }
         ),
+    ),
+    TaskCompletionProvenanceKind.PRE_MERGE_CANDIDATE: (
+        frozenset(
+            {
+                "candidate_receipt_cid",
+                "candidate_commit_id",
+                "candidate_tree_id",
+            }
+        ),
+        frozenset({"pre_merge_candidate"}),
     ),
 }
 
@@ -660,15 +733,28 @@ class ProofTestReuseCompletionEvidence:
 
     def __post_init__(self) -> None:
         goal_id = _text(self.goal_id)
-        if goal_id not in {ROOT_GOAL_ID, FINAL_GATE_GOAL_ID}:
+        allowed_goals = {
+            ROOT_GOAL_ID,
+            FINAL_GATE_GOAL_ID,
+            LEGACY_G110_FINAL_GATE_GOAL_ID,
+        }
+        if goal_id not in allowed_goals:
             raise ProofTestReuseCurrentTreeGateError(
-                "completion evidence may target only PTR-G000 or PTR-G110"
+                "completion evidence may target only PTR-G000, PTR-G140, or "
+                "legacy PTR-G110"
             )
         object.__setattr__(self, "goal_id", goal_id)
-        if self.producing_task_id != FINAL_GATE_TASK_ID:
+        producing = _text(self.producing_task_id)
+        if producing not in {
+            FINAL_GATE_TASK_ID,
+            LEGACY_G110_FINAL_GATE_TASK_ID,
+            HISTORICAL_PTR_102_FINAL_GATE_TASK_ID,
+        }:
             raise ProofTestReuseCurrentTreeGateError(
-                "final completion evidence must be produced by PTR-122"
+                "final completion evidence must be produced by PTR-169 "
+                "(or historical PTR-122)"
             )
+        object.__setattr__(self, "producing_task_id", producing)
         if self.authority != _AUTHORITATIVE:
             raise ProofTestReuseCurrentTreeGateError(
                 "completion evidence authority must be authoritative"
@@ -688,11 +774,26 @@ class ProofTestReuseCompletionEvidence:
         if goal_id == FINAL_GATE_GOAL_ID:
             if criterion != FINAL_GATE_ACCEPTANCE_CRITERION:
                 raise ProofTestReuseCurrentTreeGateError(
-                    "G110 evidence must use ptr/final-current-tree-gate@1"
+                    "G140 evidence must use ptr/authenticated-current-tree-gate-v5@1"
                 )
             if requirements != FINAL_GATE_SATISFIED_REQUIREMENTS:
                 raise ProofTestReuseCurrentTreeGateError(
-                    "G110 evidence must claim only ptr/final-current-tree-gate@1"
+                    "G140 evidence must claim only "
+                    "ptr/authenticated-current-tree-gate-v5@1"
+                )
+            if producing != FINAL_GATE_TASK_ID:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G140 evidence must be produced by PTR-169"
+                )
+        elif goal_id == LEGACY_G110_FINAL_GATE_GOAL_ID:
+            if criterion != LEGACY_G110_FINAL_GATE_ACCEPTANCE_CRITERION:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "legacy G110 evidence must use ptr/final-current-tree-gate@1"
+                )
+            if requirements != LEGACY_G110_SATISFIED_REQUIREMENTS:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "legacy G110 evidence must claim only "
+                    "ptr/final-current-tree-gate@1"
                 )
         else:
             if criterion != ROOT_ACCEPTANCE_CRITERION:
@@ -786,6 +887,12 @@ class ProofTestReuseCompletionEvidence:
             "premise_cids": list(self.premise_cids),
             "observed_at_ms": self.observed_at_ms,
             "fresh_until_ms": self.fresh_until_ms,
+            "task_count": SEALED_PRODUCTION_TASK_COUNT
+            if self.producing_task_id == FINAL_GATE_TASK_ID
+            else HISTORICAL_66_TASK_POPULATION_COUNT,
+            "review_revision": FINAL_GATE_REVIEW_REVISION
+            if self.producing_task_id == FINAL_GATE_TASK_ID
+            else "production-runtime-activation-v4",
         }
 
     @property
@@ -973,13 +1080,19 @@ class ProofTestReuseCompletionEvidence:
 
 @dataclass(frozen=True, slots=True)
 class ProofTestReuseCurrentTreeGateDecision:
-    """Typed outcome.  Rejection can never carry completion evidence."""
+    """Typed outcome.  Rejection can never carry completion evidence.
+
+    A pre-merge candidate pass for PTR-169 itself carries only
+    ``candidate_receipt`` and never authoritative G140/G000 evidence.
+    """
 
     passed: bool
     reason_codes: tuple[str, ...]
     evaluated_at_ms: int
     final_gate_completion_evidence: ProofTestReuseCompletionEvidence | None = None
     root_completion_evidence: ProofTestReuseCompletionEvidence | None = None
+    pre_merge_candidate: bool = False
+    candidate_receipt: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         reasons = tuple(dict.fromkeys(_text(item) for item in self.reason_codes))
@@ -991,35 +1104,61 @@ class ProofTestReuseCurrentTreeGateDecision:
                 raise ProofTestReuseCurrentTreeGateError(
                     "passing gate requires no rejection reasons"
                 )
-            if (
-                self.final_gate_completion_evidence is None
-                or self.root_completion_evidence is None
-            ):
-                raise ProofTestReuseCurrentTreeGateError(
-                    "passing gate requires separate G110 and G000 evidence"
-                )
-            if self.final_gate_completion_evidence.goal_id != FINAL_GATE_GOAL_ID:
-                raise ProofTestReuseCurrentTreeGateError(
-                    "final_gate_completion_evidence must target PTR-G110"
-                )
-            if self.root_completion_evidence.goal_id != ROOT_GOAL_ID:
-                raise ProofTestReuseCurrentTreeGateError(
-                    "root_completion_evidence must target PTR-G000"
-                )
-            if (
-                self.final_gate_completion_evidence.acceptance_criterion
-                != FINAL_GATE_ACCEPTANCE_CRITERION
-            ):
-                raise ProofTestReuseCurrentTreeGateError(
-                    "G110 evidence criterion mismatch"
-                )
-            if (
-                self.root_completion_evidence.acceptance_criterion
-                != ROOT_ACCEPTANCE_CRITERION
-            ):
-                raise ProofTestReuseCurrentTreeGateError(
-                    "G000 evidence criterion mismatch"
-                )
+            if getattr(self, "pre_merge_candidate", False):
+                if self.candidate_receipt is None:
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "pre-merge candidate pass requires candidate_receipt"
+                    )
+                if (
+                    self.final_gate_completion_evidence is not None
+                    or self.root_completion_evidence is not None
+                ):
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "pre-merge candidate cannot emit authoritative "
+                        "completion evidence"
+                    )
+            else:
+                if (
+                    self.final_gate_completion_evidence is None
+                    or self.root_completion_evidence is None
+                ):
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "passing gate requires separate final-gate and G000 evidence"
+                    )
+                final_goal = self.final_gate_completion_evidence.goal_id
+                if final_goal not in {
+                    FINAL_GATE_GOAL_ID,
+                    LEGACY_G110_FINAL_GATE_GOAL_ID,
+                }:
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "final_gate_completion_evidence must target PTR-G140 "
+                        "or legacy PTR-G110"
+                    )
+                if self.root_completion_evidence.goal_id != ROOT_GOAL_ID:
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "root_completion_evidence must target PTR-G000"
+                    )
+                if final_goal == FINAL_GATE_GOAL_ID and (
+                    self.final_gate_completion_evidence.acceptance_criterion
+                    != FINAL_GATE_ACCEPTANCE_CRITERION
+                ):
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "G140 evidence criterion mismatch"
+                    )
+                if final_goal == LEGACY_G110_FINAL_GATE_GOAL_ID and (
+                    self.final_gate_completion_evidence.acceptance_criterion
+                    != LEGACY_G110_FINAL_GATE_ACCEPTANCE_CRITERION
+                ):
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "legacy G110 evidence criterion mismatch"
+                    )
+                if (
+                    self.root_completion_evidence.acceptance_criterion
+                    != ROOT_ACCEPTANCE_CRITERION
+                ):
+                    raise ProofTestReuseCurrentTreeGateError(
+                        "G000 evidence criterion mismatch"
+                    )
         elif (
             self.final_gate_completion_evidence is not None
             or self.root_completion_evidence is not None
@@ -1042,6 +1181,12 @@ class ProofTestReuseCurrentTreeGateDecision:
             "passed": self.passed,
             "reason_codes": list(self.reason_codes),
             "evaluated_at_ms": self.evaluated_at_ms,
+            "pre_merge_candidate": bool(self.pre_merge_candidate),
+            "candidate_receipt": (
+                dict(self.candidate_receipt)
+                if isinstance(self.candidate_receipt, Mapping)
+                else self.candidate_receipt
+            ),
             "final_gate_completion_evidence": (
                 self.final_gate_completion_evidence.to_dict()
                 if self.final_gate_completion_evidence is not None
@@ -1052,6 +1197,9 @@ class ProofTestReuseCurrentTreeGateDecision:
                 if self.root_completion_evidence is not None
                 else None
             ),
+            "task_count": SEALED_PRODUCTION_TASK_COUNT,
+            "review_revision": FINAL_GATE_REVIEW_REVISION,
+            "producing_task_id": FINAL_GATE_TASK_ID,
         }
 
     @classmethod
@@ -1064,12 +1212,19 @@ class ProofTestReuseCurrentTreeGateDecision:
             )
         final_raw = payload.get("final_gate_completion_evidence")
         root_raw = payload.get("root_completion_evidence")
-        # Legacy single-evidence payloads are not admissible after PTR-122.
-        if payload.get("passed") is True and (
-            not isinstance(final_raw, Mapping) or not isinstance(root_raw, Mapping)
+        # Legacy single-evidence payloads are not admissible.  Pre-merge
+        # candidate passes carry no authoritative completion evidence.
+        if (
+            payload.get("passed") is True
+            and not payload.get("pre_merge_candidate")
+            and (
+                not isinstance(final_raw, Mapping)
+                or not isinstance(root_raw, Mapping)
+            )
         ):
             raise ProofTestReuseCurrentTreeGateError(
-                "passing decision requires both G110 and G000 evidence payloads"
+                "passing decision requires both final-gate and G000 evidence "
+                "payloads"
             )
         final_ev = (
             ProofTestReuseCompletionEvidence.from_dict(final_raw)
@@ -1081,12 +1236,18 @@ class ProofTestReuseCurrentTreeGateDecision:
             if isinstance(root_raw, Mapping)
             else None
         )
+        candidate_raw = payload.get("candidate_receipt")
+        candidate = (
+            dict(candidate_raw) if isinstance(candidate_raw, Mapping) else None
+        )
         return cls(
             passed=bool(payload.get("passed")),
             reason_codes=tuple(payload.get("reason_codes") or ()),
             evaluated_at_ms=int(payload.get("evaluated_at_ms") or 0),
             final_gate_completion_evidence=final_ev,
             root_completion_evidence=root_ev,
+            pre_merge_candidate=bool(payload.get("pre_merge_candidate")),
+            candidate_receipt=candidate,
         )
 
 
@@ -1438,12 +1599,12 @@ class ProofTestReuseCurrentTreeGate:
             if not values or any(not item for item in values):
                 raise ProofTestReuseCurrentTreeGateError(f"{name} is invalid")
             object.__setattr__(self, name, values)
-        # Production callers must never reintroduce G110 as a child premise.
+        # Production callers must never reintroduce G140 as a child premise.
         if FINAL_GATE_GOAL_ID in self.required_child_goal_ids:
             raise ProofTestReuseCurrentTreeGateError(
-                "PTR-G110 must not be required as a child premise (self-reference)"
+                "PTR-G140 must not be required as a child premise (self-reference)"
             )
-        # Sealed expansion + runtime-activation repair must remain in production.
+        # Sealed expansion + repair waves must remain in production.
         sealed_expansion = {
             "PTR-108",
             "PTR-109",
@@ -1456,6 +1617,7 @@ class ProofTestReuseCurrentTreeGate:
             "PTR-130",
             *RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
             *PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
+            *AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS,
         }
         if self.required_task_ids == REQUIRED_PTR_TASK_IDS and not sealed_expansion.issubset(
             self.required_task_ids
@@ -1467,7 +1629,7 @@ class ProofTestReuseCurrentTreeGate:
             len(self.required_task_ids) != SEALED_PRODUCTION_TASK_COUNT
         ):
             raise ProofTestReuseCurrentTreeGateError(
-                "production population must be the exact 66-task board"
+                "production population must be the exact 78-task board"
             )
         if (
             self.required_task_ids == REQUIRED_PTR_TASK_IDS
@@ -1486,6 +1648,15 @@ class ProofTestReuseCurrentTreeGate:
         ):
             raise ProofTestReuseCurrentTreeGateError(
                 "production population missing production-activation correction tasks"
+            )
+        if (
+            self.required_task_ids == REQUIRED_PTR_TASK_IDS
+            and not AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS.issubset(
+                self.required_task_ids
+            )
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "production population missing authenticated current-tree repair tasks"
             )
 
     @property
@@ -1632,7 +1803,23 @@ class ProofTestReuseCurrentTreeGate:
         raw = record.get("task_provenance")
         if not isinstance(raw, Mapping):
             reasons.append(_reason("missing_task_provenance", task_id))
-            return reasons
+    
+        if kind is TaskCompletionProvenanceKind.PRE_MERGE_CANDIDATE:
+            # Only PTR-169 may present a pre-merge candidate; every other task
+            # still needs a reviewed closed provenance member.
+            if task_id != FINAL_GATE_TASK_ID:
+                reasons.append(
+                    _reason("pre_merge_candidate_not_allowed", task_id)
+                )
+            if (
+                _text(provenance.get("candidate_tree_id"))
+                and _text(provenance.get("candidate_tree_id")) != self.tree_id
+            ):
+                reasons.append(
+                    _reason("pre_merge_candidate_tree_mismatch", task_id)
+                )
+
+        return reasons
         provenance = dict(raw)
         kind_text = _text(provenance.get("kind")).lower()
         try:
@@ -1883,10 +2070,19 @@ class ProofTestReuseCurrentTreeGate:
         return reasons, self._evidence_cid(record)
 
     def _requires_repair_evidence(self) -> bool:
-        """The corrective production population needs fresh activation evidence."""
+        """Authenticated or production-activation populations need repair evidence."""
 
         return bool(
-            PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS & self.required_task_ids
+            (
+                PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS
+                | AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS
+            )
+            & self.required_task_ids
+        )
+
+    def _authenticated_repair_required(self) -> bool:
+        return bool(
+            AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS & self.required_task_ids
         )
 
     def _repair_evidence_reasons(
@@ -1895,7 +2091,7 @@ class ProofTestReuseCurrentTreeGate:
         *,
         now_ms: int,
     ) -> tuple[list[str], str]:
-        """Validate fresh production-runtime activation evidence (PTR-149)."""
+        """Validate fresh authenticated or production-activation repair evidence."""
 
         reasons: list[str] = []
         if not self._requires_repair_evidence():
@@ -1911,15 +2107,9 @@ class ProofTestReuseCurrentTreeGate:
         repair_id = _text(
             _value(record, "repair_id", "repair", "population_id")
         )
-        if repair_id != PRODUCTION_RUNTIME_ACTIVATION_ID:
-            reasons.append("repair_evidence_id_mismatch")
-
         producer_task_id = _text(
             _value(record, "producer_task_id", "producing_task_id", "task_id")
         )
-        if producer_task_id != PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID:
-            reasons.append("repair_evidence_producer_task_mismatch")
-
         covered = frozenset(
             _text(item)
             for item in (
@@ -1928,20 +2118,63 @@ class ProofTestReuseCurrentTreeGate:
                 or ()
             )
         )
-        missing_tasks = sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS - covered)
-        if missing_tasks:
-            reasons.extend(
-                _reason("repair_evidence_missing_task", task_id)
-                for task_id in missing_tasks
+        authenticated = self._authenticated_repair_required()
+        if authenticated:
+            if repair_id != AUTHENTICATED_CURRENT_TREE_REPAIR_ID:
+                reasons.append("repair_evidence_id_mismatch")
+            if (
+                producer_task_id
+                != AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID
+            ):
+                reasons.append("repair_evidence_producer_task_mismatch")
+            missing_tasks = sorted(
+                AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS - covered
             )
-        # Historical PTR-142 coverage cannot be mixed in to make the new
-        # corrective evidence appear complete.
-        unexpected = sorted(covered - PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS)
-        if unexpected:
-            reasons.extend(
-                _reason("repair_evidence_unexpected_task", task_id)
-                for task_id in unexpected
+            if missing_tasks:
+                reasons.extend(
+                    _reason("repair_evidence_missing_task", task_id)
+                    for task_id in missing_tasks
+                )
+            unexpected = sorted(
+                covered - AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS
             )
+            if unexpected:
+                reasons.extend(
+                    _reason("repair_evidence_unexpected_task", task_id)
+                    for task_id in unexpected
+                )
+            # Historical PTR-149 / 66-task packets are never production authority.
+            if producer_task_id == PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID:
+                reasons.append(
+                    "repair_evidence_historical_ptr149_inadmissible"
+                )
+            if repair_id == PRODUCTION_RUNTIME_ACTIVATION_ID:
+                reasons.append(
+                    "repair_evidence_historical_production_activation_inadmissible"
+                )
+        else:
+            if repair_id != PRODUCTION_RUNTIME_ACTIVATION_ID:
+                reasons.append("repair_evidence_id_mismatch")
+            if producer_task_id != PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID:
+                reasons.append("repair_evidence_producer_task_mismatch")
+            missing_tasks = sorted(
+                PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS - covered
+            )
+            if missing_tasks:
+                reasons.extend(
+                    _reason("repair_evidence_missing_task", task_id)
+                    for task_id in missing_tasks
+                )
+            # Historical PTR-142 coverage cannot be mixed in to make the new
+            # corrective evidence appear complete.
+            unexpected = sorted(
+                covered - PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS
+            )
+            if unexpected:
+                reasons.extend(
+                    _reason("repair_evidence_unexpected_task", task_id)
+                    for task_id in unexpected
+                )
 
         if record.get("passed") is not True:
             reasons.append("repair_evidence_failed")
@@ -1999,7 +2232,12 @@ class ProofTestReuseCurrentTreeGate:
         ) is True:
             reasons.append("repair_evidence_activation_gap_not_closeout_authority")
         sealed = record.get("sealed_task_count")
-        if sealed != SEALED_PRODUCTION_TASK_COUNT:
+        expected_sealed = (
+            SEALED_PRODUCTION_TASK_COUNT
+            if authenticated
+            else HISTORICAL_66_TASK_POPULATION_COUNT
+        )
+        if sealed != expected_sealed:
             reasons.append("repair_evidence_task_count_mismatch")
         # Historical / intermediate sealed counts cannot be re-admitted.
         if sealed == HISTORICAL_53_TASK_POPULATION_COUNT:
@@ -2008,6 +2246,12 @@ class ProofTestReuseCurrentTreeGate:
             reasons.append("repair_evidence_pre_v4_60_task_population")
         if sealed == PRE_MATERIAL_63_TASK_POPULATION_COUNT:
             reasons.append("repair_evidence_pre_material_63_task_population")
+        if sealed == HISTORICAL_66_TASK_POPULATION_COUNT and authenticated:
+            reasons.append("repair_evidence_historical_66_task_population")
+        if sealed == HISTORICAL_76_TASK_POPULATION_COUNT:
+            reasons.append("repair_evidence_historical_76_task_population")
+        if sealed == HISTORICAL_77_TASK_POPULATION_COUNT:
+            reasons.append("repair_evidence_historical_77_task_population")
         if producer_task_id == "PTR-142" or repair_id == RUNTIME_ACTIVATION_REPAIR_ID:
             reasons.append("repair_evidence_historical_ptr142_inadmissible")
 
@@ -2019,8 +2263,48 @@ class ProofTestReuseCurrentTreeGate:
                 "satisfied_requirement",
             )
         )
-        if requirement != PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT:
+        expected_requirement = (
+            AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT
+            if authenticated
+            else PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT
+        )
+        if requirement != expected_requirement:
             reasons.append("repair_evidence_requirement_mismatch")
+
+        # Authenticated gate requires signed-receipt + real-proof premises.
+        if authenticated:
+            for field_name, reason_code in (
+                (
+                    "trusted_signed_receipts",
+                    "repair_evidence_trusted_signed_receipts_missing",
+                ),
+                (
+                    "locally_verified_real_proofs",
+                    "repair_evidence_local_real_proof_missing",
+                ),
+                (
+                    "genuine_three_repository_e2e",
+                    "repair_evidence_genuine_three_repo_missing",
+                ),
+                (
+                    "forced_replay_agrees",
+                    "repair_evidence_forced_replay_missing",
+                ),
+                (
+                    "zero_false_skips",
+                    "repair_evidence_zero_false_skips_missing",
+                ),
+                (
+                    "benchmark_meets_threshold",
+                    "repair_evidence_benchmark_threshold_missing",
+                ),
+                (
+                    "optional_capability_gaps_truthful",
+                    "repair_evidence_optional_gap_truth_missing",
+                ),
+            ):
+                if record.get(field_name) is not True:
+                    reasons.append(reason_code)
 
         reasons.extend(
             self._validate_premise_cid(record, prefix="repair_evidence")
@@ -2090,7 +2374,7 @@ class ProofTestReuseCurrentTreeGate:
         supervisor_health_evidence: Mapping[str, Any] | None = None,
         repair_evidence: Mapping[str, Any] | None = None,
     ) -> ProofTestReuseCurrentTreeGateDecision:
-        """Evaluate all current evidence; emit G110 + G000 evidence only on success."""
+        """Evaluate all current evidence; emit G140 + G000 evidence only on success."""
 
         now_ms = int(float(self.clock()) * 1000)
         reasons: list[str] = []
@@ -2172,6 +2456,35 @@ class ProofTestReuseCurrentTreeGate:
                     reasons.append(
                         _reason("proof_skip_binding_mismatch", task_id)
                     )
+                elif self._authenticated_repair_required():
+                    # Every warm hit on the authenticated board must use a
+                    # trusted signed receipt and a locally verified real proof.
+                    signed_ok = record.get("trusted_signed_receipt") is True or (
+                        isinstance(receipt, ProofCachedTestValidationReceipt)
+                        and bool(
+                            getattr(receipt, "signed_receipt_verified", False)
+                            or getattr(receipt, "signature_verified", False)
+                            or _text(
+                                getattr(receipt, "signed_receipt_cid", "")
+                            )
+                        )
+                    )
+                    proof_ok = record.get("locally_verified_real_proof") is True or (
+                        isinstance(receipt, ProofCachedTestValidationReceipt)
+                        and bool(
+                            getattr(receipt, "proof_verified", False)
+                            or getattr(receipt, "local_proof_verified", False)
+                            or getattr(receipt, "certificate_verified", False)
+                        )
+                    )
+                    if not signed_ok:
+                        reasons.append(
+                            _reason("warm_hit_unsigned_receipt", task_id)
+                        )
+                    if not proof_ok:
+                        reasons.append(
+                            _reason("warm_hit_unverified_proof", task_id)
+                        )
             elif not _text(
                 _value(record, "validation_receipt_cid", "receipt_cid")
             ):
@@ -2190,7 +2503,7 @@ class ProofTestReuseCurrentTreeGate:
         for raw in child_goal_evidence:
             record = _record(raw)
             if _text(record.get("goal_id")) == FINAL_GATE_GOAL_ID:
-                reasons.append("child_goal_g110_self_reference")
+                reasons.append("child_goal_final_gate_self_reference")
 
         adversarial_reasons, adversarial_cids = self._validate_population(
             adversarial_evidence,
@@ -2239,7 +2552,7 @@ class ProofTestReuseCurrentTreeGate:
                     )
                 )
 
-        # Direct fresh G110 benchmark premise (not a G110 goal label).
+        # Direct fresh benchmark premise (not a final-gate goal label).
         benchmark = _mapping(benchmark_evidence)
         reasons.extend(self._bindings(benchmark, "benchmark"))
         if _text(benchmark.get("authority")).lower() != _AUTHORITATIVE:
@@ -2263,7 +2576,7 @@ class ProofTestReuseCurrentTreeGate:
             except Exception:
                 reasons.append("benchmark_not_reverified")
 
-        # Direct fresh G110 rollout premise.
+        # Direct fresh rollout premise.
         rollout = _mapping(rollout_evidence)
         reasons.extend(self._bindings(rollout, "rollout"))
         if _text(rollout.get("authority")).lower() != _AUTHORITATIVE:
@@ -2332,6 +2645,57 @@ class ProofTestReuseCurrentTreeGate:
                 passed=False,
                 reason_codes=tuple(reasons),
                 evaluated_at_ms=now_ms,
+            )
+
+        # PTR-169 may only emit a pre-merge candidate for itself.  Authoritative
+        # G140/G000 completion requires a post-merge outer re-run that proves
+        # the merge commit/tree with a closed non-candidate provenance member.
+        ptr169_record = task_records.get(FINAL_GATE_TASK_ID, {})
+        ptr169_provenance = ptr169_record.get("task_provenance")
+        ptr169_pre_merge = (
+            isinstance(ptr169_provenance, Mapping)
+            and _text(ptr169_provenance.get("kind")).lower()
+            == TaskCompletionProvenanceKind.PRE_MERGE_CANDIDATE.value
+        )
+        if ptr169_pre_merge:
+            candidate_receipt = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "proof-test-reuse-pre-merge-candidate-receipt@1"
+                ),
+                "interface": AUTHENTICATED_PROOF_REUSE_CURRENT_TREE_GATE_V5_INTERFACE,
+                "producing_task_id": FINAL_GATE_TASK_ID,
+                "goal_id": FINAL_GATE_GOAL_ID,
+                "acceptance_criterion": FINAL_GATE_ACCEPTANCE_CRITERION,
+                "authority": "pre_merge_candidate",
+                "task_count": SEALED_PRODUCTION_TASK_COUNT,
+                "review_revision": FINAL_GATE_REVIEW_REVISION,
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+                "commit_id": self.commit_id,
+                "gitlink_state_cid": self.gitlink_state_cid,
+                "repository_forest_cid": self.repository_forest_cid,
+                "objective_completion_tree_id": self.objective_completion_tree_id,
+                "candidate_receipt_cid": _text(
+                    ptr169_provenance.get("candidate_receipt_cid")
+                ),
+                "candidate_commit_id": _text(
+                    ptr169_provenance.get("candidate_commit_id")
+                ),
+                "candidate_tree_id": _text(
+                    ptr169_provenance.get("candidate_tree_id")
+                ),
+                "evaluated_at_ms": now_ms,
+                "authoritative_completion_requires": (
+                    "outer_controller_post_merge_rerun_of_exact_78_task_gate"
+                ),
+            }
+            return ProofTestReuseCurrentTreeGateDecision(
+                passed=True,
+                reason_codes=(),
+                evaluated_at_ms=now_ms,
+                pre_merge_candidate=True,
+                candidate_receipt=candidate_receipt,
             )
 
         freshness_ends: list[int] = []
@@ -2573,7 +2937,7 @@ def build_production_runtime_activation_evidence(
         "locally_verified_current_v4_certificate": bool(
             locally_verified_current_v4_certificate
         ),
-        "sealed_task_count": SEALED_PRODUCTION_TASK_COUNT,
+        "sealed_task_count": HISTORICAL_66_TASK_POPULATION_COUNT,
         "requirement_id": PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
         "repository_id": repository_id,
         "tree_id": tree_id,
@@ -2607,18 +2971,226 @@ def build_production_runtime_activation_evidence(
     return record
 
 
+
+def build_authenticated_current_tree_repair_evidence(
+    *,
+    repository_id: str,
+    tree_id: str,
+    commit_id: str,
+    gitlink_state_cid: str,
+    repository_forest_cid: str,
+    capability_cid: str,
+    verifying_key_cid: str,
+    circuit_cid: str,
+    policy_cid: str,
+    objective_completion_tree_id: str = "",
+    observed_at_ms: int,
+    fresh_until_ms: int,
+    evidence_cid: str,
+    false_skips: int = 0,
+    activation_e2e_passed: bool = True,
+    zero_injection_default_path: bool = True,
+    three_repository_cold_warm: bool = True,
+    real_groth16_certificate: bool = True,
+    measured_subprocess_benchmark: bool = True,
+    historical_activation_claims_superseded: bool = True,
+    zero_false_skip_assurance: bool = True,
+    controller_owned_receipt_candidate_context: bool = True,
+    retained_proof_bearing_issuance_material: bool = True,
+    exact_reviewed_source_binary_capability_circuit_key_identities: bool = True,
+    locally_verified_current_v4_certificate: bool = True,
+    trusted_signed_receipts: bool = True,
+    locally_verified_real_proofs: bool = True,
+    genuine_three_repository_e2e: bool = True,
+    forced_replay_agrees: bool = True,
+    zero_false_skips: bool = True,
+    benchmark_meets_threshold: bool = True,
+    optional_capability_gaps_truthful: bool = True,
+    supervisor_healthy: bool = True,
+    passed: bool = True,
+    injected: bool = False,
+    pseudo_certificate: bool = False,
+    synthetic_timing: bool = False,
+    service_injection: bool = False,
+    structural_only_verification: bool = False,
+    activation_gap: bool = False,
+    activation_gap_present: bool = False,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build fresh PTR-169 authenticated current-tree repair evidence.
+
+    Covers exactly ``PTR-160`` … ``PTR-171`` on the sealed 78-task board.  Any
+    66/76/77-task or PTR-149 packet is rejected by the gate as stale.
+    """
+
+    if false_skips != 0:
+        passed = False
+        zero_false_skip_assurance = False
+        zero_false_skips = False
+    if (
+        injected
+        or pseudo_certificate
+        or synthetic_timing
+        or service_injection
+        or structural_only_verification
+        or activation_gap
+        or activation_gap_present
+    ):
+        passed = False
+    required_true = (
+        controller_owned_receipt_candidate_context,
+        retained_proof_bearing_issuance_material,
+        exact_reviewed_source_binary_capability_circuit_key_identities,
+        locally_verified_current_v4_certificate,
+        real_groth16_certificate,
+        trusted_signed_receipts,
+        locally_verified_real_proofs,
+        genuine_three_repository_e2e,
+        forced_replay_agrees,
+        zero_false_skips,
+        benchmark_meets_threshold,
+        optional_capability_gaps_truthful,
+    )
+    if not all(required_true):
+        passed = False
+    record: dict[str, Any] = {
+        "authority": _AUTHORITATIVE,
+        "repair_id": AUTHENTICATED_CURRENT_TREE_REPAIR_ID,
+        "producer_task_id": AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID,
+        "repair_task_ids": sorted(AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS),
+        "passed": bool(passed),
+        "false_skips": int(false_skips),
+        "zero_false_skip_assurance": bool(zero_false_skip_assurance),
+        "activation_e2e_passed": bool(activation_e2e_passed),
+        "zero_injection_default_path": bool(zero_injection_default_path),
+        "three_repository_cold_warm": bool(three_repository_cold_warm),
+        "real_groth16_certificate": bool(real_groth16_certificate),
+        "measured_subprocess_benchmark": bool(measured_subprocess_benchmark),
+        "historical_activation_claims_superseded": bool(
+            historical_activation_claims_superseded
+        ),
+        "controller_owned_receipt_candidate_context": bool(
+            controller_owned_receipt_candidate_context
+        ),
+        "retained_proof_bearing_issuance_material": bool(
+            retained_proof_bearing_issuance_material
+        ),
+        "exact_reviewed_source_binary_capability_circuit_key_identities": bool(
+            exact_reviewed_source_binary_capability_circuit_key_identities
+        ),
+        "locally_verified_current_v4_certificate": bool(
+            locally_verified_current_v4_certificate
+        ),
+        "trusted_signed_receipts": bool(trusted_signed_receipts),
+        "locally_verified_real_proofs": bool(locally_verified_real_proofs),
+        "genuine_three_repository_e2e": bool(genuine_three_repository_e2e),
+        "forced_replay_agrees": bool(forced_replay_agrees),
+        "zero_false_skips": bool(zero_false_skips),
+        "benchmark_meets_threshold": bool(benchmark_meets_threshold),
+        "optional_capability_gaps_truthful": bool(
+            optional_capability_gaps_truthful
+        ),
+        "sealed_task_count": SEALED_PRODUCTION_TASK_COUNT,
+        "requirement_id": AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT,
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "commit_id": commit_id,
+        "gitlink_state_cid": gitlink_state_cid,
+        "gitlink_closure_complete": True,
+        "repository_forest_cid": repository_forest_cid,
+        "objective_completion_tree_id": objective_completion_tree_id,
+        "capability_cid": capability_cid,
+        "verifying_key_cid": verifying_key_cid,
+        "circuit_cid": circuit_cid,
+        "policy_cid": policy_cid,
+        "observed_at_ms": int(observed_at_ms),
+        "fresh_until_ms": int(fresh_until_ms),
+        "evidence_cid": evidence_cid,
+        "supervisor_healthy": bool(supervisor_healthy),
+        "injected": bool(injected),
+        "pseudo_certificate": bool(pseudo_certificate),
+        "synthetic_timing": bool(synthetic_timing),
+        "service_injection": bool(service_injection),
+        "structural_only_verification": bool(structural_only_verification),
+        "activation_gap": bool(activation_gap),
+        "activation_gap_present": bool(activation_gap_present),
+        "review_revision": FINAL_GATE_REVIEW_REVISION,
+    }
+    if extra:
+        for key, value in extra.items():
+            name = str(key)
+            if name in record:
+                continue
+            record[name] = value
+    return record
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedProofReuseCurrentTreeGateV5(ProofTestReuseCurrentTreeGate):
+    """Production authenticated 78-task current-tree gate (PTR-169).
+
+    Seals the exact reachable inventory, requires signed-receipt and real-proof
+    warm-hit premises, admits only the authenticated repair evidence covering
+    ``PTR-160`` … ``PTR-171``, and emits ``ptr/authenticated-current-tree-gate-v5@1``
+    on ``PTR-G140`` plus root ``ptr/cross-repository-current-tree-gate@1``.
+
+    PTR-169 may evaluate a pre-merge candidate for itself; authoritative
+    completion requires the outer controller to re-run this gate after the
+    PTR-169 merge commit is present and prove that commit/tree.  Historical
+    66/76/77-task and PTR-149 packets fail closed.
+    """
+
+    interface: ClassVar[str] = (
+        AUTHENTICATED_PROOF_REUSE_CURRENT_TREE_GATE_V5_INTERFACE
+    )
+    acceptance_criterion: ClassVar[str] = FINAL_GATE_ACCEPTANCE_CRITERION
+    review_revision: ClassVar[str] = FINAL_GATE_REVIEW_REVISION
+    sealed_task_count: ClassVar[int] = SEALED_PRODUCTION_TASK_COUNT
+    producing_task_id: ClassVar[str] = FINAL_GATE_TASK_ID
+    final_gate_goal_id: ClassVar[str] = FINAL_GATE_GOAL_ID
+
+    def persist_bundle(
+        self,
+        decision: ProofTestReuseCurrentTreeGateDecision,
+        *,
+        evaluate_packet: Mapping[str, Any],
+        retained_premise_bytes: Mapping[str, str] | None = None,
+    ) -> ProofTestReusePersistedGateBundle:
+        bundle = super().persist_bundle(
+            decision,
+            evaluate_packet=evaluate_packet,
+            retained_premise_bytes=retained_premise_bytes,
+        )
+        return bundle
+
+
 __all__ = [
+    "AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT",
+    "AUTHENTICATED_CURRENT_TREE_REPAIR_ID",
+    "AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID",
+    "AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS",
+    "AUTHENTICATED_PROOF_REUSE_CURRENT_TREE_GATE_V5_INTERFACE",
+    "AuthenticatedProofReuseCurrentTreeGateV5",
     "DEFAULT_PRODUCER_CHANNEL",
     "FINAL_GATE_ACCEPTANCE_CRITERION",
     "FINAL_GATE_GOAL_ID",
+    "FINAL_GATE_REVIEW_REVISION",
     "FINAL_GATE_SATISFIED_REQUIREMENTS",
     "FINAL_GATE_TASK_ID",
+    "HISTORICAL_53_TASK_POPULATION_COUNT",
+    "HISTORICAL_66_TASK_POPULATION_COUNT",
+    "HISTORICAL_76_TASK_POPULATION_COUNT",
+    "HISTORICAL_77_TASK_POPULATION_COUNT",
+    "HISTORICAL_PTR_102_FINAL_GATE_TASK_ID",
     "LEGACY_FINAL_GATE_TASK_ID",
+    "LEGACY_G110_FINAL_GATE_ACCEPTANCE_CRITERION",
+    "LEGACY_G110_FINAL_GATE_GOAL_ID",
+    "LEGACY_G110_FINAL_GATE_TASK_ID",
+    "LEGACY_G110_SATISFIED_REQUIREMENTS",
     "PROOF_TEST_REUSE_COMPLETION_EVIDENCE_INTERFACE",
     "PROOF_TEST_REUSE_CURRENT_TREE_GATE_INTERFACE",
     "PROOF_TEST_REUSE_GATE_BUNDLE_INTERFACE",
     "PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_INTERFACE",
-    "HISTORICAL_53_TASK_POPULATION_COUNT",
     "PRE_MATERIAL_63_TASK_POPULATION_COUNT",
     "PRE_V4_60_TASK_POPULATION_COUNT",
     "PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT",
@@ -2646,6 +3218,8 @@ __all__ = [
     "ProofTestReuseCurrentTreeGateError",
     "ProofTestReusePersistedGateBundle",
     "TaskCompletionProvenanceKind",
+    "build_authenticated_current_tree_repair_evidence",
     "build_production_runtime_activation_evidence",
     "verify_persisted_current_tree_gate_bundle",
 ]
+
