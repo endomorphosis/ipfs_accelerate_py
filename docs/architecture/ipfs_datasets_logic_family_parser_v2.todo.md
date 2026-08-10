@@ -567,7 +567,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-018 Add state, concurrency, refinement, and temporal routes
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
