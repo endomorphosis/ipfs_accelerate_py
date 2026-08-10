@@ -810,7 +810,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-812 Resolve validation retry-budget failure for KVFS-101
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
