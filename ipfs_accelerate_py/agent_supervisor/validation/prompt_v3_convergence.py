@@ -2076,9 +2076,11 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
 # against the attempt-2 seed and main-reachable provider-fallback integration
 # tip.  Product-generation@1 source/clean-replay/integrated triples are frozen
 # for ASE3-023/027/030/031/032 (ASE3-019 still pending).  ASE3-030 hermetic
-# acceptance closure hashes, ASE3-031/032 signed suite pins, and the reload
-# generation still need final identities.  Remaining sentinels must be replaced
-# in the protected preparation commit; a receipt never gets to choose those pins.
+# acceptance final values (generations, member blob/raw maps, capsule/archive
+# digests, suite count) and ASE3-031/032 suite pins are frozen against Git and
+# deterministic suite reports.  The reload generation still needs final
+# identities.  Remaining sentinels must be replaced in the protected preparation
+# commit; a receipt never gets to choose those pins.
 #
 # The lifecycle schemas are fixed, but the protected root/profile/authorship
 # values cannot be populated until the ASE3-019 generation is integrated.
@@ -3377,33 +3379,193 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
     },
 }
 _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_030,
-    "generations": (),
-    "final_blobs": {},
-    "final_raw_sha256": {},
-    "member_paths": (),
-    "module_origins": {},
-    "manifest_sha256": _FINAL_VALUE_PENDING_030,
-    "capsule_sha256": _FINAL_VALUE_PENDING_030,
-    "archive_sha256": _FINAL_VALUE_PENDING_030,
-    "archive_root_sha256": _FINAL_VALUE_PENDING_030,
-    "sealed_descriptor_sha256": _FINAL_VALUE_PENDING_030,
+    "ready": True,
+    "pending": None,
+    "generations": (
+            {
+                "role": "hermetic-cid-seal",
+                "source_commit": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "replay_commit": "f97cad9607f16e71c7b1383e55b624f5149def71",
+                "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "replay_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "integrated_commit": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_parent": "32face22bc17eb0b76f09fed2186ef799075b110",
+                "integrated_tree": "46be4b75f0a5ab9be06cf3b85a75691157fba09e",
+                "source_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "binary_full_index_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
+                ),
+            },
+            {
+                "role": "hermetic-cid-close",
+                "source_commit": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "source_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "replay_commit": "eb9944cf7c214403531f375f971756f5acc6766b",
+                "replay_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "replay_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "integrated_commit": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+                "integrated_parent": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_tree": "d1956cb171afbe24225ba1c65920c4192b4a8177",
+                "source_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "binary_full_index_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_control_plane.py",
+                    "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
+                    "test/api/test_llm_router_agent_implementation_route.py",
+                ),
+            },
+    ),
+    "final_blobs": {
+            "ipfs_accelerate_py/__init__.py": (
+                "4b21d326f200dab5927c7be628438a182bf0f612"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/__init__.py": (
+                "346c809c0457f0d612d378672abbdb0324de1f47"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/__init__.py": (
+                "24322042c103d710c215d52e53a6947a836e7ad9"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": (
+                "fdc9a1ef5f93814d38dec4692336b44b48623c70"
+            ),
+            "ipfs_accelerate_py/llm_router.py": (
+                "c569d03e80368319d2f26f5acff89f31d683f4f8"
+            ),
+            "ipfs_accelerate_py/utils/__init__.py": (
+                "4bb5af77be27aa8fb0b50618b0c05c57904bee49"
+            ),
+            "ipfs_accelerate_py/utils/cid_utils.py": (
+                "5d520ac3ee4191b132117ef28bce9ac2b0af16e2"
+            ),
+        },
+    "final_raw_sha256": {
+            "ipfs_accelerate_py/__init__.py": (
+                "sha256:0bb676dde293ed70132b5b5c7df5b3154639dc9ca36996967cf64da32cf41958"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/__init__.py": (
+                "sha256:df692cbf44bf2eee9fb6f113bc2220a3f93d386082c95dfae7097b6a3a2dd50d"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/__init__.py": (
+                "sha256:8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": (
+                "sha256:e8a2b5beae30ac0a40dcc1095a9241cfd80597f55f319828e2c844aeee1aa1ce"
+            ),
+            "ipfs_accelerate_py/llm_router.py": (
+                "sha256:0494c54c25d4df4144b47ed1382685a381dc8650264b8155f51be6eafe9c80b8"
+            ),
+            "ipfs_accelerate_py/utils/__init__.py": (
+                "sha256:07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3"
+            ),
+            "ipfs_accelerate_py/utils/cid_utils.py": (
+                "sha256:e7f6e94532c19ae22781fef967715f28c6825ffe4721bf52a52b647dce55e139"
+            ),
+        },
+    "member_paths": (
+            "ipfs_accelerate_py/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "ipfs_accelerate_py/utils/__init__.py",
+            "ipfs_accelerate_py/utils/cid_utils.py",
+        ),
+    "module_origins": {
+            "ipfs_accelerate_py": {
+                "member_path": "ipfs_accelerate_py/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/__init__.py",
+            },
+            "ipfs_accelerate_py.agent_supervisor": {
+                "member_path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/__init__.py",
+            },
+            "ipfs_accelerate_py.agent_supervisor.core": {
+                "member_path": "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+            },
+            "ipfs_accelerate_py.agent_supervisor.core.multiformats_identity": {
+                "member_path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+            },
+            "ipfs_accelerate_py.llm_router": {
+                "member_path": "ipfs_accelerate_py/llm_router.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/llm_router.py",
+            },
+            "ipfs_accelerate_py.utils": {
+                "member_path": "ipfs_accelerate_py/utils/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/utils/__init__.py",
+            },
+            "ipfs_accelerate_py.utils.cid_utils": {
+                "member_path": "ipfs_accelerate_py/utils/cid_utils.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/utils/cid_utils.py",
+            },
+        },
+    "manifest_sha256": (
+        "sha256:01c4622824b0fbc57b4abd0dc9a9839bb852ed2c4dd793a26acd9ee21ccd6f61"
+    ),
+    "capsule_sha256": (
+        "sha256:821f5dd3d1634ffeae06f9916e29572898e685c4123114a45ad4cc68f4e4a5d6"
+    ),
+    "archive_sha256": (
+        "sha256:acc3dd0ed4f754e206c7508626c6dfb2f69e57b732f427eb18f4994a11cd5023"
+    ),
+    "archive_root_sha256": (
+        "sha256:c4e8926743b7b3c5f5b6f2283cde93051eccaa55b33d407742c9a760aa0c2f57"
+    ),
+    "sealed_descriptor_sha256": (
+        "sha256:53f0c97055e168c81c8d8693baadb2c1f5467709e9de04b95087768ec595172c"
+    ),
     "probe_command": _HERMETIC_HOSTILE_PROBE_ARGV,
-    "suite_passed_count": -1,
-    "suite_report_sha256": _FINAL_VALUE_PENDING_030,
+    "suite_passed_count": 108,
+    "suite_report_sha256": (
+        "sha256:7d934821dcb386e22c19e0704ca0261cdbbf354557e6f02fad56298c2162b0dd"
+    ),
 }
 _NATIVE_DEPENDENCY_ACCEPTANCE_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_031_ACCEPTANCE,
-    "passed_count": -1,
-    "report_sha256": _FINAL_VALUE_PENDING_031_ACCEPTANCE,
+    "ready": True,
+    "pending": None,
+    "passed_count": 46,
+    "report_sha256": (
+        "sha256:3f87da558705cc3d9197e9489ffd4349adea0c6a849e99e29342864f7f53d7e8"
+    ),
 }
 _DUCKDB_POLICY_ACCEPTANCE_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_032_ACCEPTANCE,
-    "passed_count": -1,
-    "report_sha256": _FINAL_VALUE_PENDING_032_ACCEPTANCE,
+    "ready": True,
+    "pending": None,
+    "passed_count": 51,
+    "report_sha256": (
+        "sha256:2863198d96699a5767cae0568892c9e5f6bf0d73bf84d03878f430695defd96d"
+    ),
 }
 
 _PRODUCT_GENERATION_FINAL_VALUES: Final = {

@@ -3487,9 +3487,40 @@ def test_ase3_030_self_consistent_receipt_cannot_select_its_own_provenance() -> 
         lifecycle_authority=authority,
     )
 
-    assert any(
+    # After freeze, fixture-selected generations/blobs must not match sealed pins.
+    assert errors
+    assert not any(
         convergence_module._FINAL_VALUE_PENDING_030 in error for error in errors
     )
+    assert any(
+        "generations" in error or "final_blobs" in error or "frozen" in error
+        for error in errors
+    )
+
+
+def test_ase3_030_031_032_acceptance_final_values_are_sealed() -> None:
+    hermetic = convergence_module._HERMETIC_IDENTITY_FINAL_VALUES
+    assert hermetic["ready"] is True
+    assert hermetic["pending"] is None
+    assert hermetic["suite_passed_count"] == 108
+    assert len(hermetic["generations"]) == 2
+    assert len(hermetic["final_blobs"]) == 7
+    assert len(hermetic["final_raw_sha256"]) == 7
+    assert hermetic["manifest_sha256"].startswith("sha256:")
+    assert hermetic["capsule_sha256"].startswith("sha256:")
+    assert hermetic["archive_sha256"].startswith("sha256:")
+
+    native = convergence_module._NATIVE_DEPENDENCY_ACCEPTANCE_FINAL_VALUES
+    assert native["ready"] is True
+    assert native["pending"] is None
+    assert native["passed_count"] == 46
+    assert native["report_sha256"].startswith("sha256:")
+
+    duckdb = convergence_module._DUCKDB_POLICY_ACCEPTANCE_FINAL_VALUES
+    assert duckdb["ready"] is True
+    assert duckdb["pending"] is None
+    assert duckdb["passed_count"] == 51
+    assert duckdb["report_sha256"].startswith("sha256:")
 
 
 def test_ase3_030_generation_reconstructs_source_replay_and_integrated_git(
