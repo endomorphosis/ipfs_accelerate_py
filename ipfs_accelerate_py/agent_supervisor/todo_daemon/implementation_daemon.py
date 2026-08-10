@@ -23852,182 +23852,33 @@ class PortalImplementationDaemon:
         worktree_path: Path,
         command: Sequence[str] = (),
     ) -> dict[str, Any]:
-        """WPD-021: seal a pre-implementation kernel disposition before provider use.
+        """Return the terminal no-provider decision for legacy call sites."""
 
-        Provider dispatch is authorized only for ``residual_llm_authorized``
-        with a residual packet CID.  Returns a plain dict so the massive
-        implementation path stays free of hard import failures at module load.
-        """
-
-        task_cid = self._canonical_ref(task) or task.task_id
-        try:
-            head = (
-                subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                ).stdout
-                or ""
-            ).strip() or "HEAD"
-            tree = (
-                subprocess.run(
-                    ["git", "rev-parse", "HEAD^{tree}"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                ).stdout
-                or ""
-            ).strip() or head
-        except OSError:
-            head = "HEAD"
-            tree = "HEAD"
-        if (
-            self._task_metadata_value(task, "implementation mode").strip().lower()
-            == "ordered_provider"
-        ):
-            from ..runtime.ordered_provider_authoring import (
-                authoring_provider_invocation_authorized,
-                evaluate_ordered_provider_authoring,
-            )
-
-            authoring_receipt = evaluate_ordered_provider_authoring(
-                repo_root=self.repo_root,
-                taskboard_path=self.todo_path,
-                task_header_prefix=self.task_header_prefix,
-                task_id=task.task_id,
-                title=task.title,
-                metadata=task.metadata,
-                canonical_task_cid=task_cid,
-                current_forest_id="sha256:"
-                + hashlib.sha256(
-                    json.dumps(
-                        {"head": head, "tree": tree},
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("utf-8")
-                ).hexdigest(),
-                current_git_tree_id=tree,
-                workspace_path=worktree_path,
-                provider_command=command,
-                runtime_write_scope=self._proposal_scope_paths_for(
-                    task,
-                    include_ast_companions=False,
-                ),
-                isolated_worktree=bool(
-                    getattr(self, "use_ephemeral_worktree", False)
-                    and worktree_path.resolve() != self.repo_root.resolve()
-                ),
-                attempt=int(attempt),
-                environment=os.environ,
-            )
-            authorized = authoring_provider_invocation_authorized(
-                authoring_receipt
-            )
-            disposition = (
-                "ordered_provider_authoring_authorized"
-                if authorized
-                else "ordered_provider_authoring_rejected"
-            )
-            return {
-                "gate_kind": "ordered_provider_authoring",
-                "event_name": "ordered_provider_authoring_gate_evaluated",
-                "skip_provider": not authorized,
-                "provider_authorized": authorized,
-                "disposition": disposition,
-                "reason_code": str(
-                    authoring_receipt.get("reason_code") or ""
-                ),
-                "receipt_cid": str(authoring_receipt.get("receipt_id") or ""),
-                "residual_packet_cid": "",
-                "provider_hook_count": 0,
-                "primary_dispatch_mode": str(
-                    authoring_receipt.get("primary_dispatch_mode") or ""
-                ),
-                "primary_unavailability_reason": str(
-                    authoring_receipt.get("primary_unavailability_reason") or ""
-                ),
-                "authoring_receipt": authoring_receipt,
-                "event": {
-                    "event": "ordered_provider_authoring_gate_evaluated",
-                    "task_id": task.task_id,
-                    "attempt": int(attempt),
-                    "disposition": disposition,
-                    "provider_authorized": authorized,
-                    "provider_hook_count": 0,
-                    "primary_dispatch_mode": str(
-                        authoring_receipt.get("primary_dispatch_mode") or ""
-                    ),
-                    "primary_unavailability_reason": str(
-                        authoring_receipt.get("primary_unavailability_reason") or ""
-                    ),
-                    "skip_provider": not authorized,
-                    "reason_code": str(
-                        authoring_receipt.get("reason_code") or ""
-                    ),
-                    "receipt_cid": str(
-                        authoring_receipt.get("receipt_id") or ""
-                    ),
-                    "authoring_receipt": authoring_receipt,
-                    "interface": "OrderedProviderAuthoringGate@1",
-                },
-            }
-        try:
-            from .implementation_disposition import implementation_disposition_cid
-            from .pre_implementation_provider_gate import (
-                build_forest_roots_from_identity,
-                evaluate_provider_gate,
-            )
-        except Exception as exc:  # noqa: BLE001  # pragma: no cover
-            return {
-                "skip_provider": True,
-                "provider_authorized": False,
-                "disposition": "defer_capability",
-                "reason_code": "pre_implementation_gate_import_failed",
-                "receipt_cid": "",
-                "event": {
-                    "task_id": task.task_id,
-                    "attempt": int(attempt),
-                    "error": f"{type(exc).__name__}: {exc}"[-500:],
-                },
-            }
-
-        repo_id = implementation_disposition_cid(
-            {"repo_root": str(self.repo_root), "kind": "repository"}
+        del self, worktree_path, command
+        # DCR-080 closes the former provider escape hatch for the live daemon.
+        # Every implementation route must enter the receipt-bound composition
+        # explicitly; a generic worker request has no deterministic service
+        # receipt and therefore abstains before any provider command is built.
+        from ..control.pre_implementation_provider_gate import (
+            evaluate_provider_gate as evaluate_deterministic_provider_gate,
         )
-        forest = build_forest_roots_from_identity(
-            repository_id=f"repository:{repo_id}",
-            repository_forest_cid=implementation_disposition_cid(
-                {"head": head, "tree": tree}
-            ),
-            git_tree_id=tree if " " not in tree else implementation_disposition_cid(
-                {"tree": tree}
-            ),
-            policy_root=implementation_disposition_cid(
-                {"policy": "wpd-pre-implementation@1"}
-            ),
-        )
-        kernel = getattr(self, "pre_implementation_kernel", None)
-        decision = evaluate_provider_gate(
-            task_cid=task_cid,
-            forest_roots=forest,
-            attempt=int(attempt),
-            kernel=kernel,
-            allow_legacy_residual=False,
+
+        deterministic_gate = evaluate_deterministic_provider_gate(
+            task_id=task.task_id,
+            reason_codes=("deterministic_repair_composition_required",),
         )
         return {
             "gate_kind": "deterministic_repair",
-            "skip_provider": decision.skip_provider,
-            "provider_authorized": decision.provider_authorized,
-            "disposition": decision.disposition.value,
-            "reason_code": decision.reason_code,
-            "receipt_cid": decision.receipt_cid,
-            "residual_packet_cid": decision.residual_packet_cid,
-            "provider_hook_count": decision.provider_hook_count,
-            "kernel_receipt": decision.receipt.to_dict(),
-            "event": decision.to_event_payload(
+            "skip_provider": True,
+            "provider_authorized": False,
+            "disposition": deterministic_gate.disposition,
+            "reason_code": deterministic_gate.kernel.receipt.reason_codes[0],
+            "receipt_cid": deterministic_gate.receipt_cid,
+            "residual_packet_cid": "",
+            "provider_hook_count": 0,
+            "kernel_receipt": deterministic_gate.kernel.receipt.to_dict(),
+            "event_name": "pre_implementation_kernel_evaluated",
+            "event": deterministic_gate.to_event_payload(
                 task_id=task.task_id,
                 attempt=int(attempt),
             ),
@@ -24042,99 +23893,14 @@ class PortalImplementationDaemon:
         worktree_path: Path,
         command: Sequence[str] = (),
     ) -> None:
-        """Recheck provider authority immediately before process invocation."""
+        """Reject every model-provider dispatch attempt.
 
-        if (
-            provider_gate.get("provider_authorized") is not True
-            or provider_gate.get("skip_provider") is not False
-        ):
-            raise RuntimeError(
-                "provider dispatch blocked by pre-implementation authority"
-            )
-        if provider_gate.get("gate_kind") == "ordered_provider_authoring":
-            from ..runtime.ordered_provider_authoring import (
-                assert_current_authoring_dispatch_authority,
-                authoring_provider_invocation_authorized,
-                ordered_provider_primary_dispatch_mode,
-                ordered_provider_primary_unavailability_reason,
-            )
+        Retaining this method makes old call sites fail closed while DCR-080
+        uses the separate deterministic composition route.
+        """
 
-            receipt = provider_gate.get("authoring_receipt") or {}
-            if not authoring_provider_invocation_authorized(receipt):
-                raise RuntimeError(
-                    "provider dispatch blocked by forged authoring receipt"
-                )
-            command_mode = ordered_provider_primary_dispatch_mode(
-                command,
-                workspace_path=worktree_path,
-            )
-            command_reason = ordered_provider_primary_unavailability_reason(
-                command,
-                workspace_path=worktree_path,
-            )
-            current_mode, current_reason = (
-                _ordered_provider_primary_dispatch_selection()
-            )
-            if (
-                receipt.get("primary_dispatch_mode") != command_mode
-                or receipt.get("primary_unavailability_reason") != command_reason
-                or (current_mode, current_reason)
-                != (command_mode, command_reason)
-            ):
-                raise RuntimeError(
-                    "ordered provider primary dispatch mode changed before invocation"
-                )
-            rechecked_gate = self._evaluate_pre_implementation_provider_gate(
-                task=task,
-                attempt=attempt,
-                worktree_path=worktree_path,
-                command=command,
-            )
-            if (
-                rechecked_gate.get("provider_authorized") is not True
-                or rechecked_gate.get("authoring_receipt") != receipt
-            ):
-                raise RuntimeError(
-                    "provider dispatch blocked by stale authoring authority"
-                )
-            assert_current_authoring_dispatch_authority(
-                receipt,
-                repo_root=self.repo_root,
-                taskboard_path=self.todo_path,
-                workspace_path=worktree_path,
-            )
-            registry = getattr(
-                self,
-                "_ordered_provider_proposal_authorities",
-                None,
-            )
-            if not isinstance(registry, dict):
-                registry = {}
-                self._ordered_provider_proposal_authorities = registry
-            # An exact runner argv is only a constrained executor shape.  The
-            # registry becomes proposal authority only after this receipt,
-            # current-route, and current-seal recheck immediately before the
-            # process spawn.
-            registry[(task.task_id, str(worktree_path.resolve()))] = str(
-                receipt.get("receipt_id") or ""
-            )
-            return
-        if provider_gate.get("gate_kind") != "deterministic_repair":
-            raise RuntimeError("provider dispatch has an unknown gate kind")
-        if not str(provider_gate.get("residual_packet_cid") or "").strip():
-            raise RuntimeError(
-                "provider dispatch requires a sealed residual packet"
-            )
-        rechecked_gate = self._evaluate_pre_implementation_provider_gate(
-            task=task,
-            attempt=attempt,
-            worktree_path=worktree_path,
-            command=command,
-        )
-        if rechecked_gate != dict(provider_gate):
-            raise RuntimeError(
-                "provider dispatch blocked by stale deterministic repair authority"
-            )
+        del self, provider_gate, task, attempt, worktree_path, command
+        raise PermissionError("provider dispatch is forbidden by DCR-080")
 
     def _task_requires_dcr080_deterministic_repair(self, task: PortalTask) -> bool:
         """Return whether this task explicitly selects DCR-080's zero-LLM route.
@@ -24153,13 +23919,16 @@ class PortalImplementationDaemon:
         }
 
     def _run_dcr080_deterministic_repair_composition(
-        self, *, task: PortalTask
+        self, *, task: PortalTask, worktree_path: Path | None = None
     ) -> dict[str, Any]:
         """Invoke the separate DCR-080 route; it cannot dispatch a provider."""
 
         from .deterministic_repair_composition import run_deterministic_repair
 
-        result = run_deterministic_repair(task_id=task.task_id)
+        result = run_deterministic_repair(
+            task_id=task.task_id,
+            checkout_root=worktree_path or self.repo_root,
+        )
         return {**result.to_dict(), "receipt_cid": result.receipt_cid}
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -24197,6 +23966,7 @@ class PortalImplementationDaemon:
         deterministic_only = bool(
             authority_revalidation_only
             or self._task_uses_typed_local_execution(task)
+            or self._task_requires_dcr080_deterministic_repair(task)
         )
         completion_scope = completion_gap_edit_scope(
             task,
@@ -24775,7 +24545,8 @@ class PortalImplementationDaemon:
                 if deterministic_only:
                     if self._task_requires_dcr080_deterministic_repair(task):
                         composition = self._run_dcr080_deterministic_repair_composition(
-                            task=task
+                            task=task,
+                            worktree_path=worktree_path,
                         )
                         self._record_event(
                             "dcr080_deterministic_repair_composition_evaluated",
@@ -24786,15 +24557,21 @@ class PortalImplementationDaemon:
                             f"disposition={composition['disposition']} "
                             f"receipt_cid={composition['receipt_cid']}\n"
                         )
-                        # DCR-050/060 are pending.  Do not turn an empty
-                        # subprocess result into an applied repair.
-                        completed = subprocess.CompletedProcess(args=(), returncode=1)
-                        provider_failure = {
-                            "reason": "dcr080_deterministic_repair_deferred",
-                            "disposition": composition["disposition"],
-                            "reason_codes": composition["reason_codes"],
-                            "receipt_cid": composition["receipt_cid"],
-                        }
+                        # A DCR-080 close is represented only by the composed
+                        # receipt chain; an empty process result is never a
+                        # successful repair.
+                        closed = composition["disposition"] == "closed_deterministic"
+                        completed = subprocess.CompletedProcess(
+                            args=("deterministic-repair",),
+                            returncode=0 if closed else 1,
+                        )
+                        if not closed:
+                            provider_failure = {
+                                "reason": "dcr080_deterministic_repair_abstained",
+                                "disposition": composition["disposition"],
+                                "reason_codes": composition["reason_codes"],
+                                "receipt_cid": composition["receipt_cid"],
+                            }
                     else:
                         completed = subprocess.CompletedProcess(
                             args=(),
