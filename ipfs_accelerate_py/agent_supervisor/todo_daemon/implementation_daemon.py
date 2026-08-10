@@ -10591,15 +10591,37 @@ class PortalImplementationDaemon:
         rewritten = _rewrite(dict(evidence_input))
         if not isinstance(rewritten, dict):
             raise ValueError("rewritten evidence is not an object")
-        # Drop packet identity so sealing re-derives it from rewritten content.
-        rewritten.pop("packet_id", None)
+        # Drop content-bound identities so nested receipts re-derive against the
+        # integrated tree after the pure string rewrite above.
+        def _strip_bound_ids(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                cleaned: dict[str, Any] = {}
+                for key, nested in value.items():
+                    name = str(key)
+                    if name in {
+                        "packet_id",
+                        "receipt_id",
+                        "index_id",
+                        "dag_id",
+                        "validation_receipt_id",
+                    }:
+                        continue
+                    cleaned[name] = _strip_bound_ids(nested)
+                return cleaned
+            if isinstance(value, list):
+                return [_strip_bound_ids(nested) for nested in value]
+            if isinstance(value, tuple):
+                return [_strip_bound_ids(nested) for nested in value]
+            return value
+
+        rewritten = _strip_bound_ids(rewritten)
+        if not isinstance(rewritten, dict):
+            raise ValueError("rewritten evidence is not an object")
 
         receipt = rewritten.get("validation_receipt")
         if not isinstance(receipt, Mapping):
             raise ValueError("rewritten evidence lacks validation receipt")
-        receipt_payload = dict(receipt)
-        receipt_payload.pop("receipt_id", None)
-        restored = ImpactValidationDAGReceipt.from_dict(receipt_payload)
+        restored = ImpactValidationDAGReceipt.from_dict(receipt)
         receipt_dict = restored.to_dict()
         rewritten["validation_receipt"] = receipt_dict
 
