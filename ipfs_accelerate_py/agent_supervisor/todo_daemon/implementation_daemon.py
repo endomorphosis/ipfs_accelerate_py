@@ -10956,7 +10956,11 @@ class PortalImplementationDaemon:
             )
 
         metadata["validation_proof"] = validation_proof
-        metadata["candidate_tree"] = merge_tree_id
+        # Keep metadata candidate_tree as the immutable implementation commit
+        # tree.  Only validation_proof.target_tree / post_merge_evidence_input
+        # are rebound to the integrated merge-tree for preflight admission.
+        if not str(metadata.get("candidate_tree") or "").strip():
+            metadata["candidate_tree"] = sealed_tree
         metadata["repository_tree_id"] = expected_tree_id
         metadata["post_merge_evidence_tip_rebind"] = {
             "schema": (
