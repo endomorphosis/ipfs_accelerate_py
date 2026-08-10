@@ -1187,7 +1187,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-038 Add controlled argumentation and nonmonotonic reasoning
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
