@@ -877,7 +877,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-028 Execute and replay typed Z3 and cvc5 SMT/CHC evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
