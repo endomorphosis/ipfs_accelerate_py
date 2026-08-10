@@ -17020,6 +17020,27 @@ class PortalImplementationDaemon:
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths
+        # Declared task outputs may include validation-config paths such as
+        # pyproject.toml (DQK-046 package-pin agreement).  Without this flag the
+        # proposal gate hard-denies those edits as validation_weakening_forbidden
+        # even when they are identity-bound task-owned outputs.
+        _validation_config_paths = (
+            ".github/workflows/",
+            "conftest.py",
+            "pytest.ini",
+            "pyproject.toml",
+            "setup.cfg",
+            "tox.ini",
+        )
+        allow_validation_config_changes = any(
+            owned == config
+            or owned.startswith(config.rstrip("/") + "/")
+            or config.startswith(owned.rstrip("/") + "/")
+            for owned in allowed_paths
+            for config in _validation_config_paths
+        )
+        if allow_validation_config_changes:
+            policy_version += "+owned-validation-config-v1"
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -17038,6 +17059,7 @@ class PortalImplementationDaemon:
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
+            allow_validation_config_changes=allow_validation_config_changes,
             **local_envelope_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
