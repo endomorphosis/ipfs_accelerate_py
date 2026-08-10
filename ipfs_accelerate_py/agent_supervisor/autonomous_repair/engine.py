@@ -43,6 +43,13 @@ from .materialize import (
     StructuralRepairMaterializer,
     materialize_source_edit_plan,
 )
+from .transaction import (
+    FencedWrite,
+    MultiRootRepairTransaction,
+    PathLeaseBinding,
+    RollbackJournal,
+    materialize_transaction_receipts,
+)
 
 
 ENGINE_INTERFACE: Final[str] = AUTONOMOUS_REPAIR_INTERFACE
