@@ -570,7 +570,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-600 Define Windows namespace, case/name, permission, and open/delete semantics
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
