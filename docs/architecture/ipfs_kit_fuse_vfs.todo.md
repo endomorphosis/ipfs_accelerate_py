@@ -390,7 +390,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-400 Add generation-bound range/chunk ARC keys and generation-aware single-flight
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
