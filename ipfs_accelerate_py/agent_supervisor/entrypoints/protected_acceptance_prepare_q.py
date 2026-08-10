@@ -351,6 +351,20 @@ def prepare_prompt_v3_q(
     """Build and optionally publish the protected Q phase candidate."""
 
     repo = Path(repo_root).resolve()
+    # Protected construction forbids ignored drift such as __pycache__.
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    for path in repo.rglob("__pycache__"):
+        if path.is_dir():
+            for child in path.rglob("*"):
+                if child.is_file():
+                    try:
+                        child.unlink()
+                    except OSError:
+                        pass
+            try:
+                path.rmdir()
+            except OSError:
+                pass
     inventory = build_prompt_v3_q_inventory(repo)
     inventory_bytes = canonical_json_bytes(inventory.to_dict()) + b"\n"
     todo_path = repo / _TODO_PATH
