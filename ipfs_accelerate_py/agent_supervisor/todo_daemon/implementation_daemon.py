@@ -2405,6 +2405,19 @@ RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
 RETRY_BUDGET_REPAIR_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
 )
+RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION = (
+    "ipfs_accelerate_py.agent_supervisor.retry-budget-repair-rearm@1"
+)
+STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
+    "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
+)
+RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
+    "todo_daemon/implementation_daemon.py",
+    "objectives/backlog_refinery.py",
+    "validation/proposal_validation.py",
+    "validation/implementation_auto_rescue.py",
+    "task_sources/persistent_task_queue.py",
+)
 RECONCILIATION_GUARDRAIL_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
 )
@@ -2460,6 +2473,34 @@ def is_retry_budget_repair_task(task: Any) -> bool:
     return bool(retry_budget_repair_source(task)[0])
 
 
+def retry_budget_repair_runtime_revision(
+    agent_supervisor_root: Path | None = None,
+) -> str:
+    """Hash the loaded recovery engine's source boundary.
+
+    A repair budget must become eligible again after a later supervisor fix,
+    without requiring an operator to edit durable state or remember to bump a
+    constant.  Bind the revision to the small set of modules that own repair
+    generation, proposal admission, auto-rescue, and retry persistence.
+    """
+
+    root = (
+        agent_supervisor_root.resolve()
+        if agent_supervisor_root is not None
+        else Path(__file__).resolve().parents[1]
+    )
+    digest = hashlib.sha256()
+    digest.update(RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8"))
+    digest.update(b"\0")
+    for relative in RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
+        path = root / relative
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return "sha256:" + digest.hexdigest()
+
+
 def pending_retry_budget_repair_sources(
     tasks: Sequence[Any],
     *,
@@ -2493,6 +2534,81 @@ def pending_retry_budget_repair_sources(
         if source_task_id and source_task_id not in completed:
             blocked.add(source_task_id)
     return blocked
+
+
+def inherit_retry_budget_repair_validation(
+    tasks: Sequence[PortalTask],
+) -> list[PortalTask]:
+    """Upgrade legacy discovery-only repairs to the source validation.
+
+    Older generated repair appendices used ``test -f <discovery>`` as their
+    sole validation.  That proves only that the supervisor wrote its failure
+    report before dispatch; it cannot prove the repair.  Keep the board bytes
+    immutable, but execute a recognized generated repair with its source
+    task's reviewed validation contract.  Explicit non-discovery repair
+    validation remains untouched.
+    """
+
+    tasks_by_id = {task.task_id: task for task in tasks}
+    effective: list[PortalTask] = []
+    for task in tasks:
+        source_task_id, _failure_kind = retry_budget_repair_source(task)
+        source_task = tasks_by_id.get(source_task_id)
+        metadata = {
+            str(key).strip().lower().replace("_", " "): str(value).strip()
+            for key, value in (task.metadata or {}).items()
+            if str(value).strip()
+        }
+        discovery_path = metadata.get("retry repair discovery", "")
+        current_validation = [
+            normalize_validation_command_text(str(command))
+            for command in (task.validation or ())
+            if normalize_validation_command_text(str(command))
+        ]
+        discovery_only = not current_validation
+        if len(current_validation) == 1 and discovery_path:
+            try:
+                discovery_only = shlex.split(current_validation[0]) == [
+                    "test",
+                    "-f",
+                    discovery_path,
+                ]
+            except ValueError:
+                discovery_only = False
+        source_validation = [
+            normalize_validation_command_text(str(command))
+            for command in (
+                getattr(source_task, "validation", ()) or ()
+            )
+            if normalize_validation_command_text(str(command))
+            and not normalize_validation_command_text(str(command)).startswith(
+                (
+                    "validation_pre_dispatch:",
+                    "validation_gate_failed",
+                )
+            )
+        ]
+        if (
+            source_task is None
+            or not source_task_id
+            or not discovery_only
+            or not source_validation
+        ):
+            effective.append(task)
+            continue
+        effective_metadata = dict(task.metadata)
+        effective_metadata["validation"] = "; ".join(source_validation)
+        effective_metadata["retry repair validation inherited from"] = (
+            source_task_id
+        )
+        effective.append(
+            replace(
+                task,
+                validation=source_validation,
+                metadata=effective_metadata,
+            )
+        )
+    return effective
 
 
 def normalize_retry_validation_path(value: Any) -> str:
@@ -3428,6 +3544,12 @@ class PortalTaskState:
         default_factory=dict
     )
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
+    retry_budget_repair_rearm_receipts: dict[str, list[str]] = field(
+        default_factory=dict
+    )
+    stale_proposal_replay_rearm_receipts: dict[str, list[str]] = field(
+        default_factory=dict
+    )
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -3561,6 +3683,33 @@ class PortalTaskState:
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
                     if str(key).strip() and str(value).strip()
+                },
+                retry_budget_repair_rearm_receipts={
+                    str(key): [
+                        str(item)
+                        for item in value
+                        if str(item).strip()
+                    ]
+                    for key, value in (
+                        payload.get("retry_budget_repair_rearm_receipts") or {}
+                    ).items()
+                    if str(key).strip()
+                    and isinstance(value, list)
+                },
+                stale_proposal_replay_rearm_receipts={
+                    str(key): [
+                        str(item)
+                        for item in value
+                        if str(item).strip()
+                    ]
+                    for key, value in (
+                        payload.get(
+                            "stale_proposal_replay_rearm_receipts"
+                        )
+                        or {}
+                    ).items()
+                    if str(key).strip()
+                    and isinstance(value, list)
                 },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
                 last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
@@ -3703,6 +3852,9 @@ def state_file_repair_reason(path: Path) -> str:
         "implementation_attempts",
         "implementation_attempts_by_cid",
         "protected_implementation_attempts",
+        "retry_budget_repair_receipts",
+        "retry_budget_repair_rearm_receipts",
+        "stale_proposal_replay_rearm_receipts",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -4619,20 +4771,28 @@ class PortalImplementationDaemon:
 
     def _load_tasks(self) -> list[PortalTask]:
         if self.task_source is None:
-            return parse_task_file(self.todo_path, self.task_header_prefix)
-        self.task_source.check_integrity().require_valid()
-        records: list[TaskSourceTask] = []
-        cursor = ""
-        while True:
-            page = self.task_source.query(
-                cursor=cursor,
-                limit=TASK_SOURCE_QUERY_LIMIT,
+            tasks = parse_task_file(
+                self.todo_path,
+                self.task_header_prefix,
             )
-            records.extend(page.tasks)
-            cursor = page.next_cursor
-            if not cursor:
-                break
-        return [self._portal_task_from_source_task(task) for task in records]
+        else:
+            self.task_source.check_integrity().require_valid()
+            records: list[TaskSourceTask] = []
+            cursor = ""
+            while True:
+                page = self.task_source.query(
+                    cursor=cursor,
+                    limit=TASK_SOURCE_QUERY_LIMIT,
+                )
+                records.extend(page.tasks)
+                cursor = page.next_cursor
+                if not cursor:
+                    break
+            tasks = [
+                self._portal_task_from_source_task(task)
+                for task in records
+            ]
+        return inherit_retry_budget_repair_validation(tasks)
 
     def _task_source_identity_record(self) -> dict[str, Any] | None:
         if self.task_source is None:
@@ -9508,6 +9668,582 @@ class PortalImplementationDaemon:
         )
         return released
 
+    def _retry_budget_repair_runtime_revision(self) -> str:
+        """Return one cached source-bound revision for this daemon process."""
+
+        cached = getattr(
+            self,
+            "_retry_budget_repair_runtime_revision_cache",
+            None,
+        )
+        if cached is not None:
+            return str(cached)
+        try:
+            revision = retry_budget_repair_runtime_revision()
+        except OSError as exc:
+            revision = ""
+            self._record_event(
+                "retry_budget_repair_runtime_revision_unavailable",
+                {
+                    "schema": (
+                        RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION
+                    ),
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                },
+            )
+        self._retry_budget_repair_runtime_revision_cache = revision
+        return revision
+
+    def _rearm_attempt_limited_retry_repairs(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one fresh budget to a generated repair per recovery revision.
+
+        A retry-budget repair can itself exhaust the ordinary task-attempt
+        limit.  Leaving it there permanently blocks its source and every
+        downstream task, while exempting it from the limit would create an
+        unbounded provider loop.  Persist a content-bound receipt atomically
+        with the cleared counters so the same runtime revision can rearm a
+        canonical repair at most once.
+
+        This deliberately does *not* clear the source task's attempt counters,
+        release its strategy block, or mark either task complete.  Those
+        authority transitions remain gated on the repair's validated merge and
+        board completion receipt.
+        """
+
+        revision = str(recovery_revision or "").strip()
+        if self.max_task_attempts <= 0 or not revision:
+            return []
+
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        task_identities = {
+            task.task_id: self._identity_for_task(task)
+            for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in task_identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid,
+                [],
+            ).append(task_id)
+
+        rearmed: list[dict[str, Any]] = []
+        queue_changed = False
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+            ):
+                continue
+            source_task_id, failure_kind = retry_budget_repair_source(task)
+            if not source_task_id:
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+
+            identity = task_identities[task.task_id]
+            fingerprint_payload = {
+                "schema": RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior_fingerprints = state.retry_budget_repair_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior_fingerprints:
+                continue
+
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.pop(alias, 0) or 0)
+                for alias in aliases_by_cid.get(
+                    identity.canonical_task_cid,
+                    [task.task_id],
+                )
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.pop(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            queue_changed = (
+                self.task_queue.reset_retry_state(
+                    identity.canonical_task_cid
+                )
+                or queue_changed
+            )
+            prior_fingerprints.append(fingerprint)
+            rearmed.append(
+                {
+                    "repair_task_id": task.task_id,
+                    "source_task_id": source_task_id,
+                    "failure_kind": failure_kind,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": attempt_count,
+                    "previous_display_attempt_counts": (
+                        previous_display_counts
+                    ),
+                    "previous_canonical_attempt_count": (
+                        previous_canonical_count
+                    ),
+                    "recovery_revision": revision,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+
+        if rearmed:
+            state.last_progress_at = utc_now()
+            if queue_changed:
+                self.task_queue.save()
+            state.save(self.state_path)
+            self._record_event(
+                "retry_budget_repair_rearmed",
+                {
+                    "schema": RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION,
+                    "recovery_revision": revision,
+                    "rearmed_count": len(rearmed),
+                    "rearmed": rearmed,
+                },
+            )
+        return rearmed
+
+    def _stale_proposal_replay_recovery_evidence(
+        self,
+        task: PortalTask,
+        *,
+        canonical_task_cid: str,
+    ) -> dict[str, Any] | None:
+        """Prove one ordinary attempt failed only on a same-attempt replay.
+
+        The proof is deliberately event-segment based.  A bare terminal
+        ``stale_proposal_replay`` label is not enough: the same task revision
+        must first have admitted proposal X, started bounded provider rescue,
+        rejected unchanged X solely as stale, preserved the failed candidate,
+        and consumed that exact attempt.  This keeps recovery unavailable for
+        cross-task replays, changed proposal bodies, or mixed security
+        findings.
+        """
+
+        events = list(self._iter_events())
+        task_id = str(task.task_id or "").strip()
+        expected_cid = str(canonical_task_cid or "").strip()
+        if not task_id or not expected_cid:
+            return None
+
+        def event_cid(event: Mapping[str, Any]) -> str:
+            return str(
+                event.get("canonical_task_cid")
+                or event.get("task_cid")
+                or ""
+            ).strip()
+
+        def changed_paths(value: Any) -> tuple[str, ...]:
+            if not isinstance(value, list) or not value:
+                return ()
+            normalized = tuple(
+                sorted(
+                    {
+                        str(path).strip()
+                        for path in value
+                        if isinstance(path, str) and str(path).strip()
+                    }
+                )
+            )
+            if len(normalized) != len(value):
+                return ()
+            return normalized
+
+        finish_index = -1
+        finish: Mapping[str, Any] | None = None
+        for index, event in enumerate(events):
+            if (
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "").strip() == task_id
+            ):
+                finish_index = index
+                finish = event
+        if finish is None or event_cid(finish) != expected_cid:
+            return None
+        if finish.get("attempt_consumed") is not True:
+            return None
+        try:
+            attempt = int(finish.get("attempt") or 0)
+        except (TypeError, ValueError):
+            return None
+        branch = str(finish.get("branch") or "").strip()
+        validation_result = finish.get("validation_result")
+        if (
+            attempt <= 0
+            or not branch
+            or not isinstance(validation_result, Mapping)
+            or str(validation_result.get("reason") or "").strip()
+            != "proposal_gate_failed"
+            or str(validation_result.get("error") or "").strip()
+            != "proposal_validation_failed"
+        ):
+            return None
+        terminal_gate = validation_result.get("proposal_gate")
+        if not isinstance(terminal_gate, Mapping):
+            return None
+        terminal_reasons = {
+            str(reason).strip()
+            for reason in (terminal_gate.get("reason_codes") or ())
+            if str(reason).strip()
+        }
+        proposal_id = str(terminal_gate.get("proposal_id") or "").strip()
+        repository_tree_id = str(
+            terminal_gate.get("repository_tree_id") or ""
+        ).strip()
+        proposal_paths = changed_paths(terminal_gate.get("changed_paths"))
+        if (
+            terminal_reasons != {"stale_proposal_replay"}
+            or not proposal_id
+            or not repository_tree_id
+            or not proposal_paths
+        ):
+            return None
+
+        start_index = -1
+        start_event: Mapping[str, Any] | None = None
+        for index in range(finish_index):
+            event = events[index]
+            if (
+                event.get("type") == "implementation_started"
+                and str(event.get("task_id") or "").strip() == task_id
+                and event_cid(event) == expected_cid
+                and str(event.get("branch") or "").strip() == branch
+            ):
+                try:
+                    event_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if event_attempt == attempt:
+                    start_index = index
+                    start_event = event
+        if (
+            start_event is None
+            or str(start_event.get("baseline_ref") or "").strip()
+            != repository_tree_id
+        ):
+            return None
+
+        signature = (proposal_id, repository_tree_id, proposal_paths)
+
+        def proposal_signature(event: Mapping[str, Any]) -> tuple[Any, ...]:
+            return (
+                str(event.get("proposal_id") or "").strip(),
+                str(event.get("repository_tree_id") or "").strip(),
+                changed_paths(event.get("changed_paths")),
+            )
+
+        accepted_index = -1
+        rescue_index = -1
+        rejected_index = -1
+        preserved_index = -1
+        accepted_event: Mapping[str, Any] | None = None
+        rejected_event: Mapping[str, Any] | None = None
+        preserved_event: Mapping[str, Any] | None = None
+        for index in range(start_index + 1, finish_index):
+            event = events[index]
+            if (
+                str(event.get("task_id") or "").strip() != task_id
+                or event_cid(event) != expected_cid
+            ):
+                continue
+            event_type = str(event.get("type") or "")
+            if (
+                event_type == "implementation_proposal_validated"
+                and event.get("accepted") is True
+                and proposal_signature(event) == signature
+            ):
+                accepted_index = index
+                rescue_index = -1
+                rejected_index = -1
+                preserved_index = -1
+                accepted_event = event
+                rejected_event = None
+                preserved_event = None
+                continue
+            if accepted_index < 0:
+                continue
+            if event_type == "implementation_auto_rescue_provider_started":
+                try:
+                    rescue_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                plan = event.get("plan")
+                plan_reasons = {
+                    str(reason).strip()
+                    for reason in (
+                        plan.get("reason_codes") or ()
+                        if isinstance(plan, Mapping)
+                        else ()
+                    )
+                    if str(reason).strip()
+                }
+                if (
+                    rescue_attempt == attempt
+                    and isinstance(plan, Mapping)
+                    and str(plan.get("action") or "").strip()
+                    == "inline_provider_rescue"
+                    and "validation_command_failed" in plan_reasons
+                ):
+                    rescue_index = index
+                continue
+            if (
+                rescue_index > accepted_index
+                and event_type == "implementation_proposal_rejected"
+                and event.get("accepted") is False
+                and proposal_signature(event) == signature
+            ):
+                reasons = {
+                    str(reason).strip()
+                    for reason in (event.get("reason_codes") or ())
+                    if str(reason).strip()
+                }
+                if reasons == {"stale_proposal_replay"}:
+                    rejected_index = index
+                    rejected_event = event
+                continue
+            if (
+                rejected_index > rescue_index
+                and event_type == "failed_validation_worktree_preserved"
+                and event.get("preserved") is True
+                and str(event.get("branch") or "").strip() == branch
+                and str(event.get("implementation_commit") or "").strip()
+                and str(event.get("rescue_branch") or "").strip()
+            ):
+                try:
+                    preserved_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if preserved_attempt == attempt:
+                    preserved_index = index
+                    preserved_event = event
+
+        if not (
+            start_index
+            < accepted_index
+            < rescue_index
+            < rejected_index
+            < preserved_index
+            < finish_index
+            and accepted_event is not None
+            and rejected_event is not None
+            and preserved_event is not None
+        ):
+            return None
+        return {
+            "task_id": task_id,
+            "canonical_task_cid": expected_cid,
+            "attempt": attempt,
+            "branch": branch,
+            "proposal_id": proposal_id,
+            "repository_tree_id": repository_tree_id,
+            "changed_paths": list(proposal_paths),
+            "accepted_event_id": str(
+                accepted_event.get("event_id") or ""
+            ),
+            "rejected_event_id": str(
+                rejected_event.get("event_id") or ""
+            ),
+            "preserved_event_id": str(
+                preserved_event.get("event_id") or ""
+            ),
+            "finished_event_id": str(finish.get("event_id") or ""),
+            "implementation_commit": str(
+                preserved_event.get("implementation_commit") or ""
+            ),
+            "rescue_branch": str(
+                preserved_event.get("rescue_branch") or ""
+            ),
+        }
+
+    def _rearm_attempt_limited_stale_proposal_tasks(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one attempt to an ordinary task stalled by our replay gate.
+
+        The recovery is intentionally narrower than a generic retry reset. It
+        requires a complete same-attempt stale-replay proof, retains every
+        source-revision fingerprint, and restores only one attempt slot.  The
+        latter preserves ``attempt > 1`` so the next run can seed the already
+        admitted, preserved candidate instead of asking a provider to recreate
+        it from scratch.
+        """
+
+        revision = str(recovery_revision or "").strip()
+        if (
+            self.max_task_attempts <= 0
+            or not revision
+            or (self.task_shard_count > 1 and not self.strict_task_sharding)
+        ):
+            return []
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        identities = {
+            task.task_id: self._identity_for_task(task) for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid, []
+            ).append(task_id)
+
+        candidates: list[dict[str, Any]] = []
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+                or is_retry_budget_repair_task(task)
+            ):
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+            identity = identities[task.task_id]
+            evidence = self._stale_proposal_replay_recovery_evidence(
+                task,
+                canonical_task_cid=identity.canonical_task_cid,
+            )
+            if evidence is None:
+                continue
+            fingerprint_payload = {
+                "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior = state.stale_proposal_replay_rearm_receipts.get(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior:
+                continue
+            candidates.append(
+                {
+                    "task": task,
+                    "identity": identity,
+                    "attempt_count": attempt_count,
+                    "evidence": evidence,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+
+        if not candidates:
+            return []
+
+        queue_changed = False
+        for candidate in candidates:
+            queue_changed = (
+                self.task_queue.reset_retry_state(
+                    candidate["identity"].canonical_task_cid
+                )
+                or queue_changed
+            )
+        # Persist the retry-queue reset before consuming the durable receipt.
+        # A crash in between is safe: the unchanged state will retry this
+        # idempotent reset.  The reverse order could strand a task forever.
+        if queue_changed:
+            self.task_queue.save()
+
+        recovery_count = max(0, self.max_task_attempts - 1)
+        rearmed: list[dict[str, Any]] = []
+        for candidate in candidates:
+            task = candidate["task"]
+            identity = candidate["identity"]
+            aliases = aliases_by_cid.get(
+                identity.canonical_task_cid,
+                [task.task_id],
+            )
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.get(alias, 0) or 0)
+                for alias in aliases
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.get(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            for alias in aliases:
+                state.implementation_attempts[alias] = recovery_count
+            state.implementation_attempts_by_cid[
+                identity.canonical_task_cid
+            ] = recovery_count
+            receipts = state.stale_proposal_replay_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            receipts.append(candidate["rearm_fingerprint"])
+            rearmed.append(
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": candidate["attempt_count"],
+                    "restored_attempt_count": recovery_count,
+                    "previous_display_attempt_counts": (
+                        previous_display_counts
+                    ),
+                    "previous_canonical_attempt_count": (
+                        previous_canonical_count
+                    ),
+                    "recovery_revision": revision,
+                    "rearm_fingerprint": candidate["rearm_fingerprint"],
+                    "evidence": candidate["evidence"],
+                }
+            )
+        state.last_progress_at = utc_now()
+        state.save(self.state_path)
+        self._record_event(
+            "ordinary_task_stale_proposal_replay_rearmed",
+            {
+                "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "rearmed_count": len(rearmed),
+                "rearmed": rearmed,
+            },
+        )
+        return rearmed
+
     def _partition_tasks_at_attempt_limit(
         self,
         tasks: Sequence[PortalTask],
@@ -13680,6 +14416,31 @@ class PortalImplementationDaemon:
                     },
                 )
                 selectable_tasks = fallback_tasks
+        recovery_runtime_revision = (
+            ""
+            if self.manual_completion_authority_revalidation_only
+            else self._retry_budget_repair_runtime_revision()
+        )
+        stale_proposal_replay_rearms = (
+            []
+            if self.manual_completion_authority_revalidation_only
+            else self._rearm_attempt_limited_stale_proposal_tasks(
+                previous,
+                selectable_tasks,
+                resolved_statuses,
+                recovery_revision=recovery_runtime_revision,
+            )
+        )
+        retry_budget_repair_rearms = (
+            []
+            if self.manual_completion_authority_revalidation_only
+            else self._rearm_attempt_limited_retry_repairs(
+                previous,
+                selectable_tasks,
+                resolved_statuses,
+                recovery_revision=recovery_runtime_revision,
+            )
+        )
         selectable_tasks, attempt_limited_tasks = self._partition_tasks_at_attempt_limit(
             selectable_tasks,
             resolved_statuses,
@@ -13775,6 +14536,18 @@ class PortalImplementationDaemon:
         state.retry_budget_repair_receipts = dict(
             previous.retry_budget_repair_receipts
         )
+        state.retry_budget_repair_rearm_receipts = {
+            str(key): list(value)
+            for key, value in (
+                previous.retry_budget_repair_rearm_receipts.items()
+            )
+        }
+        state.stale_proposal_replay_rearm_receipts = {
+            str(key): list(value)
+            for key, value in (
+                previous.stale_proposal_replay_rearm_receipts.items()
+            )
+        }
         revision_reset_task_ids: list[str] = []
         for task in tasks:
             previous_identity = previous.task_identities.get(task.task_id, {})
@@ -13990,6 +14763,10 @@ class PortalImplementationDaemon:
                         item["source_task_id"]
                         for item in retry_budget_reset_deferred
                     ],
+                    "retry_budget_rearmed_task_ids": [
+                        item["repair_task_id"]
+                        for item in retry_budget_repair_rearms
+                    ],
                     "released_retry_budget_strategy_block_task_ids": [
                         item["source_task_id"]
                         for item in released_retry_budget_strategy_blocks
@@ -14056,6 +14833,10 @@ class PortalImplementationDaemon:
             ],
             "retry_budget_resets": retry_budget_resets,
             "retry_budget_reset_deferred": retry_budget_reset_deferred,
+            "retry_budget_repair_rearms": retry_budget_repair_rearms,
+            "stale_proposal_replay_rearms": (
+                stale_proposal_replay_rearms
+            ),
             "released_retry_budget_strategy_blocks": (
                 released_retry_budget_strategy_blocks
             ),
@@ -24431,6 +25212,22 @@ class PortalImplementationDaemon:
                 baseline_ref=resolved_baseline,
                 state=state,
             )
+            if not validation_result.get("passed", False):
+                # Reconciliation path: stage/revalidate only (no second provider
+                # pass). Provider rescue belongs to the primary implement loop.
+                validation_result = self._automatic_implementation_rescue(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                    branch_name=branch_name,
+                    baseline_ref=resolved_baseline,
+                    validation_result=validation_result,
+                    log_path=log_path,
+                    state=state,
+                    command=(),
+                    base_prompt="",
+                    allow_provider_rescue=False,
+                )
             protected_path_violation = (
                 self._implementation_protected_path_violation(
                     task=task,
@@ -25248,6 +26045,28 @@ class PortalImplementationDaemon:
                                     state=state,
                                 )
                             )
+                            if not validation_result.get("passed", False):
+                                validation_result = (
+                                    self._automatic_implementation_rescue(
+                                        task=task,
+                                        attempt=attempt,
+                                        workspace_path=worktree_path,
+                                        branch_name=branch_name,
+                                        baseline_ref=baseline_ref,
+                                        validation_result=validation_result,
+                                        log_path=log_path,
+                                        state=state,
+                                        command=command,
+                                        base_prompt=prompt,
+                                        allow_provider_rescue=bool(command),
+                                        replayable_consumed_proposal_ids=(
+                                            seed_replayable_proposal_ids
+                                        ),
+                                    )
+                                )
+                                proposal_validation = validation_result.get(
+                                    "proposal_validation"
+                                )
                         if (
                             not deterministic_only
                             and validation_result.get("passed", False)
@@ -33310,6 +34129,77 @@ class PortalImplementationDaemon:
         )
         return relative in records
 
+    def _proposal_expected_output_git_location(
+        self,
+        workspace_path: Path,
+        relative: str,
+    ) -> tuple[Path, str, str] | None:
+        """Resolve the verified Git owner for one exact expected output.
+
+        The superproject owns a configured submodule's gitlink, while the child
+        repository owns every strict descendant.  Ignore and index queries for
+        child paths must therefore run in the child repository: applying an
+        unrelated superproject ignore rule can otherwise reject a valid child
+        proposal.  Route only configured, initialized, stage-zero gitlinks;
+        unverifiable managed boundaries fail closed.
+        """
+
+        if not self._repo_relative_path_safe(relative):
+            return None
+        configured_paths = tuple(
+            sorted(
+                {
+                    str(path).strip("/")
+                    for path in self.worktree_submodule_paths
+                    if str(path).strip("/")
+                    and self._repo_relative_path_safe(str(path).strip("/"))
+                },
+                key=lambda path: (-len(PurePosixPath(path).parts), path),
+            )
+        )
+        submodule_path = next(
+            (
+                path
+                for path in configured_paths
+                if relative.startswith(f"{path}/")
+            ),
+            "",
+        )
+        if not submodule_path:
+            # The parent index owns root files and exact gitlink paths.
+            return workspace_path, relative, ""
+
+        child_relative = relative[len(submodule_path) + 1 :]
+        if (
+            not child_relative
+            or not self._repo_relative_path_safe(child_relative)
+            or self._path_crosses_live_symlink(workspace_path, submodule_path)
+        ):
+            return None
+        try:
+            # A configured directory is insufficient authority: it must be the
+            # exact stage-zero gitlink recorded by the superproject.
+            self._proposal_index_gitlink_ref(workspace_path, submodule_path)
+        except (OSError, RuntimeError, UnicodeError, ValueError):
+            return None
+
+        child_root = workspace_path.joinpath(
+            *PurePosixPath(submodule_path).parts
+        )
+        if child_root.is_symlink() or not self._is_git_worktree(child_root):
+            return None
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+            resolved_child_root = child_root.resolve(strict=True)
+            resolved_child_root.relative_to(workspace_root)
+            target = child_root.joinpath(*PurePosixPath(child_relative).parts)
+            target.resolve(
+                strict=target.exists() or target.is_symlink()
+            ).relative_to(resolved_child_root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return child_root, child_relative, submodule_path
+
     @staticmethod
     def _path_crosses_live_symlink(
         workspace_path: Path,
@@ -33371,6 +34261,7 @@ class PortalImplementationDaemon:
         )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
+        git_locations: dict[str, tuple[Path, str, str]] = {}
 
         for relative in expected_paths:
             target = workspace_path / relative
@@ -33380,35 +34271,51 @@ class PortalImplementationDaemon:
                 baseline_ref=baseline_ref,
                 relative=relative,
             )
-            indexed = self._exact_path_is_indexed(
+            git_location = self._proposal_expected_output_git_location(
                 workspace_path,
                 relative,
             )
-            ignored_result = subprocess.run(
-                [
-                    "git",
-                    "check-ignore",
-                    "--no-index",
-                    "-z",
-                    "--stdin",
-                ],
-                cwd=workspace_path,
-                input=relative.encode(
-                    "utf-8",
-                    errors="surrogateescape",
+            git_owner_valid = git_location is not None
+            if git_location is None:
+                git_root = workspace_path
+                git_relative = relative
+                git_repository = ""
+                indexed = False
+                ignored = False
+                ignore_check_succeeded = False
+            else:
+                git_root, git_relative, git_repository = git_location
+                git_locations[relative] = git_location
+                indexed = self._exact_path_is_indexed(
+                    git_root,
+                    git_relative,
                 )
-                + b"\0",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
-            ignored = ignored_result.returncode == 0
+                ignored_result = subprocess.run(
+                    [
+                        "git",
+                        "check-ignore",
+                        "--no-index",
+                        "-z",
+                        "--stdin",
+                    ],
+                    cwd=git_root,
+                    input=git_relative.encode(
+                        "utf-8",
+                        errors="surrogateescape",
+                    )
+                    + b"\0",
+                    capture_output=True,
+                    check=False,
+                )
+                ignored = ignored_result.returncode == 0
+                ignore_check_succeeded = ignored_result.returncode in {0, 1}
             protected = any(
                 self._path_matches_scope(relative, path)
                 for path in protected_paths
             )
             forbidden = any(
                 self._path_matches_scope(relative, path)
+                or self._path_matches_scope(git_relative, path)
                 for path in default_forbidden
             )
             submodule_bound = any(
@@ -33470,11 +34377,16 @@ class PortalImplementationDaemon:
                     needs_candidate = False
                 else:
                     issue = EXPECTED_OUTPUT_MISSING
+            elif submodule_bound and (
+                not git_owner_valid or not git_repository
+            ):
+                issue = EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN
+            elif not ignore_check_succeeded:
+                issue = EXPECTED_OUTPUT_FORCE_ADD_FAILED
             elif force_stage_required:
                 if (
                     protected
                     or forbidden
-                    or submodule_bound
                     or symlink_bound
                     or not in_scope
                     or not regular_file
@@ -33489,18 +34401,17 @@ class PortalImplementationDaemon:
                             "add",
                             "--force",
                             "--",
-                            relative,
+                            git_relative,
                         ],
-                        cwd=workspace_path,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        cwd=git_root,
+                        capture_output=True,
                         check=False,
                     )
                     force_stage_succeeded = bool(
                         staged.returncode == 0
                         and self._exact_path_is_indexed(
-                            workspace_path,
-                            relative,
+                            git_root,
+                            git_relative,
                         )
                     )
                     if not force_stage_succeeded:
@@ -33509,10 +34420,14 @@ class PortalImplementationDaemon:
             checks.append(
                 {
                     "path": relative,
+                    "repository": git_repository or ".",
+                    "tracked_path": git_relative,
                     "exists": exists,
                     "baseline_present": baseline_present,
                     "indexed_before": indexed,
                     "ignored": ignored,
+                    "ignore_check_succeeded": ignore_check_succeeded,
+                    "git_owner_valid": git_owner_valid,
                     "in_scope": in_scope,
                     "protected": protected,
                     "forbidden": forbidden,
@@ -33531,17 +34446,40 @@ class PortalImplementationDaemon:
             )
 
         staged_paths = set(self._staged_worktree_paths(workspace_path))
+        staged_by_git_root: dict[Path, set[str]] = {
+            workspace_path: set(staged_paths)
+        }
+        for git_root, _git_relative, git_repository in git_locations.values():
+            if git_root not in staged_by_git_root:
+                staged_by_git_root[git_root] = set(
+                    self._staged_worktree_paths(git_root)
+                )
+            if git_repository:
+                staged_paths.update(
+                    f"{git_repository}/{path}"
+                    for path in staged_by_git_root[git_root]
+                )
         for check in checks:
             relative = str(check["path"])
-            check["staged"] = relative in staged_paths
+            git_location = git_locations.get(relative)
+            indexed_after = False
+            if git_location is not None:
+                git_root, git_relative, _git_repository = git_location
+                check["staged"] = (
+                    git_relative in staged_by_git_root.get(git_root, set())
+                )
+                indexed_after = self._exact_path_is_indexed(
+                    git_root,
+                    git_relative,
+                )
+            else:
+                check["staged"] = False
+            check["indexed_after"] = indexed_after
             if (
                 check["force_stage_required"]
                 and (
                     not check["staged"]
-                    or not self._exact_path_is_indexed(
-                        workspace_path,
-                        relative,
-                    )
+                    or not indexed_after
                 )
                 and not check["issue"]
             ):
@@ -36689,6 +37627,682 @@ class PortalImplementationDaemon:
         }
         return result
 
+    def _expected_outputs_present_on_disk(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> bool:
+        """True when at least one declared output exists as a regular file/dir."""
+
+        for relative in task_declared_output_paths(task):
+            if not self._repo_relative_path_safe(relative):
+                continue
+            target = workspace_path / relative
+            try:
+                if target.is_symlink():
+                    continue
+                if target.is_file() or target.is_dir():
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _dirty_in_scope_declared_output_paths(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return dirty declared-output paths (modified/untracked) under workspace."""
+
+        scope = tuple(
+            path
+            for path in task_declared_output_paths(task)
+            if self._repo_relative_path_safe(path)
+        )
+        if not scope:
+            return ()
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all", "--", *scope],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            return ()
+        dirty: list[str] = []
+        for line in status.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            path = line[3:].strip()
+            if " -> " in path:
+                path = path.split(" -> ", 1)[1].strip()
+            path = path.strip().replace("\\", "/")
+            if path.startswith("./"):
+                path = path[2:]
+            if path and path not in dirty and self._repo_relative_path_safe(path):
+                dirty.append(path)
+        return tuple(sorted(dirty))
+
+    def _stage_declared_candidate_outputs(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Stage declared outputs that exist on disk into the candidate index.
+
+        Combines force-add of ignored generated evidence with ordinary
+        ``git add`` for dirty declared sources/tests. Protected paths are never
+        force-added.
+        """
+
+        staged: list[str] = []
+        try:
+            ignored_staged = self._stage_declared_ignored_outputs(
+                workspace_path,
+                task,
+            )
+            staged.extend(ignored_staged)
+        except RuntimeError as exc:
+            self._record_event(
+                "implementation_auto_rescue_stage_ignored_failed",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "error": str(exc)[-1000:],
+                },
+            )
+
+        protected_paths = tuple(
+            str(path).strip("/")
+            for path in self.implementation_protected_paths
+            if str(path).strip("/")
+        )
+        candidates: list[str] = []
+        for relative in task_declared_output_paths(task):
+            if not self._repo_relative_path_safe(relative):
+                continue
+            if any(
+                self._path_matches_scope(relative, path)
+                for path in protected_paths
+            ):
+                continue
+            target = workspace_path / relative
+            try:
+                if target.is_symlink():
+                    continue
+                if target.is_file() or target.is_dir():
+                    candidates.append(relative)
+            except OSError:
+                continue
+        dirty = self._dirty_in_scope_declared_output_paths(workspace_path, task)
+        for relative in dirty:
+            if relative not in candidates and self._repo_relative_path_safe(relative):
+                if any(
+                    self._path_matches_scope(relative, path)
+                    for path in protected_paths
+                ):
+                    continue
+                candidates.append(relative)
+
+        for relative in sorted(set(candidates)):
+            if relative in staged:
+                continue
+            add = subprocess.run(
+                ["git", "--literal-pathspecs", "add", "--", relative],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                forced = subprocess.run(
+                    [
+                        "git",
+                        "--literal-pathspecs",
+                        "add",
+                        "--force",
+                        "--",
+                        relative,
+                    ],
+                    cwd=workspace_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if forced.returncode != 0:
+                    continue
+            staged.append(relative)
+
+        if staged:
+            self._record_event(
+                "implementation_declared_candidate_outputs_staged",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "paths": list(dict.fromkeys(staged)),
+                },
+            )
+        return tuple(dict.fromkeys(staged))
+
+    def _run_auto_rescue_materialize_commands(
+        self,
+        *,
+        workspace_path: Path,
+        log_path: Path,
+        commands: Sequence[str],
+        task: PortalTask,
+    ) -> list[dict[str, Any]]:
+        """Run derived materialize/write CLIs inside the implementer workspace."""
+
+        results: list[dict[str, Any]] = []
+        if not commands:
+            return results
+        env = dict(os.environ)
+        # Match common board PYTHONPATH layout for multi-root workspaces.
+        pythonpath_parts = [
+            str(workspace_path / relative)
+            for relative in (
+                "Mcp-Plus-Plus",
+                "external/ipfs_accelerate",
+                "external/ipfs_datasets",
+                "external/ipfs_kit",
+                "swissknife",
+                ".",
+            )
+            if (workspace_path / relative).exists() or relative == "."
+        ]
+        existing = str(env.get("PYTHONPATH") or "").strip()
+        if existing:
+            pythonpath_parts.append(existing)
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+        with log_path.open("a", encoding="utf-8") as log_fh:
+            for raw in commands:
+                command = str(raw or "").strip()
+                if not command:
+                    continue
+                log_fh.write(f"\n[auto-rescue] materialize $ {command}\n")
+                log_fh.flush()
+                try:
+                    completed = subprocess.run(
+                        command,
+                        cwd=workspace_path,
+                        shell=True,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        env=env,
+                        timeout=min(
+                            float(self.implementation_timeout or 600),
+                            900.0,
+                        ),
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    entry = {
+                        "command": command,
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}"[:500],
+                    }
+                    results.append(entry)
+                    log_fh.write(f"[auto-rescue] materialize error: {entry['error']}\n")
+                    continue
+                output = (completed.stdout or "") + (completed.stderr or "")
+                if output:
+                    log_fh.write(output)
+                    if not output.endswith("\n"):
+                        log_fh.write("\n")
+                log_fh.write(
+                    f"[auto-rescue] materialize returncode={completed.returncode}\n"
+                )
+                results.append(
+                    {
+                        "command": command,
+                        "ok": completed.returncode == 0,
+                        "returncode": int(completed.returncode),
+                        "output_tail": output[-1200:],
+                    }
+                )
+                # Prefer the first successful materialize alias.
+                if completed.returncode == 0:
+                    break
+        self._record_event(
+            "implementation_auto_rescue_materialize_commands",
+            {
+                "task_id": task.task_id,
+                "workspace_path": str(workspace_path),
+                "results": results,
+            },
+        )
+        return results
+
+    @staticmethod
+    def _same_attempt_replayable_proposal_ids(
+        validation_result: Mapping[str, Any],
+        *,
+        task_id: str,
+        repository_tree_id: str,
+        seed_proposal_ids: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        """Return exact accepted proposal IDs safe to retry in this attempt.
+
+        Rescue sometimes makes no content change after an admitted proposal's
+        validation command fails.  Re-running the proposal gate must not then
+        reject that identical, in-memory proposal as globally consumed.  The
+        exception is bound to the live accepted result, exact task, and exact
+        repository tree.  A provider edit changes the content-addressed
+        proposal ID and therefore still receives wholly fresh admission.
+        """
+
+        replayable = {
+            str(proposal_id).strip()
+            for proposal_id in seed_proposal_ids
+            if str(proposal_id).strip()
+        }
+        proposal_validation = validation_result.get("proposal_validation")
+        if getattr(proposal_validation, "accepted", None) is not True:
+            return tuple(sorted(replayable))
+        proposal = getattr(proposal_validation, "proposal", None)
+        proposal_id = str(
+            getattr(proposal, "proposal_id", "") or ""
+        ).strip()
+        proposal_task_id = str(
+            getattr(proposal, "task_id", "") or ""
+        ).strip()
+        proposal_tree_id = str(
+            getattr(proposal, "repository_tree_id", "") or ""
+        ).strip()
+        if (
+            proposal_id
+            and proposal_task_id == str(task_id or "").strip()
+            and proposal_tree_id
+            == str(repository_tree_id or "").strip()
+        ):
+            replayable.add(proposal_id)
+        return tuple(sorted(replayable))
+
+    def _automatic_implementation_rescue(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+        branch_name: str,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any] | dict[str, Any],
+        log_path: Path,
+        state: PortalTaskState | None,
+        command: Sequence[str] = (),
+        base_prompt: str = "",
+        allow_provider_rescue: bool = True,
+        replayable_consumed_proposal_ids: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Attempt bounded same-attempt rescue after failure review.
+
+        Order:
+        1. Materialize missing generated artifacts via validate→materialize
+           CLI rewrites, stage, and revalidate.
+        2. Stage declared dirty/ignored outputs and revalidate once.
+        3. If still failing with guide_rescue signal, run one focused
+           provider repair pass on the preserved worktree, then revalidate.
+        """
+
+        from ..validation.implementation_auto_rescue import (
+            AutoRescueAction,
+            build_inline_provider_rescue_prompt,
+            plan_automatic_implementation_rescue,
+        )
+
+        result = dict(validation_result or {})
+        if result.get("passed", False):
+            return result
+        if result.get("auto_rescue") and result.get("auto_rescue_terminal"):
+            return result
+
+        stage_used = False
+        materialize_used = False
+        provider_passes = 0
+        steps: list[dict[str, Any]] = []
+        expected = task_declared_output_paths(task)
+        validation_commands = tuple(getattr(task, "validation", ()) or ())
+
+        for _step in range(3):
+            present = self._expected_outputs_present_on_disk(
+                workspace_path,
+                task,
+            )
+            dirty = self._dirty_in_scope_declared_output_paths(
+                workspace_path,
+                task,
+            )
+            review = result.get("failure_review")
+            missing = ()
+            if isinstance(review, Mapping):
+                missing = tuple(
+                    str(item)
+                    for item in (review.get("missing_expected_outputs") or ())
+                    if str(item).strip()
+                )
+            plan = plan_automatic_implementation_rescue(
+                validation_result=result,
+                expected_outputs=expected,
+                validation_commands=validation_commands,
+                already_auto_rescued=bool(steps),
+                provider_rescue_passes_used=provider_passes,
+                stage_rescue_used=stage_used,
+                materialize_rescue_used=materialize_used,
+                allow_provider_rescue=bool(allow_provider_rescue and command),
+                expected_outputs_present_on_disk=present,
+                dirty_in_scope_paths=dirty,
+                missing_expected_outputs=missing,
+            )
+            steps.append(plan.to_record())
+            if plan.action is AutoRescueAction.NONE:
+                break
+
+            if plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE:
+                materialize_used = True
+                materialize_results = self._run_auto_rescue_materialize_commands(
+                    workspace_path=workspace_path,
+                    log_path=log_path,
+                    commands=plan.materialize_commands,
+                    task=task,
+                )
+                staged_paths = self._stage_declared_candidate_outputs(
+                    workspace_path,
+                    task,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_materialize_and_stage",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "materialize_results": materialize_results,
+                        "staged_paths": list(staged_paths),
+                        "plan": plan.to_record(),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] materialize_and_stage "
+                        f"commands={list(plan.materialize_commands)} "
+                        f"staged={list(staged_paths)}\n"
+                    )
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "materialize_used": materialize_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                    "materialize_results": materialize_results,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_materialize_and_stage_passed"
+                    )
+                    return result
+                continue
+
+            if plan.action is AutoRescueAction.STAGE_AND_REVALIDATE:
+                stage_used = True
+                staged_paths = self._stage_declared_candidate_outputs(
+                    workspace_path,
+                    task,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_stage_and_revalidate",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "staged_paths": list(staged_paths),
+                        "plan": plan.to_record(),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] stage_and_revalidate "
+                        f"paths={list(staged_paths)}\n"
+                    )
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_stage_and_revalidate_passed"
+                    )
+                    return result
+                continue
+
+            if plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE:
+                if not command or not allow_provider_rescue:
+                    break
+                provider_passes += 1
+                rescue_prompt = build_inline_provider_rescue_prompt(
+                    base_prompt=base_prompt,
+                    validation_result=result,
+                    auto_rescue_plan=plan,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_provider_started",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "plan": plan.to_record(),
+                        "failed_commands": list(plan.failed_commands),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] inline_provider_rescue start\n"
+                    )
+                    log_fh.flush()
+                    try:
+                        provider_environment = (
+                            self._implementation_process_environment(
+                                task,
+                                attempt=attempt,
+                                checkpoint_dir=(
+                                    self._ensure_implementation_checkpoint_dir(
+                                        task
+                                    )
+                                ),
+                            )
+                        )
+                        completed = run_process_group_stream(
+                            list(command),
+                            cwd=workspace_path,
+                            stdout=log_fh,
+                            input_text=rescue_prompt,
+                            env=provider_environment,
+                            timeout_seconds=min(
+                                float(self.implementation_timeout),
+                                3600.0,
+                            ),
+                            progress_timeout_seconds=None,
+                            max_timeout_seconds=min(
+                                float(
+                                    getattr(
+                                        self,
+                                        "implementation_max_timeout",
+                                        self.implementation_timeout,
+                                    )
+                                    or self.implementation_timeout
+                                ),
+                                7200.0,
+                            ),
+                            progress_paths=(),
+                            on_progress=None,
+                        )
+                        log_fh.write(
+                            "\n[auto-rescue] inline_provider_rescue "
+                            f"returncode={completed.returncode}\n"
+                        )
+                    except Exception as exc:
+                        log_fh.write(
+                            "\n[auto-rescue] inline_provider_rescue error: "
+                            f"{exc}\n"
+                        )
+                        self._record_event(
+                            "implementation_auto_rescue_provider_failed",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "error": str(exc)[-1000:],
+                            },
+                        )
+                        break
+                self._stage_declared_candidate_outputs(workspace_path, task)
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_provider_revalidate_passed"
+                    )
+                    self._record_event(
+                        "implementation_auto_rescue_succeeded",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "last_action": plan.action.value,
+                        },
+                    )
+                    return result
+                break
+
+        result = dict(result)
+        result["auto_rescue"] = {
+            "steps": list(steps),
+            "stage_used": stage_used,
+            "provider_passes": provider_passes,
+            "succeeded": False,
+        }
+        result["auto_rescue_terminal"] = True
+        self._record_event(
+            "implementation_auto_rescue_exhausted",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "steps": list(steps),
+                "stage_used": stage_used,
+                "provider_passes": provider_passes,
+            },
+        )
+        return result
+
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -37109,6 +38723,18 @@ class PortalImplementationDaemon:
                     failure_head = str(
                         summary.get("failure_head") or ""
                     ).strip()
+                    # Non-pytest validators often emit plain JSON/reason codes
+                    # without FAILED lines; keep a compact tail so auto-rescue
+                    # prompts are not evidence-starved.
+                    if not failure_head:
+                        raw_output = str(output or "").strip()
+                        if raw_output:
+                            tail = "\n".join(
+                                line
+                                for line in raw_output.splitlines()[-40:]
+                                if line.strip()
+                            )
+                            failure_head = tail[-1800:]
                     if failure_head and failure_head not in failure_heads:
                         failure_heads.append(failure_head)
                 # Command output belongs in the attempt log, not the durable

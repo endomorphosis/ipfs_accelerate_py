@@ -197,6 +197,9 @@ state/**/*.out
 !docs/architecture/formal_verification_role_aware_deployment_receipt.json
 # Stable IPFS Kit runtime-readiness scheduler policy is a source artifact.
 !config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
+# Stable IPFS Kit kernel-VFS/FUSE scheduler policy is a source artifact.
+!config/agent_supervisor_ipfs_kit_fuse_vfs_scheduler.json
+/data/agent_supervisor/ipfs_kit_fuse_vfs/
 # Stable machine-ingestible supervisor program profile (CPD-000).
 !config/agent_supervisor_control_plane_planner_doctor_v2_scheduler.json
 # Stable machine-ingestible DuckDB + Quack migration bootstrap profile.
