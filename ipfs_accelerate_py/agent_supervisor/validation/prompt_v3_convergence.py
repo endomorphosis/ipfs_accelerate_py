@@ -2122,10 +2122,12 @@ _FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING: Final = (
 _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING: Final = 1
 
 _ASE3_031_PRODUCT_IDENTITY: Final = {
-    "commit": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
-    "parent": "35992cba2261714a0030dff9d58a7a52c31f1d80",
-    "tree": "da9e18b507b9991935823dc10d4d7208a47f47f2",
+    # Main-reachable integrated tip of the ASE3-031 native DuckDB product.
+    "commit": "1a419e525699e74254a450c0137264d8dd60ea00",
+    "parent": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+    "tree": "06ea3c5444bd190996ad591b5fc82cad2443dcc4",
     "binary_patch_sha256": (
+        # Content-identical to the reviewed source patch under no-full-index diffs.
         "sha256:90b45612588258bfa34559f84f253801179f44f9968d938698b8dc7de24186fd"
     ),
     "changed_paths": [
@@ -2174,7 +2176,7 @@ _ASE3_032_PRODUCT_IDENTITY: Final = {
     },
 }
 _FROZEN_PRODUCT_GIT_IDENTITIES: Final = {
-    "25fedf091dad928dad1f83c9f81a54c2d401eabe": {
+    "1a419e525699e74254a450c0137264d8dd60ea00": {
         "ipfs_accelerate_py/llm_router.py": {
             "mode": "100755",
             "blob": "db2a7d220acf681954d5311a50cc5a970c49573a",
