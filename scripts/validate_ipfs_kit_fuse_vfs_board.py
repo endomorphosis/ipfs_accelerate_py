@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shlex
+import stat
 import subprocess
 import sys
 from collections.abc import Iterable, Mapping
@@ -51,11 +54,44 @@ TERMINAL_TASK = "KVFS-811"
 RETRY_BUDGET_REPAIR_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
 )
+RECONCILIATION_GUARDRAIL_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
+)
+RECONCILIATION_RESOLUTION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.reconciliation-resolution@1"
+)
+MAX_DISCOVERY_EVIDENCE_BYTES = 1_048_576
 MAX_OPERATIONAL_REPAIR_TASKS = 16
 FIRST_OPERATIONAL_REPAIR_NUMBER = max(
     int(task_id.rsplit("-", 1)[1]) for task_id in TASK_IDS
 ) + 1
 PERSISTED_OPERATIONAL_STATES = frozenset({"todo", "completed"})
+RECONCILIATION_REASONS_BY_KIND = {
+    "dirty_backlogged_worktree": frozenset(
+        {
+            "content_not_in_target",
+            "dirty_worktree",
+            "empty_status_path",
+            "unsupported_status",
+        }
+    ),
+    "main_checkout_dirty": frozenset({"main_checkout_dirty"}),
+    "preflight_merge_conflict": frozenset({"preflight_merge_conflict"}),
+}
+MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS = sum(
+    len(reasons) for reasons in RECONCILIATION_REASONS_BY_KIND.values()
+)
+RECONCILIATION_OUTPUTS = (
+    "data/agent_supervisor/ipfs_kit_fuse_vfs/state/discovery",
+    "docs/architecture/ipfs_kit_fuse_vfs.todo.md",
+)
+RECONCILIATION_PROFILE = {
+    "board namespace": NAMESPACE,
+    "goal id": "KVFS-G800",
+    "bundle": "ipfs-kit/kernel-vfs/release/terminal",
+    "parallel lane": "release-terminal",
+    "resource class": "cpu-medium",
+}
 
 RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
     r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+"
@@ -207,6 +243,273 @@ def _path_is_within_scope(value: str, scope: str) -> bool:
     return value_path == scope_path or value_path.parts[: len(scope_path.parts)] == scope_path.parts
 
 
+def _git_common_dir(repo_root: Path) -> Path | None:
+    """Return the shared Git directory for one live worktree, if available."""
+
+    try:
+        result = subprocess.run(
+            ("git", "-C", str(repo_root), "rev-parse", "--git-common-dir"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    common_dir = Path(result.stdout.strip())
+    if not common_dir.is_absolute():
+        common_dir = repo_root / common_dir
+    return common_dir.resolve(strict=False)
+
+
+def _git_toplevel(repo_root: Path) -> Path | None:
+    """Return the exact worktree root containing ``repo_root``."""
+
+    try:
+        result = subprocess.run(
+            ("git", "-C", str(repo_root), "rev-parse", "--show-toplevel"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return Path(result.stdout.strip()).resolve(strict=False)
+
+
+def _supervisor_owned_discovery_path(value: str) -> bool:
+    """Bind absolute runtime evidence to this board's Git repository.
+
+    Operational cards are generated in the running supervisor worktree, while
+    this validator is also run from isolated repair worktrees.  Requiring the
+    exact runtime suffix plus the same Git common directory admits those sibling
+    worktrees without trusting an arbitrary absolute path with a matching name.
+    """
+
+    normalized = value.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    suffix = PurePosixPath(RECONCILIATION_OUTPUTS[0])
+    if (
+        not normalized
+        or not path.is_absolute()
+        or ".." in path.parts
+        or "\x00" in normalized
+        or len(path.parts) <= len(suffix.parts)
+        or path.parent.parts[-len(suffix.parts):] != suffix.parts
+    ):
+        return False
+
+    discovery_path = Path(normalized)
+    if discovery_path.is_symlink() or discovery_path.parent.is_symlink():
+        return False
+    candidate_repo_root = discovery_path.parent
+    for _part in suffix.parts:
+        candidate_repo_root = candidate_repo_root.parent
+    if discovery_path.parent.resolve(strict=False) != (
+        candidate_repo_root.resolve(strict=False) / Path(suffix.as_posix())
+    ):
+        return False
+    candidate_repo_root = candidate_repo_root.resolve(strict=False)
+    if _git_toplevel(candidate_repo_root) != candidate_repo_root:
+        return False
+    expected_common_dir = _git_common_dir(REPO_ROOT)
+    candidate_common_dir = _git_common_dir(candidate_repo_root)
+    return (
+        expected_common_dir is not None
+        and candidate_common_dir is not None
+        and candidate_common_dir == expected_common_dir
+    )
+
+
+def _read_bounded_regular_file(
+    task_id: str,
+    path: Path,
+    *,
+    errors: list[str],
+) -> str | None:
+    """Read immutable-sized discovery evidence without following a symlink."""
+
+    try:
+        before = path.lstat()
+    except OSError:
+        errors.append(f"{task_id} discovery evidence is unavailable")
+        return None
+    if not stat.S_ISREG(before.st_mode):
+        errors.append(
+            f"{task_id} discovery evidence must be a regular non-symlink file"
+        )
+        return None
+    if before.st_size > MAX_DISCOVERY_EVIDENCE_BYTES:
+        errors.append(f"{task_id} discovery evidence exceeds 1 MiB")
+        return None
+
+    try:
+        with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            payload = handle.read(MAX_DISCOVERY_EVIDENCE_BYTES + 1)
+            opened_after = os.fstat(handle.fileno())
+        after = path.lstat()
+    except OSError:
+        errors.append(f"{task_id} discovery evidence is unavailable")
+        return None
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or not stat.S_ISREG(after.st_mode)
+        or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        or (
+            opened_after.st_size,
+            opened_after.st_mtime_ns,
+        ) != (opened.st_size, opened.st_mtime_ns)
+        or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+    ):
+        errors.append(
+            f"{task_id} discovery evidence must be a stable regular file"
+        )
+        return None
+    if len(payload) > MAX_DISCOVERY_EVIDENCE_BYTES:
+        errors.append(f"{task_id} discovery evidence exceeds 1 MiB")
+        return None
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError:
+        errors.append(f"{task_id} discovery evidence is not UTF-8")
+        return None
+
+
+def _resolution_receipt_digest(receipt: Mapping[str, object]) -> str:
+    """Return the canonical digest of a receipt without its own digest field."""
+
+    payload = {
+        str(key): value
+        for key, value in receipt.items()
+        if str(key) != "receipt_digest"
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+
+def _validate_reconciliation_manifest(
+    *,
+    task_id: str,
+    fields: Mapping[str, str],
+    discovery_text: str,
+    candidate_count: int,
+    errors: list[str],
+) -> None:
+    """Bind the generated card to its machine-readable discovery manifest."""
+
+    matches = re.findall(
+        r"^## Machine Readable Manifest\s*\n\s*```json\s*\n(.*?)\n```",
+        discovery_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if len(matches) != 1:
+        errors.append(
+            f"{task_id} must have one machine-readable reconciliation manifest"
+        )
+        return
+    try:
+        manifest = json.loads(matches[0])
+    except json.JSONDecodeError:
+        errors.append(f"{task_id} reconciliation manifest is malformed")
+        return
+    if not isinstance(manifest, dict):
+        errors.append(f"{task_id} reconciliation manifest must be an object")
+        return
+    if (
+        manifest.get("fingerprint")
+        != fields.get("reconciliation fingerprint")
+        or manifest.get("kind") != fields.get("reconciliation kind")
+        or manifest.get("reason") != fields.get("reconciliation reason")
+        or manifest.get("dedupe_key") != fields.get("dedupe key")
+        or type(manifest.get("candidate_count")) is not int
+        or manifest.get("candidate_count") != candidate_count
+    ):
+        errors.append(f"{task_id} reconciliation manifest binding mismatch")
+
+
+def _validate_reconciliation_resolution_receipt(
+    *,
+    task_id: str,
+    fields: Mapping[str, str],
+    discovery_text: str,
+    candidate_count: int,
+    errors: list[str],
+) -> None:
+    """Require content-addressed postconditions before a guardrail completes."""
+
+    matches = re.findall(
+        r"^## Resolution Receipt\s*\n\s*```json\s*\n(.*?)\n```",
+        discovery_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if len(matches) != 1:
+        errors.append(
+            f"{task_id} must have one machine-readable resolution receipt"
+        )
+        return
+    try:
+        receipt = json.loads(matches[0])
+    except json.JSONDecodeError:
+        errors.append(f"{task_id} resolution receipt is malformed")
+        return
+    if not isinstance(receipt, dict):
+        errors.append(f"{task_id} resolution receipt must be an object")
+        return
+    if (
+        receipt.get("schema") != RECONCILIATION_RESOLUTION_SCHEMA
+        or receipt.get("task_id") != task_id
+        or receipt.get("reconciliation_fingerprint")
+        != fields.get("reconciliation fingerprint")
+        or receipt.get("kind") != fields.get("reconciliation kind")
+        or receipt.get("reason") != fields.get("reconciliation reason")
+        or receipt.get("resolved") is not True
+    ):
+        errors.append(f"{task_id} resolution receipt binding mismatch")
+    if re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)",
+        str(receipt.get("resolved_at") or ""),
+    ) is None:
+        errors.append(f"{task_id} resolution timestamp is invalid")
+    if re.fullmatch(
+        r"[a-z][a-z0-9_]{2,127}",
+        str(receipt.get("resolution_method") or ""),
+    ) is None:
+        errors.append(f"{task_id} resolution method is invalid")
+
+    postconditions = receipt.get("postconditions")
+    if not (
+        isinstance(postconditions, dict)
+        and type(postconditions.get("candidate_count_before")) is int
+        and postconditions.get("candidate_count_before") == candidate_count
+        and type(postconditions.get("candidate_count_after")) is int
+        and postconditions.get("candidate_count_after") == 0
+        and postconditions.get("active_blocker_present_after") is False
+        and type(postconditions.get("dirty_worktree_group_count_after")) is int
+        and postconditions.get("dirty_worktree_group_count_after") == 0
+        and type(postconditions.get("cleanup_skip_count_after")) is int
+        and postconditions.get("cleanup_skip_count_after") == 0
+    ):
+        errors.append(f"{task_id} resolution postconditions are incomplete")
+    evidence = receipt.get("evidence")
+    if not isinstance(evidence, dict) or not evidence:
+        errors.append(f"{task_id} resolution evidence is empty")
+
+    receipt_digest = str(receipt.get("receipt_digest") or "")
+    if receipt_digest != _resolution_receipt_digest(receipt):
+        errors.append(f"{task_id} resolution receipt digest mismatch")
+    if fields.get("resolution receipt digest") != receipt_digest:
+        errors.append(f"{task_id} resolution receipt anchor mismatch")
+
+
 def _partition_canonical_and_operational_tasks(
     tasks: Iterable[tuple[str, str, dict[str, str]]],
     errors: list[str],
@@ -237,33 +540,287 @@ def _partition_canonical_and_operational_tasks(
     return canonical, operational
 
 
+def _looks_like_reconciliation_guardrail(
+    title: str,
+    fields: Mapping[str, str],
+) -> bool:
+    """Recognize reconciliation-shaped cards before checking their schema."""
+
+    return (
+        fields.get("generated by") == RECONCILIATION_GUARDRAIL_SCHEMA
+        or fields.get("dedupe key", "").startswith("reconciliation_guardrail:")
+        or fields.get("blocked reason") == "operator_reconciliation_required"
+        or any(key.startswith("reconciliation ") for key in fields)
+        or title.startswith("Resolve dirty main checkout blocking ")
+        or title.startswith("Resolve ")
+        and (
+            " preflight-conflicting backlogged worktree merges" in title
+            or " dirty backlogged worktrees blocked by " in title
+        )
+    )
+
+
+def _validate_reconciliation_guardrail_task(
+    task_id: str,
+    title: str,
+    fields: Mapping[str, str],
+    *,
+    errors: list[str],
+) -> bool:
+    """Validate one bounded, operator-gated reconciliation appendix card."""
+
+    status = fields.get("status", "")
+    if (
+        fields.get("generated by") != RECONCILIATION_GUARDRAIL_SCHEMA
+        or fields.get("canonical board task") != "false"
+    ):
+        errors.append(f"{task_id} lacks exact reconciliation provenance")
+
+    kind = fields.get("reconciliation kind", "")
+    reason = fields.get("reconciliation reason", "")
+    kind_is_supported = kind in RECONCILIATION_REASONS_BY_KIND
+    if not kind_is_supported:
+        errors.append(f"{task_id} has unsupported reconciliation kind {kind!r}")
+    elif reason not in RECONCILIATION_REASONS_BY_KIND[kind]:
+        errors.append(
+            f"{task_id} has unsupported reconciliation reason {reason!r} "
+            f"for {kind}"
+        )
+
+    fingerprint = fields.get("reconciliation fingerprint", "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", fingerprint) is None
+        or fields.get("fingerprint") != fingerprint
+    ):
+        errors.append(f"{task_id} reconciliation fingerprint mismatch")
+
+    if kind_is_supported:
+        expected_dedupe = {
+            "main_checkout_dirty": (
+                "reconciliation_guardrail:main_checkout_dirty"
+            ),
+            "preflight_merge_conflict": (
+                "reconciliation_guardrail:preflight_merge_conflict"
+            ),
+            "dirty_backlogged_worktree": (
+                f"reconciliation_guardrail:dirty_backlogged_worktree:{reason}"
+            ),
+        }[kind]
+        if fields.get("dedupe key") != expected_dedupe:
+            errors.append(f"{task_id} reconciliation dedupe key mismatch")
+
+    if status not in {"blocked", "completed"}:
+        errors.append(f"{task_id} has unsafe reconciliation status {status!r}")
+    if fields.get("completion") != "manual":
+        errors.append(f"{task_id} must use manual reconciliation completion")
+    if kind_is_supported:
+        expected_priority = (
+            "P1"
+            if kind != "dirty_backlogged_worktree"
+            or reason == "unsupported_status"
+            else "P2"
+        )
+        if fields.get("priority") != expected_priority:
+            errors.append(f"{task_id} reconciliation priority mismatch")
+    if fields.get("track") != "ops":
+        errors.append(f"{task_id} must use the ops track")
+    if (
+        fields.get("is schedulable") != "false"
+        or fields.get("review only") != "true"
+        or fields.get("blocked reason")
+        != "operator_reconciliation_required"
+    ):
+        errors.append(f"{task_id} reconciliation authority gate mismatch")
+
+    if _csv(fields.get("depends on", "")):
+        errors.append(
+            f"{task_id} reconciliation appendix must not alter the sealed DAG"
+        )
+    if _csv(fields.get("outputs", "")) != RECONCILIATION_OUTPUTS:
+        errors.append(f"{task_id} reconciliation output scope mismatch")
+    if any(
+        field in fields
+        for field in ("scope paths", "conflict policy", "graph parents")
+    ):
+        errors.append(f"{task_id} reconciliation scope authority is unsafe")
+    for field, expected in RECONCILIATION_PROFILE.items():
+        if fields.get(field) != expected:
+            errors.append(f"{task_id} reconciliation {field} mismatch")
+
+    title_match: re.Match[str] | None = None
+    candidate_count: int | None = None
+    if kind_is_supported:
+        title_patterns = {
+            "main_checkout_dirty": (
+                r"^Resolve dirty main checkout blocking (?P<count>[1-9]\d*) "
+                r"worktree merges$"
+            ),
+            "preflight_merge_conflict": (
+                r"^Resolve (?P<count>[1-9]\d*) preflight-conflicting "
+                r"backlogged worktree merges$"
+            ),
+            "dirty_backlogged_worktree": (
+                rf"^Resolve (?P<count>[1-9]\d*) dirty backlogged worktrees "
+                rf"blocked by {re.escape(reason)}$"
+            ),
+        }
+        title_match = re.fullmatch(title_patterns[kind], title)
+        if title_match is None:
+            errors.append(f"{task_id} reconciliation title mismatch")
+        else:
+            candidate_count = int(title_match.group("count"))
+
+    discovery_text = fields.get("reconciliation discovery", "")
+    discovery_path = PurePosixPath(discovery_text.replace("\\", "/"))
+    expected_name = (
+        rf"\d{{4}}-\d{{2}}-\d{{2}}-{task_id.lower()}-"
+        rf"reconciliation-{fingerprint[:12]}\.md"
+    )
+    discovery_is_valid = (
+        _supervisor_owned_discovery_path(discovery_text)
+        and re.fullmatch(expected_name, discovery_path.name) is not None
+    )
+    if not discovery_is_valid:
+        errors.append(f"{task_id} has invalid reconciliation discovery provenance")
+
+    discovery_evidence: str | None = None
+    if discovery_is_valid:
+        discovery_evidence = _read_bounded_regular_file(
+            task_id,
+            Path(discovery_text),
+            errors=errors,
+        )
+    if discovery_evidence is not None and candidate_count is not None:
+        _validate_reconciliation_manifest(
+            task_id=task_id,
+            fields=fields,
+            discovery_text=discovery_evidence,
+            candidate_count=candidate_count,
+            errors=errors,
+        )
+        if status == "completed":
+            _validate_reconciliation_resolution_receipt(
+                task_id=task_id,
+                fields=fields,
+                discovery_text=discovery_evidence,
+                candidate_count=candidate_count,
+                errors=errors,
+            )
+    if status == "completed" and not fields.get("resolution receipt digest"):
+        errors.append(f"{task_id} resolution receipt anchor mismatch")
+    if status != "completed" and fields.get("resolution receipt digest"):
+        errors.append(
+            f"{task_id} blocked reconciliation has a stale receipt anchor"
+        )
+
+    try:
+        validation = shlex.split(fields.get("validation", ""))
+    except ValueError:
+        validation = []
+    if validation != ["test", "-f", discovery_text]:
+        errors.append(f"{task_id} reconciliation validation is not fail-closed")
+
+    acceptance = fields.get("acceptance", "")
+    if title_match is not None:
+        candidate_count_text = title_match.group("count")
+        acceptance_fragments = (
+            discovery_text,
+            (
+                f"because {candidate_count_text} branch or worktree cleanup "
+                "candidates"
+            ),
+            f"blocked by {reason}",
+            "intentionally operator-gated",
+            "blocked candidate count decreases",
+        )
+        if any(fragment not in acceptance for fragment in acceptance_fragments):
+            errors.append(
+                f"{task_id} reconciliation acceptance/evidence mismatch"
+            )
+    elif not acceptance:
+        errors.append(f"{task_id} has empty reconciliation acceptance")
+
+    return status != "completed"
+
+
 def _validate_operational_repair_tasks(
     repairs: Iterable[tuple[str, str, dict[str, str]]],
     *,
     canonical_by_id: Mapping[str, dict[str, str]],
     errors: list[str],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Validate bounded retry repairs without adding aliases to the sealed DAG."""
+    """Validate bounded operational cards outside the sealed canonical DAG."""
 
     repair_list = list(repairs)
     if len(repair_list) > MAX_OPERATIONAL_REPAIR_TASKS:
-        errors.append("operational retry-repair appendix exceeds its finite bound")
+        errors.append("operational appendix exceeds its finite bound")
 
     operational_ids: list[str] = []
     pending_ids: list[str] = []
     active_source_kinds: set[tuple[str, str]] = set()
-    discovery_root = (
-        REPO_ROOT
-        / "data/agent_supervisor/ipfs_kit_fuse_vfs/state/discovery"
-    ).resolve()
+    active_reconciliation_count = 0
+    reconciliation_dedupe_status: dict[str, str] = {}
+    reconciliation_fingerprint_status: dict[str, str] = {}
     for offset, (task_id, title, fields) in enumerate(repair_list):
         operational_ids.append(task_id)
         expected_id = f"KVFS-{FIRST_OPERATIONAL_REPAIR_NUMBER + offset:03d}"
         if task_id != expected_id:
             errors.append(
-                "operational retry-repair IDs must be contiguous: "
+                "operational appendix IDs must be contiguous: "
                 f"expected {expected_id}, got {task_id}"
             )
+
+        if _looks_like_reconciliation_guardrail(title, fields):
+            is_pending = _validate_reconciliation_guardrail_task(
+                task_id,
+                title,
+                fields,
+                errors=errors,
+            )
+            if is_pending:
+                pending_ids.append(task_id)
+                active_reconciliation_count += 1
+                if (
+                    active_reconciliation_count
+                    > MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS
+                ):
+                    errors.append(
+                        "active reconciliation appendix exceeds its finite bound"
+                    )
+
+            dedupe_key = fields.get("dedupe key", "")
+            fingerprint = fields.get("reconciliation fingerprint", "")
+            previous_dedupe_status = reconciliation_dedupe_status.get(dedupe_key)
+            if (
+                dedupe_key
+                and previous_dedupe_status is not None
+                and previous_dedupe_status != "completed"
+            ):
+                errors.append(
+                    "concurrent duplicate operational reconciliation task: "
+                    f"{dedupe_key}"
+                )
+            previous_fingerprint_status = (
+                reconciliation_fingerprint_status.get(fingerprint)
+            )
+            if (
+                fingerprint
+                and previous_fingerprint_status is not None
+                and previous_fingerprint_status != "completed"
+            ):
+                errors.append(
+                    "concurrent duplicate operational reconciliation "
+                    f"fingerprint: {fingerprint}"
+                )
+            if dedupe_key:
+                reconciliation_dedupe_status[dedupe_key] = fields.get(
+                    "status", ""
+                )
+            if fingerprint:
+                reconciliation_fingerprint_status[fingerprint] = fields.get(
+                    "status", ""
+                )
+            continue
 
         title_match = RETRY_BUDGET_REPAIR_TITLE_RE.fullmatch(title)
         acceptance = fields.get("acceptance", "")
@@ -349,14 +906,21 @@ def _validate_operational_repair_tasks(
             rf"\d{{4}}-\d{{2}}-\d{{2}}-{task_id.lower()}-"
             rf"{source_task_id.lower()}-{expected_suffix}\.md"
         )
-        if (
-            not discovery_text
-            or not discovery_path.is_absolute()
-            or discovery_path.parent.resolve() != discovery_root
-            or expected_discovery_name.fullmatch(discovery_path.name) is None
-            or discovery_text not in acceptance
-        ):
+        retry_discovery_is_valid = (
+            bool(discovery_text)
+            and discovery_path.is_absolute()
+            and _supervisor_owned_discovery_path(discovery_text)
+            and expected_discovery_name.fullmatch(discovery_path.name) is not None
+            and discovery_text in acceptance
+        )
+        if not retry_discovery_is_valid:
             errors.append(f"{task_id} has invalid retry discovery provenance")
+        else:
+            _read_bounded_regular_file(
+                task_id,
+                discovery_path,
+                errors=errors,
+            )
         if discovery_text in repair_outputs:
             errors.append(
                 f"{task_id} grants write authority to discovery evidence"
