@@ -4261,8 +4261,15 @@ class PortalImplementationDaemon:
             # Untracked protected inputs cannot appear in Git path history.
             # If their exact shared identities were independently proven
             # unchanged, an ancestry-checked HEAD advance on unrelated paths
-            # is not evidence of a protected-path mutation.
-            if not commits and not shared_untracked_paths_proof:
+            # is not evidence of a protected-path mutation. The same is true
+            # when only a vanished mirrored/disposed ephemeral workspace was
+            # mutated and the shared protected paths were never rewritten.
+            if (
+                not commits
+                and not shared_untracked_paths_proof
+                and not mirrored_workspace_proof
+                and not disposed_workspace_proof
+            ):
                 return denied("protected_path_history_empty")
         if resolved_approvals != untrusted_commits:
             return denied(
