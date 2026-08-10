@@ -642,20 +642,10 @@ class ProviderRetryAuthorization:
                 "provider retry authorization must never allow free re-prompt"
             )
         if self.authorized:
-            if self.disposition is not ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED:
-                raise FailureReplanPolicyError(
-                    "authorized provider retry requires residual_llm_authorized",
-                    reason_code="disposition_mismatch",
-                )
-            if not self.residual_packet_id or self.residual_packet is None:
-                raise ResidualPacketRequiredError(
-                    "authorized provider retry requires a sealed residual packet"
-                )
-            if not packet_satisfies_residual_llm_contract(self.residual_packet):
-                raise FailureReplanPolicyError(
-                    "authorized residual packet failed ResidualLlmPacket@1 contract",
-                    reason_code=REASON_PACKET_SEAL_FAILED,
-                )
+            raise FailureReplanPolicyError(
+                "provider/model retry authorization is disabled by deterministic recovery",
+                reason_code=REASON_RESIDUAL_PACKET_REQUIRED,
+            )
         else:
             if self.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED:
                 raise FailureReplanPolicyError(
@@ -779,10 +769,9 @@ class FailureReplanResult:
 
     @property
     def authorizes_provider(self) -> bool:
-        return (
-            self.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
-            and self.residual_packet is not None
-        )
+        """Provider authority is permanently absent from recovery/retry."""
+
+        return False
 
     @property
     def should_backoff(self) -> bool:
@@ -851,7 +840,9 @@ class FailureReplanPolicy:
     delta_limits: DeltaReplanLimits | Mapping[str, Any] | None = None
     replan_limits: ReplanLimits | Mapping[str, Any] | None = None
     formal_replanner: FormalReplanner | None = None
-    require_residual_packet_for_llm: bool = True
+    # DCR-082 closes the historical residual route.  This flag remains only
+    # for wire compatibility; it cannot enable a provider retry.
+    require_residual_packet_for_llm: bool = False
 
     def __post_init__(self) -> None:
         memory = self.failure_memory or PlanFailureMemory()
@@ -895,7 +886,7 @@ class FailureReplanPolicy:
             "uses_formal_replanner": True,
             "uses_plan_failure_memory": True,
             "edits_only_bound_records": True,
-            "residual_packet_required_for_llm_retry": True,
+            "residual_packet_required_for_llm_retry": False,
             "free_reprompt_allowed": False,
             "llm_router_enabled": False,
             "automatic_fallback": False,
@@ -1049,7 +1040,8 @@ class FailureReplanPolicy:
                 notes=("cancelled", "provider_forbidden"),
             )
 
-        # Active replan: residual packet required for LLM retry.
+        # An active replan remains deterministic-only.  A sealed residual
+        # packet is evidence, never authority to invoke a provider/model.
         if not delta.changed:
             # Defensive: unknown stop without change → abstain.
             return self._result(
@@ -1067,26 +1059,7 @@ class FailureReplanPolicy:
                 notes=("no_active_replan", "provider_forbidden"),
             )
 
-        if packet is not None:
-            return self._result(
-                outcome=FailureReplanOutcome.RESIDUAL_LLM_AUTHORIZED,
-                reason_code=REASON_REPLAN_RESIDUAL_AUTHORIZED,
-                disposition=ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED,
-                delta=delta,
-                memory_disposition=memory_disposition,
-                bound_step_ids=tuple(delta.invalidated_step_ids),
-                residual_packet=packet,
-                residual_packet_required=True,
-                residual_packet_sealed=True,
-                notes=(
-                    "replan_required",
-                    "bound_records_only",
-                    "residual_packet_sealed",
-                    "edits_only_bound_records",
-                ),
-            )
-
-        # Replan ready but residual packet missing / unsealable → abstain.
+        # Replan ready, but no provider/model route exists → abstain.
         notes = [
             "replan_required",
             "bound_records_only",
@@ -1103,9 +1076,9 @@ class FailureReplanPolicy:
             memory_disposition=memory_disposition,
             bound_step_ids=tuple(delta.invalidated_step_ids),
             residual_packet=None,
-            residual_packet_required=True,
+            residual_packet_required=False,
             residual_packet_sealed=False,
-            notes=tuple(notes),
+            notes=tuple([*notes, "deterministic_only_recovery"]),
         )
 
     def authorize_llm_retry(
@@ -1115,132 +1088,22 @@ class FailureReplanPolicy:
         residual_packet: ResidualLlmPacket | Mapping[str, Any] | None = None,
         free_reprompt_context: Any = None,
     ) -> ProviderRetryAuthorization:
-        """Admit provider retry only with a sealed residual packet.
-
-        Free re-prompt context is always rejected.  A prior
-        :class:`FailureReplanResult` that already carries a sealed packet may
-        be re-authorized; otherwise an explicit packet must be supplied.
-        """
+        """Return the closed deterministic-only retry boundary."""
 
         if free_reprompt_context is not None:
             raise FreeRepromptForbiddenError(
                 "LLM retry free_reprompt_context is forbidden after typed failure"
             )
 
-        if isinstance(result, Mapping):
-            # Mapping path only supports disposition + packet projection fields.
-            disposition_token = str(result.get("disposition") or "").strip()
-            try:
-                disposition = ImplementationDisposition(disposition_token)
-            except ValueError as exc:
-                raise FailureReplanPolicyInputError(
-                    f"unknown disposition: {disposition_token!r}",
-                    reason_code=REASON_MALFORMED_REQUEST,
-                ) from exc
-            packet_payload = residual_packet
-            if packet_payload is None:
-                packet_payload = result.get("residual_packet")
-            sealed = bool(result.get("residual_packet_sealed"))
-            if packet_payload is None or not sealed:
-                return ProviderRetryAuthorization(
-                    authorized=False,
-                    reason_code=REASON_RESIDUAL_PACKET_REQUIRED,
-                    disposition=ImplementationDisposition.ABSTAIN_REVIEW,
-                    residual_packet_id="",
-                    residual_packet=None,
-                    free_reprompt_allowed=False,
-                )
-            packet = self._coerce_packet(packet_payload)
-            if disposition is not ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED:
-                return ProviderRetryAuthorization(
-                    authorized=False,
-                    reason_code=REASON_RESIDUAL_PACKET_REQUIRED,
-                    disposition=ImplementationDisposition.ABSTAIN_REVIEW,
-                    residual_packet_id="",
-                    residual_packet=None,
-                    free_reprompt_allowed=False,
-                )
-            return ProviderRetryAuthorization(
-                authorized=True,
-                reason_code=REASON_REPLAN_RESIDUAL_AUTHORIZED,
-                disposition=ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED,
-                residual_packet_id=packet.packet_id or packet.content_id,
-                residual_packet=packet,
-                free_reprompt_allowed=False,
-            )
-
-        if not isinstance(result, FailureReplanResult):
-            raise FailureReplanPolicyInputError(
-                "result must be FailureReplanResult or mapping",
-                reason_code=REASON_MALFORMED_REQUEST,
-            )
-
-        packet: ResidualLlmPacket | None = None
-        if residual_packet is not None:
-            packet = self._coerce_packet(residual_packet)
-        elif result.residual_packet is not None and result.residual_packet_sealed:
-            packet = result.residual_packet
-
-        if packet is None:
-            return ProviderRetryAuthorization(
-                authorized=False,
-                reason_code=REASON_RESIDUAL_PACKET_REQUIRED,
-                disposition=ImplementationDisposition.ABSTAIN_REVIEW,
-                residual_packet_id="",
-                residual_packet=None,
-                free_reprompt_allowed=False,
-            )
-
-        if (
-            result.disposition is not ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
-            and residual_packet is None
-        ):
-            # Explicit new packet can elevate only when replan was active.
-            if not result.should_replan:
-                return ProviderRetryAuthorization(
-                    authorized=False,
-                    reason_code=REASON_RESIDUAL_PACKET_REQUIRED,
-                    disposition=ImplementationDisposition.ABSTAIN_REVIEW,
-                    residual_packet_id="",
-                    residual_packet=None,
-                    free_reprompt_allowed=False,
-                )
-
-        if self.require_residual_packet_for_llm and not packet_satisfies_residual_llm_contract(
-            packet
-        ):
-            return ProviderRetryAuthorization(
-                authorized=False,
-                reason_code=REASON_PACKET_SEAL_FAILED,
-                disposition=ImplementationDisposition.ABSTAIN_REVIEW,
-                residual_packet_id="",
-                residual_packet=None,
-                free_reprompt_allowed=False,
-            )
-
-        # Backoff / exhausted / unbound paths never authorize LLM.
-        if result.outcome in {
-            FailureReplanOutcome.BACKOFF,
-            FailureReplanOutcome.EXHAUSTED,
-            FailureReplanOutcome.UNBOUND,
-            FailureReplanOutcome.BOUND_EXCEEDED,
-            FailureReplanOutcome.CANCELLED,
-        }:
-            return ProviderRetryAuthorization(
-                authorized=False,
-                reason_code=result.reason_code,
-                disposition=ImplementationDisposition.ABSTAIN_REVIEW,
-                residual_packet_id="",
-                residual_packet=None,
-                free_reprompt_allowed=False,
-            )
-
+        # A recovery/retry must not revive the pre-DCR-082 provider path.
+        # Deliberately do not deserialize supplied packets here: malformed
+        # provider-shaped input is not a reason to touch a provider boundary.
         return ProviderRetryAuthorization(
-            authorized=True,
-            reason_code=REASON_REPLAN_RESIDUAL_AUTHORIZED,
-            disposition=ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED,
-            residual_packet_id=packet.packet_id or packet.content_id,
-            residual_packet=packet,
+            authorized=False,
+            reason_code=REASON_RESIDUAL_PACKET_REQUIRED,
+            disposition=ImplementationDisposition.ABSTAIN_REVIEW,
+            residual_packet_id="",
+            residual_packet=None,
             free_reprompt_allowed=False,
         )
 
@@ -1455,7 +1318,7 @@ def build_failure_replan_policy(
     delta_limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
     replan_limits: ReplanLimits | Mapping[str, Any] | None = None,
     formal_replanner: FormalReplanner | None = None,
-    require_residual_packet_for_llm: bool = True,
+    require_residual_packet_for_llm: bool = False,
 ) -> FailureReplanPolicy:
     """Construct the production-default failure replan policy."""
 
@@ -1507,6 +1370,11 @@ def authorize_llm_retry_after_failure(
     )
 
 
+# Public compatibility name for callers that explicitly require the closed
+# DCR-082 semantics.  Both names resolve to the same deterministic policy.
+DeterministicFailureReplanPolicy = FailureReplanPolicy
+
+
 __all__ = [
     "FAILURE_REPLAN_POLICY_EVIDENCE",
     "FAILURE_REPLAN_POLICY_INTERFACE",
@@ -1523,6 +1391,7 @@ __all__ = [
     "REASON_UNCHANGED_FAILURE_BACKOFF",
     "FailureReplanOutcome",
     "FailureReplanPolicy",
+    "DeterministicFailureReplanPolicy",
     "FailureReplanPolicyError",
     "FailureReplanPolicyInputError",
     "FailureReplanRequest",

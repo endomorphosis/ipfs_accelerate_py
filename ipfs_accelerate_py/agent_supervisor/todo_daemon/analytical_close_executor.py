@@ -157,6 +157,12 @@ class AnalyticalCloseReceipt:
     def content_id(self) -> str:
         return content_identity(self.to_dict())
 
+    @property
+    def receipt_id(self) -> str:
+        """Stable identity used by restart recovery to replay, not recreate."""
+
+        return self.content_id
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": ANALYTICAL_CLOSE_RECEIPT_SCHEMA,
@@ -275,6 +281,40 @@ class AnalyticalCloseExecutor:
         except Exception:
             self._rollback(snapshots)
             raise
+
+    def replay_receipt(
+        self,
+        receipt: AnalyticalCloseReceipt,
+        plan: AnalyticalClosePlan | Mapping[str, Any],
+    ) -> AnalyticalCloseReceipt:
+        """Validate and return an existing receipt without touching the worktree.
+
+        Recovery must replay authority recorded before a crash; it must never
+        call :meth:`apply` a second time to reconstruct a success.
+        """
+
+        if not isinstance(receipt, AnalyticalCloseReceipt):
+            raise AnalyticalCloseExecutorError(
+                "recovery receipt must be AnalyticalCloseReceipt",
+                reason_code="receipt_required",
+            )
+        normalized = self._normalize_plan(plan)
+        if not receipt.applied or (normalized.expects_writes and not receipt.mutated):
+            raise AnalyticalCloseExecutorError(
+                "recovery cannot replay an unapplied or non-mutating receipt",
+                reason_code="receipt_not_replayable",
+            )
+        if receipt.plan_cid != normalized.plan_cid or receipt.task_cid != normalized.task_cid:
+            raise AnalyticalCloseExecutorError(
+                "receipt does not bind the recovered plan and task",
+                reason_code="receipt_binding_mismatch",
+            )
+        if tuple(sorted(receipt.paths_touched)) != tuple(sorted({edit.path for edit in normalized.edits})):
+            raise AnalyticalCloseExecutorError(
+                "receipt paths do not bind the recovered analytical plan",
+                reason_code="receipt_path_mismatch",
+            )
+        return receipt
 
     def _normalize_plan(
         self, plan: AnalyticalClosePlan | Mapping[str, Any]
