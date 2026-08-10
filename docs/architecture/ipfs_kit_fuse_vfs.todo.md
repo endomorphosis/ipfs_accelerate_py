@@ -510,7 +510,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-506 Build bounded real Linux kernel-mount conformance and crash harness
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
