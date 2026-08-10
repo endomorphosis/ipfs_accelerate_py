@@ -722,7 +722,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-023 Connect Crypto IR base ledger, protocol, finality, and arithmetic slices
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
