@@ -2099,6 +2099,9 @@ RETRY_BUDGET_REPAIR_SCHEMA = (
 RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.retry-budget-repair-rearm@1"
 )
+STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
+    "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
+)
 RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "todo_daemon/implementation_daemon.py",
     "objectives/backlog_refinery.py",
@@ -3185,6 +3188,9 @@ class PortalTaskState:
     retry_budget_repair_rearm_receipts: dict[str, list[str]] = field(
         default_factory=dict
     )
+    stale_proposal_replay_rearm_receipts: dict[str, list[str]] = field(
+        default_factory=dict
+    )
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -3320,6 +3326,21 @@ class PortalTaskState:
                     ]
                     for key, value in (
                         payload.get("retry_budget_repair_rearm_receipts") or {}
+                    ).items()
+                    if str(key).strip()
+                    and isinstance(value, list)
+                },
+                stale_proposal_replay_rearm_receipts={
+                    str(key): [
+                        str(item)
+                        for item in value
+                        if str(item).strip()
+                    ]
+                    for key, value in (
+                        payload.get(
+                            "stale_proposal_replay_rearm_receipts"
+                        )
+                        or {}
                     ).items()
                     if str(key).strip()
                     and isinstance(value, list)
@@ -3466,6 +3487,7 @@ def state_file_repair_reason(path: Path) -> str:
         "implementation_attempts_by_cid",
         "retry_budget_repair_receipts",
         "retry_budget_repair_rearm_receipts",
+        "stale_proposal_replay_rearm_receipts",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -8583,6 +8605,421 @@ class PortalImplementationDaemon:
             )
         return rearmed
 
+    def _stale_proposal_replay_recovery_evidence(
+        self,
+        task: PortalTask,
+        *,
+        canonical_task_cid: str,
+    ) -> dict[str, Any] | None:
+        """Prove one ordinary attempt failed only on a same-attempt replay.
+
+        The proof is deliberately event-segment based.  A bare terminal
+        ``stale_proposal_replay`` label is not enough: the same task revision
+        must first have admitted proposal X, started bounded provider rescue,
+        rejected unchanged X solely as stale, preserved the failed candidate,
+        and consumed that exact attempt.  This keeps recovery unavailable for
+        cross-task replays, changed proposal bodies, or mixed security
+        findings.
+        """
+
+        events = list(self._iter_events())
+        task_id = str(task.task_id or "").strip()
+        expected_cid = str(canonical_task_cid or "").strip()
+        if not task_id or not expected_cid:
+            return None
+
+        def event_cid(event: Mapping[str, Any]) -> str:
+            return str(
+                event.get("canonical_task_cid")
+                or event.get("task_cid")
+                or ""
+            ).strip()
+
+        def changed_paths(value: Any) -> tuple[str, ...]:
+            if not isinstance(value, list) or not value:
+                return ()
+            normalized = tuple(
+                sorted(
+                    {
+                        str(path).strip()
+                        for path in value
+                        if isinstance(path, str) and str(path).strip()
+                    }
+                )
+            )
+            if len(normalized) != len(value):
+                return ()
+            return normalized
+
+        finish_index = -1
+        finish: Mapping[str, Any] | None = None
+        for index, event in enumerate(events):
+            if (
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "").strip() == task_id
+            ):
+                finish_index = index
+                finish = event
+        if finish is None or event_cid(finish) != expected_cid:
+            return None
+        if finish.get("attempt_consumed") is not True:
+            return None
+        try:
+            attempt = int(finish.get("attempt") or 0)
+        except (TypeError, ValueError):
+            return None
+        branch = str(finish.get("branch") or "").strip()
+        validation_result = finish.get("validation_result")
+        if (
+            attempt <= 0
+            or not branch
+            or not isinstance(validation_result, Mapping)
+            or str(validation_result.get("reason") or "").strip()
+            != "proposal_gate_failed"
+            or str(validation_result.get("error") or "").strip()
+            != "proposal_validation_failed"
+        ):
+            return None
+        terminal_gate = validation_result.get("proposal_gate")
+        if not isinstance(terminal_gate, Mapping):
+            return None
+        terminal_reasons = {
+            str(reason).strip()
+            for reason in (terminal_gate.get("reason_codes") or ())
+            if str(reason).strip()
+        }
+        proposal_id = str(terminal_gate.get("proposal_id") or "").strip()
+        repository_tree_id = str(
+            terminal_gate.get("repository_tree_id") or ""
+        ).strip()
+        proposal_paths = changed_paths(terminal_gate.get("changed_paths"))
+        if (
+            terminal_reasons != {"stale_proposal_replay"}
+            or not proposal_id
+            or not repository_tree_id
+            or not proposal_paths
+        ):
+            return None
+
+        start_index = -1
+        start_event: Mapping[str, Any] | None = None
+        for index in range(finish_index):
+            event = events[index]
+            if (
+                event.get("type") == "implementation_started"
+                and str(event.get("task_id") or "").strip() == task_id
+                and event_cid(event) == expected_cid
+                and str(event.get("branch") or "").strip() == branch
+            ):
+                try:
+                    event_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if event_attempt == attempt:
+                    start_index = index
+                    start_event = event
+        if (
+            start_event is None
+            or str(start_event.get("baseline_ref") or "").strip()
+            != repository_tree_id
+        ):
+            return None
+
+        signature = (proposal_id, repository_tree_id, proposal_paths)
+
+        def proposal_signature(event: Mapping[str, Any]) -> tuple[Any, ...]:
+            return (
+                str(event.get("proposal_id") or "").strip(),
+                str(event.get("repository_tree_id") or "").strip(),
+                changed_paths(event.get("changed_paths")),
+            )
+
+        accepted_index = -1
+        rescue_index = -1
+        rejected_index = -1
+        preserved_index = -1
+        accepted_event: Mapping[str, Any] | None = None
+        rejected_event: Mapping[str, Any] | None = None
+        preserved_event: Mapping[str, Any] | None = None
+        for index in range(start_index + 1, finish_index):
+            event = events[index]
+            if (
+                str(event.get("task_id") or "").strip() != task_id
+                or event_cid(event) != expected_cid
+            ):
+                continue
+            event_type = str(event.get("type") or "")
+            if (
+                event_type == "implementation_proposal_validated"
+                and event.get("accepted") is True
+                and proposal_signature(event) == signature
+            ):
+                accepted_index = index
+                rescue_index = -1
+                rejected_index = -1
+                preserved_index = -1
+                accepted_event = event
+                rejected_event = None
+                preserved_event = None
+                continue
+            if accepted_index < 0:
+                continue
+            if event_type == "implementation_auto_rescue_provider_started":
+                try:
+                    rescue_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                plan = event.get("plan")
+                plan_reasons = {
+                    str(reason).strip()
+                    for reason in (
+                        plan.get("reason_codes") or ()
+                        if isinstance(plan, Mapping)
+                        else ()
+                    )
+                    if str(reason).strip()
+                }
+                if (
+                    rescue_attempt == attempt
+                    and isinstance(plan, Mapping)
+                    and str(plan.get("action") or "").strip()
+                    == "inline_provider_rescue"
+                    and "validation_command_failed" in plan_reasons
+                ):
+                    rescue_index = index
+                continue
+            if (
+                rescue_index > accepted_index
+                and event_type == "implementation_proposal_rejected"
+                and event.get("accepted") is False
+                and proposal_signature(event) == signature
+            ):
+                reasons = {
+                    str(reason).strip()
+                    for reason in (event.get("reason_codes") or ())
+                    if str(reason).strip()
+                }
+                if reasons == {"stale_proposal_replay"}:
+                    rejected_index = index
+                    rejected_event = event
+                continue
+            if (
+                rejected_index > rescue_index
+                and event_type == "failed_validation_worktree_preserved"
+                and event.get("preserved") is True
+                and str(event.get("branch") or "").strip() == branch
+                and str(event.get("implementation_commit") or "").strip()
+                and str(event.get("rescue_branch") or "").strip()
+            ):
+                try:
+                    preserved_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if preserved_attempt == attempt:
+                    preserved_index = index
+                    preserved_event = event
+
+        if not (
+            start_index
+            < accepted_index
+            < rescue_index
+            < rejected_index
+            < preserved_index
+            < finish_index
+            and accepted_event is not None
+            and rejected_event is not None
+            and preserved_event is not None
+        ):
+            return None
+        return {
+            "task_id": task_id,
+            "canonical_task_cid": expected_cid,
+            "attempt": attempt,
+            "branch": branch,
+            "proposal_id": proposal_id,
+            "repository_tree_id": repository_tree_id,
+            "changed_paths": list(proposal_paths),
+            "accepted_event_id": str(
+                accepted_event.get("event_id") or ""
+            ),
+            "rejected_event_id": str(
+                rejected_event.get("event_id") or ""
+            ),
+            "preserved_event_id": str(
+                preserved_event.get("event_id") or ""
+            ),
+            "finished_event_id": str(finish.get("event_id") or ""),
+            "implementation_commit": str(
+                preserved_event.get("implementation_commit") or ""
+            ),
+            "rescue_branch": str(
+                preserved_event.get("rescue_branch") or ""
+            ),
+        }
+
+    def _rearm_attempt_limited_stale_proposal_tasks(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one attempt to an ordinary task stalled by our replay gate.
+
+        The recovery is intentionally narrower than a generic retry reset. It
+        requires a complete same-attempt stale-replay proof, retains every
+        source-revision fingerprint, and restores only one attempt slot.  The
+        latter preserves ``attempt > 1`` so the next run can seed the already
+        admitted, preserved candidate instead of asking a provider to recreate
+        it from scratch.
+        """
+
+        revision = str(recovery_revision or "").strip()
+        if (
+            self.max_task_attempts <= 0
+            or not revision
+            or (self.task_shard_count > 1 and not self.strict_task_sharding)
+        ):
+            return []
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        identities = {
+            task.task_id: self._identity_for_task(task) for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid, []
+            ).append(task_id)
+
+        candidates: list[dict[str, Any]] = []
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+                or is_retry_budget_repair_task(task)
+            ):
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+            identity = identities[task.task_id]
+            evidence = self._stale_proposal_replay_recovery_evidence(
+                task,
+                canonical_task_cid=identity.canonical_task_cid,
+            )
+            if evidence is None:
+                continue
+            fingerprint_payload = {
+                "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior = state.stale_proposal_replay_rearm_receipts.get(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior:
+                continue
+            candidates.append(
+                {
+                    "task": task,
+                    "identity": identity,
+                    "attempt_count": attempt_count,
+                    "evidence": evidence,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+
+        if not candidates:
+            return []
+
+        queue_changed = False
+        for candidate in candidates:
+            queue_changed = (
+                self.task_queue.reset_retry_state(
+                    candidate["identity"].canonical_task_cid
+                )
+                or queue_changed
+            )
+        # Persist the retry-queue reset before consuming the durable receipt.
+        # A crash in between is safe: the unchanged state will retry this
+        # idempotent reset.  The reverse order could strand a task forever.
+        if queue_changed:
+            self.task_queue.save()
+
+        recovery_count = max(0, self.max_task_attempts - 1)
+        rearmed: list[dict[str, Any]] = []
+        for candidate in candidates:
+            task = candidate["task"]
+            identity = candidate["identity"]
+            aliases = aliases_by_cid.get(
+                identity.canonical_task_cid,
+                [task.task_id],
+            )
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.get(alias, 0) or 0)
+                for alias in aliases
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.get(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            for alias in aliases:
+                state.implementation_attempts[alias] = recovery_count
+            state.implementation_attempts_by_cid[
+                identity.canonical_task_cid
+            ] = recovery_count
+            receipts = state.stale_proposal_replay_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            receipts.append(candidate["rearm_fingerprint"])
+            rearmed.append(
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": candidate["attempt_count"],
+                    "restored_attempt_count": recovery_count,
+                    "previous_display_attempt_counts": (
+                        previous_display_counts
+                    ),
+                    "previous_canonical_attempt_count": (
+                        previous_canonical_count
+                    ),
+                    "recovery_revision": revision,
+                    "rearm_fingerprint": candidate["rearm_fingerprint"],
+                    "evidence": candidate["evidence"],
+                }
+            )
+        state.last_progress_at = utc_now()
+        state.save(self.state_path)
+        self._record_event(
+            "ordinary_task_stale_proposal_replay_rearmed",
+            {
+                "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "rearmed_count": len(rearmed),
+                "rearmed": rearmed,
+            },
+        )
+        return rearmed
+
     def _partition_tasks_at_attempt_limit(
         self,
         tasks: Sequence[PortalTask],
@@ -12338,6 +12775,21 @@ class PortalImplementationDaemon:
                     },
                 )
                 selectable_tasks = fallback_tasks
+        recovery_runtime_revision = (
+            ""
+            if self.manual_completion_authority_revalidation_only
+            else self._retry_budget_repair_runtime_revision()
+        )
+        stale_proposal_replay_rearms = (
+            []
+            if self.manual_completion_authority_revalidation_only
+            else self._rearm_attempt_limited_stale_proposal_tasks(
+                previous,
+                selectable_tasks,
+                resolved_statuses,
+                recovery_revision=recovery_runtime_revision,
+            )
+        )
         retry_budget_repair_rearms = (
             []
             if self.manual_completion_authority_revalidation_only
@@ -12345,9 +12797,7 @@ class PortalImplementationDaemon:
                 previous,
                 selectable_tasks,
                 resolved_statuses,
-                recovery_revision=(
-                    self._retry_budget_repair_runtime_revision()
-                ),
+                recovery_revision=recovery_runtime_revision,
             )
         )
         selectable_tasks, attempt_limited_tasks = self._partition_tasks_at_attempt_limit(
@@ -12449,6 +12899,12 @@ class PortalImplementationDaemon:
             str(key): list(value)
             for key, value in (
                 previous.retry_budget_repair_rearm_receipts.items()
+            )
+        }
+        state.stale_proposal_replay_rearm_receipts = {
+            str(key): list(value)
+            for key, value in (
+                previous.stale_proposal_replay_rearm_receipts.items()
             )
         }
         revision_reset_task_ids: list[str] = []
@@ -12737,6 +13193,9 @@ class PortalImplementationDaemon:
             "retry_budget_resets": retry_budget_resets,
             "retry_budget_reset_deferred": retry_budget_reset_deferred,
             "retry_budget_repair_rearms": retry_budget_repair_rearms,
+            "stale_proposal_replay_rearms": (
+                stale_proposal_replay_rearms
+            ),
             "released_retry_budget_strategy_blocks": (
                 released_retry_budget_strategy_blocks
             ),
@@ -35341,6 +35800,51 @@ class PortalImplementationDaemon:
         )
         return results
 
+    @staticmethod
+    def _same_attempt_replayable_proposal_ids(
+        validation_result: Mapping[str, Any],
+        *,
+        task_id: str,
+        repository_tree_id: str,
+        seed_proposal_ids: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        """Return exact accepted proposal IDs safe to retry in this attempt.
+
+        Rescue sometimes makes no content change after an admitted proposal's
+        validation command fails.  Re-running the proposal gate must not then
+        reject that identical, in-memory proposal as globally consumed.  The
+        exception is bound to the live accepted result, exact task, and exact
+        repository tree.  A provider edit changes the content-addressed
+        proposal ID and therefore still receives wholly fresh admission.
+        """
+
+        replayable = {
+            str(proposal_id).strip()
+            for proposal_id in seed_proposal_ids
+            if str(proposal_id).strip()
+        }
+        proposal_validation = validation_result.get("proposal_validation")
+        if getattr(proposal_validation, "accepted", None) is not True:
+            return tuple(sorted(replayable))
+        proposal = getattr(proposal_validation, "proposal", None)
+        proposal_id = str(
+            getattr(proposal, "proposal_id", "") or ""
+        ).strip()
+        proposal_task_id = str(
+            getattr(proposal, "task_id", "") or ""
+        ).strip()
+        proposal_tree_id = str(
+            getattr(proposal, "repository_tree_id", "") or ""
+        ).strip()
+        if (
+            proposal_id
+            and proposal_task_id == str(task_id or "").strip()
+            and proposal_tree_id
+            == str(repository_tree_id or "").strip()
+        ):
+            replayable.add(proposal_id)
+        return tuple(sorted(replayable))
+
     def _automatic_implementation_rescue(
         self,
         *,
@@ -35458,8 +35962,15 @@ class PortalImplementationDaemon:
                     state=state,
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
-                    replayable_consumed_proposal_ids=tuple(
-                        replayable_consumed_proposal_ids
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
@@ -35522,8 +36033,15 @@ class PortalImplementationDaemon:
                     state=state,
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
-                    replayable_consumed_proposal_ids=tuple(
-                        replayable_consumed_proposal_ids
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
@@ -35643,8 +36161,15 @@ class PortalImplementationDaemon:
                     state=state,
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
-                    replayable_consumed_proposal_ids=tuple(
-                        replayable_consumed_proposal_ids
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
