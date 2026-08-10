@@ -610,7 +610,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-603 Build real WinFsp conformance with PowerShell/Explorer-compatible operations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
