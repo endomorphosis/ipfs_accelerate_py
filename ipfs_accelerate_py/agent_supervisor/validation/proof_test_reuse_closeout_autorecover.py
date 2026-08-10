@@ -714,8 +714,11 @@ def inventory_closeout_inputs(
             name="persisted_final_current_tree_gate_bundle",
             expected_count=1,
             observed_count=int(
-                gate.get("producing_task_id") == "PTR-122"
+                # Live final gate is produced by PTR-169 (Authenticated V5).
+                # Historical stage label remains PTR-122 for inventory grouping.
+                gate.get("producing_task_id") in {"PTR-169", "PTR-122"}
                 and isinstance(gate.get("decision"), Mapping)
+                and bool((gate.get("decision") or {}).get("passed"))
             ),
             source=str(gate_file),
         ),
