@@ -1803,23 +1803,7 @@ class ProofTestReuseCurrentTreeGate:
         raw = record.get("task_provenance")
         if not isinstance(raw, Mapping):
             reasons.append(_reason("missing_task_provenance", task_id))
-    
-        if kind is TaskCompletionProvenanceKind.PRE_MERGE_CANDIDATE:
-            # Only PTR-169 may present a pre-merge candidate; every other task
-            # still needs a reviewed closed provenance member.
-            if task_id != FINAL_GATE_TASK_ID:
-                reasons.append(
-                    _reason("pre_merge_candidate_not_allowed", task_id)
-                )
-            if (
-                _text(provenance.get("candidate_tree_id"))
-                and _text(provenance.get("candidate_tree_id")) != self.tree_id
-            ):
-                reasons.append(
-                    _reason("pre_merge_candidate_tree_mismatch", task_id)
-                )
-
-        return reasons
+            return reasons
         provenance = dict(raw)
         kind_text = _text(provenance.get("kind")).lower()
         try:
@@ -1901,6 +1885,21 @@ class ProofTestReuseCurrentTreeGate:
                 reasons.append(
                     _reason("retrospective_policy_approval_mismatch", task_id)
                 )
+        elif kind is TaskCompletionProvenanceKind.PRE_MERGE_CANDIDATE:
+            # Only PTR-169 may present a pre-merge candidate; every other task
+            # still needs a reviewed closed provenance member.
+            if task_id != FINAL_GATE_TASK_ID:
+                reasons.append(
+                    _reason("pre_merge_candidate_not_allowed", task_id)
+                )
+            if (
+                _text(provenance.get("candidate_tree_id"))
+                and _text(provenance.get("candidate_tree_id")) != self.tree_id
+            ):
+                reasons.append(
+                    _reason("pre_merge_candidate_tree_mismatch", task_id)
+                )
+
         return reasons
 
     def _rollout_readiness_reasons(
