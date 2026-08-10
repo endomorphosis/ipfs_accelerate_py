@@ -1560,7 +1560,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-050 Seal the Wave-2 logic parser release receipt
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
