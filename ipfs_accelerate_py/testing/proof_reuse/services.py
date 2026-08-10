@@ -77,9 +77,9 @@ TEST_PASS_GROTH16_RULESET_ID: Final = "test_pass_v2"
 TEST_PASS_GROTH16_STATEMENT_INTERFACE: Final = "TestPassStatementV2"
 TEST_PASS_GROTH16_STATEMENT_VERSION: Final = 2
 
-# Exact reviewed datasets tip for PTR-G140 closeout (d666fe140 V2 publication surface).
+# Exact reviewed datasets tip for PTR-G140 closeout (conftest cacheprovider guard).
 # Labels never substitute for the byte/object checks below.
-DATASETS_VERIFIER_REVISION: Final = "83a46d963950f7ba27626873c116bbbf3cb08c84"
+DATASETS_VERIFIER_REVISION: Final = "a1324d48b450c1a703198479e054be75ca2bbd47"
 DATASETS_VERIFIER_SOURCE_SHA256: Final = (
     "23590ba6944f48a1af556f280a075f32d2684819e4f67998687d57daf7cc7110"
 )
@@ -165,7 +165,7 @@ DATASETS_PYTHON_BUILD_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 DATASETS_VERIFIER_DISTRIBUTION: Final = (
-    "ipfs-accelerate-proof-reuse-verifier==0.2.0+83a46d96"
+    "ipfs-accelerate-proof-reuse-verifier==0.2.0+a1324d48"
 )
 DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED: Final = False
 DATASETS_VERIFIER_RELEASE_BLOCKER: Final = "datasets_verifier_revision_unpublished"
