@@ -10524,6 +10524,132 @@ class PortalImplementationDaemon:
                     paths.append(path)
         return list(dict.fromkeys(path for path in paths if path))
 
+    def _git_tree_blob_id(self, tree: str, path: str) -> str:
+        """Return the blob id for ``path`` in ``tree``, or empty if absent."""
+
+        tree_id = str(tree or "").strip().lower()
+        rel = str(path or "").strip().lstrip("./")
+        if not re.fullmatch(r"[0-9a-f]{40,64}", tree_id) or not rel:
+            return ""
+        command = self._run_git(
+            ["ls-tree", tree_id, "--", rel],
+            cwd=self.repo_root,
+        )
+        if command.returncode != 0 or not str(command.stdout or "").strip():
+            return ""
+        # mode SP type SP object TAB path
+        line = str(command.stdout).splitlines()[0]
+        parts = line.split()
+        if len(parts) < 3 or parts[1] not in {"blob", "commit"}:
+            return ""
+        return str(parts[2]).strip().lower()
+
+    def _product_blobs_match_between_trees(
+        self,
+        paths: Sequence[str],
+        tree_a: str,
+        tree_b: str,
+    ) -> bool:
+        """True when every claimed product path has the same blob in both trees."""
+
+        if not paths:
+            return False
+        for path in paths:
+            left = self._git_tree_blob_id(tree_a, path)
+            right = self._git_tree_blob_id(tree_b, path)
+            if not left or not right or left != right:
+                return False
+        return True
+
+    def _rewrite_post_merge_evidence_tree_ids(
+        self,
+        evidence_input: Mapping[str, Any],
+        *,
+        old_tree_id: str,
+        new_tree_id: str,
+    ) -> dict[str, Any]:
+        """Rewrite sealed tree identities when product blobs are unchanged."""
+
+        if (
+            not str(old_tree_id or "").startswith("git-tree:")
+            or not str(new_tree_id or "").startswith("git-tree:")
+            or old_tree_id == new_tree_id
+        ):
+            raise ValueError("tree rewrite requires distinct git-tree identities")
+
+        def _rewrite(value: Any) -> Any:
+            if isinstance(value, str):
+                return value.replace(old_tree_id, new_tree_id)
+            if isinstance(value, Mapping):
+                return {str(key): _rewrite(nested) for key, nested in value.items()}
+            if isinstance(value, list):
+                return [_rewrite(nested) for nested in value]
+            if isinstance(value, tuple):
+                return [_rewrite(nested) for nested in value]
+            return value
+
+        rewritten = _rewrite(dict(evidence_input))
+        if not isinstance(rewritten, dict):
+            raise ValueError("rewritten evidence is not an object")
+        # Drop packet identity so sealing re-derives it from rewritten content.
+        rewritten.pop("packet_id", None)
+
+        receipt = rewritten.get("validation_receipt")
+        if not isinstance(receipt, Mapping):
+            raise ValueError("rewritten evidence lacks validation receipt")
+        receipt_payload = dict(receipt)
+        receipt_payload.pop("receipt_id", None)
+        restored = ImpactValidationDAGReceipt.from_dict(receipt_payload)
+        receipt_dict = restored.to_dict()
+        rewritten["validation_receipt"] = receipt_dict
+
+        report = rewritten.get("validation_report")
+        if isinstance(report, Mapping):
+            report_payload = dict(report)
+            if isinstance(report_payload.get("impact_validation_receipt"), Mapping):
+                report_payload["impact_validation_receipt"] = dict(receipt_dict)
+            rewritten["validation_report"] = report_payload
+
+        # Re-derive content-bound helper ids that embed the tree identity.
+        for field_name in (
+            "semantic_checks",
+            "protocol_checks",
+            "legal_logic_obligations",
+            "theorem_obligations",
+            "criterion_coverage",
+        ):
+            items = rewritten.get(field_name)
+            if not isinstance(items, list):
+                continue
+            rebuilt: list[dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, Mapping):
+                    continue
+                record = {
+                    key: value
+                    for key, value in item.items()
+                    if key
+                    not in {
+                        "receipt_id",
+                        "validation_receipt_id",
+                        "source_validation_receipt_id",
+                    }
+                }
+                digest = content_identity(record)
+                if "validation_receipt_id" in item:
+                    record["validation_receipt_id"] = digest
+                if "receipt_id" in item:
+                    record["receipt_id"] = digest
+                if "source_validation_receipt_id" in item:
+                    # Keep the primary impact receipt as the source authority.
+                    record["source_validation_receipt_id"] = str(
+                        receipt_dict.get("receipt_id") or digest
+                    )
+                rebuilt.append(record)
+            rewritten[field_name] = rebuilt
+
+        return self._duckdb_post_merge_evidence_input(rewritten)
+
     def _rebind_duckdb_post_merge_evidence_to_merge_tree(
         self,
         request: Any,
@@ -10535,11 +10661,12 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any] | None:
         """Re-seal post-merge evidence against the current integrated merge-tree.
 
-        Concurrent lanes validate and seal evidence against a candidate tip.
-        When another merge advances the target first, ``git merge-tree`` yields
-        a new integrated tree.  Rather than quarantine the claim, re-run the
-        declared hermetic validation on that exact tree and rebind the queue
-        metadata so preflight and completion authority stay tip-correct.
+        Concurrent lanes seal evidence against a candidate tip.  When another
+        merge advances the target first, ``git merge-tree`` yields a new tree.
+        If every claimed product blob is unchanged between the sealed candidate
+        tree and the integrated merge-tree, rewrite tree identities in place
+        (no hermetic re-run).  Otherwise re-run declared validation on a
+        materialization of the merge-tree.
         """
 
         if self.task_source is None or self.task_source.source_kind != "duckdb":
@@ -10581,60 +10708,115 @@ class PortalImplementationDaemon:
         ):
             return None
 
-        rebind_root = (
-            Path(
-                getattr(self, "merge_queue_dir", None)
-                or (
-                    Path(self.repo_root)
-                    / "data"
-                    / "agent_supervisor"
-                    / "merge-queue"
-                )
-            )
-            / "train"
-            / "tip-rebind"
+        sealed_tree_id = ""
+        receipt = prior_evidence.get("validation_receipt")
+        if isinstance(receipt, Mapping):
+            dag = receipt.get("dag")
+            if isinstance(dag, Mapping):
+                sealed_tree_id = str(dag.get("repository_tree_id") or "").strip()
+        if not sealed_tree_id.startswith("git-tree:"):
+            report = prior_evidence.get("validation_report")
+            if isinstance(report, Mapping):
+                sealed_tree_id = str(
+                    report.get("target_tree_id")
+                    or report.get("repository_tree_id")
+                    or ""
+                ).strip()
+        sealed_tree = (
+            sealed_tree_id.removeprefix("git-tree:").strip().lower()
+            if sealed_tree_id.startswith("git-tree:")
+            else ""
         )
-        workspace = rebind_root / (
-            f"{str(getattr(request, 'request_id', 'request') or 'request')[:24]}"
-            f"-{merge_tree_id[:12]}"
-        )
-        if workspace.exists():
-            shutil.rmtree(workspace, ignore_errors=True)
-        try:
-            self._materialize_git_tree_archive(merge_tree_id, workspace)
-            rebound = self._assemble_duckdb_declared_post_merge_evidence_input(
-                {
-                    "passed": True,
-                    "selection": {
-                        "scope": "pre_merge",
-                        "changed_files": list(changed_paths),
-                        "changed_paths": list(changed_paths),
-                    },
-                    "proposal_gate": dict(proposal_gate),
-                },
-                task=task,
-                worktree_path=workspace,
-                candidate_tree=merge_tree_id,
-                implementation_commit=str(candidate_commit or "").strip(),
-                policy_id=policy_id,
-            )
-        except (OSError, TypeError, ValueError, RuntimeError) as exc:
-            self._record_event(
-                "post_merge_evidence_tip_rebind_failed",
-                {
-                    "task_id": task.task_id,
-                    "request_id": str(getattr(request, "request_id", "") or ""),
-                    "target_commit": str(target_commit or ""),
-                    "candidate_commit": str(candidate_commit or ""),
-                    "merge_tree": merge_tree_id,
-                    "error": f"{type(exc).__name__}: {exc}"[-2000:],
-                },
-            )
+        if not re.fullmatch(r"[0-9a-f]{40,64}", sealed_tree):
             return None
-        finally:
-            shutil.rmtree(workspace, ignore_errors=True)
+        if sealed_tree == merge_tree_id:
+            return None
 
         expected_tree_id = f"git-tree:{merge_tree_id}"
+        rebound: dict[str, Any] | None = None
+        rebind_mode = ""
+        if self._product_blobs_match_between_trees(
+            changed_paths,
+            sealed_tree,
+            merge_tree_id,
+        ):
+            try:
+                rebound = self._rewrite_post_merge_evidence_tree_ids(
+                    prior_evidence,
+                    old_tree_id=sealed_tree_id,
+                    new_tree_id=expected_tree_id,
+                )
+                rebind_mode = "product_blob_identity"
+            except (TypeError, ValueError) as exc:
+                self._record_event(
+                    "post_merge_evidence_tip_rebind_failed",
+                    {
+                        "task_id": task.task_id,
+                        "mode": "product_blob_identity",
+                        "error": f"{type(exc).__name__}: {exc}"[-2000:],
+                        "merge_tree": merge_tree_id,
+                    },
+                )
+                rebound = None
+
+        if rebound is None:
+            rebind_root = (
+                Path(
+                    getattr(self, "merge_queue_dir", None)
+                    or (
+                        Path(self.repo_root)
+                        / "data"
+                        / "agent_supervisor"
+                        / "merge-queue"
+                    )
+                )
+                / "train"
+                / "tip-rebind"
+            )
+            workspace = rebind_root / (
+                f"{str(getattr(request, 'request_id', 'request') or 'request')[:24]}"
+                f"-{merge_tree_id[:12]}"
+            )
+            if workspace.exists():
+                shutil.rmtree(workspace, ignore_errors=True)
+            try:
+                self._materialize_git_tree_archive(merge_tree_id, workspace)
+                rebound = self._assemble_duckdb_declared_post_merge_evidence_input(
+                    {
+                        "passed": True,
+                        "selection": {
+                            "scope": "pre_merge",
+                            "changed_files": list(changed_paths),
+                            "changed_paths": list(changed_paths),
+                        },
+                        "proposal_gate": dict(proposal_gate),
+                    },
+                    task=task,
+                    worktree_path=workspace,
+                    candidate_tree=merge_tree_id,
+                    implementation_commit=str(candidate_commit or "").strip(),
+                    policy_id=policy_id,
+                )
+                rebind_mode = "hermetic_revalidation"
+            except (OSError, TypeError, ValueError, RuntimeError) as exc:
+                self._record_event(
+                    "post_merge_evidence_tip_rebind_failed",
+                    {
+                        "task_id": task.task_id,
+                        "request_id": str(
+                            getattr(request, "request_id", "") or ""
+                        ),
+                        "target_commit": str(target_commit or ""),
+                        "candidate_commit": str(candidate_commit or ""),
+                        "merge_tree": merge_tree_id,
+                        "mode": "hermetic_revalidation",
+                        "error": f"{type(exc).__name__}: {exc}"[-2000:],
+                    },
+                )
+                return None
+            finally:
+                shutil.rmtree(workspace, ignore_errors=True)
+
         if not self._duckdb_post_merge_evidence_binds_tree(
             rebound,
             expected_tree_id=expected_tree_id,
@@ -10652,7 +10834,9 @@ class PortalImplementationDaemon:
             if receipt_id:
                 prior_ids = [
                     str(item).strip()
-                    for item in (validation_proof.get("validation_receipt_ids") or ())
+                    for item in (
+                        validation_proof.get("validation_receipt_ids") or ()
+                    )
                     if str(item).strip()
                 ]
                 validation_proof["validation_receipt_ids"] = list(
@@ -10666,8 +10850,10 @@ class PortalImplementationDaemon:
                 "ipfs_accelerate_py/agent-supervisor/"
                 "post-merge-evidence-tip-rebind@1"
             ),
+            "mode": rebind_mode,
             "target_commit": str(target_commit or ""),
             "candidate_commit": str(candidate_commit or ""),
+            "sealed_tree": sealed_tree,
             "merge_tree": merge_tree_id,
             "prior_packet_id": str(prior_evidence.get("packet_id") or ""),
             "rebound_packet_id": str(rebound.get("packet_id") or ""),
@@ -10677,8 +10863,10 @@ class PortalImplementationDaemon:
             {
                 "task_id": task.task_id,
                 "request_id": str(getattr(request, "request_id", "") or ""),
+                "mode": rebind_mode,
                 "target_commit": str(target_commit or ""),
                 "candidate_commit": str(candidate_commit or ""),
+                "sealed_tree": sealed_tree,
                 "merge_tree": merge_tree_id,
                 "prior_packet_id": str(prior_evidence.get("packet_id") or ""),
                 "rebound_packet_id": str(rebound.get("packet_id") or ""),
