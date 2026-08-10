@@ -970,7 +970,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-031 Execute ProVerif and Tamarin protocol evidence with attack replay
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
