@@ -2275,6 +2275,42 @@ def test_daemon_pythonpath_export_covers_chained_validation_commands(
     )
 
 
+@pytest.mark.parametrize(
+    "command",
+    (
+        "cd package && python3 -c 'pass' && cd .. && python3 -c 'pass'",
+        "cd ../outside && python3 -c 'pass'",
+        "(cd package && python3 -c 'pass')",
+        "cd package\n&& python3 -c 'pass'",
+    ),
+)
+def test_daemon_pythonpath_inference_rejects_unbounded_working_directory(
+    tmp_path: Path,
+    command: str,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    (repo / "package").mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("package",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    normalized, note = daemon._with_worktree_validation_pythonpath(
+        command,
+        repo,
+    )
+
+    assert normalized == command
+    assert note == ""
+
+
 def test_daemon_preserves_explicit_validation_pythonpath(
     tmp_path: Path,
 ) -> None:

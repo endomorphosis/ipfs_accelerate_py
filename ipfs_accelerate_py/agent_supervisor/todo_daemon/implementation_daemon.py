@@ -193,6 +193,7 @@ from ..validation.validation_commands import (
     rewrite_shell_makefile_ignore_check,
     rewrite_validation_command,
     split_validation_commands,
+    validation_command_repository_root,
 )
 from ..validation.validation_runtime import (
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
@@ -35846,6 +35847,18 @@ class PortalImplementationDaemon:
             workspace_root = workspace_path.resolve(strict=True)
         except OSError:
             return command, ""
+        repository_root = validation_command_repository_root(command)
+        if repository_root is None:
+            return command, ""
+        validation_root = workspace_root
+        if repository_root:
+            try:
+                validation_root = (
+                    workspace_root / repository_root
+                ).resolve(strict=True)
+                validation_root.relative_to(workspace_root)
+            except (OSError, ValueError):
+                return command, ""
         roots: list[str] = []
         for relative in self.worktree_submodule_paths:
             candidate = workspace_root / relative
@@ -35855,14 +35868,78 @@ class PortalImplementationDaemon:
             except (OSError, ValueError):
                 continue
             if resolved.is_dir():
-                roots.append(Path(relative).as_posix())
+                if repository_root:
+                    roots.append(
+                        Path(
+                            os.path.relpath(
+                                resolved,
+                                start=validation_root,
+                            )
+                        ).as_posix()
+                    )
+                else:
+                    roots.append(Path(relative).as_posix())
         if not roots:
             return command, ""
         pythonpath = shlex.quote(os.pathsep.join(dict.fromkeys(roots)))
+        if repository_root:
+            operator_end = self._leading_cd_and_then_operator_end(command)
+            if operator_end is None:
+                return command, ""
+            return (
+                f"{command[:operator_end]} export PYTHONPATH={pythonpath} && "
+                f"{command[operator_end:].lstrip()}",
+                "added configured worktree package roots to PYTHONPATH",
+            )
         return (
-            f"PYTHONPATH={pythonpath} {command}",
+            f"export PYTHONPATH={pythonpath} && {command}",
             "added configured worktree package roots to PYTHONPATH",
         )
+
+    @staticmethod
+    def _leading_cd_and_then_operator_end(command: str) -> int | None:
+        """Return the end of the leading unquoted ``&&`` operator.
+
+        ``validation_command_repository_root`` has already proved that the
+        command contains one exact, safe leading ``cd`` clause. This scanner
+        preserves the original quoting and command text while locating the
+        operator after that clause so the bounded validation-process export is
+        evaluated after ``cd`` and uses package-root-relative paths.
+        """
+
+        quote = ""
+        escaped = False
+        index = 0
+        while index < len(command):
+            character = command[index]
+            if escaped:
+                escaped = False
+                index += 1
+                continue
+            if quote == "'":
+                if character == "'":
+                    quote = ""
+                index += 1
+                continue
+            if quote == '"':
+                if character == "\\":
+                    escaped = True
+                elif character == '"':
+                    quote = ""
+                index += 1
+                continue
+            if character == "\\":
+                escaped = True
+                index += 1
+                continue
+            if character in {"'", '"'}:
+                quote = character
+                index += 1
+                continue
+            if command.startswith("&&", index):
+                return index + 2
+            index += 1
+        return None
 
     def _main_branch_name(self) -> str:
         if self.merge_target_branch:
