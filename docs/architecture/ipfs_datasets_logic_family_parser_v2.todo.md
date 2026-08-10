@@ -1532,12 +1532,13 @@ worktree. The four initial tasks own disjoint files.
 - Completion: manual
 - Is schedulable: true
 - Review only: true
+- Provider role: deterministic-only
 - Priority: P0
 - Track: objective-refill
 - Depends on: LFP2-047, LFP2-048
 - Goal id: LFP2-G090
 - Outputs: data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/refill/fixed_point_receipt.json, data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/refill/gap_ledger.jsonl
-- Validation: python scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py --check-all
+- Validation: PYTHONPATH=ipfs_datasets_py python -m ipfs_datasets_py.logic.conformance.fixed_point_v2 materialize --repo-root . --fixed-point-path data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/refill/fixed_point_receipt.json --ledger-path data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/refill/gap_ledger.jsonl && PYTHONPATH=ipfs_datasets_py python scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py --check-all
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/refill/fixed-point
 - Parallel lane: lfp2-refill
@@ -1549,7 +1550,7 @@ worktree. The four initial tasks own disjoint files.
 - Interfaces: ObjectiveRefillFixedPoint@2
 - Allow concurrent with:
 - Conflict policy: Fixed-point evidence is append-only/content-addressed and cannot mutate seed goals/tasks or semantic evidence.
-- Preconditions: Reachable matrix hard-zero gates pass and all admitted derived tasks are terminal.
+- Preconditions: Reachable matrix hard-zero gates pass; every task other than LFP2-049 and LFP2-050 is terminal; and no admitted derived task remains open.
 - Effects: Runs two bounded scans over identical source, registry, corpus, provider, objective, and reachable-matrix identities.
 - Evidence subset: refill quiet epoch fixed point source identity zero open
 - Symbolic first: true
@@ -1563,12 +1564,13 @@ worktree. The four initial tasks own disjoint files.
 - Completion: manual
 - Is schedulable: true
 - Review only: true
+- Provider role: deterministic-only
 - Priority: P0
 - Track: release
 - Depends on: LFP2-049
 - Goal id: LFP2-G100
 - Outputs: ipfs_datasets_py/docs/architecture/logic/LOGIC_FAMILY_PARSER_V2_RELEASE.md, ipfs_datasets_py/data/logic/conformance/logic_family_parser_v2_release.json
-- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic tests/conformance/logic tests/fuzz/logic && cd .. && python scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py --check-all
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic tests/conformance/logic tests/fuzz/logic && python -m ipfs_datasets_py.logic.conformance.release_v2 materialize --repo-root .. --json-path data/logic/conformance/logic_family_parser_v2_release.json --markdown-path docs/architecture/logic/LOGIC_FAMILY_PARSER_V2_RELEASE.md && cd .. && PYTHONPATH=ipfs_datasets_py python scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py --check-all
 - Board namespace: ipfs-datasets-logic-family-parser-v2
 - Bundle: logic-family-parser-v2/release
 - Parallel lane: lfp2-release
@@ -1580,7 +1582,7 @@ worktree. The four initial tasks own disjoint files.
 - Interfaces: LogicParserReleaseReceipt@2
 - Allow concurrent with:
 - Conflict policy: Review/evidence aggregation only; semantic repairs require a derived task under the owning goal.
-- Preconditions: Every seed/derived task is terminal, fixed point is current, hard-zero floors pass, and predecessor hashes match.
+- Preconditions: Every task other than LFP2-050 is terminal, the fixed point is current, hard-zero floors pass, and predecessor hashes match.
 - Effects: Binds exact v1 predecessor, v2 source, schemas, parsers, translations, domains, providers, toolchains, execution/replay evidence, matrix, dispositions, and authority floors.
 - Evidence subset: release predecessor identity schema translation provider replay fixed point authority
 - Symbolic first: true

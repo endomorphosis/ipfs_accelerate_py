@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import re
 import subprocess
@@ -44,6 +45,21 @@ INITIAL_COMPLETED = ("LFP2-000",)
 INITIAL_READY = ("LFP2-001", "LFP2-002", "LFP2-003", "LFP2-004")
 TERMINAL_TASK = "LFP2-050"
 
+FIXED_POINT_PATH = (
+    REPO_ROOT / RUNTIME_ROOT / "refill/fixed_point_receipt.json"
+)
+GAP_LEDGER_PATH = REPO_ROOT / RUNTIME_ROOT / "refill/gap_ledger.jsonl"
+RELEASE_MARKDOWN_RELATIVE_PATH = Path(
+    "docs/architecture/logic/LOGIC_FAMILY_PARSER_V2_RELEASE.md"
+)
+RELEASE_JSON_RELATIVE_PATH = Path(
+    "data/logic/conformance/logic_family_parser_v2_release.json"
+)
+RELEASE_MARKDOWN_PATH = (
+    REPO_ROOT / "ipfs_datasets_py" / RELEASE_MARKDOWN_RELATIVE_PATH
+)
+RELEASE_JSON_PATH = REPO_ROOT / "ipfs_datasets_py" / RELEASE_JSON_RELATIVE_PATH
+
 PREDECESSOR_ACCELERATOR_COMMIT = "e162c19d087d4e6511f8eb97fd34ecb449777897"
 PREDECESSOR_DATASETS_COMMIT = "fc49cbb3e0e96bf07b367859da32123187d706c1"
 PREDECESSOR_SEED_DEFINITION = (
@@ -78,7 +94,7 @@ PREDECESSOR_RUNTIME_ARTIFACT_DIGESTS = {
 # Filled after the 51 seed cards are materialized. Only Status values are
 # normalized, so implementation progress cannot mutate semantic task identity.
 SEALED_SEED_DEFINITION_SHA256 = (
-    "sha256:54ae267bb959cbf927424932056005538b8b5b16ff5bb7ab5f07c6fb694e4e97"
+    "sha256:ac4a347a84f049d8d64d43a004544be62e37490a190c78ac82c44cdcbc347e8c"
 )
 
 EXPECTED_TASK_GROUPS: Mapping[str, tuple[str, ...]] = {
@@ -113,6 +129,10 @@ REQUIRED_INTERFACE_OWNERS: Mapping[str, str] = {
     "LogicProfileCatalog@3": "LFP2-044",
     "FamilyRoutePublication@1": "LFP2-044",
     "ExecutableVerticalSliceReceipt@1": "LFP2-046",
+}
+DETERMINISTIC_MATERIALIZERS: Mapping[str, str] = {
+    "LFP2-049": "ipfs_datasets_py.logic.conformance.fixed_point_v2",
+    "LFP2-050": "ipfs_datasets_py.logic.conformance.release_v2",
 }
 
 REQUIRED_TASK_FIELDS = (
@@ -262,6 +282,98 @@ def _git(*args: str, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _merge_target_worktree_from_porcelain(payload: str) -> Path:
+    target_ref = f"refs/heads/{MERGE_TARGET_BRANCH}"
+    matches: list[Path] = []
+    for record in payload.split("\0\0"):
+        fields = [field for field in record.split("\0") if field]
+        values = {
+            key: value
+            for field in fields
+            for key, separator, value in (field.partition(" "),)
+            if separator
+        }
+        if values.get("branch") == target_ref and values.get("worktree"):
+            matches.append(Path(values["worktree"]))
+    if len(matches) != 1:
+        raise RuntimeError(
+            "expected exactly one merge-target worktree for "
+            f"{target_ref}; got {len(matches)}"
+        )
+    return matches[0]
+
+
+def _canonical_main_worktree(repo_root: Path) -> Path:
+    """Resolve the sole merge-target worktree through shared Git metadata.
+
+    Ignored Wave-1 release anchors do not appear in linked implementation
+    candidates.  They are read from the supervisor merge-target worktree, not
+    from Git's configured primary worktree.  Every identity hop is verified so
+    a missing, duplicate, or malformed anchor fails closed.
+    """
+
+    candidate = repo_root.resolve(strict=True)
+    common_result = _git("rev-parse", "--git-common-dir", cwd=candidate)
+    raw_common = common_result.stdout.strip()
+    if common_result.returncode != 0 or not raw_common or "\n" in raw_common:
+        raise RuntimeError("git rev-parse --git-common-dir failed")
+    common_path = Path(raw_common)
+    if not common_path.is_absolute():
+        common_path = candidate / common_path
+    try:
+        common_dir = common_path.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError("Git common directory is missing") from exc
+    if not common_dir.is_dir():
+        raise RuntimeError("Git common directory is not a directory")
+
+    worktrees = _git("worktree", "list", "--porcelain", "-z", cwd=candidate)
+    if worktrees.returncode != 0:
+        raise RuntimeError("git worktree list --porcelain failed")
+    primary_path = _merge_target_worktree_from_porcelain(worktrees.stdout)
+    if not primary_path.is_absolute():
+        raise RuntimeError("merge-target worktree path is not absolute")
+
+    try:
+        primary = primary_path.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError("canonical main worktree is missing") from exc
+    if not primary.is_dir():
+        raise RuntimeError("canonical main worktree is not a directory")
+
+    identity = _git(
+        "rev-parse",
+        "--show-toplevel",
+        "--git-common-dir",
+        "--git-path",
+        "config",
+        cwd=primary,
+    )
+    lines = [line.strip() for line in identity.stdout.splitlines() if line.strip()]
+    if identity.returncode != 0 or len(lines) != 3:
+        raise RuntimeError("canonical main worktree Git identity is unavailable")
+    main_root = Path(lines[0])
+    if not main_root.is_absolute():
+        main_root = primary / main_root
+    reported_common = Path(lines[1])
+    if not reported_common.is_absolute():
+        reported_common = primary / reported_common
+    reported_config = Path(lines[2])
+    if not reported_config.is_absolute():
+        reported_config = primary / reported_config
+    try:
+        same_root = main_root.resolve(strict=True) == primary
+        same_common = reported_common.resolve(strict=True) == common_dir
+        same_config = reported_config.resolve(strict=True) == (
+            common_dir / "config"
+        ).resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError("canonical main worktree Git identity is missing") from exc
+    if not same_root or not same_common or not same_config:
+        raise RuntimeError("canonical main worktree does not share candidate Git identity")
+    return primary
+
+
 def _seed_text(text: str) -> str:
     start = text.find("## LFP2-000 ")
     if start < 0:
@@ -361,6 +473,28 @@ def _validate_tasks(text: str, errors: list[str]) -> dict[str, object]:
                 errors.append(f"{task.task_id} appended card lacks trusted provenance")
         if metadata["completion"] != "manual":
             errors.append(f"{task.task_id} completion must be manual")
+        materializer_module = DETERMINISTIC_MATERIALIZERS.get(task.task_id)
+        if materializer_module is not None:
+            if metadata.get("provider role") != "deterministic-only":
+                errors.append(
+                    f"{task.task_id} Provider role must be deterministic-only"
+                )
+            validation = metadata["validation"]
+            materializer_command = f"python -m {materializer_module} materialize"
+            validator_command = (
+                "scripts/validate_ipfs_datasets_logic_family_parser_v2_board.py"
+            )
+            materializer_offset = validation.find(materializer_command)
+            validator_offset = validation.find(validator_command)
+            if (
+                materializer_offset < 0
+                or validator_offset < 0
+                or materializer_offset >= validator_offset
+            ):
+                errors.append(
+                    f"{task.task_id} Validation must run its deterministic "
+                    "materializer before the board validator"
+                )
         schedulable = metadata["is schedulable"].lower()
         if task.task_id == "LFP2-000":
             if schedulable != "false" or metadata["review only"].lower() != "true":
@@ -432,16 +566,6 @@ def _validate_tasks(text: str, errors: list[str]) -> dict[str, object]:
             overlap = output_sets.get(left, set()) & output_sets.get(right, set())
             if overlap:
                 errors.append(f"initial tasks {left}/{right} overlap outputs: {sorted(overlap)}")
-    if TERMINAL_TASK in completed:
-        if open_ids:
-            errors.append("terminal release completed while tasks remain open")
-        fixed_point = REPO_ROOT / RUNTIME_ROOT / "refill/fixed_point_receipt.json"
-        try:
-            receipt = json.loads(fixed_point.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            receipt = {}
-        if receipt.get("is_fixed_point") is not True or int(receipt.get("consecutive_empty_scans", 0)) < 2:
-            errors.append("terminal release lacks a current two-scan fixed-point receipt")
     return {
         "task_count": len(tasks),
         "completed_task_ids": sorted(completed),
@@ -449,6 +573,140 @@ def _validate_tasks(text: str, errors: list[str]) -> dict[str, object]:
         "open_task_ids": sorted(open_ids),
         "refill_task_count": max(0, len(tasks) - len(TASK_IDS)),
     }
+
+
+def _open_task_ids(tasks: Sequence[object]) -> set[str]:
+    return {
+        str(getattr(task, "task_id", ""))
+        for task in tasks
+        if str(getattr(task, "status", "")).lower() != "completed"
+    }
+
+
+def _invoke_artifact_validator(
+    *,
+    label: str,
+    module_name: str,
+    function_name: str,
+    args: tuple[object, ...],
+    kwargs: Mapping[str, object],
+    errors: list[str],
+) -> bool:
+    try:
+        module = importlib.import_module(module_name)
+        validator = getattr(module, function_name)
+        if not callable(validator):
+            raise TypeError(f"{function_name} is not callable")
+    except Exception as exc:
+        errors.append(
+            f"{label} validator is unavailable: {type(exc).__name__}: {exc}"
+        )
+        return False
+    try:
+        result = validator(*args, **dict(kwargs))
+    except Exception as exc:
+        errors.append(f"{label} validation failed: {type(exc).__name__}: {exc}")
+        return False
+    if not isinstance(result, Mapping) or result.get("valid") is False:
+        errors.append(f"{label} validator did not return a validated receipt")
+        return False
+    return True
+
+
+def _validate_fixed_point_artifacts(
+    tasks: Sequence[object], errors: list[str]
+) -> bool:
+    status_by_id = {
+        str(getattr(task, "task_id", "")): str(getattr(task, "status", "")).lower()
+        for task in tasks
+    }
+    fixed_exists = FIXED_POINT_PATH.is_file()
+    ledger_exists = GAP_LEDGER_PATH.is_file()
+    task_completed = status_by_id.get("LFP2-049") == "completed"
+    if not fixed_exists and not ledger_exists and not task_completed:
+        return False
+
+    error_count = len(errors)
+    if fixed_exists != ledger_exists:
+        errors.append(
+            "LFP2-049 fixed-point receipt and gap ledger must both exist or neither exist"
+        )
+    if task_completed and not (fixed_exists and ledger_exists):
+        errors.append("LFP2-049 is completed without both fixed-point artifacts")
+
+    allowed_open = {"LFP2-050"} if task_completed else {"LFP2-049", "LFP2-050"}
+    unexpected_open = sorted(_open_task_ids(tasks) - allowed_open)
+    if unexpected_open:
+        errors.append(
+            "LFP2-049 fixed-point validation requires every predecessor and "
+            f"derived task to be terminal; open: {unexpected_open}"
+        )
+
+    api_valid = _invoke_artifact_validator(
+        label="LFP2-049 fixed-point artifacts",
+        module_name="ipfs_datasets_py.logic.conformance.fixed_point_v2",
+        function_name="validate_fixed_point_artifacts",
+        args=(FIXED_POINT_PATH, GAP_LEDGER_PATH),
+        kwargs={"repo_root": REPO_ROOT, "tasks": tasks},
+        errors=errors,
+    )
+    return api_valid and len(errors) == error_count
+
+
+def _validate_release_artifacts(
+    tasks: Sequence[object], *, fixed_point_valid: bool, errors: list[str]
+) -> None:
+    status_by_id = {
+        str(getattr(task, "task_id", "")): str(getattr(task, "status", "")).lower()
+        for task in tasks
+    }
+    markdown_exists = RELEASE_MARKDOWN_PATH.is_file()
+    json_exists = RELEASE_JSON_PATH.is_file()
+    task_completed = status_by_id.get(TERMINAL_TASK) == "completed"
+    if not markdown_exists and not json_exists and not task_completed:
+        return
+
+    if markdown_exists != json_exists:
+        errors.append(
+            "LFP2-050 release Markdown and JSON artifacts must both exist or neither exist"
+        )
+    if task_completed and not (markdown_exists and json_exists):
+        errors.append("LFP2-050 is completed without both release artifacts")
+
+    # LFP2-050 is the candidate being validated, so it is deliberately excluded
+    # from the terminal prerequisite while its artifacts exist but its status is
+    # still todo.  No other seed or appended task may remain open.
+    unexpected_open = sorted(_open_task_ids(tasks) - {TERMINAL_TASK})
+    if unexpected_open:
+        errors.append(
+            "LFP2-050 release validation requires every other seed and derived "
+            f"task to be terminal; open: {unexpected_open}"
+        )
+    if status_by_id.get("LFP2-049") != "completed":
+        errors.append("LFP2-050 release validation requires completed LFP2-049")
+    if not fixed_point_valid:
+        errors.append(
+            "LFP2-050 release validation requires a current LFP2-049 fixed-point receipt"
+        )
+
+    _invoke_artifact_validator(
+        label="LFP2-050 release artifacts",
+        module_name="ipfs_datasets_py.logic.conformance.release_v2",
+        function_name="validate_release_artifacts",
+        args=(RELEASE_MARKDOWN_RELATIVE_PATH, RELEASE_JSON_RELATIVE_PATH),
+        kwargs={"repo_root": REPO_ROOT},
+        errors=errors,
+    )
+
+
+def _validate_completion_artifacts(text: str, errors: list[str]) -> None:
+    tasks = parse_task_text(text, path=TODO_PATH, task_header_prefix="## LFP2-")
+    fixed_point_valid = _validate_fixed_point_artifacts(tasks, errors)
+    _validate_release_artifacts(
+        tasks,
+        fixed_point_valid=fixed_point_valid,
+        errors=errors,
+    )
 
 
 def _validate_plan(text: str, errors: list[str]) -> None:
@@ -459,7 +717,9 @@ def _validate_plan(text: str, errors: list[str]) -> None:
             errors.append(f"plan missing required term: {term}")
 
 
-def _validate_predecessor(scheduler: Mapping[str, object], errors: list[str]) -> None:
+def _validate_predecessor_artifacts(
+    scheduler: Mapping[str, object], errors: list[str]
+) -> None:
     for relative, expected in PREDECESSOR_FILE_DIGESTS.items():
         path = REPO_ROOT / relative
         if not path.is_file() or _sha256(path) != expected:
@@ -471,12 +731,24 @@ def _validate_predecessor(scheduler: Mapping[str, object], errors: list[str]) ->
         errors.append(
             "scheduler predecessor_runtime_artifact_digests differs from release seal"
         )
+    try:
+        runtime_root = _canonical_main_worktree(REPO_ROOT)
+    except (OSError, RuntimeError) as exc:
+        errors.append(
+            "Wave-1 predecessor canonical runtime root is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return
     for relative, expected in PREDECESSOR_RUNTIME_ARTIFACT_DIGESTS.items():
-        path = REPO_ROOT / relative
+        path = runtime_root / relative
         if not path.is_file() or _sha256(path) != expected:
             errors.append(
                 f"Wave-1 predecessor runtime artifact changed: {relative}"
             )
+
+
+def _validate_predecessor(scheduler: Mapping[str, object], errors: list[str]) -> None:
+    _validate_predecessor_artifacts(scheduler, errors)
     expected_binding = {
         "predecessor_board_namespace": "ipfs-datasets-logic-family-parser-v1",
         "predecessor_terminal_task_id": "LFP-047",
@@ -617,6 +889,7 @@ def validate_all() -> dict[str, object]:
     _validate_predecessor(scheduler, errors)
     _validate_goals(objective_text, scheduler, errors)
     task_report = _validate_tasks(todo_text, errors)
+    _validate_completion_artifacts(todo_text, errors)
     _validate_scheduler(scheduler, errors)
     return {
         "schema": "ipfs_accelerate_py/ipfs-datasets-logic-family-parser-v2-preflight@1",

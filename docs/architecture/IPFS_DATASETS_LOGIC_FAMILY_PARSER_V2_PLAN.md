@@ -356,6 +356,17 @@ lineage, context budget, test command, and completion-authority ceiling.
 Two identical quiet epochs over the same source, registry, corpus, provider,
 and objective identities are necessary but not sufficient for release.
 
+The closeout evidence tasks (`LFP2-049` and `LFP2-050`) use the
+`deterministic-only` provider role. Their declared validation commands invoke
+checked-in materializers and semantic validators; Grok, Codex, and other model
+providers cannot author fixed-point or release authority. The fixed-point
+identity binds the normalized seed board, current nested semantic tree,
+objective/configuration, corpus, registry/routes, provider manifest, and
+reachable-matrix hard-zero seal. It excludes its own generated evidence and
+normalizes task status so publication and the final status transition are not
+self-referential. Any open derived task, stale identity, nonzero reachable gap,
+digest mismatch, or predecessor drift fails closed before release.
+
 ## Provider routing and failure policy
 
 Implementation dispatch is sealed to:
