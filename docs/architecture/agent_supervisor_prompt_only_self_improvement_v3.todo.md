@@ -263,7 +263,7 @@ Closeout:           ASE3-014
 
 ## ASE3-009 Export the production Python facade and stable package API
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
