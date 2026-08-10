@@ -590,7 +590,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-601 Implement WinFsp drive/directory mount lifecycle and cleanup
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
