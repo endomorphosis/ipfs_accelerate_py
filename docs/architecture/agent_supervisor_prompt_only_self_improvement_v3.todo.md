@@ -563,7 +563,7 @@ Closeout:           ASE3-014
 
 ## ASE3-032 Enforce one configuration-locked DuckDB connection policy across supervisor state
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
