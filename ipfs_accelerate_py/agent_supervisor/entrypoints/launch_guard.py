@@ -68,4 +68,8 @@ class LaunchPlanGuard:
         return effect()
 
 
-__all__ = ["EffectBoundarySnapshot", "LaunchGuardError", "LaunchPlanGuard", "LaunchRevalidationReceipt", "StaleLaunchPlanError"]
+# ASE3-020 production alias
+CompleteLaunchPlanGuard = LaunchPlanGuard
+
+
+__all__ = ["CompleteLaunchPlanGuard", "EffectBoundarySnapshot", "LaunchGuardError", "LaunchPlanGuard", "LaunchRevalidationReceipt", "StaleLaunchPlanError"]
