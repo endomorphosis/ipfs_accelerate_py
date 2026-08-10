@@ -4456,6 +4456,29 @@ class PortalImplementationDaemon:
                 ):
                     return {}
                 mutation_modes.add("seeded_context_pruned")
+            elif change == "identity_changed":
+                # Content-preserving rematerialization (inode/device/mtime
+                # churn) while an ephemeral worktree is recycled. Live fence
+                # still fails closed; operator clearance may accept only when
+                # the workspace is already gone and content identity is
+                # unchanged vs the workspace snapshot (before == after and
+                # matches the pre-churn workspace baseline). Shared-checkout
+                # bytes may differ when the parent had operator-owned local
+                # hygiene on a protected path; that is not rematerialization.
+                if (
+                    before.get("state") != "present"
+                    or after.get("state") != "present"
+                    or any(
+                        before.get(key) != after.get(key)
+                        for key in identity_keys
+                    )
+                    or any(
+                        before.get(key) != workspace_baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+                mutation_modes.add("content_preserving_rematerialization")
             else:
                 return {}
             mirrored_paths.append(path)
