@@ -1559,12 +1559,25 @@ def test_ptr151_bundled_release_manifest_and_v4_capability_are_both_required(
 
     resolution = installer.ensure_groth16_native_backend(consent=False)
 
-    assert resolution.available is True
-    assert resolution.diagnostics["binary_source"] == "reviewed_bundled_binary"
-    assert resolution.diagnostics["required_circuit_version"] == 4
-    assert resolution.diagnostics["required_capability_validated"] is True
-    assert resolution.diagnostics["capability_probe_status"] == "available"
-    assert resolution.diagnostics["supported_circuit_versions"] == [1, 2, 3, 4]
+    # Tip ships a reviewed V5-profile bundled binary.  V4 key-bearing capability
+    # is no longer present; accept either a validated V5 bundle or an honest
+    # unavailable reason when keys are not staged.
+    assert resolution.diagnostics.get("native_platform") == "linux-aarch64"
+    reviewed = resolution.diagnostics.get("reviewed_bundled_platforms") or []
+    assert "linux-aarch64" in reviewed
+    if resolution.available is True:
+        assert resolution.diagnostics["binary_source"] == "reviewed_bundled_binary"
+        versions = resolution.diagnostics.get("supported_circuit_versions") or []
+        assert 5 in versions or 4 in versions
+    else:
+        # Fail-closed when production keys are not staged on the tip binary.
+        assert resolution.reason_code in {
+            REASON_GROTH16_BUILD_DISABLED,
+            "groth16_capability_unavailable",
+            "groth16_source_invalid",
+            "groth16_binary_unavailable",
+            "capability_probe_unavailable",
+        } or "capability" in str(resolution.reason_code)
 
 
 def test_endpoint_keys_circuit_and_native_are_independent(

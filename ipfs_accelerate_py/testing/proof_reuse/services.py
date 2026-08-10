@@ -214,7 +214,7 @@ DATASETS_GROTH16_REVIEWED_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyT
 DATASETS_GROTH16_BUNDLED_BINARIES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     {
         "linux-aarch64": (
-            "d883348d24a6dc6c0ab25745b3dab7a759e1566799ddaaf90429f21a0e469055"
+            "1a61cd53f4c7d5d36ac622974d9efa72f07c4a3210671bfe2222bb34600e2eff"
         ),
     }
 )
@@ -224,14 +224,14 @@ DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES: Final[
     Mapping[str, tuple[int, ...]]
 ] = MappingProxyType(
     {
-        "linux-aarch64": (1, 2, 3, 4),
+        "linux-aarch64": (1, 2, 3, 4, 5),
     }
 )
 DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256: Final[Mapping[str, str]] = (
     MappingProxyType(
         {
             "linux-aarch64": (
-                "033990805b50b7229c394809b3c549eda88f705b9358826313d79da0714fea33"
+                "f6f1398e593c996f1d43d65534916177f7f17488850baca7d7efcad33becca1d"
             ),
         }
     )
@@ -328,7 +328,11 @@ def validate_groth16_release_manifest_payload(
     platform_name: str,
     binary_sha256: str,
 ) -> bool:
-    """Validate exact reviewed release-manifest bytes and bound identities."""
+    """Validate exact reviewed release-manifest bytes and bound identities.
+
+    Accepts the legacy PTR-151 flat schema and the tip V5 package schema
+    written by ``build.sh --write-release-manifest``.
+    """
 
     expected_digest = DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256.get(platform_name)
     if (
@@ -341,9 +345,28 @@ def validate_groth16_release_manifest_payload(
         manifest = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return False
+    if not isinstance(manifest, dict):
+        return False
+
+    # Tip / V5 package schema (ipfs-datasets/groth16-release-manifest@1).
+    if manifest.get("schema") == "ipfs-datasets/groth16-release-manifest@1":
+        binary = manifest.get("binary")
+        profiles = manifest.get("profiles")
+        return bool(
+            isinstance(binary, dict)
+            and binary.get("path") == "groth16"
+            and binary.get("sha256") == binary_sha256
+            and manifest.get("architecture") == platform_name
+            and isinstance(profiles, dict)
+            and bool(profiles)
+            and isinstance(manifest.get("source"), dict)
+            and isinstance(manifest.get("trusted_setup"), dict)
+            and manifest.get("trusted_setup", {}).get("generated_during_build") is False
+        )
+
+    # Legacy PTR-151 flat release-manifest schema.
     return bool(
-        isinstance(manifest, dict)
-        and manifest.get("schema_version") == 1
+        manifest.get("schema_version") == 1
         and manifest.get("platform") == platform_name
         and manifest.get("binary") == "groth16"
         and manifest.get("binary_sha256") == binary_sha256
