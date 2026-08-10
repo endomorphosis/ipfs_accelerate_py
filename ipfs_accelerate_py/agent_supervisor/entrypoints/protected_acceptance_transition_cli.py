@@ -86,8 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     advance.add_argument(
         "--phase",
         default="R",
-        choices=("R", "P019", "A019", "A030", "P031", "A031"),
-        help="phase to advance (R through A031 auto-composed)",
+        choices=("R", "P019", "A019", "A030", "P031", "A031", "A032"),
+        help="phase to advance (R through A032 auto-composed)",
     )
     advance.add_argument(
         "--dry-run",
@@ -184,6 +184,15 @@ def main(
                 from .protected_acceptance_advance_a031 import advance_prompt_v3_a031
 
                 result = advance_prompt_v3_a031(
+                    repo_root=getattr(arguments, "repo_root", "."),
+                    target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
+                    dry_run=bool(getattr(arguments, "dry_run", False)),
+                    publish=not bool(getattr(arguments, "dry_run", False)),
+                )
+            elif phase == "A032":
+                from .protected_acceptance_advance_a032 import advance_prompt_v3_a032
+
+                result = advance_prompt_v3_a032(
                     repo_root=getattr(arguments, "repo_root", "."),
                     target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
                     dry_run=bool(getattr(arguments, "dry_run", False)),
