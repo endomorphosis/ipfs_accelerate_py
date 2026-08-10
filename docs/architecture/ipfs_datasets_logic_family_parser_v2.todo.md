@@ -536,7 +536,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-017 Add program, VC, and separation routes to FOL, CHC, and SMT
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
