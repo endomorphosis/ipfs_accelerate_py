@@ -670,7 +670,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-700 Add positive/negative Docker mount, restart, and propagation conformance
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
