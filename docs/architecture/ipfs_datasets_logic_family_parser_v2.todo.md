@@ -1218,7 +1218,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-039 Add description-logic and ontology profiles
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
