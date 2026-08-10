@@ -696,7 +696,7 @@ Closeout:           ASE3-014
 
 ## ASE3-029 Lower shared supervisor contracts into a neutral package
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

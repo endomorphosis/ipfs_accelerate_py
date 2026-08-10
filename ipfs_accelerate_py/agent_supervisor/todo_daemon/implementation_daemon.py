@@ -49,7 +49,7 @@ from ...llm_router import (
     valid_agent_implementation_route_outcome,
     verify_agent_implementation_sealed_control_plane,
 )
-from ..entrypoints.provider_attempt_store import (
+from ..control.provider_attempt_store import (
     DurableProviderAttemptCAS,
     ProviderAttemptReservation,
     ProviderAttemptStoreError,
@@ -49879,7 +49879,7 @@ class PortalImplementationDaemon:
                 "scoped fallback workspace baseline is unavailable",
                 backoff_seconds=300,
             ) from exc
-        from ..entrypoints.local_profile import (
+        from ..control.profile_authority import (
             load_local_profile,
             resolve_local_profile_state_paths,
             sign_profile_binding,

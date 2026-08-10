@@ -30,6 +30,7 @@ ENTRYPOINT_LAZY_FACADE_EXPORTS: Final[tuple[str, ...]] = ()
 # lazily by a facade, but none may import this package in return.
 ENTRYPOINT_LOWER_DOMAIN_PACKAGES: Final[tuple[str, ...]] = (
     "core",
+    "contracts",
     "control",
     "task_sources",
     "context",

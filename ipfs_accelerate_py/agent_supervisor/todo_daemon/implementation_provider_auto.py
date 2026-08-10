@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping, Sequence
 
-from ipfs_accelerate_py.agent_supervisor.entrypoints.capability_resolver import (
+from ipfs_accelerate_py.agent_supervisor.control.capability_resolver import (
     FALLBACK_PROVIDER,
     PREFERRED_PROVIDER,
     PreferredProviderCapability,
