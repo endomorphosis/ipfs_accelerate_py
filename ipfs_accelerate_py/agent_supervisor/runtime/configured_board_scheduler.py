@@ -41,8 +41,8 @@ from ...llm_router import (
     seal_agent_implementation_control_plane_capsule,
     verify_agent_implementation_sealed_control_plane,
 )
-from ..entrypoints.contracts import InvocationBudget
-from ..entrypoints.execution_plan import (
+from ..contracts.execution import InvocationBudget
+from ..control.plan_execution_store import (
     ConfiguredBoardExecutionSlices,
     ExecutionPlanError,
     ParallelismDecisionReceipt,

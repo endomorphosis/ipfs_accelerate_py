@@ -30,7 +30,7 @@ from ..control.manual_completion_seal import (
     ManualCompletionSealError,
     verify_manual_completion_seal,
 )
-from ..entrypoints.execution_plan import (
+from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
     PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
     PLAN_BOUND_MERGE_ENQUEUE_INTENT_SCHEMA,

@@ -4428,7 +4428,7 @@ def _run_protected_effect_recovery(
 ) -> int:
     """Account one existing protected effect without dispatching a provider."""
 
-    from ipfs_accelerate_py.agent_supervisor.entrypoints.provider_attempt_store import (
+    from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
         DurableProviderAttemptCAS,
         ProviderAttemptStoreError,
     )
@@ -4643,7 +4643,7 @@ def _run_protected_effect_recovery(
 
 
 def _run(args: argparse.Namespace, receipt_fd: int) -> int:
-    from ipfs_accelerate_py.agent_supervisor.entrypoints.provider_attempt_store import (
+    from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
         DurableProviderAttemptCAS,
         ProviderAttemptReservation,
         ProviderAttemptStoreError,
