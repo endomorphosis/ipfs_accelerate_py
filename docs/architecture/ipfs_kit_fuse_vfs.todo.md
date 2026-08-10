@@ -530,7 +530,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-501 Certify Linux ARM64 and repeated mount/resource soak
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
