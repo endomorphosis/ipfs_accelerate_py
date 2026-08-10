@@ -1552,10 +1552,8 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
         load_configured_board(config_path, repo_root=repo)
 
     payload["provider"]["fallback_model_id"] = "gpt-5.6-terra"
-    payload["provider"]["fallback_trigger"] = (
-        "primary_quota_or_auth_unavailable"
-    )
-    payload["provider"]["fallback_reasoning_effort"] = "high"
+    payload["provider"]["fallback_trigger"] = "primary_quota_exhausted"
+    payload["provider"]["fallback_reasoning_effort"] = "medium"
     payload["provider"]["provider_id"] = "auto"
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     with pytest.raises(

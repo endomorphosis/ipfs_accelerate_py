@@ -181,6 +181,12 @@ ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
+ORDERED_FALLBACK_TRIGGERS = frozenset(
+    {
+        "primary_quota_exhausted",
+        "primary_quota_or_auth_unavailable",
+    }
+)
 ORDERED_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
 ROUTE_AUTHORIZATION_PATH_FIELD = "route_authorization_path"
 
@@ -1791,10 +1797,12 @@ def load_configured_board(
                 "provider.fallback_model_id must be 'gpt-5.6-terra' for "
                 "the ordered provider contract"
             )
-        if fallback_trigger != ORDERED_FALLBACK_TRIGGER:
+        if fallback_trigger not in ORDERED_FALLBACK_TRIGGERS:
             raise ConfiguredBoardError(
                 "provider.fallback_trigger must be "
-                "'primary_quota_exhausted' for the ordered provider contract"
+                "'primary_quota_exhausted' or "
+                "'primary_quota_or_auth_unavailable' for the ordered "
+                "provider contract"
             )
         if fallback_reasoning_effort not in ORDERED_FALLBACK_REASONING_EFFORTS:
             raise ConfiguredBoardError(

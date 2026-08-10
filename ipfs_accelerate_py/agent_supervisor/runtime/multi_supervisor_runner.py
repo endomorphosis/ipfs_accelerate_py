@@ -543,6 +543,25 @@ def _optional_relative_path(value: Any, *, field: str) -> str:
     return path.as_posix()
 
 
+def _optional_worktree_root(value: Any, *, field: str) -> str:
+    """Accept relative or absolute worktree roots from production CLI argv.
+
+    Event/registry paths remain repository-relative, but ``--worktree-root`` is
+    commonly an absolute path under the board repo (tests and managed daemons).
+    Reject parent-escape segments and URL schemes only.
+    """
+
+    if value is None or value == "":
+        return ""
+    text = _require_nonempty_text(value, field=field)
+    path = Path(text)
+    if text in {".", ".."} or ".." in path.parts or "://" in text:
+        raise DatabaseProgramConfigError(
+            f"{field} must be a safe worktree path without parent escape"
+        )
+    return path.as_posix()
+
+
 @dataclass(frozen=True)
 class DatabaseProgramConfig:
     """Explicit database/Quack authority selection for one program (DatabaseProgramConfig@1)."""
@@ -631,7 +650,7 @@ class DatabaseProgramConfig:
         object.__setattr__(
             self,
             "worktree_root",
-            _optional_relative_path(
+            _optional_worktree_root(
                 self.worktree_root,
                 field="worktree_root",
             ),
