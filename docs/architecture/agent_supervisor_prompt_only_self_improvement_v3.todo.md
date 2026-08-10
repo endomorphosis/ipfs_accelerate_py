@@ -619,7 +619,7 @@ Closeout:           ASE3-014
 
 ## ASE3-023 Repair production plan-bound adaptive parallel dispatch
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -645,7 +645,7 @@ Closeout:           ASE3-014
 
 ## ASE3-027 Repair production canonical resolver composition and verified trust evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

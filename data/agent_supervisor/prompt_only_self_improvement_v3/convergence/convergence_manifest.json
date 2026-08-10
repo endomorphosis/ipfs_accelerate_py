@@ -1,21 +1,22 @@
 {
   "acceptance": {
     "artifacts": {
-      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json": "sha256:6134a4f684b123dfe020fb2c612cf52e5aca3cb00ad6e3b64c255b8f79c9a124"
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json": "sha256:299a1787820e31eb5f8779ba7f05f43e8c99d4caff0987bb8e16a92bccb6a620",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json": "sha256:58a82f2ae72cbf6118dd34d2167a9c71ec3689754fc489cad616d41007a4d62d"
     },
-    "parent_head": "e9f919d472f700cc33dd163c14d1482d31ce0379",
-    "parent_manifest_sha256": "sha256:a61c1f15f86c990859b7903384d9ac354223d8cfa87356eaa8b8379ab7c05044",
-    "parent_phase": "A031",
-    "parent_tree": "509ffb58f8c74e5eb6b16b3409365b22ec4d6bb9",
-    "phase": "A032",
+    "parent_head": "63f0f4a5a994a5f6d3ecbbd58d1e6da5489d5194",
+    "parent_manifest_sha256": "sha256:d050f84c9daa81118cdfaa78d3bb0d2a5c4cec43f142b6a689bfb3f012382b7c",
+    "parent_phase": "A032",
+    "parent_tree": "69fdc1d2121d632ca61dd2a0422e4fa3b6412afc",
+    "phase": "A023/027",
     "pre_launch_authorization_only": false,
     "reload_gate_status": "blocked",
-    "runtime_effect_claimed": false,
+    "runtime_effect_claimed": true,
     "task_statuses": {
       "ASE3-019": "completed",
       "ASE3-022": "blocked",
-      "ASE3-023": "todo",
-      "ASE3-027": "todo",
+      "ASE3-023": "completed",
+      "ASE3-027": "completed",
       "ASE3-030": "completed",
       "ASE3-031": "completed",
       "ASE3-032": "completed"
