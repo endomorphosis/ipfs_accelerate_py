@@ -3404,9 +3404,6 @@ _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
                 "integrated_patch_sha256": (
                     "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
                 ),
-                "binary_full_index_patch_sha256": (
-                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
-                ),
                 "changed_paths": (
                     "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
                     "ipfs_accelerate_py/llm_router.py",
@@ -3434,15 +3431,13 @@ _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
                 "integrated_patch_sha256": (
                     "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
                 ),
-                "binary_full_index_patch_sha256": (
-                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
-                ),
                 "changed_paths": (
                     "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
                     "ipfs_accelerate_py/llm_router.py",
                     "ipfs_accelerate_py/utils/cid_utils.py",
                     "test/api/test_agent_supervisor_control_plane.py",
                     "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
+                    "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
                     "test/api/test_llm_router_agent_implementation_route.py",
                 ),
             },
@@ -3461,7 +3456,7 @@ _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
                 "fdc9a1ef5f93814d38dec4692336b44b48623c70"
             ),
             "ipfs_accelerate_py/llm_router.py": (
-                "c569d03e80368319d2f26f5acff89f31d683f4f8"
+                "db2a7d220acf681954d5311a50cc5a970c49573a"
             ),
             "ipfs_accelerate_py/utils/__init__.py": (
                 "4bb5af77be27aa8fb0b50618b0c05c57904bee49"
@@ -3484,7 +3479,7 @@ _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
                 "sha256:e8a2b5beae30ac0a40dcc1095a9241cfd80597f55f319828e2c844aeee1aa1ce"
             ),
             "ipfs_accelerate_py/llm_router.py": (
-                "sha256:0494c54c25d4df4144b47ed1382685a381dc8650264b8155f51be6eafe9c80b8"
+                "sha256:69bd7e48a0ffc13f7a868b0b3e9bf8a09506104c4a80e5a78146adabbb73beb4"
             ),
             "ipfs_accelerate_py/utils/__init__.py": (
                 "sha256:07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3"
@@ -3533,19 +3528,19 @@ _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
             },
         },
     "manifest_sha256": (
-        "sha256:01c4622824b0fbc57b4abd0dc9a9839bb852ed2c4dd793a26acd9ee21ccd6f61"
+        "sha256:2a62b2ef420ca1a4abd3ed618a00e7c87b26666f8a03a0c78e426eee7b9369eb"
     ),
     "capsule_sha256": (
-        "sha256:821f5dd3d1634ffeae06f9916e29572898e685c4123114a45ad4cc68f4e4a5d6"
+        "sha256:fae3ab225615693aaf921283bb01491fad0dbe61b045c5e86e88e533df352092"
     ),
     "archive_sha256": (
-        "sha256:acc3dd0ed4f754e206c7508626c6dfb2f69e57b732f427eb18f4994a11cd5023"
+        "sha256:6639fd68582ad1187ded0cc17f95ab66582e4684c3868eee2ff4b05b07f4f46c"
     ),
     "archive_root_sha256": (
-        "sha256:c4e8926743b7b3c5f5b6f2283cde93051eccaa55b33d407742c9a760aa0c2f57"
+        "sha256:728c0a18daa7830affbbc36459223add2d3b0896a671adc47740d0059f24fa6c"
     ),
     "sealed_descriptor_sha256": (
-        "sha256:53f0c97055e168c81c8d8693baadb2c1f5467709e9de04b95087768ec595172c"
+        "sha256:6facf8cc60c12c3ae1e6dfa27742ff893d22b28390704b4f89942850c9f7adc4"
     ),
     "probe_command": _HERMETIC_HOSTILE_PROBE_ARGV,
     "suite_passed_count": 108,
