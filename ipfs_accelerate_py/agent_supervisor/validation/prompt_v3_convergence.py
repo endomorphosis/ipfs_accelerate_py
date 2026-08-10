@@ -460,6 +460,8 @@ MAX_NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_BYTES: Final[int] = 256 * 1024
 MAX_DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_BYTES: Final[int] = 256 * 1024
 MAX_PROVIDER_ATTEMPT_RELOAD_RECEIPT_BYTES: Final[int] = 128 * 1024
 MAX_PROVIDER_ATTEMPT_GENERATION_BIRTH_RECEIPT_BYTES: Final[int] = 128 * 1024
+MAX_PROTECTED_RUNTIME_ACTIVATION_RECEIPT_BYTES: Final[int] = 128 * 1024
+MAX_PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_BYTES: Final[int] = 256 * 1024
 MAX_PROVIDER_FALLBACK_AUTHORIZATION_BYTES: Final[int] = 128 * 1024
 MAX_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_BYTES: Final[int] = 32 * 1024
 MAX_LOCAL_OPERATOR_LIFECYCLE_WITNESS_BYTES: Final[int] = 128 * 1024
@@ -7066,6 +7068,131 @@ def load_native_dependency_launch_authorization(
         required_fields=_NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_REQUIRED_FIELDS,
         maximum_bytes=MAX_NATIVE_DEPENDENCY_AUTHORIZATION_BYTES,
         repository_root=repository_root,
+    )
+
+
+def load_protected_runtime_activation_authorization(
+    path: Path | str,
+    *,
+    repository_root: Path | str | None = None,
+) -> OperatorAcceptanceReceiptSnapshot:
+    """Load bounded ASE3-026 pre-effect authorization without following links."""
+
+    # Top-level field set is enforced by the gate validator; load only checks
+    # schema + filename + authority path bounds here.
+    artifact_path = Path(path)
+    if artifact_path.name != PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME:
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME}: filename mismatch"
+        )
+    snapshot = _read_regular_snapshot(
+        artifact_path,
+        maximum_bytes=MAX_PROTECTED_RUNTIME_ACTIVATION_RECEIPT_BYTES,
+    )
+    _require_authority_file_snapshot(
+        snapshot,
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
+        expected_relative_path=(
+            PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH
+            if repository_root is not None
+            else None
+        ),
+    )
+    payload = _load_json_bytes(
+        snapshot.raw, name=PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
+    )
+    if payload.get("schema") != PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA:
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME}: schema mismatch"
+        )
+    return OperatorAcceptanceReceiptSnapshot(
+        filename=PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME,
+        payload=payload,
+        sha256="sha256:" + hashlib.sha256(snapshot.raw).hexdigest(),
+        raw=snapshot.raw,
+    )
+
+
+def load_protected_runtime_post_activation_observation(
+    path: Path | str,
+    *,
+    repository_root: Path | str | None = None,
+) -> OperatorAcceptanceReceiptSnapshot:
+    """Load bounded ASE3-026 post-activation observation without following links."""
+
+    artifact_path = Path(path)
+    if (
+        artifact_path.name
+        != PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME
+    ):
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME}: "
+            "filename mismatch"
+        )
+    snapshot = _read_regular_snapshot(
+        artifact_path,
+        maximum_bytes=MAX_PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_BYTES,
+    )
+    _require_authority_file_snapshot(
+        snapshot,
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
+        expected_relative_path=(
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH
+            if repository_root is not None
+            else None
+        ),
+    )
+    payload = _load_json_bytes(
+        snapshot.raw,
+        name=PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME,
+    )
+    if payload.get("schema") != PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA:
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME}: "
+            "schema mismatch"
+        )
+    return OperatorAcceptanceReceiptSnapshot(
+        filename=PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME,
+        payload=payload,
+        sha256="sha256:" + hashlib.sha256(snapshot.raw).hexdigest(),
+        raw=snapshot.raw,
+    )
+
+
+def validate_protected_runtime_activation_authorization(
+    payload: Mapping[str, Any],
+    *,
+    now_ms: int | None = None,
+) -> tuple[str, ...]:
+    """Strict pre-effect ASE3-026 authorization validation (lazy gate import)."""
+
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_runtime_activation import (
+        validate_activation_authorization,
+    )
+
+    return validate_activation_authorization(payload, now_ms=now_ms)
+
+
+def validate_protected_runtime_post_activation_observation(
+    payload: Mapping[str, Any],
+    *,
+    authorization: Mapping[str, Any] | None = None,
+    authorization_sha256: str | None = None,
+) -> tuple[str, ...]:
+    """Strict ASE3-026 post-activation observation validation (lazy gate import)."""
+
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_runtime_activation import (
+        validate_post_activation_observation,
+    )
+
+    return validate_post_activation_observation(
+        payload,
+        authorization=authorization,
+        authorization_sha256=authorization_sha256,
     )
 
 
@@ -13810,32 +13937,80 @@ def _validate_program_plan_expansion(
             errors.append(f"{prefix}.{task_id}.status: expected 'todo'")
 
     activation_path = artifact_root / PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
-    try:
-        activation_path.lstat()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        errors.append(f"{prefix}.ASE3-026.receipt: unable to inspect: {exc}")
-    else:
-        errors.append(
-            f"{prefix}.ASE3-026.authorization_receipt: present without strict "
-            "validation and convergence-manifest binding"
-        )
     observation_path = (
         artifact_root
         / PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME
     )
+    authorization_snapshot: OperatorAcceptanceReceiptSnapshot | None = None
+    observation_snapshot: OperatorAcceptanceReceiptSnapshot | None = None
+    authorization_present = False
+    observation_present = False
+    try:
+        activation_path.lstat()
+        authorization_present = True
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.append(f"{prefix}.ASE3-026.receipt: unable to inspect: {exc}")
     try:
         observation_path.lstat()
+        observation_present = True
     except FileNotFoundError:
         pass
     except OSError as exc:
         errors.append(f"{prefix}.ASE3-026.observation_receipt: unable to inspect: {exc}")
-    else:
-        errors.append(
-            f"{prefix}.ASE3-026.observation_receipt: present without strict "
-            "post-activation validation and convergence-manifest binding"
-        )
+
+    if authorization_present:
+        try:
+            authorization_snapshot = load_protected_runtime_activation_authorization(
+                activation_path
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(
+                f"{prefix}.ASE3-026.authorization_receipt: strict load failed: {exc}"
+            )
+        else:
+            for error in validate_protected_runtime_activation_authorization(
+                authorization_snapshot.payload
+            ):
+                errors.append(f"{prefix}.ASE3-026.authorization_receipt: {error}")
+
+    if observation_present:
+        try:
+            observation_snapshot = (
+                load_protected_runtime_post_activation_observation(observation_path)
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(
+                f"{prefix}.ASE3-026.observation_receipt: strict load failed: {exc}"
+            )
+        else:
+            auth_payload = (
+                authorization_snapshot.payload
+                if authorization_snapshot is not None
+                else None
+            )
+            auth_sha = (
+                authorization_snapshot.sha256
+                if authorization_snapshot is not None
+                else None
+            )
+            if auth_payload is None:
+                errors.append(
+                    f"{prefix}.ASE3-026.observation_receipt: authorization "
+                    "receipt required for binding"
+                )
+            for error in validate_protected_runtime_post_activation_observation(
+                observation_snapshot.payload,
+                authorization=auth_payload,
+                authorization_sha256=auth_sha,
+            ):
+                errors.append(f"{prefix}.ASE3-026.observation_receipt: {error}")
+
+    # Completion remains blocked until both strict receipts validate. When
+    # either receipt is absent or invalid the frozen blocked contract applies.
+    # Dual valid receipts alone do not flip status here: an operator commit must
+    # rehash the completed contract and update freezes together with status.
     activation = tasks.get(_PROTECTED_RUNTIME_ACTIVATION_TASK_ID)
     if activation is None:
         errors.append(f"{prefix}.ASE3-026: expected exactly one activation task")
@@ -13897,6 +14072,11 @@ def _validate_program_plan_expansion(
                 errors.append(
                     f"{prefix}.ASE3-026.contract: missing {requirement!r}"
                 )
+        if authorization_present ^ observation_present:
+            errors.append(
+                f"{prefix}.ASE3-026.receipt_pair: authorization and observation "
+                "must land together under strict binding (or both remain absent)"
+            )
 
     dependency_graph = {
         task_id: _taskboard_csv(metadata, "depends on")
