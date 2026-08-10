@@ -939,7 +939,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-030 Execute SecPAL and Datalog authorization parity paths
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
