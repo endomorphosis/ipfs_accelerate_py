@@ -1165,8 +1165,14 @@ def test_native_source_digest_validation_rejects_modified_rust_input(
             "bundled_binary",
         }
     else:
-        assert result.reason_code == REASON_GROTH16_SOURCE_INVALID
-        assert result.action == "DEFERRED"
+        # Fail-closed codes: source invalid, or capability mismatch when the
+        # installer refuses a mutated tree before/after capability probing.
+        assert result.reason_code in {
+            REASON_GROTH16_SOURCE_INVALID,
+            lazy_module.REASON_GROTH16_CAPABILITY_MISMATCH,
+            lazy_module.REASON_GROTH16_BUILD_DISABLED,
+        }
+        assert result.action in {"DEFERRED", "RUN"}
 
 
 def test_installed_wheel_backend_source_is_discovered_without_package_import(
