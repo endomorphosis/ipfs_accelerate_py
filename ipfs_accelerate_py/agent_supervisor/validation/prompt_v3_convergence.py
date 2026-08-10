@@ -3305,10 +3305,10 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
                 "4af712560cc96b1a2014002c45ee53acc4d114bf"
             ),
             "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py": (
-                "d47251c96e6882e39d8dc4bb22f22d193d2852ba"
+                "801bc657ead0a69e677766bc0ba402ddf2245bd7"
             ),
             "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": (
-                "1e98703b8661979037ec409bcd6aee7cdf6e7fe6"
+                "f223ada8b058f4f2f41a460755f38ab7a8bf50b6"
             ),
             "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": (
                 "217f6aba6e85a5fefe56f24aefc4848bd2ec41f0"
@@ -3371,7 +3371,7 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
                 "4671f417029bf7f9a3f7b578b9db65c3633f4242"
             ),
             "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py": (
-                "d2736d0af243995977f8a10050ec89fab4dc9785"
+                "4c1094926c2bc4eda4161e117f70895fb061e247"
             ),
             "test/api/test_agent_supervisor_prompt_v3_resolution.py": (
                 "5b8d0087ec4f92e7e3f7f942a71d378fa3d37a3f"
