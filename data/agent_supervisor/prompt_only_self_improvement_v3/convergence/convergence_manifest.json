@@ -1,14 +1,14 @@
 {
   "acceptance": {
     "artifacts": {
-      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json": "sha256:aaf8412b2abb3fe2c27b955dd1e31debadf35f173e30c144413467dd5397e7ee"
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json": "sha256:072d2753093a4a670b77f20c3db87bcae4de56781a6354d0bd4c62b702119de0"
     },
-    "parent_head": "8f6cbb84bad3f4a715f634ad562126b6f9949f2f",
-    "parent_manifest_sha256": "sha256:e0d38efbc2feb350a11b593fb725d0a0b6db96c9179c397e638327aaddae7a68",
-    "parent_phase": "A019",
-    "parent_tree": "21d31f2bb210538dbe9baa6a5466bd23c77e3154",
-    "phase": "A030",
-    "pre_launch_authorization_only": false,
+    "parent_head": "be6f573066f062dad3e3b7c9bad89c5d1901a369",
+    "parent_manifest_sha256": "sha256:1798abb4e0d2caab79a244c2ffed2da6db4db100a588addf1798972cf0812869",
+    "parent_phase": "A030",
+    "parent_tree": "5b2ca20fcb59f5607b03fec77c6e99d4c2252425",
+    "phase": "P031",
+    "pre_launch_authorization_only": true,
     "reload_gate_status": "blocked",
     "runtime_effect_claimed": false,
     "task_statuses": {
