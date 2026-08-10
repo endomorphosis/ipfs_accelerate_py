@@ -770,7 +770,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-801 Establish performance, chaos, saturation, and resource-leak release floors
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
