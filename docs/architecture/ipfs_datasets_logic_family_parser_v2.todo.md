@@ -412,7 +412,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-013 Converge Datalog, SecPAL, and F-logic rule frontends
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
