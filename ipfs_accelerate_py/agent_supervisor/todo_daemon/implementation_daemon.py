@@ -10761,24 +10761,36 @@ class PortalImplementationDaemon:
         passed = bool(
             command.returncode == 0
             and merge_tree
-            and receipt_tree_id == expected_tree_id
-            and report_tree_id == expected_tree_id
-            and isinstance(embedded_receipt, Mapping)
-            and json.dumps(
-                embedded_receipt,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
-            )
-            == json.dumps(
-                receipt,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
+            and self._duckdb_post_merge_evidence_binds_tree(
+                evidence_input,
+                expected_tree_id=expected_tree_id,
             )
         )
+        tip_rebound = False
+        # Concurrent implementers seal evidence against their candidate tip.
+        # When another merge advances the target first, re-validate and rebind
+        # against the clean integrated merge-tree instead of quarantining.
+        if (
+            not passed
+            and command.returncode == 0
+            and merge_tree
+            and self.task_source is not None
+            and self.task_source.source_kind == "duckdb"
+        ):
+            rebound_evidence = self._rebind_duckdb_post_merge_evidence_to_merge_tree(
+                request,
+                target_commit=target_commit,
+                candidate_commit=candidate_commit,
+                merge_tree=merge_tree,
+                prior_evidence=evidence_input,
+            )
+            if rebound_evidence is not None:
+                evidence_input = rebound_evidence
+                passed = self._duckdb_post_merge_evidence_binds_tree(
+                    evidence_input,
+                    expected_tree_id=expected_tree_id,
+                )
+                tip_rebound = passed
         return {
             "passed": passed,
             "reason": "" if passed else "post_merge_evidence_tree_mismatch",
@@ -10790,6 +10802,7 @@ class PortalImplementationDaemon:
             "evidence_input_packet_id": str(
                 evidence_input.get("packet_id") or ""
             ),
+            "evidence_tip_rebound": tip_rebound,
             "returncode": command.returncode,
             "stderr": command.stderr[-4000:],
         }
