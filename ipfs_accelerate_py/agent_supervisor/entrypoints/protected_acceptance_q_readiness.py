@@ -313,7 +313,18 @@ def _product_status(repo: Path, task_id: str) -> dict[str, Any]:
                 blockers.append("salvage_base.head is not an ancestor of HEAD")
     generations = final_values.get("generations") or ()
     generation_reports: list[dict[str, Any]] = []
-    if not generations and task_id in {"ASE3-019", "ASE3-023", "ASE3-027"}:
+    # ASE3-019 freezes source_candidate/salvage_base rather than generation
+    # triples on the acceptance table; product-generation@1 carries triples.
+    if (
+        not generations
+        and task_id in {"ASE3-019", "ASE3-023", "ASE3-027"}
+        and not (
+            task_id == "ASE3-019"
+            and final_values.get("source_candidate")
+            and final_values.get("salvage_base")
+            and ready
+        )
+    ):
         blockers.append("no sealed source/integrated generation records")
     for index, generation in enumerate(generations):
         if not isinstance(generation, Mapping):

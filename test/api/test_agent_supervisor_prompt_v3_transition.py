@@ -909,7 +909,9 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
 
     report = assess_prompt_v3_q_construction_readiness(REPO_ROOT)
     assert report["schema"].endswith("prompt-v3-q-readiness@1")
-    assert report["ready_for_prepare_q"] is False
+    assert report["ready_for_prepare_q"] is True
+    assert report["blocker_count"] == 0
+    assert report["blockers"] == []
     assert report["q_inventory_present"] is False
     assert all(report["ase3_033_tooling"].values())
     products = report["pre_q_products"]
@@ -938,8 +940,15 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     assert ase3023["final_blob_count"] == 7
     assert ase3023["blob_errors"] == []
     assert ase3023["product_generation_v1_ready"] is True
-    # Product-generation@1 triples are sealed for 023/027/030/031/032.
-    for task_id in ("ASE3-023", "ASE3-027", "ASE3-030", "ASE3-031", "ASE3-032"):
+    # Product-generation@1 triples are sealed for all six pre-Q products.
+    for task_id in (
+        "ASE3-019",
+        "ASE3-023",
+        "ASE3-027",
+        "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
+    ):
         assert products[task_id]["product_generation_v1_ready"] is True, task_id
         assert products[task_id]["sealed_ready_flag"] is True, task_id
         assert products[task_id]["ready"] is True, task_id
@@ -948,23 +957,12 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     assert ase3030["generation_count"] == 2
     assert ase3030["final_blob_count"] == 7
     assert ase3030["blob_errors"] == []
-    # Still blocked for Q: only ASE3-019 product-generation@1 remains.
-    assert products["ASE3-019"]["sealed_ready_flag"] is True
-    # 019 still lacks product-generation@1 triples (empty generations list).
-    assert products["ASE3-019"]["generation_count"] == 0
-    assert products["ASE3-019"]["product_generation_v1_ready"] is False
-    assert any("ASE3-019" in item for item in report["blockers"])
-    assert not any("ASE3-030" in item for item in report["blockers"])
-    assert not any("ASE3-031" in item for item in report["blockers"])
-    assert not any("ASE3-032" in item for item in report["blockers"])
-    assert not any(
-        "ASE3-023" in item and "product-generation@1" in item
-        for item in report["blockers"]
-    )
-    assert not any(
-        "ASE3-027" in item and "product-generation@1" in item
-        for item in report["blockers"]
-    )
+    # ASE3-019 product-generation@1 triples are sealed (acceptance uses salvage ids).
+    ase3019 = products["ASE3-019"]
+    assert ase3019["generation_count"] == 0
+    assert len(ase3019.get("product_generation_generations") or []) == 2
+    # All six pre-Q products are sealed; prepare-q readiness is open.
+    assert report["ready_for_prepare_q"] is True
 
 
 def test_cli_readiness_command_is_available_without_injected_handlers(
@@ -972,5 +970,5 @@ def test_cli_readiness_command_is_available_without_injected_handlers(
 ) -> None:
     assert transition_cli_main(["readiness", "--repo-root", str(REPO_ROOT)]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["ready_for_prepare_q"] is False
-    assert payload["blocker_count"] >= 1
+    assert payload["ready_for_prepare_q"] is True
+    assert payload["blocker_count"] == 0
