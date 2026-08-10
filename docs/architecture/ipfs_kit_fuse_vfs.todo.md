@@ -370,7 +370,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-304 Add checkpoint, compaction, archive, and bounded maintenance lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
