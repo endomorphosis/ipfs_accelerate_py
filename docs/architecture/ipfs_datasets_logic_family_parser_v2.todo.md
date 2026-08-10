@@ -1466,7 +1466,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-047 Seal the reachable conformance matrix and hard-zero floors
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
