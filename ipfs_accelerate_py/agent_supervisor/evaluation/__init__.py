@@ -23,6 +23,13 @@ from .dcr_fixed_point import (
     reach_contract_repair_fixed_point,
     supersede_legacy_repairs,
 )
+from .dcr_release import (
+    DETERMINISTIC_REPAIR_RELEASE_INTERFACE,
+    DeterministicRepairRelease,
+    materialize_release,
+    publish_deterministic_repair_release,
+    verify_release,
+)
 from .dcr_canary import (
     AUTO_SAFE_ADMISSION_INTERFACE,
     DETERMINISTIC_REPAIR_POLICY_INTERFACE,
@@ -57,6 +64,11 @@ __all__ = [
     "DETERMINISTIC_REPAIR_POLICY_INTERFACE",
     "materialize_policy_and_canary",
     "run_fixture_apply_canary",
+    "DETERMINISTIC_REPAIR_RELEASE_INTERFACE",
+    "DeterministicRepairRelease",
+    "materialize_release",
+    "publish_deterministic_repair_release",
+    "verify_release",
     "RepairSafetyMetrics",
     "compare_shadow_to_truth",
     "evaluate_dcr_adversarial",
