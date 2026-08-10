@@ -846,7 +846,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-027 Connect base software-verification and contract obligations end to end
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
