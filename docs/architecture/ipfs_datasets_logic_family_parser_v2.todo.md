@@ -784,7 +784,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-025 Connect Legal IR base norm, exception, event, and jurisdiction slices
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
