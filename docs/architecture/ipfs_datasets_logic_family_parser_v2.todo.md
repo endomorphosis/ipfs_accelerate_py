@@ -1094,7 +1094,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-035 Gate ErgoAI and SymbolicAI proposals through deterministic parsing
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
