@@ -330,7 +330,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-300 Map flush, fsync, release, and deferred errors to durability receipts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
