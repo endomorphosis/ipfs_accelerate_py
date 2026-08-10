@@ -270,7 +270,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-206 Implement the platform-neutral KernelVFSOperations and composed request runtime
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
