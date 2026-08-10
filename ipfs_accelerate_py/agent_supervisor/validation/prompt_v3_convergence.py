@@ -9140,7 +9140,9 @@ def validate_operator_salvage_receipt_019(
                     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME
                 ),
                 "authorization_artifact_sha256": (
-                    "sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2"
+                    # Sealed raw digest of provider-fallback-policy-authorization@2
+                    # introduced by the P019 protected tip (d41ad5ed8).
+                    "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1"
                 ),
                 "prospective_only": True,
                 "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
