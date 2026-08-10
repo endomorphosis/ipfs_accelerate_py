@@ -2075,7 +2075,7 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
 # against Git.  ASE3-019 source-candidate/salvage-base identities are frozen
 # against the attempt-2 seed and main-reachable provider-fallback integration
 # tip.  Product-generation@1 source/clean-replay/integrated triples are frozen
-# for ASE3-023/027/030/031/032 (ASE3-019 still pending).  ASE3-030 hermetic
+# for ASE3-019/023/027/030/031/032.  ASE3-030 hermetic
 # acceptance final values (generations, member blob/raw maps, capsule/archive
 # digests, suite count) and ASE3-031/032 suite pins are frozen against Git and
 # deterministic suite reports.  The reload generation still needs final
@@ -3868,13 +3868,76 @@ _PRODUCT_GENERATION_FINAL_VALUES: Final = {
         ),
     },
     "ASE3-019": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_019,
+        "ready": True,
+        "pending": None,
         "schema": (
             "ipfs_accelerate_py.agent_supervisor."
             "prompt-v3-product-generation@1"
         ),
-        "generations": (),
+        "generations": (
+            {
+                "role": "provider-fallback",
+                "source_commit": "f49bf853f7ceae64ba3e2379db3d709e50077734",
+                "source_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "source_tree": "2f1e39f99df98b0bdfd707f9cd7de5f6ca4e871f",
+                "replay_commit": "d07eaab3690242df371b8cc2f0641f156ce6a166",
+                "replay_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "replay_tree": "2f1e39f99df98b0bdfd707f9cd7de5f6ca4e871f",
+                "integrated_commit": "1bd07b7261c86e4cf8301b34dbaf9728fc6e7818",
+                "integrated_parent": "20ea872b958c44e1af9b07312594809b0986d535",
+                "integrated_tree": "e20cf0acc9fe5d17ac439b9c9ddff6332810e583",
+                "source_patch_sha256": (
+                    "sha256:fc0b76720a68faf82e36bdddc1c612769dd7e268042bc20fcab2744856a55180"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:fc0b76720a68faf82e36bdddc1c612769dd7e268042bc20fcab2744856a55180"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:fc0b76720a68faf82e36bdddc1c612769dd7e268042bc20fcab2744856a55180"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+                    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+                ),
+            },
+            {
+                "role": "attempt-2-product",
+                "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+                "source_parent": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+                "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+                "replay_commit": "798847e8f527c21452888e3ddc1d1daafdebfe27",
+                "replay_parent": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+                "replay_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+                "integrated_commit": "10db367e5ba2d2ece22058ed88d658587867ea28",
+                "integrated_parent": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+                "integrated_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+                "source_patch_sha256": (
+                    "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+                    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+                ),
+            },
+        ),
     },
 }
 

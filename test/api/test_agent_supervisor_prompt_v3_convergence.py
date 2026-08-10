@@ -3320,8 +3320,10 @@ def test_ase3_023_final_blob_tamper_fails_closed_after_freeze() -> None:
 
 def test_product_generation_v1_triples_are_sealed_for_pre_q_products() -> None:
     values = convergence_module._PRODUCT_GENERATION_FINAL_VALUES
-    assert values["ASE3-019"]["ready"] is False
+    assert values["ASE3-019"]["ready"] is True
+    assert len(values["ASE3-019"]["generations"]) == 2
     for task_id, expected_count in (
+        ("ASE3-019", 2),
         ("ASE3-023", 3),
         ("ASE3-027", 2),
         ("ASE3-030", 2),
