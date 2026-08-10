@@ -2074,9 +2074,11 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
 # ASE3-023 source/integrated generations and final P-tree blob maps are frozen
 # against Git.  ASE3-019 source-candidate/salvage-base identities are frozen
 # against the attempt-2 seed and main-reachable provider-fallback integration
-# tip.  ASE3-030 and the reload generation still need final identities.
-# Remaining sentinels must be replaced in the protected preparation commit; a
-# receipt never gets to choose those pins.
+# tip.  Product-generation@1 source/clean-replay/integrated triples are frozen
+# for ASE3-023/027/030/031/032 (ASE3-019 still pending).  ASE3-030 hermetic
+# acceptance closure hashes, ASE3-031/032 signed suite pins, and the reload
+# generation still need final identities.  Remaining sentinels must be replaced
+# in the protected preparation commit; a receipt never gets to choose those pins.
 #
 # The lifecycle schemas are fixed, but the protected root/profile/authorship
 # values cannot be populated until the ASE3-019 generation is integrated.
@@ -3403,6 +3405,317 @@ _DUCKDB_POLICY_ACCEPTANCE_FINAL_VALUES: Final = {
     "passed_count": -1,
     "report_sha256": _FINAL_VALUE_PENDING_032_ACCEPTANCE,
 }
+
+_PRODUCT_GENERATION_FINAL_VALUES: Final = {
+    "ASE3-023": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "product-salvage",
+                "source_commit": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "8567257c0d101198b5b2e7fde47031c603ab5e09",
+                "replay_commit": "de5d7dcb49503b4bcc648a0aeacbcd0598b6e787",
+                "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "replay_tree": "8567257c0d101198b5b2e7fde47031c603ab5e09",
+                "integrated_commit": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_parent": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+                "integrated_tree": "cb0ad281d6e89bea8cce24abe8e6a0bfc3117610",
+                "source_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "capsule-identity",
+                "source_commit": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_parent": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_tree": "30e9ddf36737f7c0667ec60fb07e90130fd5b899",
+                "replay_commit": "13fb5479f9d5b18d604e6fafe028a45dacef7c80",
+                "replay_parent": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "replay_tree": "30e9ddf36737f7c0667ec60fb07e90130fd5b899",
+                "integrated_commit": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_parent": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_tree": "e0d9a530d559a24a1f5785d2ed250d878571e242",
+                "source_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "recovery-barrier",
+                "source_commit": "7abfc4ca768dd5086600bb30815256c79aaace74",
+                "source_parent": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_tree": "79ed78e765eada55762bae63bdfdf81264111f8a",
+                "replay_commit": "6e93027b6f3b5d5488e3e438d1d6bd89286bed17",
+                "replay_parent": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "replay_tree": "79ed78e765eada55762bae63bdfdf81264111f8a",
+                "integrated_commit": "a43b2ce74816ac9226f6319b92425d0b002b6be6",
+                "integrated_parent": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_tree": "bbb94ffe87c3b582e40b1052ba5b9dc1ca8b4c40",
+                "source_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-027": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "product",
+                "source_commit": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "source_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "source_tree": "323f14dbcd9b15b09046cd3a481eb8588a6ede2a",
+                "replay_commit": "33154678bbdaf8e4a845bdb84be8d4b9937cad0e",
+                "replay_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "replay_tree": "323f14dbcd9b15b09046cd3a481eb8588a6ede2a",
+                "integrated_commit": "6a0047436f9515281127c17913132a23cecfe56c",
+                "integrated_parent": "0321fd148bf7c5dc6e91251d119dc25f853e546f",
+                "integrated_tree": "ec240271c204fc8befcddef6b7ca2bcad124dc3b",
+                "source_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+                    "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+                ),
+            },
+            {
+                "role": "test-contract-correction",
+                "source_commit": "bd93ae76c277ae8761cd2abe0df79685d0b1b8ef",
+                "source_parent": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "source_tree": "043677ccb5216204b3142bb8e2b7f71d4ca74bd9",
+                "replay_commit": "54969e2987430bb6cc52770de809d0c9540b614b",
+                "replay_parent": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "replay_tree": "043677ccb5216204b3142bb8e2b7f71d4ca74bd9",
+                "integrated_commit": "d32415e4308a8462e96b4d04f807338f0a2d8b53",
+                "integrated_parent": "6a0047436f9515281127c17913132a23cecfe56c",
+                "integrated_tree": "87191ce65498a637c7b9500d72d434cadb8efbef",
+                "source_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "changed_paths": (
+                    "test/api/test_agent_supervisor_inference_runtime.py",
+                    "test/api/test_agent_supervisor_prompt_v3_resolution.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-030": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "hermetic-cid-seal",
+                "source_commit": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "replay_commit": "f97cad9607f16e71c7b1383e55b624f5149def71",
+                "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "replay_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "integrated_commit": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_parent": "32face22bc17eb0b76f09fed2186ef799075b110",
+                "integrated_tree": "46be4b75f0a5ab9be06cf3b85a75691157fba09e",
+                "source_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
+                ),
+            },
+            {
+                "role": "hermetic-cid-close",
+                "source_commit": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "source_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "replay_commit": "eb9944cf7c214403531f375f971756f5acc6766b",
+                "replay_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "replay_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "integrated_commit": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+                "integrated_parent": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_tree": "d1956cb171afbe24225ba1c65920c4192b4a8177",
+                "source_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_control_plane.py",
+                    "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
+                    "test/api/test_llm_router_agent_implementation_route.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-031": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "native-duckdb-dependency",
+                "source_commit": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+                "source_parent": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "source_tree": "da9e18b507b9991935823dc10d4d7208a47f47f2",
+                "replay_commit": "c9333d7934c5aa19f1888d6d41aa863d1dfc6b85",
+                "replay_parent": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "replay_tree": "da9e18b507b9991935823dc10d4d7208a47f47f2",
+                "integrated_commit": "1a419e525699e74254a450c0137264d8dd60ea00",
+                "integrated_parent": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+                "integrated_tree": "06ea3c5444bd190996ad591b5fc82cad2443dcc4",
+                "source_patch_sha256": (
+                    "sha256:3daaf796199701b25e7e231f0bbd3ce5e0c1b487912e699d7f11473d02a784a2"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:3daaf796199701b25e7e231f0bbd3ce5e0c1b487912e699d7f11473d02a784a2"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:3daaf796199701b25e7e231f0bbd3ce5e0c1b487912e699d7f11473d02a784a2"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/llm_router.py",
+                    "test/api/test_agent_supervisor_native_dependency_pin.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-032": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "duckdb-connection-policy",
+                "source_commit": "9f1a3cb3c583924878293f9acd676a211106c2e7",
+                "source_parent": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+                "source_tree": "853191d0e00471bf41452801ae83b0a13b3607d5",
+                "replay_commit": "d57a5b47f1ce107b3357839bfd1e0b7120048785",
+                "replay_parent": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+                "replay_tree": "853191d0e00471bf41452801ae83b0a13b3607d5",
+                "integrated_commit": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+                "integrated_parent": "1a419e525699e74254a450c0137264d8dd60ea00",
+                "integrated_tree": "f7160446af32a9affeef554d319c443b6449271a",
+                "source_patch_sha256": (
+                    "sha256:b93ffbe2a20ffbc62287e1f21f291a34a2ea84d5cecde5eee4f07677c128b0fb"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:b93ffbe2a20ffbc62287e1f21f291a34a2ea84d5cecde5eee4f07677c128b0fb"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:b93ffbe2a20ffbc62287e1f21f291a34a2ea84d5cecde5eee4f07677c128b0fb"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+                    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+                    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+                    "test/api/test_agent_supervisor_duckdb_connection_policy.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-019": {
+        "ready": False,
+        "pending": _FINAL_VALUE_PENDING_019,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (),
+    },
+}
+
 _RELOAD_FINAL_VALUES: Final = {
     "ready": False,
     "pending": _FINAL_VALUE_PENDING_RELOAD,

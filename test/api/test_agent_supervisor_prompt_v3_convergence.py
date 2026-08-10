@@ -3317,6 +3317,77 @@ def test_ase3_023_final_blob_tamper_fails_closed_after_freeze() -> None:
     assert any("final_blobs" in error for error in errors)
 
 
+
+def test_product_generation_v1_triples_are_sealed_for_pre_q_products() -> None:
+    values = convergence_module._PRODUCT_GENERATION_FINAL_VALUES
+    assert values["ASE3-019"]["ready"] is False
+    for task_id, expected_count in (
+        ("ASE3-023", 3),
+        ("ASE3-027", 2),
+        ("ASE3-030", 2),
+        ("ASE3-031", 1),
+        ("ASE3-032", 1),
+    ):
+        final = values[task_id]
+        assert final["ready"] is True
+        assert final["pending"] is None
+        assert final["schema"].endswith("prompt-v3-product-generation@1")
+        assert len(final["generations"]) == expected_count
+        for generation in final["generations"]:
+            assert generation["source_commit"] != generation["replay_commit"]
+            assert (
+                generation["source_patch_sha256"]
+                == generation["replay_patch_sha256"]
+                == generation["integrated_patch_sha256"]
+            )
+            # Source/replay remain non-ancestors; integrated is on main.
+            assert (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(REPO_ROOT),
+                        "merge-base",
+                        "--is-ancestor",
+                        generation["source_commit"],
+                        "HEAD",
+                    ],
+                    check=False,
+                ).returncode
+                != 0
+            )
+            assert (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(REPO_ROOT),
+                        "merge-base",
+                        "--is-ancestor",
+                        generation["replay_commit"],
+                        "HEAD",
+                    ],
+                    check=False,
+                ).returncode
+                != 0
+            )
+            assert (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(REPO_ROOT),
+                        "merge-base",
+                        "--is-ancestor",
+                        generation["integrated_commit"],
+                        "HEAD",
+                    ],
+                    check=False,
+                ).returncode
+                == 0
+            )
+
+
 def test_ase3_019_source_and_salvage_freeze_is_sealed() -> None:
     final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
         "ASE3-019"

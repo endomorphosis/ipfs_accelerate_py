@@ -83,6 +83,28 @@ def _object_exists(repo: Path, object_id: str) -> bool:
     return ok
 
 
+def _canonical_patch_sha256(repo: Path, parent: str, commit: str) -> str | None:
+    env = dict(os.environ)
+    for key in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ):
+        env.pop(key, None)
+    patch = subprocess.run(
+        [*_CANONICAL_DIFF_ARGV, parent, commit],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    if patch.returncode != 0:
+        return None
+    return "sha256:" + hashlib.sha256(patch.stdout).hexdigest()
+
+
 def _verify_generation(repo: Path, generation: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     required = (
@@ -129,22 +151,92 @@ def _verify_generation(repo: Path, generation: Mapping[str, Any]) -> list[str]:
     )
     if not ok or observed_parent != generation["integrated_parent"]:
         errors.append("integrated_parent mismatch against git")
-    env = dict(os.environ)
-    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"):
-        env.pop(key, None)
-    patch = subprocess.run(
-        [
-            *_CANONICAL_DIFF_ARGV,
-            str(generation["source_parent"]),
-            str(generation["source_commit"]),
-        ],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        check=False,
+    expected_patch = str(generation["binary_full_index_patch_sha256"])
+    source_patch = _canonical_patch_sha256(
+        repo,
+        str(generation["source_parent"]),
+        str(generation["source_commit"]),
     )
-    # Note: for hermetic acceptance generations, the sealed patch is parent→source
-    # for source role; integrated patch uses integrated_parent→integrated_commit.
+    integrated_patch = _canonical_patch_sha256(
+        repo,
+        str(generation["integrated_parent"]),
+        str(generation["integrated_commit"]),
+    )
+    if source_patch != expected_patch:
+        errors.append("source binary_full_index_patch_sha256 mismatch")
+    if integrated_patch != expected_patch:
+        errors.append("integrated binary_full_index_patch_sha256 mismatch")
+    if git_merge_base_is_ancestor(repo, str(generation["source_commit"]), "HEAD"):
+        errors.append("source_commit must not be an ancestor of HEAD")
+    if not git_merge_base_is_ancestor(
+        repo, str(generation["integrated_commit"]), "HEAD"
+    ):
+        errors.append("integrated_commit must be an ancestor of HEAD")
+    # Note: hermetic acceptance generations may also carry independent replay
+    # commits under prompt-v3-product-generation@1.
+    return errors
+
+
+def _verify_product_generation_triple(
+    repo: Path, generation: Mapping[str, Any]
+) -> list[str]:
+    """Verify one prompt-v3-product-generation@1 source/replay/integrated triple."""
+
+    errors: list[str] = []
+    required = (
+        "source_commit",
+        "source_parent",
+        "source_tree",
+        "replay_commit",
+        "replay_parent",
+        "replay_tree",
+        "integrated_commit",
+        "integrated_parent",
+        "integrated_tree",
+        "source_patch_sha256",
+        "replay_patch_sha256",
+        "integrated_patch_sha256",
+        "changed_paths",
+    )
+    missing = [key for key in required if key not in generation]
+    if missing:
+        return [f"product-generation missing fields: {','.join(missing)}"]
+    for kind in ("source", "replay", "integrated"):
+        for suffix in ("commit", "parent", "tree"):
+            field = f"{kind}_{suffix}"
+            value = str(generation[field])
+            if value.startswith("FILL_AFTER_") or not _object_exists(repo, value):
+                errors.append(f"{field} unavailable: {value}")
+    if errors:
+        return errors
+    digests: list[str] = []
+    for kind in ("source", "replay", "integrated"):
+        commit = str(generation[f"{kind}_commit"])
+        parent = str(generation[f"{kind}_parent"])
+        tree = str(generation[f"{kind}_tree"])
+        ok, observed_tree = _git_ok(repo, "rev-parse", f"{commit}^{{tree}}")
+        if not ok or observed_tree != tree:
+            errors.append(f"{kind}_tree mismatch against git")
+        ok, observed_parent = _git_ok(repo, "rev-parse", f"{commit}^")
+        if not ok or observed_parent != parent:
+            errors.append(f"{kind}_parent mismatch against git")
+        patch = _canonical_patch_sha256(repo, parent, commit)
+        expected = str(generation[f"{kind}_patch_sha256"])
+        if patch != expected:
+            errors.append(f"{kind}_patch_sha256 mismatch against git")
+        else:
+            digests.append(expected)
+        is_ancestor = git_merge_base_is_ancestor(repo, commit, "HEAD")
+        if kind == "integrated":
+            if not is_ancestor:
+                errors.append(f"{kind}_commit must be an ancestor of HEAD")
+        elif is_ancestor:
+            errors.append(f"{kind}_commit must not be an ancestor of HEAD")
+    if len(set(digests)) != 1 or len(digests) != 3:
+        errors.append("source/replay/integrated patch digests must be identical")
+    if str(generation["source_commit"]) == str(generation["replay_commit"]):
+        errors.append("source and replay commits must be independent objects")
+    return errors
     # Prefer integrated stream hash when binary_full_index is sealed for the product
     # role that binds integrated topology.
     patch_i = subprocess.run(
@@ -261,15 +353,63 @@ def _product_status(repo: Path, task_id: str) -> dict[str, Any]:
             blob_errors.append("cannot bind final_blobs without integrated tip")
     if blob_errors:
         blockers.extend(blob_errors)
-    # Distinct replay commit still required for prompt-v3-product-generation@1
+    # prompt-v3-product-generation@1: independent source/clean-replay/integrated.
+    product_generation = getattr(
+        convergence, "_PRODUCT_GENERATION_FINAL_VALUES", {}
+    ).get(task_id)
+    product_generation_reports: list[dict[str, Any]] = []
     product_generation_ready = False
-    if ready and generations and not blob_errors:
-        # Even with hermetic source/integrated pairs, Q inventory requires
-        # independent source/replay/integrated triples — report as partial.
-        blockers.append(
-            "prompt-v3-product-generation@1 requires independent source, "
-            "clean-replay, and integrated commits with identical inventories"
-        )
+    if product_generation is None:
+        if ready and (generations or task_id in {"ASE3-030", "ASE3-031", "ASE3-032"}):
+            blockers.append(
+                "prompt-v3-product-generation@1 requires independent source, "
+                "clean-replay, and integrated commits with identical inventories"
+            )
+    else:
+        pg_ready = bool(product_generation.get("ready"))
+        pg_pending = product_generation.get("pending")
+        pg_generations = product_generation.get("generations") or ()
+        if not pg_ready:
+            blockers.append(
+                f"prompt-v3-product-generation@1 not ready ({pg_pending})"
+            )
+        elif not pg_generations:
+            blockers.append(
+                "prompt-v3-product-generation@1 has no sealed generation triples"
+            )
+        else:
+            triple_errors: list[str] = []
+            for index, generation in enumerate(pg_generations):
+                if not isinstance(generation, Mapping):
+                    product_generation_reports.append(
+                        {
+                            "index": index,
+                            "ok": False,
+                            "errors": ["generation is not a mapping"],
+                        }
+                    )
+                    triple_errors.append(f"product-generation[{index}] not a mapping")
+                    continue
+                errors = _verify_product_generation_triple(repo, generation)
+                product_generation_reports.append(
+                    {
+                        "index": index,
+                        "ok": not errors,
+                        "role": generation.get("role"),
+                        "source_commit": generation.get("source_commit"),
+                        "replay_commit": generation.get("replay_commit"),
+                        "integrated_commit": generation.get("integrated_commit"),
+                        "errors": errors,
+                    }
+                )
+                if errors:
+                    triple_errors.extend(
+                        f"product-generation[{index}]: {item}" for item in errors
+                    )
+            if triple_errors:
+                blockers.extend(triple_errors)
+            else:
+                product_generation_ready = True
     return {
         "task_id": task_id,
         "ready": ready and not blockers,
@@ -280,6 +420,7 @@ def _product_status(repo: Path, task_id: str) -> dict[str, Any]:
         "final_blob_count": len(final_blobs),
         "blob_errors": blob_errors,
         "product_generation_v1_ready": product_generation_ready,
+        "product_generation_generations": product_generation_reports,
         "blockers": blockers,
     }
 
