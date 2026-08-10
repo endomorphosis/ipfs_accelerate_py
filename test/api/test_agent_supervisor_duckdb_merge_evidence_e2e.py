@@ -683,3 +683,56 @@ def test_crash_after_task_cas_before_queue_completion_replays(
     replayed = restart._consume_one_merge_candidate()
     assert replayed is not None and replayed["accepted"] is True
     _assert_completed_authority(setup)
+
+
+def test_tip_advance_rebinds_post_merge_evidence_instead_of_quarantine(
+    tmp_path: Path,
+) -> None:
+    """A clean tip advance must rebind evidence, not burn the claim.
+
+    Concurrent lanes seal ``post_merge_evidence_input`` against the candidate
+    tip.  When an unrelated commit lands first, ``git merge-tree`` produces a
+    new integrated tree.  Preflight must re-validate that tree and continue
+    rather than quarantining with ``post_merge_evidence_tree_mismatch``.
+    """
+
+    now = [100.0]
+    setup = _setup(tmp_path, now=now)
+    baseline = _git(tmp_path, "rev-parse", "main")
+    candidate = setup["candidate"]
+
+    # Advance the target with an unrelated path so merge-tree(target, candidate)
+    # no longer equals the sealed candidate tree, while remaining conflict-free.
+    _git(tmp_path, "checkout", "main")
+    (tmp_path / "unrelated.txt").write_text("tip advanced\n", encoding="utf-8")
+    _git(tmp_path, "add", "unrelated.txt")
+    _git(tmp_path, "commit", "-m", "unrelated tip advance")
+    advanced = _git(tmp_path, "rev-parse", "HEAD")
+    assert advanced != baseline
+
+    # Confirm the sealed evidence tree differs from the integrated merge-tree.
+    merge_tree = _git(
+        tmp_path, "merge-tree", "--write-tree", advanced, candidate
+    ).splitlines()[0]
+    candidate_tree = _git(tmp_path, "rev-parse", f"{candidate}^{{tree}}")
+    assert merge_tree != candidate_tree
+
+    result = setup["daemon"]._consume_one_merge_candidate()
+
+    assert result is not None and result["accepted"] is True, result
+    assert _git(tmp_path, "rev-parse", "main") != advanced
+    # Unrelated tip content and the candidate product both survive.
+    head_tree_paths = _git(tmp_path, "ls-tree", "-r", "--name-only", "HEAD")
+    assert "unrelated.txt" in head_tree_paths
+    assert "implemented.txt" in head_tree_paths
+    _assert_completed_authority(setup)
+
+    # The live claim records that tip-rebind repaired the sealed evidence.
+    queued = setup["queue"].get(setup["request"].request_id)
+    assert queued is not None
+    rebind = queued.metadata.get("post_merge_evidence_tip_rebind")
+    # Completion may have replaced metadata; prefer process-time event if gone.
+    if rebind is None:
+        # Still require successful completion authority above.
+        return
+    assert rebind.get("merge_tree") == merge_tree
