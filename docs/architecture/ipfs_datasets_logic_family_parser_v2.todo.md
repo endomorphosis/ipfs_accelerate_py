@@ -474,7 +474,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-015 Publish temporal/modal/resource profiles and migrate legacy importers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
