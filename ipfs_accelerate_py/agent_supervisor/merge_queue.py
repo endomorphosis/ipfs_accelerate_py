@@ -921,12 +921,17 @@ class MergeQueue:
                 ),
             )
             connection.commit()
-        # Keep the live claim object aligned with the durable row.
+        # Keep the live claim object aligned with the durable row. Copy first
+        # so clearing request.metadata cannot empty the payload when both refer
+        # to the same dict object.
+        payload_dict = dict(metadata)
         if isinstance(getattr(request, "metadata", None), dict):
-            request.metadata.clear()
-            request.metadata.update(dict(metadata))
+            if request.metadata is not metadata:
+                request.metadata.clear()
+                request.metadata.update(payload_dict)
+            # else: already the same object that was just serialized
         else:
-            object.__setattr__(request, "metadata", dict(metadata))
+            object.__setattr__(request, "metadata", payload_dict)
 
     def complete(self, request: MergeRequest, metadata: Mapping[str, Any] | None = None) -> None:
         """Mark a claimed request complete; duplicate completion is harmless."""
