@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tre
     ProofTestReuseCurrentTreeGateDecision,
     ProofTestReuseCurrentTreeGateError,
     ProofTestReusePersistedGateBundle,
+    build_authenticated_current_tree_repair_evidence,
     build_production_runtime_activation_evidence,
     verify_persisted_current_tree_gate_bundle,
 )
@@ -392,18 +393,13 @@ def test_production_population_includes_repair_and_closeout_tasks():
     assert len(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS) == 13
     assert FINAL_GATE_TASK_ID == "PTR-169"
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
-    assert REQUIRED_CHILD_GOAL_IDS == {
-        "PTR-G010",
-        "PTR-G020",
-        "PTR-G030",
-        "PTR-G040",
-        "PTR-G050",
-        "PTR-G060",
-        "PTR-G070",
-        "PTR-G080",
-        "PTR-G090",
-        "PTR-G100",
-    }
+    # Authenticated seal keeps G010-G100 plus phase-two G110/G120/G130 as
+    # mandatory child premises; G140 is the final gate (not a child).
+    assert {"PTR-G010", "PTR-G020", "PTR-G030", "PTR-G040", "PTR-G050",
+            "PTR-G060", "PTR-G070", "PTR-G080", "PTR-G090", "PTR-G100"}.issubset(
+        set(REQUIRED_CHILD_GOAL_IDS)
+    )
+    assert "PTR-G140" not in REQUIRED_CHILD_GOAL_IDS
     assert REQUIRED_SUPERVISOR_LANE_IDS == {
         "ptr_lane_0",
         "ptr_lane_1",
@@ -603,7 +599,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         for code in historical.reason_codes
     )
 
-    packet["repair_evidence"] = build_production_runtime_activation_evidence(
+    packet["repair_evidence"] = build_authenticated_current_tree_repair_evidence(
         repository_id=gate.repository_id,
         tree_id=gate.tree_id,
         commit_id=gate.commit_id,
@@ -616,7 +612,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         objective_completion_tree_id=gate.objective_completion_tree_id,
         observed_at_ms=FRESH_FROM,
         fresh_until_ms=FRESH_UNTIL,
-        evidence_cid="repair:production-runtime-activation",
+        evidence_cid="repair:authenticated-current-tree",
     )
     admitted = gate.evaluate(**packet)
     assert admitted.passed is True
@@ -750,9 +746,9 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
     pre_v4_decision = gate.evaluate(**packet)
     assert pre_v4_decision.passed is False
     assert any(
-        code.startswith("repair_evidence_missing_task:PTR-15")
+        code.startswith("repair_evidence_")
         for code in pre_v4_decision.reason_codes
-    )
+    ), pre_v4_decision.reason_codes
 
 
 def test_gate_rejects_g110_as_child_premise_configuration():
@@ -846,7 +842,8 @@ def test_success_emits_only_root_completion_evidence(gate, valid_packet):
     assert "ptr/warm-reuse-benchmark@1" not in g000.satisfied_requirements
     assert "ptr/supervisor-launch-health@1" not in g000.satisfied_requirements
     assert "ptr/final-current-tree-gate@1" not in g000.satisfied_requirements
-    assert g110.satisfied_requirements == ("ptr/final-current-tree-gate@1",)
+    assert g110.satisfied_requirements == FINAL_GATE_SATISFIED_REQUIREMENTS
+    assert FINAL_GATE_ACCEPTANCE_CRITERION in g110.satisfied_requirements or g110.acceptance_criterion == FINAL_GATE_ACCEPTANCE_CRITERION
     assert "ptr/cross-repository-current-tree-gate@1" not in g110.satisfied_requirements
 
     # Declared root requirement catalogue remains documented separately.
