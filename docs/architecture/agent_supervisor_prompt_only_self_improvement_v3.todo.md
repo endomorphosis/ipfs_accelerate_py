@@ -488,7 +488,7 @@ Closeout:           ASE3-014
 
 ## ASE3-019 Seal signed provider authority, authentication lifecycle, and once-only fallback
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

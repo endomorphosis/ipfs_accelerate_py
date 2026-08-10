@@ -1,4 +1,26 @@
 {
+  "acceptance": {
+    "artifacts": {
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json": "sha256:386517e52a94951b0336cf9cf6468665c7a82392a179e92727cc7f0ff11fb72b"
+    },
+    "parent_head": "d41ad5ed8d57fddfd2a68a4765d81c2f4db1c4b0",
+    "parent_manifest_sha256": "sha256:a25639ca88cb3400f29fcbcf822c95b3d4315e16a7d4a33d6e3db0fcbeb87eb1",
+    "parent_phase": "P019",
+    "parent_tree": "2f694f7eefe1ad17eb794c4e717c3f5d30005615",
+    "phase": "A019",
+    "pre_launch_authorization_only": false,
+    "reload_gate_status": "blocked",
+    "runtime_effect_claimed": false,
+    "task_statuses": {
+      "ASE3-019": "completed",
+      "ASE3-022": "blocked",
+      "ASE3-023": "todo",
+      "ASE3-027": "todo",
+      "ASE3-030": "todo",
+      "ASE3-031": "todo",
+      "ASE3-032": "todo"
+    }
+  },
   "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
   "completion_rules": {
     "branch_local_commit_satisfies_v3": false,
@@ -22,7 +44,7 @@
     "rescue_artifact_dispositions.json": "sha256:bf031cb53beed868889a365efdc683425f6367cf3e64451c20ea32e58fc26873",
     "self_host_seed_failure_ase3_019_attempt_2_20260808.json": "sha256:ae9e3e5349db4b0c21ac429259ee0c51ed95a4232825b933929d862080ce61b1"
   },
-  "created_at": "2026-08-08T17:56:14Z",
+  "created_at": "2026-08-10T02:46:27Z",
   "downstream_rules": {
     "fresh_validation_receipt_required_per_task": true,
     "merge_target_branch": "agent/prompt-self-improvement-v3",
@@ -43,6 +65,6 @@
     "v3_seed_tasks": 15
   },
   "rescue_bulk_merge_allowed": false,
-  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@1",
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2",
   "task_id": "ASE3-000"
 }
