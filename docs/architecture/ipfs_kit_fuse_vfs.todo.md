@@ -290,7 +290,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-303 Make canonical WAL records the recoverable transaction source of truth
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
