@@ -150,7 +150,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-201 Add kernel metadata, stat, access, statfs, time, and unsupported-operation semantics
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
