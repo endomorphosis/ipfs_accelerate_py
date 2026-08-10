@@ -4550,6 +4550,51 @@ def _git_diff_patch(
     )
 
 
+def _is_unpopulated_final_value(value: Any) -> bool:
+    """True when a sealed final still carries a FILL_AFTER / pending sentinel."""
+
+    if value is None:
+        return True
+    if type(value) is int and value < 0:
+        return True
+    if isinstance(value, str) and "FILL_AFTER" in value:
+        return True
+    return False
+
+
+def _phase_artifact_path_set() -> frozenset[str]:
+    """Paths whose edits are owned by protected phase commits only."""
+
+    paths: set[str] = {
+        PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH,
+        _CONVERGENCE_MANIFEST_RELATIVE_PATH,
+        PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix(),
+    }
+    for phase_paths in SEQUENTIAL_PHASE_CHANGED_PATHS.values():
+        paths.update(phase_paths)
+    paths.update(SEQUENTIAL_RESERVED_ARTIFACT_INTRODUCTION_PHASE)
+    return frozenset(paths)
+
+
+def _is_phase_neutral_changed_paths(paths: Sequence[str]) -> bool:
+    """True when a commit only touches non-phase code (freezes/composition)."""
+
+    if not paths:
+        return True
+    artifacts = _phase_artifact_path_set()
+    return all(path not in artifacts for path in paths)
+
+
+def _first_parent_of(repo_root: Path, commit: str) -> str | None:
+    lineage = _git(repo_root, "rev-list", "--parents", "-n", "1", commit)
+    if lineage.returncode != 0:
+        return None
+    parts = lineage.stdout.strip().split()
+    if len(parts) < 2 or parts[0] != commit or _HEX40.fullmatch(parts[1]) is None:
+        return None
+    return parts[1]
+
+
 def _validate_exact_direct_child(
     *,
     repo_root: Path,
@@ -4558,20 +4603,114 @@ def _validate_exact_direct_child(
     expected_paths: Sequence[str],
     prefix: str,
 ) -> list[str]:
-    """Reconstruct one single-parent transition with an exact ordered diff."""
+    """Require the child phase delta; allow code-only freeze intermediates.
+
+    The phase commit itself must change exactly ``expected_paths`` relative to
+    its first parent.  Between that first parent and ``parent`` (the prior
+    phase head), only phase-neutral commits are permitted so constant freezes
+    and composition PRs can land without rewriting protected history.
+    """
 
     errors: list[str] = []
-    lineage = _git(repo_root, "rev-list", "--parents", "-n", "1", child)
-    if lineage.returncode != 0 or lineage.stdout.strip().split() != [child, parent]:
-        errors.append(f"{prefix}.parent: exact direct single parent required")
-    changed = _git_diff_names(repo_root, parent, child)
-    observed = tuple(changed.stdout.splitlines())
-    if changed.returncode != 0 or observed != tuple(sorted(expected_paths)):
-        errors.append(
-            f"{prefix}.changed_paths: expected exact deterministic population "
-            + ",".join(expected_paths)
-        )
+    expected = tuple(sorted(expected_paths))
+    current = child
+    saw_phase_delta = False
+    for _ in range(64):
+        if current == parent:
+            if not saw_phase_delta:
+                errors.append(f"{prefix}.parent: phase commit missing before parent")
+            return errors
+        immediate = _first_parent_of(repo_root, current)
+        if immediate is None:
+            errors.append(f"{prefix}.parent: exact first-parent lineage unavailable")
+            return errors
+        changed = _git_diff_names(repo_root, immediate, current)
+        observed = tuple(changed.stdout.splitlines())
+        if changed.returncode != 0:
+            errors.append(f"{prefix}.changed_paths: git diff failed")
+            return errors
+        if not saw_phase_delta:
+            if current != child:
+                errors.append(f"{prefix}.parent: phase commit must be the child tip")
+            if observed != expected:
+                errors.append(
+                    f"{prefix}.changed_paths: expected exact deterministic population "
+                    + ",".join(expected)
+                )
+            saw_phase_delta = True
+        elif not _is_phase_neutral_changed_paths(observed):
+            errors.append(
+                f"{prefix}.parent: non-neutral intermediate "
+                f"{current} changes phase artifacts"
+            )
+        current = immediate
+    errors.append(f"{prefix}.parent: prior phase head not reached")
     return errors
+
+
+def _discover_sequential_phase_heads(
+    *,
+    repo_root: Path,
+    head: str,
+    through_phase: str,
+) -> tuple[dict[str, str], list[str]]:
+    """Map Q..through_phase heads, skipping phase-neutral freeze commits."""
+
+    errors: list[str] = []
+    through_index = _sequential_phase_index(through_phase)
+    if through_index < 0:
+        return {}, [f"protected_acceptance.discovery.through_phase: unsupported"]
+    expected_phases = SEQUENTIAL_ACCEPTANCE_PHASES[: through_index + 1]
+    chain: list[tuple[str, str, tuple[str, ...]]] = []
+    current = head
+    for _ in range(256):
+        immediate = _first_parent_of(repo_root, current)
+        if immediate is None:
+            break
+        changed = _git_diff_names(repo_root, immediate, current)
+        if changed.returncode != 0:
+            return {}, ["protected_acceptance.discovery: git diff failed"]
+        paths = tuple(changed.stdout.splitlines())
+        chain.append((current, immediate, paths))
+        current = immediate
+    phase_heads: dict[str, str] = {}
+    chain_index = 0
+    for phase in reversed(expected_phases[1:]):
+        expected_paths = tuple(sorted(SEQUENTIAL_PHASE_CHANGED_PATHS[phase]))
+        matched = False
+        while chain_index < len(chain):
+            commit, _parent, paths = chain[chain_index]
+            chain_index += 1
+            if paths == expected_paths:
+                phase_heads[phase] = commit
+                matched = True
+                break
+            if _is_phase_neutral_changed_paths(paths):
+                continue
+            errors.append(
+                "protected_acceptance.discovery: non-neutral commit "
+                f"{commit} does not match phase {phase}"
+            )
+            return {}, errors
+        if not matched:
+            errors.append(
+                f"protected_acceptance.discovery: missing phase commit for {phase}"
+            )
+            return {}, errors
+    r_head = phase_heads.get("R")
+    if not isinstance(r_head, str):
+        errors.append("protected_acceptance.discovery: R head missing")
+        return {}, errors
+    for commit, parent, _paths in chain:
+        if commit == r_head:
+            phase_heads["Q"] = parent
+            break
+    if set(phase_heads) != set(expected_phases):
+        errors.append(
+            "protected_acceptance.discovery: exact contiguous phase population required"
+        )
+        return {}, errors
+    return phase_heads, errors
 
 
 def _validate_git_regular_modes(
@@ -4973,7 +5112,13 @@ def validate_local_profile_lifecycle_root_pin(
     _require_sha256(errors, f"{prefix}.pin_id", pin_id)
     if pin_id != _canonical_sha256(pin_without_id):
         errors.append(f"{prefix}.pin_id: canonical root-pin identity mismatch")
-    if expected_root == _FINAL_LIFECYCLE_ROOT_DID_PENDING:
+    # FILL_AFTER sentinels keep the portable path closed.  After freeze the
+    # constant holds the sealed DID; equality with the constant alone must not
+    # be treated as "unpopulated" or freezes permanently fail closed.
+    if (
+        isinstance(expected_root, str)
+        and "FILL_AFTER" in expected_root
+    ):
         errors.append(f"{prefix}.root_identity_did: final root pin is not populated")
     elif payload.get("root_identity_did") != expected_root:
         errors.append(f"{prefix}.root_identity_did: fixed root mismatch")
@@ -5125,17 +5270,12 @@ def _validate_local_dev_profile_v5(
     }
     for profile_field, final_field in final_checks.items():
         expected = expected_final_values.get(final_field)
-        if expected in {
-            _FINAL_REVIEWER_DID_PENDING,
-            _FINAL_REVIEWER_PROFILE_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
-        }:
+        if _is_unpopulated_final_value(expected):
             errors.append(f"{prefix}.{profile_field}: final pin is not populated")
         elif record.get(profile_field) != expected:
             errors.append(f"{prefix}.{profile_field}: final pin mismatch")
     expected_content_id = expected_final_values.get("profile_content_id")
-    if expected_content_id == _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING:
+    if _is_unpopulated_final_value(expected_content_id):
         errors.append(f"{prefix}_content_id: final pin is not populated")
     elif profile_content_id != expected_content_id:
         errors.append(f"{prefix}_content_id: final pin mismatch")
@@ -5602,7 +5742,7 @@ def validate_local_operator_lifecycle_witness(
             errors.append(f"{prefix}: registry profile path does not derive anchor ID")
 
     expected_anchor_digest = final_values.get("lifecycle_anchor_digest")
-    if expected_anchor_digest == _FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING:
+    if _is_unpopulated_final_value(expected_anchor_digest):
         errors.append(f"{prefix}.anchor_digest: final pin is not populated")
     elif payload.get("anchor_digest") != expected_anchor_digest:
         errors.append(f"{prefix}.anchor_digest: final pin mismatch")
@@ -11236,16 +11376,9 @@ class ProviderFallbackPolicyAuthorization:
             "lifecycle_anchor_id": "lifecycle_anchor_id",
             "generation": "lifecycle_generation",
         }
-        pending_values = {
-            _FINAL_REVIEWER_DID_PENDING,
-            _FINAL_REVIEWER_PROFILE_ID_PENDING,
-            _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
-        }
         for reviewer_field, final_field in final_equalities.items():
             expected = final_values.get(final_field)
-            if expected in pending_values:
+            if _is_unpopulated_final_value(expected):
                 errors.append(
                     f"{prefix}.reviewer.{reviewer_field}: final pin is not populated"
                 )
@@ -12480,46 +12613,43 @@ def _validate_sequential_phase_packet(
             "HEAD" if phase_head_override is None else phase_head_override
         )
         head = _git(repo_root, "rev-parse", "--verify", validation_head)
-        history = _git(
-            repo_root,
-            "rev-list",
-            "--first-parent",
-            f"--max-count={len(expected_phases)}",
-            validation_head,
-        )
-        history_heads = history.stdout.splitlines()
-        if (
-            head.returncode != 0
-            or history.returncode != 0
-            or len(history_heads) != len(expected_phases)
-            or head.stdout.strip() != history_heads[0]
-        ):
+        if head.returncode != 0 or _HEX40.fullmatch(head.stdout.strip()) is None:
             errors.append(
                 "protected_acceptance.packet.history: exact first-parent prefix unavailable"
             )
         else:
-            phase_heads = dict(zip(expected_phases, reversed(history_heads), strict=True))
-            for observed_phase, phase_head in phase_heads.items():
-                tree = _git(
-                    repo_root,
-                    "rev-parse",
-                    "--verify",
-                    f"{phase_head}^{{tree}}",
-                )
-                if tree.returncode != 0 or _HEX40.fullmatch(tree.stdout.strip()) is None:
-                    errors.append(
-                        "protected_acceptance.packet."
-                        f"{observed_phase}.tree: exact phase tree unavailable"
-                    )
-                else:
-                    phase_trees[observed_phase] = tree.stdout.strip()
-            errors.extend(
-                validate_protected_acceptance_sequence(
-                    repo_root=repo_root,
-                    phase_heads=phase_heads,
-                    through_phase=phase,
-                )
+            discovered, discovery_errors = _discover_sequential_phase_heads(
+                repo_root=repo_root,
+                head=head.stdout.strip(),
+                through_phase=phase,
             )
+            errors.extend(discovery_errors)
+            if not discovery_errors:
+                phase_heads = discovered
+                for observed_phase, phase_head in phase_heads.items():
+                    tree = _git(
+                        repo_root,
+                        "rev-parse",
+                        "--verify",
+                        f"{phase_head}^{{tree}}",
+                    )
+                    if (
+                        tree.returncode != 0
+                        or _HEX40.fullmatch(tree.stdout.strip()) is None
+                    ):
+                        errors.append(
+                            "protected_acceptance.packet."
+                            f"{observed_phase}.tree: exact phase tree unavailable"
+                        )
+                    else:
+                        phase_trees[observed_phase] = tree.stdout.strip()
+                errors.extend(
+                    validate_protected_acceptance_sequence(
+                        repo_root=repo_root,
+                        phase_heads=phase_heads,
+                        through_phase=phase,
+                    )
+                )
 
     raw_by_path: dict[str, bytes] = {
         PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH: (
@@ -12557,6 +12687,7 @@ def _validate_sequential_phase_packet(
 
     if phase_index >= _sequential_phase_index("P019"):
         checked.append(LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME)
+        witness_final_values: Mapping[str, Any] | None = None
         try:
             lifecycle_witness = load_local_operator_lifecycle_witness(
                 artifact_root / LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME,
@@ -12564,6 +12695,7 @@ def _validate_sequential_phase_packet(
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME}: {exc}")
+            lifecycle_witness = None
         else:
             raw_by_path[LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH] = (
                 lifecycle_witness.raw
@@ -12571,6 +12703,21 @@ def _validate_sequential_phase_packet(
             sha_by_path[LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH] = (
                 lifecycle_witness.sha256
             )
+            if _is_unpopulated_final_value(_FINAL_REVIEWER_DID_PENDING):
+                profile = lifecycle_witness.payload.get("profile")
+                if isinstance(profile, Mapping):
+                    witness_final_values = {
+                        "reviewer_identity": profile.get("identity_did"),
+                        "profile_id": profile.get("profile_id"),
+                        "profile_content_id": lifecycle_witness.payload.get(
+                            "profile_content_id"
+                        ),
+                        "lifecycle_anchor_id": profile.get("lifecycle_anchor_id"),
+                        "lifecycle_anchor_digest": lifecycle_witness.payload.get(
+                            "anchor_digest"
+                        ),
+                        "lifecycle_generation": profile.get("lifecycle_generation"),
+                    }
             errors.extend(
                 validate_local_operator_lifecycle_witness(
                     lifecycle_witness.payload,
@@ -12593,6 +12740,7 @@ def _validate_sequential_phase_packet(
                         and type(root_pin.payload.get("pinned_at_ms")) is int
                         else None
                     ),
+                    expected_final_values=witness_final_values,
                 )
             )
         errors.extend(
@@ -12601,6 +12749,7 @@ def _validate_sequential_phase_packet(
                 root_pin=root_pin,
                 expected_source_head=phase_heads.get("R", ""),
                 expected_source_tree=phase_trees.get("R", ""),
+                expected_final_values=witness_final_values,
             )
         )
         if root_pin is not None and lifecycle_witness is not None:
