@@ -820,7 +820,7 @@ Closeout:           ASE3-014
 
 ## ASE3-020 Converge transactional run truth and compose the real crash-safe prompt saga
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

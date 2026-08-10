@@ -83,6 +83,107 @@ class ImmutableRunEpoch:
 
 
 @dataclass(frozen=True)
+class ImmutableRunHistoryVector:
+    run_id: str
+    length: int
+    tip_cid: str
+    entries: tuple[dict[str, Any], ...] = ()
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(
+            {
+                "schema": RUN_REGISTRY_BACKEND_SCHEMA + "/history@1",
+                "run_id": self.run_id,
+                "length": self.length,
+                "tip_cid": self.tip_cid,
+                "entries": list(self.entries),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class MonitorProgressCursorVector:
+    run_id: str
+    cursor_kind: str
+    sequence: int
+    predecessor_cid: str
+    cursor_cid: str
+
+    @property
+    def content_id(self) -> str:
+        return self.cursor_cid
+
+
+@dataclass(frozen=True)
+class MonitorReadyEffectReservation:
+    run_id: str
+    effect_key: str
+    intent_cid: str
+    fence_token: str
+    phase: str
+    monitor_ready: bool = True
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(
+            {
+                "schema": RUN_REGISTRY_BACKEND_SCHEMA + "/monitor-ready-reservation@1",
+                **asdict(self),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class UnknownOutcomeAdoptionReceipt:
+    run_id: str
+    effect_key: str
+    phase: str
+    intent_cid: str
+    reason_cid: str
+    replay_prohibited: bool = True
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(
+            {
+                "schema": RUN_REGISTRY_BACKEND_SCHEMA + "/unknown-outcome@1",
+                **asdict(self),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ProcessBirthObservation:
+    run_id: str
+    process_cid: str
+    process_birth_identity: str
+    lease_id: str
+    fencing_generation: int
+    observed_at_ms: int
+    healthy: bool
+
+    def __post_init__(self) -> None:
+        if (
+            not self.run_id
+            or not self.process_cid
+            or not self.process_birth_identity
+            or not self.lease_id
+            or self.fencing_generation < 1
+        ):
+            raise RunRegistryBackendError("process birth observation is incomplete")
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(
+            {
+                "schema": RUN_REGISTRY_BACKEND_SCHEMA + "/process-birth@1",
+                **asdict(self),
+            }
+        )
+
+
+@dataclass(frozen=True)
 class EffectJournalEntry:
     run_id: str
     effect_key: str
@@ -102,12 +203,20 @@ class DuckDBRunRegistryBackend:
         self.lock_path = self.path.with_suffix(self.path.suffix + ".lock")
         self._initialize()
 
-    def _connect(self) -> Any:
+    def _connect(self, *, read_only: bool = False) -> Any:
         try:
             import duckdb
         except ModuleNotFoundError as exc:
             raise RunRegistryBackendError("DuckDB is required for durable run authority") from exc
-        return duckdb.connect(str(self.path))
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            connect_duckdb_with_policy,
+        )
+        return connect_duckdb_with_policy(
+            duckdb,
+            self.path,
+            read_only=read_only,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
 
     def _initialize(self) -> None:
         with exclusive_file_lock(self.lock_path):
@@ -124,6 +233,23 @@ class DuckDBRunRegistryBackend:
                       phase VARCHAR NOT NULL, intent_cid VARCHAR NOT NULL,
                       effect_cid VARCHAR NOT NULL, receipt_cid VARCHAR NOT NULL,
                       PRIMARY KEY (run_id, effect_key)
+                    );
+                    CREATE TABLE IF NOT EXISTS run_history (
+                      run_id VARCHAR NOT NULL,
+                      sequence BIGINT NOT NULL,
+                      predecessor_cid VARCHAR NOT NULL,
+                      entry_cid VARCHAR NOT NULL,
+                      payload_json VARCHAR NOT NULL,
+                      PRIMARY KEY (run_id, sequence)
+                    );
+                    CREATE TABLE IF NOT EXISTS run_cursors (
+                      run_id VARCHAR NOT NULL,
+                      cursor_kind VARCHAR NOT NULL,
+                      sequence BIGINT NOT NULL,
+                      predecessor_cid VARCHAR NOT NULL,
+                      cursor_cid VARCHAR NOT NULL,
+                      payload_json VARCHAR NOT NULL,
+                      PRIMARY KEY (run_id, cursor_kind)
                     );
                 """)
             finally:
@@ -224,15 +350,33 @@ class DuckDBRunRegistryBackend:
                     conn.execute("INSERT INTO run_effects VALUES (?, ?, ?, ?, ?, ?)", [run_id, key, entry.phase, entry.intent_cid, "", ""])
                     return entry
                 entry = EffectJournalEntry(run_id, key, *row)
-                order = {"intent": 0, "effect": 1, "receipt": 2}
-                if order[phase] < order[entry.phase]:
+                if entry.phase == "unknown":
+                    raise EffectRecoveryError(
+                        "UNKNOWN outcome prohibits replay of this effect"
+                    )
+                order = {"intent": 0, "effect": 1, "receipt": 2, "unknown": 3}
+                if phase not in order:
+                    raise EffectRecoveryError(f"unsupported effect phase {phase!r}")
+                if order[phase] < order.get(entry.phase, -1):
                     return entry
                 if phase == entry.phase:
                     supplied = value.get(phase + "_cid", "")
-                    existing = getattr(entry, phase + "_cid") if phase != "intent" else entry.intent_cid
+                    if phase == "intent":
+                        existing = entry.intent_cid
+                    elif phase == "effect":
+                        existing = entry.effect_cid
+                    elif phase == "receipt":
+                        existing = entry.receipt_cid
+                    else:
+                        existing = entry.effect_cid
                     if supplied and supplied != existing: raise EffectRecoveryError("idempotency key was reused for a different effect")
                     return entry
-                if order[phase] != order[entry.phase] + 1: raise EffectRecoveryError("effect phases must be contiguous")
+                # unknown may be entered from intent or effect when outcome is ambiguous
+                if phase == "unknown":
+                    if entry.phase not in {"intent", "effect"}:
+                        raise EffectRecoveryError("unknown only after intent/effect")
+                elif order[phase] != order[entry.phase] + 1:
+                    raise EffectRecoveryError("effect phases must be contiguous")
                 values = {**asdict(entry), **value, "phase": phase}
                 updated = EffectJournalEntry(**values)
                 conn.execute("UPDATE run_effects SET phase=?, intent_cid=?, effect_cid=?, receipt_cid=? WHERE run_id=? AND effect_key=?", [updated.phase, updated.intent_cid, updated.effect_cid, updated.receipt_cid, run_id, key])
@@ -247,13 +391,222 @@ class DuckDBRunRegistryBackend:
             try:
                 row = conn.execute("SELECT phase FROM run_effects WHERE run_id=? AND effect_key=?", [run_id, effect_key]).fetchone()
                 if row is None: return "persist_intent"
-                return {"intent": "perform_effect", "effect": "record_receipt", "receipt": "already_complete"}[row[0]]
+                phase = row[0]
+                if phase == "unknown":
+                    return "unknown_outcome_no_replay"
+                return {
+                    "intent": "perform_effect",
+                    "effect": "record_receipt",
+                    "receipt": "already_complete",
+                }[phase]
             finally:
                 conn.close()
+
+
+    def record_unknown(
+        self, *, run_id: str, effect_key: str, reason_cid: str = ""
+    ) -> "UnknownOutcomeAdoptionReceipt":
+        """Durably adopt UNKNOWN; further replay of this effect is forbidden."""
+        entry = self._effect_transition(
+            run_id, effect_key, "unknown", effect_cid=reason_cid or "unknown"
+        )
+        return UnknownOutcomeAdoptionReceipt(
+            run_id=run_id,
+            effect_key=effect_key,
+            phase=entry.phase,
+            intent_cid=entry.intent_cid,
+            reason_cid=reason_cid or entry.effect_cid,
+            replay_prohibited=True,
+        )
+
+    def append_history(
+        self,
+        *,
+        run_id: str,
+        entry: Mapping[str, Any],
+    ) -> "ImmutableRunHistoryVector":
+        """Append one hash-linked history entry; rejects nonmonotonic forks."""
+        with exclusive_file_lock(self.lock_path):
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT sequence, entry_cid FROM run_history WHERE run_id=? ORDER BY sequence",
+                    [run_id],
+                ).fetchall()
+                sequence = 1 if not rows else int(rows[-1][0]) + 1
+                predecessor = "" if not rows else str(rows[-1][1])
+                payload = dict(entry)
+                payload["sequence"] = sequence
+                payload["predecessor_cid"] = predecessor
+                entry_cid = cid_for_dag_json(payload)
+                # Detect fork: same sequence different content is impossible with PK;
+                # detect missing predecessor chain
+                if rows:
+                    expected_seq = int(rows[-1][0]) + 1
+                    if sequence != expected_seq:
+                        raise RunRegistryBackendError("history sequence is nonmonotonic")
+                conn.execute(
+                    "INSERT INTO run_history VALUES (?, ?, ?, ?, ?)",
+                    [
+                        run_id,
+                        sequence,
+                        predecessor,
+                        entry_cid,
+                        json.dumps(payload, sort_keys=True),
+                    ],
+                )
+                return self._history_vector(conn, run_id)
+            finally:
+                conn.close()
+
+    def history_vector(self, run_id: str) -> "ImmutableRunHistoryVector":
+        with exclusive_file_lock(self.lock_path):
+            conn = self._connect(read_only=True)
+            try:
+                return self._history_vector(conn, run_id)
+            finally:
+                conn.close()
+
+    def _history_vector(self, conn: Any, run_id: str) -> "ImmutableRunHistoryVector":
+        rows = conn.execute(
+            "SELECT sequence, predecessor_cid, entry_cid, payload_json "
+            "FROM run_history WHERE run_id=? ORDER BY sequence",
+            [run_id],
+        ).fetchall()
+        entries: list[dict[str, Any]] = []
+        prev_cid = ""
+        for sequence, predecessor, entry_cid, payload_json in rows:
+            if int(sequence) != len(entries) + 1:
+                raise RunRegistryBackendError("history sequence is nonmonotonic")
+            if str(predecessor) != prev_cid:
+                raise RunRegistryBackendError("history predecessor chain is broken")
+            payload = json.loads(payload_json)
+            if cid_for_dag_json(payload) != entry_cid:
+                raise RunRegistryBackendError("history entry content drifted")
+            entries.append(payload)
+            prev_cid = str(entry_cid)
+        tip = prev_cid
+        return ImmutableRunHistoryVector(
+            run_id=run_id,
+            length=len(entries),
+            tip_cid=tip,
+            entries=tuple(entries),
+        )
+
+    def advance_cursor(
+        self,
+        *,
+        run_id: str,
+        cursor_kind: str,
+        payload: Mapping[str, Any],
+    ) -> "MonitorProgressCursorVector":
+        """Advance one monotonic cursor (lifecycle/monitor/refill)."""
+        kind = str(cursor_kind or "").strip()
+        if kind not in {"lifecycle", "monitor", "refill"}:
+            raise RunRegistryBackendError("unsupported cursor kind")
+        with exclusive_file_lock(self.lock_path):
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT sequence, cursor_cid FROM run_cursors "
+                    "WHERE run_id=? AND cursor_kind=?",
+                    [run_id, kind],
+                ).fetchone()
+                sequence = 1 if row is None else int(row[0]) + 1
+                predecessor = "" if row is None else str(row[1])
+                body = dict(payload)
+                body.update(
+                    {
+                        "run_id": run_id,
+                        "cursor_kind": kind,
+                        "sequence": sequence,
+                        "predecessor_cid": predecessor,
+                    }
+                )
+                cursor_cid = cid_for_dag_json(body)
+                if row is None:
+                    conn.execute(
+                        "INSERT INTO run_cursors VALUES (?, ?, ?, ?, ?, ?)",
+                        [
+                            run_id,
+                            kind,
+                            sequence,
+                            predecessor,
+                            cursor_cid,
+                            json.dumps(body, sort_keys=True),
+                        ],
+                    )
+                else:
+                    if sequence <= int(row[0]):
+                        raise RunRegistryBackendError("cursor sequence is nonmonotonic")
+                    conn.execute(
+                        "UPDATE run_cursors SET sequence=?, predecessor_cid=?, "
+                        "cursor_cid=?, payload_json=? WHERE run_id=? AND cursor_kind=?",
+                        [
+                            sequence,
+                            predecessor,
+                            cursor_cid,
+                            json.dumps(body, sort_keys=True),
+                            run_id,
+                            kind,
+                        ],
+                    )
+                return MonitorProgressCursorVector(
+                    run_id=run_id,
+                    cursor_kind=kind,
+                    sequence=sequence,
+                    predecessor_cid=predecessor,
+                    cursor_cid=cursor_cid,
+                )
+            finally:
+                conn.close()
+
+    def reserve_monitor_ready_effect(
+        self,
+        *,
+        run_id: str,
+        effect_key: str,
+        intent_cid: str,
+        fence_token: str,
+    ) -> "MonitorReadyEffectReservation":
+        """Pre-effect reservation that is monitor-ready and fenced."""
+        if not fence_token:
+            raise EffectRecoveryError("monitor-ready reservation requires fence_token")
+        entry = self.record_intent(
+            run_id=run_id, effect_key=effect_key, intent_cid=intent_cid
+        )
+        return MonitorReadyEffectReservation(
+            run_id=run_id,
+            effect_key=effect_key,
+            intent_cid=entry.intent_cid,
+            fence_token=fence_token,
+            phase=entry.phase,
+            monitor_ready=True,
+        )
 
     def export_epoch(self, run_id: str, *, exported_at_ms: int | None = None) -> ImmutableRunEpoch:
         head = self.reconstruct(run_id)
         return ImmutableRunEpoch(run_id, head.run_revision, head.content_id, head.event_cursor, int(time.time() * 1000) if exported_at_ms is None else int(exported_at_ms))
 
 
-__all__ = ["DuckDBRunRegistryBackend", "DurableRunHead", "EffectJournalEntry", "EffectRecoveryError", "ImmutableRunEpoch", "RUN_REGISTRY_BACKEND_SCHEMA", "RunRegistryBackendError", "RunRevisionCAS", "RunRevisionConflictError"]
+AuthoritativeRunRevisionStore = DuckDBRunRegistryBackend
+EffectReservation = MonitorReadyEffectReservation
+
+__all__ = [
+    "AuthoritativeRunRevisionStore",
+    "DuckDBRunRegistryBackend",
+    "DurableRunHead",
+    "EffectJournalEntry",
+    "EffectRecoveryError",
+    "EffectReservation",
+    "ImmutableRunEpoch",
+    "ImmutableRunHistoryVector",
+    "MonitorProgressCursorVector",
+    "MonitorReadyEffectReservation",
+    "ProcessBirthObservation",
+    "RUN_REGISTRY_BACKEND_SCHEMA",
+    "RunRegistryBackendError",
+    "RunRevisionCAS",
+    "RunRevisionConflictError",
+    "UnknownOutcomeAdoptionReceipt",
+]
