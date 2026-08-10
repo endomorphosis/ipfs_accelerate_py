@@ -790,7 +790,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-811 Publish migration, support matrix, operations/rollback guide, and joined release receipt
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
