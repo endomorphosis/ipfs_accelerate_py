@@ -35879,6 +35879,15 @@ class PortalImplementationDaemon:
                     )
                 else:
                     roots.append(Path(relative).as_posix())
+        if repository_root:
+            roots.append(
+                Path(
+                    os.path.relpath(
+                        workspace_root,
+                        start=validation_root,
+                    )
+                ).as_posix()
+            )
         if not roots:
             return command, ""
         pythonpath = shlex.quote(os.pathsep.join(dict.fromkeys(roots)))

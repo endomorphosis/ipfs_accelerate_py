@@ -2218,7 +2218,7 @@ def test_daemon_python_validation_after_cd_keeps_worktree_packages_importable(
 
     assert report["passed"] is True
     assert report["results"][0]["command"].startswith(
-        "cd package && export PYTHONPATH=../external/provider && python3 "
+        "cd package && export PYTHONPATH=../external/provider:.. && python3 "
     )
 
 
@@ -2233,10 +2233,17 @@ def test_daemon_pythonpath_export_covers_chained_validation_commands(
         "VALUE = 13\n",
         encoding="utf-8",
     )
+    (repo / "supervisor_package.py").write_text(
+        "VALUE = 17\n",
+        encoding="utf-8",
+    )
     benchmark_root = package_root / "benchmarks"
     benchmark_root.mkdir()
     (benchmark_root / "run.py").write_text(
-        "import local_package\nassert local_package.VALUE == 13\n",
+        "import local_package\n"
+        "import supervisor_package\n"
+        "assert local_package.VALUE == 13\n"
+        "assert supervisor_package.VALUE == 17\n",
         encoding="utf-8",
     )
     daemon = TodoImplementationDaemon(
@@ -2258,8 +2265,10 @@ def test_daemon_pythonpath_export_covers_chained_validation_commands(
         priority="P1",
         track="validation",
         validation=[
-            "cd package && python3 -c 'import local_package; "
-            "assert local_package.VALUE == 13' && python3 benchmarks/run.py"
+            "cd package && python3 -c 'import local_package, supervisor_package; "
+            "assert local_package.VALUE == 13; "
+            "assert supervisor_package.VALUE == 17' && "
+            "python3 benchmarks/run.py"
         ],
     )
 
@@ -2271,7 +2280,7 @@ def test_daemon_pythonpath_export_covers_chained_validation_commands(
 
     assert report["passed"] is True
     assert report["results"][0]["command"].startswith(
-        "cd package && export PYTHONPATH=. && python3 "
+        "cd package && export PYTHONPATH=.:.. && python3 "
     )
 
 
