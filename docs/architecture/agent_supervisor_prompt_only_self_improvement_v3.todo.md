@@ -512,7 +512,7 @@ Closeout:           ASE3-014
 
 ## ASE3-030 Seal hermetic control-plane identity dependency closure
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

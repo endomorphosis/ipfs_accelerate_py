@@ -1,13 +1,13 @@
 {
   "acceptance": {
     "artifacts": {
-      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json": "sha256:386517e52a94951b0336cf9cf6468665c7a82392a179e92727cc7f0ff11fb72b"
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json": "sha256:aaf8412b2abb3fe2c27b955dd1e31debadf35f173e30c144413467dd5397e7ee"
     },
-    "parent_head": "d41ad5ed8d57fddfd2a68a4765d81c2f4db1c4b0",
-    "parent_manifest_sha256": "sha256:a25639ca88cb3400f29fcbcf822c95b3d4315e16a7d4a33d6e3db0fcbeb87eb1",
-    "parent_phase": "P019",
-    "parent_tree": "2f694f7eefe1ad17eb794c4e717c3f5d30005615",
-    "phase": "A019",
+    "parent_head": "8f6cbb84bad3f4a715f634ad562126b6f9949f2f",
+    "parent_manifest_sha256": "sha256:e0d38efbc2feb350a11b593fb725d0a0b6db96c9179c397e638327aaddae7a68",
+    "parent_phase": "A019",
+    "parent_tree": "21d31f2bb210538dbe9baa6a5466bd23c77e3154",
+    "phase": "A030",
     "pre_launch_authorization_only": false,
     "reload_gate_status": "blocked",
     "runtime_effect_claimed": false,
@@ -16,7 +16,7 @@
       "ASE3-022": "blocked",
       "ASE3-023": "todo",
       "ASE3-027": "todo",
-      "ASE3-030": "todo",
+      "ASE3-030": "completed",
       "ASE3-031": "todo",
       "ASE3-032": "todo"
     }
