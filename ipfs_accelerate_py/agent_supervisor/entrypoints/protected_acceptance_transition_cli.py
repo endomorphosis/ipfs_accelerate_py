@@ -63,15 +63,45 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="build and validate the Q candidate without publishing",
     )
-    for name in ("advance-one-phase", "birth"):
-        command = subcommands.add_parser(name, help=f"perform exactly {name}")
-        command.add_argument(
-            "--evidence",
-            action="append",
-            type=_evidence,
-            required=True,
-            help="inline canonical bounded evidence-handle JSON; repeatable",
-        )
+    advance = subcommands.add_parser(
+        "advance-one-phase", help="perform exactly advance-one-phase"
+    )
+    advance.add_argument(
+        "--evidence",
+        action="append",
+        type=_evidence,
+        default=[],
+        help="optional bounded evidence handles (compat)",
+    )
+    advance.add_argument(
+        "--repo-root",
+        default=".",
+        help="repository root (default: cwd)",
+    )
+    advance.add_argument(
+        "--target-ref",
+        default="refs/heads/main",
+        help="protected target ref to publish (default: refs/heads/main)",
+    )
+    advance.add_argument(
+        "--phase",
+        default="R",
+        choices=("R",),
+        help="phase to advance (currently only R is auto-composed)",
+    )
+    advance.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="build and validate the phase candidate without publishing",
+    )
+    birth = subcommands.add_parser("birth", help="perform exactly birth")
+    birth.add_argument(
+        "--evidence",
+        action="append",
+        type=_evidence,
+        required=True,
+        help="inline canonical bounded evidence-handle JSON; repeatable",
+    )
     return parser
 
 
@@ -98,6 +128,20 @@ def main(
             from .protected_acceptance_prepare_q import prepare_prompt_v3_q
 
             result = prepare_prompt_v3_q(
+                repo_root=getattr(arguments, "repo_root", "."),
+                target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
+                dry_run=bool(getattr(arguments, "dry_run", False)),
+                publish=not bool(getattr(arguments, "dry_run", False)),
+            )
+        elif arguments.command == "advance-one-phase":
+            phase = str(getattr(arguments, "phase", "R") or "R")
+            if phase != "R":
+                build_parser().error(
+                    f"advance-one-phase does not yet auto-compose phase {phase}"
+                )
+            from .protected_acceptance_advance_r import advance_prompt_v3_r
+
+            result = advance_prompt_v3_r(
                 repo_root=getattr(arguments, "repo_root", "."),
                 target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
                 dry_run=bool(getattr(arguments, "dry_run", False)),
