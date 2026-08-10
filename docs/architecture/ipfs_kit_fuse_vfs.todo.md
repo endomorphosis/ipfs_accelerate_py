@@ -250,7 +250,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-210 Add a bounded async bridge for synchronous fusepy callbacks
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
