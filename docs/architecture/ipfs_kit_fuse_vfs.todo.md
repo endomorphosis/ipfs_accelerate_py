@@ -450,7 +450,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-403 Define post-recovery ARC persistence, corruption policy, and metrics
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
