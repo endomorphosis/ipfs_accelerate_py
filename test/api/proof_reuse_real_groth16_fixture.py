@@ -272,12 +272,43 @@ class RealGroth16TestPassFixture:
         verified = provider.verify(statement, proved)
         verified_locally = getattr(verified, "status", None) is NativeGroth16V5Status.READY
         try:
+            from ipfs_accelerate_py.testing.proof_reuse.publication import _dag_json_cid
             from ipfs_accelerate_py.testing.proof_reuse.services import (
                 TEST_PASS_GROTH16_CIRCUIT_CID,
+                TEST_PASS_GROTH16_CIRCUIT_VERSION,
             )
             circuit_cid = TEST_PASS_GROTH16_CIRCUIT_CID
+            vk_bytes = (
+                self.verifying_key_path.read_bytes()
+                if self.verifying_key_path is not None
+                else b""
+            )
+            verifying_key_cid = _dag_json_cid(
+                {
+                    "artifact": "groth16_verifying_key",
+                    "backend_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+                    "sha256": hashlib.sha256(vk_bytes).hexdigest(),
+                    "size": len(vk_bytes),
+                }
+            ) if vk_bytes else ""
+            proof_digest = (
+                hashlib.sha256(proved.envelope).hexdigest() if proved.envelope else ""
+            )
+            proof_artifact_cid = _dag_json_cid(
+                {
+                    "artifact": "groth16_proof",
+                    "backend_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+                    "sha256": proof_digest,
+                    "size": len(proved.envelope or b""),
+                }
+            ) if proof_digest else ""
         except Exception:
             circuit_cid = ""
+            verifying_key_cid = ""
+            proof_digest = (
+                hashlib.sha256(proved.envelope).hexdigest() if proved.envelope else ""
+            )
+            proof_artifact_cid = ""
         return {
             "available": True,
             "reason": "ready"
@@ -286,11 +317,9 @@ class RealGroth16TestPassFixture:
             "verified_locally": verified_locally,
             "circuit_cid": circuit_cid,
             "circuit_profile": proved.circuit_profile,
-            "verifying_key_cid": "",
-            "proof_digest": hashlib.sha256(proved.envelope).hexdigest()
-            if proved.envelope
-            else "",
-            "proof_artifact_cid": "",
+            "verifying_key_cid": verifying_key_cid,
+            "proof_digest": proof_digest,
+            "proof_artifact_cid": proof_artifact_cid,
         }
 
 
