@@ -410,7 +410,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-401 Implement committed read-through and bounded range admission
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
