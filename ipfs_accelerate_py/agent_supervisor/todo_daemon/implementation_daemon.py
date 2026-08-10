@@ -114,6 +114,7 @@ from ..validation_commands import (
 from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import (
     HermeticValidationPolicy,
+    ImpactSelectedValidationDAG,
     ImpactValidationCheck,
     ImpactValidationDAGReceipt,
     ImpactValidationKind,
@@ -123,6 +124,7 @@ from ..validation_scheduler import (
 )
 from ..code_evidence_graph import (
     CodeImpactIndex,
+    CodeImpactResult,
     POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA,
 )
 from .diagnostics import summarize_test_failure
