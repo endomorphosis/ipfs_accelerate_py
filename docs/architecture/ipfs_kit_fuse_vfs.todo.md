@@ -70,7 +70,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-103 Build hermetic callback, path, handle, and fault fixtures
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
