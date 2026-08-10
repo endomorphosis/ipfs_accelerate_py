@@ -10,6 +10,12 @@ existing adaptive planner.
 Optional model output is only a nomination of task identifiers over the same
 frozen request.  Authority, scope, safety, and proof decisions are recomputed
 locally and remain non-compensable.
+
+DCR-062 additionally exposes a finite operator-bound portfolio admission path
+via :mod:`deterministic_candidate_portfolio` (``RepairCandidate@1`` /
+``CandidateAdmission@1``): unique winners are admitted, while ties and
+unknowns abstain, and every candidate must bind current evidence plus exact
+operator CIDs.
 """
 
 from __future__ import annotations
@@ -1992,12 +1998,61 @@ generate_symbolic_candidate_portfolio = plan_symbolic_candidates
 compile_symbolic_candidate_portfolio = plan_symbolic_candidates
 
 
+def admit_operator_candidate_portfolio(
+    nominations: Sequence[Any],
+    *,
+    current_evidence_cid: str,
+    portfolio_id: str = "portfolio:symbolic-dcr062",
+    **kwargs: Any,
+) -> Any:
+    """DCR-062 bridge: build and uniquely admit a finite operator portfolio.
+
+    Delegates to :func:`deterministic_candidate_portfolio.build_and_admit_candidate_portfolio`
+    so the symbolic planner surface and the deterministic portfolio share one
+    unique-admission policy (ties/unknowns abstain; evidence + operator CIDs
+    are mandatory).
+    """
+
+    from .deterministic_candidate_portfolio import (
+        build_and_admit_candidate_portfolio,
+    )
+
+    return build_and_admit_candidate_portfolio(
+        nominations,
+        current_evidence_cid=current_evidence_cid,
+        portfolio_id=portfolio_id,
+        **kwargs,
+    )
+
+
+# DCR-062 surface: re-export finite portfolio admission symbols so the
+# predicted planner package exports remain one import path.
+from .deterministic_candidate_portfolio import (  # noqa: E402
+    CANDIDATE_ADMISSION_INTERFACE,
+    DCR_CANDIDATE_PORTFOLIO_EVIDENCE,
+    REPAIR_CANDIDATE_INTERFACE,
+    CandidateAdmission,
+    CandidateFacts,
+    CandidatePortfolio,
+    RepairCandidate,
+    admit_candidate_portfolio,
+    build_deterministic_candidate_portfolio,
+)
+
+
 __all__ = [
     "SYMBOLIC_CANDIDATE_PLANNER_INTERFACE",
     "SYMBOLIC_CANDIDATE_PLANNER_VERSION",
     "SYMBOLIC_CANDIDATE_PORTFOLIO_SCHEMA",
+    "CANDIDATE_ADMISSION_INTERFACE",
+    "DCR_CANDIDATE_PORTFOLIO_EVIDENCE",
+    "REPAIR_CANDIDATE_INTERFACE",
+    "CandidateAdmission",
+    "CandidateFacts",
+    "CandidatePortfolio",
     "FrozenSymbolicCandidateRequest",
     "PartialOrderSchedule",
+    "RepairCandidate",
     "SymbolicCandidateBounds",
     "SymbolicCandidatePlanner",
     "SymbolicCandidatePlanningError",
@@ -2007,6 +2062,9 @@ __all__ = [
     "SymbolicCandidateSource",
     "SymbolicProviderStatus",
     "SymbolicProviderUsageReceipt",
+    "admit_candidate_portfolio",
+    "admit_operator_candidate_portfolio",
+    "build_deterministic_candidate_portfolio",
     "compile_symbolic_candidate_portfolio",
     "generate_symbolic_candidate_portfolio",
     "plan_symbolic_candidates",
