@@ -230,7 +230,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-208 Add callback concurrency, lock ordering, open-unlink, and open-rename semantics
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
