@@ -50,7 +50,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-101 Define HostFilesystemAdapter callback, error, and lifecycle contracts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
