@@ -730,7 +730,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-800 Add model-based, differential, and property tests across service and host operations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
