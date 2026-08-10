@@ -1589,3 +1589,76 @@ worktree. The four initial tasks own disjoint files.
 - LLM context budget bytes: 46000
 - Acceptance: Release is reproducible and current; it grants no mutation or theorem authority; no open task, stale scan, altered predecessor, unexplained reachable gap, silent loss, false capability, or trust escape remains.
 - Embedding query: logic parser wave2 release receipt predecessor replay authority
+
+## LFP2-053 Close objective gap: Seal the Wave-2 release and predecessor chain
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Depends on: LFP2-048, LFP2-049
+- Outputs: ipfs_datasets_py/docs/architecture/logic/LOGIC_FAMILY_PARSER_V2_RELEASE.md, ipfs_datasets_py/data/logic/conformance/logic_family_parser_v2_release.json
+- Validation: cd ipfs_datasets_py && python -m pytest -q tests/unit/logic tests/conformance/logic tests/fuzz/logic
+- Board namespace: ipfs-datasets-logic-family-parser-v2
+- Evidence inputs: data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/state/discovery
+- Discovery evidence: /home/barberb/lift_coding/.worktrees/logic-family-parser-supervisor-runtime/data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/state/discovery/2026-08-10-lfp2-053-objective-gap-900f273058bf.md
+- Bundle: logic-family-parser-v2/release
+- Bundle shard: data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/state/objective_bundles/logic-family-parser-v2-release.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFP2-G000
+- Graph depth: 1
+- Objective heap index: 10
+- Parallel lane: lfp2-release
+- Conflict policy: Review/evidence aggregation only; no semantic implementation changes are allowed in the release task.
+- Predicted files: ipfs_datasets_py/docs/architecture/logic/LOGIC_FAMILY_PARSER_V2_RELEASE.md, ipfs_datasets_py/data/logic/conformance/logic_family_parser_v2_release.json
+- Changed paths:
+- Context paths: ipfs_datasets_py/docs/architecture/logic/LOGIC_FAMILY_PARSER_V2_RELEASE.md, ipfs_datasets_py/data/logic/conformance/logic_family_parser_v2_release.json
+- AST symbols: LogicParserReleaseReceipt ReachableConformanceMatrix ObjectiveRefillFixedPoint
+- Interfaces: LogicParserReleaseReceipt@2
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFP2-G100
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/b087648b77e219297bd42de118b0472d6852b2ec381b0264d5e3a4d55133cacb
+- Canonical task CID: baguqeerawcdwjc3x4imss66ufxqrrmchfvuffmxmhanqezgv4osnkujtzlfq
+- Semantic identity: objective-evidence-obligation/v1/b915bdeb0f1a1c54add8559622acbb9e49152f297ade6ec550edd9db1a0a1293
+- Acceptance subset: All seed and derived tasks are terminal, the fixed point is current, v1 anchors are unchanged, and exact current-tree evidence satisfies every child goal without authority escalation.
+- Preconditions: objective goal LFP2-G100 is schedulable
+- Effects: satisfy evidence requirement: wave2-release-validation
+- Evidence subset: wave2-release-validation
+- Resource class: cpu-proof-kernel
+- Resource stage: provider
+- Implementation timeout seconds: 10800
+- Symbolic first: true
+- LLM context budget bytes: 36000
+- Token class: medium
+- Estimated tokens: 26000
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-proof-kernel
+- Merge fate: objective/LFP2-G100
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/b915bdeb0f1a1c54add8559622acbb9e49152f297ade6ec550edd9db1a0a1293
+- Missing evidence: wave2-release-validation
+- Embedding query: logic parser wave2 release receipt predecessor provider replay fixed point authority
+- AST query: LogicParserReleaseReceipt ReachableConformanceMatrix ObjectiveRefillFixedPoint
+- Surplus group: objective/LFP2-G100
+- Merge key: d0eed57d589aa0cd
+- Merge family: objective/LFP2-G100
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: d85ea3a136d03cb1
+- Acceptance: Objective scan filed this gap for LFP2-G100. Use evidence in /home/barberb/lift_coding/.worktrees/logic-family-parser-supervisor-runtime/data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/state/discovery/2026-08-10-lfp2-053-objective-gap-900f273058bf.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (wave2-release-validation), and keep the supervisor-fed backlog aligned with the objective heap.  Never edit evidence to make a red floor green; repair the owning semantic path.
