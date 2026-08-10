@@ -10857,9 +10857,9 @@ class PortalImplementationDaemon:
             return None
 
         validation_proof["post_merge_evidence_input"] = rebound
-        validation_proof["target_tree"] = merge_tree_id
-        validation_proof["repository_tree_id"] = expected_tree_id
-        validation_proof["target_commit"] = str(candidate_commit or "").strip()
+        # Implementation identity (target_commit/target_tree) stays on the
+        # candidate commit.  Only the sealed post_merge_evidence_input is
+        # rebound to the integrated merge-tree for preflight admission.
         receipt = rebound.get("validation_receipt")
         if isinstance(receipt, Mapping):
             validation_proof["validation_dag_receipt"] = dict(receipt)
@@ -10872,21 +10872,18 @@ class PortalImplementationDaemon:
                     )
                     if str(item).strip()
                 ]
+                # Keep any existing execution receipt id; replace impact receipt.
                 validation_proof["validation_receipt_ids"] = list(
                     dict.fromkeys([receipt_id, *prior_ids])
                 )
-        # Rebuild the execution receipt so completion binding still matches
-        # the rebound tree / proof digests / receipt id set.
+        # Recompute the execution receipt digest over the updated proof while
+        # preserving the candidate implementation tree/commit identity.
         proposal_receipt_id = str(proposal_gate.get("receipt_id") or "").strip()
         results = validation_proof.get("results")
         if not isinstance(results, Sequence) or isinstance(
             results, (str, bytes, bytearray)
         ):
-            results = (
-                rebound.get("validation_report", {}).get("results")
-                if isinstance(rebound.get("validation_report"), Mapping)
-                else ()
-            )
+            results = ()
         result_records = [
             item for item in (results or ()) if isinstance(item, Mapping)
         ]
@@ -10900,6 +10897,7 @@ class PortalImplementationDaemon:
             for item in result_records
             if str(item.get("validation_id") or "").strip()
         )
+        implementation_tree = sealed_tree
         if (
             proposal_receipt_id
             and result_records
@@ -10923,13 +10921,18 @@ class PortalImplementationDaemon:
                 if isinstance(selection, Mapping)
                 else "pre_merge"
             )
-            if not isinstance(validation_proof.get("results"), list):
-                validation_proof["results"] = list(result_records)
+            validation_proof["target_commit"] = str(
+                candidate_commit or ""
+            ).strip().lower()
+            validation_proof["target_tree"] = implementation_tree
+            validation_proof["repository_tree_id"] = (
+                f"git-tree:{implementation_tree}"
+            )
             execution_receipt = DuckDBValidationExecutionReceipt(
                 task_cid=task_cid,
                 task_source_identity_id=source_identity_id,
                 target_commit=str(candidate_commit or "").strip().lower(),
-                target_tree=merge_tree_id,
+                target_tree=implementation_tree,
                 selection_scope=selection_scope,
                 validation_result_digests=validation_result_digests,
                 validation_ids=validation_ids,
@@ -10947,12 +10950,7 @@ class PortalImplementationDaemon:
                 if str(item).strip()
             ]
             validation_proof["validation_receipt_ids"] = list(
-                dict.fromkeys(
-                    [
-                        *receipt_ids,
-                        execution_receipt.receipt_id,
-                    ]
-                )
+                dict.fromkeys([*receipt_ids, execution_receipt.receipt_id])
             )
 
         metadata["validation_proof"] = validation_proof
