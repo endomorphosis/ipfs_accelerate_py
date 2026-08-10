@@ -589,7 +589,7 @@ Closeout:           ASE3-014
 
 ## ASE3-033 Productionize protected transition construction, replay provenance, and phase-local authority
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
