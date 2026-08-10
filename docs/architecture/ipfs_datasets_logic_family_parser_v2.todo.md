@@ -753,7 +753,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-024 Connect Intent IR base goals, guards, workflows, and policy slices
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
