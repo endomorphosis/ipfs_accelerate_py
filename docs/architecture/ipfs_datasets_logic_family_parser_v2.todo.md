@@ -1001,7 +1001,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-032 Split and execute AutoHyper and MCHyper capability paths
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
