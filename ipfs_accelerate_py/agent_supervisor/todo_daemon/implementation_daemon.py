@@ -10581,7 +10581,9 @@ class PortalImplementationDaemon:
             if isinstance(value, str):
                 return value.replace(old_tree_id, new_tree_id)
             if isinstance(value, Mapping):
-                return {str(key): _rewrite(nested) for key, nested in value.items()}
+                return {
+                    str(key): _rewrite(nested) for key, nested in value.items()
+                }
             if isinstance(value, list):
                 return [_rewrite(nested) for nested in value]
             if isinstance(value, tuple):
@@ -10591,48 +10593,56 @@ class PortalImplementationDaemon:
         rewritten = _rewrite(dict(evidence_input))
         if not isinstance(rewritten, dict):
             raise ValueError("rewritten evidence is not an object")
-        # Drop content-bound identities so nested receipts re-derive against the
-        # integrated tree after the pure string rewrite above.
-        def _strip_bound_ids(value: Any) -> Any:
-            if isinstance(value, Mapping):
-                cleaned: dict[str, Any] = {}
-                for key, nested in value.items():
-                    name = str(key)
-                    if name in {
-                        "packet_id",
-                        "receipt_id",
-                        "index_id",
-                        "dag_id",
-                        "validation_receipt_id",
-                    }:
-                        continue
-                    cleaned[name] = _strip_bound_ids(nested)
-                return cleaned
-            if isinstance(value, list):
-                return [_strip_bound_ids(nested) for nested in value]
-            if isinstance(value, tuple):
-                return [_strip_bound_ids(nested) for nested in value]
-            return value
-
-        rewritten = _strip_bound_ids(rewritten)
-        if not isinstance(rewritten, dict):
-            raise ValueError("rewritten evidence is not an object")
+        rewritten.pop("packet_id", None)
 
         receipt = rewritten.get("validation_receipt")
         if not isinstance(receipt, Mapping):
             raise ValueError("rewritten evidence lacks validation receipt")
-        restored = ImpactValidationDAGReceipt.from_dict(receipt)
-        receipt_dict = restored.to_dict()
+        receipt_payload = dict(receipt)
+        dag = receipt_payload.get("dag")
+        if not isinstance(dag, Mapping):
+            raise ValueError("rewritten evidence lacks validation dag")
+        dag_payload = dict(dag)
+
+        # Bottom-up re-derive content-bound graph identities.
+        index_payload = dag_payload.get("impact_index")
+        if not isinstance(index_payload, Mapping):
+            raise ValueError("rewritten evidence lacks impact index")
+        index_payload = dict(index_payload)
+        index_payload.pop("index_id", None)
+        new_index = CodeImpactIndex.from_dict(index_payload).to_dict()
+        dag_payload["impact_index"] = new_index
+
+        impact_payload = dag_payload.get("impact")
+        if isinstance(impact_payload, Mapping):
+            impact_payload = dict(impact_payload)
+            impact_payload["index_id"] = str(new_index.get("index_id") or "")
+            impact_payload["repository_tree_id"] = new_tree_id
+            dag_payload["impact"] = CodeImpactResult.from_dict(
+                impact_payload
+            ).to_dict()
+
+        dag_payload.pop("dag_id", None)
+        dag_payload["repository_tree_id"] = new_tree_id
+        new_dag = ImpactSelectedValidationDAG.from_dict(dag_payload).to_dict()
+        receipt_payload["dag"] = new_dag
+        receipt_payload.pop("receipt_id", None)
+        receipt_dict = ImpactValidationDAGReceipt.from_dict(
+            receipt_payload
+        ).to_dict()
         rewritten["validation_receipt"] = receipt_dict
 
         report = rewritten.get("validation_report")
         if isinstance(report, Mapping):
             report_payload = dict(report)
+            report_payload["target_tree_id"] = new_tree_id
             if isinstance(report_payload.get("impact_validation_receipt"), Mapping):
                 report_payload["impact_validation_receipt"] = dict(receipt_dict)
+            if isinstance(report_payload.get("impact_validation_dag"), Mapping):
+                report_payload["impact_validation_dag"] = dict(new_dag)
             rewritten["validation_report"] = report_payload
 
-        # Re-derive content-bound helper ids that embed the tree identity.
+        # Re-derive helper check / obligation ids that embed the tree identity.
         for field_name in (
             "semantic_checks",
             "protocol_checks",
@@ -10663,7 +10673,6 @@ class PortalImplementationDaemon:
                 if "receipt_id" in item:
                     record["receipt_id"] = digest
                 if "source_validation_receipt_id" in item:
-                    # Keep the primary impact receipt as the source authority.
                     record["source_validation_receipt_id"] = str(
                         receipt_dict.get("receipt_id") or digest
                     )
