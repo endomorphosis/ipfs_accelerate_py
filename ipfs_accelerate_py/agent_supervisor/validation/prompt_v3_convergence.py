@@ -2144,9 +2144,10 @@ _ASE3_031_PRODUCT_IDENTITY: Final = {
     },
 }
 _ASE3_032_PRODUCT_IDENTITY: Final = {
-    "commit": "9f1a3cb3c583924878293f9acd676a211106c2e7",
-    "parent": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
-    "tree": "853191d0e00471bf41452801ae83b0a13b3607d5",
+    # Main-reachable integrated tip of the ASE3-032 DuckDB connection-policy product.
+    "commit": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+    "parent": "1a419e525699e74254a450c0137264d8dd60ea00",
+    "tree": "f7160446af32a9affeef554d319c443b6449271a",
     "binary_patch_sha256": (
         "sha256:b05414db27f68f34634975ff248048c934714c973debcffe71839bdeb84ee124"
     ),
@@ -2186,7 +2187,7 @@ _FROZEN_PRODUCT_GIT_IDENTITIES: Final = {
             "blob": "234cf4b6b8d3de0ce7aea3786a553c9638e03f86",
         },
     },
-    "9f1a3cb3c583924878293f9acd676a211106c2e7": {
+    "8f613252c2ff1460e6f2b551a2a8600a2d3ee519": {
         "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py": {
             "mode": "100644",
             "blob": "95c98fea1c1102d18f603de68459c9424a9ba1f3",
