@@ -598,7 +598,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-019 Add authorization, frame, event, modal, and cognitive routes
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
