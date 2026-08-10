@@ -2581,6 +2581,20 @@ class FormalPlanValidator:
             checks_performed=tuple(checks),
         )
 
+    def validate_proof_carrying_repair_plan(self, plan: Any) -> dict[str, Any]:
+        """Validate an ownership-safe proof-carrying repair DAG (DCR-061).
+
+        Missing bindings, cycles, cross-root writes, premature pin updates,
+        prose nodes, and provider/model nodes remain structurally
+        unrepresentable and raise from the repair-DAG constructor/validator.
+        """
+
+        from .proof_carrying_repair_dag import (
+            validate_proof_carrying_repair_plan as _validate_repair_dag,
+        )
+
+        return _validate_repair_dag(plan)
+
 
 PlanValidator = FormalPlanValidator
 BoundedFormalPlanValidator = FormalPlanValidator
@@ -2608,6 +2622,15 @@ def validate_formal_plan(
 
 
 check_formal_plan = validate_formal_plan
+
+
+def validate_proof_carrying_repair_plan(plan: Any) -> dict[str, Any]:
+    """Validate a DCR-061 ownership-safe proof-carrying repair DAG.
+
+    Structural defects raise rather than produce a weakened admission.
+    """
+
+    return FormalPlanValidator().validate_proof_carrying_repair_plan(plan)
 
 
 def _canonical_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -3207,4 +3230,5 @@ __all__ = [
     "ValidationStatus",
     "check_formal_plan",
     "validate_formal_plan",
+    "validate_proof_carrying_repair_plan",
 ]

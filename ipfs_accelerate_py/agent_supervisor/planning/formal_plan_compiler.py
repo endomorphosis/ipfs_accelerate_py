@@ -1449,6 +1449,33 @@ class FormalPlanCompiler:
             raise TypeError("IR constraint compiler returned an invalid receipt")
         return receipt
 
+    def compile_proof_carrying_repair_plan(
+        self,
+        transforms: Any = None,
+        *,
+        plan_id: str = "",
+        nodes: Any = None,
+        raise_on_reject: bool = True,
+    ) -> Any:
+        """Compile Doctor transforms into an ownership-safe repair task DAG.
+
+        Thin integration over :mod:`.proof_carrying_repair_dag` (DCR-061).
+        Structural defects (missing bindings, cycles, cross-root writes,
+        premature pin updates, prose/provider/model nodes) remain
+        unrepresentable as admitted plans.
+        """
+
+        from .proof_carrying_repair_dag import (
+            compile_proof_carrying_repair_plan as _compile_repair_dag,
+        )
+
+        return _compile_repair_dag(
+            transforms,
+            plan_id=plan_id,
+            nodes=nodes,
+            raise_on_reject=raise_on_reject,
+        )
+
     def _read_duckdb(self, connection: Any) -> dict[str, Any]:
         tables = {
             str(row[0])
@@ -3802,6 +3829,28 @@ def compile_plan_admission(
     return FormalPlanCompiler().compile_admission(request)
 
 
+def compile_proof_carrying_repair_plan(
+    transforms: Any = None,
+    *,
+    plan_id: str = "",
+    nodes: Any = None,
+    raise_on_reject: bool = True,
+) -> Any:
+    """Compile Doctor transforms into an ownership-safe proof-carrying repair DAG.
+
+    DCR-061 entry point.  Missing bindings, cycles, cross-root writes,
+    premature pin updates, prose nodes, and provider/model nodes are
+    structurally unrepresentable (raise rather than admit a weakened plan).
+    """
+
+    return FormalPlanCompiler().compile_proof_carrying_repair_plan(
+        transforms,
+        plan_id=plan_id,
+        nodes=nodes,
+        raise_on_reject=raise_on_reject,
+    )
+
+
 def write_formal_plan_compiler_input_duckdb(
     path: str | Path, source: Mapping[str, Any]
 ) -> Path:
@@ -3882,6 +3931,7 @@ __all__ = [
     "compile_formal_plan_duckdb",
     "compile_formal_plan_json",
     "compile_plan_admission",
+    "compile_proof_carrying_repair_plan",
     "is_requires_proof_precondition",
     "project_formal_plan_for_admission",
     "prompt_goal_graph_to_formal_input",
