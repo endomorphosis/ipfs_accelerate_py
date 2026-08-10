@@ -98,7 +98,8 @@ def test_interfaces_are_declared() -> None:
     )
     assert "synthesis" in OPTIONAL_DEFERRED_BACKENDS
     assert "impact" in OPTIONAL_DEFERRED_BACKENDS
-    assert "fixed_point" in OPTIONAL_DEFERRED_BACKENDS
+    # DCR-053: fixed_point is a real DoctorFixedPoint@1 controller, not deferred.
+    assert "fixed_point" not in OPTIONAL_DEFERRED_BACKENDS
 
 
 def test_runtime_binds_all_mandatory_backends_non_deferred(tmp_path: Path) -> None:
@@ -126,10 +127,20 @@ def test_deferred_optional_stages_are_not_production_success(tmp_path: Path) -> 
     repo = _repository(tmp_path)
     runtime = create_deterministic_doctor_runtime(repo)
     backends = runtime.service._backends  # noqa: SLF001
-    for name in ("synthesis", "impact", "fixed_point"):
+    # synthesis/impact remain deferred placeholders; fixed_point is DCR-053 real.
+    for name in ("synthesis", "impact"):
         backend = getattr(backends, name, None)
         assert backend is not None
         assert bool(getattr(backend, "doctor_deferred_backend", False)) is True
+    fixed_point = getattr(backends, "fixed_point", None)
+    assert fixed_point is not None
+    assert bool(getattr(fixed_point, "doctor_deferred_backend", False)) is False
+    assert runtime.fixed_point.bound >= 1
+    sealed = runtime.evaluate_fixed_point(
+        [{"state_hash": "state:comp", "transition_measure": 0}]
+    )
+    assert sealed.claims_completion is True
+    assert sealed.model_invocation_count == 0
 
 
 def test_composition_handles_attach_without_authority(tmp_path: Path) -> None:

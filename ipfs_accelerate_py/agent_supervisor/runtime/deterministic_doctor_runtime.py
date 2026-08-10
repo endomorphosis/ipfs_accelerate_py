@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import json
 import os
 import sys
 import threading
@@ -39,6 +40,7 @@ from ..analysis.deterministic_doctor_contracts import (
     DoctorOperation,
     DoctorRepairDisposition,
 )
+from ..autonomous_repair.contracts import DeterministicRepairDisposition
 from ..control.deterministic_doctor_service import (
     DeterministicDoctorService,
     DoctorOperationRequest,
@@ -63,6 +65,29 @@ DETERMINISTIC_DOCTOR_RUNTIME_REPORT_SCHEMA: Final[str] = (
 )
 DETERMINISTIC_DOCTOR_EVIDENCE_BUNDLE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/runtime-evidence@1"
+)
+
+# DCR-053: bounded Doctor termination at a proved fixed point or typed
+# abstention.  Interface DoctorFixedPoint@1 reuses DeterministicRepairDisposition@1.
+DOCTOR_FIXED_POINT_INTERFACE: Final[str] = "DoctorFixedPoint@1"
+DOCTOR_FIXED_POINT_RESULT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/runtime-fixed-point@1"
+)
+DOCTOR_FIXED_POINT_OBSERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/runtime-fixed-point-observation@1"
+)
+DEFAULT_DOCTOR_FIXED_POINT_BOUND: Final[int] = 8
+MAX_DOCTOR_FIXED_POINT_BOUND: Final[int] = 32
+DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE: Final[str] = (
+    "DeterministicRepairDisposition@1"
+)
+DCR_DOCTOR_FIXED_POINT_EVIDENCE: Final[str] = "dcr/doctor-fixed-point@1"
+DCR_DOCTOR_FIXED_POINT_VERSION: Final[int] = 1
+DEFAULT_DOCTOR_FIXED_POINT_PATH: Final[str] = (
+    "data/agent_supervisor/deterministic_contract_repair/doctor-fixed-point.json"
+)
+DOCTOR_FIXED_POINT_CATALOG_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-fixed-point-catalog@1"
 )
 
 # The deterministic snapshot contract intentionally bounds direct blob
@@ -200,12 +225,720 @@ MANDATORY_PRODUCTION_BACKENDS: Final[tuple[str, ...]] = (
 
 # Lazy stages that may remain deferred until typed inputs arrive.  Deferred
 # production stages report unavailable / abstain — never successful completion.
+# DCR-053 binds a real DoctorFixedPoint@1 controller, so fixed_point is no
+# longer an empty deferred slot (it still never claims mutation success without
+# residual-free observations).
 OPTIONAL_DEFERRED_BACKENDS: Final[tuple[str, ...]] = (
     "synthesis",
     "impact",
-    "fixed_point",
     "explain",
 )
+
+# Closed terminal dispositions emitted by DoctorFixedPoint@1 (DCR-053).
+# Non-terminal intermediate steps never leave this closed set as a final result.
+_DOCTOR_FIXED_POINT_TERMINAL_DISPOSITIONS: Final[
+    frozenset[DeterministicRepairDisposition]
+] = frozenset(
+    {
+        DeterministicRepairDisposition.PROVED_VALID,
+        DeterministicRepairDisposition.REFUTED_REPAIRABLE,
+        DeterministicRepairDisposition.ABSTAIN_REVIEW,
+        DeterministicRepairDisposition.DEFER_CAPABILITY,
+    }
+)
+
+
+def _bounded_fixed_point_int(
+    value: Any,
+    name: str,
+    *,
+    minimum: int = 0,
+    maximum: int = MAX_DOCTOR_FIXED_POINT_BOUND,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise DeterministicDoctorRuntimeError(
+            "invalid_fixed_point_bound",
+            f"{name} must be an integer",
+        )
+    if value < minimum or value > maximum:
+        raise DeterministicDoctorRuntimeError(
+            "invalid_fixed_point_bound",
+            f"{name} must be in [{minimum}, {maximum}]",
+        )
+    return value
+
+
+def _compact_fixed_point_id(value: Any, name: str, *, required: bool = True) -> str:
+    if value is None:
+        text = ""
+    elif isinstance(value, str):
+        text = value.strip()
+    else:
+        text = str(value).strip()
+    if required and not text:
+        raise DeterministicDoctorRuntimeError(
+            "invalid_fixed_point_observation",
+            f"{name} is required",
+        )
+    if text and any(character.isspace() for character in text):
+        raise DeterministicDoctorRuntimeError(
+            "invalid_fixed_point_observation",
+            f"{name} must be a compact opaque identifier",
+        )
+    return text
+
+
+def _zero_invocation_counter(value: Any, name: str) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+        raise DeterministicDoctorRuntimeSafetyError(
+            "model_route_forbidden",
+            f"{name} must be exactly zero under DoctorFixedPoint@1",
+        )
+    return 0
+
+
+@dataclass(frozen=True)
+class DoctorFixedPointObservation:
+    """One bounded Doctor iteration observation (body-free, content-addressed).
+
+    ``transition_measure`` is a non-negative residual measure: ``0`` means the
+    residual is closed (proved fixed point).  A non-increasing measure without a
+    state-hash change is not progress.
+    """
+
+    state_hash: str
+    transition_measure: int = 0
+    progress_key: str = ""
+    residual_finding_ids: tuple[str, ...] = ()
+    receipt_root: str = ""
+    capability_available: bool = True
+    repairable: bool = False
+    model_invocation_count: int = 0
+    provider_invocation_count: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "state_hash",
+            _compact_fixed_point_id(self.state_hash, "state_hash"),
+        )
+        object.__setattr__(
+            self,
+            "transition_measure",
+            _bounded_fixed_point_int(
+                self.transition_measure,
+                "transition_measure",
+                minimum=0,
+                maximum=2**31 - 1,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "progress_key",
+            _compact_fixed_point_id(
+                self.progress_key or self.state_hash,
+                "progress_key",
+                required=True,
+            ),
+        )
+        residuals = tuple(
+            _compact_fixed_point_id(item, "residual_finding_ids")
+            for item in tuple(self.residual_finding_ids or ())
+            if str(item or "").strip()
+        )
+        object.__setattr__(self, "residual_finding_ids", residuals)
+        object.__setattr__(
+            self,
+            "receipt_root",
+            _compact_fixed_point_id(
+                self.receipt_root, "receipt_root", required=False
+            ),
+        )
+        object.__setattr__(
+            self, "capability_available", bool(self.capability_available)
+        )
+        object.__setattr__(self, "repairable", bool(self.repairable))
+        object.__setattr__(
+            self,
+            "model_invocation_count",
+            _zero_invocation_counter(
+                self.model_invocation_count, "model_invocation_count"
+            ),
+        )
+        object.__setattr__(
+            self,
+            "provider_invocation_count",
+            _zero_invocation_counter(
+                self.provider_invocation_count, "provider_invocation_count"
+            ),
+        )
+
+    @property
+    def residual_free(self) -> bool:
+        return (
+            self.transition_measure == 0
+            and not self.residual_finding_ids
+        )
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DOCTOR_FIXED_POINT_OBSERVATION_SCHEMA,
+            "interface": DOCTOR_FIXED_POINT_INTERFACE,
+            "state_hash": self.state_hash,
+            "transition_measure": self.transition_measure,
+            "progress_key": self.progress_key,
+            "residual_finding_ids": list(self.residual_finding_ids),
+            "receipt_root": self.receipt_root,
+            "capability_available": self.capability_available,
+            "repairable": self.repairable,
+            "model_invocation_count": 0,
+            "provider_invocation_count": 0,
+        }
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any] | DoctorFixedPointObservation) -> (
+        "DoctorFixedPointObservation"
+    ):
+        if isinstance(payload, DoctorFixedPointObservation):
+            return payload
+        if not isinstance(payload, Mapping):
+            raise DeterministicDoctorRuntimeError(
+                "invalid_fixed_point_observation",
+                "observation must be a mapping",
+            )
+        residuals = payload.get("residual_finding_ids") or ()
+        if isinstance(residuals, str):
+            residual_ids: tuple[str, ...] = (residuals,)
+        else:
+            residual_ids = tuple(str(item) for item in residuals)
+        return cls(
+            state_hash=str(payload.get("state_hash") or ""),
+            transition_measure=int(payload.get("transition_measure") or 0),
+            progress_key=str(payload.get("progress_key") or ""),
+            residual_finding_ids=residual_ids,
+            receipt_root=str(payload.get("receipt_root") or ""),
+            capability_available=bool(
+                payload["capability_available"]
+                if "capability_available" in payload
+                else True
+            ),
+            repairable=bool(payload.get("repairable") or False),
+            model_invocation_count=int(payload.get("model_invocation_count") or 0),
+            provider_invocation_count=int(
+                payload.get("provider_invocation_count") or 0
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class DoctorFixedPointResult:
+    """One stable Doctor termination receipt (DCR-053).
+
+    Terminal results never authorize model/provider routes.  Only
+    ``proved_valid`` may claim completion; every other terminal disposition is a
+    typed abstention / deferral / refutation.
+    """
+
+    disposition: DeterministicRepairDisposition
+    terminal: bool
+    iteration: int
+    bound: int
+    state_hashes: tuple[str, ...] = ()
+    transition_measures: tuple[int, ...] = ()
+    repeated_keys: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    receipt_roots: tuple[str, ...] = ()
+    residual_finding_ids: tuple[str, ...] = ()
+    model_invocation_count: int = 0
+    provider_invocation_count: int = 0
+    explanation: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.disposition, DeterministicRepairDisposition):
+            raise DeterministicDoctorRuntimeError(
+                "invalid_fixed_point_disposition",
+                "disposition must be DeterministicRepairDisposition",
+            )
+        if self.disposition not in _DOCTOR_FIXED_POINT_TERMINAL_DISPOSITIONS:
+            raise DeterministicDoctorRuntimeError(
+                "invalid_fixed_point_disposition",
+                f"disposition {self.disposition.value!r} is not a DoctorFixedPoint terminal",
+            )
+        object.__setattr__(self, "terminal", bool(self.terminal))
+        object.__setattr__(
+            self,
+            "iteration",
+            _bounded_fixed_point_int(
+                self.iteration, "iteration", minimum=0, maximum=MAX_DOCTOR_FIXED_POINT_BOUND
+            ),
+        )
+        object.__setattr__(
+            self,
+            "bound",
+            _bounded_fixed_point_int(
+                self.bound, "bound", minimum=1, maximum=MAX_DOCTOR_FIXED_POINT_BOUND
+            ),
+        )
+        object.__setattr__(
+            self,
+            "model_invocation_count",
+            _zero_invocation_counter(
+                self.model_invocation_count, "model_invocation_count"
+            ),
+        )
+        object.__setattr__(
+            self,
+            "provider_invocation_count",
+            _zero_invocation_counter(
+                self.provider_invocation_count, "provider_invocation_count"
+            ),
+        )
+        object.__setattr__(
+            self, "state_hashes", tuple(str(item) for item in self.state_hashes or ())
+        )
+        object.__setattr__(
+            self,
+            "transition_measures",
+            tuple(int(item) for item in self.transition_measures or ()),
+        )
+        object.__setattr__(
+            self, "repeated_keys", tuple(str(item) for item in self.repeated_keys or ())
+        )
+        object.__setattr__(
+            self, "reason_codes", tuple(str(item) for item in self.reason_codes or ())
+        )
+        object.__setattr__(
+            self, "receipt_roots", tuple(str(item) for item in self.receipt_roots or ())
+        )
+        object.__setattr__(
+            self,
+            "residual_finding_ids",
+            tuple(str(item) for item in self.residual_finding_ids or ()),
+        )
+        object.__setattr__(self, "explanation", str(self.explanation or ""))
+        if self.claims_completion and self.disposition is not (
+            DeterministicRepairDisposition.PROVED_VALID
+        ):
+            raise DeterministicDoctorRuntimeError(
+                "claims_completion_forbidden",
+                "only proved_valid may claim completion",
+            )
+        if self.may_call_model:
+            raise DeterministicDoctorRuntimeSafetyError(
+                "model_route_forbidden",
+                "DoctorFixedPoint forbids model routes on every disposition",
+            )
+
+    @property
+    def claims_completion(self) -> bool:
+        return (
+            self.terminal
+            and self.disposition is DeterministicRepairDisposition.PROVED_VALID
+        )
+
+    @property
+    def may_call_model(self) -> bool:
+        return False
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": DOCTOR_FIXED_POINT_RESULT_SCHEMA,
+            "disposition": self.disposition.value,
+            "terminal": self.terminal,
+            "iteration": self.iteration,
+            "bound": self.bound,
+            "state_hashes": list(self.state_hashes),
+            "transition_measures": list(self.transition_measures),
+            "repeated_keys": list(self.repeated_keys),
+            "reason_codes": list(self.reason_codes),
+            "receipt_roots": list(self.receipt_roots),
+            "residual_finding_ids": list(self.residual_finding_ids),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._identity_payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DOCTOR_FIXED_POINT_RESULT_SCHEMA,
+            "interface": DOCTOR_FIXED_POINT_INTERFACE,
+            "disposition_interface": DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE,
+            "disposition": self.disposition.value,
+            "terminal": self.terminal,
+            "iteration": self.iteration,
+            "bound": self.bound,
+            "state_hashes": list(self.state_hashes),
+            "transition_measures": list(self.transition_measures),
+            "repeated_keys": list(self.repeated_keys),
+            "reason_codes": list(self.reason_codes),
+            "receipt_roots": list(self.receipt_roots),
+            "residual_finding_ids": list(self.residual_finding_ids),
+            "model_invocation_count": 0,
+            "provider_invocation_count": 0,
+            "claims_completion": self.claims_completion,
+            "may_call_model": False,
+            "automatic_fallback": False,
+            "explanation": self.explanation,
+            "content_id": self.content_id,
+        }
+
+
+class NoProgressGuard:
+    """Detect cycles and identical no-progress attempts for DoctorFixedPoint@1.
+
+    Conflict policy (DCR-053): repeated identical findings/proposals never
+    trigger free retry, a weaker gate, or a model fallback.  The guard records
+    state hashes, transition measures, and progress keys, and emits one stable
+    typed disposition when progress stalls.
+    """
+
+    def __init__(self, *, bound: int = DEFAULT_DOCTOR_FIXED_POINT_BOUND) -> None:
+        self._bound = _bounded_fixed_point_int(
+            bound, "bound", minimum=1, maximum=MAX_DOCTOR_FIXED_POINT_BOUND
+        )
+        self._state_hashes: list[str] = []
+        self._transition_measures: list[int] = []
+        self._progress_keys: list[str] = []
+        self._receipt_roots: list[str] = []
+        self._repeated_keys: list[str] = []
+        self._lock = threading.RLock()
+
+    @property
+    def bound(self) -> int:
+        return self._bound
+
+    @property
+    def iteration(self) -> int:
+        with self._lock:
+            return len(self._state_hashes)
+
+    @property
+    def state_hashes(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._state_hashes)
+
+    @property
+    def transition_measures(self) -> tuple[int, ...]:
+        with self._lock:
+            return tuple(self._transition_measures)
+
+    @property
+    def progress_keys(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._progress_keys)
+
+    @property
+    def receipt_roots(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._receipt_roots)
+
+    @property
+    def repeated_keys(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._repeated_keys)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._state_hashes.clear()
+            self._transition_measures.clear()
+            self._progress_keys.clear()
+            self._receipt_roots.clear()
+            self._repeated_keys.clear()
+
+    def observe(
+        self, observation: DoctorFixedPointObservation | Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Record one observation and classify progress / no-progress / bound."""
+
+        obs = DoctorFixedPointObservation.from_mapping(observation)
+        with self._lock:
+            previous_hash = self._state_hashes[-1] if self._state_hashes else ""
+            previous_measure = (
+                self._transition_measures[-1] if self._transition_measures else None
+            )
+            previous_key = self._progress_keys[-1] if self._progress_keys else ""
+
+            self._state_hashes.append(obs.state_hash)
+            self._transition_measures.append(obs.transition_measure)
+            self._progress_keys.append(obs.progress_key)
+            if obs.receipt_root:
+                self._receipt_roots.append(obs.receipt_root)
+
+            repeated_state = bool(previous_hash) and previous_hash == obs.state_hash
+            repeated_key = bool(previous_key) and previous_key == obs.progress_key
+            measure_non_improving = (
+                previous_measure is not None
+                and obs.transition_measure >= previous_measure
+            )
+            cycle = obs.state_hash in self._state_hashes[:-1]
+            if repeated_state or (repeated_key and measure_non_improving) or cycle:
+                key = obs.progress_key or obs.state_hash
+                if key not in self._repeated_keys:
+                    self._repeated_keys.append(key)
+
+            bound_exhausted = len(self._state_hashes) >= self._bound
+            no_progress = bool(self._repeated_keys) and (
+                repeated_state
+                or cycle
+                or (repeated_key and measure_non_improving)
+            )
+            return {
+                "iteration": len(self._state_hashes),
+                "bound": self._bound,
+                "bound_exhausted": bound_exhausted,
+                "no_progress": no_progress,
+                "repeated_state": repeated_state,
+                "repeated_key": repeated_key,
+                "cycle": cycle,
+                "measure_non_improving": measure_non_improving,
+                "state_hashes": tuple(self._state_hashes),
+                "transition_measures": tuple(self._transition_measures),
+                "repeated_keys": tuple(self._repeated_keys),
+                "receipt_roots": tuple(self._receipt_roots),
+                "observation": obs,
+            }
+
+    def stable_disposition(
+        self,
+        observation: DoctorFixedPointObservation,
+        *,
+        no_progress: bool,
+        bound_exhausted: bool,
+    ) -> tuple[DeterministicRepairDisposition, tuple[str, ...], str]:
+        """Return one stable typed disposition for a terminal no-progress case."""
+
+        reasons: list[str] = []
+        if not observation.capability_available:
+            reasons.append("capability_unavailable")
+            reasons.append("defer_capability")
+            return (
+                DeterministicRepairDisposition.DEFER_CAPABILITY,
+                tuple(reasons),
+                "Doctor deferred: required capability is unavailable; no model fallback",
+            )
+        if observation.repairable:
+            reasons.append("refuted_repairable")
+            if no_progress:
+                reasons.append("no_progress")
+            if bound_exhausted:
+                reasons.append("fixed_point_bound_exhausted")
+            return (
+                DeterministicRepairDisposition.REFUTED_REPAIRABLE,
+                tuple(reasons),
+                "Doctor refuted residual as repairable; free retry and model fallback denied",
+            )
+        if no_progress:
+            reasons.append("no_progress")
+        if bound_exhausted:
+            reasons.append("fixed_point_bound_exhausted")
+        if not reasons:
+            reasons.append("abstain_review")
+        reasons.append("typed_abstention")
+        return (
+            DeterministicRepairDisposition.ABSTAIN_REVIEW,
+            tuple(dict.fromkeys(reasons)),
+            "Doctor abstained after no-progress; one stable typed disposition, zero model calls",
+        )
+
+
+class DoctorFixedPoint:
+    """Bounded Doctor termination controller (DoctorFixedPoint@1).
+
+    Consumes content-addressed iteration observations and terminates within the
+    configured bound at:
+
+    * ``proved_valid`` — residual-free fixed point;
+    * ``refuted_repairable`` — residual remains but is typed as repairable;
+    * ``abstain_review`` — no-progress / bound exhaustion without repair path;
+    * ``defer_capability`` — required capability is unavailable.
+
+    Never starts a model or provider route.  Repeated identical observations
+    collapse to one stable terminal disposition (see :class:`NoProgressGuard`).
+    """
+
+    INTERFACE: ClassVar[str] = DOCTOR_FIXED_POINT_INTERFACE
+
+    def __init__(
+        self,
+        *,
+        bound: int = DEFAULT_DOCTOR_FIXED_POINT_BOUND,
+        no_progress_guard: NoProgressGuard | None = None,
+    ) -> None:
+        self._bound = _bounded_fixed_point_int(
+            bound, "bound", minimum=1, maximum=MAX_DOCTOR_FIXED_POINT_BOUND
+        )
+        self._guard = no_progress_guard or NoProgressGuard(bound=self._bound)
+        if self._guard.bound != self._bound:
+            # Keep guard and controller bound identical; do not silently weaken.
+            self._guard = NoProgressGuard(bound=self._bound)
+        self._terminal: DoctorFixedPointResult | None = None
+        self._lock = threading.RLock()
+
+    @property
+    def bound(self) -> int:
+        return self._bound
+
+    @property
+    def guard(self) -> NoProgressGuard:
+        return self._guard
+
+    @property
+    def terminal_result(self) -> DoctorFixedPointResult | None:
+        with self._lock:
+            return self._terminal
+
+    def reset(self) -> None:
+        with self._lock:
+            self._guard.reset()
+            self._terminal = None
+
+    def step(
+        self,
+        observation: DoctorFixedPointObservation | Mapping[str, Any],
+    ) -> DoctorFixedPointResult:
+        """Advance one iteration or return the already-stable terminal result."""
+
+        with self._lock:
+            if self._terminal is not None:
+                return self._terminal
+            obs = DoctorFixedPointObservation.from_mapping(observation)
+            progress = self._guard.observe(obs)
+            result = self._classify(obs, progress)
+            if result.terminal:
+                self._terminal = result
+            return result
+
+    def run(
+        self,
+        observations: Sequence[DoctorFixedPointObservation | Mapping[str, Any]],
+        *,
+        reset: bool = True,
+    ) -> DoctorFixedPointResult:
+        """Consume a finite observation sequence and return the terminal result.
+
+        Always terminates: either a residual-free fixed point, a typed
+        no-progress disposition, or bound exhaustion.  Empty input is a stable
+        typed abstention (never a model call).
+        """
+
+        with self._lock:
+            if reset:
+                self.reset()
+            if self._terminal is not None:
+                return self._terminal
+            if not observations:
+                result = DoctorFixedPointResult(
+                    disposition=DeterministicRepairDisposition.ABSTAIN_REVIEW,
+                    terminal=True,
+                    iteration=0,
+                    bound=self._bound,
+                    reason_codes=("empty_observation_stream", "typed_abstention"),
+                    explanation=(
+                        "DoctorFixedPoint received no observations; typed abstention "
+                        "with zero model/provider calls"
+                    ),
+                )
+                self._terminal = result
+                return result
+            last: DoctorFixedPointResult | None = None
+            for item in observations:
+                last = self.step(item)
+                if last.terminal:
+                    return last
+            # Defensive: step() always terminals by bound; if a caller supplied
+            # fewer residual-bearing steps than the bound without closing, seal.
+            assert last is not None
+            if not last.terminal:
+                sealed = DoctorFixedPointResult(
+                    disposition=DeterministicRepairDisposition.ABSTAIN_REVIEW,
+                    terminal=True,
+                    iteration=last.iteration,
+                    bound=self._bound,
+                    state_hashes=last.state_hashes,
+                    transition_measures=last.transition_measures,
+                    repeated_keys=last.repeated_keys,
+                    reason_codes=tuple(last.reason_codes)
+                    + ("observation_stream_ended", "typed_abstention"),
+                    receipt_roots=last.receipt_roots,
+                    residual_finding_ids=last.residual_finding_ids,
+                    explanation=(
+                        "observation stream ended before residual-free fixed point"
+                    ),
+                )
+                self._terminal = sealed
+                return sealed
+            return last
+
+    def _classify(
+        self,
+        obs: DoctorFixedPointObservation,
+        progress: Mapping[str, Any],
+    ) -> DoctorFixedPointResult:
+        iteration = int(progress["iteration"])
+        bound = int(progress["bound"])
+        state_hashes = tuple(progress["state_hashes"])
+        transition_measures = tuple(progress["transition_measures"])
+        repeated_keys = tuple(progress["repeated_keys"])
+        receipt_roots = tuple(progress["receipt_roots"])
+        no_progress = bool(progress["no_progress"])
+        bound_exhausted = bool(progress["bound_exhausted"])
+
+        if obs.residual_free:
+            return DoctorFixedPointResult(
+                disposition=DeterministicRepairDisposition.PROVED_VALID,
+                terminal=True,
+                iteration=iteration,
+                bound=bound,
+                state_hashes=state_hashes,
+                transition_measures=transition_measures,
+                repeated_keys=repeated_keys,
+                reason_codes=("proved_valid", "fixed_point_reached"),
+                receipt_roots=receipt_roots,
+                residual_finding_ids=(),
+                explanation="Doctor reached a residual-free proved fixed point",
+            )
+
+        if no_progress or bound_exhausted or not obs.capability_available:
+            disposition, reasons, explanation = self._guard.stable_disposition(
+                obs,
+                no_progress=no_progress or bound_exhausted,
+                bound_exhausted=bound_exhausted,
+            )
+            return DoctorFixedPointResult(
+                disposition=disposition,
+                terminal=True,
+                iteration=iteration,
+                bound=bound,
+                state_hashes=state_hashes,
+                transition_measures=transition_measures,
+                repeated_keys=repeated_keys,
+                reason_codes=reasons,
+                receipt_roots=receipt_roots,
+                residual_finding_ids=obs.residual_finding_ids,
+                explanation=explanation,
+            )
+
+        # Intermediate residual that still has room under the bound.
+        return DoctorFixedPointResult(
+            disposition=DeterministicRepairDisposition.ABSTAIN_REVIEW,
+            terminal=False,
+            iteration=iteration,
+            bound=bound,
+            state_hashes=state_hashes,
+            transition_measures=transition_measures,
+            repeated_keys=repeated_keys,
+            reason_codes=("iteration_open", "residual_present"),
+            receipt_roots=receipt_roots,
+            residual_finding_ids=obs.residual_finding_ids,
+            explanation="Doctor iteration open; residual remains under bound",
+        )
 
 
 @dataclass(frozen=True)
@@ -616,6 +1349,8 @@ class DeterministicDoctorRuntime:
         scope_policy: Any | None = None,
         index_root: str | os.PathLike[str] | None = None,
         deterministic: bool = True,
+        fixed_point_bound: int | None = None,
+        fixed_point: DoctorFixedPoint | None = None,
     ) -> None:
         allowlist = tuple(repository_allowlist or (checkout_root,))
         self.checkout_root = _canonical_checkout(checkout_root, allowlist)
@@ -634,6 +1369,47 @@ class DeterministicDoctorRuntime:
         self._evidence: DeterministicDoctorEvidenceBundle | None = None
         self._stage_receipts: dict[str, Mapping[str, Any]] = {}
         self._lock = threading.RLock()
+        bound = (
+            DEFAULT_DOCTOR_FIXED_POINT_BOUND
+            if fixed_point_bound is None
+            else _bounded_fixed_point_int(
+                fixed_point_bound,
+                "fixed_point_bound",
+                minimum=1,
+                maximum=MAX_DOCTOR_FIXED_POINT_BOUND,
+            )
+        )
+        if policy is not None:
+            try:
+                policy_bounds = getattr(policy, "resource_bounds", None)
+                if policy_bounds is None and isinstance(policy, Mapping):
+                    raw_bounds = policy.get("resource_bounds") or policy.get("limits")
+                    if isinstance(raw_bounds, Mapping):
+                        bound = _bounded_fixed_point_int(
+                            int(
+                                raw_bounds.get("max_fixed_point_iterations", bound)
+                            ),
+                            "fixed_point_bound",
+                            minimum=1,
+                            maximum=MAX_DOCTOR_FIXED_POINT_BOUND,
+                        )
+                elif policy_bounds is not None and fixed_point_bound is None:
+                    bound = _bounded_fixed_point_int(
+                        int(
+                            getattr(
+                                policy_bounds,
+                                "max_fixed_point_iterations",
+                                bound,
+                            )
+                        ),
+                        "fixed_point_bound",
+                        minimum=1,
+                        maximum=MAX_DOCTOR_FIXED_POINT_BOUND,
+                    )
+            except (TypeError, ValueError, DeterministicDoctorRuntimeError):
+                # Keep the explicit/default bound; policy may be a partial map.
+                pass
+        self._fixed_point = fixed_point or DoctorFixedPoint(bound=bound)
         # Production composition (DCR-050): mandatory backends are real stage
         # adapters bound at construction.  Optional later stages may defer with
         # typed unavailability — never empty slots or silent success.
@@ -652,7 +1428,7 @@ class DeterministicDoctorRuntime:
                     DoctorRuntimeStage.SYNTHESIS_PREVIEW
                 ),
                 impact=self._deferred_stage_backend(DoctorRuntimeStage.IMPACT),
-                fixed_point=self._deferred_stage_backend(DoctorRuntimeStage.FIXED_POINT),
+                fixed_point=self._fixed_point_backend,
             ),
         )
         self._composition_handles: Mapping[str, Any] | None = None
@@ -686,6 +1462,64 @@ class DeterministicDoctorRuntime:
         """Optional production composition handles attached by the factory."""
 
         return self._composition_handles
+
+    @property
+    def fixed_point(self) -> DoctorFixedPoint:
+        """Bounded DoctorFixedPoint@1 termination controller (DCR-053)."""
+
+        return self._fixed_point
+
+    @property
+    def no_progress_guard(self) -> NoProgressGuard:
+        """Shared no-progress / cycle guard for the fixed-point controller."""
+
+        return self._fixed_point.guard
+
+    def evaluate_fixed_point(
+        self,
+        observations: Sequence[DoctorFixedPointObservation | Mapping[str, Any]]
+        | DoctorFixedPointObservation
+        | Mapping[str, Any]
+        | None = None,
+        *,
+        reset: bool = True,
+    ) -> DoctorFixedPointResult:
+        """Terminate at a proved fixed point or one stable typed abstention.
+
+        Always returns within the configured bound with zero model/provider
+        invocations.  Empty or missing observations yield a typed abstention.
+        """
+
+        if observations is None:
+            sequence: tuple[DoctorFixedPointObservation | Mapping[str, Any], ...] = ()
+        elif isinstance(observations, DoctorFixedPointObservation):
+            sequence = (observations,)
+        elif isinstance(observations, Mapping):
+            # A bare observation mapping (has state_hash) vs a list-like payload.
+            if "state_hash" in observations and "observations" not in observations:
+                sequence = (observations,)
+            else:
+                raw = observations.get("observations") or ()
+                sequence = tuple(raw)  # type: ignore[arg-type]
+        else:
+            sequence = tuple(observations)
+        result = self._fixed_point.run(sequence, reset=reset)
+        self._stage_receipts[DoctorRuntimeStage.FIXED_POINT.value] = {
+            "status": "completed" if result.claims_completion else "terminal",
+            "reason_code": (
+                result.reason_codes[0] if result.reason_codes else result.disposition.value
+            ),
+            "disposition": result.disposition.value,
+            "terminal": result.terminal,
+            "iteration": result.iteration,
+            "bound": result.bound,
+            "model_invocation_count": 0,
+            "provider_invocation_count": 0,
+            "claims_completion": result.claims_completion,
+            "may_call_model": False,
+            "content_id": result.content_id,
+        }
+        return result
 
     def attach_composition_handles(self, handles: Mapping[str, Any]) -> None:
         """Attach body-free production composition handles (idempotent)."""
@@ -733,6 +1567,9 @@ class DeterministicDoctorRuntime:
             "mandatory_backends": list(MANDATORY_PRODUCTION_BACKENDS),
             "mandatory_backends_bound": list(self.mandatory_backends_bound()),
             "optional_deferred_backends": list(OPTIONAL_DEFERRED_BACKENDS),
+            "fixed_point_interface": DOCTOR_FIXED_POINT_INTERFACE,
+            "fixed_point_bound": self._fixed_point.bound,
+            "disposition_interface": DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE,
             "providers_started": False,
             "network_routes_allowed": False,
             "model_routes_allowed": False,
@@ -1355,6 +2192,89 @@ class DeterministicDoctorRuntime:
             stage_refs={DoctorRuntimeStage.TRANSACTION.value: reason},
         )
 
+    def _fixed_point_backend(
+        self,
+        request: DoctorOperationRequest,
+        *,
+        policy: DeterministicDoctorPolicy,
+        policy_decision: Any,
+    ) -> DoctorOperationResult:
+        """Bound DoctorFixedPoint@1 termination (DCR-053).
+
+        When the request carries body-free fixed-point observations under
+        ``context['fixed_point_observations']`` / ``context['observations']``,
+        evaluate them through :meth:`evaluate_fixed_point`.  Otherwise return a
+        typed abstention: the stage is wired and zero-model, never a free
+        retry or provider fallback.
+        """
+
+        del policy, policy_decision
+        context = getattr(request, "context", None)
+        observations: Sequence[Any] | None = None
+        if isinstance(context, Mapping):
+            raw = context.get("fixed_point_observations")
+            if raw is None:
+                raw = context.get("observations")
+            if isinstance(raw, (list, tuple)):
+                observations = tuple(raw)
+            elif isinstance(raw, Mapping) or isinstance(
+                raw, DoctorFixedPointObservation
+            ):
+                observations = (raw,)
+        if observations is None:
+            result = self.evaluate_fixed_point(())
+            reason = "awaiting_typed_stage_inputs"
+            explanation = (
+                "fixed_point wired; supply content-addressed observations to "
+                "terminate at proved_valid or a stable typed abstention"
+            )
+        else:
+            result = self.evaluate_fixed_point(observations)
+            reason = (
+                result.reason_codes[0]
+                if result.reason_codes
+                else result.disposition.value
+            )
+            explanation = result.explanation or (
+                f"fixed_point terminal: {result.disposition.value}"
+            )
+        # Map public DeterministicRepairDisposition onto DoctorRepairDisposition
+        # for the service-layer envelope without claiming mutation success.
+        if result.disposition is DeterministicRepairDisposition.PROVED_VALID:
+            doctor_disposition = DoctorRepairDisposition.SUPPORTED
+        elif result.disposition is DeterministicRepairDisposition.DEFER_CAPABILITY:
+            doctor_disposition = DoctorRepairDisposition.ABSTAIN
+        else:
+            doctor_disposition = DoctorRepairDisposition.ABSTAIN
+        return DoctorOperationResult(
+            request_id=request.request_id,
+            operation=request.operation,
+            mode=request.mode,
+            disposition=doctor_disposition,
+            incident_id=request.incident_cid(),
+            read_only=True,
+            policy_decision=None,
+            reason_codes=(
+                result.disposition.value,
+                *result.reason_codes,
+                "runtime_model_calls_0",
+            ),
+            explanation=explanation,
+            changed=False,
+            status={
+                "stage": DoctorRuntimeStage.FIXED_POINT.value,
+                "automatic_fallback": False,
+                "production_success": result.claims_completion,
+                "mandatory": False,
+                "deferred": False,
+                "terminal": result.terminal,
+                "iteration": result.iteration,
+                "bound": result.bound,
+                "content_id": result.content_id,
+            },
+            stage_refs={DoctorRuntimeStage.FIXED_POINT.value: reason},
+        )
+
 
 def create_deterministic_doctor_runtime(
     checkout_root: str | os.PathLike[str],
@@ -1365,21 +2285,90 @@ def create_deterministic_doctor_runtime(
     return DeterministicDoctorRuntime(checkout_root=checkout_root, **kwargs)
 
 
+def materialize_doctor_fixed_point(
+    *,
+    observations: Sequence[DoctorFixedPointObservation | Mapping[str, Any]]
+    | None = None,
+    bound: int = DEFAULT_DOCTOR_FIXED_POINT_BOUND,
+    destination: str | Path | None = None,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Materialize doctor-fixed-point.json evidence for DCR-053."""
+
+    controller = DoctorFixedPoint(bound=bound)
+    if observations is None:
+        # Default fixture: residual-free fixed point (proved_valid).
+        observations = (
+            DoctorFixedPointObservation(
+                state_hash="state:dcr053-fixed",
+                transition_measure=0,
+                progress_key="key:dcr053-fixed",
+                receipt_root="receipt:dcr053-fixed",
+            ),
+        )
+    result = controller.run(observations)
+    payload = {
+        "schema": DOCTOR_FIXED_POINT_CATALOG_SCHEMA,
+        "interface": DOCTOR_FIXED_POINT_INTERFACE,
+        "disposition_interface": DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE,
+        "evidence_id": DCR_DOCTOR_FIXED_POINT_EVIDENCE,
+        "version": DCR_DOCTOR_FIXED_POINT_VERSION,
+        "bound": bound,
+        "result": result.to_dict(),
+        "observations": [
+            (
+                item.to_dict()
+                if isinstance(item, DoctorFixedPointObservation)
+                else DoctorFixedPointObservation.from_mapping(item).to_dict()
+            )
+            for item in observations
+        ],
+        "runtime_model_calls": 0,
+        "provider_invocation_count": 0,
+    }
+    root = Path(repo_root).resolve() if repo_root is not None else Path.cwd()
+    path = (
+        Path(destination)
+        if destination is not None
+        else root.joinpath(*PurePosixPath(DEFAULT_DOCTOR_FIXED_POINT_PATH).parts)
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return payload
+
+
 __all__ = [
+    "DCR_DOCTOR_FIXED_POINT_EVIDENCE",
+    "DCR_DOCTOR_FIXED_POINT_VERSION",
+    "DEFAULT_DOCTOR_FIXED_POINT_BOUND",
+    "DEFAULT_DOCTOR_FIXED_POINT_PATH",
     "DETERMINISTIC_DOCTOR_BACKEND_FACTORY_INTERFACE",
     "DETERMINISTIC_DOCTOR_EVIDENCE_BUNDLE_SCHEMA",
     "DETERMINISTIC_DOCTOR_RUNTIME_DISCOVERY_SCHEMA",
     "DETERMINISTIC_DOCTOR_RUNTIME_INTERFACE",
     "DETERMINISTIC_DOCTOR_RUNTIME_REPORT_SCHEMA",
+    "DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE",
+    "DOCTOR_FIXED_POINT_CATALOG_SCHEMA",
+    "DOCTOR_FIXED_POINT_INTERFACE",
+    "DOCTOR_FIXED_POINT_OBSERVATION_SCHEMA",
+    "DOCTOR_FIXED_POINT_RESULT_SCHEMA",
+    "MAX_DOCTOR_FIXED_POINT_BOUND",
     "DeterministicDoctorBackendFactory",
     "DeterministicDoctorEvidenceBundle",
     "DeterministicDoctorRuntime",
     "DeterministicDoctorRuntimeError",
     "DeterministicDoctorRuntimeReport",
     "DeterministicDoctorRuntimeSafetyError",
+    "DoctorFixedPoint",
+    "DoctorFixedPointObservation",
+    "DoctorFixedPointResult",
     "DoctorRuntimeStage",
     "DoctorRuntimeStageUnavailable",
     "DoctorSourceInventoryEntry",
     "DoctorStageCapability",
+    "NoProgressGuard",
     "create_deterministic_doctor_runtime",
+    "materialize_doctor_fixed_point",
 ]

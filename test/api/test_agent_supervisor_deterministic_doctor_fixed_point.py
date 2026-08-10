@@ -772,3 +772,147 @@ def test_complete_receipt_forbids_residuals() -> None:
             residual_finding_ids=("finding:open",),
             identity_replay_receipt_id="replay:1",
         )
+
+
+# ---------------------------------------------------------------------------
+# DCR-053: DoctorFixedPoint@1 + NoProgressGuard (runtime termination)
+# ---------------------------------------------------------------------------
+
+
+def test_dcr053_doctor_fixed_point_interfaces() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomous_repair.contracts import (
+        DeterministicRepairDisposition,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.deterministic_doctor_runtime import (
+        DEFAULT_DOCTOR_FIXED_POINT_BOUND,
+        DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE,
+        DOCTOR_FIXED_POINT_INTERFACE,
+        DoctorFixedPoint,
+        NoProgressGuard,
+    )
+
+    assert DOCTOR_FIXED_POINT_INTERFACE == "DoctorFixedPoint@1"
+    assert DETERMINISTIC_REPAIR_DISPOSITION_INTERFACE == (
+        "DeterministicRepairDisposition@1"
+    )
+    assert DoctorFixedPoint.INTERFACE == DOCTOR_FIXED_POINT_INTERFACE
+    assert DEFAULT_DOCTOR_FIXED_POINT_BOUND == 8
+    assert isinstance(NoProgressGuard(bound=4), NoProgressGuard)
+    assert DeterministicRepairDisposition.PROVED_VALID.value == "proved_valid"
+
+
+def test_dcr053_proved_valid_zero_model_calls() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomous_repair.contracts import (
+        DeterministicRepairDisposition,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.deterministic_doctor_runtime import (
+        DoctorFixedPoint,
+        DoctorFixedPointObservation,
+    )
+
+    result = DoctorFixedPoint(bound=4).run(
+        (
+            DoctorFixedPointObservation(
+                state_hash="state:closed",
+                transition_measure=0,
+                progress_key="key:closed",
+                receipt_root="receipt:closed",
+            ),
+        )
+    )
+    assert result.terminal is True
+    assert result.disposition is DeterministicRepairDisposition.PROVED_VALID
+    assert result.claims_completion is True
+    assert result.may_call_model is False
+    assert result.model_invocation_count == 0
+    assert result.provider_invocation_count == 0
+    assert "fixed_point_reached" in result.reason_codes
+
+
+def test_dcr053_no_progress_stable_typed_abstention() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomous_repair.contracts import (
+        DeterministicRepairDisposition,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.deterministic_doctor_runtime import (
+        DoctorFixedPoint,
+        DoctorFixedPointObservation,
+    )
+
+    obs = DoctorFixedPointObservation(
+        state_hash="state:stuck",
+        transition_measure=3,
+        progress_key="key:stuck",
+        residual_finding_ids=("finding:open",),
+        receipt_root="receipt:stuck",
+    )
+    controller = DoctorFixedPoint(bound=8)
+    first = controller.step(obs)
+    assert first.terminal is False
+    second = controller.step(obs)
+    assert second.terminal is True
+    assert second.disposition is DeterministicRepairDisposition.ABSTAIN_REVIEW
+    assert "no_progress" in second.reason_codes
+    assert second.model_invocation_count == 0
+    # Already sealed: further steps return the same terminal.
+    third = controller.step(obs)
+    assert third.content_id == second.content_id
+
+
+def test_dcr053_bound_exhaustion_refuted_repairable() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomous_repair.contracts import (
+        DeterministicRepairDisposition,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.deterministic_doctor_runtime import (
+        DoctorFixedPoint,
+        DoctorFixedPointObservation,
+    )
+
+    controller = DoctorFixedPoint(bound=3)
+    last = None
+    for index in range(3):
+        last = controller.step(
+            DoctorFixedPointObservation(
+                state_hash=f"state:{index}",
+                transition_measure=3 - index,
+                progress_key=f"key:{index}",
+                residual_finding_ids=("finding:repairable",),
+                repairable=True,
+            )
+        )
+    assert last is not None
+    assert last.terminal is True
+    assert last.disposition is DeterministicRepairDisposition.REFUTED_REPAIRABLE
+    assert "fixed_point_bound_exhausted" in last.reason_codes
+    assert last.may_call_model is False
+
+
+def test_dcr053_defer_capability_and_materialize(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomous_repair.contracts import (
+        DeterministicRepairDisposition,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.deterministic_doctor_runtime import (
+        DoctorFixedPoint,
+        DoctorFixedPointObservation,
+        materialize_doctor_fixed_point,
+    )
+
+    result = DoctorFixedPoint(bound=2).run(
+        (
+            DoctorFixedPointObservation(
+                state_hash="state:cap",
+                transition_measure=1,
+                residual_finding_ids=("finding:cap",),
+                capability_available=False,
+            ),
+        )
+    )
+    assert result.disposition is DeterministicRepairDisposition.DEFER_CAPABILITY
+    assert result.terminal is True
+    assert result.model_invocation_count == 0
+
+    destination = tmp_path / "doctor-fixed-point.json"
+    payload = materialize_doctor_fixed_point(destination=destination)
+    assert destination.is_file()
+    assert payload["runtime_model_calls"] == 0
+    assert payload["interface"] == "DoctorFixedPoint@1"
+    assert payload["result"]["disposition"] == "proved_valid"
