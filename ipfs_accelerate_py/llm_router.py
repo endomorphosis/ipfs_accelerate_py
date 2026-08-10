@@ -2288,6 +2288,107 @@ def decide_router_owned_implementation_provider(
     )
 
 
+
+# ---------------------------------------------------------------------------
+# ASE3-024: router-owned planning route plan (separate from implementation
+# provider fallback). Prompt content never selects providers.
+# ---------------------------------------------------------------------------
+
+PROMPT_PLANNING_ROUTE_PLAN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/prompt-planning-route-plan@1"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PromptPlanningRoutePlan:
+    """Immutable planning-provider route admitted by llm_router only."""
+
+    schema: str
+    preferred_provider_id: str
+    model_id: str
+    reasoning_effort: str
+    policy_cid: str
+    intent_cid: str
+    max_attempts: int
+    authorized: bool
+    reason_codes: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "preferred_provider_id": self.preferred_provider_id,
+            "model_id": self.model_id,
+            "reasoning_effort": self.reasoning_effort,
+            "policy_cid": self.policy_cid,
+            "intent_cid": self.intent_cid,
+            "max_attempts": self.max_attempts,
+            "authorized": self.authorized,
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return _content_addressed_mapping(
+            self.as_dict(), identity_field="content_id"
+        )
+
+    @property
+    def route_plan_cid(self) -> str:
+        return self.content_id
+
+
+def decide_prompt_planning_route(
+    *,
+    policy_cid: str,
+    intent_cid: str,
+    allowed_planning_providers: Sequence[str],
+    preferred_provider_id: str = "grok",
+    model_id: str = "grok-4.5",
+    reasoning_effort: str = "medium",
+    max_attempts: int = 1,
+    prompt_text: str | None = None,
+) -> PromptPlanningRoutePlan:
+    """Return the sole planning route plan.
+
+    ``prompt_text`` is accepted only to prove non-influence: it is never used
+    for provider, model, effort, retry, or authorization decisions.
+    """
+
+    _ = prompt_text  # explicitly non-authoritative
+    preferred = str(preferred_provider_id or "").strip().lower()
+    allowed = {
+        str(item).strip().lower()
+        for item in (allowed_planning_providers or ())
+        if str(item or "").strip()
+    }
+    reasons: list[str] = []
+    authorized = True
+    if not policy_cid or not intent_cid:
+        authorized = False
+        reasons.append("missing_policy_or_intent")
+    if preferred not in allowed:
+        authorized = False
+        reasons.append("preferred_provider_not_policy_allowed")
+    if max_attempts < 1:
+        authorized = False
+        reasons.append("invalid_max_attempts")
+    if authorized:
+        reasons.append("planning_route_authorized")
+    else:
+        reasons.append("planning_route_denied")
+    return PromptPlanningRoutePlan(
+        schema=PROMPT_PLANNING_ROUTE_PLAN_SCHEMA,
+        preferred_provider_id=preferred if authorized else "",
+        model_id=str(model_id if authorized else ""),
+        reasoning_effort=str(reasoning_effort if authorized else ""),
+        policy_cid=str(policy_cid or ""),
+        intent_cid=str(intent_cid or ""),
+        max_attempts=int(max_attempts),
+        authorized=authorized,
+        reason_codes=tuple(reasons),
+    )
+
+
 class LegacyAutoProviderCompatibilityAdapter:
     """Map a router decision onto legacy auto-provider receipt fields.
 
