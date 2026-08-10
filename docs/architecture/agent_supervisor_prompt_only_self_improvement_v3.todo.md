@@ -721,7 +721,7 @@ Closeout:           ASE3-014
 
 ## ASE3-028 Restore router ownership and the package dependency direction
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

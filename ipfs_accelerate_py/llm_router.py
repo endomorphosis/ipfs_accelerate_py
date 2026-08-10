@@ -125,6 +125,7 @@ from functools import lru_cache
 from html import unescape
 from pathlib import Path, PurePosixPath
 from typing import (
+    Any,
     Callable,
     Dict,
     List,
@@ -1743,6 +1744,590 @@ class AgentImplementationFallbackDecision:
             self.as_dict(),
             identity_field="content_id",
         )
+
+
+
+# ---------------------------------------------------------------------------
+# ASE3-028: sole router-owned implementation-provider decision surface.
+# Callers may only normalize non-authoritative observations and adapt the
+# returned decision; they must not re-rank, reclassify, or re-authorize.
+# ---------------------------------------------------------------------------
+
+ROUTER_OWNED_PROVIDER_DECISION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/router-owned-provider-decision@1"
+)
+ROUTER_OWNED_PREFERRED_PROVIDER = "grok"
+ROUTER_OWNED_FALLBACK_PROVIDER = "codex"
+ROUTER_OWNED_SECONDARY_PREFERENCE: tuple[str, ...] = (
+    "codex",
+    "claude",
+    "gemini",
+    "copilot",
+    "meta_spark",
+    "mistral",
+)
+ROUTER_OWNED_COMPATIBILITY_LEGACY_AUTO = "legacy_auto"
+ROUTER_OWNED_COMPATIBILITY_CANONICAL = "canonical"
+
+
+class RouterOwnedProviderReason:
+    """Stable reason codes owned by the router decision surface."""
+
+    PREFERRED_READY = "preferred_provider_ready"
+    TIE_BREAK_PREFERRED = "tie_break_preferred_provider"
+    FALLBACK_AFTER_QUOTA = "fallback_after_preferred_hard_quota"
+    SECONDARY_AFTER_QUOTA = "secondary_after_preferred_hard_quota"
+    PREFERRED_TRANSIENT_CAPACITY = "preferred_provider_transient_capacity"
+    PREFERRED_NOT_READY = "preferred_provider_not_ready"
+    FALLBACK_NOT_READY = "fallback_provider_not_ready"
+    SECONDARY_NOT_READY = "secondary_providers_not_ready"
+    GLOBAL_CAPACITY = "global_provider_capacity_cooldown"
+    NO_ELIGIBLE = "no_eligible_implementation_provider"
+    PREFERRED_HARD_QUOTA = "preferred_provider_hard_quota_exhausted"
+    AUTHORIZED = "router_owned_provider_authorized"
+    DENIED = "router_owned_provider_denied"
+
+
+@dataclass(frozen=True, slots=True)
+class RouterOwnedProviderObservation:
+    """Bounded non-authoritative backend observation for router policy.
+
+    Observations never authorize dispatch alone. Eligibility, ranking,
+    classification, freshness, and final allow/deny live only in
+    :func:`decide_router_owned_implementation_provider`.
+    """
+
+    provider_id: str
+    ready: bool
+    authenticated: bool = False
+    binary_available: bool = True
+    hard_quota_exhausted: bool = False
+    capacity_latched: bool = False
+    request_headroom: int | None = None
+    retry_at: str = ""
+    source: str = "observation"
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        provider_id = str(self.provider_id or "").strip().lower()
+        if not provider_id:
+            raise ValueError("router-owned observation requires provider_id")
+        object.__setattr__(self, "provider_id", provider_id)
+        object.__setattr__(self, "ready", bool(self.ready))
+        object.__setattr__(self, "authenticated", bool(self.authenticated))
+        object.__setattr__(self, "binary_available", bool(self.binary_available))
+        object.__setattr__(
+            self, "hard_quota_exhausted", bool(self.hard_quota_exhausted)
+        )
+        object.__setattr__(self, "capacity_latched", bool(self.capacity_latched))
+        headroom = self.request_headroom
+        if headroom is not None:
+            if isinstance(headroom, bool) or not isinstance(headroom, int):
+                raise ValueError("request_headroom must be an int or None")
+            if headroom < 0:
+                raise ValueError("request_headroom must be non-negative")
+        object.__setattr__(self, "retry_at", str(self.retry_at or ""))
+        object.__setattr__(self, "source", str(self.source or "observation"))
+        codes = tuple(
+            str(code)
+            for code in (self.reason_codes or ())
+            if str(code or "").strip()
+        )
+        object.__setattr__(self, "reason_codes", codes)
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "RouterOwnedProviderObservation":
+        if not isinstance(value, Mapping):
+            raise ValueError("router-owned observation must be a mapping")
+        headroom = value.get("request_headroom")
+        if headroom is not None and not isinstance(headroom, bool):
+            try:
+                headroom = int(headroom)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("request_headroom must be an int or None") from exc
+        return cls(
+            provider_id=str(value.get("provider_id") or ""),
+            ready=bool(value.get("ready")),
+            authenticated=bool(value.get("authenticated", False)),
+            binary_available=bool(value.get("binary_available", True)),
+            hard_quota_exhausted=bool(value.get("hard_quota_exhausted", False)),
+            capacity_latched=bool(value.get("capacity_latched", False)),
+            request_headroom=headroom if headroom is not None else None,
+            retry_at=str(value.get("retry_at") or ""),
+            source=str(value.get("source") or "observation"),
+            reason_codes=tuple(value.get("reason_codes") or ()),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "provider_id": self.provider_id,
+            "ready": self.ready,
+            "authenticated": self.authenticated,
+            "binary_available": self.binary_available,
+            "hard_quota_exhausted": self.hard_quota_exhausted,
+            "capacity_latched": self.capacity_latched,
+            "request_headroom": self.request_headroom,
+            "retry_at": self.retry_at,
+            "source": self.source,
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return _content_addressed_mapping(
+            self.as_dict(), identity_field="content_id"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RouterOwnedProviderPolicyContext:
+    """Verified policy context submitted with capacity observations."""
+
+    preferred_provider: str = ROUTER_OWNED_PREFERRED_PROVIDER
+    fallback_provider: str = ROUTER_OWNED_FALLBACK_PROVIDER
+    secondary_providers: tuple[str, ...] = ROUTER_OWNED_SECONDARY_PREFERENCE
+    global_capacity_latched: bool = False
+    allow_secondary_without_preferred_quota: bool = False
+    compatibility_mode: str = ROUTER_OWNED_COMPATIBILITY_CANONICAL
+
+    def __post_init__(self) -> None:
+        preferred = str(self.preferred_provider or "").strip().lower()
+        fallback = str(self.fallback_provider or "").strip().lower()
+        if not preferred or not fallback:
+            raise ValueError("preferred and fallback providers are required")
+        secondaries = tuple(
+            str(item).strip().lower()
+            for item in (self.secondary_providers or ())
+            if str(item or "").strip()
+        )
+        mode = str(self.compatibility_mode or ROUTER_OWNED_COMPATIBILITY_CANONICAL)
+        if mode not in {
+            ROUTER_OWNED_COMPATIBILITY_CANONICAL,
+            ROUTER_OWNED_COMPATIBILITY_LEGACY_AUTO,
+        }:
+            raise ValueError(f"unsupported compatibility_mode {mode!r}")
+        object.__setattr__(self, "preferred_provider", preferred)
+        object.__setattr__(self, "fallback_provider", fallback)
+        object.__setattr__(self, "secondary_providers", secondaries)
+        object.__setattr__(
+            self, "global_capacity_latched", bool(self.global_capacity_latched)
+        )
+        object.__setattr__(
+            self,
+            "allow_secondary_without_preferred_quota",
+            bool(self.allow_secondary_without_preferred_quota),
+        )
+        object.__setattr__(self, "compatibility_mode", mode)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "preferred_provider": self.preferred_provider,
+            "fallback_provider": self.fallback_provider,
+            "secondary_providers": list(self.secondary_providers),
+            "global_capacity_latched": self.global_capacity_latched,
+            "allow_secondary_without_preferred_quota": (
+                self.allow_secondary_without_preferred_quota
+            ),
+            "compatibility_mode": self.compatibility_mode,
+        }
+
+    @property
+    def content_id(self) -> str:
+        return _content_addressed_mapping(
+            self.as_dict(), identity_field="content_id"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RouterOwnedProviderDecision:
+    """Immutable sole provider-policy result for implementation routing."""
+
+    schema: str
+    decision: str
+    selected_provider: str
+    authorized: bool
+    reason_codes: tuple[str, ...]
+    preferred_provider: str
+    fallback_provider: str
+    secondary_providers: tuple[str, ...]
+    retry_at: str
+    compatibility_mode: str
+    observations: tuple[dict[str, Any], ...]
+    policy_context: dict[str, Any]
+    classified: tuple[dict[str, Any], ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "decision": self.decision,
+            "selected_provider": self.selected_provider,
+            "authorized": self.authorized,
+            "reason_codes": list(self.reason_codes),
+            "preferred_provider": self.preferred_provider,
+            "fallback_provider": self.fallback_provider,
+            "secondary_providers": list(self.secondary_providers),
+            "retry_at": self.retry_at,
+            "compatibility_mode": self.compatibility_mode,
+            "observations": [dict(item) for item in self.observations],
+            "policy_context": dict(self.policy_context),
+            "classified": [dict(item) for item in self.classified],
+        }
+
+    @property
+    def content_id(self) -> str:
+        return _content_addressed_mapping(
+            self.as_dict(), identity_field="content_id"
+        )
+
+    @property
+    def decision_cid(self) -> str:
+        return self.content_id
+
+
+def _router_owned_observation(
+    value: RouterOwnedProviderObservation | Mapping[str, Any],
+) -> RouterOwnedProviderObservation:
+    if isinstance(value, RouterOwnedProviderObservation):
+        return value
+    return RouterOwnedProviderObservation.from_mapping(value)
+
+
+def _router_owned_is_eligible(
+    observation: RouterOwnedProviderObservation,
+) -> bool:
+    return (
+        observation.ready
+        and observation.authenticated
+        and observation.binary_available
+        and not observation.hard_quota_exhausted
+        and not observation.capacity_latched
+    )
+
+
+def _router_owned_preference_rank(
+    provider_id: str,
+    *,
+    preferred_provider: str,
+    secondary_providers: Sequence[str],
+) -> int:
+    if provider_id == preferred_provider:
+        return 0
+    try:
+        return list(secondary_providers).index(provider_id) + 1
+    except ValueError:
+        return 100
+
+
+def _router_owned_soft_rank_key(
+    observation: RouterOwnedProviderObservation,
+    *,
+    preferred_provider: str,
+    secondary_providers: Sequence[str],
+) -> tuple[int, int, str]:
+    rank = _router_owned_preference_rank(
+        observation.provider_id,
+        preferred_provider=preferred_provider,
+        secondary_providers=secondary_providers,
+    )
+    headroom = (
+        int(observation.request_headroom)
+        if observation.request_headroom is not None
+        else 0
+    )
+    return (rank, -headroom, observation.provider_id)
+
+
+def _router_owned_best_secondary(
+    eligible: Sequence[RouterOwnedProviderObservation],
+    *,
+    secondary_providers: Sequence[str],
+    preferred_provider: str,
+) -> RouterOwnedProviderObservation | None:
+    secondaries = [
+        item
+        for item in eligible
+        if item.provider_id in set(secondary_providers)
+        and item.provider_id != preferred_provider
+    ]
+    if not secondaries:
+        return None
+    return sorted(
+        secondaries,
+        key=lambda item: _router_owned_soft_rank_key(
+            item,
+            preferred_provider=preferred_provider,
+            secondary_providers=secondary_providers,
+        ),
+    )[0]
+
+
+def _router_owned_classify(
+    observation: RouterOwnedProviderObservation,
+) -> dict[str, Any]:
+    if observation.hard_quota_exhausted:
+        classification = "hard_quota_exhausted"
+    elif observation.capacity_latched:
+        classification = "capacity_latched"
+    elif _router_owned_is_eligible(observation):
+        classification = "eligible"
+    elif not observation.authenticated:
+        classification = "unauthenticated"
+    elif not observation.binary_available:
+        classification = "binary_unavailable"
+    elif not observation.ready:
+        classification = "not_ready"
+    else:
+        classification = "ineligible"
+    return {
+        "provider_id": observation.provider_id,
+        "classification": classification,
+        "eligible": _router_owned_is_eligible(observation),
+        "hard_quota_exhausted": observation.hard_quota_exhausted,
+        "capacity_latched": observation.capacity_latched,
+        "observation_cid": observation.content_id,
+    }
+
+
+def decide_router_owned_implementation_provider(
+    observations: Sequence[RouterOwnedProviderObservation | Mapping[str, Any]],
+    *,
+    policy_context: RouterOwnedProviderPolicyContext | Mapping[str, Any] | None = None,
+    preferred_provider: str = ROUTER_OWNED_PREFERRED_PROVIDER,
+    fallback_provider: str = ROUTER_OWNED_FALLBACK_PROVIDER,
+    secondary_providers: Sequence[str] | None = None,
+    global_capacity_latched: bool = False,
+    allow_secondary_without_preferred_quota: bool = False,
+    compatibility_mode: str = ROUTER_OWNED_COMPATIBILITY_CANONICAL,
+) -> RouterOwnedProviderDecision:
+    """Sole provider-policy decision for implementation routing.
+
+    Both ``implementation_provider_auto`` and ``capability_resolver`` must
+    submit normalized observations plus verified policy context and consume
+    this decision without reclassification or a second decision table.
+    """
+
+    if policy_context is None:
+        context = RouterOwnedProviderPolicyContext(
+            preferred_provider=preferred_provider,
+            fallback_provider=fallback_provider,
+            secondary_providers=tuple(
+                secondary_providers
+                if secondary_providers is not None
+                else ROUTER_OWNED_SECONDARY_PREFERENCE
+            ),
+            global_capacity_latched=global_capacity_latched,
+            allow_secondary_without_preferred_quota=(
+                allow_secondary_without_preferred_quota
+            ),
+            compatibility_mode=compatibility_mode,
+        )
+    elif isinstance(policy_context, RouterOwnedProviderPolicyContext):
+        context = policy_context
+    else:
+        context = RouterOwnedProviderPolicyContext(
+            preferred_provider=str(
+                policy_context.get("preferred_provider") or preferred_provider
+            ),
+            fallback_provider=str(
+                policy_context.get("fallback_provider") or fallback_provider
+            ),
+            secondary_providers=tuple(
+                policy_context.get("secondary_providers")
+                if policy_context.get("secondary_providers") is not None
+                else (
+                    secondary_providers
+                    if secondary_providers is not None
+                    else ROUTER_OWNED_SECONDARY_PREFERENCE
+                )
+            ),
+            global_capacity_latched=bool(
+                policy_context.get(
+                    "global_capacity_latched", global_capacity_latched
+                )
+            ),
+            allow_secondary_without_preferred_quota=bool(
+                policy_context.get(
+                    "allow_secondary_without_preferred_quota",
+                    allow_secondary_without_preferred_quota,
+                )
+            ),
+            compatibility_mode=str(
+                policy_context.get("compatibility_mode") or compatibility_mode
+            ),
+        )
+
+    obs = tuple(_router_owned_observation(item) for item in observations)
+    classified = tuple(_router_owned_classify(item) for item in obs)
+    by_id = {item.provider_id: item for item in obs}
+    preferred = by_id.get(context.preferred_provider)
+    context_payload = context.as_dict()
+    observation_payloads = tuple(item.as_dict() for item in obs)
+
+    def _build(
+        *,
+        decision: str,
+        selected_provider: str,
+        reason_codes: Sequence[str],
+        retry_at: str = "",
+    ) -> RouterOwnedProviderDecision:
+        authorized = bool(selected_provider) and decision not in {
+            "unavailable",
+            "backoff",
+        }
+        codes = list(reason_codes)
+        codes.append(
+            RouterOwnedProviderReason.AUTHORIZED
+            if authorized
+            else RouterOwnedProviderReason.DENIED
+        )
+        return RouterOwnedProviderDecision(
+            schema=ROUTER_OWNED_PROVIDER_DECISION_SCHEMA,
+            decision=decision,
+            selected_provider=selected_provider,
+            authorized=authorized,
+            reason_codes=tuple(dict.fromkeys(str(code) for code in codes if code)),
+            preferred_provider=context.preferred_provider,
+            fallback_provider=context.fallback_provider,
+            secondary_providers=context.secondary_providers,
+            retry_at=str(retry_at or ""),
+            compatibility_mode=context.compatibility_mode,
+            observations=observation_payloads,
+            policy_context=context_payload,
+            classified=classified,
+        )
+
+    if context.global_capacity_latched:
+        return _build(
+            decision="backoff",
+            selected_provider="",
+            reason_codes=(RouterOwnedProviderReason.GLOBAL_CAPACITY,),
+            retry_at=next((item.retry_at for item in obs if item.retry_at), ""),
+        )
+
+    eligible = [item for item in obs if _router_owned_is_eligible(item)]
+    other_eligible = [
+        item
+        for item in eligible
+        if item.provider_id != context.preferred_provider
+    ]
+
+    if preferred is not None and _router_owned_is_eligible(preferred):
+        reasons = [RouterOwnedProviderReason.PREFERRED_READY]
+        if other_eligible:
+            reasons.append(RouterOwnedProviderReason.TIE_BREAK_PREFERRED)
+        return _build(
+            decision=context.preferred_provider,
+            selected_provider=context.preferred_provider,
+            reason_codes=reasons,
+        )
+
+    if (
+        preferred is not None
+        and preferred.capacity_latched
+        and not preferred.hard_quota_exhausted
+    ):
+        return _build(
+            decision="backoff",
+            selected_provider="",
+            reason_codes=(RouterOwnedProviderReason.PREFERRED_TRANSIENT_CAPACITY,),
+            retry_at=preferred.retry_at,
+        )
+
+    if preferred is not None and preferred.hard_quota_exhausted:
+        secondary = _router_owned_best_secondary(
+            eligible,
+            secondary_providers=context.secondary_providers,
+            preferred_provider=context.preferred_provider,
+        )
+        if secondary is not None:
+            return _build(
+                decision=secondary.provider_id,
+                selected_provider=secondary.provider_id,
+                reason_codes=(
+                    RouterOwnedProviderReason.PREFERRED_HARD_QUOTA,
+                    RouterOwnedProviderReason.FALLBACK_AFTER_QUOTA,
+                    RouterOwnedProviderReason.SECONDARY_AFTER_QUOTA,
+                ),
+                retry_at=preferred.retry_at or secondary.retry_at,
+            )
+
+    if context.allow_secondary_without_preferred_quota:
+        secondary = _router_owned_best_secondary(
+            eligible,
+            secondary_providers=context.secondary_providers,
+            preferred_provider=context.preferred_provider,
+        )
+        if secondary is not None:
+            return _build(
+                decision=secondary.provider_id,
+                selected_provider=secondary.provider_id,
+                reason_codes=(RouterOwnedProviderReason.FALLBACK_AFTER_QUOTA,),
+                retry_at=secondary.retry_at,
+            )
+
+    reasons: list[str] = [RouterOwnedProviderReason.NO_ELIGIBLE]
+    if preferred is not None and not _router_owned_is_eligible(preferred):
+        reasons.append(RouterOwnedProviderReason.PREFERRED_NOT_READY)
+    if not any(
+        _router_owned_is_eligible(item)
+        and item.provider_id in set(context.secondary_providers)
+        for item in obs
+    ):
+        reasons.append(RouterOwnedProviderReason.SECONDARY_NOT_READY)
+        reasons.append(RouterOwnedProviderReason.FALLBACK_NOT_READY)
+    return _build(
+        decision="unavailable",
+        selected_provider="",
+        reason_codes=reasons,
+        retry_at=(
+            (preferred.retry_at if preferred is not None else "")
+            or next((item.retry_at for item in obs if item.retry_at), "")
+        ),
+    )
+
+
+class LegacyAutoProviderCompatibilityAdapter:
+    """Map a router decision onto legacy auto-provider receipt fields.
+
+    The adapter never re-decides eligibility, ranking, or authorization.
+    """
+
+    @staticmethod
+    def to_selection_fields(
+        decision: RouterOwnedProviderDecision,
+    ) -> dict[str, Any]:
+        selected = str(decision.selected_provider or "")
+        kind = str(decision.decision or "")
+        if not selected and kind == "backoff":
+            mapped_decision = "backoff"
+        elif not selected:
+            mapped_decision = "unavailable"
+        else:
+            mapped_decision = selected
+        # Drop router-internal authorize/deny markers for legacy receipts.
+        reasons = tuple(
+            code
+            for code in decision.reason_codes
+            if code
+            not in {
+                RouterOwnedProviderReason.AUTHORIZED,
+                RouterOwnedProviderReason.DENIED,
+                RouterOwnedProviderReason.PREFERRED_HARD_QUOTA,
+            }
+        )
+        return {
+            "decision": mapped_decision,
+            "selected_provider": selected,
+            "reason_codes": reasons,
+            "retry_at": decision.retry_at,
+            "preferred_provider": decision.preferred_provider,
+            "fallback_provider": decision.fallback_provider,
+            "secondary_providers": decision.secondary_providers,
+            "decision_cid": decision.decision_cid,
+            "authorized": decision.authorized,
+        }
 
 
 _AGENT_EFFECT_AUTHORIZATION_CONTEXT_SCHEMA = (
