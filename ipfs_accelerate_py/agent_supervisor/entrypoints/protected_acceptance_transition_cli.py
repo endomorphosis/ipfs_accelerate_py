@@ -86,8 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     advance.add_argument(
         "--phase",
         default="R",
-        choices=("R",),
-        help="phase to advance (currently only R is auto-composed)",
+        choices=("R", "P019"),
+        help="phase to advance (R or P019 auto-composed)",
     )
     advance.add_argument(
         "--dry-run",
@@ -135,18 +135,28 @@ def main(
             )
         elif arguments.command == "advance-one-phase":
             phase = str(getattr(arguments, "phase", "R") or "R")
-            if phase != "R":
+            if phase == "R":
+                from .protected_acceptance_advance_r import advance_prompt_v3_r
+
+                result = advance_prompt_v3_r(
+                    repo_root=getattr(arguments, "repo_root", "."),
+                    target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
+                    dry_run=bool(getattr(arguments, "dry_run", False)),
+                    publish=not bool(getattr(arguments, "dry_run", False)),
+                )
+            elif phase == "P019":
+                from .protected_acceptance_advance_p019 import advance_prompt_v3_p019
+
+                result = advance_prompt_v3_p019(
+                    repo_root=getattr(arguments, "repo_root", "."),
+                    target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
+                    dry_run=bool(getattr(arguments, "dry_run", False)),
+                    publish=not bool(getattr(arguments, "dry_run", False)),
+                )
+            else:
                 build_parser().error(
                     f"advance-one-phase does not yet auto-compose phase {phase}"
                 )
-            from .protected_acceptance_advance_r import advance_prompt_v3_r
-
-            result = advance_prompt_v3_r(
-                repo_root=getattr(arguments, "repo_root", "."),
-                target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
-                dry_run=bool(getattr(arguments, "dry_run", False)),
-                publish=not bool(getattr(arguments, "dry_run", False)),
-            )
         elif arguments.command != "inspect":
             build_parser().error(
                 "production command requires injected protected composition"
