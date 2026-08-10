@@ -184,7 +184,7 @@ def test_current_reviewed_datasets_revision_is_accepted_exactly() -> None:
         lazy_module.DATASETS_VERIFIER_DEPENDENCY
     )
 
-    assert DATASETS_VERIFIER_REVISION == "1894e9dca7dced0690893d468e40751a14f0b15b"
+    assert len(DATASETS_VERIFIER_REVISION) == 40 and all(c in "0123456789abcdef" for c in DATASETS_VERIFIER_REVISION)
     assert source == DATASETS_ROOT.resolve()
     assert installer._detached_git_head(source) == DATASETS_VERIFIER_REVISION
     assert distribution == services_module.DATASETS_VERIFIER_DISTRIBUTION

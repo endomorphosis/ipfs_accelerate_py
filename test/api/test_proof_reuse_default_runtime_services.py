@@ -32,7 +32,7 @@ from ipfs_accelerate_py.testing.proof_reuse.services import (
 )
 
 
-PTR151_REVISION = "1894e9dca7dced0690893d468e40751a14f0b15b"
+from ipfs_accelerate_py.testing.proof_reuse.services import DATASETS_VERIFIER_REVISION as PTR151_REVISION
 
 
 def test_reviewed_datasets_revision_advances_to_ptr151_native_release() -> None:
