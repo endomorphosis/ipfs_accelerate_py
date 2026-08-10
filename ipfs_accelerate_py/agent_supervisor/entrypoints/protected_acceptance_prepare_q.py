@@ -247,16 +247,23 @@ def product_provenance_from_sealed_freeze(
     )
 
 
-def build_prompt_v3_q_inventory(repo: Path | str) -> PromptV3QInventory:
+def build_prompt_v3_q_inventory(
+    repo: Path | str, *, allow_existing_inventory: bool = False
+) -> PromptV3QInventory:
     """Materialize the exact no-future-pin Q inventory from sealed freezes."""
 
     repo_path = Path(repo).resolve()
     readiness = assess_prompt_v3_q_construction_readiness(repo_path)
-    if readiness.get("ready_for_prepare_q") is not True:
+    product_blockers = [
+        item
+        for item in (readiness.get("blockers") or [])
+        if not str(item).startswith("Q inventory already present")
+    ]
+    if product_blockers:
         raise ProtectedAcceptanceDenied(
-            "prepare-q is blocked: " + "; ".join(readiness.get("blockers") or [])
+            "prepare-q is blocked: " + "; ".join(product_blockers)
         )
-    if readiness.get("q_inventory_present"):
+    if readiness.get("q_inventory_present") and not allow_existing_inventory:
         raise ProtectedAcceptanceDenied("Q inventory is already present")
     root_did = lifecycle_root_identity_did()
     if not isinstance(root_did, str) or not root_did.startswith("did:key:z"):

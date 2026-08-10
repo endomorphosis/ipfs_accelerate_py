@@ -908,7 +908,7 @@ def test_build_prompt_v3_q_inventory_from_sealed_freezes() -> None:
         product_provenance_from_sealed_freeze,
     )
 
-    inventory = build_prompt_v3_q_inventory(REPO_ROOT)
+    inventory = build_prompt_v3_q_inventory(REPO_ROOT, allow_existing_inventory=True)
     assert inventory.lifecycle_root_identity_did.startswith("did:key:z")
     assert set(item.task_id for item in inventory.product_provenance) == {
         "ASE3-019",
@@ -942,10 +942,10 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
 
     report = assess_prompt_v3_q_construction_readiness(REPO_ROOT)
     assert report["schema"].endswith("prompt-v3-q-readiness@1")
-    assert report["ready_for_prepare_q"] is True
-    assert report["blocker_count"] == 0
-    assert report["blockers"] == []
-    assert report["q_inventory_present"] is False
+    # After prepare-q, inventory is present so prepare-q readiness is closed.
+    assert report["q_inventory_present"] is True
+    assert report["ready_for_prepare_q"] is False
+    assert any("Q inventory already present" in item for item in report["blockers"])
     assert all(report["ase3_033_tooling"].values())
     products = report["pre_q_products"]
     assert set(products) == {
@@ -994,8 +994,8 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     ase3019 = products["ASE3-019"]
     assert ase3019["generation_count"] == 0
     assert len(ase3019.get("product_generation_generations") or []) == 2
-    # All six pre-Q products are sealed; prepare-q readiness is open.
-    assert report["ready_for_prepare_q"] is True
+    # All six pre-Q products remain sealed; Q inventory is present post prepare-q.
+    assert report["q_inventory_present"] is True
 
 
 def test_cli_readiness_command_is_available_without_injected_handlers(
@@ -1003,5 +1003,6 @@ def test_cli_readiness_command_is_available_without_injected_handlers(
 ) -> None:
     assert transition_cli_main(["readiness", "--repo-root", str(REPO_ROOT)]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["ready_for_prepare_q"] is True
-    assert payload["blocker_count"] == 0
+    assert payload["q_inventory_present"] is True
+    assert payload["ready_for_prepare_q"] is False
+    assert payload["blocker_count"] >= 1
