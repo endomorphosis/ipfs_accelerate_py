@@ -430,7 +430,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-404 Drive exact ARC invalidation/generation advance from mutation and replay
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
