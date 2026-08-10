@@ -1311,7 +1311,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-042 Add finite-field, bitvector, and ZK constraint profiles
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
