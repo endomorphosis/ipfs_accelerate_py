@@ -746,7 +746,7 @@ Closeout:           ASE3-014
 
 ## ASE3-024 Make prompt intake and goal planning crash-safe and router-owned
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
