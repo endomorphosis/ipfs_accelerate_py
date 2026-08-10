@@ -929,6 +929,13 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     assert ase3027["generations"][1]["ok"] is True
     assert ase3027["final_blob_count"] == 5
     assert ase3027["blob_errors"] == []
+    # ASE3-023 three hermetic generations and final P-tree blobs are sealed.
+    ase3023 = products["ASE3-023"]
+    assert ase3023["sealed_ready_flag"] is True
+    assert ase3023["generation_count"] == 3
+    assert all(generation["ok"] is True for generation in ase3023["generations"])
+    assert ase3023["final_blob_count"] == 7
+    assert ase3023["blob_errors"] == []
     # Still blocked for Q: product-generation@1 needs independent replay role.
     assert products["ASE3-019"]["sealed_ready_flag"] is True
     # 019 still lacks product-generation@1 triples (empty generations list).
@@ -936,6 +943,10 @@ def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     assert any("ASE3-019" in item for item in report["blockers"])
     assert any(
         "ASE3-027" in item and "product-generation@1" in item
+        for item in report["blockers"]
+    )
+    assert any(
+        "ASE3-023" in item and "product-generation@1" in item
         for item in report["blockers"]
     )
 

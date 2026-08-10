@@ -2070,11 +2070,11 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
     "evidence rather than being rewritten or reclassified."
 )
 
-# Acceptance phase constants are deliberately gathered here.  ASE3-027
-# source/integrated generations and final P-tree blob map are frozen against
-# Git.  ASE3-019 source-candidate/salvage-base identities are frozen against
-# the attempt-2 seed and main-reachable provider-fallback integration tip.
-# ASE3-023, ASE3-030, and the reload generation still need final identities.
+# Acceptance phase constants are deliberately gathered here.  ASE3-027 and
+# ASE3-023 source/integrated generations and final P-tree blob maps are frozen
+# against Git.  ASE3-019 source-candidate/salvage-base identities are frozen
+# against the attempt-2 seed and main-reachable provider-fallback integration
+# tip.  ASE3-030 and the reload generation still need final identities.
 # Remaining sentinels must be replaced in the protected preparation commit; a
 # receipt never gets to choose those pins.
 #
@@ -3225,11 +3225,96 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
         "validation_passed_count": 160,
     },
     "ASE3-023": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_023,
-        "generations": (),
-        "final_blobs": {},
-        "validation_passed_count": -1,
+        "ready": True,
+        "pending": None,
+        "generations": (
+            {
+                "role": "product-salvage",
+                "source_commit": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "8567257c0d101198b5b2e7fde47031c603ab5e09",
+                "integrated_commit": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_parent": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+                "integrated_tree": "cb0ad281d6e89bea8cce24abe8e6a0bfc3117610",
+                "binary_full_index_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "capsule-identity",
+                "source_commit": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_parent": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_tree": "30e9ddf36737f7c0667ec60fb07e90130fd5b899",
+                "integrated_commit": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_parent": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_tree": "e0d9a530d559a24a1f5785d2ed250d878571e242",
+                "binary_full_index_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "recovery-barrier",
+                "source_commit": "7abfc4ca768dd5086600bb30815256c79aaace74",
+                "source_parent": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_tree": "79ed78e765eada55762bae63bdfdf81264111f8a",
+                "integrated_commit": "a43b2ce74816ac9226f6319b92425d0b002b6be6",
+                "integrated_parent": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_tree": "bbb94ffe87c3b582e40b1052ba5b9dc1ca8b4c40",
+                "binary_full_index_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+        ),
+        "final_blobs": {
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py": (
+                "4af712560cc96b1a2014002c45ee53acc4d114bf"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py": (
+                "d47251c96e6882e39d8dc4bb22f22d193d2852ba"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": (
+                "1e98703b8661979037ec409bcd6aee7cdf6e7fe6"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": (
+                "217f6aba6e85a5fefe56f24aefc4848bd2ec41f0"
+            ),
+            "test/api/test_agent_supervisor_prompt_v3_parallelism.py": (
+                "8cbfdc6f63e0db87cfef2a99ea7210b077a2ff90"
+            ),
+            "test/api/test_agent_supervisor_configured_board_scheduler.py": (
+                "24f8bbf3d23bfef37d13c8246aef15f74eeb42e8"
+            ),
+            "test/api/test_agent_supervisor_implementation_supervisor_runner.py": (
+                "903f076214fd9cc077869bf1cd2837828d1b2643"
+            ),
+        },
+        "validation_passed_count": 110,
     },
     "ASE3-027": {
         "ready": True,
