@@ -3942,15 +3942,24 @@ _PRODUCT_GENERATION_FINAL_VALUES: Final = {
 }
 
 _RELOAD_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_RELOAD,
-    "stopped_generation_id": _FINAL_VALUE_PENDING_RELOAD,
-    "stopped_generation_number": -1,
-    "target_generation_id": _FINAL_VALUE_PENDING_RELOAD,
-    "scheduler_blob": _FINAL_VALUE_PENDING_RELOAD,
-    "scheduler_raw_sha256": _FINAL_VALUE_PENDING_RELOAD,
-    "daemon_blob": _FINAL_VALUE_PENDING_RELOAD,
-    "daemon_raw_sha256": _FINAL_VALUE_PENDING_RELOAD,
+    "ready": True,
+    "pending": None,
+    # Quiescence freeze against ASE3-A023/027 tip aca0e4a0c25940419cb404f135e90a2a2fdcff70.
+    "stopped_generation_id": (
+        "sha256:29d223eb8c23171e510d9e065571ca840887381bafd5748e6a16f0b9152d9e22"
+    ),
+    "stopped_generation_number": 0,
+    "target_generation_id": (
+        "sha256:86727dc67ba0bde9678fa8cdcc3f813f9fd4927a6fe2d30a266152561aef76c1"
+    ),
+    "scheduler_blob": "801bc657ead0a69e677766bc0ba402ddf2245bd7",
+    "scheduler_raw_sha256": (
+        "sha256:f96ee9b7c97bd2368d8545d9c08c32b55d3a85fe9cc052fae74f7ba7264216d3"
+    ),
+    "daemon_blob": "76b1e93e1500b3de033f8ba7b26ffad0c15c90ce",
+    "daemon_raw_sha256": (
+        "sha256:92428b5c9bba10dc675fc074504d24ab0e77879297e0488fdaec5b6953b5c701"
+    ),
 }
 _RELOAD_TASK_CONTRACT: Final = {
     "task_id": "ASE3-022",
