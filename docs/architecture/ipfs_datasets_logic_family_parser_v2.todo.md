@@ -1404,7 +1404,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-045 Add the pinned process-backed provider validation tier
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
