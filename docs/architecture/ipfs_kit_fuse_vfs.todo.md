@@ -710,7 +710,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-808 Close mount option, permission, path, state, symlink, and resource security boundaries
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
