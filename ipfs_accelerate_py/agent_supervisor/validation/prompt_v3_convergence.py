@@ -7177,7 +7177,7 @@ def validate_protected_runtime_activation_authorization(
 ) -> tuple[str, ...]:
     """Strict pre-effect ASE3-026 authorization validation (lazy gate import)."""
 
-    from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_runtime_activation import (
+    from ipfs_accelerate_py.agent_supervisor.validation.protected_runtime_activation import (
         validate_activation_authorization,
     )
 
@@ -7192,7 +7192,7 @@ def validate_protected_runtime_post_activation_observation(
 ) -> tuple[str, ...]:
     """Strict ASE3-026 post-activation observation validation (lazy gate import)."""
 
-    from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_runtime_activation import (
+    from ipfs_accelerate_py.agent_supervisor.validation.protected_runtime_activation import (
         validate_post_activation_observation,
     )
 

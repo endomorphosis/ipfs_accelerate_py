@@ -4311,6 +4311,32 @@ _LAZY_PROVIDER_EXPORT_ALIASES = {
 
 
 def __getattr__(name: str):
+    # ASE3-009 production Python facade (lazy, cold-safe).
+    if name in {
+        "Supervisor",
+        "SupervisorRun",
+        "SupervisorObservation",
+        "SupervisorError",
+        "SupervisorConfigurationError",
+        "SupervisorAmbiguityError",
+        "SupervisorUnavailableError",
+        "ProductionServiceCompositionManifest",
+        "ProductionServiceComposition",
+        "resolve_production_composition",
+    }:
+        from .entrypoints import facade as _facade
+        from .entrypoints import service_factory as _service_factory
+
+        if name in {
+            "ProductionServiceCompositionManifest",
+            "ProductionServiceComposition",
+            "resolve_production_composition",
+        }:
+            value = getattr(_service_factory, name)
+        else:
+            value = getattr(_facade, name)
+        globals()[name] = value
+        return value
     # Domain-packaged modules that previously lived as flat submodules.
     if name in AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE:
         module = _load_landed_module(name)

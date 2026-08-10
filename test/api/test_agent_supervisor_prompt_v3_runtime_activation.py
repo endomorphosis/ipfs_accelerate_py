@@ -15,7 +15,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.entrypoints.monitor_runner import (
     DurableMonitorRunner,
 )
-from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_runtime_activation import (
+from ipfs_accelerate_py.agent_supervisor.validation.protected_runtime_activation import (
     ACTIVATION_AUTHORIZATION_SCHEMA,
     POST_ACTIVATION_OBSERVATION_SCHEMA,
     ProcessJoinEvidence,
