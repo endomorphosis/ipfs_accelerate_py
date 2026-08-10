@@ -1156,7 +1156,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-037 Add dyadic, defeasible, prioritized, and contrary-to-duty norms
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
