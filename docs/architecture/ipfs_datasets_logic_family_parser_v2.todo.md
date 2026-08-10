@@ -1063,7 +1063,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-034 Separate Hammer, reconstruction, and official kernel phases
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
