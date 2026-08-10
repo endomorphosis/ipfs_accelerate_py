@@ -691,7 +691,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-022 Connect Security IR through typed executable logic slices
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
