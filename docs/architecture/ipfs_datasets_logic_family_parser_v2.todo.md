@@ -1249,7 +1249,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-040 Add BDI, epistemic-temporal, agency, and intention profiles
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
