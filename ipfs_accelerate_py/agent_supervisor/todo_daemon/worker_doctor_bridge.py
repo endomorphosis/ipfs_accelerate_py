@@ -846,6 +846,34 @@ def map_worker_failure(
     ).map_failure(failure, operation=operation)
 
 
+
+
+# ---------------------------------------------------------------------------
+# DCR-052: diagnosis → registered transform nomination (no write authority)
+# ---------------------------------------------------------------------------
+
+
+def synthesize_transform_from_diagnosis(
+    diagnosis: Any,
+    **kwargs: Any,
+) -> Any:
+    """Nominate a registered Doctor transform for a DCR-051 diagnosis.
+
+    Thin worker-facing wrapper around
+    :func:`ipfs_accelerate_py.agent_supervisor.planning.dcr_doctor_transform.synthesize_transform`.
+    Never grants write/transform authority and never loads an LLM surface.
+    """
+
+    from ..planning.dcr_doctor_transform import (
+        prove_impact,
+        synthesize_transform,
+    )
+
+    receipt = synthesize_transform(diagnosis, **kwargs)
+    if receipt.proposal is None:
+        return receipt
+    return prove_impact(receipt)
+
 __all__ = [
     "KNOWN_FAILURE_CLASS_MAP",
     "PLAN_ELIGIBLE_FAILURE_CLASSES",

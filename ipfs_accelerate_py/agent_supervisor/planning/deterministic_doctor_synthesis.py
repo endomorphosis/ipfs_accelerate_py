@@ -2014,6 +2014,20 @@ def materialize_proof_admitted_overlay(
     return synth.synthesize(request)
 
 
+
+
+# ---------------------------------------------------------------------------
+# DCR-052 re-exports (Doctor transform selection / impact bounding)
+# ---------------------------------------------------------------------------
+
+from .dcr_doctor_transform import (  # noqa: E402
+    DoctorTransformDisposition,
+    DoctorTransformProposal,
+    DoctorTransformReceipt,
+    prove_impact,
+    synthesize_transform,
+)
+
 __all__ = (
     "CONTRACT_VERSION",
     "DETERMINISTIC_DOCTOR_SYNTHESIZER_CAPABILITY_VERSION",
@@ -2039,4 +2053,9 @@ __all__ = (
     "DoctorRepairDisposition",
     "create_deterministic_doctor_synthesizer",
     "materialize_proof_admitted_overlay",
+    "DoctorTransformDisposition",
+    "DoctorTransformProposal",
+    "DoctorTransformReceipt",
+    "prove_impact",
+    "synthesize_transform",
 )
