@@ -1342,7 +1342,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-043 Add linear, session, process, and relational refinement profiles
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
