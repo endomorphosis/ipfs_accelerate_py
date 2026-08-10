@@ -1373,7 +1373,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-044 Publish Wave-2 family routes and expand per-profile adversarial, round-trip, and fuzz evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
