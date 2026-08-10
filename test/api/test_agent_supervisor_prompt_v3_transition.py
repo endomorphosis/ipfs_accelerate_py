@@ -902,6 +902,39 @@ def test_gitignore_anchors_root_core_without_ignoring_nested_module() -> None:
     assert stat.S_IMODE((repo / ".gitignore").stat().st_mode) == 0o644
 
 
+def test_build_prompt_v3_q_inventory_from_sealed_freezes() -> None:
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_acceptance_prepare_q import (
+        build_prompt_v3_q_inventory,
+        product_provenance_from_sealed_freeze,
+    )
+
+    inventory = build_prompt_v3_q_inventory(REPO_ROOT)
+    assert inventory.lifecycle_root_identity_did.startswith("did:key:z")
+    assert set(item.task_id for item in inventory.product_provenance) == {
+        "ASE3-019",
+        "ASE3-023",
+        "ASE3-027",
+        "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
+    }
+    # Single-triple inventories use the last sealed generation for each product.
+    for task_id in ("ASE3-031", "ASE3-032", "ASE3-027"):
+        product = product_provenance_from_sealed_freeze(REPO_ROOT, task_id)
+        assert product.source.commit != product.replay.commit
+        assert product.replay.commit != product.integrated.commit
+        assert (
+            product.source.canonical_patch_content_id
+            == product.replay.canonical_patch_content_id
+            == product.integrated.canonical_patch_content_id
+        )
+    # Inventory rejects future-pin fields.
+    hostile = inventory.to_dict()
+    hostile["reviewer_identity"] = "did:key:zFuture"
+    with pytest.raises(ProtectedAcceptanceDenied):
+        PromptV3QInventory.from_mapping(hostile)
+
+
 def test_q_construction_readiness_reports_tooling_and_blockers() -> None:
     from ipfs_accelerate_py.agent_supervisor.entrypoints.protected_acceptance_q_readiness import (
         assess_prompt_v3_q_construction_readiness,

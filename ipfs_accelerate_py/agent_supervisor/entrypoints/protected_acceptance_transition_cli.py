@@ -40,7 +40,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="repository root to assess (default: cwd)",
     )
-    for name in ("prepare-q", "advance-one-phase", "birth"):
+    prepare = subcommands.add_parser("prepare-q", help="perform exactly prepare-q")
+    prepare.add_argument(
+        "--evidence",
+        action="append",
+        type=_evidence,
+        default=[],
+        help="optional bounded evidence handles (compat)",
+    )
+    prepare.add_argument(
+        "--repo-root",
+        default=".",
+        help="repository root (default: cwd)",
+    )
+    prepare.add_argument(
+        "--target-ref",
+        default="refs/heads/main",
+        help="protected target ref to publish (default: refs/heads/main)",
+    )
+    prepare.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="build and validate the Q candidate without publishing",
+    )
+    for name in ("advance-one-phase", "birth"):
         command = subcommands.add_parser(name, help=f"perform exactly {name}")
         command.add_argument(
             "--evidence",
@@ -70,6 +93,15 @@ def main(
 
             result = assess_prompt_v3_q_construction_readiness(
                 getattr(arguments, "repo_root", ".")
+            )
+        elif arguments.command == "prepare-q":
+            from .protected_acceptance_prepare_q import prepare_prompt_v3_q
+
+            result = prepare_prompt_v3_q(
+                repo_root=getattr(arguments, "repo_root", "."),
+                target_ref=getattr(arguments, "target_ref", "refs/heads/main"),
+                dry_run=bool(getattr(arguments, "dry_run", False)),
+                publish=not bool(getattr(arguments, "dry_run", False)),
             )
         elif arguments.command != "inspect":
             build_parser().error(
