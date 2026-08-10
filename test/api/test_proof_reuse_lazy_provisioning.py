@@ -90,8 +90,8 @@ def _reviewed_capability_payload() -> bytes:
             },
             {
                 "version": 4,
-                "profile": "test-pass-v2",
-                "ruleset_id": "test_pass_v2",
+                "profile": "test-pass-exact-byte-v5-groth16@1",
+                "ruleset_id": "test_pass_exact_byte_v5",
                 "can_setup": True,
                 "can_prove": True,
                 "can_verify": True,
@@ -770,7 +770,7 @@ def test_native_capability_probe_rejects_path_substitution(
 
     ready, reason = installer._probe_groth16_binary_capabilities(
         binary,
-        required_circuit_version=4,
+        required_circuit_version=5,
     )
 
     assert ready is False

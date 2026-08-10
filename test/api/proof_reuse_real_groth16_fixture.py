@@ -271,16 +271,26 @@ class RealGroth16TestPassFixture:
             }
         verified = provider.verify(statement, proved)
         verified_locally = getattr(verified, "status", None) is NativeGroth16V5Status.READY
+        try:
+            from ipfs_accelerate_py.testing.proof_reuse.services import (
+                TEST_PASS_GROTH16_CIRCUIT_CID,
+            )
+            circuit_cid = TEST_PASS_GROTH16_CIRCUIT_CID
+        except Exception:
+            circuit_cid = ""
         return {
             "available": True,
             "reason": "ready"
             if verified_locally
             else str(getattr(verified, "reason", "verify_failed")),
             "verified_locally": verified_locally,
+            "circuit_cid": circuit_cid,
             "circuit_profile": proved.circuit_profile,
+            "verifying_key_cid": "",
             "proof_digest": hashlib.sha256(proved.envelope).hexdigest()
             if proved.envelope
             else "",
+            "proof_artifact_cid": "",
         }
 
 
