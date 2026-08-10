@@ -750,7 +750,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-802 Add mandatory hermetic, Linux, Windows, Docker, packaging, and path-trigger CI gates
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
