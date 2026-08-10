@@ -287,7 +287,7 @@ Closeout:           ASE3-014
 
 ## ASE3-010 Add the prompt-first product CLI and console registration
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -311,7 +311,7 @@ Closeout:           ASE3-014
 
 ## ASE3-011 Register equivalent MCP and MCP++ prompt lifecycle tools
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
