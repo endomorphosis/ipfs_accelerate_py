@@ -210,7 +210,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-205 Implement offset I/O, sparse/partial write assembly, truncate, and append
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
