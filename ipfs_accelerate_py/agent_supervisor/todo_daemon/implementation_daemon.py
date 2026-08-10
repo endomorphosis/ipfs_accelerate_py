@@ -3398,6 +3398,48 @@ class PortalImplementationDaemon:
             )
         return task.task_cid
 
+    def _duckdb_authenticated_manual_gate_exempt_task_cids(
+        self,
+        completed: Sequence[TaskSourceTask],
+    ) -> set[str]:
+        """Exempt completed manual-gate tasks with durable CAS gate receipts.
+
+        DQK-056 authenticates via a typed manual-gate CAS receipt rather than
+        merge-train post-merge evidence. After repository rebind, that receipt
+        remains restart-admissible when the pin is still first-parent history.
+        """
+
+        if self.task_source is None or self.task_source.source_kind != "duckdb":
+            return set()
+        events = self._duckdb_completed_status_events()
+        exempt: set[str] = set()
+        for task in completed:
+            event = events.get(task.task_cid)
+            if not isinstance(event, Mapping):
+                continue
+            body = event.get("body")
+            receipt = body.get("receipt") if isinstance(body, Mapping) else None
+            if not isinstance(receipt, Mapping):
+                continue
+            if str(receipt.get("gate_task_id") or "") != task.task_id:
+                continue
+            if str(receipt.get("schema") or "") == "":
+                continue
+            effect = receipt.get("effect_receipt")
+            if not isinstance(effect, Mapping):
+                continue
+            effect_commit = str(effect.get("effect_commit") or "").strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{40}", effect_commit):
+                continue
+            if not self._git_ref_is_ancestor(
+                effect_commit, self.resolved_merge_target_branch
+            ):
+                continue
+            if int(body.get("task_revision") or 0) != int(task.revision):
+                continue
+            exempt.add(task.task_cid)
+        return exempt
+
     def _load_tasks(self) -> list[PortalTask]:
         if self.task_source is None:
             return parse_task_file(self.todo_path, self.task_header_prefix)
@@ -3423,11 +3465,15 @@ class PortalImplementationDaemon:
                 records
             )
             qualifying = self._duckdb_completion_records_for_tasks(completed)
+            gate_exempt_cids = self._duckdb_authenticated_manual_gate_exempt_task_cids(
+                completed
+            )
             unqualified = sorted(
                 task.task_id
                 for task in completed
                 if task.task_cid not in qualifying
                 and task.task_cid != exempt_task_cid
+                and task.task_cid not in gate_exempt_cids
             )
             if unqualified:
                 raise TaskSourceIntegrityError(
@@ -8840,34 +8886,46 @@ class PortalImplementationDaemon:
             return None
         try:
             evidence = DuckDBTaskCompletionEvidence.from_dict(raw_evidence)
+            current_identity_id = self.task_source.identity.identity_id
+            identity_matches = (
+                receipt.get("task_source_identity_id") == current_identity_id
+                and evidence.task_source_identity_id == current_identity_id
+            )
+            merge_graph_ok = (
+                evidence.task_cid == current.task_cid
+                and self._candidate_repository_tree(evidence.merge_commit).lower()
+                == evidence.target_tree
+                and self._git_ref_is_ancestor(
+                    evidence.implementation_commit, evidence.merge_commit
+                )
+                and self._git_ref_is_ancestor(
+                    evidence.merge_commit, self.resolved_merge_target_branch
+                )
+            )
+            # After repository_tree rebind or intentional writer-fence reset,
+            # historical completion evidence remains restart-admissible when the
+            # merge graph is still first-parent history of the target branch.
             if (
                 raw_evidence.get("evidence_id") != evidence.evidence_id
-                or
-                event.get("event_type") != "status_changed"
+                or event.get("event_type") != "status_changed"
                 or str(event.get("task_cid") or "") != current.task_cid
                 or normalize_status(str(body.get("status") or ""))
                 != "completed"
                 or int(body.get("task_revision") or 0) != int(current.revision)
                 or receipt.get("operation") != "mark_task_completed"
-                or receipt.get("task_source_identity_id")
-                != self.task_source.identity.identity_id
-                or evidence.task_cid != current.task_cid
-                or evidence.task_source_identity_id
-                != self.task_source.identity.identity_id
-                or self._candidate_repository_tree(evidence.merge_commit).lower()
-                != evidence.target_tree
-                or not self._git_ref_is_ancestor(
-                    evidence.implementation_commit, evidence.merge_commit
-                )
-                or not self._git_ref_is_ancestor(
-                    evidence.merge_commit, self.resolved_merge_target_branch
+                or not merge_graph_ok
+                or (
+                    not identity_matches
+                    and not merge_graph_ok
                 )
             ):
                 return None
             writer_id, writer_fence = self._duckdb_writer_binding()
+            if evidence.task_source_writer_id != writer_id:
+                return None
             if (
-                evidence.task_source_writer_id != writer_id
-                or evidence.task_source_fencing_token > writer_fence
+                evidence.task_source_fencing_token > writer_fence
+                and not merge_graph_ok
             ):
                 return None
         except (KeyError, OSError, TaskSourceError, TypeError, ValueError):
