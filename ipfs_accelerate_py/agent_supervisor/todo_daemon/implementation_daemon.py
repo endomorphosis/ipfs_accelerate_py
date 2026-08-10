@@ -47591,6 +47591,11 @@ class PortalImplementationDaemon:
         """Defer before prompt/worktree dispatch when Grok primary is absent."""
 
         declared_provider = self._task_declared_implementation_provider(task)
+        if declared_provider in {
+            ExecutionMode.DETERMINISTIC_ONLY.value,
+            "operator-only",
+        }:
+            return
         if self.implementation_command and not declared_provider:
             return
         if (
@@ -48208,6 +48213,15 @@ class PortalImplementationDaemon:
                 )
             return configured
         provider = self._task_declared_implementation_provider(task)
+        if provider in {
+            ExecutionMode.DETERMINISTIC_ONLY.value,
+            "operator-only",
+        }:
+            # Typed local execution still compiles an authority/context
+            # capsule, but it has no model provider whose environment or
+            # quota state can define the window. Preserve the supervisor's
+            # own complete input/reserve budget as that local ceiling.
+            return self._base_implementation_context_budget().total_token_window
         if not provider:
             provider = (
                 os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
