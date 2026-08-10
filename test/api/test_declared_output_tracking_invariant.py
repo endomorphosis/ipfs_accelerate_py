@@ -34,6 +34,26 @@ def _init_repo(path: Path) -> Path:
     return path
 
 
+def _init_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
+    child = _init_repo(tmp_path / "child")
+    (child / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(child, "add", "base.txt")
+    _git(child, "commit", "-m", "child base")
+
+    repo = _init_repo(tmp_path / "repo")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "libs/child",
+    )
+    _git(repo, "commit", "-am", "add child submodule")
+    return repo, repo / "libs" / "child"
+
+
 def _daemon(
     repo: Path,
     *,
@@ -233,6 +253,136 @@ def test_declared_output_tracking_invariant_checks_recorded_submodule_tree(
     assert missing["checks"][0]["repository_ref"] == recorded_child_commit
     assert missing["checks"][0]["exists"] is False
     assert missing["checks"][0]["reason"] == "declared_output_missing"
+
+
+def test_proposal_expected_outputs_use_managed_child_ignore_and_index(
+    tmp_path: Path,
+) -> None:
+    repo, child = _init_parent_with_submodule(tmp_path)
+    (repo / ".gitignore").write_text("core\n*.json\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "parent-only ignore rules")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    contract = child / "core" / "host_contracts.py"
+    contract.parent.mkdir()
+    contract.write_text("CONTRACT_VERSION = 1\n", encoding="utf-8")
+    manifest = child / "fixtures" / "manifest.json"
+    manifest.parent.mkdir()
+    manifest.write_text('{"version": 1}\n', encoding="utf-8")
+    _git(child, "add", "core/host_contracts.py", "fixtures/manifest.json")
+    _git(child, "commit", "-m", "commit nested expected outputs")
+    outputs = (
+        "libs/child/core/host_contracts.py",
+        "libs/child/fixtures/manifest.json",
+    )
+    task = _proposal_task("OUT-SUBMODULE-OWNER", *outputs)
+    daemon = _daemon(repo, worktree_submodule_paths=("libs/child",))
+
+    for relative in outputs:
+        assert subprocess.run(
+            ["git", "check-ignore", "--no-index", "--quiet", "--", relative],
+            cwd=repo,
+            check=False,
+        ).returncode == 0
+        assert subprocess.run(
+            [
+                "git",
+                "check-ignore",
+                "--no-index",
+                "--quiet",
+                "--",
+                relative.removeprefix("libs/child/"),
+            ],
+            cwd=child,
+            check=False,
+        ).returncode == 1
+
+    preflight = daemon._prepare_proposal_expected_outputs(
+        repo,
+        task,
+        baseline_ref=baseline,
+        scope_paths=outputs,
+    )
+    checks = {item["path"]: item for item in preflight["checks"]}
+    assert preflight["staged_paths"] == []
+    assert all(checks[path]["repository"] == "libs/child" for path in outputs)
+    assert all(checks[path]["git_owner_valid"] is True for path in outputs)
+    assert all(checks[path]["ignored"] is False for path in outputs)
+    assert all(checks[path]["issue"] == "" for path in outputs)
+
+    proposal = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert proposal.accepted is True
+    assert proposal.proposal.changed_paths == outputs
+    assert _git(child, "diff", "--cached", "--name-only") == ""
+
+
+def test_proposal_force_stages_only_exact_managed_child_ignored_output(
+    tmp_path: Path,
+) -> None:
+    repo, child = _init_parent_with_submodule(tmp_path)
+    (child / ".gitignore").write_text("artifacts/*.json\n", encoding="utf-8")
+    _git(child, "add", ".gitignore")
+    _git(child, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    deliverable = child / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+    unrelated = child / "artifacts" / "unrelated.json"
+    unrelated.write_text('{"unrelated": true}\n', encoding="utf-8")
+    output = "libs/child/artifacts/proof.json"
+    daemon = _daemon(repo, worktree_submodule_paths=("libs/child",))
+
+    proposal = daemon._validate_implementation_patch(
+        repo,
+        _proposal_task("OUT-SUBMODULE-IGNORED", output),
+        baseline_ref=baseline,
+    )
+
+    assert proposal.accepted is True
+    assert proposal.proposal.changed_paths == (output,)
+    assert _git(child, "diff", "--cached", "--name-only") == (
+        "artifacts/proof.json"
+    )
+    assert _git(repo, "ls-files", "--", output) == ""
+
+
+def test_proposal_does_not_force_stage_unmanaged_child_output(
+    tmp_path: Path,
+) -> None:
+    repo, child = _init_parent_with_submodule(tmp_path)
+    (child / ".gitignore").write_text("artifacts/*.json\n", encoding="utf-8")
+    _git(child, "add", ".gitignore")
+    _git(child, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = child / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+
+    proposal = _daemon(repo)._validate_implementation_patch(
+        repo,
+        _proposal_task(
+            "OUT-SUBMODULE-UNMANAGED",
+            "libs/child/artifacts/proof.json",
+        ),
+        baseline_ref=baseline,
+    )
+
+    assert proposal.accepted is False
+    assert "expected_output_ignored_or_unstaged" in {
+        finding.code.value for finding in proposal.findings
+    }
+    assert _git(child, "diff", "--cached", "--name-only") == ""
 
 
 def test_proposal_and_commit_force_stage_only_exact_ignored_declared_output(

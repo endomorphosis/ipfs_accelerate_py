@@ -6461,6 +6461,9 @@ def validation_retry_task_block(
     validation_command = safe_retry_validation_command(
         failed_command,
         discovery_path=discovery_path,
+        fallback_commands=(
+            getattr(source_task, "validation", ()) or ()
+        ),
     )
     validation_command = _focused_npm_playwright_retry_command(
         validation_command,
@@ -6574,25 +6577,53 @@ def retry_budget_repair_provenance_metadata(
     )
 
 
-def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
-    """Return a parseable validation command for a retry-budget follow-up task."""
+def safe_retry_validation_command(
+    command: str,
+    *,
+    discovery_path: Path,
+    fallback_commands: Sequence[str] = (),
+) -> str:
+    """Return an executable validation contract for a retry repair.
+
+    Typed pre-dispatch failures describe why validation could not start; they
+    are not shell commands.  In that case retain the source task's declared
+    validation instead of replacing authoritative proof with an already-
+    existing discovery-file check.
+    """
+
+    def typed_failure_label(value: str) -> bool:
+        return value.startswith(
+            (
+                "validation_pre_dispatch:",
+                "validation_gate_failed",
+            )
+        )
+
+    def executable_commands(values: Sequence[str]) -> list[str]:
+        selected: list[str] = []
+        for value in values:
+            normalized = normalize_validation_command_text(str(value))
+            if not normalized or typed_failure_label(normalized):
+                continue
+            commands = split_validation_commands(normalized)
+            try:
+                for parsed_command in commands:
+                    shlex.split(parsed_command)
+            except ValueError:
+                continue
+            for parsed_command in commands:
+                if parsed_command and parsed_command not in selected:
+                    selected.append(parsed_command)
+        return selected
 
     stripped = normalize_validation_command_text(command)
-    typed_failure_label = stripped.startswith(
-        (
-            "validation_pre_dispatch:",
-            "validation_gate_failed",
-        )
-    )
-    if stripped and not typed_failure_label:
-        commands = split_validation_commands(stripped)
-        try:
-            for parsed_command in commands:
-                shlex.split(parsed_command)
-        except ValueError:
-            commands = []
+    if stripped and not typed_failure_label(stripped):
+        commands = executable_commands((stripped,))
         if commands:
             return "; ".join(commands)
+    fallback = executable_commands(tuple(fallback_commands or ()))
+    if fallback:
+        return "; ".join(fallback)
     return f"test -f {shlex.quote(str(discovery_path))}"
 
 
@@ -6649,7 +6680,13 @@ def implementation_retry_task_block(
     # than an implementation output.  Keep the argument for configured-runner
     # API compatibility, but never grant or require write authority to it.
     _ = discovery_output_path
-    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
+    validation_command = safe_retry_validation_command(
+        "",
+        discovery_path=discovery_path,
+        fallback_commands=(
+            getattr(source_task, "validation", ()) or ()
+        ),
+    )
     execution_metadata = retry_task_execution_metadata(source_task)
     provenance_metadata = retry_budget_repair_provenance_metadata(
         source_task_id=source_task.task_id,
@@ -6848,10 +6885,17 @@ def record_retry_budget_findings(
             )
             generated_paths.append(discovery_path)
             depends_on = list(validation_depends_on) if validation_depends_on else list(task.depends_on)
+            selected_validation_command = safe_retry_validation_command(
+                failed_command,
+                discovery_path=discovery_path,
+                fallback_commands=(task.validation or ()),
+            )
             validation_command = (
-                validation_task_command_transform(failed_command)
+                validation_task_command_transform(
+                    selected_validation_command
+                )
                 if validation_task_command_transform is not None
-                else failed_command
+                else selected_validation_command
             )
             validation_command = launch_playwright_validation_repair_command(
                 validation_command,
