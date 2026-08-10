@@ -49,6 +49,31 @@ def _replace_in_task_block(
     return f"{text[:start]}{updated}{text[end:]}"
 
 
+def _blocked_kvfs814_board(text: str) -> str:
+    """Project the completed live guardrail back to an unanchored active card."""
+
+    text = _replace_in_task_block(
+        text,
+        "KVFS-814",
+        "- Status: completed",
+        "- Status: blocked",
+    )
+    header = "## KVFS-814 "
+    start = text.index(header)
+    block = text[start:]
+    anchor = next(
+        line
+        for line in block.splitlines()
+        if line.startswith("- Resolution receipt digest: ")
+    )
+    return _replace_in_task_block(
+        text,
+        "KVFS-814",
+        f"{anchor}\n",
+        "",
+    )
+
+
 def _kvfs814_fields() -> dict[str, str]:
     return next(
         fields
@@ -107,7 +132,7 @@ def test_declared_validator_accepts_the_sealed_projection() -> None:
         "KVFS-813",
         "KVFS-814",
     ]
-    assert report["pending_operational_task_ids"] == ["KVFS-814"]
+    assert report["pending_operational_task_ids"] == []
     assert report["goal_count"] == 9
     assert report["initial_ready_task_ids"] == list(INITIAL_READY)
     assert report["ready_task_ids"] == ["KVFS-811"]
@@ -210,7 +235,7 @@ def test_operational_retry_appendix_fails_closed(
             "lacks exact reconciliation provenance",
         ),
         (
-            "- Status: blocked",
+            "- Status: completed",
             "- Status: todo",
             "unsafe reconciliation status",
         ),
@@ -433,7 +458,7 @@ def test_reconciliation_appendix_rejects_concurrent_duplicate_guardrails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    text = TODO_PATH.read_text(encoding="utf-8")
+    text = _blocked_kvfs814_board(TODO_PATH.read_text(encoding="utf-8"))
     start = text.index("## KVFS-814 ")
     duplicate = text[start:].replace("KVFS-814", "KVFS-815").replace(
         "kvfs-814", "kvfs-815"
@@ -455,7 +480,30 @@ def test_completed_reconciliation_card_requires_a_receipt_and_anchor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    text = TODO_PATH.read_text(encoding="utf-8")
+    text = _blocked_kvfs814_board(TODO_PATH.read_text(encoding="utf-8"))
+    fields = _kvfs814_fields()
+    discovery_path = Path(fields["reconciliation discovery"])
+    discovery_without_receipt = discovery_path.read_text(encoding="utf-8").split(
+        "\n## Resolution Receipt\n",
+        1,
+    )[0]
+    original_reader = board_validator._read_bounded_regular_file
+
+    def read_fixture(
+        task_id: str,
+        path: Path,
+        *,
+        errors: list[str],
+    ) -> str | None:
+        if task_id == "KVFS-814":
+            return discovery_without_receipt
+        return original_reader(task_id, path, errors=errors)
+
+    monkeypatch.setattr(
+        board_validator,
+        "_read_bounded_regular_file",
+        read_fixture,
+    )
     mutated = tmp_path / "mutated.todo.md"
     mutated.write_text(
         _replace_in_task_block(
@@ -482,55 +530,7 @@ def test_completed_reconciliation_card_requires_a_receipt_and_anchor(
     )
 
 
-def test_completed_reconciliation_card_accepts_an_anchored_receipt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    text = TODO_PATH.read_text(encoding="utf-8")
-    fields = _kvfs814_fields()
-    discovery_path = Path(fields["reconciliation discovery"])
-    receipt = _resolution_receipt(fields)
-    discovery_text = (
-        discovery_path.read_text(encoding="utf-8")
-        + "\n"
-        + _receipt_section(receipt)
-    )
-    original_reader = board_validator._read_bounded_regular_file
-
-    def read_fixture(
-        task_id: str,
-        path: Path,
-        *,
-        errors: list[str],
-    ) -> str | None:
-        if task_id == "KVFS-814":
-            return discovery_text
-        return original_reader(task_id, path, errors=errors)
-
-    monkeypatch.setattr(
-        board_validator,
-        "_read_bounded_regular_file",
-        read_fixture,
-    )
-    text = _replace_in_task_block(
-        text,
-        "KVFS-814",
-        "- Status: blocked",
-        "- Status: completed",
-    )
-    text = _replace_in_task_block(
-        text,
-        "KVFS-814",
-        f"- Reconciliation discovery: {discovery_path}",
-        (
-            f"- Reconciliation discovery: {discovery_path}\n"
-            f"- Resolution receipt digest: {receipt['receipt_digest']}"
-        ),
-    )
-    mutated = tmp_path / "mutated.todo.md"
-    mutated.write_text(text, encoding="utf-8")
-    monkeypatch.setattr(board_validator, "TODO_PATH", mutated)
-
+def test_completed_reconciliation_card_accepts_an_anchored_receipt() -> None:
     report = board_validator.validate()
 
     assert report["valid"] is True

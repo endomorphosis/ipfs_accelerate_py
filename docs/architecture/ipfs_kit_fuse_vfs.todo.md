@@ -849,7 +849,7 @@ typed receipt, never an indefinitely running worker.
 
 ## KVFS-814 Resolve 1 preflight-conflicting backlogged worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -861,6 +861,7 @@ typed receipt, never an indefinitely running worker.
 - Reconciliation reason: preflight_merge_conflict
 - Reconciliation fingerprint: 32e5200646c95fe450e24df57f17c145ce6f4ad4
 - Reconciliation discovery: /home/barberb/lift_coding/.worktrees/ipfs-kit-fuse-vfs-supervisor/data/agent_supervisor/ipfs_kit_fuse_vfs/state/discovery/2026-08-10-kvfs-814-reconciliation-32e5200646c9.md
+- Resolution receipt digest: sha256:ad913462bbd4256aeb898085b7f8a0bd140b0d576ee4ac642b55c971e1be7520
 - Canonical board task: false
 - Fingerprint: 32e5200646c95fe450e24df57f17c145ce6f4ad4
 - Dedupe key: reconciliation_guardrail:preflight_merge_conflict
