@@ -279,6 +279,83 @@ def _operator_repair_receipt_027(
     return payload, reviewer, authority
 
 
+def _operator_repair_receipt_023(
+) -> tuple[dict[str, object], str, dict[str, object]]:
+    private_key = Ed25519PrivateKey.generate()
+    reviewer = _reviewer_identity(private_key)
+    authority = _review_authority(reviewer)
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-023"
+    ]
+    generations = json.loads(json.dumps(final_values["generations"]))
+    final_blobs = dict(final_values["final_blobs"])
+    contracts = convergence_module._ACCEPTANCE_TASK_CONTRACTS["ASE3-023"]
+    parent_head = "a43b2ce74816ac9226f6319b92425d0b002b6be6"
+    parent_tree = "bbb94ffe87c3b582e40b1052ba5b9dc1ca8b4c40"
+    created_at = "2026-08-09T22:00:00Z"
+    payload: dict[str, object] = {
+        "schema": OPERATOR_REPAIR_ACCEPTANCE_RECEIPT_SCHEMA,
+        "created_at": created_at,
+        "board_namespace": BOARD_NAMESPACE,
+        "task": {
+            "task_id": "ASE3-023",
+            "canonical_task_cid": contracts["canonical_task_cid"],
+            "goal_id": contracts["goal_id"],
+            "repairs_task": contracts["repairs_task"],
+            "todo_contract_sha256": contracts["todo_contract_sha256"],
+            "completed_contract_sha256": contracts["completed_contract_sha256"],
+            "status_before": "todo",
+            "status_after": "completed",
+        },
+        "recovery": {
+            "artifact": "false_completion_recovery_20260808.json",
+            "pointer": "false_completions/ASE3-006",
+            "historical_completion_authority": False,
+            "branch_local_completion_authority": False,
+            "repair_required": True,
+        },
+        "implementation": {
+            "generations": generations,
+            "final_blobs": final_blobs,
+        },
+        "acceptance_parent": {
+            "head": parent_head,
+            "tree": parent_tree,
+            "branch": "agent/prompt-self-improvement-v3",
+            "manifest_schema": ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA,
+            "receipt_paths_absent": list(
+                convergence_module._sequential_future_artifacts_after("A032")
+            ),
+            "task_statuses": convergence_module._sequential_task_statuses_after(
+                "A032"
+            ),
+            "reload_gate_status": "blocked",
+        },
+        "validation": {
+            "command": convergence_module._FALSE_COMPLETION_REPAIR_TASKS[
+                "ASE3-023"
+            ]["validation"],
+            "exit_code": 0,
+            "passed": True,
+            "passed_count": 110,
+            "failed_count": 0,
+            "validated_head": parent_head,
+            "validated_tree": parent_tree,
+        },
+        "review": {
+            **_receipt_review_authority(authority),
+            "implementer_identity": "codex:ase3-023-repair",
+            "implementer_provider": "codex",
+            "algorithm": "Ed25519",
+            "signed_at": created_at,
+            "signature": "",
+        },
+        "denials": dict(convergence_module._REPAIR_ACCEPTANCE_DENIALS),
+    }
+    _sign_operator_receipt(payload, private_key)
+    return payload, reviewer, authority
+
+
 def _minimal_operator_receipt(task_id: str) -> dict[str, object]:
     expected = convergence_module._ACCEPTANCE_TASK_CONTRACTS[task_id]
     if task_id == "ASE3-019":
@@ -3174,6 +3251,70 @@ def test_ase3_027_final_blob_tamper_fails_closed_after_freeze() -> None:
     )
     assert any("final_blobs" in error for error in errors)
 
+
+def test_ase3_023_final_blob_freeze_is_sealed_and_validates_implementation(
+) -> None:
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-023"
+    ]
+    assert final_values["ready"] is True
+    assert final_values["pending"] is None
+    assert final_values["validation_passed_count"] == 110
+    assert len(final_values["generations"]) == 3
+    assert len(final_values["final_blobs"]) == 7
+    assert [generation["role"] for generation in final_values["generations"]] == [
+        "product-salvage",
+        "capsule-identity",
+        "recovery-barrier",
+    ]
+
+    payload, _, authority = _operator_repair_receipt_023()
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-023",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert not any(
+        "final product values are not populated" in error for error in errors
+    )
+    impl_errors = [
+        error
+        for error in errors
+        if "implementation" in error and "final product values" in error
+    ]
+    assert impl_errors == []
+
+    recovery = payload["recovery"]
+    assert isinstance(recovery, dict)
+    recovery["ambient_override"] = True
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-023",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert any(
+        "ASE3-023.recovery: exact key population required" in error
+        for error in errors
+    )
+
+
+def test_ase3_023_final_blob_tamper_fails_closed_after_freeze() -> None:
+    payload, _, authority = _operator_repair_receipt_023()
+    implementation = payload["implementation"]
+    assert isinstance(implementation, dict)
+    blobs = dict(implementation["final_blobs"])
+    first_path = next(iter(blobs))
+    blobs[first_path] = "0" * 40
+    implementation["final_blobs"] = blobs
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-023",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert any("final_blobs" in error for error in errors)
 
 
 def test_ase3_019_source_and_salvage_freeze_is_sealed() -> None:
