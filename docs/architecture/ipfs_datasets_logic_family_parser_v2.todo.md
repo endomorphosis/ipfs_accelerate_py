@@ -1032,7 +1032,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-033 Execute Vampire and E with typed TPTP/TSTP reconstruction
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
