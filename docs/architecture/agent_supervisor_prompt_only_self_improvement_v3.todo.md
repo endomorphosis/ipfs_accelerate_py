@@ -239,7 +239,7 @@ Closeout:           ASE3-014
 
 ## ASE3-008 Add a live progress watchdog, Doctor integration, and bounded recovery
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
