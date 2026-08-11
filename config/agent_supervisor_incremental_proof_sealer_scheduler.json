@@ -6,7 +6,7 @@
   "validator_path": "scripts/validate_incremental_proof_sealer_board.py",
   "baseline_capture_script": "scripts/capture_incremental_proof_sealer_baselines.py",
   "baseline_suite_registry": "config/incremental_proof_sealer_baseline_suite_registry.json",
-  "baseline_suite_registry_digest": "sha256:a15c27f0971495a221e851bc5191cf16302aca5fc4043d93b4eae8b93f86b909",
+  "baseline_suite_registry_digest": "sha256:4489fa11df5fd7c2e7f3aaf6201266eb74861ef6a36d94ae2bf3e6d543e55c3e",
   "task_prefix": "## IPS-",
   "goal_prefix": "IPS-G",
   "board_namespace": "incremental-proof-sealer-v1",

@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import threading
@@ -79,7 +80,10 @@ def test_suite_registry_is_fixed_bounded_and_contains_audited_slices() -> None:
     } == EXPECTED_IDS
     assert len(capture.SUITES) == 17
     assert capture.ENVIRONMENT_POLICY_ID == (
-        "incremental-proof-sealer-controlled-offline-pytest@2"
+        "incremental-proof-sealer-controlled-offline-pytest@3"
+    )
+    assert capture.GIT_ENVIRONMENT_POLICY_ID == (
+        "incremental-proof-sealer-fixed-git-environment@2"
     )
     assert capture.SCHEMA_VERSION == "incremental-proof-sealer-baseline-receipt@4"
     for suite in capture.SUITES:
@@ -204,6 +208,96 @@ ERROR collecting tests/test_receipt.py
     ]
 
 
+def test_decorated_collection_error_and_short_summary_are_one_exact_nonpass() -> None:
+    raw = b"""============================= test session starts ==============================
+platform linux -- Python 3.12.0, pytest-9.1.1, pluggy-1.6.0
+rootdir: /fixed
+collecting ... collected 0 items / 1 error
+________________ ERROR collecting tests/test_receipt.py _________________
+E   ImportError: unavailable collection dependency
+=========================== short test summary info ============================
+ERROR tests/test_receipt.py
+=============================== 1 error in 0.10s ===============================
+"""
+    parsed = capture.parse_pytest_log(raw)
+    assert parsed["collection_complete"] is False
+    assert parsed["non_pass_nodes"] == [
+        {
+            "status": "error",
+            "node_id": "collecting tests/test_receipt.py",
+            "detail": (
+                "________________ ERROR collecting tests/test_receipt.py "
+                "_________________"
+            ),
+        }
+    ]
+
+
+def test_collection_error_count_and_summary_only_are_canonicalized() -> None:
+    raw = b"""============================= test session starts ==============================
+platform linux -- Python 3.12.0, pytest-9.1.1, pluggy-1.6.0
+rootdir: /fixed
+collecting ... collected 0 items / 1 error
+=========================== short test summary info ============================
+ERROR tests/test_receipt.py
+=============================== 1 error in 0.10s ===============================
+"""
+    parsed = capture.parse_pytest_log(raw)
+    assert parsed["collection_complete"] is False
+    assert parsed["non_pass_nodes"] == [
+        {
+            "status": "error",
+            "node_id": "collecting tests/test_receipt.py",
+            "detail": "ERROR tests/test_receipt.py",
+        }
+    ]
+
+
+def test_deselection_only_collection_remains_complete() -> None:
+    raw = b"""============================= test session starts ==============================
+platform linux -- Python 3.12.0, pytest-9.1.1, pluggy-1.6.0
+rootdir: /fixed
+collecting ... collected 10 items / 2 deselected / 8 selected
+tests/test_receipt.py::test_0 PASSED
+tests/test_receipt.py::test_1 PASSED
+tests/test_receipt.py::test_2 PASSED
+tests/test_receipt.py::test_3 PASSED
+tests/test_receipt.py::test_4 PASSED
+tests/test_receipt.py::test_5 PASSED
+tests/test_receipt.py::test_6 PASSED
+tests/test_receipt.py::test_7 PASSED
+======================== 8 passed, 2 deselected in 0.10s ========================
+"""
+    parsed = capture.parse_pytest_log(raw)
+    assert parsed["collected_count"] == 10
+    assert parsed["collection_complete"] is True
+    assert parsed["outcome_counts"]["selected"] == 8
+    assert parsed["outcome_counts"]["deselected"] == 2
+    assert parsed["non_pass_nodes"] == []
+
+
+def test_runtime_item_error_remains_a_complete_collection() -> None:
+    raw = b"""============================= test session starts ==============================
+platform linux -- Python 3.12.0, pytest-9.1.1, pluggy-1.6.0
+rootdir: /fixed
+collecting ... collected 1 item
+tests/test_receipt.py::test_runtime ERROR
+=========================== short test summary info ============================
+ERROR tests/test_receipt.py::test_runtime - RuntimeError: observed
+=============================== 1 error in 0.10s ===============================
+"""
+    parsed = capture.parse_pytest_log(raw)
+    assert parsed["collection_complete"] is True
+    assert parsed["collected_count"] == 1
+    assert parsed["non_pass_nodes"] == [
+        {
+            "status": "error",
+            "node_id": "tests/test_receipt.py::test_runtime",
+            "detail": "tests/test_receipt.py::test_runtime ERROR",
+        }
+    ]
+
+
 def test_collection_skip_is_retained_as_an_exact_nonpass_location() -> None:
     raw = b"""============================= test session starts ==============================
 platform linux -- Python 3.12.0, pytest-8.4.1, pluggy-1.6.0
@@ -311,6 +405,109 @@ def _valid_command(tmp_path: Path) -> tuple[object, dict[str, object]]:
         "assurance": capture._assurance_payload(process_observed=True, aggregate=False),
     }
     return suite, command
+
+
+def _collection_abort_transcript(
+    shape_id: str,
+    *,
+    collected: int,
+    errors: int,
+    deselected: int,
+) -> tuple[bytes, list[dict[str, str]]]:
+    python_info = capture._python_metadata()
+    pytest_info = capture._pytest_metadata()
+    safe_shape = shape_id.replace("-", "_")
+    nodes = [
+        f"tests/{safe_shape}/test_collection_{index:02d}.py"
+        for index in range(errors)
+    ]
+    headings = [
+        f"________________ ERROR collecting {node} _________________"
+        for node in nodes
+    ]
+    summary_nodes = [f"ERROR {node}" for node in nodes]
+    collection_parts = [f"{errors} {'error' if errors == 1 else 'errors'}"]
+    final_parts = list(collection_parts)
+    if deselected:
+        collection_parts.append(f"{deselected} deselected")
+        final_parts.append(f"{deselected} deselected")
+    raw = "\n".join(
+        (
+            "============================= test session starts ==============================",
+            (
+                f"platform linux -- Python {python_info['version'].split()[0]}, "
+                f"pytest-{pytest_info['version']}, pluggy-1.6.0"
+            ),
+            "rootdir: /fixed",
+            (
+                f"collecting ... collected {collected} items / "
+                + " / ".join(collection_parts)
+            ),
+            *headings,
+            "=========================== short test summary info ============================",
+            *summary_nodes,
+            "================ " + ", ".join(final_parts) + " in 0.10s ================",
+            "",
+        )
+    ).encode()
+    expected = [
+        {
+            "status": "error",
+            "node_id": f"collecting {node}",
+            "detail": heading,
+        }
+        for node, heading in zip(nodes, headings, strict=True)
+    ]
+    return raw, expected
+
+
+@pytest.mark.parametrize(
+    ("shape_id", "collected", "errors", "deselected"),
+    [
+        ("datasets-zkp-focused-current", 34, 6, 1),
+        ("datasets-zkp-unit-wide-current", 93, 40, 0),
+        ("datasets-proof-cache-adapters", 130, 3, 0),
+        ("datasets-zkp-broad-safe-current", 377, 52, 1),
+        ("kit-agent-receipts", 0, 1, 0),
+    ],
+)
+def test_real_collection_abort_shapes_self_validate_as_incomplete_observations(
+    tmp_path: Path,
+    shape_id: str,
+    collected: int,
+    errors: int,
+    deselected: int,
+) -> None:
+    suite, command = _valid_command(tmp_path)
+    raw, expected_nonpasses = _collection_abort_transcript(
+        shape_id,
+        collected=collected,
+        errors=errors,
+        deselected=deselected,
+    )
+    parsed = capture.parse_pytest_log(raw)
+    assert parsed["collected_count"] == collected
+    assert parsed["collection_complete"] is False
+    assert parsed["outcome_counts"]["errors"] == errors
+    assert parsed["outcome_counts"]["deselected"] == deselected
+    assert parsed["non_pass_nodes"] == expected_nonpasses
+
+    log_path = tmp_path / command["log"]["relative_path"]
+    log_path.write_bytes(raw)
+    command.update(parsed)
+    command["exit_code"] = 2
+    command["log"] = {
+        "relative_path": command["log"]["relative_path"],
+        "bytes": len(raw),
+        "sha256": capture._sha256(raw),
+    }
+    capture._validate_command(
+        tmp_path,
+        suite,
+        command,
+        capture._python_metadata(),
+        capture._pytest_metadata(),
+    )
 
 
 def test_command_validation_rehashes_and_reparses_retained_log(tmp_path: Path) -> None:
@@ -476,6 +673,9 @@ def test_environment_is_fixed_controlled_offline_and_auto_install_disabled(
     assert environment["HYPOTHESIS_STORAGE_DIRECTORY"] == str(
         tmp_path / relative / "hypothesis"
     )
+    assert environment["PYTEST_ADDOPTS"] == (
+        f"--benchmark-storage=file://{tmp_path / relative / 'pytest-benchmark'}"
+    )
     assert environment["PIP_NO_INDEX"] == "1"
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in environment
 
@@ -502,10 +702,16 @@ def test_readonly_git_commands_ignore_inherited_git_environment(
 
     monkeypatch.setattr(capture.subprocess, "Popen", recording_popen)
     assert capture._git_text(tmp_path, "rev-parse", "HEAD") == expected
+    assert observed_environments[-1]["GIT_NO_REPLACE_OBJECTS"] == "1"
     assert observed_environments[-1]["GIT_OPTIONAL_LOCKS"] == "0"
     assert "GIT_DIR" not in observed_environments[-1]
     assert "GIT_INDEX_FILE" not in observed_environments[-1]
     assert "GIT_OBJECT_DIRECTORY" not in observed_environments[-1]
+
+    capture._run_local_git_materialization(
+        [sys.executable, "-c", "pass"], tmp_path
+    )
+    assert observed_environments[-1]["GIT_NO_REPLACE_OBJECTS"] == "1"
 
 
 @pytest.mark.parametrize(
@@ -972,6 +1178,88 @@ def test_safe_cleanup_unlinks_workspace_symlink_without_following_target(
     assert witness.read_text(encoding="utf-8") == "retained"
 
 
+def test_read_only_execution_hardening_contains_cache_writes_and_cleans_safely(
+    tmp_path: Path,
+) -> None:
+    capture_id = "20260811T120000.000000Z-1"
+    workspace = capture._ensure_artifact_directory(
+        tmp_path,
+        (capture.ARTIFACT_RELATIVE_ROOT / "work" / capture_id).as_posix(),
+    )
+    execution_root = workspace / "source"
+    kit_root = execution_root / "ipfs_kit_py"
+    git_directory = execution_root / ".git" / "objects"
+    kit_root.mkdir(parents=True)
+    git_directory.mkdir(parents=True)
+    executable = execution_root / "tracked-tool"
+    executable.write_bytes(b"#!/bin/sh\nexit 0\n")
+    executable.chmod(0o755)
+    sitecustomize = kit_root / "sitecustomize.py"
+    sitecustomize.write_text("MARKER = 'loaded'\n", encoding="utf-8")
+    (git_directory / "tracked-object").write_bytes(b"object")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("retained", encoding="utf-8")
+    outside.chmod(0o600)
+    (execution_root / "external").symlink_to(outside)
+
+    capture._harden_execution_tree_read_only(execution_root)
+
+    assert stat.S_IMODE(execution_root.stat().st_mode) == 0o555
+    assert stat.S_IMODE(executable.stat().st_mode) == 0o555
+    assert stat.S_IMODE(sitecustomize.stat().st_mode) == 0o444
+    assert stat.S_IMODE(git_directory.stat().st_mode) == 0o555
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o600
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "assert __import__('sitecustomize').MARKER == 'loaded'; "
+                "\ntry: Path('.benchmarks').mkdir()\nexcept OSError: pass"
+            ),
+        ],
+        cwd=execution_root,
+        env={
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PATH": capture.FIXED_EXECUTABLE_PATH,
+            "PYTHONPATH": str(kit_root),
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert child.returncode == 0, child.stderr
+    assert not (kit_root / "__pycache__").exists()
+    assert not (execution_root / ".benchmarks").exists()
+    with pytest.raises(PermissionError):
+        (execution_root / "unexpected-output").write_text("blocked", encoding="utf-8")
+
+    capture._safe_cleanup_capture_workspace(tmp_path, capture_id)
+    assert not workspace.exists()
+    assert outside.read_text(encoding="utf-8") == "retained"
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o600
+
+
+def test_read_only_execution_hardening_rejects_regular_hardlink_without_chmod(
+    tmp_path: Path,
+) -> None:
+    execution_root = tmp_path / "source"
+    execution_root.mkdir()
+    external = tmp_path / "external.txt"
+    external_bytes = b"external bytes\n"
+    external.write_bytes(external_bytes)
+    external.chmod(0o640)
+    os.link(external, execution_root / "tracked.txt")
+
+    with pytest.raises(capture.BaselineError, match="regular leaf is hardlinked"):
+        capture._harden_execution_tree_read_only(execution_root)
+
+    assert external.read_bytes() == external_bytes
+    assert stat.S_IMODE(external.stat().st_mode) == 0o640
+
+
 def test_safe_cleanup_rejects_artifact_ancestor_swap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1050,6 +1338,9 @@ def test_capture_self_validation_failure_publishes_no_receipts_or_logs(
     monkeypatch.setattr(
         capture, "_materialize_execution_trees", lambda *_args: tmp_path
     )
+    monkeypatch.setattr(
+        capture, "_harden_execution_tree_read_only", lambda *_args: None
+    )
     monkeypatch.setattr(capture, "_assert_execution_trees_clean", lambda *_args: {})
     real_atomic_write = capture._atomic_write
 
@@ -1094,6 +1385,9 @@ def test_second_receipt_failure_is_unadmitted_and_rerun_requires_repair(
     monkeypatch.setattr(capture, "_validate_protected_suite_registry", lambda _root: {})
     monkeypatch.setattr(
         capture, "_materialize_execution_trees", lambda *_args: tmp_path
+    )
+    monkeypatch.setattr(
+        capture, "_harden_execution_tree_read_only", lambda *_args: None
     )
     monkeypatch.setattr(capture, "_assert_execution_trees_clean", lambda *_args: {})
     real_atomic_write = capture._atomic_write
@@ -1227,6 +1521,9 @@ def test_cli_capture_all_is_one_source_epoch_one_shot_bundle(
     monkeypatch.setattr(
         capture, "_materialize_execution_trees", lambda *_args: tmp_path
     )
+    monkeypatch.setattr(
+        capture, "_harden_execution_tree_read_only", lambda *_args: None
+    )
     monkeypatch.setattr(capture, "_assert_execution_trees_clean", lambda *_args: {})
     monkeypatch.setattr(capture, "_self_validate_payload", lambda *_args: None)
 
@@ -1352,6 +1649,32 @@ def _initialize_repository(path: Path, filename: str) -> tuple[str, str]:
     return revision, tree
 
 
+@pytest.mark.parametrize("mechanism", ("replacement-ref", "legacy-grafts"))
+def test_git_object_replacement_is_disabled_and_explicitly_rejected(
+    tmp_path: Path, mechanism: str
+) -> None:
+    first_revision, first_tree = _initialize_repository(tmp_path, "source.py")
+    if mechanism == "replacement-ref":
+        (tmp_path / "source.py").write_text("replacement\n", encoding="utf-8")
+        _git(tmp_path, "add", "source.py")
+        _git(tmp_path, "commit", "--quiet", "-m", "replacement")
+        replacement_revision = _git(tmp_path, "rev-parse", "HEAD")
+        replacement_tree = _git(tmp_path, "rev-parse", "HEAD^{tree}")
+        _git(tmp_path, "replace", first_revision, replacement_revision)
+        assert _git(tmp_path, "rev-parse", f"{first_revision}^{{tree}}") == replacement_tree
+        assert capture._git_text(
+            tmp_path, "rev-parse", f"{first_revision}^{{tree}}"
+        ) == first_tree
+        message = "replacement refs"
+    else:
+        grafts = tmp_path / ".git" / "info" / "grafts"
+        grafts.write_text(first_revision + "\n", encoding="ascii")
+        message = "legacy Git grafts"
+
+    with pytest.raises(capture.BaselineError, match=message):
+        capture._assert_no_git_object_replacement(tmp_path, "test repository")
+
+
 def test_materialized_execution_trees_reject_untracked_sitecustomize_and_special(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1395,6 +1718,24 @@ def test_materialized_execution_trees_reject_untracked_sitecustomize_and_special
         }
         for repository in capture.REPOSITORY_PATHS
     }
+    replacement_commit = _git(
+        tmp_path,
+        "commit-tree",
+        trees["accelerate"],
+        "-p",
+        revisions["accelerate"],
+        "-m",
+        "replacement",
+    )
+    _git(tmp_path, "replace", revisions["accelerate"], replacement_commit)
+    rejected_capture_id = "20260811T115959.000000Z-1"
+    with pytest.raises(capture.BaselineError, match="replacement refs"):
+        capture._materialize_execution_trees(
+            tmp_path, rejected_capture_id, snapshots
+        )
+    capture._safe_cleanup_capture_workspace(tmp_path, rejected_capture_id)
+    _git(tmp_path, "replace", "-d", revisions["accelerate"])
+
     capture_id = "20260811T120000.000000Z-1"
     execution_root = capture._materialize_execution_trees(
         tmp_path, capture_id, snapshots
@@ -1406,6 +1747,14 @@ def test_materialized_execution_trees_reject_untracked_sitecustomize_and_special
             assert _git(target, "remote") == ""
             alternates = target / ".git" / "objects" / "info" / "alternates"
             assert not alternates.exists()
+
+        grafts = execution_root / ".git" / "info" / "grafts"
+        grafts.write_text(revisions["accelerate"] + "\n", encoding="ascii")
+        with pytest.raises(capture.BaselineError, match="legacy Git grafts"):
+            capture._assert_execution_trees_clean(
+                execution_root, snapshots, baseline
+            )
+        grafts.unlink()
 
         tracked = execution_root / "accelerate.py"
         _git(execution_root, "update-index", "--assume-unchanged", "accelerate.py")

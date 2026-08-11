@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -89,6 +90,52 @@ def _commit(path: Path, message: str) -> tuple[str, str]:
 
 def _digest(label: str) -> str:
     return "sha256:" + hashlib.sha256(label.encode()).hexdigest()
+
+
+def _mock_runner_source_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    binding = {
+        "accelerate": {
+            "revision": "a" * 40,
+            "tree": "b" * 40,
+            "content_digest": "sha256:" + "c" * 64,
+        }
+    }
+    monkeypatch.setattr(
+        gate,
+        "_capture_runner_source_binding",
+        lambda _runner, _errors: copy.deepcopy(binding),
+    )
+
+    def materialize(
+        _runner: str,
+        _binding: dict[str, dict[str, str]],
+        _errors: list[str],
+    ) -> tuple[Path, Path, dict[str, str]]:
+        root = gate.REPO_ROOT / gate.RELEASE_WORK_ROOT / "materialized"
+        source = root / "source"
+        stage = root / "staged"
+        source.mkdir(parents=True, exist_ok=True)
+        stage.mkdir(parents=True, exist_ok=True)
+        return source, stage, {"accelerate": "sha256:" + "d" * 64}
+
+    monkeypatch.setattr(gate, "_materialize_runner_source", materialize)
+    monkeypatch.setattr(
+        gate,
+        "_verify_materialized_source",
+        lambda *_args, **_kwargs: {"accelerate": "sha256:" + "d" * 64},
+    )
+
+
+def _set_test_runner_repositories(
+    monkeypatch: pytest.MonkeyPatch,
+    repositories: dict[str, Path],
+) -> None:
+    monkeypatch.setattr(gate, "REPOSITORY_PATHS", repositories)
+    monkeypatch.setattr(
+        gate,
+        "RUNNER_UNMATERIALIZED_GITLINKS",
+        {name: {} for name in repositories},
+    )
 
 
 def _pre_capture_config() -> dict[str, Any]:
@@ -403,6 +450,76 @@ SKIPPED [1] tests/test_optional.py:7: optional module unavailable
         }
     ]
     assert gate._collection_complete(log) is False
+
+
+@pytest.mark.parametrize(
+    "collected_line",
+    (
+        "collecting ... collected 0 items / 1 error",
+        "collected 7 items / 2 errors / 1 deselected",
+    ),
+)
+def test_gate_marks_collected_error_summary_incomplete(
+    collected_line: str,
+) -> None:
+    log = (
+        "============================= test session starts "
+        "==============================\n"
+        f"{collected_line}\n"
+        "=========================== short test summary info "
+        "============================\n"
+        "==== 1 error in 0.01s ===="
+    )
+
+    assert gate._collection_count(log) in {0, 7}
+    assert gate._collection_complete(log) is False
+
+
+def test_gate_parses_decorated_collection_error_node() -> None:
+    log = (
+        "============================= test session starts "
+        "==============================\n"
+        "collected 0 items / 1 error\n"
+        "____________ ERROR collecting tests/test_broken.py ____________\n"
+        "=========================== short test summary info "
+        "============================\n"
+        "ERROR tests/test_broken.py\n"
+        "==== 1 error in 0.01s ===="
+    )
+
+    assert gate._collection_complete(log) is False
+    nodes = gate._nonpass_nodes(log)
+    assert any(
+        item["status"] == "error"
+        and item["node_id"] == "collecting tests/test_broken.py"
+        for item in nodes
+    )
+
+
+@pytest.mark.parametrize("error_count", (6, 40, 3, 52, 1))
+def test_gate_collection_abort_nodes_match_capture_parser(
+    error_count: int,
+) -> None:
+    paths = [f"tests/test_collection_{index:03d}.py" for index in range(error_count)]
+    transcript = "\n".join(
+        (
+            "============================= test session starts ==============================",
+            f"collected 0 items / {error_count} errors",
+            *(
+                f"________ ERROR collecting {path} ________"
+                for path in paths
+            ),
+            "=========================== short test summary info ============================",
+            *(f"ERROR {path}" for path in paths),
+            f"================ {error_count} errors in 0.10s ================",
+        )
+    )
+
+    captured = capture.parse_pytest_log(transcript.encode("utf-8"))
+
+    assert gate._collection_complete(transcript) is False
+    assert gate._nonpass_nodes(transcript) == captured["non_pass_nodes"]
+    assert len(gate._nonpass_nodes(transcript)) == error_count
 
 
 def test_gate_keeps_ordinary_skipped_item_collection_complete() -> None:
@@ -2042,7 +2159,19 @@ def test_fixed_runner_bounds_subprocess_output(tmp_path: Path) -> None:
     assert len(output) == 1024
 
 
-def test_fixed_runner_terminates_residual_child_without_rewriting_parent_exit(
+def _assert_process_terminated(pid: int) -> None:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        stat_path = Path(f"/proc/{pid}/stat")
+        if not stat_path.exists():
+            return
+        if stat_path.read_text(encoding="ascii").split()[2] == "Z":
+            return
+        time.sleep(0.01)
+    pytest.fail(f"protected runner left residual process {pid} alive")
+
+
+def test_fixed_runner_terminates_and_rejects_residual_child(
     tmp_path: Path,
 ) -> None:
     program = """
@@ -2063,19 +2192,76 @@ print(child.pid, flush=True)
         timeout_seconds=5,
     )
     child_pid = int(output.splitlines()[0])
-    assert status == "completed"
-    assert exit_code == 0
+    assert status == "residual_process_terminated"
+    assert exit_code is None
+    _assert_process_terminated(child_pid)
 
-    deadline = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        stat_path = Path(f"/proc/{child_pid}/stat")
-        if not stat_path.exists():
-            break
-        if stat_path.read_text(encoding="ascii").split()[2] == "Z":
-            break
-        time.sleep(0.01)
-    else:
-        pytest.fail("protected runner left a residual child process alive")
+
+def test_fixed_runner_terminates_detached_double_fork_descendant(
+    tmp_path: Path,
+) -> None:
+    program = """
+import os
+import time
+
+first = os.fork()
+if first:
+    os._exit(0)
+os.setsid()
+second = os.fork()
+if second:
+    os._exit(0)
+print(os.getpid(), flush=True)
+os.close(1)
+os.close(2)
+time.sleep(30)
+"""
+    status, exit_code, _, output = gate._run_observed_process(
+        [sys.executable, "-c", program],
+        cwd=tmp_path,
+        environment=os.environ,
+        timeout_seconds=5,
+    )
+    descendant_pid = int(output.splitlines()[0])
+
+    assert status == "residual_process_terminated"
+    assert exit_code is None
+    _assert_process_terminated(descendant_pid)
+
+
+def test_fixed_runner_contains_descendants_after_bound_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gate, "RUNNER_MAX_DESCENDANT_PROCESSES", 1)
+    program = """
+import subprocess
+import sys
+
+children = [
+    subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(3)
+]
+print(" ".join(str(child.pid) for child in children), flush=True)
+"""
+    status, exit_code, _, output = gate._run_observed_process(
+        [sys.executable, "-c", program],
+        cwd=tmp_path,
+        environment=os.environ,
+        timeout_seconds=5,
+    )
+    child_pids = [int(value) for value in output.split()]
+
+    assert status == "cleanup_failed"
+    assert exit_code is None
+    assert len(child_pids) == 3
+    for child_pid in child_pids:
+        _assert_process_terminated(child_pid)
 
 
 def test_task_gate_enforces_ordered_same_submodule_writers() -> None:
@@ -2832,6 +3018,7 @@ def test_release_runner_refuses_live_ipfs_before_starting_any_process(
     monkeypatch.setattr(gate, "_current_repository_bindings", lambda errors: (revisions, trees))
     monkeypatch.setattr(gate, "_release_suite_specs", lambda errors: [])
     monkeypatch.setattr(gate.shutil, "which", lambda *_args, **_kwargs: "/usr/bin/ipfs")
+    _mock_runner_source_binding(monkeypatch)
 
     def forbidden_process(*_args: Any, **_kwargs: Any) -> Any:
         pytest.fail("release runner started a process despite live IPFS preflight")
@@ -2868,6 +3055,7 @@ def test_release_runner_never_publishes_secret_bearing_process_output(
     monkeypatch.setattr(gate, "_current_repository_bindings", lambda errors: (revisions, trees))
     monkeypatch.setattr(gate, "_release_suite_specs", lambda errors: [suite])
     monkeypatch.setattr(gate, "_validate_release_ipfs_preflight", lambda errors: None)
+    _mock_runner_source_binding(monkeypatch)
     outputs = iter(
         (
             ("completed", 0, 1, b'{"valid": true}\n'),
@@ -2929,18 +3117,34 @@ def test_benchmark_validation_materializes_once_then_is_hash_stable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _init_repository(
+        tmp_path,
+        {
+            ".gitignore": f"/{gate.RELEASE_WORK_ROOT}/\n",
+            gate.BENCHMARK_CLI: "# fixed benchmark CLI\n",
+            "source.py": "VALUE = 1\n",
+        },
+    )
     monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
-    _write(tmp_path / gate.BENCHMARK_CLI, "# fixed benchmark CLI\n")
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
     (tmp_path / gate.BENCHMARK_JSON).parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / gate.BENCHMARK_JSON).write_bytes(gate.BENCHMARK_REQUEST_JSON)
     (tmp_path / gate.BENCHMARK_CSV).write_bytes(gate.BENCHMARK_REQUEST_CSV)
     process_calls = 0
+    real_observed = gate._run_observed_process
 
-    def observed(*_args: Any, **_kwargs: Any) -> tuple[str, int, int, bytes]:
+    def observed(
+        argv: list[str], *_args: Any, **kwargs: Any
+    ) -> tuple[str, int, int, bytes]:
         nonlocal process_calls
+        if argv[0] == "git":
+            return real_observed(argv, *_args, **kwargs)
         process_calls += 1
-        _write_json(tmp_path / gate.BENCHMARK_JSON, {"materialized": True})
-        _write(tmp_path / gate.BENCHMARK_CSV, "materialized\n")
+        cwd = Path(kwargs["cwd"])
+        json_output = cwd / argv[argv.index("--json-output") + 1]
+        csv_output = cwd / argv[argv.index("--csv-output") + 1]
+        _write_json(json_output.resolve(), {"materialized": True})
+        _write(csv_output.resolve(), "materialized\n")
         return "completed", 0, 1, b"benchmark observed\n"
 
     def artifact(task_id: str) -> dict[str, Any]:
@@ -2965,6 +3169,266 @@ def test_benchmark_validation_materializes_once_then_is_hash_stable(
         relative: hashlib.sha256((tmp_path / relative).read_bytes()).hexdigest()
         for relative in (gate.BENCHMARK_JSON, gate.BENCHMARK_CSV)
     }
+
+
+def _init_runner_binding_repository(root: Path) -> None:
+    _init_repository(
+        root,
+        {
+            ".gitignore": (
+                f"/{gate.RELEASE_WORK_ROOT}/\n"
+                "/ignored-execution-input.py\n"
+            ),
+            gate.BENCHMARK_CLI: "# fixed benchmark CLI\n",
+            "source.py": "VALUE = 1\n",
+        },
+    )
+
+
+@pytest.mark.parametrize("mutation", ("unstaged", "staged", "assume-unchanged"))
+def test_runner_source_binding_rejects_tracked_source_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
+    original_info = (tmp_path / "source.py").stat()
+    if mutation == "assume-unchanged":
+        _git(tmp_path, "update-index", "--assume-unchanged", "--", "source.py")
+    _write(tmp_path / "source.py", "VALUE = 2\n")
+    if mutation == "assume-unchanged":
+        os.utime(
+            tmp_path / "source.py",
+            ns=(original_info.st_atime_ns, original_info.st_mtime_ns),
+        )
+    if mutation == "staged":
+        _git(tmp_path, "add", "--", "source.py")
+    errors: list[str] = []
+
+    gate._capture_runner_source_binding("benchmark", errors)
+
+    assert errors
+    if mutation == "assume-unchanged":
+        assert any("index flag" in error for error in errors), errors
+    else:
+        assert any(
+            "index differs from HEAD" in error or "worktree has staged" in error
+            for error in errors
+        ), errors
+
+
+def test_runner_source_binding_rejects_ignored_execution_input_but_allows_work_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
+    _write(
+        tmp_path / gate.RELEASE_WORK_ROOT / "suite" / "sitecustomize.py",
+        "# runner-owned transient\n",
+    )
+    clean_errors: list[str] = []
+
+    binding = gate._capture_runner_source_binding("benchmark", clean_errors)
+
+    assert clean_errors == []
+    assert set(binding) == {"accelerate"}
+    _write(tmp_path / "ignored-execution-input.py", "raise RuntimeError('forged')\n")
+    dirty_errors: list[str] = []
+
+    gate._capture_runner_source_binding("benchmark", dirty_errors)
+
+    assert any("ignored execution-relevant mutations" in error for error in dirty_errors)
+
+
+@pytest.mark.parametrize("replacement_kind", ("replace-ref", "grafts"))
+def test_runner_source_binding_rejects_git_object_replacement_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement_kind: str,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
+    if replacement_kind == "replace-ref":
+        original_commit = _git(tmp_path, "rev-parse", "HEAD")
+        original_tree = _git(tmp_path, "rev-parse", "HEAD^{tree}")
+        _write(tmp_path / "source.py", "VALUE = 2\n")
+        _git(tmp_path, "add", "--", "source.py")
+        _git(tmp_path, "commit", "-q", "-m", "replacement tree")
+        replacement_tree = _git(tmp_path, "rev-parse", "HEAD^{tree}")
+        _git(tmp_path, "checkout", "-q", original_commit)
+        _git(tmp_path, "replace", original_tree, replacement_tree)
+        _git(tmp_path, "read-tree", "--reset", "-u", "HEAD")
+    else:
+        _write(tmp_path / ".git" / "info" / "grafts", "0" * 40 + "\n")
+    errors: list[str] = []
+
+    gate._capture_runner_source_binding("benchmark", errors)
+
+    assert any(
+        "replacement refs" in error or "grafts file" in error for error in errors
+    ), errors
+    assert gate._fixed_git_environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+
+
+def test_runner_unmaterialized_gitlink_allowlist_rejects_unknown_or_oid_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_oid = "1" * 40
+    monkeypatch.setattr(
+        gate,
+        "RUNNER_UNMATERIALIZED_GITLINKS",
+        {"accelerate": {"vendor/reviewed": expected_oid}},
+    )
+    valid_entries = {
+        "vendor/reviewed": ("160000", "commit", expected_oid),
+    }
+    valid_errors: list[str] = []
+
+    gate._validate_unmaterialized_gitlinks(
+        "accelerate", valid_entries, "benchmark", valid_errors
+    )
+
+    assert valid_errors == []
+    bad_entries = {
+        "vendor/reviewed": ("160000", "commit", "2" * 40),
+        "vendor/unknown": ("160000", "commit", "3" * 40),
+    }
+    bad_errors: list[str] = []
+    gate._validate_unmaterialized_gitlinks(
+        "accelerate", bad_entries, "benchmark", bad_errors
+    )
+    assert any("allowlist drifted" in error for error in bad_errors)
+
+
+@pytest.mark.parametrize("kind", ("symlink", "fifo"))
+def test_runner_source_binding_rejects_unsafe_declared_artifact_kind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
+    artifact = tmp_path / gate.BENCHMARK_JSON
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    if kind == "symlink":
+        artifact.symlink_to(tmp_path / "source.py")
+    else:
+        os.mkfifo(artifact)
+    errors: list[str] = []
+
+    gate._capture_runner_source_binding("benchmark", errors)
+
+    assert any("regular non-symlink file" in error for error in errors), errors
+
+
+def test_runner_source_binding_rejects_dirty_nested_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    nested = tmp_path / "nested"
+    _init_repository(nested, {"nested_source.py": "VALUE = 1\n"})
+    _commit(tmp_path, "bind nested repository")
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(
+        monkeypatch,
+        {"accelerate": Path("."), "nested": Path("nested")},
+    )
+    _write(nested / "nested_source.py", "VALUE = 2\n")
+    errors: list[str] = []
+
+    gate._capture_runner_source_binding("benchmark", errors)
+
+    assert any("nested worktree has staged" in error for error in errors), errors
+
+
+def test_benchmark_runner_rejects_source_mutation_during_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
+    (tmp_path / gate.BENCHMARK_JSON).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / gate.BENCHMARK_JSON).write_bytes(gate.BENCHMARK_REQUEST_JSON)
+    (tmp_path / gate.BENCHMARK_CSV).write_bytes(gate.BENCHMARK_REQUEST_CSV)
+    real_observed = gate._run_observed_process
+
+    def mutate_source(
+        argv: list[str], *_args: Any, **kwargs: Any
+    ) -> tuple[str, int, int, bytes]:
+        if argv[0] == "git":
+            return real_observed(argv, *_args, **kwargs)
+        cwd = Path(kwargs["cwd"])
+        isolated_source = cwd / "source.py"
+        isolated_source.chmod(0o644)
+        _write(isolated_source, "VALUE = 999\n")
+        json_output = cwd / argv[argv.index("--json-output") + 1]
+        csv_output = cwd / argv[argv.index("--csv-output") + 1]
+        _write_json(json_output.resolve(), {"materialized": True})
+        _write(csv_output.resolve(), "materialized\n")
+        return "completed", 0, 1, b"benchmark observed\n"
+
+    monkeypatch.setattr(gate, "_run_observed_process", mutate_source)
+    monkeypatch.setattr(
+        gate,
+        "validate_artifact",
+        lambda _task_id: pytest.fail("dirty execution was validated as evidence"),
+    )
+
+    result = gate.run_benchmark_validation()
+
+    assert result["valid"] is False
+    assert any("materialized source bytes changed" in error for error in result["errors"])
+
+
+def test_release_runner_rejects_source_mutation_during_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _init_runner_binding_repository(tmp_path)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    _set_test_runner_repositories(monkeypatch, {"accelerate": Path(".")})
+    _write(
+        tmp_path / gate.RELEASE_REPORT,
+        "Substantive release report\n" + gate.RELEASE_REPORT_REQUEST_MARKER + "\n",
+    )
+    (tmp_path / gate.RELEASE_VALIDATION_JSON).parent.mkdir(
+        parents=True, exist_ok=True
+    )
+    (tmp_path / gate.RELEASE_VALIDATION_JSON).write_bytes(gate.RELEASE_REQUEST_JSON)
+    (tmp_path / gate.RELEASE_VALIDATION_LOG).write_bytes(gate.RELEASE_REQUEST_LOG)
+    monkeypatch.setattr(gate, "_release_suite_specs", lambda _errors: [])
+    monkeypatch.setattr(gate, "_validate_release_ipfs_preflight", lambda _errors: None)
+    real_observed = gate._run_observed_process
+
+    def mutate_source(
+        argv: list[str], *_args: Any, **kwargs: Any
+    ) -> tuple[str, int, int, bytes]:
+        if argv[0] == "git":
+            return real_observed(argv, *_args, **kwargs)
+        isolated_source = Path(kwargs["cwd"]) / "source.py"
+        isolated_source.chmod(0o644)
+        _write(isolated_source, "VALUE = 999\n")
+        return "completed", 0, 1, b'{"valid":true}\n'
+
+    monkeypatch.setattr(gate, "_run_observed_process", mutate_source)
+    monkeypatch.setattr(
+        gate,
+        "validate_artifact",
+        lambda _task_id: pytest.fail("dirty release execution published evidence"),
+    )
+
+    result = gate.run_release_validation()
+
+    assert result["valid"] is False
+    assert any("materialized source bytes changed" in error for error in result["errors"])
 
 
 def test_convergent_validation_rejects_partial_materialization_request(
@@ -3033,6 +3497,111 @@ def test_release_work_is_ignored_but_final_evidence_is_not() -> None:
         assert visible.returncode == 1, relative
 
 
+def test_release_work_cleanup_unlinks_hardlink_without_chmodding_external_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    external = tmp_path / "external.txt"
+    _write(external, "external bytes\n")
+    external.chmod(0o644)
+    work_root = root / gate.RELEASE_WORK_ROOT
+    work_root.mkdir(parents=True)
+    os.link(external, work_root / "hardlink.txt")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._clean_release_work_root(errors)
+
+    assert errors == []
+    assert not work_root.exists()
+    assert external.read_text(encoding="utf-8") == "external bytes\n"
+    assert stat.S_IMODE(external.stat().st_mode) == 0o644
+
+
+def test_materialized_read_only_walk_rejects_regular_hardlink_without_chmod(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    external = tmp_path / "external.txt"
+    _write(external, "external bytes\n")
+    external.chmod(0o640)
+    os.link(external, source / "tracked.txt")
+    errors: list[str] = []
+
+    gate._make_materialized_source_read_only(source, errors)
+
+    assert any("regular leaf is hardlinked" in error for error in errors)
+    assert stat.S_IMODE(external.stat().st_mode) == 0o640
+
+
+def test_atomic_artifact_publication_replaces_hardlink_without_external_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repository"
+    output_parent = root / "artifacts"
+    output_parent.mkdir(parents=True)
+    external = tmp_path / "external.txt"
+    _write(external, "external bytes\n")
+    external.chmod(0o644)
+    os.link(external, output_parent / "result.txt")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+
+    gate._atomic_write_artifact("artifacts/result.txt", b"published bytes\n")
+
+    assert (output_parent / "result.txt").read_bytes() == b"published bytes\n"
+    assert external.read_text(encoding="utf-8") == "external bytes\n"
+    assert stat.S_IMODE(external.stat().st_mode) == 0o644
+
+
+def test_atomic_artifact_publication_rejects_symlinked_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (root / "artifacts").symlink_to(external, target_is_directory=True)
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+
+    with pytest.raises(OSError):
+        gate._atomic_write_artifact("artifacts/result.txt", b"forbidden\n")
+
+    assert not (external / "result.txt").exists()
+
+
+def test_release_environment_routes_all_writes_outside_materialized_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "materialized" / "source"
+    workspace = tmp_path / "materialized" / "runtime" / "suite"
+    source_root.mkdir(parents=True)
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+
+    environment = gate._release_environment(workspace, source_root=source_root)
+
+    assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(source_root.resolve())
+    assert environment["PYTEST_ADDOPTS"] == (
+        f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
+    )
+    for name in (
+        "home",
+        "hypothesis",
+        "ipfs-repo",
+        "pycache",
+        "pytest-benchmark",
+        "pytest-cache",
+        "pytest-tmp",
+        "tmp",
+    ):
+        assert (workspace / name).is_dir()
+
+
 def test_release_validation_materializes_report_binding_then_is_hash_stable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3058,6 +3627,7 @@ def test_release_validation_materializes_report_binding_then_is_hash_stable(
     )
     monkeypatch.setattr(gate, "_release_suite_specs", lambda errors: [])
     monkeypatch.setattr(gate, "_validate_release_ipfs_preflight", lambda errors: None)
+    _mock_runner_source_binding(monkeypatch)
     process_calls = 0
 
     def observed(*_args: Any, **_kwargs: Any) -> tuple[str, int, int, bytes]:

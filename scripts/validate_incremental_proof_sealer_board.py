@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import ctypes
+import errno
 import hashlib
 import io
 import json
@@ -24,11 +26,12 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -85,9 +88,9 @@ BASELINE_RECEIPT_ROOT = (
 BASELINE_LOG_ROOT = f"{BASELINE_RECEIPT_ROOT}/logs"
 BASELINE_RECEIPT_SCHEMA = "incremental-proof-sealer-baseline-receipt@4"
 BASELINE_OPERATOR_ORIGIN = "operator_capture"
-BASELINE_ENVIRONMENT_POLICY = "incremental-proof-sealer-controlled-offline-pytest@2"
+BASELINE_ENVIRONMENT_POLICY = "incremental-proof-sealer-controlled-offline-pytest@3"
 BASELINE_IGNORED_INPUT_POLICY = "incremental-proof-sealer-clean-materialized-trees@1"
-BASELINE_GIT_ENVIRONMENT_POLICY = "incremental-proof-sealer-fixed-git-environment@1"
+BASELINE_GIT_ENVIRONMENT_POLICY = "incremental-proof-sealer-fixed-git-environment@2"
 BASELINE_MAX_RECEIPT_BYTES = 2 * 1024 * 1024
 BASELINE_MAX_LOG_BYTES = 64 * 1024 * 1024
 BASELINE_MAX_REGISTRY_BYTES = 256 * 1024
@@ -298,7 +301,7 @@ BASELINE_CAPTURE_SCRIPT = "scripts/capture_incremental_proof_sealer_baselines.py
 BASELINE_SUITE_REGISTRY = "config/incremental_proof_sealer_baseline_suite_registry.json"
 BASELINE_SUITE_REGISTRY_SCHEMA = "incremental-proof-sealer-reviewed-suite-registry@1"
 BASELINE_SUITE_REGISTRY_DIGEST = (
-    "sha256:a15c27f0971495a221e851bc5191cf16302aca5fc4043d93b4eae8b93f86b909"
+    "sha256:4489fa11df5fd7c2e7f3aaf6201266eb74861ef6a36d94ae2bf3e6d543e55c3e"
 )
 BASELINE_SYNTHESIS_SCHEMA = "incremental-proof-sealer-trust-baseline@2"
 BASELINE_SYNTHESIS_JSON = (
@@ -456,7 +459,7 @@ RELEASE_VALIDATION_LOG = (
 RELEASE_WORK_ROOT = "artifacts/agent_supervisor/incremental_proof_sealer/release-work"
 RELEASE_REPORT = "docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md"
 RELEASE_RUNNER_ID = "protected-board-release-validation-runner@1"
-RELEASE_ENVIRONMENT_POLICY = "incremental-proof-sealer-current-tree-offline-pytest@1"
+RELEASE_ENVIRONMENT_POLICY = "incremental-proof-sealer-isolated-tree-offline-pytest@2"
 RELEASE_PUBLIC_LOG_POLICY = "public-full-log-secret-scan@1"
 RELEASE_FIXED_EXECUTABLE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 RELEASE_MAX_LOG_BYTES = 6 * 1024 * 1024
@@ -473,6 +476,75 @@ RELEASE_REQUEST_JSON = (
 )
 RELEASE_REQUEST_LOG = b"incremental-proof-sealer-materialization-request@1 IPS-056\n"
 RELEASE_REPORT_REQUEST_MARKER = "<!-- IPS-056 RELEASE EVIDENCE: MATERIALIZE ONCE -->"
+RUNNER_SOURCE_BINDING_POLICY = (
+    "incremental-proof-sealer-pristine-index-worktree-content@1"
+)
+RUNNER_MATERIALIZATION_MAX_ENTRIES = 250_000
+RUNNER_MATERIALIZATION_MAX_DEPTH = 64
+RUNNER_MATERIALIZATION_MAX_LEAF_BYTES = 256 * 1024 * 1024
+RUNNER_MATERIALIZATION_MAX_HASH_BYTES = 4 * 1024 * 1024 * 1024
+RUNNER_MAX_DESCENDANT_PROCESSES = 4096
+RUNNER_UNMATERIALIZED_GITLINKS: Mapping[str, Mapping[str, str]] = {
+    "accelerate": {
+        "docs/fastmcp": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+        "docs/mcp-python-sdk": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+        "ipfs_accelerate_py/mcplusplus": (
+            "15c1816d6c63a2b11edd505704f6a04a9abc6167"
+        ),
+        "ipfs_model_manager_py": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+        "ipfs_transformers_py": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+        "test/doc-builder": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+        "test/huggingface_doc_builder": (
+            "6108e850ae1cf2f71bb0815a600bcd50c39abfa7"
+        ),
+        "test/huggingface_transformers": (
+            "44752c8dd99f3fb0da23006dc4fde4a07d9c417f"
+        ),
+    },
+    "datasets": {
+        ".tools/ipfs_kit_py": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+        "ipfs_accelerate_py": "48f13ab632dec4c3575acaad6e309ef60420904b",
+        "ipfs_datasets_py/logic/CEC/DCEC_Library": (
+            "a4beb5b3280595be6b9221cac3c91dd019e6d371"
+        ),
+        "ipfs_datasets_py/logic/CEC/Eng-DCEC": (
+            "df518c21ef81b8001e6db59f5fd70f10cc04ff6c"
+        ),
+        "ipfs_datasets_py/logic/CEC/ShadowProver": (
+            "3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9"
+        ),
+        "ipfs_datasets_py/logic/CEC/Talos": (
+            "e0b7650d3e3a403924773f8253e924c719748d36"
+        ),
+        "ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type": (
+            "d58933631a5362b1e2fdc45254ef620fa231223a"
+        ),
+        "ipfs_datasets_py/multimedia/omni_converter_mk2": (
+            "c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa"
+        ),
+        "ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine": (
+            "5c7c2ab8a509073f39359b2a35446183855f460a"
+        ),
+        "ipfs_kit_py": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+    },
+    "kit": {
+        "docs/filesystem_spec": "fec09b04ad626df44a03bc605cb2e526b752b042",
+        "docs/ipfs-docs": "4cf83720b59738d93db4068976f9c2a11f023e45",
+        "docs/ipfs_cluster": "c7ca8b5f87b41fcc795297ca65b0bb41c10234bf",
+        "docs/ipfsspec": "03f5199b9bf5a96c7ebf5e2e6f5dce8cf58b655f",
+        "docs/lassie": "c6ba777810d03fed23aea11b5969b7d8a97f1edf",
+        "docs/libp2p-universal-connectivity": (
+            "e18a6de9c020c5e406d9f61b638f5d276054798d"
+        ),
+        "docs/libp2p_docs": "17cee4a438797313d1e878b103abc1dbefdf423e",
+        "docs/lighthouse-python-sdk": (
+            "6b2c86693090c770d2c9a4d82ba315000a77068b"
+        ),
+        "docs/mcp-python-sdk": "d3133ae6ce7333a501e38046aff4275c44326f90",
+        "docs/storacha_specs": "3b6791869635735ddb1a54aed7450ad6ef687c06",
+        "ipfs_accelerate_py": "48f13ab632dec4c3575acaad6e309ef60420904b",
+    },
+}
 BENCHMARK_PROPOSAL_ENVELOPE = {
     "schema": "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1",
     "paths": [BENCHMARK_JSON, BENCHMARK_CSV],
@@ -818,6 +890,7 @@ def _fixed_git_environment() -> dict[str, str]:
         "LC_ALL": "C.UTF-8",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_TERMINAL_PROMPT": "0",
     }
@@ -856,6 +929,76 @@ def _git_stdout(
         errors.append(f"{label} failed: {result.stderr.strip() or result.returncode}")
         return ""
     return result.stdout.strip()
+
+
+def _git_bytes(
+    cwd: Path,
+    errors: list[str],
+    label: str,
+    *args: str,
+) -> bytes | None:
+    """Run trust-boundary Git plumbing without lossy path decoding."""
+
+    status, exit_code, _duration, output = _run_observed_process(
+        [
+            "git",
+            "-c",
+            "core.filemode=true",
+            "-c",
+            "core.fsmonitor=false",
+            *args,
+        ],
+        cwd=cwd,
+        environment=_fixed_git_environment(),
+        timeout_seconds=30,
+        maximum_output_bytes=64 * 1024 * 1024,
+    )
+    if status != "completed" or exit_code != 0:
+        detail = output.decode("utf-8", "replace").strip()
+        errors.append(f"{label} failed: {detail or f'{status}/{exit_code}'}")
+        return None
+    return output
+
+
+def _reject_git_replacement_state(
+    root: Path,
+    *,
+    label: str,
+    errors: list[str],
+) -> None:
+    """Reject replacement refs and legacy grafts even though Git ignores them."""
+
+    replacements = _git_bytes(
+        root,
+        errors,
+        f"inspect {label} replacement refs",
+        "for-each-ref",
+        "--format=%(refname)%00",
+        "refs/replace",
+    )
+    if replacements is not None and replacements.strip(b"\0\r\n"):
+        errors.append(f"{label} contains forbidden Git replacement refs")
+    common_text = _git_stdout(
+        root,
+        errors,
+        f"resolve {label} common Git directory",
+        "rev-parse",
+        "--git-common-dir",
+    )
+    if not common_text:
+        return
+    common = Path(common_text)
+    if not common.is_absolute():
+        common = root / common
+    try:
+        common = common.resolve(strict=True)
+    except OSError as exc:
+        errors.append(
+            f"cannot resolve {label} common Git directory: {type(exc).__name__}"
+        )
+        return
+    if os.path.lexists(common / "info" / "grafts"):
+        errors.append(f"{label} contains a forbidden legacy Git grafts file")
 
 
 NESTED_INVENTORY_OUTPUTS: Mapping[str, frozenset[str]] = {
@@ -2962,7 +3105,13 @@ _PYTEST_ITEM_OUTCOME = re.compile(
     r"^(?P<node>\S.*?::\S.*?)\s+"
     r"(?P<status>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)(?:\s|$)"
 )
-_PYTEST_COLLECTION_ERROR = re.compile(r"^ERROR collecting (?P<node>\S.*)$")
+_PYTEST_COLLECTION_ERROR = re.compile(
+    r"^(?:[=_-]+\s+)?ERROR collecting (?P<node>\S.*?)(?:\s+[=_-]+)?$"
+)
+_PYTEST_COLLECTED_ERROR = re.compile(
+    r"\bcollected\s+\d+\s+items?\b.*(?:/|,)\s*\d+\s+errors?\b",
+    re.IGNORECASE,
+)
 _PYTEST_SKIPPED_SUMMARY = re.compile(
     r"^SKIPPED\s+(?:\[\d+\]\s+)?(?P<node>\S+?:\d+)(?::\s+.*)?$"
 )
@@ -3243,7 +3392,9 @@ def _expected_controlled_environment(
         "PYTHONHASHSEED": "0",
         "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
         "PYTHONPATH": python_path,
-        "PYTEST_ADDOPTS": "",
+        "PYTEST_ADDOPTS": (
+            f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
+        ),
         "TERM": "dumb",
         "TMPDIR": str(workspace / "tmp"),
         "TRANSFORMERS_OFFLINE": "1",
@@ -3447,6 +3598,8 @@ def _collection_complete(log_text: str) -> bool:
         for line in log_text.splitlines()
     ):
         return False
+    if any(_PYTEST_COLLECTED_ERROR.search(line) for line in log_text.splitlines()):
+        return False
     return not any(
         item["status"] == "skipped" and "::" not in item["node_id"]
         for item in _nonpass_nodes(log_text)
@@ -3459,6 +3612,19 @@ def _nonpass_nodes(log_text: str) -> list[dict[str, str]]:
     lines = log_text.splitlines()
     result: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
+    collection_error_nodes = {
+        match.group("node").strip()
+        for raw_line in lines
+        for match in (
+            _PYTEST_COLLECTION_ERROR.match(
+                _ANSI_ESCAPE.sub("", raw_line).strip()
+            ),
+        )
+        if match is not None
+    }
+    collection_count_failed = any(
+        _PYTEST_COLLECTED_ERROR.search(raw_line) for raw_line in lines
+    )
     status_names = {
         "FAILED": "failed",
         "ERROR": "error",
@@ -3495,6 +3661,15 @@ def _nonpass_nodes(log_text: str) -> list[dict[str, str]]:
             node_id = summary_match.group("body").split(" - ", 1)[0].strip()
         else:
             continue
+        if (
+            raw_status == "ERROR"
+            and not node_id.startswith("collecting ")
+            and (
+                node_id in collection_error_nodes
+                or (collection_count_failed and "::" not in node_id)
+            )
+        ):
+            node_id = f"collecting {node_id}"
         item = {
             "status": status_names[raw_status],
             "node_id": node_id,
@@ -5079,6 +5254,1474 @@ def _close_signed_number(actual: Any, expected: float, *, tolerance: float = 1e-
     )
 
 
+def _runner_declared_paths(runner: str) -> frozenset[str]:
+    if runner == "benchmark":
+        return frozenset((BENCHMARK_JSON, BENCHMARK_CSV))
+    if runner == "release":
+        return frozenset(
+            (RELEASE_REPORT, RELEASE_VALIDATION_JSON, RELEASE_VALIDATION_LOG)
+        )
+    raise ValueError(f"unknown protected runner {runner!r}")
+
+
+def _runner_path_is_transient(relative: str) -> bool:
+    return relative == RELEASE_WORK_ROOT or relative.startswith(
+        f"{RELEASE_WORK_ROOT}/"
+    )
+
+
+def _runner_path_is_allowed(
+    relative: str, declared_paths: frozenset[str]
+) -> bool:
+    return relative in declared_paths or _runner_path_is_transient(relative)
+
+
+def _decode_git_path(raw: bytes, label: str, errors: list[str]) -> str | None:
+    relative = os.fsdecode(raw)
+    path = Path(relative)
+    if (
+        not relative
+        or path.is_absolute()
+        or relative != path.as_posix()
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        errors.append(f"{label} contains an unsafe repository path {relative!r}")
+        return None
+    return relative
+
+
+def _parse_runner_tree(
+    raw: bytes, repository: str, errors: list[str]
+) -> dict[str, tuple[str, str, str]]:
+    entries: dict[str, tuple[str, str, str]] = {}
+    for record in raw.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, raw_path = record.split(b"\t", 1)
+            raw_mode, raw_kind, raw_oid = metadata.split(b" ", 2)
+            mode = raw_mode.decode("ascii")
+            kind = raw_kind.decode("ascii")
+            oid = raw_oid.decode("ascii")
+        except (UnicodeError, ValueError):
+            errors.append(f"protected runner cannot parse {repository} HEAD tree")
+            continue
+        relative = _decode_git_path(
+            raw_path, f"protected runner {repository} HEAD tree", errors
+        )
+        if relative is None:
+            continue
+        if relative in entries:
+            errors.append(
+                f"protected runner {repository} HEAD tree repeats {relative!r}"
+            )
+            continue
+        if (mode, kind) not in {
+            ("100644", "blob"),
+            ("100755", "blob"),
+            ("120000", "blob"),
+            ("160000", "commit"),
+        } or not re.fullmatch(r"[0-9a-f]{40,64}", oid):
+            errors.append(
+                f"protected runner {repository} HEAD tree has an unsafe entry "
+                f"for {relative!r}"
+            )
+            continue
+        entries[relative] = (mode, kind, oid)
+    return entries
+
+
+def _validate_unmaterialized_gitlinks(
+    repository: str,
+    entries: Mapping[str, tuple[str, str, str]],
+    runner: str,
+    errors: list[str],
+) -> None:
+    """Bind every deliberately absent gitlink to one reviewed path and OID."""
+
+    expected = dict(RUNNER_UNMATERIALIZED_GITLINKS.get(repository, {}))
+    materialized_paths = (
+        {
+            relative.as_posix()
+            for name, relative in REPOSITORY_PATHS.items()
+            if name != "accelerate"
+        }
+        if repository == "accelerate"
+        else set()
+    )
+    observed = {
+        relative: oid
+        for relative, (mode, kind, oid) in entries.items()
+        if (mode, kind) == ("160000", "commit")
+        and relative not in materialized_paths
+    }
+    if observed == expected:
+        return
+    missing = sorted(set(expected) - set(observed))
+    unknown = sorted(set(observed) - set(expected))
+    drifted = sorted(
+        relative
+        for relative in set(expected) & set(observed)
+        if expected[relative] != observed[relative]
+    )
+    errors.append(
+        f"protected {runner} {repository} deliberately unmaterialized gitlink "
+        "allowlist drifted: "
+        f"missing={missing[:12]}, unknown={unknown[:12]}, oid_drift={drifted[:12]}"
+    )
+
+
+def _parse_runner_index(
+    raw: bytes, repository: str, errors: list[str]
+) -> dict[str, list[tuple[str, str, int]]]:
+    entries: dict[str, list[tuple[str, str, int]]] = defaultdict(list)
+    for record in raw.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, raw_path = record.split(b"\t", 1)
+            raw_mode, raw_oid, raw_stage = metadata.split(b" ", 2)
+            mode = raw_mode.decode("ascii")
+            oid = raw_oid.decode("ascii")
+            stage = int(raw_stage.decode("ascii"))
+        except (UnicodeError, ValueError):
+            errors.append(f"protected runner cannot parse {repository} index")
+            continue
+        relative = _decode_git_path(
+            raw_path, f"protected runner {repository} index", errors
+        )
+        if relative is None:
+            continue
+        if mode not in {"100644", "100755", "120000", "160000"} or not re.fullmatch(
+            r"[0-9a-f]{40,64}", oid
+        ):
+            errors.append(
+                f"protected runner {repository} index has an unsafe entry "
+                f"for {relative!r}"
+            )
+            continue
+        entries[relative].append((mode, oid, stage))
+    return dict(entries)
+
+
+def _parse_runner_index_tags(
+    raw: bytes, repository: str, errors: list[str]
+) -> dict[str, str]:
+    tags: dict[str, str] = {}
+    for record in raw.split(b"\0"):
+        if not record:
+            continue
+        if len(record) < 3 or record[1:2] != b" ":
+            errors.append(f"protected runner cannot parse {repository} index flags")
+            continue
+        try:
+            tag = record[:1].decode("ascii")
+        except UnicodeError:
+            errors.append(f"protected runner cannot parse {repository} index flags")
+            continue
+        relative = _decode_git_path(
+            record[2:], f"protected runner {repository} index flags", errors
+        )
+        if relative is None:
+            continue
+        if relative in tags:
+            errors.append(
+                f"protected runner {repository} index flags repeat {relative!r}"
+            )
+        tags[relative] = tag
+    return tags
+
+
+def _parse_runner_status(
+    raw: bytes, repository: str, errors: list[str]
+) -> list[tuple[str, str]]:
+    records = raw.split(b"\0")
+    parsed: list[tuple[str, str]] = []
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
+            continue
+        if len(record) < 4 or record[2:3] != b" ":
+            errors.append(f"protected runner cannot parse {repository} worktree status")
+            continue
+        try:
+            status_code = record[:2].decode("ascii")
+        except UnicodeError:
+            errors.append(f"protected runner cannot parse {repository} worktree status")
+            continue
+        relative = _decode_git_path(
+            record[3:].rstrip(b"/"),
+            f"protected runner {repository} worktree status",
+            errors,
+        )
+        if relative is not None:
+            parsed.append((status_code, relative))
+        if any(flag in status_code for flag in "RC"):
+            if index >= len(records) or not records[index]:
+                errors.append(
+                    f"protected runner cannot parse {repository} rename/copy status"
+                )
+            else:
+                original = _decode_git_path(
+                    records[index].rstrip(b"/"),
+                    f"protected runner {repository} rename/copy source",
+                    errors,
+                )
+                if original is not None:
+                    parsed.append(("rename/copy-source", original))
+                index += 1
+    return parsed
+
+
+def _validate_runner_mutable_paths(
+    root: Path,
+    runner: str,
+    declared_paths: frozenset[str],
+    errors: list[str],
+) -> None:
+    """Reject link/special-file substitution at every runner-writable boundary."""
+
+    checked_parents: set[Path] = set()
+    for relative in sorted((*declared_paths, RELEASE_WORK_ROOT)):
+        path = root / relative
+        current = root
+        for part in Path(relative).parts[:-1]:
+            current /= part
+            if current in checked_parents or not os.path.lexists(current):
+                continue
+            checked_parents.add(current)
+            try:
+                info = current.lstat()
+            except OSError as exc:
+                errors.append(
+                    f"protected {runner} runner cannot inspect mutable-path parent "
+                    f"{current.relative_to(root).as_posix()!r}: {type(exc).__name__}"
+                )
+                continue
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append(
+                    f"protected {runner} runner mutable-path parent is not a regular "
+                    f"directory: {current.relative_to(root).as_posix()!r}"
+                )
+        if not os.path.lexists(path):
+            continue
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            errors.append(
+                f"protected {runner} runner cannot inspect mutable path {relative!r}: "
+                f"{type(exc).__name__}"
+            )
+            continue
+        if relative == RELEASE_WORK_ROOT:
+            safe = stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+            expected = "regular non-symlink directory"
+        else:
+            safe = stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+            expected = "regular non-symlink file"
+        if not safe:
+            errors.append(
+                f"protected {runner} runner mutable path {relative!r} must be a "
+                f"{expected}"
+            )
+
+
+def _runner_repository_snapshot(
+    *,
+    repository: str,
+    root: Path,
+    runner: str,
+    declared_paths: frozenset[str],
+    errors: list[str],
+) -> dict[str, Any]:
+    """Bind one repository's HEAD, index flags/entries, and physical worktree."""
+
+    try:
+        root_info = root.lstat()
+    except OSError as exc:
+        errors.append(
+            f"protected {runner} runner cannot inspect {repository} repository root: "
+            f"{type(exc).__name__}"
+        )
+        return {}
+    if not stat.S_ISDIR(root_info.st_mode) or stat.S_ISLNK(root_info.st_mode):
+        errors.append(
+            f"protected {runner} runner {repository} repository root is not a "
+            "regular non-symlink directory"
+        )
+        return {}
+    _reject_git_replacement_state(
+        root,
+        label=f"protected {runner} {repository} repository",
+        errors=errors,
+    )
+    revision_before = _git_stdout(
+        root,
+        errors,
+        f"resolve protected {runner} {repository} HEAD before worktree binding",
+        "rev-parse",
+        "HEAD",
+    )
+    tree_before = _git_stdout(
+        root,
+        errors,
+        f"resolve protected {runner} {repository} tree before worktree binding",
+        "rev-parse",
+        "HEAD^{tree}",
+    )
+    tree_raw = _git_bytes(
+        root,
+        errors,
+        f"read protected {runner} {repository} HEAD tree",
+        "ls-tree",
+        "-rz",
+        "--full-tree",
+        "HEAD",
+    )
+    index_raw = _git_bytes(
+        root,
+        errors,
+        f"read protected {runner} {repository} index",
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+    )
+    tags_raw = _git_bytes(
+        root,
+        errors,
+        f"read protected {runner} {repository} index flags",
+        "ls-files",
+        "-v",
+        "-z",
+        "--",
+    )
+    status_raw = _git_bytes(
+        root,
+        errors,
+        f"inspect protected {runner} {repository} worktree",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignored=matching",
+        "--ignore-submodules=none",
+    )
+    if None in (tree_raw, index_raw, tags_raw, status_raw):
+        return {}
+    assert tree_raw is not None
+    assert index_raw is not None
+    assert tags_raw is not None
+    assert status_raw is not None
+    tree_entries = _parse_runner_tree(tree_raw, repository, errors)
+    index_entries = _parse_runner_index(index_raw, repository, errors)
+    index_tags = _parse_runner_index_tags(tags_raw, repository, errors)
+    _validate_unmaterialized_gitlinks(
+        repository, tree_entries, runner, errors
+    )
+
+    for relative in sorted(set(tree_entries) | set(index_entries)):
+        if _runner_path_is_transient(relative):
+            errors.append(
+                f"protected {runner} runner fixed transient root contains tracked "
+                f"or staged path: {relative!r}"
+            )
+
+    bound_tree = {
+        relative: entry
+        for relative, entry in tree_entries.items()
+        if relative not in declared_paths
+    }
+    bound_index: dict[str, tuple[str, str, int]] = {}
+    for relative, entries in index_entries.items():
+        if relative in declared_paths:
+            if len(entries) != 1 or entries[0][2] != 0 or entries[0][0] not in {
+                "100644",
+                "100755",
+            }:
+                errors.append(
+                    f"protected {runner} runner declared path has an unsafe index "
+                    f"entry: {relative!r}"
+                )
+            continue
+        if len(entries) != 1 or entries[0][2] != 0:
+            errors.append(
+                f"protected {runner} runner {repository} index has unresolved "
+                f"stages for {relative!r}"
+            )
+            continue
+        bound_index[relative] = entries[0]
+    projected_tree = {
+        relative: (mode, oid, 0)
+        for relative, (mode, _kind, oid) in bound_tree.items()
+    }
+    if projected_tree != bound_index:
+        changed = sorted(set(projected_tree) ^ set(bound_index))
+        changed.extend(
+            relative
+            for relative in sorted(set(projected_tree) & set(bound_index))
+            if projected_tree[relative] != bound_index[relative]
+        )
+        errors.append(
+            f"protected {runner} runner {repository} index differs from HEAD "
+            f"outside declared outputs: {changed[:12]}"
+        )
+    for relative in sorted(bound_index):
+        tag = index_tags.get(relative)
+        if tag != "H":
+            errors.append(
+                f"protected {runner} runner {repository} index flag for "
+                f"{relative!r} is {tag!r}, not ordinary tracked state"
+            )
+
+    unexpected_status: list[str] = []
+    for status_code, relative in _parse_runner_status(
+        status_raw, repository, errors
+    ):
+        allowed = repository == "accelerate" and _runner_path_is_allowed(
+            relative, declared_paths
+        )
+        if not allowed:
+            unexpected_status.append(f"{status_code} {relative}")
+    if unexpected_status:
+        errors.append(
+            f"protected {runner} runner {repository} worktree has staged, unstaged, "
+            "untracked, or ignored execution-relevant mutations: "
+            f"{unexpected_status[:12]}"
+        )
+
+    revision_after = _git_stdout(
+        root,
+        errors,
+        f"resolve protected {runner} {repository} HEAD after worktree binding",
+        "rev-parse",
+        "HEAD",
+    )
+    tree_after = _git_stdout(
+        root,
+        errors,
+        f"resolve protected {runner} {repository} tree after worktree binding",
+        "rev-parse",
+        "HEAD^{tree}",
+    )
+    index_after = _git_bytes(
+        root,
+        errors,
+        f"re-read protected {runner} {repository} index",
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+    )
+    status_after = _git_bytes(
+        root,
+        errors,
+        f"re-inspect protected {runner} {repository} worktree",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignored=matching",
+        "--ignore-submodules=none",
+    )
+    if revision_before != revision_after or tree_before != tree_after:
+        errors.append(
+            f"protected {runner} runner {repository} HEAD/tree changed during "
+            "worktree binding"
+        )
+    if index_after is None or index_after != index_raw:
+        errors.append(
+            f"protected {runner} runner {repository} index changed during "
+            "worktree binding"
+        )
+    if status_after is None:
+        return {}
+    unexpected_after = [
+        (status_code, relative)
+        for status_code, relative in _parse_runner_status(
+            status_after, repository, errors
+        )
+        if not (
+            repository == "accelerate"
+            and _runner_path_is_allowed(relative, declared_paths)
+        )
+    ]
+    if unexpected_after:
+        errors.append(
+            f"protected {runner} runner {repository} worktree changed during "
+            f"content binding: {unexpected_after[:12]}"
+        )
+
+    content_digest = hashlib.sha256()
+    content_digest.update(RUNNER_SOURCE_BINDING_POLICY.encode("ascii"))
+    content_digest.update(b"\0")
+    content_digest.update(repository.encode("utf-8"))
+    content_digest.update(b"\0")
+    content_digest.update(revision_before.encode("ascii", "replace"))
+    content_digest.update(b"\0")
+    content_digest.update(tree_before.encode("ascii", "replace"))
+    for relative, (mode, _kind, oid) in sorted(bound_tree.items()):
+        content_digest.update(b"\0")
+        content_digest.update(os.fsencode(relative))
+        content_digest.update(b"\0")
+        content_digest.update(mode.encode("ascii"))
+        content_digest.update(b"\0")
+        content_digest.update(oid.encode("ascii"))
+    return {
+        "revision": revision_before,
+        "tree": tree_before,
+        "content_digest": "sha256:" + content_digest.hexdigest(),
+        "tree_entries": tree_entries,
+    }
+
+
+def _capture_runner_source_binding(
+    runner: str, errors: list[str]
+) -> dict[str, dict[str, str]]:
+    """Fail closed unless every executable checkout is the exact indexed HEAD tree."""
+
+    initial_error_count = len(errors)
+    try:
+        declared_paths = _runner_declared_paths(runner)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return {}
+    _validate_runner_mutable_paths(REPO_ROOT, runner, declared_paths, errors)
+    internal: dict[str, dict[str, Any]] = {}
+    for repository, relative_root in REPOSITORY_PATHS.items():
+        internal[repository] = _runner_repository_snapshot(
+            repository=repository,
+            root=REPO_ROOT / relative_root,
+            runner=runner,
+            declared_paths=(declared_paths if repository == "accelerate" else frozenset()),
+            errors=errors,
+        )
+    outer_entries = internal.get("accelerate", {}).get("tree_entries")
+    if isinstance(outer_entries, Mapping):
+        for repository, relative_root in REPOSITORY_PATHS.items():
+            if repository == "accelerate":
+                continue
+            relative = relative_root.as_posix()
+            expected = outer_entries.get(relative)
+            nested_revision = internal.get(repository, {}).get("revision")
+            if expected != ("160000", "commit", nested_revision):
+                errors.append(
+                    f"protected {runner} runner nested {repository} HEAD does not "
+                    f"equal outer gitlink {relative!r}"
+                )
+    public: dict[str, dict[str, str]] = {}
+    for repository, snapshot in internal.items():
+        revision = snapshot.get("revision")
+        tree = snapshot.get("tree")
+        digest = snapshot.get("content_digest")
+        if all(isinstance(value, str) and value for value in (revision, tree, digest)):
+            public[repository] = {
+                "revision": revision,
+                "tree": tree,
+                "content_digest": digest,
+            }
+    if set(public) != set(REPOSITORY_PATHS):
+        errors.append(f"protected {runner} runner source binding is incomplete")
+    if len(errors) != initial_error_count:
+        return {}
+    return public
+
+
+def _verify_runner_source_binding(
+    runner: str,
+    expected: Mapping[str, Mapping[str, str]],
+    errors: list[str],
+) -> None:
+    observed = _capture_runner_source_binding(runner, errors)
+    if observed != expected:
+        errors.append(
+            f"protected {runner} runner source/index/worktree binding changed "
+            "during execution"
+        )
+
+
+def _run_materialization_git(
+    runner: str,
+    cwd: Path,
+    errors: list[str],
+    *args: str,
+) -> bool:
+    status, exit_code, _duration, output = _run_observed_process(
+        ["git", *args],
+        cwd=cwd,
+        environment=_fixed_git_environment(),
+        timeout_seconds=600,
+        maximum_output_bytes=256 * 1024,
+    )
+    if status != "completed" or exit_code != 0:
+        detail = output.decode("utf-8", "replace").strip()
+        errors.append(
+            "protected "
+            f"{runner} source materialization failed: "
+            f"{(detail or f'{status}/{exit_code}')[:2000]}"
+        )
+        return False
+    return True
+
+
+def _remove_materialized_gitlink_placeholders(
+    root: Path,
+    entries: Mapping[str, tuple[str, str, str]],
+    runner: str,
+    errors: list[str],
+) -> None:
+    for relative, (mode, kind, _oid) in sorted(
+        entries.items(), key=lambda item: len(Path(item[0]).parts), reverse=True
+    ):
+        if (mode, kind) != ("160000", "commit"):
+            continue
+        target = root / relative
+        if not os.path.lexists(target):
+            continue
+        try:
+            info = target.lstat()
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append(
+                    f"protected {runner} materialized gitlink is not an empty "
+                    f"directory: {relative!r}"
+                )
+                continue
+            target.rmdir()
+        except OSError as exc:
+            errors.append(
+                f"protected {runner} materialized gitlink is not empty: "
+                f"{relative!r} ({type(exc).__name__})"
+            )
+            continue
+        current = target.parent
+        while current != root:
+            try:
+                current.rmdir()
+            except OSError:
+                break
+            current = current.parent
+
+
+def _materialized_repository_content(
+    *,
+    root: Path,
+    repository: str,
+    runner: str,
+    expected_binding: Mapping[str, str],
+    nested_bindings: Mapping[str, Mapping[str, str]],
+    errors: list[str],
+) -> tuple[str, dict[str, tuple[str, str, int, bool]]]:
+    """Hash every physical tracked leaf and compare it to the exact Git blob."""
+
+    _reject_git_replacement_state(
+        root,
+        label=f"protected {runner} materialized {repository} repository",
+        errors=errors,
+    )
+    revision = _git_stdout(
+        root, errors, f"resolve materialized {repository} revision", "rev-parse", "HEAD"
+    )
+    tree = _git_stdout(
+        root, errors, f"resolve materialized {repository} tree", "rev-parse", "HEAD^{tree}"
+    )
+    if revision != expected_binding.get("revision") or tree != expected_binding.get(
+        "tree"
+    ):
+        errors.append(
+            f"protected {runner} materialized {repository} revision/tree drifted"
+        )
+    remotes = _git_stdout(
+        root, errors, f"inspect materialized {repository} remotes", "remote"
+    )
+    if remotes:
+        errors.append(
+            f"protected {runner} materialized {repository} repository retains a remote"
+        )
+    git_directory_text = _git_stdout(
+        root,
+        errors,
+        f"resolve materialized {repository} Git directory",
+        "rev-parse",
+        "--absolute-git-dir",
+    )
+    git_directory = Path(git_directory_text) if git_directory_text else Path("/")
+    try:
+        if not git_directory.resolve().is_relative_to(root.resolve()):
+            errors.append(
+                f"protected {runner} materialized {repository} Git directory is external"
+            )
+    except OSError:
+        errors.append(
+            f"protected {runner} cannot resolve materialized {repository} Git directory"
+        )
+    alternates = git_directory / "objects" / "info" / "alternates"
+    if os.path.lexists(alternates):
+        errors.append(
+            f"protected {runner} materialized {repository} uses object alternates"
+        )
+    object_format = _git_stdout(
+        root,
+        errors,
+        f"resolve materialized {repository} object format",
+        "rev-parse",
+        "--show-object-format",
+    )
+    if object_format not in {"sha1", "sha256"}:
+        errors.append(
+            f"protected {runner} materialized {repository} object format is unsupported"
+        )
+        object_format = "sha1"
+    tree_raw = _git_bytes(
+        root,
+        errors,
+        f"enumerate materialized {repository} HEAD tree",
+        "ls-tree",
+        "-rz",
+        "--full-tree",
+        "HEAD",
+    )
+    index_raw = _git_bytes(
+        root,
+        errors,
+        f"enumerate materialized {repository} index",
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+    )
+    if tree_raw is None or index_raw is None:
+        return "", {}
+    tree_entries = _parse_runner_tree(tree_raw, repository, errors)
+    index_entries = _parse_runner_index(index_raw, repository, errors)
+    _validate_unmaterialized_gitlinks(
+        repository, tree_entries, runner, errors
+    )
+    projected_index = {
+        path: [(mode, oid, 0)]
+        for path, (mode, _kind, oid) in tree_entries.items()
+    }
+    if index_entries != projected_index:
+        errors.append(
+            f"protected {runner} materialized {repository} index differs from HEAD"
+        )
+
+    reviewed_nested_paths = {
+        REPOSITORY_PATHS[name].as_posix(): binding.get("revision")
+        for name, binding in nested_bindings.items()
+    }
+    expected_blobs: dict[str, tuple[str, str]] = {}
+    for relative, (mode, kind, oid) in tree_entries.items():
+        if (mode, kind) == ("160000", "commit"):
+            reviewed_revision = reviewed_nested_paths.get(relative)
+            if reviewed_revision is not None and oid != reviewed_revision:
+                errors.append(
+                    f"protected {runner} materialized nested gitlink {relative!r} "
+                    "does not match its bound revision"
+                )
+            elif reviewed_revision is None and os.path.lexists(root / relative):
+                errors.append(
+                    f"protected {runner} unmaterialized gitlink exists on disk: "
+                    f"{relative!r}"
+                )
+            continue
+        expected_blobs[relative] = (mode, oid)
+
+    nested_roots = set(reviewed_nested_paths)
+    actual: dict[str, tuple[str, str, int, bool]] = {}
+    actual_directories: set[str] = set()
+    stack: list[tuple[Path, tuple[str, ...]]] = [(root, ())]
+    visited = 0
+    hashed_bytes = 0
+    while stack:
+        directory, parent_parts = stack.pop()
+        if len(parent_parts) > RUNNER_MATERIALIZATION_MAX_DEPTH:
+            errors.append(
+                f"protected {runner} materialized {repository} scan exceeded depth"
+            )
+            break
+        try:
+            with os.scandir(directory) as stream:
+                children = sorted(stream, key=lambda child: child.name)
+        except OSError as exc:
+            errors.append(
+                f"protected {runner} cannot scan materialized {repository}: "
+                f"{type(exc).__name__}"
+            )
+            break
+        for child in children:
+            visited += 1
+            if visited > RUNNER_MATERIALIZATION_MAX_ENTRIES:
+                errors.append(
+                    f"protected {runner} materialized {repository} scan exceeded entries"
+                )
+                stack.clear()
+                break
+            parts = (*parent_parts, child.name)
+            relative = PurePosixPath(*parts).as_posix()
+            if child.name == ".git" and not parent_parts:
+                continue
+            if repository == "accelerate" and relative in nested_roots:
+                continue
+            try:
+                info = child.stat(follow_symlinks=False)
+            except OSError as exc:
+                errors.append(
+                    f"protected {runner} cannot inspect materialized leaf "
+                    f"{relative!r}: {type(exc).__name__}"
+                )
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                actual_directories.add(relative)
+                stack.append((Path(child.path), parts))
+                continue
+            if stat.S_ISREG(info.st_mode):
+                if info.st_size > RUNNER_MATERIALIZATION_MAX_LEAF_BYTES:
+                    errors.append(
+                        f"protected {runner} materialized leaf exceeds hash bound: "
+                        f"{relative!r}"
+                    )
+                    continue
+                hashed_bytes += info.st_size
+                if hashed_bytes > RUNNER_MATERIALIZATION_MAX_HASH_BYTES:
+                    errors.append(
+                        f"protected {runner} materialized {repository} hash budget exceeded"
+                    )
+                    stack.clear()
+                    break
+                identity = (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_mode,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                )
+                sha_digest = hashlib.sha256()
+                git_digest = hashlib.new(object_format)
+                git_digest.update(f"blob {info.st_size}\0".encode("ascii"))
+                descriptor = -1
+                try:
+                    descriptor = os.open(
+                        child.path,
+                        os.O_RDONLY
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_CLOEXEC", 0),
+                    )
+                    opened = os.fstat(descriptor)
+                    if identity != (
+                        opened.st_dev,
+                        opened.st_ino,
+                        opened.st_mode,
+                        opened.st_size,
+                        opened.st_mtime_ns,
+                        opened.st_ctime_ns,
+                    ):
+                        raise OSError("leaf changed before hashing")
+                    while True:
+                        chunk = os.read(descriptor, 1024 * 1024)
+                        if not chunk:
+                            break
+                        sha_digest.update(chunk)
+                        git_digest.update(chunk)
+                    finished = os.fstat(descriptor)
+                    if identity != (
+                        finished.st_dev,
+                        finished.st_ino,
+                        finished.st_mode,
+                        finished.st_size,
+                        finished.st_mtime_ns,
+                        finished.st_ctime_ns,
+                    ):
+                        raise OSError("leaf changed while hashing")
+                except OSError as exc:
+                    errors.append(
+                        f"protected {runner} cannot stably hash materialized leaf "
+                        f"{relative!r}: {type(exc).__name__}"
+                    )
+                    continue
+                finally:
+                    if descriptor >= 0:
+                        os.close(descriptor)
+                executable = bool(info.st_mode & 0o111)
+                actual[relative] = (
+                    "regular",
+                    sha_digest.hexdigest(),
+                    info.st_size,
+                    executable,
+                )
+                expected = expected_blobs.get(relative)
+                expected_mode = "100755" if executable else "100644"
+                if expected != (expected_mode, git_digest.hexdigest()):
+                    errors.append(
+                        f"protected {runner} materialized leaf differs from exact "
+                        f"Git blob: {relative!r}"
+                    )
+                continue
+            if stat.S_ISLNK(info.st_mode):
+                try:
+                    target = os.readlink(child.path)
+                    target_bytes = os.fsencode(target)
+                except OSError as exc:
+                    errors.append(
+                        f"protected {runner} cannot read materialized symlink "
+                        f"{relative!r}: {type(exc).__name__}"
+                    )
+                    continue
+                git_digest = hashlib.new(object_format)
+                git_digest.update(f"blob {len(target_bytes)}\0".encode("ascii"))
+                git_digest.update(target_bytes)
+                sha_digest = hashlib.sha256(target_bytes).hexdigest()
+                actual[relative] = (
+                    "symlink",
+                    sha_digest,
+                    len(target_bytes),
+                    False,
+                )
+                if expected_blobs.get(relative) != (
+                    "120000",
+                    git_digest.hexdigest(),
+                ):
+                    errors.append(
+                        f"protected {runner} materialized symlink differs from exact "
+                        f"Git blob: {relative!r}"
+                    )
+                continue
+            errors.append(
+                f"protected {runner} materialized tree contains special file: "
+                f"{relative!r}"
+            )
+
+    if set(actual) != set(expected_blobs):
+        differences = sorted(set(actual) ^ set(expected_blobs))
+        errors.append(
+            f"protected {runner} materialized {repository} filesystem differs from "
+            f"tracked leaves: {differences[:12]}"
+        )
+    expected_directories = {
+        PurePosixPath(*path.parts[:depth]).as_posix()
+        for value in (*expected_blobs, *reviewed_nested_paths)
+        for path in (PurePosixPath(value),)
+        for depth in range(1, len(path.parts))
+    }
+    if actual_directories != expected_directories:
+        differences = sorted(actual_directories ^ expected_directories)
+        errors.append(
+            f"protected {runner} materialized {repository} directory projection "
+            f"differs from tracked tree: {differences[:12]}"
+        )
+    digest = hashlib.sha256()
+    digest.update(RUNNER_SOURCE_BINDING_POLICY.encode("ascii"))
+    for relative, description in sorted(actual.items()):
+        digest.update(b"\0")
+        digest.update(os.fsencode(relative))
+        digest.update(b"\0")
+        digest.update(repr(description).encode("ascii"))
+    return "sha256:" + digest.hexdigest(), actual
+
+
+def _verify_materialized_source(
+    source_root: Path,
+    runner: str,
+    source_binding: Mapping[str, Mapping[str, str]],
+    errors: list[str],
+    *,
+    expected_digests: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    digests: dict[str, str] = {}
+    try:
+        source_info = source_root.lstat()
+        if not stat.S_ISDIR(source_info.st_mode) or stat.S_ISLNK(source_info.st_mode):
+            errors.append(
+                f"protected {runner} materialized source root is not a regular directory"
+            )
+            return digests
+    except OSError as exc:
+        errors.append(
+            f"protected {runner} cannot inspect materialized source root: "
+            f"{type(exc).__name__}"
+        )
+        return digests
+    for repository, relative in REPOSITORY_PATHS.items():
+        repository_root = source_root / relative
+        try:
+            repository_info = repository_root.lstat()
+            if not stat.S_ISDIR(repository_info.st_mode) or stat.S_ISLNK(
+                repository_info.st_mode
+            ):
+                errors.append(
+                    f"protected {runner} materialized {repository} root is unsafe"
+                )
+                continue
+        except OSError as exc:
+            errors.append(
+                f"protected {runner} cannot inspect materialized {repository} root: "
+                f"{type(exc).__name__}"
+            )
+            continue
+        nested = (
+            {
+                name: source_binding[name]
+                for name in REPOSITORY_PATHS
+                if name != "accelerate"
+            }
+            if repository == "accelerate"
+            else {}
+        )
+        digest, _structure = _materialized_repository_content(
+            root=repository_root,
+            repository=repository,
+            runner=runner,
+            expected_binding=source_binding.get(repository, {}),
+            nested_bindings=nested,
+            errors=errors,
+        )
+        if digest:
+            digests[repository] = digest
+    if set(digests) != set(REPOSITORY_PATHS):
+        errors.append(f"protected {runner} materialized source binding is incomplete")
+    if expected_digests is not None and digests != expected_digests:
+        errors.append(
+            f"protected {runner} materialized source bytes changed during execution"
+        )
+    return digests
+
+
+def _make_materialized_directory_read_only(
+    descriptor: int,
+    *,
+    relative: PurePosixPath,
+    depth: int,
+    visited: list[int],
+    errors: list[str],
+) -> None:
+    """Apply read-only modes through held descriptors without following links."""
+
+    if depth > RUNNER_MATERIALIZATION_MAX_DEPTH:
+        errors.append("protected runner read-only walk exceeded its depth bound")
+        return
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        names = sorted(os.listdir(descriptor))
+    except OSError as exc:
+        errors.append(
+            f"protected runner cannot enumerate materialized directory {relative}: "
+            f"{type(exc).__name__}"
+        )
+        return
+    for name in names:
+        visited[0] += 1
+        child_relative = relative / name
+        if visited[0] > RUNNER_MATERIALIZATION_MAX_ENTRIES:
+            errors.append("protected runner read-only walk exceeded its entry bound")
+            return
+        child_descriptor = -1
+        try:
+            child_descriptor = os.open(
+                name, directory_flags, dir_fd=descriptor
+            )
+        except OSError as exc:
+            if exc.errno not in {errno.ELOOP, errno.ENOTDIR}:
+                errors.append(
+                    f"protected runner cannot inspect materialized entry "
+                    f"{child_relative}: {type(exc).__name__}"
+                )
+                continue
+            try:
+                info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode):
+                    continue
+                if not stat.S_ISREG(info.st_mode):
+                    errors.append(
+                        "protected runner materialized read-only tree contains "
+                        f"special leaf: {child_relative}"
+                    )
+                    continue
+                child_descriptor = os.open(
+                    name, file_flags, dir_fd=descriptor
+                )
+                opened = os.fstat(child_descriptor)
+                if opened.st_nlink != 1:
+                    errors.append(
+                        "protected runner materialized regular leaf is hardlinked: "
+                        f"{child_relative}"
+                    )
+                    continue
+                os.fchmod(
+                    child_descriptor,
+                    0o555 if opened.st_mode & 0o111 else 0o444,
+                )
+                path_after = os.stat(
+                    name, dir_fd=descriptor, follow_symlinks=False
+                )
+                if (opened.st_dev, opened.st_ino) != (
+                    path_after.st_dev,
+                    path_after.st_ino,
+                ):
+                    errors.append(
+                        "protected runner materialized leaf path changed while "
+                        f"making it read-only: {child_relative}"
+                    )
+            except OSError as leaf_error:
+                errors.append(
+                    f"protected runner cannot make materialized leaf read-only "
+                    f"{child_relative}: {type(leaf_error).__name__}"
+                )
+            finally:
+                if child_descriptor >= 0:
+                    os.close(child_descriptor)
+            continue
+        try:
+            _make_materialized_directory_read_only(
+                child_descriptor,
+                relative=child_relative,
+                depth=depth + 1,
+                visited=visited,
+                errors=errors,
+            )
+            os.fchmod(child_descriptor, 0o555)
+        except OSError as directory_error:
+            errors.append(
+                f"protected runner cannot make materialized directory read-only "
+                f"{child_relative}: {type(directory_error).__name__}"
+            )
+        finally:
+            os.close(child_descriptor)
+
+
+def _make_materialized_source_read_only(source_root: Path, errors: list[str]) -> None:
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(source_root, directory_flags)
+        _make_materialized_directory_read_only(
+            descriptor,
+            relative=PurePosixPath("."),
+            depth=0,
+            visited=[0],
+            errors=errors,
+        )
+        os.fchmod(descriptor, 0o555)
+    except OSError as exc:
+        errors.append(
+            f"protected runner cannot make materialized source read-only: "
+            f"{type(exc).__name__}"
+        )
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _materialize_runner_source(
+    runner: str,
+    source_binding: Mapping[str, Mapping[str, str]],
+    errors: list[str],
+) -> tuple[Path, Path, dict[str, str]] | None:
+    materialization_root = REPO_ROOT / RELEASE_WORK_ROOT / "materialized"
+    source_root = materialization_root / "source"
+    stage_root = materialization_root / "staged"
+    try:
+        materialization_root.mkdir(parents=True, exist_ok=False)
+        stage_root.mkdir()
+    except OSError as exc:
+        errors.append(
+            f"protected {runner} cannot create materialization root: "
+            f"{type(exc).__name__}"
+        )
+        return None
+    outer_source = REPO_ROOT / REPOSITORY_PATHS["accelerate"]
+    if not _run_materialization_git(
+        runner,
+        materialization_root,
+        errors,
+        "clone",
+        "--no-local",
+        "--no-checkout",
+        "--no-tags",
+        str(outer_source),
+        str(source_root),
+    ):
+        return None
+    if not _run_materialization_git(
+        runner,
+        source_root,
+        errors,
+        "-c",
+        "core.hooksPath=/dev/null",
+        "checkout",
+        "--detach",
+        str(source_binding["accelerate"]["revision"]),
+    ):
+        return None
+    if not _run_materialization_git(
+        runner, source_root, errors, "remote", "remove", "origin"
+    ):
+        return None
+    outer_tree_raw = _git_bytes(
+        source_root,
+        errors,
+        f"enumerate protected {runner} outer materialized gitlinks",
+        "ls-tree",
+        "-rz",
+        "--full-tree",
+        "HEAD",
+    )
+    if outer_tree_raw is None:
+        return None
+    _remove_materialized_gitlink_placeholders(
+        source_root,
+        _parse_runner_tree(outer_tree_raw, "accelerate", errors),
+        runner,
+        errors,
+    )
+    for repository, relative in REPOSITORY_PATHS.items():
+        if repository == "accelerate":
+            continue
+        source = REPO_ROOT / relative
+        target = source_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not _run_materialization_git(
+            runner,
+            source_root,
+            errors,
+            "clone",
+            "--no-local",
+            "--no-checkout",
+            "--no-tags",
+            str(source),
+            str(target),
+        ):
+            return None
+        if not _run_materialization_git(
+            runner,
+            target,
+            errors,
+            "-c",
+            "core.hooksPath=/dev/null",
+            "checkout",
+            "--detach",
+            str(source_binding[repository]["revision"]),
+        ):
+            return None
+        if not _run_materialization_git(
+            runner, target, errors, "remote", "remove", "origin"
+        ):
+            return None
+        nested_tree_raw = _git_bytes(
+            target,
+            errors,
+            f"enumerate protected {runner} {repository} materialized gitlinks",
+            "ls-tree",
+            "-rz",
+            "--full-tree",
+            "HEAD",
+        )
+        if nested_tree_raw is None:
+            return None
+        _remove_materialized_gitlink_placeholders(
+            target,
+            _parse_runner_tree(nested_tree_raw, repository, errors),
+            runner,
+            errors,
+        )
+    if errors:
+        return None
+    try:
+        for label, path in (
+            ("materialization", materialization_root),
+            ("source", source_root),
+            ("stage", stage_root),
+        ):
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append(
+                    f"protected {runner} {label} root is not a regular directory"
+                )
+    except OSError as exc:
+        errors.append(
+            f"protected {runner} cannot inspect materialization roots: "
+            f"{type(exc).__name__}"
+        )
+    if errors:
+        return None
+    digests = _verify_materialized_source(
+        source_root, runner, source_binding, errors
+    )
+    if errors:
+        return None
+    _make_materialized_source_read_only(source_root, errors)
+    if errors:
+        return None
+    return source_root, stage_root, digests
+
+
+def _read_staged_runner_artifact(
+    stage_root: Path,
+    relative: str,
+    maximum_bytes: int,
+    errors: list[str],
+) -> bytes | None:
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    held_directories: list[int] = []
+    descriptor = -1
+    try:
+        held_directories.append(os.open(stage_root, directory_flags))
+        for part in Path(relative).parts[:-1]:
+            held_directories.append(
+                os.open(part, directory_flags, dir_fd=held_directories[-1])
+            )
+        descriptor = os.open(
+            Path(relative).name,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=held_directories[-1],
+        )
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > maximum_bytes:
+            errors.append(
+                f"protected benchmark staged output is unsafe or exceeds its bound: "
+                f"{relative}"
+            )
+            return None
+        raw = bytearray()
+        while len(raw) <= maximum_bytes:
+            chunk = os.read(descriptor, min(64 * 1024, maximum_bytes + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        after = os.fstat(descriptor)
+        if (
+            len(raw) != before.st_size
+            or before.st_dev != after.st_dev
+            or before.st_ino != after.st_ino
+            or before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+        ):
+            errors.append(
+                f"protected benchmark staged output changed while reading: {relative}"
+            )
+            return None
+        return bytes(raw)
+    except OSError as exc:
+        errors.append(
+            f"protected benchmark cannot read staged output {relative}: "
+            f"{type(exc).__name__}"
+        )
+        return None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        for directory_descriptor in reversed(held_directories):
+            os.close(directory_descriptor)
+
+
+def _staged_output_projection(
+    stage_root: Path, errors: list[str]
+) -> tuple[set[str], set[str]]:
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    files: set[str] = set()
+    directories: set[str] = set()
+    root_descriptor = -1
+    stack: list[tuple[int, tuple[str, ...]]] = []
+    try:
+        root_descriptor = os.open(stage_root, directory_flags)
+        stack.append((os.dup(root_descriptor), ()))
+        while stack:
+            descriptor, parent_parts = stack.pop()
+            try:
+                names = sorted(os.listdir(descriptor))
+                for name in names:
+                    info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+                    parts = (*parent_parts, name)
+                    relative = PurePosixPath(*parts).as_posix()
+                    if stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode):
+                        directories.add(relative)
+                        child = os.open(name, directory_flags, dir_fd=descriptor)
+                        stack.append((child, parts))
+                    elif stat.S_ISREG(info.st_mode):
+                        files.add(relative)
+                    else:
+                        errors.append(
+                            "protected benchmark staged output tree contains a "
+                            f"symlink or special file: {relative!r}"
+                        )
+            finally:
+                os.close(descriptor)
+    except OSError as exc:
+        errors.append(
+            f"protected benchmark cannot safely inspect staged output tree: "
+            f"{type(exc).__name__}"
+        )
+    finally:
+        if root_descriptor >= 0:
+            os.close(root_descriptor)
+        for descriptor, _parts in stack:
+            os.close(descriptor)
+    return files, directories
+
+
+def _publish_staged_benchmark_outputs(stage_root: Path, errors: list[str]) -> None:
+    expected = {BENCHMARK_JSON, BENCHMARK_CSV}
+    observed_files, observed_directories = _staged_output_projection(stage_root, errors)
+    expected_directories = {
+        PurePosixPath(*path.parts[:depth]).as_posix()
+        for relative in expected
+        for path in (PurePosixPath(relative),)
+        for depth in range(1, len(path.parts))
+    }
+    if observed_files != expected:
+        errors.append(
+            f"protected benchmark staged output set is not exact: "
+            f"{sorted(observed_files)}"
+        )
+        return
+    if observed_directories != expected_directories:
+        errors.append(
+            f"protected benchmark staged directory set is not exact: "
+            f"{sorted(observed_directories)}"
+        )
+        return
+    retained: dict[str, bytes] = {}
+    for relative in sorted(expected):
+        raw = _read_staged_runner_artifact(
+            stage_root, relative, BENCHMARK_MAX_ARTIFACT_BYTES, errors
+        )
+        if raw is not None:
+            retained[relative] = raw
+    if errors:
+        return
+    for relative, raw in retained.items():
+        _atomic_write_artifact(relative, raw)
+
+
 def _current_repository_bindings(
     errors: list[str],
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -5108,9 +6751,9 @@ def _benchmark_workload_argv() -> list[str]:
         "--transitions",
         str(BENCHMARK_TRANSITION_COUNT),
         "--json-output",
-        BENCHMARK_JSON,
+        f"../staged/{BENCHMARK_JSON}",
         "--csv-output",
-        BENCHMARK_CSV,
+        f"../staged/{BENCHMARK_CSV}",
     ]
 
 
@@ -5938,9 +7581,9 @@ def _validate_trust_and_migration_docs(errors: list[str]) -> None:
             errors.append(f"IPS-055 documentation contains disallowed claim {phrase!r}")
 
 
-def _release_environment(workspace: Path) -> dict[str, str]:
+def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> dict[str, str]:
     python_path = os.pathsep.join(
-        str((REPO_ROOT / relative).resolve())
+        str((source_root / relative).resolve())
         for relative in (Path("."), Path("ipfs_datasets_py"), Path("ipfs_kit_py"))
     )
     environment = {
@@ -5950,6 +7593,7 @@ def _release_environment(workspace: Path) -> dict[str, str]:
         "HF_HUB_OFFLINE": "1",
         "HOME": str(workspace / "home"),
         "HYPOTHESIS_STORAGE_DIRECTORY": str(workspace / "hypothesis"),
+        "IPS_PROTECTED_MATERIALIZED_SOURCE": "1",
         "IPFS_ACCEL_AUTO_INSTALL": "0",
         "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
         "IPFS_DATASETS_ENABLE_GROTH16": "0",
@@ -5967,7 +7611,9 @@ def _release_environment(workspace: Path) -> dict[str, str]:
         "PYTHONHASHSEED": "0",
         "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
         "PYTHONPATH": python_path,
-        "PYTEST_ADDOPTS": "",
+        "PYTEST_ADDOPTS": (
+            f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
+        ),
         "PATH": RELEASE_FIXED_EXECUTABLE_PATH,
         "TERM": "dumb",
         "TMPDIR": str(workspace / "tmp"),
@@ -5979,6 +7625,7 @@ def _release_environment(workspace: Path) -> dict[str, str]:
         "hypothesis",
         "ipfs-repo",
         "pycache",
+        "pytest-benchmark",
         "tmp",
         "pytest-cache",
         "pytest-tmp",
@@ -6556,38 +8203,207 @@ def _process_group_exists(process_group: int) -> bool:
     return True
 
 
-def _terminate_process_group(
-    process: subprocess.Popen[bytes], process_group: int
-) -> None:
-    """Terminate every descendant in the runner-owned session, even after parent exit."""
+_PR_SET_CHILD_SUBREAPER = 36
+_PR_GET_CHILD_SUBREAPER = 37
+_OBSERVED_PROCESS_LOCK = threading.Lock()
+
+
+def _linux_child_subreaper_state() -> bool:
+    if not sys.platform.startswith("linux") or not Path("/proc/self/task").is_dir():
+        raise OSError(errno.ENOTSUP, "Linux /proc child tracking is unavailable")
+    libc = ctypes.CDLL(None, use_errno=True)
+    current = ctypes.c_int()
+    if libc.prctl(
+        _PR_GET_CHILD_SUBREAPER,
+        ctypes.byref(current),
+        0,
+        0,
+        0,
+    ) != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+    return bool(current.value)
+
+
+def _set_linux_child_subreaper(enabled: bool) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(
+        _PR_SET_CHILD_SUBREAPER,
+        int(enabled),
+        0,
+        0,
+        0,
+    ) != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+
+
+def _proc_identity(pid: int) -> tuple[int, str] | None:
+    """Return one Linux PID's immutable start tick and current state."""
 
     try:
-        os.killpg(process_group, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    except PermissionError:
-        if process.poll() is None:
-            process.terminate()
-    deadline = time.monotonic() + 2
-    while _process_group_exists(process_group) and time.monotonic() < deadline:
-        if process.poll() is None:
-            try:
-                process.wait(timeout=min(0.05, max(0.001, deadline - time.monotonic())))
-            except subprocess.TimeoutExpired:
-                pass
-        else:
-            time.sleep(0.01)
-    if not _process_group_exists(process_group):
-        return
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+    closing = raw.rfind(")")
+    fields = raw[closing + 2 :].split() if closing >= 0 else []
+    if len(fields) < 20:
+        raise OSError(errno.EIO, f"cannot parse /proc/{pid}/stat")
+    return int(fields[19]), fields[0]
+
+
+def _proc_children(pid: int) -> set[int]:
+    """Read children for every thread in a Linux process."""
+
+    children: set[int] = set()
+    task_root = Path(f"/proc/{pid}/task")
     try:
-        os.killpg(process_group, signal.SIGKILL)
-    except ProcessLookupError:
-        return
-    except PermissionError:
-        if process.poll() is None:
-            process.kill()
-    if process.poll() is None:
-        process.wait(timeout=2)
+        task_ids = sorted(task_root.iterdir(), key=lambda item: item.name)
+    except (FileNotFoundError, ProcessLookupError):
+        return children
+    for task in task_ids:
+        try:
+            raw = (task / "children").read_text(encoding="ascii")
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        for value in raw.split():
+            if value.isdecimal():
+                children.add(int(value))
+    return children
+
+
+class _ObservedDescendants:
+    """Track one runner lineage across sessions and double-fork adoption."""
+
+    def __init__(self) -> None:
+        self.owner_pid = os.getpid()
+        self.root_pid: int | None = None
+        self.known: dict[int, int] = {}
+        self.error: str | None = None
+        self.baseline_children = {
+            (pid, identity[0])
+            for pid in _proc_children(self.owner_pid)
+            if (identity := _proc_identity(pid)) is not None
+        }
+
+    def bind_root(self, pid: int) -> None:
+        self.root_pid = pid
+        identity = _proc_identity(pid)
+        if identity is not None:
+            self.known[pid] = identity[0]
+        self.observe()
+
+    def _remember(self, pid: int, queue: deque[int]) -> None:
+        identity = _proc_identity(pid)
+        if identity is None:
+            return
+        start_tick, _state = identity
+        if self.known.get(pid) == start_tick:
+            return
+        self.known[pid] = start_tick
+        queue.append(pid)
+        if len(self.known) > RUNNER_MAX_DESCENDANT_PROCESSES:
+            self.error = (
+                "observed process tree exceeded its fixed descendant bound"
+            )
+
+    def observe(self) -> None:
+        queue: deque[int] = deque()
+        for pid, start_tick in tuple(self.known.items()):
+            identity = _proc_identity(pid)
+            if identity is not None and identity[0] == start_tick:
+                queue.append(pid)
+        for pid in _proc_children(self.owner_pid):
+            identity = _proc_identity(pid)
+            if identity is None:
+                continue
+            if (pid, identity[0]) not in self.baseline_children:
+                self._remember(pid, queue)
+        visited: set[tuple[int, int]] = set()
+        while queue:
+            parent = queue.popleft()
+            parent_identity = _proc_identity(parent)
+            if parent_identity is None:
+                continue
+            marker = (parent, parent_identity[0])
+            if marker in visited:
+                continue
+            visited.add(marker)
+            for child in _proc_children(parent):
+                self._remember(child, queue)
+
+    def reap_adopted(self) -> None:
+        for pid in tuple(self.known):
+            if pid == self.root_pid:
+                continue
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except (ChildProcessError, ProcessLookupError):
+                continue
+
+    def live(self) -> dict[int, int]:
+        self.observe()
+        result: dict[int, int] = {}
+        for pid, start_tick in self.known.items():
+            identity = _proc_identity(pid)
+            if identity is not None and identity[0] == start_tick and identity[1] != "Z":
+                result[pid] = start_tick
+        return result
+
+    def signal(self, signal_number: int) -> None:
+        self.observe()
+        for pid, start_tick in sorted(self.live().items(), reverse=True):
+            identity = _proc_identity(pid)
+            if identity is None or identity[0] != start_tick:
+                continue
+            try:
+                os.kill(pid, signal_number)
+            except (ProcessLookupError, PermissionError):
+                continue
+
+
+def _signal_process_group(process_group: int, signal_number: int) -> None:
+    try:
+        os.killpg(process_group, signal_number)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _terminate_observed_process_tree(
+    process: subprocess.Popen[bytes],
+    process_group: int,
+    descendants: _ObservedDescendants,
+) -> bool:
+    """Terminate the session and every adopted descendant, then reap them."""
+
+    for signal_number, grace_seconds in (
+        (signal.SIGTERM, 1.0),
+        (signal.SIGKILL, 2.0),
+    ):
+        _signal_process_group(process_group, signal_number)
+        descendants.signal(signal_number)
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline:
+            process.poll()
+            descendants.reap_adopted()
+            descendants.observe()
+            if (
+                process.poll() is not None
+                and not descendants.live()
+                and not _process_group_exists(process_group)
+            ):
+                return descendants.error is None
+            descendants.signal(signal_number)
+            time.sleep(0.01)
+    process.poll()
+    descendants.reap_adopted()
+    descendants.observe()
+    return (
+        descendants.error is None
+        and process.poll() is not None
+        and not descendants.live()
+        and not _process_group_exists(process_group)
+    )
 
 
 def _run_observed_process(
@@ -6598,10 +8414,38 @@ def _run_observed_process(
     timeout_seconds: int,
     maximum_output_bytes: int = RELEASE_PROCESS_MAX_OUTPUT_BYTES,
 ) -> tuple[str, int | None, int, bytes]:
+    with _OBSERVED_PROCESS_LOCK:
+        return _run_observed_process_serialized(
+            argv,
+            cwd=cwd,
+            environment=environment,
+            timeout_seconds=timeout_seconds,
+            maximum_output_bytes=maximum_output_bytes,
+        )
+
+
+def _run_observed_process_serialized(
+    argv: list[str],
+    *,
+    cwd: Path,
+    environment: Mapping[str, str],
+    timeout_seconds: int,
+    maximum_output_bytes: int,
+) -> tuple[str, int | None, int, bytes]:
     started = time.monotonic_ns()
     process: subprocess.Popen[bytes] | None = None
+    descendants: _ObservedDescendants | None = None
+    process_group: int | None = None
     output = bytearray()
+    status = "launch_failed"
+    exit_code: int | None = None
+    previous_subreaper = False
+    subreaper_configured = False
     try:
+        previous_subreaper = _linux_child_subreaper_state()
+        _set_linux_child_subreaper(True)
+        subreaper_configured = True
+        descendants = _ObservedDescendants()
         process = subprocess.Popen(
             argv,
             cwd=cwd,
@@ -6613,6 +8457,7 @@ def _run_observed_process(
         )
         assert process.stdout is not None
         process_group = process.pid
+        descendants.bind_root(process.pid)
         try:
             observed_process_group = os.getpgid(process.pid)
         except ProcessLookupError:
@@ -6620,83 +8465,164 @@ def _run_observed_process(
         if observed_process_group != process_group:
             raise OSError("observed process does not own its dedicated process group")
         os.set_blocking(process.stdout.fileno(), False)
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
         deadline = time.monotonic() + timeout_seconds
         status = "completed"
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                status = "timed_out"
-                break
-            events = selector.select(min(0.25, remaining))
-            if not events and process.poll() is not None:
-                # Poll once more for buffered pipe bytes before treating EOF.
-                events = selector.select(0)
-                if not events:
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                descendants.observe()
+                if descendants.error:
+                    status = "cleanup_failed"
                     break
-            for key, _ in events:
-                try:
-                    chunk = os.read(key.fd, 64 * 1024)
-                except BlockingIOError:
-                    continue
-                if not chunk:
-                    selector.unregister(key.fileobj)
-                    continue
-                remaining_capacity = maximum_output_bytes - len(output)
-                output.extend(chunk[: max(0, remaining_capacity)])
-                if len(chunk) > remaining_capacity:
-                    status = "output_limit"
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    status = "timed_out"
                     break
-            if status != "completed":
-                break
-        selector.close()
+                events = selector.select(min(0.25, remaining))
+                if not events and process.poll() is not None:
+                    events = selector.select(0)
+                    if not events:
+                        break
+                for key, _ in events:
+                    try:
+                        chunk = os.read(key.fd, 64 * 1024)
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    remaining_capacity = maximum_output_bytes - len(output)
+                    output.extend(chunk[: max(0, remaining_capacity)])
+                    if len(chunk) > remaining_capacity:
+                        status = "output_limit"
+                        break
+                if status != "completed":
+                    break
         if status != "completed":
-            _terminate_process_group(process, process_group)
-        if process.poll() is None:
+            _terminate_observed_process_tree(
+                process, process_group, descendants
+            )
+        elif process.poll() is None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 status = "timed_out"
-                _terminate_process_group(process, process_group)
             else:
                 try:
                     process.wait(timeout=remaining)
                 except subprocess.TimeoutExpired:
                     status = "timed_out"
-                    _terminate_process_group(process, process_group)
         parent_exit_code = process.returncode
-        if status == "completed" and _process_group_exists(process_group):
-            # A successful parent may have left a child behind after closing the
-            # inherited output pipe.  Kill that residual group without rewriting
-            # the already-observed parent return code.
-            _terminate_process_group(process, process_group)
+        descendants.reap_adopted()
+        residual_processes = status == "completed" and (
+            bool(descendants.live()) or _process_group_exists(process_group)
+        )
+        if not _terminate_observed_process_tree(
+            process, process_group, descendants
+        ):
+            status = "cleanup_failed"
+        elif residual_processes:
+            status = "residual_process_terminated"
         exit_code = parent_exit_code if status == "completed" else None
     except OSError as exc:
         status = "launch_failed"
         exit_code = None
         output = bytearray(f"{type(exc).__name__}: {exc}\n".encode("utf-8", "replace"))
     finally:
-        if process is not None and _process_group_exists(process.pid):
-            _terminate_process_group(process, process.pid)
+        if (
+            process is not None
+            and descendants is not None
+            and process_group is not None
+            and not _terminate_observed_process_tree(
+                process, process_group, descendants
+            )
+        ):
+            status = "cleanup_failed"
+            exit_code = None
+        if subreaper_configured:
+            try:
+                _set_linux_child_subreaper(previous_subreaper)
+            except OSError as exc:
+                status = "cleanup_failed"
+                exit_code = None
+                diagnostic = f"subreaper restore failed: {type(exc).__name__}\n".encode()
+                capacity = max(0, maximum_output_bytes - len(output))
+                output.extend(diagnostic[:capacity])
     return status, exit_code, max(1, time.monotonic_ns() - started), bytes(output)
 
 
 def _atomic_write_artifact(relative: str, raw: bytes) -> None:
-    path = REPO_ROOT / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if os.path.lexists(path) and path.is_symlink():
-        raise OSError(f"refusing to replace symlink output {relative}")
-    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}-{time.monotonic_ns()}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
-    descriptor = os.open(temporary, flags, 0o600)
+    candidate = Path(relative)
+    if (
+        not relative
+        or candidate.is_absolute()
+        or candidate.as_posix() != relative
+        or any(part in {"", ".", ".."} for part in candidate.parts)
+    ):
+        raise OSError(f"refusing unsafe artifact path {relative!r}")
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    held_directories: list[int] = []
+    descriptor = -1
+    temporary_name = (
+        f".{candidate.name}.tmp-{os.getpid()}-{time.monotonic_ns()}"
+    )
     try:
+        held_directories.append(os.open(REPO_ROOT, directory_flags))
+        for part in candidate.parts[:-1]:
+            held_directories.append(
+                os.open(part, directory_flags, dir_fd=held_directories[-1])
+            )
+        parent_descriptor = held_directories[-1]
+        try:
+            existing = os.stat(
+                candidate.name,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            existing = None
+        if existing is not None and not stat.S_ISREG(existing.st_mode):
+            raise OSError(f"refusing to replace non-regular output {relative}")
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        descriptor = os.open(
+            temporary_name,
+            flags,
+            0o600,
+            dir_fd=parent_descriptor,
+        )
         offset = 0
         while offset < len(raw):
             offset += os.write(descriptor, raw[offset:])
         os.fsync(descriptor)
-    finally:
         os.close(descriptor)
-    os.replace(temporary, path)
+        descriptor = -1
+        os.replace(
+            temporary_name,
+            candidate.name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+        os.fsync(parent_descriptor)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if held_directories:
+            try:
+                os.unlink(temporary_name, dir_fd=held_directories[-1])
+            except FileNotFoundError:
+                pass
+            for directory_descriptor in reversed(held_directories):
+                os.close(directory_descriptor)
 
 
 def _materialization_request_state(
@@ -6748,41 +8674,225 @@ def _consume_materialization_request(
             errors.append(f"{label} refuses a noncanonical request at {relative}")
     if errors:
         return False
-    for relative in expected:
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    for relative, exact in expected.items():
+        candidate = Path(relative)
+        held_directories: list[int] = []
+        descriptor = -1
         try:
-            (REPO_ROOT / relative).unlink()
+            held_directories.append(os.open(REPO_ROOT, directory_flags))
+            for part in candidate.parts[:-1]:
+                held_directories.append(
+                    os.open(part, directory_flags, dir_fd=held_directories[-1])
+                )
+            descriptor = os.open(
+                candidate.name,
+                file_flags,
+                dir_fd=held_directories[-1],
+            )
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_size != len(exact):
+                raise OSError("materialization request identity or size drifted")
+            raw = bytearray()
+            while len(raw) <= len(exact):
+                chunk = os.read(descriptor, len(exact) + 1 - len(raw))
+                if not chunk:
+                    break
+                raw.extend(chunk)
+            after = os.fstat(descriptor)
+            identity = (
+                before.st_dev,
+                before.st_ino,
+                before.st_mode,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            )
+            if identity != (
+                after.st_dev,
+                after.st_ino,
+                after.st_mode,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            ) or bytes(raw) != exact:
+                raise OSError("materialization request changed before consumption")
+            path_after = os.stat(
+                candidate.name,
+                dir_fd=held_directories[-1],
+                follow_symlinks=False,
+            )
+            if identity[:4] != (
+                path_after.st_dev,
+                path_after.st_ino,
+                path_after.st_mode,
+                path_after.st_size,
+            ):
+                raise OSError("materialization request path identity changed")
+            os.unlink(candidate.name, dir_fd=held_directories[-1])
         except OSError as exc:
             errors.append(
                 f"{label} cannot consume request {relative}: {type(exc).__name__}"
             )
             return False
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            for directory_descriptor in reversed(held_directories):
+                os.close(directory_descriptor)
     return True
 
 
-def _clean_release_work_root(errors: list[str]) -> None:
-    """Remove only the fixed ignored transient runner workspace, without following links."""
+def _remove_release_work_contents(
+    descriptor: int,
+    *,
+    relative: PurePosixPath,
+    depth: int,
+    visited: list[int],
+    errors: list[str],
+) -> None:
+    """Unlink one held directory without following or chmodding any leaf."""
 
-    relative = Path(RELEASE_WORK_ROOT)
-    current = REPO_ROOT
+    if depth > RUNNER_MATERIALIZATION_MAX_DEPTH:
+        errors.append("release-work cleanup exceeded its directory-depth bound")
+        return
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
     try:
-        for part in relative.parts[:-1]:
-            current /= part
-            if not os.path.lexists(current):
-                return
-            info = current.lstat()
-            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
-                errors.append("release-work has an unsafe ancestor")
-                return
-        target = REPO_ROOT / relative
-        if not os.path.lexists(target):
-            return
-        info = target.lstat()
-        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
-            errors.append("release-work must be a regular non-symlink directory")
-            return
-        shutil.rmtree(target)
+        names = sorted(os.listdir(descriptor))
     except OSError as exc:
-        errors.append(f"cannot clean fixed release-work directory: {type(exc).__name__}")
+        errors.append(
+            f"cannot enumerate fixed release-work directory {relative}: "
+            f"{type(exc).__name__}"
+        )
+        return
+    for name in names:
+        entry_error_count = len(errors)
+        visited[0] += 1
+        child_relative = relative / name
+        if visited[0] > RUNNER_MATERIALIZATION_MAX_ENTRIES:
+            errors.append("release-work cleanup exceeded its entry bound")
+            return
+        child_descriptor = -1
+        try:
+            child_descriptor = os.open(
+                name, directory_flags, dir_fd=descriptor
+            )
+        except OSError as exc:
+            if exc.errno not in {errno.ELOOP, errno.ENOTDIR}:
+                errors.append(
+                    f"cannot inspect fixed release-work entry {child_relative}: "
+                    f"{type(exc).__name__}"
+                )
+                continue
+            try:
+                info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+                if stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode):
+                    errors.append(
+                        f"fixed release-work entry changed during cleanup: "
+                        f"{child_relative}"
+                    )
+                    continue
+                os.unlink(name, dir_fd=descriptor)
+            except OSError as unlink_error:
+                errors.append(
+                    f"cannot unlink fixed release-work leaf {child_relative}: "
+                    f"{type(unlink_error).__name__}"
+                )
+            continue
+        try:
+            os.fchmod(child_descriptor, 0o700)
+            _remove_release_work_contents(
+                child_descriptor,
+                relative=child_relative,
+                depth=depth + 1,
+                visited=visited,
+                errors=errors,
+            )
+        except OSError as exc:
+            errors.append(
+                f"cannot prepare fixed release-work directory {child_relative}: "
+                f"{type(exc).__name__}"
+            )
+        finally:
+            os.close(child_descriptor)
+        if len(errors) != entry_error_count:
+            continue
+        try:
+            os.rmdir(name, dir_fd=descriptor)
+        except OSError as exc:
+            errors.append(
+                f"cannot remove fixed release-work directory {child_relative}: "
+                f"{type(exc).__name__}"
+            )
+
+
+def _clean_release_work_root(errors: list[str]) -> None:
+    """Remove only the fixed transient tree through held, no-follow dirfds."""
+
+    relative = PurePosixPath(RELEASE_WORK_ROOT)
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    held_directories: list[int] = []
+    target_descriptor = -1
+    initial_error_count = len(errors)
+    try:
+        held_directories.append(os.open(REPO_ROOT, directory_flags))
+        for part in relative.parts[:-1]:
+            try:
+                held_directories.append(
+                    os.open(part, directory_flags, dir_fd=held_directories[-1])
+                )
+            except FileNotFoundError:
+                return
+        try:
+            target_descriptor = os.open(
+                relative.name,
+                directory_flags,
+                dir_fd=held_directories[-1],
+            )
+        except FileNotFoundError:
+            return
+        os.fchmod(target_descriptor, 0o700)
+        _remove_release_work_contents(
+            target_descriptor,
+            relative=relative,
+            depth=0,
+            visited=[0],
+            errors=errors,
+        )
+        if len(errors) != initial_error_count:
+            return
+        os.close(target_descriptor)
+        target_descriptor = -1
+        os.rmdir(relative.name, dir_fd=held_directories[-1])
+    except OSError as exc:
+        errors.append(
+            f"cannot clean fixed release-work directory: {type(exc).__name__}"
+        )
+    finally:
+        if target_descriptor >= 0:
+            os.close(target_descriptor)
+        for directory_descriptor in reversed(held_directories):
+            os.close(directory_descriptor)
 
 
 def _release_report_has_exact_request(errors: list[str]) -> bool:
@@ -6874,8 +8984,18 @@ def run_benchmark_validation() -> dict[str, Any]:
         requests, label="IPS-053 benchmark", errors=errors
     )
     if request_state == "complete-candidate":
+        source_binding = _capture_runner_source_binding("benchmark", errors)
+        if errors:
+            return {
+                "valid": False,
+                "runner": "benchmark",
+                "materialization": "invalid_preexisting_bundle",
+                "errors": errors,
+            }
         checked = validate_artifact("IPS-053")
-        if checked["valid"]:
+        errors.extend(str(item) for item in checked["errors"])
+        _verify_runner_source_binding("benchmark", source_binding, errors)
+        if checked["valid"] and not errors:
             return {
                 "valid": True,
                 "runner": "benchmark",
@@ -6886,7 +9006,7 @@ def run_benchmark_validation() -> dict[str, Any]:
             "valid": False,
             "runner": "benchmark",
             "materialization": "invalid_preexisting_bundle",
-            "errors": list(checked["errors"]),
+            "errors": errors,
         }
     if request_state == "invalid":
         return {"valid": False, "runner": "benchmark", "errors": errors}
@@ -6897,16 +9017,29 @@ def run_benchmark_validation() -> dict[str, Any]:
     if not cli.is_file() or cli.is_symlink():
         errors.append("protected benchmark runner cannot find a regular IPS-052 CLI")
         return {"valid": False, "runner": "benchmark", "errors": errors}
+    source_binding = _capture_runner_source_binding("benchmark", errors)
+    if errors:
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    _clean_release_work_root(errors)
+    _verify_runner_source_binding("benchmark", source_binding, errors)
+    if errors:
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    materialized = _materialize_runner_source("benchmark", source_binding, errors)
+    _verify_runner_source_binding("benchmark", source_binding, errors)
+    if materialized is None or errors:
+        _clean_release_work_root(errors)
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    source_root, stage_root, materialized_digests = materialized
     if not _consume_materialization_request(
         requests, "IPS-053 benchmark", errors
     ):
+        _clean_release_work_root(errors)
         return {"valid": False, "runner": "benchmark", "errors": errors}
-    _clean_release_work_root(errors)
-    workspace = REPO_ROOT / RELEASE_WORK_ROOT / "benchmark"
-    environment = _release_environment(workspace)
+    workspace = source_root.parent / "runtime" / "benchmark"
+    environment = _release_environment(workspace, source_root=source_root)
     status, exit_code, duration_ns, output = _run_observed_process(
         _benchmark_workload_argv(),
-        cwd=REPO_ROOT,
+        cwd=source_root,
         environment=environment,
         timeout_seconds=10_200,
     )
@@ -6917,10 +9050,26 @@ def run_benchmark_validation() -> dict[str, Any]:
         diagnostic = output.decode("utf-8", "replace")[-4000:]
         if diagnostic:
             errors.append(f"benchmark diagnostic tail: {diagnostic}")
+    _verify_materialized_source(
+        source_root,
+        "benchmark",
+        source_binding,
+        errors,
+        expected_digests=materialized_digests,
+    )
+    _verify_runner_source_binding("benchmark", source_binding, errors)
+    if not errors:
+        try:
+            _publish_staged_benchmark_outputs(stage_root, errors)
+        except OSError as exc:
+            errors.append(
+                f"cannot publish staged benchmark outputs: {type(exc).__name__}"
+            )
     if not errors:
         checked = validate_artifact("IPS-053")
         errors.extend(str(item) for item in checked["errors"])
     _clean_release_work_root(errors)
+    _verify_runner_source_binding("benchmark", source_binding, errors)
     return {
         "valid": not errors,
         "runner": "benchmark",
@@ -6981,8 +9130,18 @@ def run_release_validation() -> dict[str, Any]:
         requests, label="IPS-056 release", errors=errors
     )
     if request_state == "complete-candidate":
+        source_binding = _capture_runner_source_binding("release", errors)
+        if errors:
+            return {
+                "valid": False,
+                "runner": "release",
+                "materialization": "invalid_preexisting_bundle",
+                "errors": errors,
+            }
         checked = validate_artifact("IPS-056")
-        if checked["valid"]:
+        errors.extend(str(item) for item in checked["errors"])
+        _verify_runner_source_binding("release", source_binding, errors)
+        if checked["valid"] and not errors:
             return {
                 "valid": True,
                 "runner": "release",
@@ -6993,7 +9152,7 @@ def run_release_validation() -> dict[str, Any]:
             "valid": False,
             "runner": "release",
             "materialization": "invalid_preexisting_bundle",
-            "errors": list(checked["errors"]),
+            "errors": errors,
         }
     if request_state == "invalid":
         return {"valid": False, "runner": "release", "errors": errors}
@@ -7002,20 +9161,29 @@ def run_release_validation() -> dict[str, Any]:
         return {"valid": False, "runner": "release", "errors": errors}
     if not _release_report_has_exact_request(errors):
         return {"valid": False, "runner": "release", "errors": errors}
-    if not _consume_materialization_request(
-        requests, "IPS-056 release", errors
-    ):
+    source_binding = _capture_runner_source_binding("release", errors)
+    if errors:
         return {"valid": False, "runner": "release", "errors": errors}
     _clean_release_work_root(errors)
     revisions_before, trees_before = _current_repository_bindings(errors)
     specs = _release_suite_specs(errors)
     _validate_release_ipfs_preflight(errors)
+    _verify_runner_source_binding("release", source_binding, errors)
     if errors:
         _clean_release_work_root(errors)
         return {"valid": False, "runner": "release", "errors": errors}
-    work_root = (
-        REPO_ROOT / RELEASE_WORK_ROOT
-    )
+    materialized = _materialize_runner_source("release", source_binding, errors)
+    _verify_runner_source_binding("release", source_binding, errors)
+    if materialized is None or errors:
+        _clean_release_work_root(errors)
+        return {"valid": False, "runner": "release", "errors": errors}
+    source_root, stage_root, materialized_digests = materialized
+    if not _consume_materialization_request(
+        requests, "IPS-056 release", errors
+    ):
+        _clean_release_work_root(errors)
+        return {"valid": False, "runner": "release", "errors": errors}
+    work_root = source_root.parent / "runtime"
     combined = bytearray()
     terminal_argv = [
         sys.executable,
@@ -7024,8 +9192,10 @@ def run_release_validation() -> dict[str, Any]:
     ]
     terminal_status, terminal_exit, terminal_duration, terminal_output = _run_observed_process(
         terminal_argv,
-        cwd=REPO_ROOT,
-        environment=_release_environment(work_root / "terminal-board-gate"),
+        cwd=source_root,
+        environment=_release_environment(
+            work_root / "terminal-board-gate", source_root=source_root
+        ),
         timeout_seconds=120,
     )
     terminal = {
@@ -7042,12 +9212,15 @@ def run_release_validation() -> dict[str, Any]:
     }
     combined.extend(terminal_output)
     commands: list[dict[str, Any]] = []
+    _verify_runner_source_binding("release", source_binding, errors)
     for spec in specs:
+        if errors:
+            break
         workspace = work_root / str(spec["id"])
         status, exit_code, duration_ns, output = _run_observed_process(
             list(spec["argv"]),
-            cwd=REPO_ROOT / str(spec["cwd"]),
-            environment=_release_environment(workspace),
+            cwd=source_root / str(spec["cwd"]),
+            environment=_release_environment(workspace, source_root=source_root),
             timeout_seconds=int(spec["timeout_seconds"]),
         )
         commands.append(
@@ -7061,6 +9234,25 @@ def run_release_validation() -> dict[str, Any]:
             )
         )
         combined.extend(output)
+        _verify_runner_source_binding("release", source_binding, errors)
+    _verify_materialized_source(
+        source_root,
+        "release",
+        source_binding,
+        errors,
+        expected_digests=materialized_digests,
+    )
+    try:
+        with os.scandir(stage_root) as stage_entries:
+            if next(stage_entries, None) is not None:
+                errors.append(
+                    "protected release runner staged output channel is not empty"
+                )
+    except OSError as exc:
+        errors.append(
+            f"protected release runner cannot inspect staged output channel: "
+            f"{type(exc).__name__}"
+        )
     revisions_after, trees_after = _current_repository_bindings(errors)
     if revisions_after != revisions_before or trees_after != trees_before:
         errors.append("source revisions or trees changed during release validation")
@@ -7107,6 +9299,7 @@ def run_release_validation() -> dict[str, Any]:
         if len(combined) + len(canonical_receipt) + projected_report_bytes > 12_000_000:
             errors.append("IPS-056 declared evidence exceeds its 12-MiB patch envelope")
     _validate_release_public_log(bytes(combined), errors)
+    _verify_runner_source_binding("release", source_binding, errors)
     if not errors:
         try:
             _atomic_write_artifact(RELEASE_VALIDATION_LOG, bytes(combined))
@@ -7118,6 +9311,7 @@ def run_release_validation() -> dict[str, Any]:
         checked = validate_artifact("IPS-056")
         errors.extend(str(item) for item in checked["errors"])
     _clean_release_work_root(errors)
+    _verify_runner_source_binding("release", source_binding, errors)
     return {
         "valid": not errors,
         "runner": "release",

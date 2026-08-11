@@ -35,9 +35,9 @@ from typing import Any, Mapping, Sequence
 
 SCHEMA_VERSION = "incremental-proof-sealer-baseline-receipt@4"
 OPERATOR_ORIGIN = "operator_capture"
-ENVIRONMENT_POLICY_ID = "incremental-proof-sealer-controlled-offline-pytest@2"
+ENVIRONMENT_POLICY_ID = "incremental-proof-sealer-controlled-offline-pytest@3"
 IGNORED_INPUT_POLICY_ID = "incremental-proof-sealer-clean-materialized-trees@1"
-GIT_ENVIRONMENT_POLICY_ID = "incremental-proof-sealer-fixed-git-environment@1"
+GIT_ENVIRONMENT_POLICY_ID = "incremental-proof-sealer-fixed-git-environment@2"
 SUITE_REGISTRY_SCHEMA_VERSION = "incremental-proof-sealer-reviewed-suite-registry@1"
 SUITE_REGISTRY_RELATIVE = "config/incremental_proof_sealer_baseline_suite_registry.json"
 ARTIFACT_RELATIVE_ROOT = Path(
@@ -507,8 +507,14 @@ SUMMARY_NODE_RE = re.compile(
 SKIPPED_SUMMARY_RE = re.compile(
     r"^SKIPPED\s+(?:\[\d+\]\s+)?(?P<node>\S+?:\d+)(?::\s+.*)?$"
 )
-COLLECTION_ERROR_RE = re.compile(r"^ERROR collecting (?P<node>\S.*)$")
+COLLECTION_ERROR_RE = re.compile(
+    r"^(?:[=_-]+\s+)?ERROR collecting (?P<node>\S.*?)(?:\s+[=_-]+)?$"
+)
 COLLECTED_RE = re.compile(r"\bcollected\s+(?P<count>\d+)\s+items?\b", re.IGNORECASE)
+COLLECTED_ERROR_RE = re.compile(
+    r"\bcollected\s+\d+\s+items?\b.*(?:/|,)\s*\d+\s+errors?\b",
+    re.IGNORECASE,
+)
 
 
 class BaselineError(RuntimeError):
@@ -671,6 +677,7 @@ def _run_readonly(
         environment={
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
             "HOME": "/nonexistent",
@@ -690,6 +697,35 @@ def _git_text(repo: Path, *args: str) -> str:
         detail = result.stderr.decode("utf-8", "replace").strip()
         raise BaselineError(f"git {' '.join(args)} failed in {repo}: {detail}")
     return result.stdout.decode("utf-8", "strict").strip()
+
+
+def _assert_no_git_object_replacement(repo: Path, label: str) -> None:
+    """Reject local object-replacement mechanisms even though Git ignores them."""
+
+    replacement_refs = _git_text(
+        repo, "for-each-ref", "--format=%(refname)", "refs/replace"
+    )
+    if replacement_refs:
+        raise BaselineError(
+            f"{label} contains forbidden Git replacement refs: "
+            f"{replacement_refs.splitlines()[:8]}"
+        )
+    common_directory = Path(
+        _git_text(
+            repo,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        )
+    )
+    grafts = common_directory / "info" / "grafts"
+    try:
+        os.lstat(grafts)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise BaselineError(f"cannot inspect {label} legacy Git grafts") from exc
+    raise BaselineError(f"{label} contains forbidden legacy Git grafts")
 
 
 def _ignored_sensitive_binding(
@@ -764,6 +800,9 @@ def _assert_ignored_sensitive_input_policy(
 
 def _repository_snapshot(repo_root: Path, repository: str) -> dict[str, Any]:
     repo = (repo_root / REPOSITORY_PATHS[repository]).resolve()
+    _assert_no_git_object_replacement(
+        repo, f"{repository} authoritative repository"
+    )
     revision = _git_text(repo, "rev-parse", "HEAD")
     tree = _git_text(repo, "rev-parse", "HEAD^{tree}")
     planning_revision = PLANNING_REVISIONS[repository]
@@ -801,6 +840,9 @@ def _repository_snapshot(repo_root: Path, repository: str) -> dict[str, Any]:
         artifact_prefix = ARTIFACT_RELATIVE_ROOT.as_posix().rstrip("/") + "/"
         untracked = [path for path in untracked if not path.startswith(artifact_prefix)]
     clean = unstaged.returncode == 0 and staged.returncode == 0 and not untracked
+    _assert_no_git_object_replacement(
+        repo, f"{repository} authoritative repository"
+    )
     return {
         "repository": repository,
         "path": REPOSITORY_PATHS[repository].as_posix(),
@@ -926,7 +968,9 @@ def _environment(
         "PYTHONHASHSEED": "0",
         "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
         "PYTHONPATH": python_path,
-        "PYTEST_ADDOPTS": "",
+        "PYTEST_ADDOPTS": (
+            f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
+        ),
         "TERM": "dumb",
         "TMPDIR": str(workspace / "tmp"),
         "TRANSFORMERS_OFFLINE": "1",
@@ -1067,6 +1111,15 @@ def parse_pytest_log(raw: bytes) -> dict[str, Any]:
         if match:
             collected_count = int(match.group("count"))
 
+    collection_error_nodes = {
+        match.group("node").strip()
+        for line in lines
+        for match in (COLLECTION_ERROR_RE.match(line),)
+        if match is not None
+    }
+    collection_count_failed = any(COLLECTED_ERROR_RE.search(line) for line in lines)
+    collection_failed = bool(collection_error_nodes) or collection_count_failed
+
     non_pass_nodes: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     collection_skip_detected = False
@@ -1094,12 +1147,22 @@ def parse_pytest_log(raw: bytes) -> dict[str, Any]:
             and matches_runtime_item_skip(node_id)
         ):
             return
-        key = (normalized, node_id.strip())
+        canonical_node = node_id.strip()
+        if (
+            normalized == "error"
+            and not canonical_node.startswith("collecting ")
+            and (
+                canonical_node in collection_error_nodes
+                or (collection_count_failed and "::" not in canonical_node)
+            )
+        ):
+            canonical_node = f"collecting {canonical_node}"
+        key = (normalized, canonical_node)
         if key in seen:
             return
         seen.add(key)
         non_pass_nodes.append(
-            {"status": normalized, "node_id": node_id.strip(), "detail": detail}
+            {"status": normalized, "node_id": canonical_node, "detail": detail}
         )
 
     for line in lines:
@@ -1122,7 +1185,6 @@ def parse_pytest_log(raw: bytes) -> dict[str, Any]:
         if match:
             add(match.group("status"), match.group("node"), line)
 
-    collection_failed = any(COLLECTION_ERROR_RE.match(line) for line in lines)
     return {
         "outcome_counts": summary_counts,
         "collected_count": collected_count,
@@ -2028,6 +2090,7 @@ def _run_local_git_materialization(argv: Sequence[str], cwd: Path) -> None:
     environment = {
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_TERMINAL_PROMPT": "0",
         "HOME": str(cwd),
@@ -2122,6 +2185,9 @@ def _materialize_execution_trees(
     if execution_root.exists() or execution_root.is_symlink():
         raise BaselineError("capture execution tree already exists")
     outer_source = (repo_root / REPOSITORY_PATHS["accelerate"]).resolve()
+    _assert_no_git_object_replacement(
+        outer_source, "accelerate authoritative repository"
+    )
     _run_local_git_materialization(
         (
             "git",
@@ -2146,8 +2212,14 @@ def _materialize_execution_trees(
     )
     _run_local_git_materialization(("git", "remote", "remove", "origin"), execution_root)
     _remove_unmaterialized_gitlink_placeholders(execution_root, "accelerate")
+    _assert_no_git_object_replacement(
+        execution_root, "accelerate materialized repository"
+    )
     for repository in ("datasets", "kit"):
         source = (repo_root / REPOSITORY_PATHS[repository]).resolve()
+        _assert_no_git_object_replacement(
+            source, f"{repository} authoritative repository"
+        )
         target = execution_root / REPOSITORY_PATHS[repository]
         _run_local_git_materialization(
             (
@@ -2173,7 +2245,126 @@ def _materialize_execution_trees(
         )
         _run_local_git_materialization(("git", "remote", "remove", "origin"), target)
         _remove_unmaterialized_gitlink_placeholders(target, repository)
+        _assert_no_git_object_replacement(
+            target, f"{repository} materialized repository"
+        )
     return execution_root
+
+
+def _remove_execution_write_permissions(
+    directory_descriptor: int,
+    *,
+    depth: int,
+    visited: list[int],
+) -> None:
+    """Clear write bits without following a materialized-tree symlink."""
+
+    if depth > MAX_SOURCE_SCAN_DEPTH:
+        raise BaselineError("execution-tree hardening exceeded its depth limit")
+    try:
+        names = sorted(os.listdir(directory_descriptor))
+    except OSError as exc:
+        raise BaselineError("cannot enumerate execution tree for hardening") from exc
+    for name in names:
+        visited[0] += 1
+        if visited[0] > MAX_SOURCE_SCAN_ENTRIES:
+            raise BaselineError("execution-tree hardening exceeded its entry limit")
+        try:
+            name.encode("utf-8", "strict")
+            before = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+        except (OSError, UnicodeEncodeError) as exc:
+            raise BaselineError("cannot inspect execution tree for hardening") from exc
+        if stat.S_ISLNK(before.st_mode):
+            continue
+        if stat.S_ISDIR(before.st_mode):
+            try:
+                child_descriptor = os.open(
+                    name, _directory_open_flags(), dir_fd=directory_descriptor
+                )
+            except OSError as exc:
+                raise BaselineError(
+                    "cannot bind execution directory for hardening"
+                ) from exc
+            try:
+                opened = os.fstat(child_descriptor)
+                if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                    raise BaselineError("execution directory changed before hardening")
+                _remove_execution_write_permissions(
+                    child_descriptor,
+                    depth=depth + 1,
+                    visited=visited,
+                )
+                current = os.stat(
+                    name, dir_fd=directory_descriptor, follow_symlinks=False
+                )
+                if (current.st_dev, current.st_ino) != (
+                    opened.st_dev,
+                    opened.st_ino,
+                ):
+                    raise BaselineError(
+                        "execution directory was replaced during hardening"
+                    )
+            finally:
+                os.close(child_descriptor)
+            continue
+        if not stat.S_ISREG(before.st_mode):
+            raise BaselineError("execution tree contains a special hardening target")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        try:
+            descriptor = os.open(name, flags, dir_fd=directory_descriptor)
+        except OSError as exc:
+            raise BaselineError("cannot bind execution leaf for hardening") from exc
+        try:
+            opened = os.fstat(descriptor)
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (
+                before.st_dev,
+                before.st_ino,
+            ):
+                raise BaselineError("execution leaf changed before hardening")
+            if opened.st_nlink != 1:
+                raise BaselineError("execution regular leaf is hardlinked")
+            os.fchmod(descriptor, stat.S_IMODE(opened.st_mode) & ~0o222)
+            current = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(current.st_mode)
+                or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+                or current.st_size != opened.st_size
+                or current.st_mtime_ns != opened.st_mtime_ns
+                or stat.S_IMODE(current.st_mode) & 0o222
+            ):
+                raise BaselineError("execution leaf changed during hardening")
+        except OSError as exc:
+            raise BaselineError("cannot make execution leaf read-only") from exc
+        finally:
+            os.close(descriptor)
+    try:
+        info = os.fstat(directory_descriptor)
+        os.fchmod(directory_descriptor, stat.S_IMODE(info.st_mode) & ~0o222)
+        hardened = os.fstat(directory_descriptor)
+    except OSError as exc:
+        raise BaselineError("cannot make execution directory read-only") from exc
+    if stat.S_IMODE(hardened.st_mode) & 0o222:
+        raise BaselineError("execution directory remains writable after hardening")
+
+
+def _harden_execution_tree_read_only(execution_root: Path) -> None:
+    """Contain cache/state writes while exact post-suite checks remain authoritative."""
+
+    root, root_descriptor = _open_root_directory(
+        execution_root, "execution-tree hardening"
+    )
+    try:
+        _remove_execution_write_permissions(
+            root_descriptor,
+            depth=0,
+            visited=[0],
+        )
+    finally:
+        os.close(root_descriptor)
+    if os.access(root, os.W_OK):
+        raise BaselineError(
+            "materialized execution tree remains writable for the capture identity"
+        )
 
 
 def _execution_tree_structure(
@@ -2323,6 +2514,9 @@ def _assert_execution_trees_clean(
         target = unresolved_target.resolve()
         if not target.is_relative_to(execution_root.resolve()):
             raise BaselineError(f"{repository} execution root escapes the capture")
+        _assert_no_git_object_replacement(
+            target, f"{repository} materialized repository"
+        )
         if (
             _git_text(target, "rev-parse", "HEAD")
             != snapshots[repository]["tested_revision"]
@@ -2494,6 +2688,9 @@ def _assert_execution_trees_clean(
             raise BaselineError(
                 f"{repository} execution filesystem structure changed during capture"
             )
+        _assert_no_git_object_replacement(
+            target, f"{repository} materialized repository"
+        )
     return structures
 
 
@@ -2513,7 +2710,14 @@ def _capture_command(
     environment = _environment(
         repo_root, workspace_relative, pytest_info["module_path"]
     )
-    for child in ("home", "tmp", "ipfs-repo", "pycache", "hypothesis"):
+    for child in (
+        "home",
+        "tmp",
+        "ipfs-repo",
+        "pycache",
+        "hypothesis",
+        "pytest-benchmark",
+    ):
         _ensure_artifact_directory(repo_root, f"{workspace_relative}/{child}")
     argv = _resolved_argv(suite, python_info["executable"], basetemp)
     cwd = (execution_root / suite.cwd).resolve()
@@ -2649,6 +2853,11 @@ def _remove_directory_contents(directory_descriptor: int) -> None:
     """Remove a held directory tree without following any contained symlink."""
 
     try:
+        info = os.fstat(directory_descriptor)
+        os.fchmod(
+            directory_descriptor,
+            stat.S_IMODE(info.st_mode) | stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR,
+        )
         names = sorted(os.listdir(directory_descriptor))
     except OSError as exc:
         raise BaselineError("cannot enumerate capture workspace for cleanup") from exc
@@ -2971,6 +3180,7 @@ def capture_repositories(
         python_info = _python_metadata()
         pytest_info = _pytest_metadata()
         execution_root = _materialize_execution_trees(repo_root, capture_id, before)
+        _harden_execution_tree_read_only(execution_root)
         execution_structure = _assert_execution_trees_clean(execution_root, before)
         commands_by_repository: dict[str, list[dict[str, Any]]] = {}
         for repository in selected:

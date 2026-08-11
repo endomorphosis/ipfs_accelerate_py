@@ -147,7 +147,7 @@ that pytest execution occurred.
 IPS-001 through IPS-004 reference those receipts and record key
 provenance/classifications so later workers do not rely on this prose.
 
-The operator bootstrap is a two-commit, fail-closed sequence; providers never
+The operator bootstrap is a two-phase, fail-closed sequence; providers never
 capture or pin their own evidence:
 
 1. Commit the reviewed validator, capture script, closed suite registry,
@@ -745,8 +745,24 @@ provider has no process authority. The provider therefore writes both declared
 paths as exact closed `incremental-proof-sealer-materialization-request@1`
 markers. Protected `--run-benchmark` Validation consumes only that complete
 request, invokes the IPS-052 CLI with seed `20260811`, count `40`, and the two
-exact output paths using direct argv, then runs the artifact gate. An absent
-request never starts benchmark work. Each JSON/CSV artifact is bounded to one
+exact output paths using direct argv, then runs the artifact gate. Before
+consuming the request it rejects every staged, unstaged, untracked, or ignored
+candidate-worktree mutation outside those two exact paths and the fixed ignored
+`release-work` root, including skip-worktree/assume-unchanged index flags and
+link or special-file substitution. It then makes no-local clones of the exact
+outer and nested HEAD/gitlink commits inside that root, removes every remote,
+rejects object alternates, replacement refs, and grafts, materializes only the
+two owned nested repositories, and requires every deliberately absent non-owned
+gitlink to match a closed reviewed path-to-object-ID allowlist. Unknown,
+missing, present-on-disk, or object-ID-drifted gitlinks reject. It hashes every
+physical tracked leaf against its Git blob and makes the verified source
+read-only through held no-follow descriptors.
+The CLI runs only there and writes to a sibling staged-output tree; the runner
+rehashes the source, ingests exactly two bounded regular files through held
+directory descriptors, and atomically publishes them to the candidate paths.
+Pre/post candidate binding catches concurrent checkout/index mutation, while
+the isolated clone prevents such mutation from becoming executed code. An
+absent request never starts benchmark work. Each JSON/CSV artifact is bounded to one
 MiB and the task declares the exact reviewed proposal envelope. The one
 allowed stabilization invocation recognizes the complete valid bundle and is
 read-only, so candidate hashes converge; partial, unknown, or invalid existing
@@ -846,7 +862,15 @@ pass receipt, consumes only that complete request and observes the
 historical terminal board gate, all 17 existing reviewed ZK/reuse/WAL/release
 suites, and the three new cross-repository incremental-sealing suites with
 explicit argv, bounded timeouts, fixed offline/autoinstall-disabled workspaces,
-and one content-bound retained log. An absent request never starts release
+and one content-bound retained log. Before request consumption the release
+runner applies the same closed candidate index/worktree check, no-local
+outer/nested clone, remote/alternate rejection, exact per-leaf Git-blob hashing,
+and read-only source materialization as the benchmark runner. The terminal gate
+and every pytest command run only from that materialization with caches and
+temporary state redirected outside it; a post-run full rehash rejects source
+mutation, and the release staging channel must remain empty. Only the bounded
+secret-scanned receipt/log and single report-marker substitution are published
+to the three declared candidate paths. An absent request never starts release
 work. Each child is capped at 256 KiB of output; the combined public log must be
 strict UTF-8 without NUL bytes and is capped at six MiB, the receipt at two MiB,
 and the report at one MiB;
@@ -873,8 +897,9 @@ must name every such remaining blocker. Current-tree evidence must establish:
 
 The first IPS-056 Validation materializes only the exact closed request. The
 supervisor's one stabilization rerun securely reparses the complete bundle but
-neither executes a subprocess nor changes an output, and therefore observes
-identical candidate hashes. Partial requests, duplicate/missing report markers,
+neither reruns a benchmark/test subprocess nor changes an output, and therefore
+observes identical candidate hashes. Read-only Git binding subprocesses still
+run. Partial requests, duplicate/missing report markers,
 or provider-authored completed-looking evidence that fails the closed artifact
 gate reject.
 
