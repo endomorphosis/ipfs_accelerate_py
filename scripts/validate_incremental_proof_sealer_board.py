@@ -1019,6 +1019,7 @@ def validate_artifact(task_id: str) -> dict[str, Any]:
     if task_id in inventory_specs:
         relative, revision = inventory_specs[task_id]
         payload = _artifact_json(relative, errors)
+        serialized = json.dumps(payload, sort_keys=True)
         if payload.get("repository_commit") != revision:
             errors.append(f"{task_id} repository_commit does not match {revision}")
         baseline = payload.get("baseline")
@@ -1030,9 +1031,61 @@ def validate_artifact(task_id: str) -> dict[str, Any]:
                 errors.append(f"{task_id} baseline.exit_code must be an integer")
             if not baseline.get("command"):
                 errors.append(f"{task_id} baseline.command must be non-empty")
+            if baseline.get("results_populated") is False:
+                errors.append(f"{task_id} baseline results are still a placeholder")
+            if "pending-local-run" in serialized.casefold():
+                errors.append(f"{task_id} baseline contains pending-local-run")
+            outcome_fields = ("passed", "failed", "errors", "skipped", "deselected")
+            outcomes = [baseline.get(field) for field in outcome_fields]
+            if all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in outcomes
+            ) and sum(outcomes) == 0:
+                errors.append(f"{task_id} baseline contains a zero-count success")
         classifications = payload.get("classifications")
         if not isinstance(classifications, (list, dict)) or not classifications:
             errors.append(f"{task_id} classifications must be non-empty")
+        required_terms = {
+            "IPS-001": (
+                "proof_attestation",
+                "proof_reuse_real_groth16_fixture",
+                "kernel_verification.py",
+                "prover_conformance.py",
+                "proof_fallbacks.py",
+                "proof_metrics.py",
+                "prover_evidence_store.py",
+                "manual_completion_seal.py",
+                "release_evidence.py",
+                "repository_forest",
+            ),
+            "IPS-002": (
+                "cec_zkp_integration.py",
+                "cec_proof_cache.py",
+                "tdfol_zkp_integration.py",
+                "tdfol_proof_cache.py",
+                "flogic_zkp_integration.py",
+                "flogic_proof_cache.py",
+                "event_dag_zkp.py",
+                "provekit_ffi.py",
+                "wallet/proofs.py",
+                "test_execution_certificate.py",
+                "test_pass.py",
+                "proof_receipt_attestation.py",
+                "ensure_setup",
+            ),
+            "IPS-003": (
+                "profile_d_policy.py",
+                "mcplusplus/artifacts.py",
+                "iroh/release.py",
+                "test_joined_release_receipt.py",
+                "install_lotus.py",
+                "proof_certificate_store.py",
+                "event_dag.py",
+            ),
+        }
+        for term in required_terms[task_id]:
+            if term not in serialized:
+                errors.append(f"{task_id} inventory is missing required surface {term}")
     elif task_id == "IPS-053":
         payload = _artifact_json(
             "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json",

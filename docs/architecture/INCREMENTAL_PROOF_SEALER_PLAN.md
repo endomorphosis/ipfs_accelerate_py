@@ -85,17 +85,70 @@ admissible as Groth16 evidence. The reusable scheduler provides dependency DAGs,
 leases/fencing, critical-path ordering, resource admission, and subprocess
 process-tree termination, but needs proof-seal stages and GPU-memory propagation.
 
-Known kit baseline evidence, gathered without installs or downloads, includes
-95 passing focused proof/storage/WAL tests, 2 pre-existing proof-reuse bootstrap
-failures, and one pre-existing agent-receipt collection error. Kit has no real
-proving test, signature-verified execution receipt, or recursive verifier. The
-failures and collection error are recorded, not relabeled as passes.
+Those figures are layout-sensitive.  On 2026-08-11 the larger 36-file command
+selected by the first supervisor inventory attempt was repeated in the clean
+isolated worktree with `/usr/bin/python3.12`, no installs, and no cache writes:
+704 passed, 26 failed, and 2 were deselected in 27.17 seconds.  Failures include
+two proof-scheduler resource-class expectations plus missing sibling-layout
+datasets source/artifact paths and packaging/setup drift.  This result does not
+supersede the narrower 257-pass slice; the inventory must preserve each command
+as a separate observation rather than mixing their counts.
+
+Known kit baseline evidence, gathered without installs or downloads, is a set
+of separate commands, not one aggregate pytest invocation.  In the original
+sibling checkout, the green proof-certificate, reuse-capability, Profile-D,
+coordination-store, and modern-WAL slices contributed 12, 5, 2, 7, and 69
+passes respectively; the bootstrap slice separately produced 6 passes and 2
+failures, and the agent-receipt slice failed collection.  A repeat in the
+isolated supervisor layout on 2026-08-11 produced 12, 5, 2, and 69 passes for
+the hermetic slices, 7 coordination-store setup errors because its hard-coded
+external MCP++ vector path is absent, 8 bootstrap skips because the optional
+accelerate pytest plugin is not discoverable in that invocation, and the same
+agent-receipt collection error.  An inventory must bind each count to the exact
+command, checkout layout, interpreter, duration, exit code, and output digest;
+it must never attach the aggregate counts to a command that aborts at
+collection. Kit has no real proving test, signature-verified execution receipt,
+or recursive verifier. Non-pass results are recorded, not relabeled as passes.
 
 The datasets focused unit/integration slice completed 177 tests with 3 skips;
 the wider ZK unit directory completed 749 tests with 31 skips and 13 known
 failures. Existing real Groth16 v1 wire and enabled integration tests passed.
+The broader command proposed by the first supervisor inventory attempt was
+also executed in the isolated worktree on 2026-08-11: 1,180 passed, 33 skipped,
+and 17 failed in 50.14 seconds.  Ten failures require an absent external MCP++
+ceremony fixture, six require an evaluation document outside the nested
+datasets checkout, and one F-logic fallback assertion failed.  The earlier
+attempt's `pending-local-run` zero-count record is invalid evidence.
 All counts, commands, environment controls, key provenance, and classifications
 are reified by IPS-001 through IPS-004 so later workers do not rely on this prose.
+
+Inventory acceptance is fail-closed.  Placeholder results such as
+`pending-local-run`, zero-count success, or prose copied from this plan are not
+current baseline evidence.  The inventories must distinguish the bound
+planning revision from the exact descendant task HEAD and classify individual
+test paths/functions where proof behavior differs.  In particular:
+
+- accelerate's unsigned `TestPassReceipt` and `ProofReceipt` structures are
+  assertions/integrity envelopes, not signed receipts; its cache/admission
+  gates are not receipt-aggregation proofs.  Inventory includes proof
+  attestation stores/backends, real-Groth16 fixtures, runtime activation and v4
+  publication, kernel/prover conformance and fallback paths, metrics and
+  benchmark paths, evidence stores, doctor/MCP caches, manual completion and
+  release evidence, and canonical CID/repository-forest implementations;
+- datasets' test-execution certificate has no receipt-signature verifier,
+  `TestPassStatementV1` is a Python predicate rather than an implemented ZK
+  aggregation circuit, and callback-based proof-receipt attestation is
+  structural unless a real backend is observed.  Inventory includes CEC,
+  TDFOL, F-logic, Event-DAG v3, ProveKit FFI, wallet/PDF simulated paths, their
+  caches, setup/key generation surfaces, exact key identities, and the v3
+  artifact-unavailable state.  Groth16 v2 proves its bounded declared
+  derivation but does not prove pytest execution; those axes stay separate;
+- kit inventory includes Profile-D policy, MCP++ artifact receipts, Iroh/KITA
+  release receipts, joined release-receipt checks, and opt-in Filecoin proving
+  parameter download surfaces.  Planned-but-absent `proof_seal_store` code is
+  not counted as an existing proof path.  Each test is classified as real,
+  simulated, mock, structural, or integrity-only, rather than inferred from a
+  suite-level label.
 
 ## 3. Single-authority repository boundaries
 

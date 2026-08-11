@@ -80,7 +80,7 @@ Global invariants for every task:
 - Effects: Records every Groth16/ProveKit/ZK/formal/simulated adapter, scheduler/resource/cancel path, receipt/cache/seal/CLI path, key assumption, and focused test result.
 - Evidence subset: ips/accelerate-inventory@1
 - Symbolic first: true
-- Acceptance: Exact commit, commands, pass/fail/skip results, real versus simulated/structural status, direct-execution status, recursion capability, trusted setup/key assumptions, and canonical integration points are evidence-backed.
+- Acceptance: Record the planning revision and exact descendant task HEAD separately. Each baseline command has its interpreter, working directory, execution time/duration, exit code, selected/pass/fail/error/skip/deselect counts, output digest, and exact non-pass nodes; no placeholder or plan-derived result is current evidence. Every proof/attestation backend and store, real-Groth16 fixture, runtime/v4 publication path, kernel/prover/fallback path, metric/benchmark/evidence store, doctor/MCP cache, manual/release seal, CID/canonicalization/Merkle path, scheduler, and focused test is classified. Unsigned TestPassReceipt/ProofReceipt values are not called signed, cache admission is not receipt aggregation, and direct-execution/recursion/setup claims are tied to executable evidence.
 - Embedding query: accelerate zero knowledge provekit groth16 proof scheduler receipt real simulated test baseline
 
 ## IPS-002 Inventory datasets ZK, identity, manifest, dependency, and baseline paths
@@ -111,7 +111,7 @@ Global invariants for every task:
 - Effects: Records ZK backends/circuits/keys/statements, proof/test receipts, caches, canonicalization/CID/Merkle paths, real/simulated tests, and ownership candidates.
 - Evidence subset: ips/datasets-inventory@1
 - Symbolic first: true
-- Acceptance: Every discovered proof path and focused test is classified by executable behavior; public/private inputs and setup/key assumptions are explicit.
+- Acceptance: No `pending-local-run`, zero-count synthetic success, undeclared helper, or plan-derived count may pass as a current baseline. Record each command's interpreter, working directory, duration, exit code, complete outcome counts, output digest, and exact non-pass nodes. Inventory CEC, TDFOL, F-logic, Event-DAG v3, ProveKit FFI, wallet/PDF simulated paths, all proof caches, setup/key-generation and exact key identity/provenance surfaces, and individual focused tests with valid repository-relative paths. Test-execution certificates without signature verification are not signed receipts; TestPassStatementV1 is not an implemented ZK circuit; callback attestation is structural unless a real backend ran; Groth16 v2's bounded computation-proof axis is distinct from pytest-execution proof; absent v3 artifacts and the reduced-field digest binding are explicit.
 - Embedding query: datasets zkp groth16 canonicalization cid merkle proof cache receipt tests real simulated
 
 ## IPS-003 Inventory kit proof storage, CID, Merkle, WAL, CAS, and baseline paths
@@ -142,7 +142,7 @@ Global invariants for every task:
 - Effects: Records strict/pseudo CID paths, proof transport, receipts, Merkle helpers, modern/legacy WAL, CAS candidates, corruption/recovery behavior, and focused baseline results.
 - Evidence subset: ips/kit-inventory@1
 - Symbolic first: true
-- Acceptance: Exact commit and baseline results include pre-existing failures; every kit proof path is correctly labeled integrity/structural/mock/real and direct-execution status is explicit.
+- Acceptance: Bind separate executed commands to their own interpreter, layout, duration, exit code, pass/fail/error/skip counts, output digest, and exact non-pass nodes; never attach aggregate counts to a command that aborts at collection or call plan-derived evidence a rerun. Include Profile-D policy, MCP++ artifact receipts, Iroh/KITA and joined release receipts, install_lotus opt-in proving-parameter downloads, every focused test, and explicit mock/simulated counts. Planned-but-absent proof_seal_store is not counted as current structure. Every path is correctly labeled integrity/structural/mock/real, unsigned receipts remain unsigned, and direct-execution/recursion/key-download status is explicit.
 - Embedding query: kit proof certificate store merkle wal compare and swap corruption receipt baseline
 
 ## IPS-004 Synthesize the cross-repository trust matrix and implementation boundary
