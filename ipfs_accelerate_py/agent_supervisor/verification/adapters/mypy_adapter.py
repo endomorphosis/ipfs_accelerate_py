@@ -1107,7 +1107,7 @@ class MypyVerificationAdapter:
         cache_dir: str | None = None
         try:
             cache_dir = str(Path(request.sandbox.artifact_root) / ".mypy_cache")
-        except Exception:
+        except Exception:  # noqa: BLE001
             cache_dir = None
         return build_mypy_argv(
             invocation=request.invocation,
@@ -1326,7 +1326,7 @@ class MypyVerificationAdapter:
         try:
             cache_dir = str(Path(request.sandbox.artifact_root) / ".mypy_cache")
             env.setdefault("MYPY_CACHE_DIR", cache_dir)
-        except Exception:
+        except Exception:  # noqa: BLE001,S110
             pass
         return VerificationCommand(
             argv=list(argv),

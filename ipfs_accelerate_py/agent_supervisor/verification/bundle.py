@@ -42,6 +42,8 @@ from .contracts import (
     VerificationReceipt,
     VerificationSummary,
     aggregate_terminal_status,
+)
+from .contracts import (
     build_verification_commitment as _contracts_build_verification_commitment,
 )
 
