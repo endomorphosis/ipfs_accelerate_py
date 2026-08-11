@@ -427,6 +427,23 @@ def _validate_config(config: dict[str, Any], errors: list[str]) -> None:
     validation_workers = config.get("validation_max_workers")
     if not isinstance(validation_workers, int) or validation_workers <= 0:
         errors.append("validation_max_workers must be a positive integer")
+    provider = config.get("provider")
+    if not isinstance(provider, dict):
+        errors.append("provider must be an object")
+    else:
+        expected_route = {
+            "primary_provider_id": "grok_cli",
+            "primary_model_id": "grok-4.5",
+            "fallback_provider_id": "codex",
+            "fallback_model_id": "gpt-5.6-terra",
+            "fallback_trigger": "primary_quota_exhausted",
+            "fallback_reasoning_effort": "medium",
+            "max_concurrency": 3,
+            "secrets_from_environment_only": True,
+            "secrets_in_argv_prompts_logs_or_receipts": False,
+        }
+        for key, expected in expected_route.items():
+            _check_equal(provider.get(key), expected, f"provider.{key}", errors)
     _check_equal(config.get("taskboard_path"), str(TASKBOARD_PATH.relative_to(REPO_ROOT)), "taskboard_path", errors)
     _check_equal(config.get("objectives_path"), str(OBJECTIVES_PATH.relative_to(REPO_ROOT)), "objectives_path", errors)
     _check_equal(config.get("plan_path"), str(PLAN_PATH.relative_to(REPO_ROOT)), "plan_path", errors)
