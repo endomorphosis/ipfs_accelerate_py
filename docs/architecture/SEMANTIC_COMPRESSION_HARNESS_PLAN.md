@@ -1,0 +1,579 @@
+# Python semantic-compression coding-agent harness plan
+
+Status: reviewed implementation plan; supervisor launch is intentionally gated by
+`SCH-000`.
+
+This plan defines a focused Python 3.12 and pytest harness in
+`ipfs_accelerate_py.agent_supervisor.semantic_state`. It consumes the semantic
+state contracts implemented in `endomorphosis/ipfs_datasets_py`, uses a narrow
+durability port backed by `endomorphosis/ipfs_kit_py`, and reuses the existing
+`ipfs_accelerate_py` supervisor runtime. It does not create another agent
+framework, MCP server, user interface, theorem prover, or general multi-language
+verification platform.
+
+The companion supervisor inputs are:
+
+- `docs/architecture/semantic_compression_harness.objectives.md`
+- `docs/architecture/semantic_compression_harness.todo.md`
+
+## 1. Revision and launch seal
+
+The inspected `ipfs_accelerate_py` baseline is commit
+`ea11293bb996f052d620eae989f5377a956764b1`. The MCP++ wire authority inspected
+is `Mcp-Plus-Plus` commit `dc3164653a48d059ae9812078359daeafb451c07`.
+
+The pre-integration `ipfs_kit_py` checkout inspected while writing this plan was
+`69091bf8f11a3ef1fb0e04e11a6d8a4c87f3fa78`; this is evidence only, not the
+phase-two dependency pin. The reviewed phase-one `ipfs_datasets_py` baseline was
+`a2f5400b7cb89c8481819379a1b7b9959fe81d45`; its completed semantic-index commit
+is also not assumed here.
+
+`SCH-000` must be completed manually before any implementation supervisor is
+launched. It must replace the two unresolved values below with exact 40-hex
+commits after the phase-one semantic-index closeout and the `ipfs_kit_py`
+state-root/CAS closeout:
+
+```text
+IPFS_DATASETS_SEMANTIC_INDEX_COMMIT = UNRESOLVED
+IPFS_KIT_DURABLE_ROOT_COMMIT        = UNRESOLVED
+```
+
+The gate fails closed if either value is unresolved, is not a commit reachable
+from the intended repository, or does not pass its producer's contract tests.
+Workers may not infer a pin from a mutable branch, current checkout, editable
+install, submodule pointer, or ambient `PYTHONPATH` ordering.
+
+## 2. Scope and completion outcome
+
+The release is a complete local loop over a controlled Python fixture repository
+or a deliberately selected stable kernel in `ipfs_datasets_py`. It must:
+
+1. obtain a deterministic repository state from the phase-one scanner;
+2. consume its symbol-level Merkle graph and confidence classifications;
+3. compile and reuse semantic capsules for unchanged dependencies;
+4. consume state deltas and propagate explicit invalidation obligations;
+5. select affected pytest tests and configured proof obligations;
+6. build a minimum-sufficient, assurance-aware `ContextPack`;
+7. create a disposable fenced Git worktree and request a patch from a configured
+   provider;
+8. validate patch syntax and file scope before applying it;
+9. rescan, run static checks, selected tests, and available provers;
+10. publish MCP++-conformant, content-addressed receipts and compare-and-swap the
+    accepted semantic-state root.
+
+The harness never imports or executes a target repository for analysis. Test and
+proof execution occurs only in the isolated validation worktree after the exact
+commands, environment bindings, and selected inputs have been recorded.
+
+### Non-goals
+
+- arbitrary language frontends or verification beyond Python 3.12 and pytest;
+- automatic rewriting of dependent source;
+- model-generated summaries promoted to exact facts;
+- ZK proofs or a new prover;
+- a network service, MCP server, dashboard, or interactive UI;
+- semantic context packing unrelated to this local coding loop;
+- replacing the existing agent supervisor, resource scheduler, leases, event
+  log, provider gateway, or worktree lifecycle implementation;
+- scanning or verifying the whole repository portfolio in the MVP;
+- production fallback to mock hardware, mock inference, replayed model text, or
+  simulation.
+
+## 3. Authorities inspected and reuse decisions
+
+| Concern | Existing authority | Decision |
+|---|---|---|
+| Python repository state, symbols, typed graph, deltas, invalidation, explanations | Final pinned `ipfs_datasets_py.logic.software_contracts.semantic_index` public API | Consume through `SemanticStateProvider`; never reconstruct AST identity or graph semantics in accelerate. |
+| Semantic content identity | Final pinned semantic-index records and their `software_contracts.content` CIDs | Preserve supplied CIDs and verify round trips; never translate them into a second identity. |
+| MCP++ wire shapes | MCP-IDL Profile A, CID-native artifacts Profile B, and Event DAG Profile F at `dc316465…` | Encode a local interface descriptor and conformance vectors against those profiles. No semantic-specific upstream schema was found, so local payload schemas remain namespaced extensions carried by the MCP++ envelope. |
+| MCP++ artifact bytes and real CIDv1 | `ipfs_accelerate_py.mcp_server.mcplusplus.artifacts.canonicalize_artifact` plus `ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid.cid_for_bytes` | Use this pair for harness wire artifacts. Do not use the SHA-256 string returned by `artifacts.compute_artifact_cid`. Add vectors proving Kubo-compatible CIDv1. |
+| Immutable coordination storage | Lazy `ipfs_kit_py.mcp_server.mcplusplus.coordination_storage.DurableCoordinationStore`, `BlockBackend`, and `IPFSHeliaBlockBackend` | Inject through a small protocol. Local store is hermetic; remote block transport is optional. Do not use Iroh/bucket CAS or the accelerate `VerifiedIPLDBackend` as the semantic root authority. |
+| Mutable current-root CAS and WAL | Generic root-CAS surface delivered at the final `ipfs_kit_py` pin | `SCH-003` binds only to `put`, `get`, `get_bytes`, `read_root`, `compare_and_swap_root`, and `recover`; its concrete import path is sealed in `SCH-000`. |
+| Resource admission and cancellation | `agent_supervisor.runtime.resource_scheduler.ResourceScheduler` and cancellation-aware work contracts | Wrap these types rather than introducing a scheduler. |
+| Provider execution | `agent_supervisor.runtime.provider_execution.ProviderExecutionGateway` | Use its reservation/idempotency path, with a stricter harness promotion gate that rejects simulated/degraded/replayed-as-new results in production. |
+| Worktree ownership and fencing | `merge.worktree_lifecycle.WorktreeLifecycleStore` and `merge.lease_coordination.LeaseCoordinator` | Acquire before `git worktree add`, fence every mutation/publication, and recover by durable attempt identity. |
+| Validation command parsing | `validation.validation_commands` | Reuse command classification and scope rules; execute only explicit argv in the worktree with bounded output/time. |
+| Restart/replay journal | `runtime.event_log` | Append bounded semantic-session events and checkpoint replay cursors. It is a journal, not a task-queue or semantic-state authority. |
+
+`PersistentTaskQueue` is deliberately not an authority or dependency of this
+feature. The harness is one bounded session coordinator over existing resource,
+lease, worktree, event, and provider mechanisms.
+
+## 4. Smallest owning package
+
+All focused implementation belongs under:
+
+```text
+ipfs_accelerate_py/agent_supervisor/semantic_state/
+    __init__.py
+    contracts.py
+    wire.py
+    datasets_adapter.py
+    durable_state.py
+    scheduling.py
+    capsules.py
+    context_pack.py
+    routing.py
+    test_selection.py
+    verification.py
+    receipts.py
+    worktree.py
+    harness.py
+    session.py
+    cli.py
+    benchmark.py
+    schemas/
+        semantic-state-harness.interface.json
+```
+
+Names may be combined only where doing so reduces surface without mixing
+authorities. Tests live in `tests/agent_supervisor/semantic_state/`, the
+controlled repository in `tests/fixtures/semantic_state_harness/controlled_repo/`,
+and the exactly-40-task corpus in `benchmarks/semantic_state/tasks/`.
+
+The root `pyproject.toml` and `setup.py` receive only the matching
+`semantic-state` console entry. No legacy CLI or MCP server is expanded.
+
+## 5. Architecture and data flow
+
+```text
+Git/tree snapshot
+      |
+      v
+SemanticStateProvider ------------------------------+
+  state + graph + delta + invalidation              |
+      |                                              |
+      +--> CapsuleCompiler --> TestSelector          |
+      |           |                 |                |
+      +-----------+--> ContextPacker                 |
+                          |                           |
+                    RoutingPolicy                    |
+                          |                           |
+                 SchedulingAdapter                   |
+                          |                           |
+             Fenced disposable worktree              |
+                          |                           |
+              patch -> rescan -> verification         |
+                          |                           |
+                   MCP++ receipts/event               |
+                          |                           |
+                DurableSemanticStatePort <------------+
+                          |
+              expected-old CAS state root
+```
+
+Every arrow crosses a typed, bounded contract. The scanner remains canonical;
+filesystem watcher events only request another scan.
+
+## 6. Closed harness contracts
+
+`contracts.py` defines deterministic immutable records with `to_dict` and
+strict `from_dict` behavior. Durable collections are sorted and duplicate IDs
+are rejected. At minimum:
+
+- `HarnessMode`: `development` or `production`;
+- `WorkKind`: task parsing, scan, capsule compilation, test selection, context
+  packing, model invocation, static check, pytest, prover, persistence;
+- `Availability`: `available`, `unavailable`;
+- `UnavailableResult`: operation, provider/adapter ID, stable reason code,
+  retryable flag, and bounded diagnostic text;
+- `SemanticCapsule`: stable symbol ID, version CID, source CID, confidence,
+  authoritative facts, hint-only facts, dependencies, tests, proofs,
+  validity/binding CIDs, and raw-source requirement;
+- `ContextPack`: objective, exact raw target/surrounding/test code, dependency
+  capsules, obligations/counterexamples/delta/interfaces/assumptions,
+  exclusions, token accounting, risk, route, and escalation recommendation;
+- `ModelRoute`: exactly `deterministic_only`, `small_local_model`,
+  `medium_model`, `frontier_model`, or `human_review_required`;
+- `PatchProposal`: provider identity, mode, base tree/root, unified diff bytes
+  CID, declared paths, and generation result;
+- `TestSelection`: selected node IDs, reasons, fallbacks, known coverage,
+  unresolved edges, and selection CID;
+- `VerificationReceipt`: exact tree/config/dependency/policy/interface/root
+  bindings, command identity, selected nodes, exit result, output artifact CIDs,
+  simulation flag, freshness, and acceptance eligibility;
+- `HarnessResult`: accepted/rejected/unavailable, old/new roots, patch, receipts,
+  obligations, event head, and stable reasons.
+
+Timestamps, local paths, process IDs, wall-clock durations, and provider billing
+observations may appear in operational receipts but never alter a deterministic
+semantic-state root. Secret values, prompts, raw model output, and repository
+source bodies are never copied into small scheduler observations.
+
+## 7. Semantic-state provider boundary
+
+`datasets_adapter.py` is the only import boundary to `ipfs_datasets_py`. It
+loads the pinned dependency lazily on first operation, checks the expected
+contract/schema/extractor versions, and exposes:
+
+```python
+class SemanticStateProvider(Protocol):
+    def scan_repository(self, repo_path, previous_state=None): ...
+    def diff_repository_states(self, previous_state, current_state): ...
+    def calculate_invalidation(self, previous_state, current_state, delta): ...
+    def explain_symbol(self, repository_state, symbol_id): ...
+    def explain_impact(self, repository_state, changed_symbol_ids): ...
+    def watch_repository(self, repo_path, callback, *, debounce_ms): ...
+```
+
+The adapter validates returned state/root/version CIDs and closed confidence
+values (`exact`, `conservative`, `heuristic`, `opaque`). It does not reach into
+the semantic-index implementation to recover facts absent from its public
+records. Missing capabilities produce `UnavailableResult`, never empty/exact
+state. Git/tree or deterministic filesystem snapshots remain authoritative;
+watch notifications never become mutations or state.
+
+The harness consumes the scanner's modules, imports, symbols, signatures,
+annotations, decorators, exceptions, state reads/writes, calls, inheritance,
+schemas/serialization edges, tests/markers/fixtures/config, generated relations,
+proof edges, and source spans. It does not claim complete dynamic dispatch.
+
+Policy and MCP-interface inputs are explicit content-addressed artifacts. A
+policy CID change invalidates cached policy decisions. An interface descriptor
+CID change invalidates descriptor receipts and client-adapter obligations. These
+are harness bindings layered on the phase-one delta; they do not mutate the
+phase-one graph authority.
+
+## 8. Semantic capsule compiler
+
+`capsules.py` compiles one capsule per requested symbol version from exact
+semantic-index records:
+
+- normalized AST facts and stable/version identities;
+- public signature, annotations, defaults, decorators, and explicit contracts;
+- declared and observed exception/effect sets;
+- bounded static relations and schema/serialization relations;
+- relevant tests, fixtures, configurations, and proof obligations;
+- raw-source CID and spans needed to retrieve exact code;
+- the symbol's analysis confidence and every reason it was reduced.
+
+Docstrings are stored separately as non-authoritative hints. Optional model
+summaries are stored only in `heuristic_annotations`, bind the exact input
+capsule CID and model/provider version, and can never raise confidence or
+satisfy a verification obligation.
+
+Capsule reuse requires equality of symbol-version CID, extractor/schema
+versions, dependency/policy/interface/configuration bindings, and non-stale
+status. `exact` and `conservative` capsules may substitute for unchanged
+dependency code with visible caveats. `heuristic`, `opaque`, missing,
+invalidated, or unknown capsules force raw source retrieval.
+
+## 9. Incremental invalidation and obligations
+
+The harness delegates source-semantic invalidation to
+`calculate_invalidation` and preserves its explanation paths. It additionally
+binds execution artifacts to configuration, dependency lock, policy,
+interface-descriptor, provider, toolchain, and proof identities. Admission
+implements these explicit rules:
+
+- body changes stale that capsule, direct proof obligations, and relevant
+  tests; callers remain reusable if signature/effects/exceptions are stable;
+- signature changes stale callers, adapters, interface descriptions, schemas,
+  and tests;
+- effect changes stale purity/security assumptions and callers bound to the
+  prior effect set;
+- exception changes stale recovery assumptions and exception-contract tests;
+- schema changes stale serializers, deserializers, storage/API adapters, and
+  tests;
+- dependency/lock changes stale dependent summaries and verification receipts;
+- fixture/test configuration changes stale bound test receipts;
+- policy changes stale policy decisions and security admission receipts;
+- MCP interface changes stale interface descriptions and client adapters;
+- opaque behavior emits a raw-source-required obligation.
+
+The output is always a sorted obligation set. No task automatically rewrites an
+arbitrary caller, adapter, or schema consumer.
+
+## 10. Test and proof selection
+
+`test_selection.py` seeds selection with changed/deleted/renamed symbols and
+explicit user rules, then follows bounded typed edges for:
+
+- direct `tested_by` relations;
+- imports and statically resolved caller/callee dependencies;
+- fixture and `usefixtures` dependencies;
+- schema/serialization and configuration dependencies;
+- generated-file and proof-obligation bindings.
+
+Each selected pytest node carries an auditable shortest reason path. Ambiguous
+or unresolved edges are visible. The selector supports an unconditional
+full-suite fallback and an assurance policy that requires it for opaque changes,
+unknown config/plugin effects, global dependency changes, or insufficient
+coverage.
+
+`compare-full-suite` runs selected tests and then the same fixture's full suite
+as an oracle. A false negative is any full-suite failure attributable to the
+mutation that was absent from the selected run. The controlled fixture release
+gate requires zero false negatives and reports precision, recall, fallback rate,
+and selected/full test counts without redefining an unaffected passing test as a
+true positive.
+
+Proof execution is optional and capability-probed. An unavailable prover yields
+a typed unavailable obligation/receipt; it is never reported as a passed proof.
+
+## 11. Assurance-aware context packing
+
+`context_pack.py` optimizes minimum context subject to coverage and assurance
+constraints. It always contains:
+
+- task/objective;
+- exact raw target code and exact surrounding edit context;
+- exact directly edited tests;
+- reusable semantic capsules for unchanged dependencies;
+- unresolved obligations and minimized counterexamples;
+- current repository-state delta;
+- relevant MCP/public interface schemas;
+- explicit assumptions and confidence caveats;
+- an explanation for every excluded source region;
+- token totals by category and estimator version;
+- route and escalation recommendation.
+
+Coverage is a hard constraint, not a ranking score. Exact target/edit spans are
+never compressed. Conservative capsules remain visibly conservative. Heuristic
+capsules can guide retrieval but cannot replace source. Opaque, invalid, stale,
+or unknown facts include raw source. If the budget cannot satisfy coverage, the
+packer recommends escalation or human review instead of silently truncating.
+
+## 12. Scheduling and model routing
+
+`scheduling.py` adapts harness jobs to `ResourceScheduler`,
+`ProviderExecutionGateway`, `LeaseCoordinator`, `WorktreeLifecycleStore`, and
+`runtime.event_log`:
+
+- resource admission occurs before parsing batches, capsule compilation, tests,
+  provers, and provider invocation;
+- leases include attempt identity and fencing tokens;
+- cancellation is propagated to queued/local subprocess/provider work;
+- terminal outcomes are idempotent and replayable without repeating provider
+  charges or publishing stale results;
+- restart reads fenced lifecycle records and a verified event cursor;
+- unavailable capacity/provider/tooling returns `UnavailableResult`.
+
+The adapter does not use `PersistentTaskQueue` as an authority and does not use
+legacy mock hardware or mock inference coordinators.
+
+`routing.py` scores only the declared inputs: context size, lowest relevant
+confidence, risk class, affected dependency cone, unresolved obligations,
+prior repair failures, and available proofs. Routing results use the five
+required classes. Providers are injected by typed capability; none is hardcoded.
+`deterministic_only` means no model invocation. Production mode rejects absent
+providers and any gateway result marked simulated, degraded-to-simulation, or
+replayed without a previously admitted production receipt. Development
+simulation is labeled in every result and can never satisfy production
+verification or state-root acceptance.
+
+## 13. Durable artifacts, MCP++ wire, and freshness
+
+`wire.py` publishes a Profile A interface descriptor for scan/status/graph/
+explain/invalidate/select/pack/verify/apply/compare/benchmark operations. Payload
+schemas are closed, versioned harness extensions. Calls and results are carried
+by Profile B execution envelopes, and session transitions form a Profile F
+parent-linked event DAG.
+
+Harness wire CIDs are calculated as:
+
+```text
+canonical bytes = mcp_server.mcplusplus.artifacts.canonicalize_artifact(payload)
+CIDv1           = mcp_server.mcplusplus.kubo_cid.cid_for_bytes(canonical bytes)
+```
+
+The older `compute_artifact_cid` SHA-256 label is explicitly forbidden for new
+harness artifacts. Conformance tests compare exact bytes/CIDs with MCP++ and
+Kubo-compatible vectors. A phase-one semantic-state CID remains its original
+CID and is referenced, not recomputed.
+
+`durable_state.py` defines this narrow protocol:
+
+```python
+class DurableSemanticStatePort(Protocol):
+    def put(self, artifact, *, expected_cid, codec="dag-json"): ...
+    def get(self, cid): ...
+    def get_bytes(self, cid): ...
+    def has(self, cid): ...
+    def read_root(self, repository_id): ...
+    def compare_and_swap_root(self, repository_id, expected_root, new_root): ...
+    def recover(self): ...
+```
+
+The local implementation uses the pinned `DurableCoordinationStore` plus the
+pinned generic root-CAS/WAL surface and needs no daemon. The optional backend is
+lazy and injected. Writes store and verify all immutable blocks first, append a
+prepared WAL transition, perform expected-old CAS, mark committed, and expose
+the new root atomically. Recovery either completes an already-published valid
+root or retains the old root; corruption fails closed. Two distinct concurrent
+writers from one expected root cannot both succeed.
+
+`receipts.py` binds every receipt to the exact pre/post tree, semantic roots,
+selection, commands, toolchain, dependency/lock/config/policy/interface CIDs,
+provider mode, and output blocks. A receipt is admissible only when all bindings
+match, all required stages passed, all required artifacts rehash, the event
+parent is current, and `simulation == false`. Stale receipts remain inspectable
+but can never satisfy acceptance.
+
+## 14. Fenced isolated patch workflow
+
+`worktree.py` and `harness.py` implement exactly this acceptance sequence:
+
+1. acquire a fenced attempt and create a disposable Git worktree;
+2. materialize the accepted `ContextPack` by CID;
+3. invoke the configured model adapter through the production gate;
+4. validate that the response is a bounded unified diff;
+5. reject paths outside the declared allowlist, binary patches, symlink escapes,
+   submodule changes, and control/runtime/state paths;
+6. apply the patch with Git in the disposable worktree;
+7. rescan and identify actually changed symbols;
+8. recompute the delta and invalidation obligations;
+9. run declared static checks;
+10. run selected pytest nodes;
+11. run configured available proof obligations;
+12. optionally run the full suite as oracle, mandatorily when policy escalates;
+13. emit immutable artifacts, verification receipts, and the next event node;
+14. compare-and-swap the new semantic-state root only after every acceptance
+    gate passes.
+
+Rejection leaves the current root unchanged and records a bounded rejection
+receipt. Cleanup is fenced and recoverable. No accepted source commit is made in
+the user's working checkout; the result identifies the retained/cleaned
+worktree and patch artifact according to configured policy.
+
+## 15. Incremental sessions and watcher behavior
+
+`session.py` coordinates repeated local runs. Watch callbacks debounce only to
+schedule a fresh canonical scan. Concurrent watchers coalesce equal snapshot
+CIDs, and fenced attempts prevent stale callbacks from publishing a root.
+Restart replays event-log pages, verifies immutable artifacts, reconciles WAL
+state, and resumes only nonterminal attempts whose lease/fence still matches.
+
+No watcher event, task queue row, DuckDB projection, model assertion, or receipt
+alone is semantic truth. The pinned scanner state and current-root CAS are the
+truth boundaries.
+
+## 16. CLI
+
+The dedicated `semantic-state` command exposes deterministic JSON by default:
+
+```text
+semantic-state scan <repo>
+semantic-state watch <repo>
+semantic-state status <repo>
+semantic-state graph <repo> [--symbol ID]
+semantic-state explain-symbol <repo> <symbol>
+semantic-state explain-impact <repo> <symbol-or-file>...
+semantic-state invalidate <old-state> <new-state>
+semantic-state select-tests <repo> <symbol-or-file>...
+semantic-state pack-context <repo> <task> <target>
+semantic-state verify <repo> [--full-suite]
+semantic-state apply-patch <repo> <patch-or-task>
+semantic-state compare-full-suite <fixture-or-repo>
+semantic-state benchmark [--corpus PATH]
+```
+
+Commands that need an unavailable optional dependency/provider return a stable
+typed error on stdout/stderr and nonzero exit. Production `apply-patch` never
+falls back to simulation. CLI imports do not start watchers, processes,
+databases, daemons, networks, or package installation.
+
+## 17. Controlled fixtures and acceptance matrix
+
+The fixture repository is small enough for a full-suite oracle and contains
+committed snapshots/mutations for:
+
+1. local function body change;
+2. public signature change;
+3. cross-module call change;
+4. dataclass/schema change;
+5. exception behavior change;
+6. fixture dependency change;
+7. pytest configuration change;
+8. dynamic import;
+9. monkey patch;
+10. opaque native dependency;
+11. unrelated formatting change;
+12. deleted symbol;
+13. renamed symbol;
+14. generated file;
+15. stale receipt;
+16. failed root CAS;
+17. interrupted state transition;
+18. concurrent watchers/writers;
+19. out-of-scope model patch.
+
+The release suite proves bounded invalidation, all known dependent
+invalidations, raw-source fallback for opaque behavior, stale-receipt rejection,
+zero controlled-fixture test-selection false negatives, full-suite fallback,
+deterministic state roots, safe recovery, single-winner CAS, and the production
+simulation gate. It also runs cold-import tests with all automatic install
+features disabled and checks that imports do not change environment, create
+files/processes, or access the network.
+
+## 18. Exactly-40-task benchmark
+
+The checked-in corpus contains exactly 40 reproducible maintenance tasks:
+
+| Task type | Count |
+|---|---:|
+| Small bug fixes | 10 |
+| Test repairs | 6 |
+| API adapters | 6 |
+| Schema migrations | 6 |
+| Multi-file changes and refactors | 6 |
+| Expected rejection or frontier/human escalation | 6 |
+
+Every task records baseline raw/retrieval context tokens, semantic `ContextPack`
+tokens, exact raw code excluded, capsule count, invalidation cone, selected and
+full tests, proof obligations, model route, acceptance/rejection, assumptions,
+and uncertainty. Both context modes use the same pinned tokenizer/estimator and
+coverage policy. Required target/test/opaque source cannot be removed to improve
+the result.
+
+The initial gates are at least 30% median input-context reduction overall, zero
+known stale receipts admitted, zero controlled-fixture selection false
+negatives, deterministic state roots, and all uncertainty represented in each
+pack. Results include reduction by task type, precision/recall, fallback rate,
+latency by stage, artifact bytes, and route distribution. Failed and escalated
+tasks remain in the denominator.
+
+## 19. Parallel delivery plan
+
+The exact dependency DAG is encoded in the taskboard. Its waves are:
+
+```text
+A0  SCH-000
+A1  SCH-001 | SCH-002 | SCH-003 | SCH-014
+A2  SCH-004 | SCH-006 | SCH-016
+A3  SCH-005 | SCH-007 | SCH-010
+A4  SCH-008
+A5  SCH-009
+A6  SCH-011
+A7  SCH-012
+A8  SCH-013 | SCH-015 | SCH-017
+A9  SCH-018
+```
+
+Task output ownership is deliberately narrow. The three reviewed control files
+are protected from implementation workers. Parallel work may proceed only after
+`SCH-000` is manually sealed with the final dependency commits.
+
+## 20. Release evidence and honest limitations
+
+The final report is generated from committed receipts and benchmark results and
+must include architecture, exact packages/modules, commands/examples, tests and
+results, benchmark and task-type token reductions, test-selection precision and
+recall, known unsoundness/opaque cases, performance bottlenecks, and exact work
+remaining before ZK aggregation and production integration.
+
+Expected limitations remain explicit: Python reflection and dynamic dispatch
+can be opaque; static call/test selection is bounded rather than complete;
+pytest plugin behavior can require full-suite fallback; proof tools may be
+unavailable; token estimates depend on a declared estimator; external network,
+filesystem, and native effects cannot be proven absent by this analyzer. These
+limitations lower confidence or force source/full verification. They never
+become exact claims.
+
+No ZK aggregation is implemented. Future ZK work requires a frozen receipt
+circuit/input schema, deterministic verifier semantics, proof-system and setup
+selection, aggregation rules, key lifecycle, and independent security review.
+Production integration additionally requires supported live provider adapters,
+credential isolation, sandbox hardening, resource quotas, platform-specific
+worktree/process tests, release signing, migration/version policy, and an
+operational rollback/recovery runbook.
