@@ -588,7 +588,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-018 Document operations, schemas, evidence, and limitations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
