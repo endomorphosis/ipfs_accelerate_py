@@ -9,11 +9,25 @@ Interfaces owned by this module (board VGO-009):
 This is a pure, provider-free doctrine layer.  It does not alter backend
 authorization, credentials, MCP execution, or the SwissKnife browser gateway.
 Callers inject explicit path/change/evidence claims; the authority never
-elevates UI state, browser policy output, or missing evidence into permission.
+elevates UI state, browser policy output, scope declarations, or missing
+evidence into permission.
+
+Fail-closed invariants enforced here:
+
+* mapping inputs are closed and strictly typed (unknown keys reject;
+  only real booleans are accepted for boolean fields);
+* browser envelopes cannot hide path/command/credential selectors by
+  nesting, placement, casing, or alternate spelling;
+* claim-derived change kinds and computed patch/host decisions override
+  acceptance input and cannot be replaced by the caller;
+* authority evidence has a nonempty identity and, when used to authorize,
+  is current and bound to the exact action and canonical argument digest;
+* a scope declaration alone is never host authority.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -119,6 +133,76 @@ FORBIDDEN_BROWSER_COMMAND_FIELDS: Final[frozenset[str]] = frozenset(
     }
 )
 
+FORBIDDEN_BROWSER_PATH_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "host_path",
+        "file_path",
+        "filesystem_path",
+    }
+)
+
+FORBIDDEN_BROWSER_CREDENTIAL_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "authorization",
+        "backend_credentials",
+        "bearer_token",
+        "api_key",
+        "password",
+        "secret",
+    }
+)
+
+_PATCH_CLAIM_KEYS: Final[frozenset[str]] = frozenset(
+    {"path", "declared", "change_kinds"}
+)
+_BROWSER_HOST_INPUT_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "payload",
+        "fixture_only",
+        "uses_production_credentials",
+        "uses_production_services",
+        "uses_production_mcp_tools",
+        "uses_user_or_legal_data",
+        "selected_host_paths",
+        "selected_commands",
+        "selected_executables",
+    }
+)
+_AUTHORITY_EVIDENCE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "kind",
+        "valid",
+        "evidence_id",
+        "binds_action_id",
+        "binds_argument_digest",
+        "policy_decision_id",
+        "policy_fresh",
+        "notes",
+    }
+)
+_ACCEPTANCE_REQUEST_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "intended_action_id",
+        "intended_argument_digest",
+        "ui_visible",
+        "ui_enabled",
+        "browser_policy_outcome",
+        "browser_policy_authoritative_claim",
+        "policy_decision_id",
+        "policy_fresh",
+        "confirmation_required",
+        "confirmation_action_id",
+        "confirmation_argument_digest",
+        "confirmation_granted",
+        "change_kinds",
+        "evidence",
+        "accessibility_regression",
+        "security_regression",
+        "host_boundary_decision",
+        "patch_authority_decision",
+    }
+)
+
 
 class GuiAuthorityError(ValueError):
     """Malformed authority input.  Never grants permission."""
@@ -197,6 +281,11 @@ class AuthorityReasonCode(str, Enum):
     SECURITY_REGRESSION = "security_regression"
     FIXTURE_ONLY_VIOLATION = "fixture_only_violation"
     INVALID_AUTHORITY_INPUT = "invalid_authority_input"
+    UNKNOWN_FIELD = "unknown_field"
+    SCOPE_DECLARATION_NOT_AUTHORITY = "scope_declaration_not_authority"
+    EVIDENCE_BINDING_MISMATCH = "evidence_binding_mismatch"
+    EVIDENCE_NOT_CURRENT = "evidence_not_current"
+    EVIDENCE_IDENTITY_REQUIRED = "evidence_identity_required"
 
 
 # Change kinds that always require contract verification or human review.
@@ -230,6 +319,20 @@ ALWAYS_HUMAN_REVIEW_KINDS: Final[frozenset[ForbiddenChangeKind]] = frozenset(
     }
 )
 
+# Evidence kinds that may authorize an intended action when current and bound.
+# Scope declarations and fixture-boundary markers never grant host authority.
+HOST_AUTHORIZING_EVIDENCE_KINDS: Final[frozenset[AuthorityEvidenceKind]] = frozenset(
+    {
+        AuthorityEvidenceKind.CONTRACT_VERIFICATION,
+        AuthorityEvidenceKind.HUMAN_REVIEW,
+        AuthorityEvidenceKind.HOST_POLICY_REEVALUATION,
+        AuthorityEvidenceKind.EXACT_CONFIRMATION_BINDING,
+    }
+)
+
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])([A-Z])")
+_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
 
 def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
@@ -255,13 +358,87 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
 
 
 def _bool(value: Any, name: str) -> bool:
+    """Accept only real booleans.  String/int coercions are fail-open vectors."""
     if not isinstance(value, bool):
         raise GuiAuthorityError(
             f"{name} must be a boolean",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            details={"field": name},
+            details={"field": name, "value_type": type(value).__name__},
         )
     return value
+
+
+def _optional_mapping_bool(
+    payload: Mapping[str, Any], key: str, default: bool
+) -> bool:
+    if key not in payload:
+        return default
+    return _bool(payload[key], key)
+
+
+def _reject_unknown(
+    payload: Mapping[str, Any],
+    allowed: frozenset[str],
+    noun: str,
+) -> None:
+    unknown = sorted(set(payload) - set(allowed))
+    if unknown:
+        raise GuiAuthorityError(
+            f"{noun} contains unknown fields: {unknown}",
+            reason_code=AuthorityReasonCode.UNKNOWN_FIELD.value,
+            details={"noun": noun, "unknown_fields": unknown},
+        )
+
+
+def _canonical_field_token(key: str) -> str:
+    """Normalize key casing/separators so disguised selectors cannot hide."""
+    text = str(key).strip()
+    text = _CAMEL_BOUNDARY.sub(r"_\1", text)
+    text = text.replace("-", "_").replace(" ", "_").replace(".", "_")
+    text = text.lower()
+    while "__" in text:
+        text = text.replace("__", "_")
+    return text.strip("_")
+
+
+def _compact_field_token(key: str) -> str:
+    return _NON_ALNUM.sub("", _canonical_field_token(key))
+
+
+def _forbidden_token_sets() -> tuple[frozenset[str], frozenset[str]]:
+    canonical = set(FORBIDDEN_BROWSER_PAYLOAD_KEYS) | set(
+        FORBIDDEN_BROWSER_COMMAND_FIELDS
+    )
+    compact = {_compact_field_token(item) for item in canonical}
+    return frozenset(canonical), frozenset(compact)
+
+
+_FORBIDDEN_CANONICAL_KEYS, _FORBIDDEN_COMPACT_KEYS = _forbidden_token_sets()
+_PATH_CANONICAL = frozenset(FORBIDDEN_BROWSER_PATH_FIELDS)
+_PATH_COMPACT = frozenset(_compact_field_token(item) for item in _PATH_CANONICAL)
+_COMMAND_CANONICAL = frozenset(FORBIDDEN_BROWSER_COMMAND_FIELDS)
+_COMMAND_COMPACT = frozenset(
+    _compact_field_token(item) for item in _COMMAND_CANONICAL
+)
+_CREDENTIAL_CANONICAL = frozenset(FORBIDDEN_BROWSER_CREDENTIAL_FIELDS)
+_CREDENTIAL_COMPACT = frozenset(
+    _compact_field_token(item) for item in _CREDENTIAL_CANONICAL
+)
+
+
+def _classify_forbidden_key(key: str) -> str | None:
+    """Return 'path', 'command', 'credential', or None for a payload key."""
+    canonical = _canonical_field_token(key)
+    compact = _compact_field_token(key)
+    if canonical in _PATH_CANONICAL or compact in _PATH_COMPACT:
+        return "path"
+    if canonical in _COMMAND_CANONICAL or compact in _COMMAND_COMPACT:
+        return "command"
+    if canonical in _CREDENTIAL_CANONICAL or compact in _CREDENTIAL_COMPACT:
+        return "credential"
+    if canonical in _FORBIDDEN_CANONICAL_KEYS or compact in _FORBIDDEN_COMPACT_KEYS:
+        return "path"
+    return None
 
 
 def _normalize_repo_path(value: Any, name: str = "path") -> str:
@@ -324,6 +501,38 @@ def _freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
         )
     return MappingProxyType(dict(value))
+
+
+def _coerce_change_kinds(value: Any) -> tuple[ForbiddenChangeKind, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, ForbiddenChangeKind)):
+        return (_as_change_kind(value),)
+    if not isinstance(value, Sequence) or isinstance(value, (bytes, bytearray)):
+        raise GuiAuthorityError(
+            "change_kinds must be a sequence",
+            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    return tuple(_as_change_kind(kind) for kind in value)
+
+
+def _claim_change_kinds(
+    claims: Sequence[PatchPathClaim | Mapping[str, Any]],
+) -> tuple[ForbiddenChangeKind, ...]:
+    merged: list[ForbiddenChangeKind] = []
+    for claim in claims:
+        if isinstance(claim, PatchPathClaim):
+            merged.extend(claim.change_kinds)
+        elif isinstance(claim, Mapping):
+            merged.extend(_coerce_change_kinds(claim.get("change_kinds")))
+    # Preserve order while de-duplicating.
+    seen: set[ForbiddenChangeKind] = set()
+    ordered: list[ForbiddenChangeKind] = []
+    for kind in merged:
+        if kind not in seen:
+            seen.add(kind)
+            ordered.append(kind)
+    return tuple(ordered)
 
 
 def path_has_forbidden_segment(
@@ -459,6 +668,20 @@ class PatchPathClaim:
         kinds = tuple(_as_change_kind(kind) for kind in (self.change_kinds or ()))
         object.__setattr__(self, "change_kinds", kinds)
 
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any], *, index: int = 0) -> "PatchPathClaim":
+        if not isinstance(raw, Mapping):
+            raise GuiAuthorityError(
+                f"claims[{index}] must be a mapping",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+            )
+        _reject_unknown(raw, _PATCH_CLAIM_KEYS, f"claims[{index}]")
+        return cls(
+            path=raw.get("path", ""),
+            declared=_optional_mapping_bool(raw, "declared", True),
+            change_kinds=_coerce_change_kinds(raw.get("change_kinds")),
+        )
+
 
 @dataclass(frozen=True)
 class GuiPatchAuthority:
@@ -495,6 +718,7 @@ class GuiPatchAuthority:
 
     def evaluate_path(self, path: str, *, declared: bool = True) -> AuthorityDecision:
         """Evaluate a single path against allowed roots and forbidden segments."""
+        declared_flag = _bool(declared, "declared")
         try:
             normalized = _normalize_repo_path(path)
         except GuiAuthorityError as exc:
@@ -506,7 +730,7 @@ class GuiPatchAuthority:
                 message=str(exc),
                 details=exc.details,
             )
-        if not declared:
+        if not declared_flag:
             return _decision(
                 AuthorityVerdict.REJECT,
                 AuthorityReasonCode.UNDECLARED_PATH,
@@ -536,7 +760,10 @@ class GuiPatchAuthority:
                 interface=self.interface,
                 schema=self.schema,
                 message="path is outside allowed optimizer roots",
-                details={"path": normalized, "allowed_roots": list(self.allowed_roots)},
+                details={
+                    "path": normalized,
+                    "allowed_roots": list(self.allowed_roots),
+                },
             )
         return _decision(
             AuthorityVerdict.ALLOW,
@@ -662,19 +889,7 @@ class GuiPatchAuthority:
     ) -> PatchPathClaim:
         if isinstance(raw, PatchPathClaim):
             return raw
-        if not isinstance(raw, Mapping):
-            raise GuiAuthorityError(
-                f"claims[{index}] must be a PatchPathClaim or mapping",
-                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            )
-        kinds = raw.get("change_kinds") or ()
-        if isinstance(kinds, (str, ForbiddenChangeKind)):
-            kinds = (kinds,)
-        return PatchPathClaim(
-            path=raw.get("path", ""),
-            declared=bool(raw.get("declared", True)),
-            change_kinds=tuple(kinds),
-        )
+        return PatchPathClaim.from_mapping(raw, index=index)
 
 
 # ---------------------------------------------------------------------------
@@ -755,23 +970,58 @@ class BrowserHostInput:
             ),
         )
 
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> "BrowserHostInput":
+        if not isinstance(raw, Mapping):
+            raise GuiAuthorityError(
+                "browser_input must be a mapping",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+            )
+        _reject_unknown(raw, _BROWSER_HOST_INPUT_KEYS, "browser_input")
+        payload = raw.get("payload") if "payload" in raw else {}
+        if payload is None:
+            payload = {}
+        if not isinstance(payload, Mapping):
+            raise GuiAuthorityError(
+                "payload must be a mapping",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+            )
+        return cls(
+            payload=payload,
+            fixture_only=_optional_mapping_bool(raw, "fixture_only", True),
+            uses_production_credentials=_optional_mapping_bool(
+                raw, "uses_production_credentials", False
+            ),
+            uses_production_services=_optional_mapping_bool(
+                raw, "uses_production_services", False
+            ),
+            uses_production_mcp_tools=_optional_mapping_bool(
+                raw, "uses_production_mcp_tools", False
+            ),
+            uses_user_or_legal_data=_optional_mapping_bool(
+                raw, "uses_user_or_legal_data", False
+            ),
+            selected_host_paths=tuple(raw.get("selected_host_paths") or ()),
+            selected_commands=tuple(raw.get("selected_commands") or ()),
+            selected_executables=tuple(raw.get("selected_executables") or ()),
+        )
+
 
 def _walk_forbidden_payload_keys(
     value: Any,
     *,
     path: str = "",
-    found: list[str] | None = None,
-) -> list[str]:
+    found: list[tuple[str, str]] | None = None,
+) -> list[tuple[str, str]]:
+    """Return (json_path, classification) for forbidden selectors."""
     hits = found if found is not None else []
     if isinstance(value, Mapping):
         for key, child in value.items():
             key_text = str(key)
             child_path = f"{path}.{key_text}" if path else key_text
-            lowered = key_text.lower()
-            if lowered in FORBIDDEN_BROWSER_PAYLOAD_KEYS:
-                hits.append(child_path)
-            if lowered in FORBIDDEN_BROWSER_COMMAND_FIELDS:
-                hits.append(child_path)
+            classification = _classify_forbidden_key(key_text)
+            if classification is not None:
+                hits.append((child_path, classification))
             _walk_forbidden_payload_keys(child, path=child_path, found=hits)
     elif isinstance(value, Sequence) and not isinstance(
         value, (str, bytes, bytearray)
@@ -878,7 +1128,9 @@ class GuiHostBoundaryPolicy:
                 AuthorityReasonCode.BROWSER_PRODUCTION_INPUT_FORBIDDEN,
                 interface=self.interface,
                 schema=self.schema,
-                message="production credentials, services, tools, or data are forbidden",
+                message=(
+                    "production credentials, services, tools, or data are forbidden"
+                ),
                 details=production_flags,
             )
 
@@ -889,7 +1141,9 @@ class GuiHostBoundaryPolicy:
                 interface=self.interface,
                 schema=self.schema,
                 message="browser content cannot select host paths",
-                details={"selected_host_paths": list(payload_input.selected_host_paths)},
+                details={
+                    "selected_host_paths": list(payload_input.selected_host_paths)
+                },
             )
 
         if payload_input.selected_commands or payload_input.selected_executables:
@@ -907,35 +1161,11 @@ class GuiHostBoundaryPolicy:
 
         forbidden_keys = _walk_forbidden_payload_keys(payload_input.payload)
         if forbidden_keys:
-            credential_hit = any(
-                key.lower().rsplit(".", 1)[-1]
-                in {
-                    "authorization",
-                    "backend_credentials",
-                    "bearer_token",
-                    "api_key",
-                    "password",
-                    "secret",
-                }
-                for key in forbidden_keys
-            )
-            command_hit = any(
-                key.lower().rsplit(".", 1)[-1] in FORBIDDEN_BROWSER_COMMAND_FIELDS
-                or key.lower().rsplit(".", 1)[-1]
-                in {"python_process", "process_command", "stdio", "subprocess"}
-                for key in forbidden_keys
-            )
-            path_hit = any(
-                key.lower().rsplit(".", 1)[-1]
-                in {"host_path", "file_path", "filesystem_path"}
-                for key in forbidden_keys
-            )
-            if credential_hit:
+            classifications = {item[1] for item in forbidden_keys}
+            if "credential" in classifications:
                 reason = AuthorityReasonCode.BROWSER_CREDENTIAL_FORBIDDEN
-            elif command_hit:
+            elif "command" in classifications:
                 reason = AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN
-            elif path_hit:
-                reason = AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN
             else:
                 reason = AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN
             return _decision(
@@ -944,7 +1174,10 @@ class GuiHostBoundaryPolicy:
                 interface=self.interface,
                 schema=self.schema,
                 message="browser payload contains forbidden host-boundary keys",
-                details={"forbidden_keys": forbidden_keys},
+                details={
+                    "forbidden_keys": [item[0] for item in forbidden_keys],
+                    "classifications": sorted(classifications),
+                },
             )
 
         if self.forbid_absolute_path_strings or self.forbid_command_like_strings:
@@ -1010,29 +1243,7 @@ class GuiHostBoundaryPolicy:
                 "browser_input must be a BrowserHostInput or mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             )
-        return BrowserHostInput(
-            payload=browser_input.get("payload") or {},
-            fixture_only=bool(browser_input.get("fixture_only", True)),
-            uses_production_credentials=bool(
-                browser_input.get("uses_production_credentials", False)
-            ),
-            uses_production_services=bool(
-                browser_input.get("uses_production_services", False)
-            ),
-            uses_production_mcp_tools=bool(
-                browser_input.get("uses_production_mcp_tools", False)
-            ),
-            uses_user_or_legal_data=bool(
-                browser_input.get("uses_user_or_legal_data", False)
-            ),
-            selected_host_paths=tuple(
-                browser_input.get("selected_host_paths") or ()
-            ),
-            selected_commands=tuple(browser_input.get("selected_commands") or ()),
-            selected_executables=tuple(
-                browser_input.get("selected_executables") or ()
-            ),
-        )
+        return BrowserHostInput.from_mapping(browser_input)
 
 
 # ---------------------------------------------------------------------------
@@ -1042,7 +1253,11 @@ class GuiHostBoundaryPolicy:
 
 @dataclass(frozen=True)
 class AuthorityEvidence:
-    """One piece of evidence offered to justify automatic acceptance."""
+    """One piece of evidence offered to justify automatic acceptance.
+
+    Identity is mandatory.  Evidence used to authorize an intended action must
+    also be current and bound to that exact action and canonical argument digest.
+    """
 
     kind: AuthorityEvidenceKind
     valid: bool
@@ -1056,11 +1271,14 @@ class AuthorityEvidence:
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", _as_evidence_kind(self.kind))
         object.__setattr__(self, "valid", _bool(self.valid, "valid"))
-        object.__setattr__(
-            self,
-            "evidence_id",
-            _text(self.evidence_id, "evidence_id", required=False),
-        )
+        evidence_id = _text(self.evidence_id, "evidence_id", required=False)
+        if not evidence_id:
+            raise GuiAuthorityError(
+                "authority evidence requires a nonempty identity",
+                reason_code=AuthorityReasonCode.EVIDENCE_IDENTITY_REQUIRED.value,
+                details={"field": "evidence_id"},
+            )
+        object.__setattr__(self, "evidence_id", evidence_id)
         object.__setattr__(
             self,
             "binds_action_id",
@@ -1082,6 +1300,30 @@ class AuthorityEvidence:
             self, "policy_fresh", _bool(self.policy_fresh, "policy_fresh")
         )
         object.__setattr__(self, "notes", str(self.notes or ""))
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any], *, index: int = 0) -> "AuthorityEvidence":
+        if not isinstance(raw, Mapping):
+            raise GuiAuthorityError(
+                f"evidence[{index}] must be a mapping",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+            )
+        _reject_unknown(raw, _AUTHORITY_EVIDENCE_KEYS, f"evidence[{index}]")
+        if "valid" not in raw:
+            raise GuiAuthorityError(
+                f"evidence[{index}].valid is required",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+            )
+        return cls(
+            kind=raw.get("kind", ""),
+            valid=_bool(raw["valid"], f"evidence[{index}].valid"),
+            evidence_id=str(raw.get("evidence_id") or ""),
+            binds_action_id=str(raw.get("binds_action_id") or ""),
+            binds_argument_digest=str(raw.get("binds_argument_digest") or ""),
+            policy_decision_id=str(raw.get("policy_decision_id") or ""),
+            policy_fresh=_optional_mapping_bool(raw, "policy_fresh", False),
+            notes=str(raw.get("notes") or ""),
+        )
 
 
 @dataclass(frozen=True)
@@ -1182,24 +1424,11 @@ class AcceptanceAuthorityRequest:
         kinds = tuple(_as_change_kind(kind) for kind in (self.change_kinds or ()))
         object.__setattr__(self, "change_kinds", kinds)
         evidence_items: list[AuthorityEvidence] = []
-        for item in self.evidence or ():
+        for index, item in enumerate(self.evidence or ()):
             if isinstance(item, AuthorityEvidence):
                 evidence_items.append(item)
             elif isinstance(item, Mapping):
-                evidence_items.append(
-                    AuthorityEvidence(
-                        kind=item.get("kind", ""),
-                        valid=bool(item.get("valid", False)),
-                        evidence_id=str(item.get("evidence_id") or ""),
-                        binds_action_id=str(item.get("binds_action_id") or ""),
-                        binds_argument_digest=str(
-                            item.get("binds_argument_digest") or ""
-                        ),
-                        policy_decision_id=str(item.get("policy_decision_id") or ""),
-                        policy_fresh=bool(item.get("policy_fresh", False)),
-                        notes=str(item.get("notes") or ""),
-                    )
-                )
+                evidence_items.append(AuthorityEvidence.from_mapping(item, index=index))
             else:
                 raise GuiAuthorityError(
                     "evidence items must be AuthorityEvidence or mappings",
@@ -1231,6 +1460,47 @@ class AcceptanceAuthorityRequest:
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             )
 
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> "AcceptanceAuthorityRequest":
+        if not isinstance(raw, Mapping):
+            raise GuiAuthorityError(
+                "request must be a mapping",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+            )
+        _reject_unknown(raw, _ACCEPTANCE_REQUEST_KEYS, "acceptance_request")
+        return cls(
+            intended_action_id=str(raw.get("intended_action_id") or ""),
+            intended_argument_digest=str(raw.get("intended_argument_digest") or ""),
+            ui_visible=_optional_mapping_bool(raw, "ui_visible", False),
+            ui_enabled=_optional_mapping_bool(raw, "ui_enabled", False),
+            browser_policy_outcome=str(raw.get("browser_policy_outcome") or ""),
+            browser_policy_authoritative_claim=_optional_mapping_bool(
+                raw, "browser_policy_authoritative_claim", False
+            ),
+            policy_decision_id=str(raw.get("policy_decision_id") or ""),
+            policy_fresh=_optional_mapping_bool(raw, "policy_fresh", False),
+            confirmation_required=_optional_mapping_bool(
+                raw, "confirmation_required", False
+            ),
+            confirmation_action_id=str(raw.get("confirmation_action_id") or ""),
+            confirmation_argument_digest=str(
+                raw.get("confirmation_argument_digest") or ""
+            ),
+            confirmation_granted=_optional_mapping_bool(
+                raw, "confirmation_granted", False
+            ),
+            change_kinds=_coerce_change_kinds(raw.get("change_kinds")),
+            evidence=tuple(raw.get("evidence") or ()),
+            accessibility_regression=_optional_mapping_bool(
+                raw, "accessibility_regression", False
+            ),
+            security_regression=_optional_mapping_bool(
+                raw, "security_regression", False
+            ),
+            host_boundary_decision=raw.get("host_boundary_decision"),
+            patch_authority_decision=raw.get("patch_authority_decision"),
+        )
+
 
 @dataclass(frozen=True)
 class GuiAcceptanceAuthority:
@@ -1240,7 +1510,8 @@ class GuiAcceptanceAuthority:
 
     UI state cannot synthesize authorization.  Browser policy output is never
     authoritative.  Sensitive changes require contract verification or human
-    review.  Missing or invalid authority evidence rejects safely.
+    review.  Missing or invalid authority evidence rejects safely.  Scope
+    declarations never grant host authority by themselves.
     """
 
     schema: str = GUI_ACCEPTANCE_AUTHORITY_SCHEMA
@@ -1301,7 +1572,6 @@ class GuiAcceptanceAuthority:
         if (req.ui_visible or req.ui_enabled) and not self._has_valid_host_authority(
             req
         ):
-            # Presence of UI state alone is fine; using it as the sole authority is not.
             if not req.evidence and not req.policy_decision_id:
                 return _decision(
                     AuthorityVerdict.REJECT,
@@ -1309,7 +1579,9 @@ class GuiAcceptanceAuthority:
                     AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE,
                     interface=self.interface,
                     schema=self.schema,
-                    message="UI visibility/enabled state cannot synthesize authorization",
+                    message=(
+                        "UI visibility/enabled state cannot synthesize authorization"
+                    ),
                     details={
                         "ui_visible": req.ui_visible,
                         "ui_enabled": req.ui_enabled,
@@ -1381,6 +1653,28 @@ class GuiAcceptanceAuthority:
                 details={"invalid_evidence": invalid_evidence},
             )
 
+        # Reject valid-looking evidence that is stale or wrongly bound when it
+        # claims to authorize the intended action.
+        binding_failure = self._evidence_binding_failure(req)
+        if binding_failure is not None:
+            return binding_failure
+
+        # Scope-only packages never satisfy host authority.
+        if (
+            req.intended_action_id
+            and not self._has_valid_host_authority(req)
+            and self._only_scope_evidence(req)
+        ):
+            return _decision(
+                AuthorityVerdict.REJECT,
+                AuthorityReasonCode.SCOPE_DECLARATION_NOT_AUTHORITY,
+                AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE,
+                interface=self.interface,
+                schema=self.schema,
+                message="a scope declaration alone is never host authority",
+                details={"intended_action_id": req.intended_action_id},
+            )
+
         sensitive = tuple(
             kind for kind in req.change_kinds if kind in SENSITIVE_CHANGE_KINDS
         )
@@ -1434,9 +1728,6 @@ class GuiAcceptanceAuthority:
                 details={"patch_authority": req.patch_authority_decision.to_dict()},
             )
 
-        # Automatic acceptance still needs at least one valid host-side evidence
-        # class when an action is declared, or an explicit empty-action allow for
-        # pure observation receipts.
         if req.intended_action_id and not self._has_valid_host_authority(req):
             return _decision(
                 AuthorityVerdict.REJECT,
@@ -1455,29 +1746,139 @@ class GuiAcceptanceAuthority:
             message="acceptance authority requirements are satisfied",
         )
 
+    def _only_scope_evidence(self, request: AcceptanceAuthorityRequest) -> bool:
+        if not request.evidence:
+            return False
+        return all(
+            item.kind is AuthorityEvidenceKind.SCOPE_DECLARATION
+            for item in request.evidence
+        )
+
+    def _evidence_is_current(
+        self,
+        item: AuthorityEvidence,
+        request: AcceptanceAuthorityRequest,
+    ) -> bool:
+        if item.kind is AuthorityEvidenceKind.HOST_POLICY_REEVALUATION:
+            if not item.policy_fresh:
+                return False
+            if (
+                item.policy_decision_id
+                and request.policy_decision_id
+                and item.policy_decision_id != request.policy_decision_id
+            ):
+                return False
+            if request.policy_decision_id and not request.policy_fresh:
+                return False
+        return True
+
+    def _evidence_is_bound(
+        self,
+        item: AuthorityEvidence,
+        request: AcceptanceAuthorityRequest,
+    ) -> bool:
+        """Evidence that authorizes must bind the exact action and arg digest."""
+        if not request.intended_action_id:
+            return False
+        if item.binds_action_id != request.intended_action_id:
+            return False
+        if item.binds_argument_digest != request.intended_argument_digest:
+            return False
+        return True
+
+    def _evidence_can_authorize(
+        self,
+        item: AuthorityEvidence,
+        request: AcceptanceAuthorityRequest,
+    ) -> bool:
+        if not item.valid:
+            return False
+        if not item.evidence_id:
+            return False
+        if item.kind not in HOST_AUTHORIZING_EVIDENCE_KINDS:
+            return False
+        if not self._evidence_is_current(item, request):
+            return False
+        if not self._evidence_is_bound(item, request):
+            return False
+        return True
+
+    def _evidence_binding_failure(
+        self, request: AcceptanceAuthorityRequest
+    ) -> AuthorityDecision | None:
+        """Reject evidence that claims authorization but is stale or unbound."""
+        for item in request.evidence:
+            if not item.valid:
+                continue
+            if item.kind not in HOST_AUTHORIZING_EVIDENCE_KINDS:
+                continue
+            # Only scrutinize evidence that attempts to bind or re-evaluate policy.
+            claims_authorization = bool(
+                item.binds_action_id
+                or item.binds_argument_digest
+                or item.kind is AuthorityEvidenceKind.HOST_POLICY_REEVALUATION
+                or item.kind is AuthorityEvidenceKind.EXACT_CONFIRMATION_BINDING
+            )
+            if not claims_authorization:
+                continue
+            if not self._evidence_is_current(item, request):
+                return _decision(
+                    AuthorityVerdict.REJECT,
+                    AuthorityReasonCode.EVIDENCE_NOT_CURRENT,
+                    AuthorityReasonCode.STALE_POLICY_DECISION,
+                    interface=self.interface,
+                    schema=self.schema,
+                    message=(
+                        "authority evidence used to authorize must be current"
+                    ),
+                    details={
+                        "evidence_id": item.evidence_id,
+                        "kind": item.kind.value,
+                    },
+                )
+            if request.intended_action_id and not self._evidence_is_bound(
+                item, request
+            ):
+                return _decision(
+                    AuthorityVerdict.REJECT,
+                    AuthorityReasonCode.EVIDENCE_BINDING_MISMATCH,
+                    interface=self.interface,
+                    schema=self.schema,
+                    message=(
+                        "authority evidence must bind the exact action and "
+                        "canonical argument digest"
+                    ),
+                    details={
+                        "evidence_id": item.evidence_id,
+                        "binds_action_id": item.binds_action_id,
+                        "intended_action_id": request.intended_action_id,
+                        "binds_argument_digest": item.binds_argument_digest,
+                        "intended_argument_digest": request.intended_argument_digest,
+                    },
+                )
+        return None
+
     def _has_valid_evidence(
         self,
         request: AcceptanceAuthorityRequest,
         kind: AuthorityEvidenceKind,
     ) -> bool:
         return any(
-            item.kind is kind and item.valid for item in request.evidence
+            item.kind is kind and self._evidence_can_authorize(item, request)
+            for item in request.evidence
         )
 
     def _has_valid_host_authority(self, request: AcceptanceAuthorityRequest) -> bool:
-        """Host re-evaluation, exact confirmation, contract, or human review."""
+        """Host re-evaluation, exact confirmation, contract, or human review.
+
+        A fresh host policy decision id is host authority.  Scope declarations
+        and fixture markers never are.  Evidence only counts when current and
+        bound to the intended action and canonical argument digest.
+        """
         if request.policy_decision_id and request.policy_fresh:
             return True
         for item in request.evidence:
-            if not item.valid:
-                continue
-            if item.kind in {
-                AuthorityEvidenceKind.HOST_POLICY_REEVALUATION,
-                AuthorityEvidenceKind.CONTRACT_VERIFICATION,
-                AuthorityEvidenceKind.HUMAN_REVIEW,
-                AuthorityEvidenceKind.EXACT_CONFIRMATION_BINDING,
-                AuthorityEvidenceKind.SCOPE_DECLARATION,
-            }:
+            if self._evidence_can_authorize(item, request):
                 return True
         if (
             request.confirmation_required
@@ -1500,43 +1901,7 @@ class GuiAcceptanceAuthority:
                 "request must be an AcceptanceAuthorityRequest or mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             )
-        kinds = request.get("change_kinds") or ()
-        if isinstance(kinds, (str, ForbiddenChangeKind)):
-            kinds = (kinds,)
-        return AcceptanceAuthorityRequest(
-            intended_action_id=str(request.get("intended_action_id") or ""),
-            intended_argument_digest=str(
-                request.get("intended_argument_digest") or ""
-            ),
-            ui_visible=bool(request.get("ui_visible", False)),
-            ui_enabled=bool(request.get("ui_enabled", False)),
-            browser_policy_outcome=str(
-                request.get("browser_policy_outcome") or ""
-            ),
-            browser_policy_authoritative_claim=bool(
-                request.get("browser_policy_authoritative_claim", False)
-            ),
-            policy_decision_id=str(request.get("policy_decision_id") or ""),
-            policy_fresh=bool(request.get("policy_fresh", False)),
-            confirmation_required=bool(
-                request.get("confirmation_required", False)
-            ),
-            confirmation_action_id=str(
-                request.get("confirmation_action_id") or ""
-            ),
-            confirmation_argument_digest=str(
-                request.get("confirmation_argument_digest") or ""
-            ),
-            confirmation_granted=bool(request.get("confirmation_granted", False)),
-            change_kinds=tuple(kinds),
-            evidence=tuple(request.get("evidence") or ()),
-            accessibility_regression=bool(
-                request.get("accessibility_regression", False)
-            ),
-            security_regression=bool(request.get("security_regression", False)),
-            host_boundary_decision=request.get("host_boundary_decision"),
-            patch_authority_decision=request.get("patch_authority_decision"),
-        )
+        return AcceptanceAuthorityRequest.from_mapping(request)
 
 
 # ---------------------------------------------------------------------------
@@ -1578,7 +1943,11 @@ class GuiOptimizerSecurityAuthority:
         browser_input: BrowserHostInput | Mapping[str, Any] | None = None,
         acceptance: AcceptanceAuthorityRequest | Mapping[str, Any] | None = None,
     ) -> AuthorityDecision:
-        """Evaluate patch, optional host boundary, then acceptance in order."""
+        """Evaluate patch, optional host boundary, then acceptance in order.
+
+        Claim-derived change kinds and computed patch/host decisions always
+        override caller-supplied acceptance fields.
+        """
         patch_decision = self.patch.evaluate_claims(claims)
         if patch_decision.rejected:
             return patch_decision
@@ -1605,7 +1974,13 @@ class GuiOptimizerSecurityAuthority:
                 },
             )
 
+        claim_kinds = _claim_change_kinds(claims)
+
         if isinstance(acceptance, AcceptanceAuthorityRequest):
+            # Claim-derived kinds cannot be stripped by acceptance input.
+            merged_kinds = tuple(
+                dict.fromkeys((*claim_kinds, *acceptance.change_kinds))
+            )
             acceptance_request = AcceptanceAuthorityRequest(
                 intended_action_id=acceptance.intended_action_id,
                 intended_argument_digest=acceptance.intended_argument_digest,
@@ -1623,30 +1998,23 @@ class GuiOptimizerSecurityAuthority:
                     acceptance.confirmation_argument_digest
                 ),
                 confirmation_granted=acceptance.confirmation_granted,
-                change_kinds=acceptance.change_kinds,
+                change_kinds=merged_kinds,
                 evidence=acceptance.evidence,
                 accessibility_regression=acceptance.accessibility_regression,
                 security_regression=acceptance.security_regression,
-                host_boundary_decision=host_decision
-                or acceptance.host_boundary_decision,
+                # Computed decisions always win over caller-supplied values.
+                host_boundary_decision=host_decision,
                 patch_authority_decision=patch_decision,
             )
         else:
             payload = dict(acceptance)
-            payload.setdefault("host_boundary_decision", host_decision)
-            payload.setdefault("patch_authority_decision", patch_decision)
-            # Merge claim change kinds when the caller omitted them.
-            if not payload.get("change_kinds"):
-                merged: list[ForbiddenChangeKind] = []
-                for claim in claims:
-                    if isinstance(claim, PatchPathClaim):
-                        merged.extend(claim.change_kinds)
-                    elif isinstance(claim, Mapping):
-                        kinds = claim.get("change_kinds") or ()
-                        if isinstance(kinds, (str, ForbiddenChangeKind)):
-                            kinds = (kinds,)
-                        merged.extend(_as_change_kind(kind) for kind in kinds)
-                payload["change_kinds"] = tuple(merged)
+            # Force computed decisions; never setdefault (caller override vector).
+            payload["host_boundary_decision"] = host_decision
+            payload["patch_authority_decision"] = patch_decision
+            acceptance_kinds = _coerce_change_kinds(payload.get("change_kinds"))
+            payload["change_kinds"] = tuple(
+                dict.fromkeys((*claim_kinds, *acceptance_kinds))
+            )
             acceptance_request = self.acceptance._coerce_request(payload)
 
         return self.acceptance.evaluate(acceptance_request)
@@ -1669,6 +2037,8 @@ __all__ = (
     "DEFAULT_ALLOWED_ROOTS",
     "DEFAULT_FORBIDDEN_PATH_PARTS",
     "FORBIDDEN_BROWSER_COMMAND_FIELDS",
+    "FORBIDDEN_BROWSER_CREDENTIAL_FIELDS",
+    "FORBIDDEN_BROWSER_PATH_FIELDS",
     "FORBIDDEN_BROWSER_PAYLOAD_KEYS",
     "ForbiddenChangeKind",
     "GUI_ACCEPTANCE_AUTHORITY_INTERFACE",
@@ -1678,6 +2048,7 @@ __all__ = (
     "GUI_HOST_BOUNDARY_POLICY_SCHEMA",
     "GUI_PATCH_AUTHORITY_INTERFACE",
     "GUI_PATCH_AUTHORITY_SCHEMA",
+    "HOST_AUTHORIZING_EVIDENCE_KINDS",
     "GuiAcceptanceAuthority",
     "GuiAuthorityError",
     "GuiHostBoundaryPolicy",
