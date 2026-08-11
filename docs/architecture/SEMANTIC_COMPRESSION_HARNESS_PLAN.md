@@ -35,14 +35,18 @@ remain unresolved until their respective repaired closeouts supply exact
 40-hex commits:
 
 ```text
-IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT
-IPFS_DATASETS_SEMANTIC_STATE_COMMIT              = UNRESOLVED_FINAL_REPAIRED_COMMIT
+IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_ISI_COMMIT
+IPFS_DATASETS_SEMANTIC_STATE_COMMIT              = UNRESOLVED_FINAL_DSS_COMMIT
 IPFS_KIT_DURABLE_ROOT_COMMIT                     = 05ba9375923cd5fb52e2c9c18b98b530d57d077f
 ```
 
-The gate fails closed if either datasets value is unresolved, or if any pin is
-not a commit reachable from the intended repository or does not pass its
-producer's contract tests.
+The gate fails closed if either datasets value is unresolved, or if any bound
+checkout is not the canonical, clean worktree root whose `HEAD`, commit object,
+tree, origin, and required blobs equal the operator-owned seal, or does not pass
+its producer's contract tests. The policy is named `exact_clean_head`: it
+proves the exact local Git object reviewed and separately verifies the configured
+origin URL; it deliberately does not claim that a remote ref advertises the
+commit.
 The dependency seal records all four repository origins and all five commit
 authorities (accelerate, MCP++, datasets ISI, datasets semantic state, and kit),
 plus interface/schema fingerprints and the Python 3.12 toolchain. A
@@ -50,6 +54,47 @@ deterministic seal validator must check those values; `git
 rev-parse` alone is not validation. Workers may not infer a pin from a mutable
 branch, current checkout, editable install, submodule pointer, or ambient
 `PYTHONPATH` ordering.
+
+The validator, rather than the JSON document, owns the exact five-role order,
+repository/origin mapping, commit and tree pins, required path sets, argv-only
+test tuples, bounded timeouts, target/wire schemas, and API signatures. Each
+complete authority fingerprint binds all of those fields and every required
+blob OID. A producer cannot replace its manifest with a smoke test and
+re-fingerprint the weakened document. A sealed check requires `--run-tests`,
+uses a fresh role-local environment whose `PYTHONPATH` is exactly that checkout,
+and checks cleanliness both before and after every command.
+
+The two datasets authorities share an origin but never a checkout. The final
+phase-one and phase-two closeouts must be supplied through distinct clean roots,
+as must all other roles:
+
+```text
+SCH_ACCELERATE_CHECKOUT  # exact ea11293... runtime authority
+SCH_ISI_CHECKOUT         # exact final phase-one closeout
+SCH_DSS_CHECKOUT         # exact final phase-two closeout
+SCH_KIT_CHECKOUT         # exact 05ba937... durable-root authority
+SCH_MCP_PLUS_PLUS_CHECKOUT
+```
+
+The final manual command is equivalent to:
+
+```text
+python3.12 scripts/validate_semantic_state_dependencies.py \
+  --check config/semantic_state_dependencies.seal.json \
+  --repo accelerate_harness=${SCH_ACCELERATE_CHECKOUT} \
+  --repo incremental_semantic_index=${SCH_ISI_CHECKOUT} \
+  --repo semantic_state_contracts=${SCH_DSS_CHECKOUT} \
+  --repo kit_state_roots=${SCH_KIT_CHECKOUT} \
+  --repo mcp_plus_plus=${SCH_MCP_PLUS_PLUS_CHECKOUT} \
+  --run-tests
+```
+
+An AST audit of the harness package additionally rejects local scanner, symbol
+graph, semantic-state view/capsule/selection, durable-root, generic MCP++
+envelope/event/receipt, canonical-byte, or CID authority implementations,
+including aliases and reversed hasher names. `SemanticCapsuleRef` and
+`TestSelectionRef` remain reference/admission records only, and the adapter
+opens the datasets-owned `SemanticStateView` through its injected block reader.
 
 ## 2. Scope and completion outcome
 

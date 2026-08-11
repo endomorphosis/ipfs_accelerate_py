@@ -7,6 +7,9 @@ Protected companion artifacts:
 - `docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md`
 - `docs/architecture/semantic_compression_harness.objectives.md`
 - `docs/architecture/semantic_compression_harness.todo.md`
+- `config/semantic_state_dependencies.seal.json`
+- `scripts/validate_semantic_state_dependencies.py`
+- `test/api/semantic_state/test_dependency_seal.py`
 
 These control documents are reviewed inputs and may be changed only by the
 operator while sealing `SCH-000`; implementation workers must not edit them.
@@ -55,7 +58,7 @@ A9  SCH-018
 - Depends on:
 - Goal id: SCH-G010
 - Outputs: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md, docs/architecture/semantic_compression_harness.objectives.md, docs/architecture/semantic_compression_harness.todo.md, config/semantic_state_dependencies.seal.json, scripts/validate_semantic_state_dependencies.py, test/api/semantic_state/test_dependency_seal.py
-- Validation: python3.12 scripts/validate_semantic_state_dependencies.py --check config/semantic_state_dependencies.seal.json && python3.12 -m pytest -q test/api/semantic_state/test_dependency_seal.py
+- Validation: python3.12 scripts/validate_semantic_state_dependencies.py --check config/semantic_state_dependencies.seal.json --repo accelerate_harness=${SCH_ACCELERATE_CHECKOUT} --repo incremental_semantic_index=${SCH_ISI_CHECKOUT} --repo semantic_state_contracts=${SCH_DSS_CHECKOUT} --repo kit_state_roots=${SCH_KIT_CHECKOUT} --repo mcp_plus_plus=${SCH_MCP_PLUS_PLUS_CHECKOUT} --run-tests && python3.12 -m pytest -q test/api/semantic_state/test_dependency_seal.py
 - Board namespace: semantic-compression-harness-v1
 - Bundle: sch/control
 - Parallel lane: sch-control
@@ -68,10 +71,10 @@ A9  SCH-018
 - Predicted files: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md, docs/architecture/semantic_compression_harness.objectives.md, docs/architecture/semantic_compression_harness.todo.md, config/semantic_state_dependencies.seal.json, scripts/validate_semantic_state_dependencies.py, test/api/semantic_state/test_dependency_seal.py
 - Predicted symbols: SemanticStateDependencySeal
 - Interfaces: SemanticStateDependencySeal@1
-- Conflict policy: Operator-only launch gate. No implementation worker may infer, update, merge, or bypass dependency pins or edit the protected control files.
-- Preconditions: Accelerate baseline is `ea11293bb996f052d620eae989f5377a956764b1`; MCP++ authority is `dc3164653a48d059ae9812078359daeafb451c07`; final kit generation-bearing durable-root authority is `05ba9375923cd5fb52e2c9c18b98b530d57d077f`; the exact final repaired datasets incremental-semantic-index and semantic-state/Merkle/capsule commits have not yet both been supplied. Until those separate closeouts arrive, `IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` and `IPFS_DATASETS_SEMANTIC_STATE_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` remain fail-closed; workers must not infer either value from ancestry or a mutable branch.
-- Effects: Replaces only the two unresolved datasets placeholders with their exact reachable 40-hex commits, retains and validates the exact kit commit, and records all four repository origins and all five commit authorities, interface and schema fingerprints, Python 3.12/toolchain, and producer test commands; rejects ambient editable/PYTHONPATH substitution; runs real producer contract tests and seals their outputs for every downstream worker.
-- Acceptance: The validator rejects unresolved, mutable, unreachable, dirty, origin-mismatched, fingerprint-incompatible, non-Python-3.12, or failing dependencies. Datasets separately proves the real Git-tree scan -> resolved graph -> delta -> invalidation path and the storage-neutral semantic-state bundle/view -> symbol-node Merkle DAG -> capsule/source -> previous/current selection path without injected edges. Kit exposes direct lazy `DurableCoordinationStore` plus generation-bearing read-root/expected-token-CAS/recover. The board is acyclic and only then is SCH-000 marked complete.
+- Conflict policy: Operator-only launch gate. No implementation worker may infer, update, merge, complete, or bypass dependency pins or edit any protected control file. The phase-one and phase-two datasets authorities require separate canonical clean worktree roots; neither may be inferred from the other's ancestry or from this harness checkout.
+- Preconditions: Accelerate runtime authority is `ea11293bb996f052d620eae989f5377a956764b1`; MCP++ is `dc3164653a48d059ae9812078359daeafb451c07`; kit is `05ba9375923cd5fb52e2c9c18b98b530d57d077f`; the exact final repaired datasets ISI and semantic-state commits remain unresolved. Separate `${SCH_ACCELERATE_CHECKOUT}`, `${SCH_ISI_CHECKOUT}`, `${SCH_DSS_CHECKOUT}`, `${SCH_KIT_CHECKOUT}`, and `${SCH_MCP_PLUS_PLUS_CHECKOUT}` roots plus Python 3.12 are required.
+- Effects: Replaces only the two unresolved datasets commit/tree/schema/API/blob/fingerprint projections; retains all three fixed authorities; validates the policy-owned five-role order, exact clean HEADs, origins, path sets, argv tuples, timeouts, schemas, API signatures, and complete fingerprints; removes ambient import overrides; runs all commands and rechecks cleanliness afterward; AST-rejects duplicate semantic, persistence, content-identity, or generic MCP++ authorities.
+- Acceptance: The validator rejects placeholders, unknown fields, wrong pins/origins, dirty/wrong-HEAD/non-root/shared checkouts, missing commit objects, mismatched trees/blobs/fingerprints, substituted/skipped/timed-out tests, post-test mutation, non-Python-3.12 execution, or local duplicate authorities. `exact_clean_head` makes no remote-ref reachability claim. The exact `SemanticCapsuleRef`, `TestSelectionRef`, and datasets-owned `SemanticStateView/get_block` handoff is sealed. Datasets separately proves both public pipelines, kit proves its durable root port, the task/goal DAGs are acyclic, and only then is SCH-000 manually marked complete.
 
 ## SCH-001 Implement MCP++ wire codec and interface descriptor
 

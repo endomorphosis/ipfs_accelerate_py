@@ -55,7 +55,7 @@ SCH-G000  Complete local Python semantic-compression loop
 - Acceptance criteria: sch/dependency-seal@1; sch/mcplusplus-wire@1; sch/datasets-adapter@1; sch/kit-adapter@1
 - Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py, ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py, ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py, ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py
 - Validation: python3.12 -m pytest -q test/api/semantic_state/test_wire.py test/api/semantic_state/test_datasets_adapter.py test/api/semantic_state/test_durable_state.py
-- Acceptance: Accelerate and MCP++ commits plus final repaired datasets/kit commits are exact and validated by fingerprints and producer tests; real CIDv1 wire artifacts conform; the datasets Merkle/capsule/source APIs remain authoritative; missing or mismatched capabilities fail closed; local durability is hermetic, ABA-safe, and single-writer CAS safe.
+- Acceptance: Five authority roles are bound to separate canonical clean worktree roots with exact clean HEAD/tree/origin/blob manifests, policy-owned schema/API signatures, complete fingerprints, bounded mandatory producer tests, isolated import paths, and pre/post-test cleanliness; `exact_clean_head` makes no remote-ref claim. Real CIDv1 wire artifacts conform; the datasets `SemanticStateView`, Merkle/capsule/source/selection APIs remain authoritative; missing or mismatched capabilities fail closed; local durability is hermetic, ABA-safe, and single-writer CAS safe.
 - Gap task: SCH-000, SCH-001, SCH-002, SCH-003
 - Refinement: Preserve semantic-index CIDs, use MCP++ canonical bytes plus real Kubo-compatible CIDv1 for harness artifacts, and lazily import the pinned kit seam.
 
