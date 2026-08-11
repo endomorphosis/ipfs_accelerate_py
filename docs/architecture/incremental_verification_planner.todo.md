@@ -61,7 +61,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-001 Implement canonical verification contracts and exact identities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
