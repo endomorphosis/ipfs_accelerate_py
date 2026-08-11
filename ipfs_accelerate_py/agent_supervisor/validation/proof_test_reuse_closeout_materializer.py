@@ -1495,12 +1495,22 @@ def materialize_current_tree_gate_bundle(
     payload = bundle.to_dict()
     # Surface decision inventory fields at the top level for monorepo
     # closeout readiness (``_gate_artifact_readiness``).  These are not part of
-    # the sealed ``bundle_cid`` identity body; they mirror the nested decision.
-    if getattr(decision, "task_count", None) is not None:
-        payload.setdefault("task_count", decision.task_count)
-    if getattr(decision, "review_revision", None):
-        payload.setdefault("review_revision", decision.review_revision)
-    payload.setdefault("passed", bool(getattr(decision, "passed", False)))
+    # the sealed ``bundle_cid`` identity body; they mirror the nested decision
+    # (task_count/review_revision are emitted by decision.to_dict(), not always
+    # present as live attributes).
+    decision_payload = (
+        decision.to_dict()
+        if hasattr(decision, "to_dict")
+        else {}
+    )
+    if isinstance(decision_payload, dict):
+        if decision_payload.get("task_count") is not None:
+            payload["task_count"] = decision_payload["task_count"]
+        if decision_payload.get("review_revision"):
+            payload["review_revision"] = decision_payload["review_revision"]
+        payload["passed"] = bool(decision_payload.get("passed", False))
+    else:
+        payload["passed"] = bool(getattr(decision, "passed", False))
     # Inventory reads producing_task_id / decision / evaluate_packet from the
     # completion gate path.
     if write_path is not None:
