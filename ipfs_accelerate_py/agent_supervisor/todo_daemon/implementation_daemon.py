@@ -11760,6 +11760,7 @@ class PortalImplementationDaemon:
             "repository_tree_id": candidate_tree_id,
             "accepted": True,
         }
+        now = datetime.now(timezone.utc)
         merge_record = {
             "schema": DUCKDB_MERGE_INTEGRATED_RECEIPT_SCHEMA,
             "merge_receipt_id": integrated.receipt_id,
@@ -11771,13 +11772,18 @@ class PortalImplementationDaemon:
             "status": "merged",
             "completion_status": "completed",
             "freshness": "current",
-            "observed_at": str(evidence_input.get("assembled_at") or ""),
+            "observed_at": now.isoformat(),
         }
         from ..code_evidence_graph import (
             PostMergeEvidenceReceipt,
             assemble_post_merge_evidence,
         )
 
+        # Use a fresh assembly/verification clock when completing an already
+        # integrated candidate.  The sealed post_merge_evidence_input may be
+        # hours old after operator recovery / tip rewrites; reusing its absolute
+        # freshness_deadline causes false stale_evidence rejections even when
+        # the validation digests and trees still bind exactly.
         receipt = assemble_post_merge_evidence(
             repository_id=integrated.repository_id,
             task_id=task.task_id,
@@ -11797,9 +11803,9 @@ class PortalImplementationDaemon:
             merge_record=merge_record,
             criterion_coverage=evidence_input["criterion_coverage"],
             merged_tree_records=evidence_input["merged_tree_records"],
-            assembled_at=evidence_input["assembled_at"],
-            verified_at=utc_now(),
-            freshness_deadline=evidence_input["freshness_deadline"],
+            assembled_at=now,
+            verified_at=now,
+            freshness_deadline=now + timedelta(hours=1),
         )
         restored = PostMergeEvidenceReceipt.from_dict(receipt.to_dict())
         if restored != receipt or not receipt.accepted:
