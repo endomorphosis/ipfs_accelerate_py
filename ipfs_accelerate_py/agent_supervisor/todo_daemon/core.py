@@ -512,23 +512,36 @@ def _strictly_fence_pid_tree(
     tracked_groups: set[int] = {own_group} if own_group > 1 else set()
     initial_table = _process_identity_snapshot()
     initial_root = initial_table.get(pid)
+    expected_start = ""
     if expected_root_start_time_ticks is not None:
         expected_start = str(int(expected_root_start_time_ticks))
         if (
             int(expected_root_start_time_ticks) <= 0
-            or initial_root is None
-            or initial_root[4] != expected_start
+            or (
+                initial_root is not None
+                and initial_root[4] != expected_start
+            )
         ):
             # Refuse before the first signal when the caller's durable birth
             # identity no longer names this numeric PID.
             return False
-    if own_group and (
-        initial_root is None or initial_root[2] != own_group
-    ):
+    if own_group and initial_root is not None and initial_root[2] != own_group:
         # A claimed dedicated process group is part of the ownership fence.
-        # Never turn a mismatched claim into an empty tree and report success.
+        # Never signal a root whose current group contradicts the claim.
         return False
-    root_starttime = initial_root[4] if initial_root is not None else ""
+    if own_group and initial_root is None and not expected_start:
+        # An empty numeric process group is not authority by itself: the PID
+        # may already have been reused.  Only a captured birth identity lets a
+        # caller carry the dedicated-group authority across leader exit.
+        return False
+    # The direct child may have exited between Popen.poll() and this fence.
+    # Its dedicated process group remains the durable ownership boundary for
+    # surviving descendants; an empty group is already safely quiescent.
+    root_starttime = (
+        initial_root[4]
+        if initial_root is not None
+        else expected_start
+    )
 
     def exact_live(
         process_id: int,

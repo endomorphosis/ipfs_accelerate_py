@@ -186,6 +186,7 @@ from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
+    validation_command_repository_root,
 )
 from ..validation.validation_runtime import (
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
@@ -21913,6 +21914,7 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 proposal_validation=proposal_validation,
+                baseline_ref=resolved_baseline,
             )
             validation_result = self._apply_implementation_failure_review(
                 task=task,
@@ -31902,6 +31904,7 @@ class PortalImplementationDaemon:
             log_path,
             state=state,
             proposal_validation=refreshed_proposal,
+            baseline_ref=baseline_ref,
         )
         rerun_result = dict(rerun)
         if not rerun_result.get("passed", False):
@@ -32155,6 +32158,7 @@ class PortalImplementationDaemon:
             log_path,
             state=state,
             force_uncached=True,
+            baseline_ref=baseline_ref,
         )
         proposal_gate = {
             "attempted": False,
@@ -32283,6 +32287,7 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 proposal_validation=proposal_validation,
+                baseline_ref=baseline_ref,
             )
             # Keep the live proposal object only for in-process re-stabilize.
             # Event/log JSON cannot serialize ProposalValidationResult.
@@ -32344,6 +32349,7 @@ class PortalImplementationDaemon:
             log_path,
             state=state,
             proposal_validation=rebound_validation,
+            baseline_ref=baseline_ref,
         )
         rebound_result = self._verify_post_validation_candidate_binding(
             workspace_path,
@@ -32808,6 +32814,7 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         force_uncached=True,
+                        baseline_ref=baseline_ref,
                     )
             except Exception as exc:
                 validation_result = {
@@ -33377,6 +33384,7 @@ class PortalImplementationDaemon:
                 log_path if log_path is not None else Path(os.devnull),
                 state=state,
                 proposal_validation=revalidated_proposal,
+                baseline_ref=baseline_ref,
             )
             # Prevent recursive review loops.
             if not rerun.get("passed", False):
@@ -33416,6 +33424,7 @@ class PortalImplementationDaemon:
         state: PortalTaskState | None = None,
         proposal_validation: Any = None,
         force_uncached: bool = False,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
         authority_context_id = ""
         authority_revalidation_required = False
@@ -33682,6 +33691,13 @@ class PortalImplementationDaemon:
                     compact_scope_adjudication(scope_adjudication)
                 )
 
+        result = self._enforce_baseline_diff_check(
+            workspace_path=workspace_path,
+            task=task,
+            baseline_ref=baseline_ref,
+            validation_result=result,
+        )
+
         scheduler_options = proof_options.get("proof_scheduler_options")
         proof_state_path = ""
         if isinstance(scheduler_options, Mapping):
@@ -33917,6 +33933,129 @@ class PortalImplementationDaemon:
                 self._trusted_manual_completion_revalidation_evidence_ids.add(
                     self._manual_completion_revalidation_evidence_id(result)
                 )
+        return result
+
+    @staticmethod
+    def _declares_bare_git_diff_check(
+        commands: Sequence[str],
+    ) -> bool:
+        """Return whether a command has an exact bare ``git diff --check`` clause."""
+
+        for command in commands:
+            normalized = normalize_validation_command_text(str(command)).strip()
+            try:
+                lexer = shlex.shlex(
+                    normalized,
+                    posix=True,
+                    punctuation_chars=";&|",
+                )
+                lexer.whitespace_split = True
+                lexer.commenters = ""
+                segments: list[list[str]] = [[]]
+                for token in lexer:
+                    if token in {"&&", "||", ";"}:
+                        segments.append([])
+                    else:
+                        segments[-1].append(token)
+            except ValueError:
+                continue
+            if any(segment == ["git", "diff", "--check"] for segment in segments):
+                return True
+        return False
+
+    def _enforce_baseline_diff_check(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a declared bare whitespace check to baseline-to-candidate bytes."""
+
+        result = dict(validation_result)
+        baseline = str(baseline_ref or "").strip()
+        if (
+            not baseline
+            or not result.get("passed", False)
+            or not self._declares_bare_git_diff_check(task.validation)
+        ):
+            return result
+
+        started_at = utc_now()
+        resolved_baseline = ""
+        output = ""
+        returncode = 1
+        try:
+            resolved = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{baseline}^{{commit}}"],
+                cwd=workspace_path,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=min(float(self.implementation_timeout), 600.0),
+                check=False,
+            )
+            if resolved.returncode == 0 and resolved.stdout.strip():
+                resolved_baseline = resolved.stdout.strip()
+                completed = subprocess.run(
+                    ["git", "diff", "--check", resolved_baseline, "--"],
+                    cwd=workspace_path,
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=min(float(self.implementation_timeout), 600.0),
+                    check=False,
+                )
+                returncode = int(completed.returncode)
+                output = completed.stdout or ""
+            else:
+                returncode = int(resolved.returncode or 1)
+                output = (
+                    resolved.stdout
+                    or "baseline commit could not be resolved\n"
+                )
+        except subprocess.TimeoutExpired:
+            returncode = 124
+            output = "candidate diff invariant timed out\n"
+        except OSError as exc:
+            returncode = 1
+            output = f"{type(exc).__name__}: {exc}\n"
+
+        bound_command = f"git diff --check {resolved_baseline or baseline} --"
+        record = {
+            "command": bound_command,
+            "raw_command": "git diff --check",
+            "validation_id": "candidate-diff-check:"
+            + hashlib.sha256(bound_command.encode("utf-8")).hexdigest(),
+            "returncode": returncode,
+            "passed": returncode == 0,
+            "stage": "candidate_invariant",
+            "ordinal": len(result.get("results") or []),
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "output": output,
+            "cache_hit": False,
+        }
+        records = list(result.get("results") or [])
+        records.append(record)
+        result["results"] = records
+        result["attempted"] = True
+        result["candidate_diff_check"] = {
+            key: value for key, value in record.items() if key != "output"
+        }
+        if returncode != 0:
+            result.update(
+                {
+                    "passed": False,
+                    "returncode": returncode,
+                    "reason": "candidate_diff_check_failed",
+                    "error": "validation_command_failed",
+                    "failed_command": bound_command,
+                }
+            )
         return result
 
     @staticmethod
@@ -34571,6 +34710,18 @@ class PortalImplementationDaemon:
             workspace_root = workspace_path.resolve(strict=True)
         except OSError:
             return command, ""
+        repository_root = validation_command_repository_root(command)
+        if repository_root is None:
+            return command, ""
+        validation_root = workspace_root
+        if repository_root:
+            try:
+                validation_root = (
+                    workspace_root / repository_root
+                ).resolve(strict=True)
+                validation_root.relative_to(workspace_root)
+            except (OSError, ValueError):
+                return command, ""
         roots: list[str] = []
         for relative in self.worktree_submodule_paths:
             candidate = workspace_root / relative
@@ -34580,14 +34731,71 @@ class PortalImplementationDaemon:
             except (OSError, ValueError):
                 continue
             if resolved.is_dir():
-                roots.append(Path(relative).as_posix())
+                if repository_root:
+                    roots.append(
+                        Path(
+                            os.path.relpath(
+                                resolved,
+                                start=validation_root,
+                            )
+                        ).as_posix()
+                    )
+                else:
+                    roots.append(Path(relative).as_posix())
         if not roots:
             return command, ""
         pythonpath = shlex.quote(os.pathsep.join(dict.fromkeys(roots)))
+        if repository_root:
+            operator_end = self._leading_cd_and_then_operator_end(command)
+            if operator_end is None:
+                return command, ""
+            return (
+                f"{command[:operator_end]} export PYTHONPATH={pythonpath} && "
+                f"{command[operator_end:].lstrip()}",
+                "added configured worktree package roots to PYTHONPATH",
+            )
         return (
-            f"PYTHONPATH={pythonpath} {command}",
+            f"export PYTHONPATH={pythonpath} && {command}",
             "added configured worktree package roots to PYTHONPATH",
         )
+
+    @staticmethod
+    def _leading_cd_and_then_operator_end(command: str) -> int | None:
+        """Locate the leading unquoted ``&&`` after a validated ``cd``."""
+
+        quote = ""
+        escaped = False
+        index = 0
+        while index < len(command):
+            character = command[index]
+            if escaped:
+                escaped = False
+                index += 1
+                continue
+            if quote == "'":
+                if character == "'":
+                    quote = ""
+                index += 1
+                continue
+            if quote == '"':
+                if character == "\\":
+                    escaped = True
+                elif character == '"':
+                    quote = ""
+                index += 1
+                continue
+            if character == "\\":
+                escaped = True
+                index += 1
+                continue
+            if character in {"'", '"'}:
+                quote = character
+                index += 1
+                continue
+            if command.startswith("&&", index):
+                return index + 2
+            index += 1
+        return None
 
     def _main_branch_name(self) -> str:
         if self.merge_target_branch:

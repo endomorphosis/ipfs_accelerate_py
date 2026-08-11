@@ -54,8 +54,9 @@ assert _objective_validation_repair_evidence_terms() == (
     "objective validation repair",
 )
 from ..runtime.event_log import event_log_sources, read_jsonl_events
-from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 from ..todo_daemon.core import terminate_pid_tree
+from ..worktree_lifecycle import read_process_birth
+from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 
 logger = logging.getLogger(__name__)
 
@@ -1007,12 +1008,18 @@ def _terminate_child(
     """
 
     if fence_descendants:
+        expected_start_time = getattr(
+            process,
+            "_supervisor_start_time_ticks",
+            None,
+        )
         fenced = terminate_pid_tree(
             process.pid,
             grace_seconds=timeout,
             freeze_first=True,
             require_gone=True,
             owned_process_group_id=(process.pid if os.name == "posix" else None),
+            expected_root_start_time_ticks=expected_start_time,
         )
         if not fenced:
             raise RuntimeError(
@@ -1153,6 +1160,19 @@ def run_leased_lane_result(
                 list(command),
                 start_new_session=(os.name == "posix"),
             )
+            if os.name == "posix" and Path("/proc").is_dir():
+                try:
+                    birth = read_process_birth(int(process.pid))
+                except OSError:
+                    birth = None
+                if (
+                    birth is not None
+                    and birth.parent_pid == os.getpid()
+                    and birth.start_time_ticks > 0
+                ):
+                    process._supervisor_start_time_ticks = (
+                        birth.start_time_ticks
+                    )
         except Exception as exc:
             logger.error("Could not start leased lane %s: %s", grant.task_cid, exc)
             try:
