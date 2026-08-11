@@ -359,7 +359,7 @@ Closeout:           ASE3-014
 
 ## ASE3-013 Run and monitor a bounded self-improvement canary
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
