@@ -92,7 +92,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-002 Add the lazy fail-closed ipfs_datasets semantic input adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
