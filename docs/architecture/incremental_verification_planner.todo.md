@@ -495,7 +495,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-015 Add selected-versus-full-suite semantic fixture evaluation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
