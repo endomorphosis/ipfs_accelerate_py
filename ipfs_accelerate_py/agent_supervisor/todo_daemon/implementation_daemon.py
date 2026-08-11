@@ -29676,24 +29676,13 @@ class PortalImplementationDaemon:
                     include_untracked=True,
                 )
             )
-            owns_whole_submodule = any(
-                str(p).strip("/").replace("\\", "/") == relative
-                for p in scope_paths
-            )
-            if owns_whole_submodule:
-                scoped_local = local_entries
-            else:
-                scoped_local = tuple(
-                    entry
-                    for entry in local_entries
-                    if self._path_in_proposal_scope(
-                        (
-                            f"{relative}/"
-                            f"{entry.new_path or entry.old_path or entry.path}"
-                        ).replace("//", "/"),
-                        scope_paths,
-                    )
-                )
+            # Selecting a submodule is scope-aware, but its candidate must be
+            # materialized in full. Filtering child entries here hides an
+            # undeclared sibling from proposal adjudication and the candidate
+            # fingerprint, while the later nested ``git add -A`` still commits
+            # it. The ordinary proposal policy must see every child change so
+            # it can reject unauthorized paths fail closed.
+            scoped_local = local_entries
             if not scoped_local:
                 continue
             expansions.append(
