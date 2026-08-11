@@ -1084,4 +1084,6 @@ class _IPFSAccelerateModule(ModuleType):
 
 sys.modules[__name__].__class__ = _IPFSAccelerateModule
 
-__version__ = "0.4.0"
+# Packaging pin — must match pyproject.toml / setup.py (documentation-gates).
+_PACKAGING_VERSION = "0.0.45"
+__version__ = _PACKAGING_VERSION
