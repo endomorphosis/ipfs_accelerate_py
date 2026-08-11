@@ -11632,26 +11632,29 @@ class PortalImplementationDaemon:
             or merge_result.get("target_commit")
             or ""
         ).strip().lower()
-        parent_result = self._run_git(
-            ["rev-list", "--parents", "-n", "1", merge_commit],
-            cwd=self.repo_root,
+        # Prefer the exact two-parent merge that introduced ``candidate`` when
+        # the target tip has advanced past that merge (operator tip commits,
+        # permit fixes, etc.).  Fall back to the provided merge_commit only
+        # when it is itself the integrating merge.
+        integrating_merge = self._find_two_parent_integrating_merge(
+            candidate_commit=candidate,
+            target_branch=self.resolved_merge_target_branch,
+            preferred_merge_commit=merge_commit,
         )
-        parent_fields = parent_result.stdout.strip().split()
-        if (
-            parent_result.returncode != 0
-            or len(parent_fields) != 3
-            or parent_fields[0].lower() != merge_commit
-            or parent_fields[2].lower() != candidate
-        ):
+        if not integrating_merge:
             raise ValueError(
                 "integrated commit is not an exact two-parent candidate merge"
             )
+        merge_commit = integrating_merge["merge_commit"]
+        parent_fields = integrating_merge["parents"]
         live_target = self._run_git(
             ["rev-parse", self.resolved_merge_target_branch],
             cwd=self.repo_root,
         ).stdout.strip().lower()
-        if live_target != merge_commit:
-            raise ValueError("integrated commit is not the current target")
+        if live_target != merge_commit and not self._git_ref_is_ancestor(
+            merge_commit, self.resolved_merge_target_branch
+        ):
+            raise ValueError("integrated commit is not on the current target")
         candidate_tree = self._candidate_repository_tree(candidate).lower()
         merge_tree = self._candidate_repository_tree(merge_commit).lower()
         validation_receipt_ids, proposal_receipt_id = (
