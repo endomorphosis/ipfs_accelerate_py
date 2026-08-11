@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
+    ProcessIdentitySnapshot,
     pid_alive,
     terminate_pid_tree,
 )
@@ -36,7 +37,9 @@ def test_strict_fence_rejects_reused_root_before_any_signal(
     monkeypatch.setattr(
         core_module,
         "_process_identity_snapshot",
-        lambda: {pid: ("S", 1, pid, pid, "999")},
+        lambda: ProcessIdentitySnapshot.observed(
+            {pid: ("S", 1, pid, pid, "999")}
+        ),
     )
     monkeypatch.setattr(
         core_module.os,
@@ -66,7 +69,9 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
     monkeypatch.setattr(
         core_module,
         "_process_identity_snapshot",
-        lambda: {pid: ("S", 1, 777, 777, "123")},
+        lambda: ProcessIdentitySnapshot.observed(
+            {pid: ("S", 1, 777, 777, "123")}
+        ),
     )
     monkeypatch.setattr(
         core_module.os,
@@ -81,6 +86,36 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
         lambda *_args, **_kwargs: pytest.fail(
             "mismatched process group was signalled"
         ),
+    )
+
+    assert not terminate_pid_tree(
+        pid,
+        grace_seconds=0.0,
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=pid,
+        expected_root_start_time_ticks=123,
+    )
+
+
+def test_strict_fence_fails_closed_when_process_snapshot_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 4244
+    monkeypatch.setattr(
+        core_module,
+        "_process_identity_snapshot",
+        lambda: ProcessIdentitySnapshot.unavailable("forced read failure"),
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "kill",
+        lambda *_args, **_kwargs: pytest.fail("unobservable process was signalled"),
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "killpg",
+        lambda *_args, **_kwargs: pytest.fail("unobservable group was signalled"),
     )
 
     assert not terminate_pid_tree(

@@ -2031,6 +2031,324 @@ def test_completed_claim_renews_isolated_despite_stale_scheduler_gates(
     assert _git(repo, "status", "--porcelain", "--untracked-files=all") == status_before
 
 
+def test_manual_completion_revalidation_lost_fence_cannot_validate_or_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "completed", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="lost-lifecycle-fence",
+    )
+    _forbid_revalidation_provider_and_seeding(daemon, monkeypatch)
+    original_mark_active_phase = daemon._mark_active_phase
+    replacement: dict[str, daemon_module.WorkspaceLifecycleRecord] = {}
+    validation_calls: list[bool] = []
+    publication_calls: list[bool] = []
+
+    def replace_owner_at_validation_boundary(*args, **kwargs):
+        result = original_mark_active_phase(*args, **kwargs)
+        if kwargs.get("phase") != "validating" or replacement:
+            return result
+        captured = daemon._active_worktree_lifecycle
+        assert captured is not None
+        terminal = daemon.worktree_lifecycle.mark_terminal(
+            captured.workspace_path,
+            lease_id=captured.lease_id,
+            expected_fence=captured.fence,
+            reason="deterministic_test_takeover",
+        )
+        assert daemon.worktree_lifecycle.compare_and_delete(
+            terminal.workspace_path,
+            expected_fence=terminal.fence,
+            lease_id=terminal.lease_id,
+        )
+        replacement["record"] = daemon.worktree_lifecycle.begin_preparing(
+            task_id="REPLACEMENT",
+            canonical_task_cid="cid:replacement",
+            attempt=1,
+            lane_id="replacement-lane",
+            workspace_path=terminal.workspace_path,
+            branch="implementation/replacement",
+            merge_target="main",
+        )
+        return result
+
+    def validation_must_not_run(*_args, **_kwargs):
+        validation_calls.append(True)
+        raise AssertionError("validation ran after lifecycle takeover")
+
+    def publication_must_not_run(*_args, **_kwargs):
+        publication_calls.append(True)
+        raise AssertionError("authority receipt published after lifecycle takeover")
+
+    monkeypatch.setattr(
+        daemon,
+        "_mark_active_phase",
+        replace_owner_at_validation_boundary,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_execute_deterministic_validation_plan",
+        validation_must_not_run,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_publish_manual_completion_authority_revalidation_receipt_only",
+        publication_must_not_run,
+    )
+
+    implementation = daemon.run_once()["implementation_result"]
+
+    assert replacement
+    assert validation_calls == []
+    assert publication_calls == []
+    assert implementation["returncode"] == 1
+    assert implementation["validation_result"]["passed"] is False
+    assert implementation["exception_result"]["exception_type"] == "OwnershipError"
+    assert "manual_completion_authority_revalidation_receipt" not in (
+        implementation.get("todo_update_result") or {}
+    )
+    replacement_record = replacement["record"]
+    observed = daemon.worktree_lifecycle.load_workspace(
+        replacement_record.workspace_path
+    )
+    assert observed is not None
+    assert observed.record_id == replacement_record.record_id
+    assert not observed.is_terminal
+
+
+def test_manual_completion_receipt_window_fence_blocks_clean_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "completed", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="receipt-window-fence",
+    )
+    _forbid_revalidation_provider_and_seeding(daemon, monkeypatch)
+    persist_receipt = daemon._persist_deterministic_task_execution_receipt
+    advanced: list[daemon_module.WorkspaceLifecycleRecord] = []
+    validation_calls: list[bool] = []
+    publication_calls: list[bool] = []
+
+    def persist_then_advance(*args, **kwargs):
+        persisted = persist_receipt(*args, **kwargs)
+        captured = daemon._active_worktree_lifecycle
+        assert captured is not None
+        advanced.append(
+            daemon.worktree_lifecycle.renew_lease(
+                captured.workspace_path,
+                lease_id=captured.lease_id,
+                expected_fence=captured.fence,
+            )
+        )
+        return persisted
+
+    def clean_validation_must_not_run(*_args, **_kwargs):
+        validation_calls.append(True)
+        raise AssertionError("clean validation ran after receipt-window fence loss")
+
+    def publication_must_not_run(*_args, **_kwargs):
+        publication_calls.append(True)
+        raise AssertionError("authority published after receipt-window fence loss")
+
+    monkeypatch.setattr(
+        daemon,
+        "_persist_deterministic_task_execution_receipt",
+        persist_then_advance,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_clean_candidate_validation",
+        clean_validation_must_not_run,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_publish_manual_completion_authority_revalidation_receipt_only",
+        publication_must_not_run,
+    )
+
+    implementation = daemon.run_once()["implementation_result"]
+
+    assert advanced
+    assert validation_calls == []
+    assert publication_calls == []
+    assert implementation["returncode"] == 1
+    assert implementation["exception_result"]["exception_type"] == "OwnershipError"
+    assert "manual_completion_authority_revalidation_receipt" not in (
+        implementation.get("todo_update_result") or {}
+    )
+    observed = daemon.worktree_lifecycle.load_workspace(
+        implementation["worktree_path"]
+    )
+    assert observed is not None
+    assert observed.fence == advanced[0].fence
+    assert not observed.is_terminal
+
+
+def test_manual_completion_post_validation_fence_blocks_authority_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "completed", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="post-validation-fence",
+    )
+    _forbid_revalidation_provider_and_seeding(daemon, monkeypatch)
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    execute = daemon._execute_deterministic_validation_plan
+    replacement: dict[str, daemon_module.WorkspaceLifecycleRecord] = {}
+    publication_calls: list[bool] = []
+
+    def execute_then_replace(*args, **kwargs):
+        result = execute(*args, **kwargs)
+        captured = daemon._active_worktree_lifecycle
+        assert captured is not None
+        terminal = daemon.worktree_lifecycle.mark_terminal(
+            captured.workspace_path,
+            lease_id=captured.lease_id,
+            expected_fence=captured.fence,
+            reason="post_validation_takeover",
+        )
+        assert daemon.worktree_lifecycle.compare_and_delete(
+            terminal.workspace_path,
+            expected_fence=terminal.fence,
+            lease_id=terminal.lease_id,
+        )
+        replacement["record"] = daemon.worktree_lifecycle.begin_preparing(
+            task_id="POST-VALIDATION-B",
+            canonical_task_cid="cid:post-validation-b",
+            attempt=1,
+            lane_id="replacement-lane",
+            workspace_path=terminal.workspace_path,
+            branch="implementation/post-validation-b",
+            merge_target="main",
+        )
+        return result
+
+    def publication_must_not_run(*_args, **_kwargs):
+        publication_calls.append(True)
+        raise AssertionError("authority published after post-validation takeover")
+
+    monkeypatch.setattr(
+        daemon,
+        "_execute_deterministic_validation_plan",
+        execute_then_replace,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_publish_manual_completion_authority_revalidation_receipt_only",
+        publication_must_not_run,
+    )
+
+    implementation = daemon.run_once()["implementation_result"]
+
+    assert replacement
+    assert publication_calls == []
+    assert implementation["returncode"] == 1
+    assert implementation["exception_result"]["exception_type"] == "OwnershipError"
+    assert "manual_completion_authority_revalidation_receipt" not in (
+        implementation.get("todo_update_result") or {}
+    )
+    replacement_record = replacement["record"]
+    observed = daemon.worktree_lifecycle.load_workspace(
+        replacement_record.workspace_path
+    )
+    assert observed is not None
+    assert observed.record_id == replacement_record.record_id
+    assert not observed.is_terminal
+
+
+def test_manual_completion_finalize_race_cannot_report_success_or_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "completed", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="finalize-race",
+    )
+    _forbid_revalidation_provider_and_seeding(daemon, monkeypatch)
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
+    finalize_protected = daemon._finalize_implementation_protected_path_fence
+    publication_calls: list[bool] = []
+    advanced: list[daemon_module.WorkspaceLifecycleRecord] = []
+
+    def advance_after_publication_check(*args, **kwargs):
+        if not advanced:
+            captured = daemon._active_worktree_lifecycle
+            assert captured is not None
+            advanced.append(
+                daemon.worktree_lifecycle.renew_lease(
+                    captured.workspace_path,
+                    lease_id=captured.lease_id,
+                    expected_fence=captured.fence,
+                )
+            )
+        return finalize_protected(*args, **kwargs)
+
+    def publication_must_not_run(*_args, **_kwargs):
+        publication_calls.append(True)
+        raise AssertionError("authority published without lifecycle finalization")
+
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        advance_after_publication_check,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_publish_manual_completion_authority_revalidation_receipt_only",
+        publication_must_not_run,
+    )
+
+    implementation = daemon.run_once()["implementation_result"]
+
+    assert advanced
+    assert publication_calls == []
+    assert implementation["returncode"] == 1
+    assert implementation["validation_result"]["passed"] is False
+    assert implementation["validation_result"]["reason"] == (
+        "manual_completion_authority_revalidation_cleanup_failed"
+    )
+    cleanup = implementation["cleanup_result"]
+    assert cleanup["cleaned"] is False
+    assert cleanup["lifecycle_finalize"]["finalized"] is False
+    assert "manual_completion_authority_revalidation_receipt" not in (
+        implementation.get("todo_update_result") or {}
+    )
+    assert Path(implementation["worktree_path"]).exists()
+    observed = daemon.worktree_lifecycle.load_workspace(
+        implementation["worktree_path"]
+    )
+    assert observed is not None
+    assert observed.fence == advanced[0].fence
+    assert not observed.is_terminal
+
+
 def test_completed_claim_rejects_validation_mutation_without_source_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

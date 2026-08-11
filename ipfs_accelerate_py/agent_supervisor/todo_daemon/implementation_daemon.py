@@ -14604,6 +14604,14 @@ class PortalImplementationDaemon:
                 worktree_path=worktree_path,
                 branch_name=branch_name,
             )
+            settling_record = self._mark_worktree_lifecycle_settling(
+                worktree_path
+            )
+            if settling_record is None:
+                raise OwnershipError(
+                    "lifecycle ownership missing before manual authority validation"
+                )
+            lifecycle_record = settling_record
             (
                 validation_result,
                 task_execution_receipt_path,
@@ -14616,6 +14624,7 @@ class PortalImplementationDaemon:
                 state=state,
                 baseline_ref=baseline_ref,
                 read_only_revalidation=True,
+                lifecycle_record=lifecycle_record,
             )
             # _run_validation_commands initially binds authority before the
             # clean-candidate helper attaches its final candidate binding.
@@ -14625,6 +14634,11 @@ class PortalImplementationDaemon:
                 self._manual_completion_revalidation_evidence_id(
                     validation_result
                 )
+            )
+            self._require_exact_worktree_lifecycle(
+                lifecycle_record,
+                worktree_path,
+                boundary="manual authority publication",
             )
             protected_path_violation = (
                 self._finalize_implementation_protected_path_fence(
@@ -14772,9 +14786,6 @@ class PortalImplementationDaemon:
                 cleanup_result["cleaned"] = bool(
                     cleanup_result.get("finalized")
                 )
-            if cleanup_result.get("cleaned") is True:
-                self._active_worktree_lifecycle = None
-
         source_after = self._manual_completion_authority_checkout_snapshot(
             self.repo_root
         )
@@ -14811,7 +14822,17 @@ class PortalImplementationDaemon:
                     },
                 }
             )
-        if cleanup_result.get("cleaned") is not True:
+        cleanup_lifecycle_finalize = cleanup_result.get(
+            "lifecycle_finalize"
+        )
+        cleanup_authority_finalized = bool(
+            isinstance(cleanup_lifecycle_finalize, Mapping)
+            and cleanup_lifecycle_finalize.get("finalized") is True
+        )
+        if (
+            cleanup_result.get("cleaned") is not True
+            or not cleanup_authority_finalized
+        ):
             validation_result.update(
                 {
                     "passed": False,
@@ -21363,6 +21384,13 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Hand a validated implementation commit to the durable merge train."""
 
+        lifecycle_record = self._active_worktree_lifecycle
+        if lifecycle_record is not None:
+            self._require_exact_worktree_lifecycle(
+                lifecycle_record,
+                worktree_path,
+                boundary="enqueue",
+            )
         protected_rejection = self._reject_protected_merge_candidate(
             task_id=task.task_id,
             attempt=attempt,
@@ -21386,35 +21414,46 @@ class PortalImplementationDaemon:
             worktree_path=worktree_path,
             branch_name=branch_name,
         )
-        lifecycle_record = self._active_worktree_lifecycle
-        pool_handoff = self._release_pooled_worktree_lease(
-            worktree_path,
-            reason="merge_queue_handoff",
-            finalize_lifecycle=False,
-        )
+        def publish_handoff() -> tuple[dict[str, Any], Any, dict[str, Any]]:
+            pool_result = self._release_pooled_worktree_lease(
+                worktree_path,
+                reason="merge_queue_handoff",
+                finalize_lifecycle=False,
+            )
+            candidate_request, candidate_result = self._enqueue_merge_candidate(
+                branch_name=branch_name,
+                implementation_commit=implementation_commit,
+                baseline_ref=baseline_ref,
+                worktree_path=(
+                    None if pool_result.get("released", False) else worktree_path
+                ),
+                task=task,
+                attempt=attempt,
+                changed_submodule_paths=(
+                    list(changed_submodule_paths)
+                    if changed_submodule_paths is not None
+                    else self._committed_submodule_paths(
+                        commit_result.get("submodule_results") or []
+                    )
+                ),
+                validation_result=dict(validation_result),
+                worktree_pool_handoff=bool(pool_result.get("released", False)),
+            )
+            return pool_result, candidate_request, candidate_result
+
+        if lifecycle_record is not None:
+            pool_handoff, request, merge_result = (
+                self.worktree_lifecycle.run_exact_owner_effect(
+                    lifecycle_record,
+                    effect=publish_handoff,
+                )
+            )
+        else:
+            pool_handoff, request, merge_result = publish_handoff()
         lifecycle_handoff_reason = (
             "pooled_merge_queue_handoff"
             if pool_handoff.get("released", False)
             else "merge_queue_handoff"
-        )
-        request, merge_result = self._enqueue_merge_candidate(
-            branch_name=branch_name,
-            implementation_commit=implementation_commit,
-            baseline_ref=baseline_ref,
-            worktree_path=(
-                None if pool_handoff.get("released", False) else worktree_path
-            ),
-            task=task,
-            attempt=attempt,
-            changed_submodule_paths=(
-                list(changed_submodule_paths)
-                if changed_submodule_paths is not None
-                else self._committed_submodule_paths(
-                    commit_result.get("submodule_results") or []
-                )
-            ),
-            validation_result=dict(validation_result),
-            worktree_pool_handoff=bool(pool_handoff.get("released", False)),
         )
         if lifecycle_record is not None:
             lifecycle_handoff = self._finalize_exact_worktree_lifecycle(
@@ -22478,22 +22517,34 @@ class PortalImplementationDaemon:
                                 attempt=attempt,
                             )
                         )
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=worktree_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=provider_environment,
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=progress_observer,
+                        if lifecycle_record is None:
+                            raise OwnershipError(
+                                "lifecycle ownership missing before provider dispatch"
+                            )
+
+                        def spawn_provider() -> subprocess.CompletedProcess[str]:
+                            nonlocal provider_dispatched
+                            provider_dispatched = True
+                            return run_process_group_stream(
+                                command,
+                                cwd=worktree_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=progress_observer,
+                            )
+
+                        return self.worktree_lifecycle.run_exact_owner_effect(
+                            lifecycle_record,
+                            effect=spawn_provider,
                         )
 
                     completed = self._decision_runtime_mutation(
@@ -22588,7 +22639,13 @@ class PortalImplementationDaemon:
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             if returncode == 0 and not protected_path_violation:
-                self._mark_worktree_lifecycle_settling(worktree_path)
+                validation_lifecycle_record = (
+                    self._mark_worktree_lifecycle_settling(worktree_path)
+                )
+                if validation_lifecycle_record is None:
+                    raise OwnershipError(
+                        "lifecycle ownership missing before validation"
+                    )
                 self._mark_active_phase(
                     state,
                     phase="validating",
@@ -22636,6 +22693,9 @@ class PortalImplementationDaemon:
                                 attempt=attempt,
                                 log_path=log_path,
                                 state=state,
+                                lifecycle_record=(
+                                    validation_lifecycle_record
+                                ),
                             )
                             validation_result = (
                                 self._admit_deterministic_validation_materialization(
@@ -22645,6 +22705,9 @@ class PortalImplementationDaemon:
                                     state=state,
                                     baseline_ref=baseline_ref,
                                     materialization_result=validation_result,
+                                    lifecycle_record=(
+                                        validation_lifecycle_record
+                                    ),
                                 )
                             )
                             if operator_prepared_outputs:
@@ -22668,6 +22731,9 @@ class PortalImplementationDaemon:
                                     replayable_consumed_proposal_ids=(
                                         seed_replayable_proposal_ids
                                     ),
+                                    lifecycle_record=(
+                                        validation_lifecycle_record
+                                    ),
                                 )
                             )
                             proposal_validation = validation_result.get(
@@ -22683,6 +22749,9 @@ class PortalImplementationDaemon:
                                     proposal_validation=proposal_validation,
                                     baseline_ref=baseline_ref,
                                     state=state,
+                                    lifecycle_record=(
+                                        validation_lifecycle_record
+                                    ),
                                 )
                             )
                         if (
@@ -22703,6 +22772,9 @@ class PortalImplementationDaemon:
                                     state=state,
                                     attempt=attempt,
                                     allow_candidate_stabilization=True,
+                                    lifecycle_record=(
+                                        validation_lifecycle_record
+                                    ),
                                 )
                             )
                         # Drop live ProposalValidationResult before commit/
@@ -22994,6 +23066,15 @@ class PortalImplementationDaemon:
             self._record_event("implementation_timeout", timeout_result)
             if worktree_path.exists() and not protected_path_violation:
                 try:
+                    timeout_validation_lifecycle_record = (
+                        self._mark_worktree_lifecycle_settling(
+                            worktree_path
+                        )
+                    )
+                    if timeout_validation_lifecycle_record is None:
+                        raise OwnershipError(
+                            "lifecycle ownership missing before timeout salvage validation"
+                        )
                     self._mark_active_phase(
                         state,
                         phase="validating",
@@ -23028,6 +23109,9 @@ class PortalImplementationDaemon:
                                 replayable_consumed_proposal_ids=(
                                     seed_replayable_proposal_ids
                                 ),
+                                lifecycle_record=(
+                                    timeout_validation_lifecycle_record
+                                ),
                             )
                         )
                         proposal_validation = validation_result.get(
@@ -23043,6 +23127,9 @@ class PortalImplementationDaemon:
                                 proposal_validation=proposal_validation,
                                 baseline_ref=baseline_ref,
                                 state=state,
+                                lifecycle_record=(
+                                    timeout_validation_lifecycle_record
+                                ),
                             )
                         )
                     protected_path_violation = (
@@ -23078,6 +23165,9 @@ class PortalImplementationDaemon:
                                 state=state,
                                 attempt=attempt,
                                 allow_candidate_stabilization=True,
+                                lifecycle_record=(
+                                    timeout_validation_lifecycle_record
+                                ),
                             )
                         )
                     validation_result = (
@@ -23463,11 +23553,31 @@ class PortalImplementationDaemon:
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
         no_change_guard = commit_result.get("no_change_guard") or {}
-        no_change_completion = bool(
+        no_change_lifecycle_finalize = cleanup_result.get(
+            "lifecycle_finalize"
+        )
+        no_change_candidate = bool(
             not implementation_commit
             and commit_result.get("reason") == "no_changes"
             and isinstance(no_change_guard, dict)
             and no_change_guard.get("allowed")
+        )
+        no_change_cleanup_authorized = bool(
+            cleanup_result.get("cleaned") is True
+            and isinstance(no_change_lifecycle_finalize, Mapping)
+            and no_change_lifecycle_finalize.get("finalized") is True
+        )
+        if no_change_candidate and not no_change_cleanup_authorized:
+            returncode = 1
+            validation_result = {
+                **validation_result,
+                "passed": False,
+                "returncode": 1,
+                "reason": "no_change_lifecycle_finalization_failed",
+            }
+        no_change_completion = bool(
+            no_change_candidate
+            and no_change_cleanup_authorized
         )
         # Board completion is intentionally stricter than validation success:
         # merge-queued candidates remain incomplete until integrated into the
@@ -27234,6 +27344,31 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
     ) -> dict[str, Any]:
+        captured_lifecycle = self._active_worktree_lifecycle
+        if captured_lifecycle is not None:
+            self._require_exact_worktree_lifecycle(
+                captured_lifecycle,
+                worktree_path,
+                boundary="commit",
+            )
+
+        def commit_effect() -> dict[str, Any]:
+            def unchecked() -> dict[str, Any]:
+                return self._commit_worktree_changes_unchecked(
+                    worktree_path,
+                    task,
+                    attempt,
+                    baseline_ref=baseline_ref,
+                    _captured_lifecycle=captured_lifecycle,
+                )
+
+            if captured_lifecycle is None:
+                return unchecked()
+            return self.worktree_lifecycle.run_exact_owner_effect(
+                captured_lifecycle,
+                effect=unchecked,
+            )
+
         return self._decision_runtime_mutation(
             "commit",
             {
@@ -27242,12 +27377,7 @@ class PortalImplementationDaemon:
                 "attempt": int(attempt),
                 "worktree_path": str(worktree_path),
             },
-            lambda: self._commit_worktree_changes_unchecked(
-                worktree_path,
-                task,
-                attempt,
-                baseline_ref=baseline_ref,
-            ),
+            commit_effect,
         )
 
     def _commit_worktree_changes_unchecked(
@@ -27257,7 +27387,19 @@ class PortalImplementationDaemon:
         attempt: int,
         *,
         baseline_ref: str = "",
+        _captured_lifecycle: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
+        if _captured_lifecycle is not None:
+            self._require_exact_worktree_lifecycle(
+                _captured_lifecycle,
+                worktree_path,
+                boundary="commit mutation",
+            )
+        else:
+            self._require_active_worktree_lifecycle(
+                worktree_path,
+                boundary="commit mutation",
+            )
         submodule_results = self._commit_worktree_submodule_changes(worktree_path, task, attempt)
         self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
@@ -27838,15 +27980,15 @@ class PortalImplementationDaemon:
         """
 
         lifecycle_record = self._active_worktree_lifecycle
-        try:
-            loaded_record = self.worktree_lifecycle.load_workspace(
-                worktree_path
-            )
-        except WorktreeLifecycleError as exc:
-            loaded_record = None
-            lifecycle_load_error = str(exc)[-500:]
-        else:
-            lifecycle_load_error = ""
+        loaded_record: WorkspaceLifecycleRecord | None = None
+        lifecycle_load_error = ""
+        if lifecycle_record is not None:
+            try:
+                loaded_record = self.worktree_lifecycle.load_workspace(
+                    lifecycle_record.workspace_path
+                )
+            except WorktreeLifecycleError as exc:
+                lifecycle_load_error = str(exc)[-500:]
         lifecycle_result: dict[str, Any]
         if lifecycle_record is None:
             lifecycle_result = {
@@ -27863,13 +28005,22 @@ class PortalImplementationDaemon:
             if lifecycle_load_error:
                 lifecycle_result["error"] = lifecycle_load_error
         elif (
-            loaded_record.lease_id != lifecycle_record.lease_id
+            normalize_workspace_path(worktree_path)
+            != normalize_workspace_path(lifecycle_record.workspace_path)
+            or loaded_record.record_id != lifecycle_record.record_id
+            or normalize_workspace_path(loaded_record.workspace_path)
+            != normalize_workspace_path(lifecycle_record.workspace_path)
+            or loaded_record.lease_id != lifecycle_record.lease_id
             or loaded_record.fence != lifecycle_record.fence
         ):
             lifecycle_result = {
                 "terminal": False,
-                "reason": "lifecycle_owner_or_fence_changed",
+                "reason": "lifecycle_identity_or_fence_changed",
                 "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "expected_record_id": lifecycle_record.record_id,
+                "observed_record_id": loaded_record.record_id,
+                "expected_workspace_path": lifecycle_record.workspace_path,
+                "observed_workspace_path": loaded_record.workspace_path,
                 "expected_lease_id": lifecycle_record.lease_id,
                 "observed_lease_id": loaded_record.lease_id,
                 "expected_fence": lifecycle_record.fence,
@@ -27886,9 +28037,9 @@ class PortalImplementationDaemon:
         else:
             try:
                 terminal = self.worktree_lifecycle.mark_terminal(
-                    loaded_record.workspace_path,
-                    lease_id=loaded_record.lease_id,
-                    expected_fence=loaded_record.fence,
+                    lifecycle_record.workspace_path,
+                    lease_id=lifecycle_record.lease_id,
+                    expected_fence=lifecycle_record.fence,
                     reason=(
                         "verification_deferred_checkout_lease_unavailable"
                     ),
@@ -27911,7 +28062,20 @@ class PortalImplementationDaemon:
                     "error": str(exc)[-500:],
                     "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
                 }
-        self._active_worktree_lifecycle = None
+        if (
+            lifecycle_result.get("terminal") is True
+            and lifecycle_record is not None
+        ):
+            current = self._active_worktree_lifecycle
+            if (
+                current is not None
+                and current.record_id == lifecycle_record.record_id
+                and normalize_workspace_path(current.workspace_path)
+                == normalize_workspace_path(lifecycle_record.workspace_path)
+                and current.lease_id == lifecycle_record.lease_id
+                and current.fence == lifecycle_record.fence
+            ):
+                self._active_worktree_lifecycle = None
         retained = worktree_path.exists()
         result = {
             "task_id": task.task_id,
@@ -28409,6 +28573,9 @@ class PortalImplementationDaemon:
         self,
         workspace_path: Path,
         task: PortalTask,
+        *,
+        index_file: Path | None = None,
+        record_event: bool = True,
     ) -> tuple[str, ...]:
         """Bind task-owned ignored files into the candidate diff.
 
@@ -28581,6 +28748,10 @@ class PortalImplementationDaemon:
                 )
 
         staged: list[str] = []
+        add_environment = None
+        if index_file is not None:
+            add_environment = dict(os.environ)
+            add_environment["GIT_INDEX_FILE"] = str(index_file.resolve())
         for relative in ignored_candidates:
             add = subprocess.run(
                 [
@@ -28595,6 +28766,7 @@ class PortalImplementationDaemon:
                 text=True,
                 capture_output=True,
                 check=False,
+                env=add_environment,
             )
             if add.returncode != 0:
                 raise RuntimeError(
@@ -28603,7 +28775,7 @@ class PortalImplementationDaemon:
                 )
             staged.append(relative)
 
-        if staged:
+        if staged and record_event:
             self._record_event(
                 "implementation_declared_ignored_outputs_staged",
                 {
@@ -31683,6 +31855,7 @@ class PortalImplementationDaemon:
         state: PortalTaskState | None = None,
         attempt: int = 0,
         allow_candidate_stabilization: bool = False,
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
         """Restore validation output and certify a bounded candidate fixed point.
 
@@ -31905,6 +32078,7 @@ class PortalImplementationDaemon:
             state=state,
             proposal_validation=refreshed_proposal,
             baseline_ref=baseline_ref,
+            lifecycle_record=lifecycle_record,
         )
         rerun_result = dict(rerun)
         if not rerun_result.get("passed", False):
@@ -32126,6 +32300,7 @@ class PortalImplementationDaemon:
         *,
         state: PortalTaskState | None,
         baseline_ref: str,
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any] | None:
         """Validate an unchanged candidate before the empty-patch gate.
 
@@ -32159,6 +32334,7 @@ class PortalImplementationDaemon:
             state=state,
             force_uncached=True,
             baseline_ref=baseline_ref,
+            lifecycle_record=lifecycle_record,
         )
         proposal_gate = {
             "attempted": False,
@@ -32246,6 +32422,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         proposal_validation: Any = None,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
         """Validate the exact final candidate, including generated outputs.
 
@@ -32266,6 +32443,7 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 baseline_ref=baseline_ref,
+                lifecycle_record=lifecycle_record,
             )
             if result is not None:
                 # Clean path admits without a proposal object; surface that
@@ -32288,6 +32466,7 @@ class PortalImplementationDaemon:
                 state=state,
                 proposal_validation=proposal_validation,
                 baseline_ref=baseline_ref,
+                lifecycle_record=lifecycle_record,
             )
             # Keep the live proposal object only for in-process re-stabilize.
             # Event/log JSON cannot serialize ProposalValidationResult.
@@ -32350,6 +32529,7 @@ class PortalImplementationDaemon:
             state=state,
             proposal_validation=rebound_validation,
             baseline_ref=baseline_ref,
+            lifecycle_record=lifecycle_record,
         )
         rebound_result = self._verify_post_validation_candidate_binding(
             workspace_path,
@@ -32378,6 +32558,7 @@ class PortalImplementationDaemon:
         state: PortalTaskState,
         baseline_ref: str,
         materialization_result: Mapping[str, Any],
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
         """Apply ordinary proposal/scope gates to validation-generated files."""
 
@@ -32447,6 +32628,7 @@ class PortalImplementationDaemon:
             state=state,
             baseline_ref=baseline_ref,
             proposal_validation=proposal_validation,
+            lifecycle_record=lifecycle_record,
         )
         validated["task_execution_receipt_id"] = str(
             result.get("task_execution_receipt_id") or ""
@@ -32644,6 +32826,7 @@ class PortalImplementationDaemon:
         state: PortalTaskState,
         baseline_ref: str = "",
         read_only_revalidation: bool = False,
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> tuple[dict[str, Any], Path, dict[str, Any]]:
         """Authorize and execute exactly one task-declared validation plan.
 
@@ -32766,6 +32949,21 @@ class PortalImplementationDaemon:
             authorization_event,
         )
 
+        if (
+            receipt.status is ExecutionStatus.SUCCEEDED
+            and lifecycle_record is not None
+        ):
+            # Receipt persistence is deliberately outside the scheduler.  A
+            # concurrent owner may advance the fence in that window; stop
+            # before even entering clean/materialized-candidate inspection.
+            # The scheduler callback repeats the exact-token gate to close the
+            # remaining preparation-to-dispatch TOCTOU.
+            self._require_exact_worktree_lifecycle(
+                lifecycle_record,
+                workspace_path,
+                boundary="deterministic validation execution",
+            )
+
         if receipt.status is not ExecutionStatus.SUCCEEDED:
             validation_result = {
                 "attempted": False,
@@ -32785,6 +32983,7 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         baseline_ref=baseline_ref,
+                        lifecycle_record=lifecycle_record,
                     )
                     validation_result = (
                         clean_result
@@ -32815,7 +33014,10 @@ class PortalImplementationDaemon:
                         state=state,
                         force_uncached=True,
                         baseline_ref=baseline_ref,
+                        lifecycle_record=lifecycle_record,
                     )
+            except WorktreeLifecycleError:
+                raise
             except Exception as exc:
                 validation_result = {
                     "attempted": True,
@@ -33257,6 +33459,7 @@ class PortalImplementationDaemon:
         proposal_validation: Any = None,
         baseline_ref: str = "",
         state: PortalTaskState | None = None,
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
         """Review a failed validation and accept or attach rescue guidance.
 
@@ -33385,6 +33588,7 @@ class PortalImplementationDaemon:
                 state=state,
                 proposal_validation=revalidated_proposal,
                 baseline_ref=baseline_ref,
+                lifecycle_record=lifecycle_record,
             )
             # Prevent recursive review loops.
             if not rerun.get("passed", False):
@@ -33425,6 +33629,7 @@ class PortalImplementationDaemon:
         proposal_validation: Any = None,
         force_uncached: bool = False,
         baseline_ref: str = "",
+        lifecycle_record: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
         authority_context_id = ""
         authority_revalidation_required = False
@@ -33535,6 +33740,30 @@ class PortalImplementationDaemon:
             else self._validation_command_runner
         )
 
+        def dispatch_validation(effect: Callable[[], Any]) -> Any:
+            """Dispatch only while the immutable worktree token is current.
+
+            Keep this gate at the scheduler callback instead of relying on a
+            caller-side check.  Proposal rebinding, failure-review retries,
+            materialization admission, and stabilization all converge here,
+            so a fence change in any preparatory window cannot reach a test or
+            prover process.
+            """
+
+            if lifecycle_record is None:
+                return effect()
+            if (
+                normalize_workspace_path(lifecycle_record.workspace_path)
+                != normalize_workspace_path(workspace_path)
+            ):
+                raise OwnershipError(
+                    "lifecycle workspace changed before validation dispatch"
+                )
+            return self.worktree_lifecycle.run_exact_owner_effect(
+                lifecycle_record,
+                effect=effect,
+            )
+
         # Validation is the last gate before a candidate is committed/enqueued
         # (or before an in-place task is marked complete).  Impact selection is
         # still recorded and used for staging, but every unrelated targeted
@@ -33548,13 +33777,15 @@ class PortalImplementationDaemon:
                     "commands": tuple(commands),
                     "scope": "pre_merge",
                 },
-                lambda: self.validation_scheduler.run(
-                    scheduled_commands,
-                    workspace_path=workspace_path,
-                    require_full_validation=True,
-                    scope="pre_merge",
-                    runner=validation_runner,
-                    **proof_options,
+                lambda: dispatch_validation(
+                    lambda: self.validation_scheduler.run(
+                        scheduled_commands,
+                        workspace_path=workspace_path,
+                        require_full_validation=True,
+                        scope="pre_merge",
+                        runner=validation_runner,
+                        **proof_options,
+                    )
                 ),
             )
         else:
@@ -33608,16 +33839,18 @@ class PortalImplementationDaemon:
                             "scope": "pre_merge",
                             "validation_graph_id": declared_graph.graph_id,
                         },
-                        lambda: strict_runner(
-                            proposal_validation,
-                            bound_commands,
-                            workspace_path=workspace_path,
-                            impact_graph=declared_graph,
-                            require_impact_graph=True,
-                            require_full_validation=True,
-                            scope="pre_merge",
-                            runner=validation_runner,
-                            **proof_options,
+                        lambda: dispatch_validation(
+                            lambda: strict_runner(
+                                proposal_validation,
+                                bound_commands,
+                                workspace_path=workspace_path,
+                                impact_graph=declared_graph,
+                                require_impact_graph=True,
+                                require_full_validation=True,
+                                scope="pre_merge",
+                                runner=validation_runner,
+                                **proof_options,
+                            )
                         ),
                     )
                     result["validation_plan_binding"] = {
@@ -33963,6 +34196,83 @@ class PortalImplementationDaemon:
                 return True
         return False
 
+    def _isolated_candidate_diff_check(
+        self,
+        *,
+        repository_path: Path,
+        baseline_ref: str,
+        task: PortalTask | None = None,
+        forced_paths: Sequence[str] = (),
+    ) -> tuple[int, str]:
+        """Run ``diff --check`` on exact candidate bytes via a private index."""
+
+        with tempfile.TemporaryDirectory(
+            prefix="agent-supervisor-candidate-index-"
+        ) as temporary_directory:
+            index_path = Path(temporary_directory) / "index"
+            environment = dict(os.environ)
+            environment["GIT_INDEX_FILE"] = str(index_path)
+            environment["GIT_OPTIONAL_LOCKS"] = "0"
+
+            def run(arguments: Sequence[str]) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    list(arguments),
+                    cwd=repository_path,
+                    text=True,
+                    errors="replace",
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=min(float(self.implementation_timeout), 600.0),
+                    check=False,
+                    env=environment,
+                )
+
+            read_tree = run(("git", "read-tree", str(baseline_ref)))
+            if read_tree.returncode != 0:
+                return int(read_tree.returncode or 1), read_tree.stdout or ""
+            materialize = run(("git", "add", "-A", "--", "."))
+            if materialize.returncode != 0:
+                return int(materialize.returncode or 1), materialize.stdout or ""
+
+            if task is not None:
+                self._stage_declared_ignored_outputs(
+                    repository_path,
+                    task,
+                    index_file=index_path,
+                    record_event=False,
+                )
+            for relative in sorted(set(str(path) for path in forced_paths)):
+                if not self._repo_relative_path_safe(relative):
+                    return 1, f"unsafe forced proposal path: {relative}\n"
+                target = repository_path / relative
+                if not target.is_file() or target.is_symlink():
+                    continue
+                forced = run(
+                    (
+                        "git",
+                        "--literal-pathspecs",
+                        "add",
+                        "--force",
+                        "--",
+                        relative,
+                    )
+                )
+                if forced.returncode != 0:
+                    return int(forced.returncode or 1), forced.stdout or ""
+
+            checked = run(
+                (
+                    "git",
+                    "diff",
+                    "--cached",
+                    "--check",
+                    str(baseline_ref),
+                    "--",
+                )
+            )
+            return int(checked.returncode), checked.stdout or ""
+
     def _enforce_baseline_diff_check(
         self,
         *,
@@ -33999,18 +34309,59 @@ class PortalImplementationDaemon:
             )
             if resolved.returncode == 0 and resolved.stdout.strip():
                 resolved_baseline = resolved.stdout.strip()
-                completed = subprocess.run(
-                    ["git", "diff", "--check", resolved_baseline, "--"],
-                    cwd=workspace_path,
-                    text=True,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    timeout=min(float(self.implementation_timeout), 600.0),
-                    check=False,
+                returncode, output = self._isolated_candidate_diff_check(
+                    repository_path=workspace_path,
+                    baseline_ref=resolved_baseline,
+                    task=task,
                 )
-                returncode = int(completed.returncode)
-                output = completed.stdout or ""
+                submodule_paths = sorted(
+                    {
+                        str(path).strip("/")
+                        for path in (
+                            *self.worktree_submodule_paths,
+                            *self._declared_submodule_paths(workspace_path),
+                            *self._declared_submodule_paths_at_commit(
+                                workspace_path,
+                                resolved_baseline,
+                            ),
+                        )
+                        if str(path).strip("/")
+                    }
+                )
+                scope_paths = self._proposal_scope_paths(task)
+                for relative in submodule_paths:
+                    child = workspace_path / relative
+                    if not child.is_dir() or not self._is_git_worktree(child):
+                        continue
+                    baseline_object = self._gitlink_commit_at_tree(
+                        workspace_path,
+                        resolved_baseline,
+                        relative,
+                    )
+                    if not baseline_object:
+                        returncode = 1
+                        output += (
+                            f"[{relative}] baseline gitlink could not be resolved\n"
+                        )
+                        continue
+                    prefix = f"{relative}/"
+                    forced_child_paths = tuple(
+                        path[len(prefix) :]
+                        for path in scope_paths
+                        if path.startswith(prefix) and len(path) > len(prefix)
+                    )
+                    child_code, child_output = self._isolated_candidate_diff_check(
+                        repository_path=child,
+                        baseline_ref=baseline_object,
+                        forced_paths=forced_child_paths,
+                    )
+                    if child_output:
+                        output += "".join(
+                            f"[{relative}] {line}\n"
+                            for line in child_output.splitlines()
+                        )
+                    if child_code != 0:
+                        returncode = child_code
             else:
                 returncode = int(resolved.returncode or 1)
                 output = (
@@ -34020,7 +34371,7 @@ class PortalImplementationDaemon:
         except subprocess.TimeoutExpired:
             returncode = 124
             output = "candidate diff invariant timed out\n"
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             returncode = 1
             output = f"{type(exc).__name__}: {exc}\n"
 
@@ -34038,6 +34389,7 @@ class PortalImplementationDaemon:
             "finished_at": utc_now(),
             "output": output,
             "cache_hit": False,
+            "materialization": "isolated_temporary_index",
         }
         records = list(result.get("results") or [])
         records.append(record)
@@ -39093,26 +39445,152 @@ class PortalImplementationDaemon:
     ) -> WorkspaceLifecycleRecord | None:
         """Advance the active claim into settling before validation/merge/cleanup."""
 
-        record = self._active_worktree_lifecycle
-        if worktree_path is not None:
-            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
-            if loaded is not None:
-                record = loaded
+        record = self._require_active_worktree_lifecycle(
+            worktree_path,
+            boundary="validation",
+        )
         if record is None or record.is_terminal:
             return record
         if record.state is WorkspaceLifecycleState.SETTLING:
             self._active_worktree_lifecycle = record
             return record
-        try:
-            updated = self.worktree_lifecycle.mark_settling(
-                record.workspace_path,
-                lease_id=record.lease_id,
-                expected_fence=record.fence,
-            )
-        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError):
-            return record
+        updated = self.worktree_lifecycle.mark_settling(
+            record.workspace_path,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
         self._active_worktree_lifecycle = updated
         return updated
+
+    def _require_active_worktree_lifecycle(
+        self,
+        worktree_path: Path | None,
+        *,
+        boundary: str,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Fail closed when the captured lifecycle fence was lost."""
+
+        expected = self._active_worktree_lifecycle
+        if expected is None:
+            return None
+        observed = self._require_exact_worktree_lifecycle(
+            expected,
+            worktree_path,
+            boundary=boundary,
+        )
+        current = self._active_worktree_lifecycle
+        if (
+            current is not None
+            and current.record_id == expected.record_id
+            and current.lease_id == expected.lease_id
+            and current.fence == expected.fence
+        ):
+            self._active_worktree_lifecycle = observed
+        return observed
+
+    def _require_exact_worktree_lifecycle(
+        self,
+        expected: WorkspaceLifecycleRecord,
+        worktree_path: Path | None,
+        *,
+        boundary: str,
+    ) -> WorkspaceLifecycleRecord:
+        """Re-read and verify one immutable ownership tuple without adoption."""
+
+        if (
+            worktree_path is not None
+            and normalize_workspace_path(expected.workspace_path)
+            != normalize_workspace_path(worktree_path)
+        ):
+            raise OwnershipError(
+                f"lifecycle workspace changed before {boundary}"
+            )
+        observed = self.worktree_lifecycle.load_workspace(
+            expected.workspace_path
+        )
+        if observed is None:
+            raise OwnershipError(
+                f"lifecycle record missing before {boundary}"
+            )
+        if (
+            observed.is_terminal
+            or observed.record_id != expected.record_id
+            or normalize_workspace_path(observed.workspace_path)
+            != normalize_workspace_path(expected.workspace_path)
+            or observed.lease_id != expected.lease_id
+            or observed.fence != expected.fence
+        ):
+            raise OwnershipError(
+                f"lifecycle ownership or fence changed before {boundary}"
+            )
+        return observed
+
+    def _clear_active_worktree_lifecycle_exact(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> None:
+        """Clear only the same immutable lifecycle authority tuple."""
+
+        current = self._active_worktree_lifecycle
+        if (
+            current is not None
+            and current.record_id == record.record_id
+            and normalize_workspace_path(current.workspace_path)
+            == normalize_workspace_path(record.workspace_path)
+            and current.lease_id == record.lease_id
+            and current.fence == record.fence
+        ):
+            self._active_worktree_lifecycle = None
+
+    def _run_lifecycle_fenced_cleanup_effect(
+        self,
+        worktree_path: Path,
+        *,
+        captured_record: WorkspaceLifecycleRecord | None,
+        reason: str,
+        effect: Callable[[], Any],
+    ) -> tuple[Any, dict[str, Any]]:
+        """Run physical cleanup under an exact claim (or exact absence) gate."""
+
+        expected = captured_record
+        if expected is None:
+            observed = self.worktree_lifecycle.load_workspace(worktree_path)
+            if observed is not None:
+                if observed.is_nonterminal:
+                    raise OwnershipError(
+                        "nonterminal lifecycle owner appeared before cleanup"
+                    )
+                expected = observed
+        if expected is None:
+            effect_result = self.worktree_lifecycle.run_effect_if_unclaimed(
+                worktree_path,
+                effect=effect,
+            )
+            return effect_result, {
+                "finalized": True,
+                "reason": "unclaimed_cleanup_guard",
+            }
+        if (
+            normalize_workspace_path(expected.workspace_path)
+            != normalize_workspace_path(worktree_path)
+        ):
+            raise OwnershipError(
+                "captured lifecycle workspace changed before cleanup"
+            )
+        effect_result, terminal = (
+            self.worktree_lifecycle.finalize_exact_after_effect(
+                expected,
+                reason=reason,
+                effect=effect,
+            )
+        )
+        self._clear_active_worktree_lifecycle_exact(expected)
+        return effect_result, {
+            "finalized": True,
+            "reason": reason,
+            "fence": terminal.fence,
+            "state": terminal.state.value,
+        }
 
     def _sync_worktree_lifecycle_workspace(
         self,
@@ -39179,15 +39657,28 @@ class PortalImplementationDaemon:
         *,
         reason: str = "cleanup_finished",
     ) -> dict[str, Any]:
-        """Mark the active (or path-bound) lifecycle record terminal after disposal."""
+        """Terminalize only the lifecycle claim captured by this daemon.
+
+        The workspace path is not an ownership identity.  A released path can
+        already belong to a newer lane, so loading it here would let a stale
+        daemon adopt and terminalize the replacement record.
+        """
 
         record = self._active_worktree_lifecycle
-        if worktree_path is not None:
-            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
-            if loaded is not None:
-                record = loaded
         if record is None:
             return {"finalized": False, "reason": "no_lifecycle_record"}
+        if (
+            worktree_path is not None
+            and normalize_workspace_path(record.workspace_path)
+            != normalize_workspace_path(worktree_path)
+        ):
+            return {
+                "finalized": False,
+                "reason": "lifecycle_workspace_mismatch",
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
         return self._finalize_exact_worktree_lifecycle(
             record,
             reason=reason,
@@ -39209,15 +39700,7 @@ class PortalImplementationDaemon:
         """
 
         def _clear_captured_active() -> None:
-            current = self._active_worktree_lifecycle
-            if (
-                current is not None
-                and current.lease_id == record.lease_id
-                and current.fence == record.fence
-                and normalize_workspace_path(current.workspace_path)
-                == normalize_workspace_path(record.workspace_path)
-            ):
-                self._active_worktree_lifecycle = None
+            self._clear_active_worktree_lifecycle_exact(record)
 
         if record.is_terminal:
             _clear_captured_active()
@@ -39257,7 +39740,6 @@ class PortalImplementationDaemon:
             }
         except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
             # Peer reclamation or concurrent owner may have advanced the fence.
-            _clear_captured_active()
             return {
                 "finalized": False,
                 "reason": "lifecycle_finalize_race",
@@ -39433,6 +39915,24 @@ class PortalImplementationDaemon:
             }
             self._record_event("cleanup_finished", result)
             return result
+
+        def run_cleanup_effect(
+            effect: Callable[[], Any],
+            *,
+            reason: str,
+        ) -> tuple[Any, dict[str, Any]]:
+            if worktree_path is None:
+                return effect(), {
+                    "finalized": True,
+                    "reason": "no_worktree_path",
+                }
+            return self._run_lifecycle_fenced_cleanup_effect(
+                worktree_path,
+                captured_record=lifecycle_record,
+                reason=reason,
+                effect=effect,
+            )
+
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
@@ -39442,8 +39942,53 @@ class PortalImplementationDaemon:
                 lease_key = worktree_path
             lease = self._worktree_pool_leases.get(lease_key)
         if lease is not None:
-            pool_release = lease.release(reusable=reusable)
-            if not pool_release.get("released", False):
+            pool_release: dict[str, Any] = {}
+            deleted_branch = False
+
+            def release_pool() -> None:
+                nonlocal deleted_branch
+                pool_release.update(lease.release(reusable=reusable))
+                if not pool_release.get("released", False):
+                    raise RuntimeError("worktree pool release did not complete")
+                if self._git_ref_exists(branch_name):
+                    self._run_git(
+                        ["branch", "-D", branch_name],
+                        cwd=self.repo_root,
+                    )
+                    deleted_branch = True
+                if lease_key is not None:
+                    self._worktree_pool_leases.pop(lease_key, None)
+                if worktree_path is not None:
+                    self._forget_seeded_worktree_context(worktree_path)
+
+            try:
+                _effect_result, lifecycle_finalize = run_cleanup_effect(
+                    release_pool,
+                    reason="pool_release_cleaned",
+                )
+            except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+                result = {
+                    "cleaned": False,
+                    "branch": branch_name,
+                    "worktree_path": str(worktree_path or ""),
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "submodule_cleanup": [],
+                    "reason": "lifecycle_cleanup_fence_lost",
+                    "error": str(exc)[-1000:],
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                    "lifecycle_finalize": {
+                        "finalized": False,
+                        "reason": "lifecycle_finalize_race",
+                    },
+                }
+                self._record_event("cleanup_finished", result)
+                return result
+            except RuntimeError as exc:
                 lifecycle_deferred = bool(
                     pool_release.get("deferred") is True
                     and pool_release.get("retryable") is True
@@ -39456,40 +40001,27 @@ class PortalImplementationDaemon:
                     "started_at": started_at,
                     "finished_at": utc_now(),
                     "removed_worktree": False,
-                    "deleted_branch": False,
+                    "deleted_branch": deleted_branch,
                     "submodule_cleanup": [],
                     "reason": str(
                         pool_release.get("reason")
-                        or "worktree_pool_release_deferred"
+                        or "worktree_pool_cleanup_failed"
                     ),
+                    "error": str(exc)[-1000:],
                     "pool_release": pool_release,
                 }
                 if lifecycle_deferred:
                     result.update(
                         {
-                            "failure_kind": (
-                                LifecycleFailureKind.LIFECYCLE_RACE.value
-                            ),
+                            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
                             "attempt_consumed": False,
                             "provider_call_allowed": False,
                         }
                     )
                 self._record_event("cleanup_finished", result)
                 return result
-            if lease_key is not None:
-                self._worktree_pool_leases.pop(lease_key, None)
-            if worktree_path is not None:
-                self._forget_seeded_worktree_context(worktree_path)
-            deleted_branch = False
-            branch_error = ""
-            try:
-                if self._git_ref_exists(branch_name):
-                    self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
-                    deleted_branch = True
-            except RuntimeError as exc:
-                branch_error = str(exc)
             result = {
-                "cleaned": not branch_error,
+                "cleaned": lifecycle_finalize.get("finalized") is True,
                 "branch": branch_name,
                 "worktree_path": str(worktree_path or ""),
                 "started_at": started_at,
@@ -39499,47 +40031,78 @@ class PortalImplementationDaemon:
                 "submodule_cleanup": [],
                 "pooled": bool(pool_release.get("pooled", False)),
                 "pool_release": pool_release,
+                "lifecycle_finalize": lifecycle_finalize,
             }
-            if branch_error:
-                result["error"] = branch_error
-            if result.get("cleaned"):
-                result["lifecycle_finalize"] = (
-                    self._finalize_exact_worktree_lifecycle(
-                        lifecycle_record,
-                        reason="pool_release_cleaned",
-                    )
-                    if lifecycle_record is not None
-                    else {
-                        "finalized": False,
-                        "reason": "no_lifecycle_record",
-                    }
-                )
+            if not result["cleaned"]:
+                result["reason"] = "lifecycle_finalize_race"
             self._record_event("cleanup_finished", result)
             return result
-
-        if worktree_path is not None:
-            self._forget_seeded_worktree_context(worktree_path)
 
         removed_worktree = False
         deleted_branch = False
         submodule_cleanup: list[dict[str, Any]] = []
         errors: list[str] = []
-        try:
+
+        def remove_worktree() -> None:
+            nonlocal removed_worktree, deleted_branch, submodule_cleanup
             if worktree_path is not None:
-                submodule_cleanup = self._cleanup_worktree_submodules(worktree_path, branch_name)
+                self._forget_seeded_worktree_context(worktree_path)
+                submodule_cleanup = self._cleanup_worktree_submodules(
+                    worktree_path,
+                    branch_name,
+                )
             if worktree_path is not None and (
-                worktree_path.exists() or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
+                worktree_path.exists()
+                or self._worktree_path_registered_in_repo(
+                    self.repo_root,
+                    worktree_path,
+                )
             ):
-                self._run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=self.repo_root)
+                self._run_git(
+                    ["worktree", "remove", "--force", str(worktree_path)],
+                    cwd=self.repo_root,
+                )
                 removed_worktree = True
             if self._git_ref_exists(branch_name):
-                self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
+                self._run_git(
+                    ["branch", "-D", branch_name],
+                    cwd=self.repo_root,
+                )
                 deleted_branch = True
-        except RuntimeError as exc:
-            errors.append(str(exc))
-        errors.extend(self._submodule_cleanup_failures(submodule_cleanup))
+            errors.extend(self._submodule_cleanup_failures(submodule_cleanup))
+            if errors:
+                raise RuntimeError("\n".join(errors))
 
-        if errors:
+        try:
+            _effect_result, lifecycle_finalize = run_cleanup_effect(
+                remove_worktree,
+                reason="worktree_cleaned",
+            )
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+            result = {
+                "cleaned": False,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path or ""),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "removed_worktree": removed_worktree,
+                "deleted_branch": deleted_branch,
+                "submodule_cleanup": submodule_cleanup,
+                "reason": "lifecycle_cleanup_fence_lost",
+                "error": str(exc)[-1000:],
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+                "lifecycle_finalize": {
+                    "finalized": False,
+                    "reason": "lifecycle_finalize_race",
+                },
+            }
+            self._record_event("cleanup_finished", result)
+            return result
+        except RuntimeError as exc:
+            if not errors:
+                errors.append(str(exc))
             result = {
                 "cleaned": False,
                 "branch": branch_name,
@@ -39555,7 +40118,7 @@ class PortalImplementationDaemon:
             return result
 
         result = {
-            "cleaned": True,
+            "cleaned": lifecycle_finalize.get("finalized") is True,
             "branch": branch_name,
             "worktree_path": str(worktree_path or ""),
             "started_at": started_at,
@@ -39563,18 +40126,10 @@ class PortalImplementationDaemon:
             "removed_worktree": removed_worktree,
             "deleted_branch": deleted_branch,
             "submodule_cleanup": submodule_cleanup,
-            "lifecycle_finalize": (
-                self._finalize_exact_worktree_lifecycle(
-                    lifecycle_record,
-                    reason="worktree_cleaned",
-                )
-                if lifecycle_record is not None
-                else {
-                    "finalized": False,
-                    "reason": "no_lifecycle_record",
-                }
-            ),
+            "lifecycle_finalize": lifecycle_finalize,
         }
+        if not result["cleaned"]:
+            result["reason"] = "lifecycle_finalize_race"
         self._record_event("cleanup_finished", result)
         return result
 

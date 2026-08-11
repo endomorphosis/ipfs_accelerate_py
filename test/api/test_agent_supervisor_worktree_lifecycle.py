@@ -461,14 +461,10 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
         )
 
 
-def test_expired_claim_reclaimable_even_if_owner_pid_still_alive(
+def test_expired_claim_is_not_reclaimable_while_owner_pid_is_alive(
     tmp_path: Path,
 ) -> None:
-    """Supervisor auto-unstick: expired leases are abandoned claims.
-
-    Long-lived daemon PIDs remain "alive" after failed implementers; without
-    reclaim-on-expiry the board stalls indefinitely.
-    """
+    """Lease expiry cannot revoke a still-live process-birth owner."""
 
     clock = FakeClock(1_000.0)
     store = _store(tmp_path, lease_seconds=10.0, clock=clock)
@@ -491,27 +487,28 @@ def test_expired_claim_reclaimable_even_if_owner_pid_still_alive(
         workspace,
         reason="test_expired_alive_reclaim",
     )
-    assert reclaimed is not None
-    assert reclaimed.is_terminal
-    assert reclaimed.terminal_reason == "test_expired_alive_reclaim"
-
-    # A new acquire must succeed after reclaim (or via begin_preparing itself).
-    second = store.begin_preparing(
-        task_id="EXP",
-        canonical_task_cid="cid:exp",
-        attempt=1,
-        lane_id="lane-b",
-        workspace_path=tmp_path / "expired-alive-2",
-        branch="implementation/exp-2",
-        merge_target="main",
-    )
-    assert second.is_nonterminal
-    assert second.lane_id == "lane-b"
+    assert reclaimed is None
+    assert store.load_workspace(workspace) == first
+    with pytest.raises(DuplicateAttemptError):
+        store.begin_preparing(
+            task_id="EXP",
+            canonical_task_cid="cid:exp",
+            attempt=1,
+            lane_id="lane-b",
+            workspace_path=tmp_path / "expired-alive-2",
+            branch="implementation/exp-2",
+            merge_target="main",
+        )
 
 
 def test_reclaim_expired_nonterminal_bulk(tmp_path: Path) -> None:
     clock = FakeClock(2_000.0)
     store = _store(tmp_path, lease_seconds=5.0, clock=clock)
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 31,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
     for index in range(3):
         store.begin_preparing(
             task_id=f"UIR-{index:03d}",
@@ -520,6 +517,7 @@ def test_reclaim_expired_nonterminal_bulk(tmp_path: Path) -> None:
             workspace_path=tmp_path / f"ws-{index}",
             branch=f"implementation/uir-{index}",
             merge_target="main",
+            owner=dead_owner,
         )
     # Leave one unexpired by renewing... actually all share clock; advance past
     # lease so all three are expired, then reclaim only UIR- prefix.
@@ -551,7 +549,11 @@ def test_begin_preparing_replaces_expired_task_attempt_claim(
         workspace_path=original_ws,
         branch="implementation/rep",
         merge_target="main",
-        owner=current_process_birth(),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 32,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
     )
     clock.advance(6.0)
     # Different workspace, same task/attempt: expired claim must not block.
@@ -1095,6 +1097,11 @@ def test_reconcile_stale_task_indexes_after_terminal_workspace(tmp_path: Path) -
         workspace_path=workspace,
         branch="implementation/uir-033",
         merge_target="agent/ui-ux-ir",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 33,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
     )
     # Expire and reclaim workspace claim.
     clock.advance(60.0)
@@ -1132,6 +1139,11 @@ def test_reclaim_expired_repairs_task_indexes(tmp_path: Path) -> None:
         workspace_path=workspace,
         branch="implementation/uir-055",
         merge_target="agent/ui-ux-ir",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 34,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
     )
     clock.advance(30.0)
     # Mark workspace terminal directly via reclaim, then re-stale the index.
