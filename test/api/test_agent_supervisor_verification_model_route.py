@@ -25,7 +25,6 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     ModelRoute,
     ModelRouteDecision,
-    VerificationContractError,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
     MODEL_ROUTE_EVIDENCE,
@@ -66,7 +65,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
     policy_cid_for,
     select_required_route,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

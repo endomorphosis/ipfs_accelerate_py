@@ -51,6 +51,10 @@ from typing import Any, Final, Sequence
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+    HostResourceSnapshot,
+    ResourceScheduler,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.verification.bundle import (
     build_verification_bundle,
@@ -107,17 +111,12 @@ from ipfs_accelerate_py.agent_supervisor.verification.process_runner import (
     build_closed_sandbox,
     build_hermetic_environment,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
-    HostResourceSnapshot,
-    ResourceScheduler,
-)
 from ipfs_accelerate_py.agent_supervisor.verification.receipt_cache import (
     REASON_EXACT_CURRENT_PRODUCTION,
-    REASON_KIND_MISMATCH,
     REASON_KEY_MISMATCH,
+    REASON_KIND_MISMATCH,
     REASON_TOMBSTONED,
     AdmitResult,
-    VerificationReceiptCache,
     production_eligible,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
@@ -127,30 +126,34 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     mapping_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.selection import (
-    FallbackMode,
     REASON_OPAQUE_CRITICAL,
+    FallbackMode,
     select_affected_verification,
 )
 
 # Focused-suite helpers (canonical identity / receipt / plan factories).
-from test.api.test_agent_supervisor_verification_bundle import (  # noqa: E402
+from test.api.test_agent_supervisor_verification_bundle import (
     _failed_type,
     _passing_type,
 )
-from test.api.test_agent_supervisor_verification_contracts import (  # noqa: E402
+from test.api.test_agent_supervisor_verification_contracts import (
     _key as _contract_key,
+)
+from test.api.test_agent_supervisor_verification_contracts import (
     _observation as _contract_observation,
+)
+from test.api.test_agent_supervisor_verification_contracts import (
     _plan,
     _route,
 )
-from test.api.test_agent_supervisor_verification_counterexamples import (  # noqa: E402
+from test.api.test_agent_supervisor_verification_counterexamples import (
     NOISY_PYTEST_OUTPUT,
     ORIGINAL_ARGV,
     _failed_test,
     _material_from_noisy_output,
     _oracle_preserving,
 )
-from test.api.test_agent_supervisor_verification_receipt_cache import (  # noqa: E402
+from test.api.test_agent_supervisor_verification_receipt_cache import (
     _cache,
     _key,
     _related_key_variants,
@@ -158,14 +161,21 @@ from test.api.test_agent_supervisor_verification_receipt_cache import (  # noqa:
     _static_receipt,
     _type_check_receipt,
 )
-from test.api.test_agent_supervisor_verification_selection import (  # noqa: E402
+from test.api.test_agent_supervisor_verification_selection import (
     TEST_A as SEL_TEST_A,
+)
+from test.api.test_agent_supervisor_verification_selection import (
     _catalog as _selection_catalog,
+)
+from test.api.test_agent_supervisor_verification_selection import (
     _edge as _selection_edge,
+)
+from test.api.test_agent_supervisor_verification_selection import (
     _policy as _selection_policy,
+)
+from test.api.test_agent_supervisor_verification_selection import (
     _select,
 )
-
 
 # ---------------------------------------------------------------------------
 # Evidence / matrix bookkeeping

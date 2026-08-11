@@ -1,3 +1,4 @@
+# ruff: noqa: N999  # worktree directory name is not a Python module identifier
 """Incremental-verification contracts.
 
 This package boundary is side-effect free.  Final root-package lazy exports

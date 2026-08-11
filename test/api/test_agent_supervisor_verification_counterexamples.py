@@ -23,9 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
-    DiagnosticValueState,
     MAX_COUNTEREXAMPLE_BYTES,
     CounterexampleReceipt,
+    DiagnosticValueState,
     TerminalStatus,
     TestReceipt,
     TypeCheckReceipt,
@@ -59,7 +59,6 @@ from test.api.test_agent_supervisor_verification_contracts import (
     _key,
     _observation,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -660,9 +659,7 @@ def test_argv_is_list_form_on_receipt_record() -> None:
     )
     record = result.receipt.to_record()
     assert isinstance(record["reproduction_argv"], (list, tuple))
-    assert list(record["reproduction_argv"])[0].endswith("python3.12") or "python" in list(
-        record["reproduction_argv"]
-    )[0]
+    assert next(iter(record["reproduction_argv"])).endswith("python3.12") or "python" in next(iter(record["reproduction_argv"]))
     # Module API documents argv as a list for callers.
     assert isinstance(list(result.receipt.reproduction_argv), list)
 

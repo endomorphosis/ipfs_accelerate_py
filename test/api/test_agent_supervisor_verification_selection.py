@@ -17,21 +17,18 @@ from typing import Any
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.verification.datasets_adapter import (
     DATASETS_INVALIDATION_PLAN_SCHEMA,
     DATASETS_SEMANTIC_CAPSULE_SCHEMA,
-    DatasetsVerificationInputAdapter,
     EdgeDisposition,
     create_datasets_verification_input_adapter,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.selection import (
     AFFECTED_VERIFICATION_SELECTION_INTERFACE,
     AFFECTED_VERIFICATION_SELECTION_SCHEMA,
-    SELECTION_EVIDENCE,
-    AffectedCheckSelector,
-    AffectedVerificationSelection,
-    FallbackMode,
-    REASON_BROADER_REQUIRED,
     REASON_CONFIG_EDGE,
     REASON_CONFLICTING_CRITICAL,
     REASON_DIRECT_PATH,
@@ -52,16 +49,16 @@ from ipfs_accelerate_py.agent_supervisor.verification.selection import (
     REASON_UNKNOWN_CRITICAL,
     REASON_UNRELATED_NO_EXPANSION,
     REASON_VALIDATION_MAPPING_INCOMPLETE,
+    SELECTION_EVIDENCE,
+    AffectedCheckSelector,
+    AffectedVerificationSelection,
+    FallbackMode,
     SelectionError,
     SelectionPolicy,
     VerificationCatalog,
     create_affected_check_selector,
     select_affected_verification,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
-    content_identity,
-)
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
