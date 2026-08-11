@@ -469,6 +469,101 @@ def test_grok_codex_agent_route_allows_only_typed_pre_side_effect_failure(
     assert decision.route_record["completion_authority"] is False
 
 
+def test_grok_codex_quota_only_route_accepts_only_trusted_quota(
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(
+            llm_router.AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+            "grok_provider_insufficient_quota",
+        ),
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+
+    assert decision.should_fallback is True
+    assert decision.route_record["fallback_policy"] == (
+        llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY
+    )
+    assert decision.route_record["failure_kind"] == "grok_quota_exhausted"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+    ),
+)
+def test_grok_codex_quota_only_route_rejects_non_quota_receipt(
+    kind,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(
+            kind,
+            "grok_primary_unavailable",
+        ),
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+
+    assert decision.should_fallback is False
+    assert decision.terminal_reason == "failure_not_fallback_eligible"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+    ),
+)
+def test_grok_codex_quota_only_route_rejects_preflight_unavailable(
+    kind,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(
+            None,
+            launched=False,
+            activity_state=llm_router.AgentCLIActivityState.PRE_DISPATCH,
+        ),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        primary_unavailable_kind=kind,
+    )
+
+    assert decision.should_fallback is False
+    assert decision.terminal_reason == "failure_not_fallback_eligible"
+
+
 @pytest.mark.parametrize(
     "kind",
     (

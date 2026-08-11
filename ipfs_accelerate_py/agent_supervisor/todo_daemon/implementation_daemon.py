@@ -347,12 +347,19 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+)
 PROVIDER_FALLBACK_POLICY_ENV = (
     "IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY"
 )
 GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY = (
     "grok_quota_auth_or_unavailable"
 )
+GROK_QUOTA_ONLY_FALLBACK_POLICY = "grok_quota_only"
 PROVIDER_ROUTE_RECEIPT_SCHEMA = "ipfs_accelerate_py/provider-route@1"
 MAX_PROVIDER_ROUTE_RECEIPT_BYTES = 16 * 1024
 GROK_CODEX_PROVIDER_ALIASES = frozenset(
@@ -1070,6 +1077,50 @@ def _configured_provider_fallback_policy() -> str:
     )
 
 
+def _configured_legacy_quota_only_fallback_policy(provider: str) -> str:
+    """Translate the exact reviewed IVP route tuple to the new runner policy."""
+
+    fallback_provider = os.environ.get(
+        IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "",
+    ).strip().lower()
+    fallback_trigger = os.environ.get(
+        IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "",
+    ).strip().lower()
+    if not fallback_provider and not fallback_trigger:
+        return ""
+
+    configured_policy = os.environ.get(
+        PROVIDER_FALLBACK_POLICY_ENV,
+        "",
+    ).strip().lower().replace("-", "_")
+    observed = (
+        str(provider).strip().lower(),
+        os.environ.get(_GROK_MODEL_ENV, "").strip(),
+        fallback_provider,
+        os.environ.get(_CODEX_MODEL_ENV, "").strip(),
+        fallback_trigger,
+        os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip().lower(),
+    )
+    expected = (
+        "grok_cli",
+        "grok-4.5",
+        "codex",
+        "gpt-5.6-terra",
+        "primary_quota_exhausted",
+        "high",
+    )
+    if observed != expected or configured_policy not in {
+        "",
+        GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    }:
+        raise RuntimeError(
+            "unsupported sealed legacy ordered provider route"
+        )
+    return GROK_QUOTA_ONLY_FALLBACK_POLICY
+
+
 def _grok_codex_agent_route_readiness(*, codex: str) -> Any:
     """Use llm_router's public, body-free, side-effect-free route probe."""
 
@@ -1312,6 +1363,21 @@ def _validated_provider_filesystem_boundary_receipt(
     return dict(payload)
 
 
+def _provider_route_policy_allows_failure(
+    policy: object,
+    failure_kind: object,
+) -> bool:
+    if policy == GROK_QUOTA_ONLY_FALLBACK_POLICY:
+        return failure_kind == "grok_quota_exhausted"
+    if policy == GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY:
+        return failure_kind in {
+            "grok_quota_exhausted",
+            "authentication_failure",
+            "launch_failure",
+        }
+    return False
+
+
 def _validated_provider_route_receipt(
     path: Path,
     *,
@@ -1369,16 +1435,12 @@ def _validated_provider_route_receipt(
         payload.get("schema") != PROVIDER_ROUTE_RECEIPT_SCHEMA
         or payload.get("route") != "fallback"
         or payload.get("completion_authority") is not False
-        or payload.get("fallback_policy")
-        != GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY
+        or not _provider_route_policy_allows_failure(
+            payload.get("fallback_policy"),
+            payload.get("failure_kind"),
+        )
         or payload.get("primary_provider") != "grok"
         or payload.get("fallback_provider") != "codex"
-        or payload.get("failure_kind")
-        not in {
-            "grok_quota_exhausted",
-            "authentication_failure",
-            "launch_failure",
-        }
         or (
             payload.get("primary_returncode") is not None
             and (
@@ -38197,16 +38259,32 @@ class PortalImplementationDaemon:
         route_stage: str = "implementation",
     ) -> list[str]:
         workspace_path = workspace_path.resolve()
-        if self.implementation_command:
-            return shlex.split(self.implementation_command)
-        env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command:
-            return shlex.split(env_command)
-
         provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
             or "auto"
         )
+        legacy_fallback_policy = (
+            _configured_legacy_quota_only_fallback_policy(provider)
+        )
+        ordered_grok_codex = bool(legacy_fallback_policy) or (
+            provider in GROK_CODEX_PROVIDER_ALIASES
+        )
+        if self.implementation_command:
+            if ordered_grok_codex:
+                raise RuntimeError(
+                    "sealed Grok/Codex route rejects explicit "
+                    "implementation command override"
+                )
+            return shlex.split(self.implementation_command)
+        env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
+        if env_command:
+            if ordered_grok_codex:
+                raise RuntimeError(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override"
+                )
+            return shlex.split(env_command)
+
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
         prefer_grok = provider in {
@@ -38251,10 +38329,11 @@ class PortalImplementationDaemon:
             "spark",
         }
         force_codex = provider in {"codex", "copilot", "openai"}
-        ordered_grok_codex = provider in GROK_CODEX_PROVIDER_ALIASES
-
         if ordered_grok_codex:
-            fallback_policy = _configured_provider_fallback_policy()
+            fallback_policy = (
+                legacy_fallback_policy
+                or _configured_provider_fallback_policy()
+            )
             codex = shutil.which("codex")
             if not codex:
                 raise RuntimeError(
@@ -38284,10 +38363,18 @@ class PortalImplementationDaemon:
                     grok_command = _grok_cli_command(
                         workspace_path=workspace_path,
                     )
-                except (OSError, RuntimeError):
+                except (OSError, RuntimeError) as exc:
+                    if legacy_fallback_policy:
+                        raise RuntimeError(
+                            "quota-only Grok primary could not launch"
+                        ) from exc
                     primary_unavailable_kind = "launch_failure"
             else:
                 failure_kind = getattr(readiness.failure_kind, "value", "")
+                if legacy_fallback_policy:
+                    raise RuntimeError(
+                        "quota-only route requires a ready Grok primary"
+                    )
                 if failure_kind not in {
                     "authentication_failure",
                     "launch_failure",

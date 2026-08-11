@@ -16,6 +16,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     GROK_CODEX_PROVIDER_ALIASES,
     GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
+    GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+    IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
     IMPLEMENTATION_PROVIDER_ENV,
     PROVIDER_FALLBACK_POLICY_ENV,
     PortalTask,
@@ -97,6 +100,25 @@ def _configure_daemon_route(
     )
 
 
+def _configure_legacy_quota_only_route(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    readiness: llm_router.AgentCLIRouteReadiness,
+) -> None:
+    _configure_daemon_route(monkeypatch, readiness=readiness)
+    values = {
+        IMPLEMENTATION_PROVIDER_ENV: "grok_cli",
+        IMPLEMENTATION_FALLBACK_PROVIDER_ENV: "codex",
+        IMPLEMENTATION_FALLBACK_TRIGGER_ENV: "primary_quota_exhausted",
+        implementation_daemon_module._GROK_MODEL_ENV: "grok-4.5",
+        implementation_daemon_module._CODEX_MODEL_ENV: "gpt-5.6-terra",
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV: "high",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv(PROVIDER_FALLBACK_POLICY_ENV, raising=False)
+
+
 def test_grok_codex_policy_builds_router_owned_safe_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -130,6 +152,91 @@ def test_grok_codex_policy_builds_router_owned_safe_route(
         "grok",
         "codex",
     }
+
+
+def test_legacy_quota_high_tuple_builds_quota_only_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    _configure_legacy_quota_only_route(
+        monkeypatch,
+        readiness=_readiness(),
+    )
+
+    command = daemon._build_implementation_command(tmp_path)
+
+    assert command[:2] == [sys.executable, str(RUNNER_PATH)]
+    assert command[command.index("--fallback-policy") + 1] == (
+        GROK_QUOTA_ONLY_FALLBACK_POLICY
+    )
+    assert "--primary-unavailable-kind" not in command
+    fallback = _json_command(command, "--fallback-command-json")
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="high"' in fallback
+
+
+@pytest.mark.parametrize(
+    "failure_kind",
+    (
+        llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+    ),
+)
+def test_legacy_quota_route_rejects_unavailable_primary_pre_dispatch(
+    failure_kind,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    _configure_legacy_quota_only_route(
+        monkeypatch,
+        readiness=_readiness(
+            grok_ready=False,
+            failure_kind=failure_kind,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="requires a ready Grok primary"):
+        daemon._build_implementation_command(tmp_path)
+
+
+@pytest.mark.parametrize("override_source", ("constructor", "environment"))
+def test_legacy_quota_route_rejects_raw_command_override(
+    override_source: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    _configure_legacy_quota_only_route(
+        monkeypatch,
+        readiness=_readiness(),
+    )
+    if override_source == "constructor":
+        daemon.implementation_command = "codex exec -"
+    else:
+        monkeypatch.setenv("IMPLEMENTATION_DAEMON_COMMAND", "codex exec -")
+
+    with pytest.raises(RuntimeError, match="sealed Grok/Codex route rejects"):
+        daemon._build_implementation_command(tmp_path)
+
+
+def test_legacy_quota_route_rejects_effort_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    _configure_legacy_quota_only_route(
+        monkeypatch,
+        readiness=_readiness(),
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        "medium",
+    )
+
+    with pytest.raises(RuntimeError, match="unsupported sealed legacy"):
+        daemon._build_implementation_command(tmp_path)
 
 
 @pytest.mark.parametrize("provider", sorted(GROK_CODEX_PROVIDER_ALIASES))
@@ -315,6 +422,53 @@ def test_daemon_rejects_non_body_free_provider_route_receipt_fields(
             attempt=1,
         )
     assert "private-returncode-sentinel" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("failure_kind", "accepted"),
+    (
+        ("grok_quota_exhausted", True),
+        ("authentication_failure", False),
+        ("launch_failure", False),
+    ),
+)
+def test_daemon_binds_quota_only_receipt_policy_to_failure_kind(
+    failure_kind: str,
+    accepted: bool,
+    tmp_path: Path,
+) -> None:
+    receipt_path = tmp_path / "route.json"
+    receipt = {
+        "attempt": 1,
+        "completion_authority": False,
+        "fallback_policy": GROK_QUOTA_ONLY_FALLBACK_POLICY,
+        "fallback_provider": "codex",
+        "failure_kind": failure_kind,
+        "primary_provider": "grok",
+        "primary_returncode": 19,
+        "reason_code": "grok_primary_failure",
+        "route": "fallback",
+        "schema": implementation_daemon_module.PROVIDER_ROUTE_RECEIPT_SCHEMA,
+        "side_effects_started": False,
+        "stage": "implementation",
+        "task_id": "ROUTE-QUOTA-001",
+    }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    if accepted:
+        validated = implementation_daemon_module._validated_provider_route_receipt(
+            receipt_path,
+            task_id="ROUTE-QUOTA-001",
+            attempt=1,
+        )
+        assert validated == receipt
+    else:
+        with pytest.raises(RuntimeError, match="binding is invalid"):
+            implementation_daemon_module._validated_provider_route_receipt(
+                receipt_path,
+                task_id="ROUTE-QUOTA-001",
+                attempt=1,
+            )
 
 
 def test_daemon_semantic_merge_persists_bound_provider_route_receipt(
@@ -602,6 +756,7 @@ def _run_fallback_runner(
     probe_grok_bin: Path | None = None,
     probe_codex_bin: Path | None = None,
     environment: dict[str, str] | None = None,
+    fallback_policy: str = GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
@@ -617,7 +772,7 @@ def _run_fallback_runner(
         "--fallback-command-json",
         json.dumps(fallback_command),
         "--fallback-policy",
-        GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
+        fallback_policy,
     ]
     if primary_unavailable_kind:
         command.extend(["--primary-unavailable-kind", primary_unavailable_kind])
@@ -1090,6 +1245,48 @@ def test_packaged_runner_gate_rejects_untrusted_interpreter_prefix(
     )
 
 
+def test_provider_runner_does_not_trust_packaged_script_under_foreign_interpreter(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    malicious = tmp_path / "malicious-interpreter"
+    fallback_record = tmp_path / "fallback.json"
+    codex = tmp_path / "codex.py"
+    malicious.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os\n"
+        "fd = os.environ.get("
+        "'IPFS_ACCELERATE_AGENT_TRUSTED_FAILURE_RECEIPT_FD', '')\n"
+        "if fd:\n"
+        "    payload = {\n"
+        "        'activity_state': 'no_activity',\n"
+        "        'failure_kind': 'grok_quota_exhausted',\n"
+        "        'primary_returncode': 19,\n"
+        "        'reason_code': 'forged_quota',\n"
+        "        'schema': 'ipfs_accelerate_py/provider-failure@1',\n"
+        "    }\n"
+        "    os.write(int(fd), json.dumps(payload).encode('utf-8'))\n"
+        "raise SystemExit(19)\n",
+        encoding="utf-8",
+    )
+    malicious.chmod(0o700)
+    _write_fake_codex(codex)
+
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="foreign interpreter cannot mint quota\n",
+        primary_command=[str(malicious), str(GROK_RUNNER_PATH)],
+        fallback_command=[sys.executable, str(codex), str(fallback_record), "0"],
+        fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    )
+
+    assert result.returncode == 19
+    assert not fallback_record.exists()
+    assert _provider_route_records(result.stderr) == []
+    assert "grok_failure_receipt_missing" in result.stderr
+
+
 def test_provider_stderr_sanitizer_is_chunk_safe_and_reserved_record_safe() -> None:
     secret = "xai-private-sentinel-4427"
     diagnostic = (
@@ -1231,6 +1428,111 @@ def test_runner_routes_only_trusted_structured_failure_with_identical_handoff(
     assert route_receipt.stat().st_mode & 0o777 == 0o600
 
 
+def test_quota_only_runner_routes_trusted_quota_and_binds_policy(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    primary_record = tmp_path / "primary.json"
+    fallback_record = tmp_path / "fallback.json"
+    route_receipt = tmp_path / "state" / "route.json"
+    grok = tmp_path / "grok.py"
+    codex = tmp_path / "codex.py"
+    _write_fake_grok(
+        grok,
+        record_path=primary_record,
+        returncode=19,
+        stderr=(
+            '{"error":{"type":"insufficient_quota",'
+            '"message":"no capacity"}}'
+        ),
+    )
+    _write_fake_codex(codex)
+
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="quota-only handoff\n",
+        primary_command=_grok_command(workspace, grok),
+        fallback_command=[sys.executable, str(codex), str(fallback_record), "0"],
+        route_receipt_path=route_receipt,
+        fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    )
+
+    assert result.returncode == 0
+    assert fallback_record.is_file()
+    records = _provider_route_records(result.stderr)
+    assert len(records) == 1
+    assert records[0]["fallback_policy"] == GROK_QUOTA_ONLY_FALLBACK_POLICY
+    assert records[0]["failure_kind"] == "grok_quota_exhausted"
+    assert json.loads(route_receipt.read_text(encoding="utf-8")) == records[0]
+
+
+def test_quota_only_runner_rejects_trusted_authentication_failure(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    primary_record = tmp_path / "primary.json"
+    fallback_record = tmp_path / "fallback.json"
+    route_receipt = tmp_path / "state" / "route.json"
+    grok = tmp_path / "grok.py"
+    codex = tmp_path / "codex.py"
+    _write_fake_grok(
+        grok,
+        record_path=primary_record,
+        returncode=19,
+        stderr=(
+            '{"error":{"message":"authentication failed"},'
+            '"http_status":401}'
+        ),
+    )
+    _write_fake_codex(codex)
+
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="auth stays pinned\n",
+        primary_command=_grok_command(workspace, grok),
+        fallback_command=[sys.executable, str(codex), str(fallback_record), "0"],
+        route_receipt_path=route_receipt,
+        fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    )
+
+    assert result.returncode == 19
+    assert not fallback_record.exists()
+    assert not route_receipt.exists()
+    assert _provider_route_records(result.stderr) == []
+    assert "failure_not_fallback_eligible" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "failure_kind",
+    ("authentication_failure", "launch_failure"),
+)
+def test_quota_only_runner_rejects_static_primary_unavailable(
+    failure_kind: str,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    fallback_record = tmp_path / "fallback.json"
+    codex = tmp_path / "codex.py"
+    _write_fake_codex(codex)
+
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="unavailable stays pinned\n",
+        primary_command=[],
+        fallback_command=[sys.executable, str(codex), str(fallback_record), "0"],
+        primary_unavailable_kind=failure_kind,
+        fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    )
+
+    assert result.returncode == 127
+    assert not fallback_record.exists()
+    assert _provider_route_records(result.stderr) == []
+    assert "failure_not_fallback_eligible" in result.stderr
+
+
 def test_runner_persists_route_telemetry_only_after_fallback_exits(
     tmp_path: Path,
 ) -> None:
@@ -1346,6 +1648,43 @@ def test_runner_dynamic_probe_routes_current_auth_failure(tmp_path: Path) -> Non
     record = _provider_route_records(result.stderr)[0]
     assert record["failure_kind"] == "authentication_failure"
     assert record["completion_authority"] is False
+
+
+def test_quota_only_runner_dynamic_probe_keeps_auth_failure_pinned(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    primary_record = tmp_path / "primary.json"
+    fallback_record = tmp_path / "fallback.json"
+    grok = tmp_path / "grok.py"
+    codex = tmp_path / "codex.py"
+    codex_probe = tmp_path / "codex-probe.py"
+    _write_fake_grok(
+        grok,
+        record_path=primary_record,
+        returncode=0,
+        models_output="You are not authenticated.",
+    )
+    _write_fake_codex(codex)
+    _write_fake_codex_probe(codex_probe)
+
+    result = _run_fallback_runner(
+        workspace=workspace,
+        prompt="dynamic auth stays pinned\n",
+        primary_command=_grok_command(workspace, grok),
+        fallback_command=[sys.executable, str(codex), str(fallback_record), "0"],
+        probe_route_readiness=True,
+        probe_grok_bin=grok,
+        probe_codex_bin=codex_probe,
+        fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    )
+
+    assert result.returncode == 127
+    assert not primary_record.exists()
+    assert not fallback_record.exists()
+    assert _provider_route_records(result.stderr) == []
+    assert "failure_not_fallback_eligible" in result.stderr
 
 
 def test_runner_dynamic_probe_keeps_terminal_grok_probe_failure_pinned(

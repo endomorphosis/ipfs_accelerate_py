@@ -30,6 +30,7 @@ from ipfs_accelerate_py.llm_router import (  # noqa: E402
     AGENT_CLI_PROVIDER_ROUTE_SCHEMA,
     AGENT_CLI_STDERR_LINE_LIMIT,
     GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+    GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
     AgentCLIActivityState,
     AgentCLIFailureClassification,
     AgentCLIProviderFailureKind,
@@ -56,6 +57,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import ( 
 )
 
 AGENT_ROUTE_POLICY = GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY
+AGENT_ROUTE_POLICIES = (
+    GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+    GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+)
 
 # Compatibility exports for callers that imported the former runner-local
 # diagnostic helpers. Their implementation and policy now live in llm_router.
@@ -228,9 +233,13 @@ def _command_from_json(
 def _uses_packaged_grok_adapter(command: Sequence[str]) -> bool:
     if len(command) < 2:
         return False
+    expected_python = Path(sys.executable).resolve()
     expected = Path(__file__).with_name("grok_cli_runner.py").resolve()
     try:
-        return Path(command[1]).expanduser().resolve() == expected
+        return (
+            Path(command[0]).expanduser().resolve() == expected_python
+            and Path(command[1]).expanduser().resolve() == expected
+        )
     except OSError:
         return False
 
@@ -480,7 +489,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--fallback-command-json", required=True)
     parser.add_argument(
         "--fallback-policy",
-        choices=(AGENT_ROUTE_POLICY,),
+        choices=AGENT_ROUTE_POLICIES,
         default=AGENT_ROUTE_POLICY,
     )
     parser.add_argument(
