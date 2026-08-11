@@ -526,7 +526,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-016 Prove the required adversarial conformance matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
