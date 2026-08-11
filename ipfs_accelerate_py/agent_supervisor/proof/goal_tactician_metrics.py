@@ -21,12 +21,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+import re
+import subprocess
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Final, Iterator
+from pathlib import Path, PurePosixPath
+from typing import Any, Final
 
-from .formal_verification_contracts import ContractValidationError
+if __package__:
+    from .formal_verification_contracts import ContractValidationError
+else:  # Loaded by the release receipt builder as a repository-owned verifier.
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+        ContractValidationError,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -53,9 +61,31 @@ GOAL_TACTICIAN_BENCHMARK_SCHEMA: Final = (
 GOAL_TACTICIAN_BENCHMARK_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark-report@1"
 )
+GOAL_TACTICIAN_BENCHMARK_AUTHORITY_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "goal_tactician_authoritative_benchmark_evidence@1"
+)
+GOAL_TACTICIAN_BENCHMARK_AUTHORITY_INTERFACE: Final = (
+    "GoalTacticianAuthoritativeBenchmarkEvidence@1"
+)
+GOAL_TACTICIAN_AUTHORITATIVE_COHORT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "goal-tactician-authoritative-cohort@1"
+)
+GOAL_TACTICIAN_AUTHORITATIVE_COHORT_INTERFACE: Final = (
+    "GoalTacticianAuthoritativeCohort@1"
+)
+GOAL_TACTICIAN_BENCHMARK_AUTHORITY_GOAL_ID: Final = "FVT-G063"
+GOAL_TACTICIAN_BENCHMARK_VERIFIER_PATH: Final = (
+    "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py"
+)
+GOAL_TACTICIAN_BENCHMARK_VERIFIER_FUNCTION: Final = (
+    "verify_authoritative_benchmark_evidence"
+)
 
 BASIS_POINTS: Final = 10_000
 MAX_RECEIPTS: Final = 4_096
+MAX_AUTHORITATIVE_COHORT_BYTES: Final = 16 * 1024 * 1024
 MAX_TEXT_BYTES: Final = 512
 MAX_ID_BYTES: Final = 256
 MAX_NEXT_ACTIONS: Final = 64
@@ -126,6 +156,18 @@ _ASSURANCE_RANK: Final = {
     "kernel_verified": 3,
     "attested": 4,
 }
+
+_AUTHORITATIVE_EVIDENCE_CLASSES: Final = frozenset({"live", "calibrated"})
+_NON_AUTHORITATIVE_ID_MARKERS: Final = (
+    "fixture",
+    "synthetic",
+    "simulated",
+    "canned",
+    "offline",
+    "shadow",
+)
+_SHA256_PATTERN: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
+_GIT_OBJECT_PATTERN: Final = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
 
 class GoalTacticianMetricsError(ContractValidationError):
@@ -1462,6 +1504,600 @@ def architecture_benchmark_document(
     return document
 
 
+def _file_content_id(path: Path) -> str:
+    """Return a byte-exact SHA-256 identity for a bounded evidence file."""
+
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _mapping_content_id_valid(
+    payload: Mapping[str, Any],
+    *,
+    field: str = "content_id",
+    prefix: str = "sha256:",
+) -> bool:
+    claimed = payload.get(field)
+    if not isinstance(claimed, str):
+        return False
+    body = {key: value for key, value in payload.items() if key != field}
+    return claimed == _content_id(body, prefix=prefix)
+
+
+def _repository_file(root: Path, value: Any) -> tuple[Path | None, str]:
+    """Resolve a strict repository-relative regular file without symlinks."""
+
+    if not isinstance(value, str) or not value:
+        return None, "path_missing_or_invalid"
+    if "\\" in value:
+        return None, "path_not_canonical_posix"
+    relative = PurePosixPath(value)
+    if (
+        relative.is_absolute()
+        or value != relative.as_posix()
+        or not relative.parts
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        return None, "path_not_safe_relative"
+
+    candidate = root.joinpath(*relative.parts)
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            return None, "path_contains_symlink"
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError):
+        return None, "path_missing_or_outside_repository"
+    if not resolved.is_file():
+        return None, "path_not_regular_file"
+    return resolved, ""
+
+
+def _git(
+    root: Path,
+    *arguments: str,
+    binary: bool = False,
+) -> tuple[int, bytes | str]:
+    """Run one bounded, read-only Git query."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 127, b"" if binary else ""
+    if binary:
+        return completed.returncode, completed.stdout
+    try:
+        rendered = completed.stdout.decode("utf-8", errors="strict").strip()
+    except UnicodeDecodeError:
+        return completed.returncode, ""
+    return completed.returncode, rendered
+
+
+def _authoritative_verification_result(
+    *,
+    valid: bool,
+    failures: Sequence[str],
+    report_id: str | None,
+    authority_content_id: str | None,
+    receipt_count: int = 0,
+    evidence_classes: Sequence[str] = (),
+    receipt_artifact_sha256: str | None = None,
+    trusted_commit: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable public projection; never return receipt bodies."""
+
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "goal-tactician-authoritative-benchmark-verification@1"
+        ),
+        "valid": valid,
+        "failures": sorted(set(str(item) for item in failures if str(item))),
+        "report_id": report_id,
+        "authority_content_id": authority_content_id,
+        "receipt_count": receipt_count,
+        "evidence_classes": sorted(set(evidence_classes)),
+        "receipt_artifact_sha256": receipt_artifact_sha256,
+        "trusted_commit": trusted_commit,
+    }
+
+
+def verify_authoritative_benchmark_evidence(
+    benchmark: Mapping[str, Any],
+    *,
+    repo_root: str | Path,
+) -> dict[str, Any]:
+    """Verify a live benchmark by replaying a repository-bound cohort.
+
+    A ``live`` label, an ``authoritative=True`` flag, or a digest stored beside
+    the value it purports to protect is not authority.  This verifier requires:
+
+    * an exact, bounded cohort artifact outside the benchmark report;
+    * canonical content identities for the artifact, every receipt, and the
+      authority envelope;
+    * exact Git blob/tree/commit identities reachable from ``origin/main``
+      (or local ``main`` only when no remote-main tracking ref exists);
+    * the same committed verifier bytes that the envelope names; and
+    * a byte-for-byte report reconstruction from strict live/calibrated run
+      receipts.
+
+    The function intentionally returns a fail-closed result instead of raising
+    on attacker-controlled input.  It does not certify that a benchmark passed:
+    a genuine live cohort whose hard gates fail remains valid *evidence of a
+    failure*.  Deployment policy evaluates those recomputed gates separately.
+    """
+
+    failures: list[str] = []
+    report_id: str | None = None
+    authority_content_id: str | None = None
+    receipt_artifact_sha256: str | None = None
+    trusted_commit: str | None = None
+    evidence_classes: list[str] = []
+    receipt_count = 0
+
+    def finish(valid: bool = False) -> dict[str, Any]:
+        return _authoritative_verification_result(
+            valid=valid,
+            failures=failures,
+            report_id=report_id,
+            authority_content_id=authority_content_id,
+            receipt_count=receipt_count,
+            evidence_classes=evidence_classes,
+            receipt_artifact_sha256=receipt_artifact_sha256,
+            trusted_commit=trusted_commit,
+        )
+
+    try:
+        if not isinstance(benchmark, Mapping):
+            failures.append("benchmark_not_mapping")
+            return finish()
+        _reject_private_material(benchmark)
+
+        report = benchmark.get("report")
+        authority = benchmark.get("authoritative_measurement")
+        if not isinstance(report, Mapping):
+            failures.append("benchmark_report_missing_or_invalid")
+            return finish()
+        raw_report_id = report.get("report_id")
+        report_id = raw_report_id if isinstance(raw_report_id, str) else None
+        if not isinstance(authority, Mapping):
+            failures.append("authoritative_measurement_missing_or_invalid")
+            return finish()
+        raw_authority_id = authority.get("content_id")
+        authority_content_id = (
+            raw_authority_id if isinstance(raw_authority_id, str) else None
+        )
+
+        if benchmark.get("schema") != GOAL_TACTICIAN_BENCHMARK_SCHEMA:
+            failures.append("benchmark_schema_mismatch")
+        if benchmark.get("interface") != GOAL_TACTICIAN_BENCHMARK_INTERFACE:
+            failures.append("benchmark_interface_mismatch")
+        if benchmark.get("source") != "cohort_receipts":
+            failures.append("benchmark_source_mismatch")
+        if benchmark.get("synthetic_distributions") is not False:
+            failures.append("benchmark_synthetic_or_unclassified")
+        if benchmark.get("goal_id") != GOAL_TACTICIAN_BENCHMARK_AUTHORITY_GOAL_ID:
+            failures.append("benchmark_goal_mismatch")
+
+        if report.get("schema") != GOAL_TACTICIAN_BENCHMARK_REPORT_SCHEMA:
+            failures.append("report_schema_mismatch")
+        if report.get("interface") != GOAL_TACTICIAN_BENCHMARK_INTERFACE:
+            failures.append("report_interface_mismatch")
+        if report.get("metrics_interface") != GOAL_TACTICIAN_METRICS_INTERFACE:
+            failures.append("report_metrics_interface_mismatch")
+        if report.get("source") != "cohort_receipts":
+            failures.append("report_source_mismatch")
+        if report.get("synthetic_distributions") is not False:
+            failures.append("report_synthetic_or_unclassified")
+        expected_report_id = _content_id(
+            {key: value for key, value in report.items() if key != "report_id"},
+            prefix="goal-tactician-bench-",
+        )
+        if report_id != expected_report_id:
+            failures.append("report_content_id_mismatch")
+
+        authority_fields = {
+            "schema",
+            "interface",
+            "goal_id",
+            "report_id",
+            "receipt_artifact",
+            "repository_binding",
+            "verifier",
+            "content_id",
+        }
+        if set(authority) != authority_fields:
+            failures.append("authority_fields_malformed_or_self_asserted")
+        if authority.get("schema") != GOAL_TACTICIAN_BENCHMARK_AUTHORITY_SCHEMA:
+            failures.append("authority_schema_mismatch")
+        if (
+            authority.get("interface")
+            != GOAL_TACTICIAN_BENCHMARK_AUTHORITY_INTERFACE
+        ):
+            failures.append("authority_interface_mismatch")
+        if authority.get("goal_id") != GOAL_TACTICIAN_BENCHMARK_AUTHORITY_GOAL_ID:
+            failures.append("authority_goal_mismatch")
+        if not report_id or authority.get("report_id") != report_id:
+            failures.append("authority_report_id_mismatch")
+        if not _mapping_content_id_valid(authority):
+            failures.append("authority_content_id_mismatch")
+
+        try:
+            root = Path(repo_root).resolve(strict=True)
+        except (OSError, TypeError, ValueError):
+            failures.append("repository_missing_or_invalid")
+            return finish()
+        if not root.is_dir():
+            failures.append("repository_missing_or_invalid")
+            return finish()
+        returncode, top_level = _git(root, "rev-parse", "--show-toplevel")
+        if (
+            returncode != 0
+            or not isinstance(top_level, str)
+            or Path(top_level).resolve() != root
+        ):
+            failures.append("repository_not_git_toplevel")
+            return finish()
+
+        verifier = authority.get("verifier")
+        artifact_claim = authority.get("receipt_artifact")
+        repository_binding = authority.get("repository_binding")
+        if not isinstance(verifier, Mapping):
+            failures.append("verifier_claim_missing_or_invalid")
+        if not isinstance(artifact_claim, Mapping):
+            failures.append("receipt_artifact_claim_missing_or_invalid")
+        if not isinstance(repository_binding, Mapping):
+            failures.append("repository_binding_missing_or_invalid")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (verifier, artifact_claim, repository_binding)
+        ):
+            return finish()
+
+        if set(verifier) != {"path", "function", "sha256"}:
+            failures.append("verifier_claim_fields_invalid")
+        if verifier.get("path") != GOAL_TACTICIAN_BENCHMARK_VERIFIER_PATH:
+            failures.append("verifier_path_mismatch")
+        if (
+            verifier.get("function")
+            != GOAL_TACTICIAN_BENCHMARK_VERIFIER_FUNCTION
+        ):
+            failures.append("verifier_function_mismatch")
+        verifier_path, verifier_path_failure = _repository_file(
+            root,
+            GOAL_TACTICIAN_BENCHMARK_VERIFIER_PATH,
+        )
+        if verifier_path is None:
+            failures.append(f"verifier_{verifier_path_failure}")
+            return finish()
+        verifier_sha256 = _file_content_id(verifier_path)
+        if verifier.get("sha256") != verifier_sha256:
+            failures.append("verifier_sha256_mismatch")
+        try:
+            executing_verifier_sha256 = _file_content_id(Path(__file__).resolve())
+        except OSError:
+            executing_verifier_sha256 = ""
+        if executing_verifier_sha256 != verifier_sha256:
+            failures.append("executing_verifier_identity_mismatch")
+
+        if set(artifact_claim) != {"path", "sha256", "content_id"}:
+            failures.append("receipt_artifact_claim_fields_invalid")
+        artifact_path_value = artifact_claim.get("path")
+        artifact_path, artifact_path_failure = _repository_file(
+            root,
+            artifact_path_value,
+        )
+        if artifact_path is None:
+            failures.append(f"receipt_artifact_{artifact_path_failure}")
+            return finish()
+        if artifact_path.stat().st_size > MAX_AUTHORITATIVE_COHORT_BYTES:
+            failures.append("receipt_artifact_exceeds_size_bound")
+            return finish()
+        artifact_bytes = artifact_path.read_bytes()
+        receipt_artifact_sha256 = (
+            "sha256:" + hashlib.sha256(artifact_bytes).hexdigest()
+        )
+        if artifact_claim.get("sha256") != receipt_artifact_sha256:
+            failures.append("receipt_artifact_sha256_mismatch")
+
+        binding_fields = {
+            "trusted_ref",
+            "commit_sha",
+            "tree_sha",
+            "receipt_blob_sha",
+            "verifier_blob_sha",
+        }
+        if set(repository_binding) != binding_fields:
+            failures.append("repository_binding_fields_invalid")
+        origin_status, origin_commit = _git(
+            root,
+            "rev-parse",
+            "--verify",
+            "refs/remotes/origin/main^{commit}",
+        )
+        if origin_status == 0 and isinstance(origin_commit, str) and origin_commit:
+            expected_trusted_ref = "refs/remotes/origin/main"
+        else:
+            main_status, main_commit = _git(
+                root,
+                "rev-parse",
+                "--verify",
+                "refs/heads/main^{commit}",
+            )
+            if main_status != 0 or not isinstance(main_commit, str) or not main_commit:
+                failures.append("trusted_main_ref_missing")
+                return finish()
+            expected_trusted_ref = "refs/heads/main"
+        trusted_ref = repository_binding.get("trusted_ref")
+        if trusted_ref != expected_trusted_ref:
+            failures.append("trusted_ref_mismatch")
+
+        raw_commit = repository_binding.get("commit_sha")
+        if not isinstance(raw_commit, str) or not _GIT_OBJECT_PATTERN.fullmatch(
+            raw_commit
+        ):
+            failures.append("commit_sha_invalid")
+            return finish()
+        commit_status, resolved_commit = _git(
+            root,
+            "rev-parse",
+            "--verify",
+            f"{raw_commit}^{{commit}}",
+        )
+        if (
+            commit_status != 0
+            or not isinstance(resolved_commit, str)
+            or resolved_commit != raw_commit
+        ):
+            failures.append("commit_sha_unresolvable")
+            return finish()
+        trusted_commit = raw_commit
+        ancestor_status, _ = _git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            raw_commit,
+            expected_trusted_ref,
+        )
+        if ancestor_status != 0:
+            failures.append("commit_not_reachable_from_trusted_main")
+
+        tree_status, tree_sha = _git(root, "rev-parse", f"{raw_commit}^{{tree}}")
+        if (
+            tree_status != 0
+            or not isinstance(tree_sha, str)
+            or repository_binding.get("tree_sha") != tree_sha
+        ):
+            failures.append("tree_sha_mismatch")
+
+        artifact_git_path = str(artifact_path_value)
+        artifact_blob_status, artifact_blob_sha = _git(
+            root,
+            "rev-parse",
+            f"{raw_commit}:{artifact_git_path}",
+        )
+        if (
+            artifact_blob_status != 0
+            or not isinstance(artifact_blob_sha, str)
+            or repository_binding.get("receipt_blob_sha") != artifact_blob_sha
+        ):
+            failures.append("receipt_blob_sha_mismatch")
+            artifact_blob_sha = ""
+        verifier_blob_status, verifier_blob_sha = _git(
+            root,
+            "rev-parse",
+            f"{raw_commit}:{GOAL_TACTICIAN_BENCHMARK_VERIFIER_PATH}",
+        )
+        if (
+            verifier_blob_status != 0
+            or not isinstance(verifier_blob_sha, str)
+            or repository_binding.get("verifier_blob_sha") != verifier_blob_sha
+        ):
+            failures.append("verifier_blob_sha_mismatch")
+            verifier_blob_sha = ""
+
+        if artifact_blob_sha:
+            blob_status, committed_artifact = _git(
+                root,
+                "cat-file",
+                "blob",
+                artifact_blob_sha,
+                binary=True,
+            )
+            if (
+                blob_status != 0
+                or not isinstance(committed_artifact, bytes)
+                or committed_artifact != artifact_bytes
+            ):
+                failures.append("receipt_artifact_not_committed_exactly")
+        if verifier_blob_sha:
+            blob_status, committed_verifier = _git(
+                root,
+                "cat-file",
+                "blob",
+                verifier_blob_sha,
+                binary=True,
+            )
+            if (
+                blob_status != 0
+                or not isinstance(committed_verifier, bytes)
+                or committed_verifier != verifier_path.read_bytes()
+            ):
+                failures.append("verifier_not_committed_exactly")
+
+        try:
+            cohort = json.loads(artifact_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            failures.append("receipt_artifact_json_invalid")
+            return finish()
+        if not isinstance(cohort, Mapping):
+            failures.append("receipt_artifact_not_mapping")
+            return finish()
+        if artifact_bytes != (_canonical_json(cohort) + "\n").encode("utf-8"):
+            failures.append("receipt_artifact_not_canonical_json")
+        _reject_private_material(cohort)
+        cohort_fields = {
+            "schema",
+            "interface",
+            "goal_id",
+            "task_id",
+            "cohort_id",
+            "generated_at",
+            "source",
+            "synthetic_distributions",
+            "notes",
+            "receipt_count",
+            "receipt_ids",
+            "receipt_content_ids",
+            "receipt_set_id",
+            "receipts",
+            "content_id",
+        }
+        if set(cohort) != cohort_fields:
+            failures.append("receipt_artifact_fields_invalid")
+        if cohort.get("schema") != GOAL_TACTICIAN_AUTHORITATIVE_COHORT_SCHEMA:
+            failures.append("receipt_artifact_schema_mismatch")
+        if (
+            cohort.get("interface")
+            != GOAL_TACTICIAN_AUTHORITATIVE_COHORT_INTERFACE
+        ):
+            failures.append("receipt_artifact_interface_mismatch")
+        if cohort.get("goal_id") != GOAL_TACTICIAN_BENCHMARK_AUTHORITY_GOAL_ID:
+            failures.append("receipt_artifact_goal_mismatch")
+        if cohort.get("source") != "live_cohort_receipts":
+            failures.append("receipt_artifact_source_not_live")
+        if cohort.get("synthetic_distributions") is not False:
+            failures.append("receipt_artifact_synthetic_or_unclassified")
+        if not _mapping_content_id_valid(cohort):
+            failures.append("receipt_artifact_content_id_mismatch")
+        if artifact_claim.get("content_id") != cohort.get("content_id"):
+            failures.append("receipt_artifact_claim_content_id_mismatch")
+
+        raw_receipts = cohort.get("receipts")
+        if (
+            not isinstance(raw_receipts, list)
+            or not raw_receipts
+            or len(raw_receipts) > MAX_RECEIPTS
+        ):
+            failures.append("receipt_population_missing_or_out_of_bounds")
+            return finish()
+        receipt_count = len(raw_receipts)
+        typed_receipts: list[GoalTacticianRunReceipt] = []
+        strict_receipts: list[dict[str, Any]] = []
+        for raw_receipt in raw_receipts:
+            if not isinstance(raw_receipt, Mapping):
+                failures.append("receipt_not_mapping")
+                continue
+            try:
+                typed = GoalTacticianRunReceipt.from_dict(raw_receipt)
+            except (GoalTacticianMetricsError, TypeError, ValueError):
+                failures.append("receipt_contract_invalid")
+                continue
+            normalized = typed.to_dict()
+            if _canonical_json(normalized) != _canonical_json(dict(raw_receipt)):
+                failures.append("receipt_not_strict_canonical_contract")
+                continue
+            if typed.evidence_class.value not in _AUTHORITATIVE_EVIDENCE_CLASSES:
+                failures.append("receipt_evidence_class_not_authoritative")
+            identity_values = (
+                typed.receipt_id,
+                typed.run_id,
+                typed.goal_id,
+                typed.repository_tree_id,
+                typed.policy_id,
+            )
+            if any(
+                marker in identity.lower()
+                for identity in identity_values
+                for marker in _NON_AUTHORITATIVE_ID_MARKERS
+            ):
+                failures.append("receipt_identity_fixture_or_synthetic")
+            if typed.goal_id != GOAL_TACTICIAN_BENCHMARK_AUTHORITY_GOAL_ID:
+                failures.append("receipt_goal_mismatch")
+            if not _SHA256_PATTERN.fullmatch(typed.repository_tree_id):
+                failures.append("receipt_repository_tree_id_not_content_addressed")
+            typed_receipts.append(typed)
+            strict_receipts.append(normalized)
+
+        if len(typed_receipts) != receipt_count:
+            return finish()
+        receipt_ids = [item.receipt_id for item in typed_receipts]
+        run_ids = [item.run_id for item in typed_receipts]
+        if len(set(receipt_ids)) != receipt_count:
+            failures.append("receipt_ids_not_unique")
+        if len(set(run_ids)) != receipt_count:
+            failures.append("run_ids_not_unique")
+        if len({item.repository_tree_id for item in typed_receipts}) != 1:
+            failures.append("cohort_repository_tree_not_uniform")
+        if len({item.policy_id for item in typed_receipts}) != 1:
+            failures.append("cohort_policy_not_uniform")
+
+        derived_receipt_content_ids = [
+            {
+                "receipt_id": item["receipt_id"],
+                "content_id": _content_id(item),
+            }
+            for item in strict_receipts
+        ]
+        if cohort.get("receipt_count") != receipt_count:
+            failures.append("receipt_artifact_count_mismatch")
+        if cohort.get("receipt_ids") != receipt_ids:
+            failures.append("receipt_artifact_ids_mismatch")
+        if cohort.get("receipt_content_ids") != derived_receipt_content_ids:
+            failures.append("receipt_content_ids_mismatch")
+        if cohort.get("receipt_set_id") != _content_id(
+            strict_receipts,
+            prefix="goal-tactician-receipts-",
+        ):
+            failures.append("receipt_set_id_mismatch")
+
+        evidence_classes = sorted(
+            {item.evidence_class.value for item in typed_receipts}
+        )
+        if not set(evidence_classes) <= _AUTHORITATIVE_EVIDENCE_CLASSES:
+            failures.append("cohort_evidence_classes_not_authoritative")
+
+        for artifact_name, report_name in (
+            ("goal_id", "goal_id"),
+            ("task_id", "task_id"),
+            ("cohort_id", "cohort_id"),
+            ("generated_at", "generated_at"),
+            ("notes", "notes"),
+        ):
+            if cohort.get(artifact_name) != report.get(report_name):
+                failures.append(f"cohort_report_{artifact_name}_mismatch")
+
+        if failures:
+            return finish()
+
+        rebuilt = build_goal_tactician_benchmark_report(
+            typed_receipts,
+            goal_id=str(cohort["goal_id"]),
+            task_id=str(cohort["task_id"]),
+            cohort_id=str(cohort["cohort_id"]),
+            generated_at=str(cohort["generated_at"]),
+            notes=str(cohort["notes"]),
+        ).to_dict()
+        if _canonical_json(rebuilt) != _canonical_json(dict(report)):
+            failures.append("report_not_exact_recomputation")
+            return finish()
+        if rebuilt.get("report_id") != report_id:
+            failures.append("recomputed_report_id_mismatch")
+            return finish()
+
+        return finish(valid=True)
+    except (GoalTacticianMetricsError, OSError, TypeError, ValueError):
+        failures.append("benchmark_evidence_malformed")
+        return finish()
+
+
 def fixture_cohort_receipts() -> tuple[GoalTacticianRunReceipt, ...]:
     """Deterministic fixture cohort used by the architecture benchmark document.
 
@@ -1606,8 +2242,15 @@ __all__ = [
     "CacheOutcome",
     "EvidenceClass",
     "GOAL_TACTICIAN_BENCHMARK_INTERFACE",
+    "GOAL_TACTICIAN_BENCHMARK_AUTHORITY_GOAL_ID",
+    "GOAL_TACTICIAN_BENCHMARK_AUTHORITY_INTERFACE",
+    "GOAL_TACTICIAN_BENCHMARK_AUTHORITY_SCHEMA",
     "GOAL_TACTICIAN_BENCHMARK_REPORT_SCHEMA",
     "GOAL_TACTICIAN_BENCHMARK_SCHEMA",
+    "GOAL_TACTICIAN_BENCHMARK_VERIFIER_FUNCTION",
+    "GOAL_TACTICIAN_BENCHMARK_VERIFIER_PATH",
+    "GOAL_TACTICIAN_AUTHORITATIVE_COHORT_INTERFACE",
+    "GOAL_TACTICIAN_AUTHORITATIVE_COHORT_SCHEMA",
     "GOAL_TACTICIAN_METRICS_INTERFACE",
     "GOAL_TACTICIAN_METRICS_SCHEMA",
     "GOAL_TACTICIAN_PROGRESS_SCHEMA",
@@ -1624,4 +2267,5 @@ __all__ = [
     "build_goal_tactician_benchmark_report",
     "derive_goal_tactician_metrics",
     "fixture_cohort_receipts",
+    "verify_authoritative_benchmark_evidence",
 ]

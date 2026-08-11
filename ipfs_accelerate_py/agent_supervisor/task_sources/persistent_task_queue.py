@@ -12,6 +12,7 @@ Key features:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from dataclasses import dataclass, field
@@ -41,6 +42,12 @@ class TaskQueueEntry:
     merge_failure_count: int = 0
     cooldown_until: float = 0.0
     notes: str = ""
+    authority_renewal_key: str = ""
+    authority_renewal_failure_count: int = 0
+    authority_renewal_last_failure_at: float = 0.0
+    authority_renewal_cooldown_until: float = 0.0
+    authority_renewal_quarantined: bool = False
+    authority_renewal_reason: str = ""
 
     def record_selection(self) -> None:
         self.last_selected_at = time.time()
@@ -85,6 +92,133 @@ class TaskQueueEntry:
         """Return True if the task is still in cooldown."""
         return self.cooldown_until > time.time()
 
+    def authority_renewal_state(self, renewal_key: str) -> dict[str, Any]:
+        """Return bounded retry state for one exact authority-renewal claim.
+
+        Renewal failures are deliberately separate from implementation
+        attempts: a read-only proof run consumes no model/provider budget.  A
+        task revision, validation-plan revision, or authority-generation
+        change produces a different key and therefore starts with a fresh
+        retry budget without mutating the durable history for the old claim.
+        """
+
+        normalized_key = str(renewal_key or "").strip()
+        current = normalized_key and normalized_key == self.authority_renewal_key
+        return {
+            "renewal_key": normalized_key,
+            "failure_count": (
+                self.authority_renewal_failure_count if current else 0
+            ),
+            "last_failure_at": (
+                self.authority_renewal_last_failure_at if current else 0.0
+            ),
+            "cooldown_until": (
+                self.authority_renewal_cooldown_until if current else 0.0
+            ),
+            "cooled_down": bool(
+                current
+                and self.authority_renewal_cooldown_until > time.time()
+            ),
+            "quarantined": bool(
+                current and self.authority_renewal_quarantined
+            ),
+            "requires_operator_reset": bool(
+                current and self.authority_renewal_quarantined
+            ),
+            "reason": self.authority_renewal_reason if current else "",
+        }
+
+    def record_authority_renewal_failure(
+        self,
+        renewal_key: str,
+        *,
+        reason: str = "",
+        max_failures: int = 3,
+        base_cooldown_seconds: float = 300.0,
+        max_cooldown_seconds: float = 14400.0,
+    ) -> dict[str, Any]:
+        """Back off and eventually quarantine one exact renewal claim."""
+
+        normalized_key = str(renewal_key or "").strip()
+        if not normalized_key:
+            raise ValueError("authority renewal key is required")
+        if self.authority_renewal_key != normalized_key:
+            self.authority_renewal_key = normalized_key
+            self.authority_renewal_failure_count = 0
+            self.authority_renewal_last_failure_at = 0.0
+            self.authority_renewal_cooldown_until = 0.0
+            self.authority_renewal_quarantined = False
+            self.authority_renewal_reason = ""
+
+        self.authority_renewal_failure_count += 1
+        self.authority_renewal_last_failure_at = time.time()
+        failure_limit = max(1, int(max_failures))
+        self.authority_renewal_quarantined = (
+            self.authority_renewal_failure_count >= failure_limit
+        )
+        cooldown = min(
+            max(0.0, float(base_cooldown_seconds))
+            * (2 ** (self.authority_renewal_failure_count - 1)),
+            max(0.0, float(max_cooldown_seconds)),
+        )
+        # Stable jitter avoids synchronized retry bursts while keeping the
+        # persisted schedule reproducible for a content-bound failure key.
+        jitter_window = max(0, min(60, int(cooldown * 0.1)))
+        jitter = (
+            int(
+                hashlib.sha256(
+                    (
+                        f"{normalized_key}:"
+                        f"{self.authority_renewal_failure_count}"
+                    ).encode("utf-8")
+                ).hexdigest()[:8],
+                16,
+            )
+            % (jitter_window + 1)
+            if jitter_window
+            else 0
+        )
+        self.authority_renewal_cooldown_until = (
+            self.authority_renewal_last_failure_at + cooldown + jitter
+        )
+        self.authority_renewal_reason = str(reason or "")
+        return self.authority_renewal_state(normalized_key)
+
+    def record_authority_renewal_success(self, renewal_key: str) -> None:
+        """Clear renewal-only backpressure after an exact successful proof."""
+
+        normalized_key = str(renewal_key or "").strip()
+        if not normalized_key:
+            raise ValueError("authority renewal key is required")
+        self.authority_renewal_key = normalized_key
+        self.authority_renewal_failure_count = 0
+        self.authority_renewal_last_failure_at = 0.0
+        self.authority_renewal_cooldown_until = 0.0
+        self.authority_renewal_quarantined = False
+        self.authority_renewal_reason = ""
+
+    def reset_authority_renewal_state(self) -> bool:
+        """Explicit operator seam for clearing a same-claim quarantine."""
+
+        before = (
+            self.authority_renewal_key,
+            self.authority_renewal_failure_count,
+            self.authority_renewal_last_failure_at,
+            self.authority_renewal_cooldown_until,
+            self.authority_renewal_quarantined,
+            self.authority_renewal_reason,
+        )
+        self.authority_renewal_key = ""
+        self.authority_renewal_failure_count = 0
+        self.authority_renewal_last_failure_at = 0.0
+        self.authority_renewal_cooldown_until = 0.0
+        self.authority_renewal_quarantined = False
+        self.authority_renewal_reason = ""
+        return any(
+            value not in {"", 0, 0.0, False}
+            for value in before
+        )
+
     def effective_penalty(self) -> int:
         """Return the effective selection penalty including cooldown state."""
         if self.is_cooled_down():
@@ -109,6 +243,20 @@ class TaskQueueEntry:
             "merge_failure_count": self.merge_failure_count,
             "cooldown_until": self.cooldown_until,
             "notes": self.notes,
+            "authority_renewal_key": self.authority_renewal_key,
+            "authority_renewal_failure_count": (
+                self.authority_renewal_failure_count
+            ),
+            "authority_renewal_last_failure_at": (
+                self.authority_renewal_last_failure_at
+            ),
+            "authority_renewal_cooldown_until": (
+                self.authority_renewal_cooldown_until
+            ),
+            "authority_renewal_quarantined": (
+                self.authority_renewal_quarantined
+            ),
+            "authority_renewal_reason": self.authority_renewal_reason,
         }
 
     @classmethod
@@ -134,6 +282,25 @@ class TaskQueueEntry:
             merge_failure_count=int(data.get("merge_failure_count", 0)),
             cooldown_until=float(data.get("cooldown_until", 0.0)),
             notes=str(data.get("notes", "")),
+            authority_renewal_key=str(
+                data.get("authority_renewal_key", "")
+            ),
+            authority_renewal_failure_count=max(
+                0,
+                int(data.get("authority_renewal_failure_count", 0)),
+            ),
+            authority_renewal_last_failure_at=float(
+                data.get("authority_renewal_last_failure_at", 0.0)
+            ),
+            authority_renewal_cooldown_until=float(
+                data.get("authority_renewal_cooldown_until", 0.0)
+            ),
+            authority_renewal_quarantined=(
+                data.get("authority_renewal_quarantined") is True
+            ),
+            authority_renewal_reason=str(
+                data.get("authority_renewal_reason", "")
+            ),
         )
 
 
@@ -168,6 +335,26 @@ class PersistentTaskQueue:
         target.merge_failure_count = max(target.merge_failure_count, source.merge_failure_count)
         target.cooldown_until = max(target.cooldown_until, source.cooldown_until)
         target.notes = target.notes or source.notes
+        if (
+            source.authority_renewal_last_failure_at
+            > target.authority_renewal_last_failure_at
+        ):
+            target.authority_renewal_key = source.authority_renewal_key
+            target.authority_renewal_failure_count = (
+                source.authority_renewal_failure_count
+            )
+            target.authority_renewal_last_failure_at = (
+                source.authority_renewal_last_failure_at
+            )
+            target.authority_renewal_cooldown_until = (
+                source.authority_renewal_cooldown_until
+            )
+            target.authority_renewal_quarantined = (
+                source.authority_renewal_quarantined
+            )
+            target.authority_renewal_reason = (
+                source.authority_renewal_reason
+            )
         target.aliases = list(dict.fromkeys([*target.aliases, *source.aliases, source.task_id]))
         for item in source.provenance:
             if item not in target.provenance:
@@ -248,16 +435,32 @@ class PersistentTaskQueue:
         self._dirty = self._dirty or changed or entry.to_dict() != before_entry
         return entry
 
-    def get_or_create(self, task_id: str, *, priority: str = "P2", track: str = "") -> TaskQueueEntry:
+    def get_or_create(
+        self,
+        task_id: str,
+        *,
+        priority: str | None = None,
+        track: str | None = None,
+    ) -> TaskQueueEntry:
+        """Return an entry without overwriting scheduling metadata by default.
+
+        Outcome-recording helpers call this method with only a task ID.  Their
+        updates must not implicitly reset a registered task's priority or
+        track; those fields change only when a caller supplies them.
+        """
         key = self.resolve_key(task_id)
         if key not in self.entries:
-            self.entries[key] = TaskQueueEntry(task_id=task_id, priority=priority, track=track)
+            self.entries[key] = TaskQueueEntry(
+                task_id=task_id,
+                priority=priority or "P2",
+                track=track or "",
+            )
             self._dirty = True
         entry = self.entries[key]
-        if priority and entry.priority != priority:
+        if priority is not None and entry.priority != priority:
             entry.priority = priority
             self._dirty = True
-        if track and entry.track != track:
+        if track is not None and entry.track != track:
             entry.track = track
             self._dirty = True
         return entry
@@ -305,6 +508,77 @@ class PersistentTaskQueue:
         self._dirty = self._dirty or changed
         return changed
 
+    def authority_renewal_state(
+        self,
+        task_id: str,
+        renewal_key: str,
+    ) -> dict[str, Any]:
+        """Return renewal-only retry state without creating a queue entry."""
+
+        key = self.resolve_key(task_id)
+        entry = self.entries.get(key)
+        if entry is None:
+            return {
+                "renewal_key": str(renewal_key or "").strip(),
+                "failure_count": 0,
+                "last_failure_at": 0.0,
+                "cooldown_until": 0.0,
+                "cooled_down": False,
+                "quarantined": False,
+                "requires_operator_reset": False,
+                "reason": "",
+            }
+        return entry.authority_renewal_state(renewal_key)
+
+    def record_authority_renewal_failure(
+        self,
+        task_id: str,
+        renewal_key: str,
+        *,
+        reason: str = "",
+        max_failures: int = 3,
+        base_cooldown_seconds: float = 300.0,
+        max_cooldown_seconds: float = 14400.0,
+    ) -> dict[str, Any]:
+        """Persist one renewal-only failure and its bounded backoff."""
+
+        entry = self.get_or_create(task_id)
+        result = entry.record_authority_renewal_failure(
+            renewal_key,
+            reason=reason,
+            max_failures=max_failures,
+            base_cooldown_seconds=base_cooldown_seconds,
+            max_cooldown_seconds=max_cooldown_seconds,
+        )
+        self._dirty = True
+        self.save()
+        return result
+
+    def record_authority_renewal_success(
+        self,
+        task_id: str,
+        renewal_key: str,
+    ) -> None:
+        """Persist successful renewal without touching provider attempts."""
+
+        entry = self.get_or_create(task_id)
+        entry.record_authority_renewal_success(renewal_key)
+        self._dirty = True
+        self.save()
+
+    def reset_authority_renewal_state(self, task_id: str) -> bool:
+        """Explicitly clear a renewal quarantine for operator tooling."""
+
+        key = self.resolve_key(task_id)
+        entry = self.entries.get(key)
+        if entry is None:
+            return False
+        changed = entry.reset_authority_renewal_state()
+        self._dirty = self._dirty or changed
+        if changed:
+            self.save()
+        return changed
+
     def get_penalty(self, task_id: str) -> int:
         """Get the effective penalty for a task (used in sort key)."""
         key = self.resolve_key(task_id)
@@ -343,6 +617,17 @@ class PersistentTaskQueue:
     def summary(self) -> dict[str, Any]:
         cooled = sum(1 for e in self.entries.values() if e.is_cooled_down())
         penalized = sum(1 for e in self.entries.values() if e.selection_penalty > 0)
+        renewal_cooled = sum(
+            1
+            for entry in self.entries.values()
+            if entry.authority_renewal_cooldown_until > time.time()
+            and not entry.authority_renewal_quarantined
+        )
+        renewal_quarantined = sum(
+            1
+            for entry in self.entries.values()
+            if entry.authority_renewal_quarantined
+        )
         return {
             "total_entries": len(self.entries),
             "alias_count": len(self.aliases),
@@ -350,6 +635,12 @@ class PersistentTaskQueue:
             "penalized": penalized,
             "total_attempts": sum(e.attempt_count for e in self.entries.values()),
             "total_failures": sum(e.consecutive_failures for e in self.entries.values()),
+            "authority_renewal_cooled_down": renewal_cooled,
+            "authority_renewal_quarantined": renewal_quarantined,
+            "authority_renewal_failures": sum(
+                entry.authority_renewal_failure_count
+                for entry in self.entries.values()
+            ),
         }
 
     def _maybe_save(self) -> None:
@@ -368,7 +659,7 @@ class PersistentTaskQueue:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             data = {
-                "schema": "persistent_task_queue_v2",
+                "schema": "persistent_task_queue_v3",
                 "updated_at": time.time(),
                 "entry_count": len(self.entries),
                 "entries": {tid: entry.to_dict() for tid, entry in self.entries.items()},

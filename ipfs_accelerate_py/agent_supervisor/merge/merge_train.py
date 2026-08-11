@@ -21,6 +21,7 @@ import hashlib
 import inspect
 import json
 import marshal
+import math
 import os
 import shutil
 import subprocess
@@ -44,9 +45,19 @@ from ..proof.formal_verification_policy import (
     RiskLevel,
     default_formal_verification_policy,
 )
-from .checkout_lock import checkout_repository_id
-from .merge_queue import MergeQueue, MergeQueueFenceError, MergeRequest
-
+from .checkout_lock import (
+    checkout_lock_owner_is_active,
+    checkout_mutation_lock_path,
+    checkout_repository_id,
+    read_checkout_mutation_lease,
+)
+from .merge_queue import (
+    MAX_MERGE_QUEUE_DEFERRAL_SECONDS,
+    MAX_MERGE_QUEUE_RECORDED_DEFERRALS,
+    MergeQueue,
+    MergeQueueFenceError,
+    MergeRequest,
+)
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
 PreflightCallback = Callable[..., Mapping[str, Any] | bool]
@@ -94,6 +105,16 @@ INTEGRATED_QUARANTINE_RECOVERY_LIMIT: Final = 32
 INTEGRATED_HANDOFF_MAX_PATHS: Final = 64
 INTEGRATED_HANDOFF_MAX_PATH_BYTES: Final = 1024
 INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS: Final = 64
+AUTHORITY_QUARANTINE_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "manual_completion_authority_required",
+        "manual_completion_authority_dependency_required",
+        "manual_completion_authority_revalidation_required",
+        "cross_board_manual_completion_authority_unavailable",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "cross_board_manual_completion_authority_metadata_invalid",
+    }
+)
 DISTRIBUTED_LANE_PUBLICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/distributed-lane-publication@1"
 )
@@ -102,6 +123,20 @@ DISTRIBUTED_LANE_ADMISSION_SCHEMA: Final = (
 )
 _DISTRIBUTED_PUBLICATION_METADATA_KEY: Final = "distributed_publication"
 _PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
+DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS: Final = 30.0
+DEFAULT_MAX_MERGE_LOCK_DEFERRALS: Final = (
+    MAX_MERGE_QUEUE_RECORDED_DEFERRALS
+)
+MERGE_LOCK_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        # The implementation daemon wraps checkout-mutation acquisition
+        # reasons before returning them across the merge-callback boundary.
+        "checkout_mutation_lock_exists",
+        # Retain compatibility with specialised/direct callbacks that expose
+        # the underlying checkout-lock reason without the daemon prefix.
+        "lock_exists",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -981,6 +1016,10 @@ class MergeTrain:
             may expose ``resolve`` and, independently, ``acquire``/``release``
             methods compatible with :class:`MergeResolverRegistry`.
         max_attempts: Last failure count at which a request is quarantined.
+        merge_lock_deferral_seconds: Durable cooldown applied when a live
+            repository merge lock prevents the callback from attempting work.
+        max_merge_lock_deferrals: Maximum verified lock-contention cooldowns
+            before contention begins consuming the bounded failure budget.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -1004,6 +1043,8 @@ class MergeTrain:
         target_branch: str = "main",
         resolver: Any = None,
         max_attempts: int = 3,
+        merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
+        max_merge_lock_deferrals: int = DEFAULT_MAX_MERGE_LOCK_DEFERRALS,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -1056,6 +1097,26 @@ class MergeTrain:
                 )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
+        merge_lock_deferral_seconds = float(merge_lock_deferral_seconds)
+        if not math.isfinite(merge_lock_deferral_seconds):
+            raise ValueError("merge lock deferral cooldown must be finite")
+        if merge_lock_deferral_seconds > MAX_MERGE_QUEUE_DEFERRAL_SECONDS:
+            raise ValueError(
+                "merge lock deferral cooldown exceeds the durable queue limit"
+            )
+        self.merge_lock_deferral_seconds = max(
+            1.0,
+            merge_lock_deferral_seconds,
+        )
+        self.max_merge_lock_deferrals = int(max_merge_lock_deferrals)
+        if not (
+            1
+            <= self.max_merge_lock_deferrals
+            <= MAX_MERGE_QUEUE_RECORDED_DEFERRALS
+        ):
+            raise ValueError(
+                "max merge lock deferrals must fit the durable deferral history"
+            )
         self.merge_callback = merge_callback
         self.decision_runtime = decision_runtime
         self.decision_runtime_cancellation = decision_runtime_cancellation
@@ -2631,6 +2692,18 @@ class MergeTrain:
         )
         if not bool(integration.get("integrated")):
             return integration
+        # A specialised merge callback owns target mutation.  Once it reports
+        # that mutation as landed, absent or rejected acceptance evidence is a
+        # reconciliation concern, not permission to execute the mutation a
+        # second time.  The callback path settles that integration unit under
+        # its queue fence and returns this explicit terminal/pending state.
+        if (
+            integration.get("callback_owned_integration") is True
+            and str(integration.get("status") or "").startswith(
+                "integrated_pending_"
+            )
+        ):
+            return integration
         return self._post_merge_accept(
             request,
             preflight=dict(preflight),
@@ -2649,6 +2722,9 @@ class MergeTrain:
         canonical = str(integration.get("canonical_task_id") or "")
         candidate = str(integration.get("commit_sha") or "")
         target = str(integration.get("target_commit") or "")
+        callback_owned = (
+            integration.get("callback_owned_integration") is True
+        )
         validation_value = integration.get("post_merge_validation")
         if not isinstance(validation_value, Mapping):
             merge_result = integration.get("merge_result")
@@ -2680,7 +2756,9 @@ class MergeTrain:
             or validation.get("target_commit")
             or ""
         )
-        if validated_commit != target:
+        if validated_commit != target and (
+            validation.get("passed") is True or not callback_owned
+        ):
             validation.update(
                 {
                     "passed": False,
@@ -2767,21 +2845,64 @@ class MergeTrain:
         if bool(validation.get("passed")) and not claim_current:
             fenced = {
                 **integration,
-                "status": "fenced_out",
+                "status": (
+                    "integrated_pending_acceptance"
+                    if callback_owned
+                    else "fenced_out"
+                ),
                 "accepted": False,
-                "acceptance_pending": False,
+                "acceptance_pending": callback_owned,
                 "reason": "merge_queue_claim_fenced",
                 "fence_stage": "before_queue_completion",
                 "post_merge_validation": validation,
                 "acceptance_receipt": receipt_payload,
                 "finished_at": time.time(),
             }
+            if callback_owned:
+                fenced.update(
+                    {
+                        "integrated": True,
+                        "completion_authoritative": False,
+                        "integration_terminal": True,
+                        "queue_settlement": {
+                            "status": "fenced_out",
+                            "terminal": False,
+                            "fence_stage": "before_queue_completion",
+                        },
+                    }
+                )
             self._write_receipt(
                 f"fenced-{request.request_id}", fenced
             )
+            if callback_owned:
+                self._write_receipt(
+                    self._dedupe_key(canonical, candidate), fenced
+                )
             return fenced
 
         if not bool(validation.get("passed")):
+            if callback_owned:
+                return self._finish_integrated_pending_validation(
+                    request,
+                    canonical=canonical,
+                    candidate=candidate,
+                    target=target,
+                    started_at=started_at,
+                    merged=bool(integration.get("merged")),
+                    already_merged=bool(
+                        integration.get("already_merged")
+                    ),
+                    validation_reason=str(
+                        validation.get("reason")
+                        or "post_merge_validation_failed"
+                    ),
+                    post_merge_validation=validation,
+                    extra={
+                        **integration,
+                        "acceptance_receipt": receipt_payload,
+                    },
+                    preflight_receipt=preflight,
+                )
             return self._finish_failure(
                 request,
                 reason=str(
@@ -2847,18 +2968,42 @@ class MergeTrain:
         except MergeQueueFenceError as exc:
             fenced = {
                 **integration,
-                "status": "fenced_out",
+                "status": (
+                    "integrated_pending_acceptance"
+                    if callback_owned
+                    else "fenced_out"
+                ),
                 "accepted": False,
-                "acceptance_pending": False,
+                "acceptance_pending": callback_owned,
                 "reason": "merge_queue_claim_fenced",
                 "fence_error": f"{type(exc).__name__}: {exc}",
                 "post_merge_validation": validation,
                 "acceptance_receipt": receipt_payload,
                 "finished_at": time.time(),
             }
+            if callback_owned:
+                fenced.update(
+                    {
+                        "integrated": True,
+                        "completion_authoritative": False,
+                        "integration_terminal": True,
+                        "queue_settlement": {
+                            "status": "fenced_out",
+                            "terminal": False,
+                            "fence_stage": "before_queue_completion",
+                            "fence_error": (
+                                f"{type(exc).__name__}: {exc}"
+                            ),
+                        },
+                    }
+                )
             self._write_receipt(
                 f"fenced-{request.request_id}", fenced
             )
+            if callback_owned:
+                self._write_receipt(
+                    self._dedupe_key(canonical, candidate), fenced
+                )
             return fenced
         integration.update(
             {
@@ -2972,6 +3117,8 @@ class MergeTrain:
         for request in snapshot(
             limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
         ):
+            if request.failure_reason in AUTHORITY_QUARANTINE_REASONS:
+                continue
             if not self._quarantined_candidate_is_integrated(request):
                 continue
             revived = revive(
@@ -3325,6 +3472,39 @@ class MergeTrain:
                     started_at=started_at,
                     retryable=True,
                 )
+            callback_receipt_key = self._dedupe_key(canonical, candidate)
+            previous_callback_result = self._read_receipt(
+                callback_receipt_key
+            )
+            previous_target = str(
+                previous_callback_result.get("target_commit") or ""
+            )
+            callback_integration_recoverable = bool(
+                previous_callback_result.get("callback_owned_integration")
+                and previous_callback_result.get("integrated") is True
+                and previous_callback_result.get("acceptance_pending") is True
+                and str(
+                    previous_callback_result.get("canonical_task_id") or ""
+                )
+                == canonical
+                and str(previous_callback_result.get("commit_sha") or "")
+                == candidate
+                and previous_target
+                and (
+                    previous_target == target
+                    or self._is_ancestor(previous_target, target)
+                )
+            )
+            if callback_integration_recoverable:
+                return self._settle_recovered_callback_integration(
+                    request,
+                    canonical=canonical,
+                    candidate=candidate,
+                    target=target,
+                    previous=previous_callback_result,
+                    receipt_key=callback_receipt_key,
+                    preflight_receipt=preflight_receipt,
+                )
             try:
                 callback_result = dict(
                     self._runtime_mutation(
@@ -3348,24 +3528,38 @@ class MergeTrain:
                     started_at=started_at,
                 )
             if callback_result.get("merged") or callback_result.get("already_merged"):
+                callback_target = str(
+                    self._target_commit()
+                    or callback_result.get("target_commit")
+                    or callback_result.get("merge_commit")
+                    or target
+                )
+                callback_validation: dict[str, Any] = {}
                 if self.post_merge_validation is not None:
+                    raw_callback_validation = callback_result.get(
+                        "post_merge_validation"
+                    )
+                    validation_missing = raw_callback_validation is None
                     callback_validation = self._normalize_gate_result(
-                        callback_result.get("post_merge_validation"),
+                        raw_callback_validation,
                         default_reason=(
                             "callback_post_merge_validation_missing"
+                            if validation_missing
+                            else "callback_post_merge_validation_failed"
                         ),
-                    )
-                    callback_target = str(
-                        callback_result.get("target_commit")
-                        or self._target_commit()
-                        or target
                     )
                     validated_commit = str(
                         callback_validation.get("validated_commit")
                         or callback_validation.get("target_commit")
                         or ""
                     )
-                    if validated_commit != callback_target:
+                    callback_validation["synthesized_commit"] = (
+                        callback_target
+                    )
+                    if (
+                        callback_validation.get("passed") is True
+                        and validated_commit != callback_target
+                    ):
                         callback_validation.update(
                             {
                                 "passed": False,
@@ -3377,20 +3571,61 @@ class MergeTrain:
                             }
                         )
                     if not bool(callback_validation.get("passed")):
-                        return self._finish_failure(
+                        return self._finish_integrated_pending_validation(
                             request,
-                            reason=str(
+                            canonical=canonical,
+                            candidate=candidate,
+                            target=callback_target,
+                            started_at=started_at,
+                            merged=bool(callback_result.get("merged")),
+                            already_merged=bool(
+                                callback_result.get("already_merged")
+                            ),
+                            validation_reason=str(
                                 callback_validation.get("reason")
                                 or "callback_post_merge_validation_missing"
                             ),
-                            details={
+                            post_merge_validation=callback_validation,
+                            extra={
                                 "merge_result": callback_result,
-                                "post_merge_validation": callback_validation,
+                                "distributed_publication_admission": dict(
+                                    publication_admission
+                                ),
+                                **(
+                                    {
+                                        "proof_gate": proof_gate_receipt,
+                                        "repository_tree_id": proof_tree_id,
+                                    }
+                                    if proof_gate_receipt
+                                    else {}
+                                ),
                             },
-                            started_at=started_at,
-                            retryable=False,
+                            preflight_receipt=preflight_receipt,
                         )
                     callback_result["post_merge_validation"] = (
+                        callback_validation
+                    )
+                success_extra: dict[str, Any] = {
+                    "merge_result": callback_result,
+                    "distributed_publication_admission": dict(
+                        publication_admission
+                    ),
+                    "accepted": True,
+                    "acceptance_pending": False,
+                    **(
+                        {
+                            "proof_gate": proof_gate_receipt,
+                            "repository_tree_id": proof_tree_id,
+                        }
+                        if proof_gate_receipt
+                        else {}
+                    ),
+                }
+                if callback_validation:
+                    # _finish_success passes this top-level evidence to the
+                    # runtime completion decision.  Keeping it only beneath
+                    # merge_result silently discarded the callback receipt.
+                    success_extra["post_merge_validation"] = (
                         callback_validation
                     )
                 return self._finish_success(
@@ -3402,13 +3637,47 @@ class MergeTrain:
                     ),
                     canonical=canonical,
                     candidate=candidate,
-                    target=self._target_commit() or target,
+                    target=callback_target,
                     started_at=started_at,
-                    extra={
+                    extra=success_extra,
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
+                    callback_owned_integration=True,
+                )
+            callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
+            try:
+                lock_owner_pid = int(callback_result.get("lock_owner_pid") or 0)
+            except (TypeError, ValueError):
+                lock_owner_pid = 0
+            contention_evidence = self._verified_merge_lock_contention(
+                callback_result,
+                reason=callback_reason,
+                lock_owner_pid=lock_owner_pid,
+            )
+            if contention_evidence:
+                prior_deferrals = self._merge_lock_deferral_count(request)
+                if prior_deferrals >= self.max_merge_lock_deferrals:
+                    return self._finish_failure(
+                        request,
+                        reason="merge_lock_deferral_limit_exceeded",
+                        details={
+                            "merge_result": callback_result,
+                            "merge_lock_contention": contention_evidence,
+                            "prior_lock_deferrals": prior_deferrals,
+                            "max_merge_lock_deferrals": (
+                                self.max_merge_lock_deferrals
+                            ),
+                        },
+                        started_at=started_at,
+                        retryable=True,
+                    )
+                return self._finish_deferral(
+                    request,
+                    reason=callback_reason,
+                    details={
                         "merge_result": callback_result,
-                        "distributed_publication_admission": dict(
-                            publication_admission
-                        ),
+                        "merge_lock_contention": contention_evidence,
+                        "lock_deferral_count": prior_deferrals + 1,
                         **(
                             {
                                 "proof_gate": proof_gate_receipt,
@@ -3418,16 +3687,14 @@ class MergeTrain:
                             else {}
                         ),
                     },
-                    defer_completion=defer_completion,
-                    preflight_receipt=preflight_receipt,
+                    started_at=started_at,
                 )
-            callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
             retryable = callback_reason not in {
                 "invalid_merge_request",
                 "candidate_commit_missing",
                 "validation_failed",
                 "branch_has_no_changes",
-            }
+            } | set(AUTHORITY_QUARANTINE_REASONS)
             return self._finish_failure(
                 request,
                 reason=callback_reason,
@@ -4517,6 +4784,215 @@ class MergeTrain:
             return callback(positional, **filtered)
         return callback(**filtered)
 
+    def _settle_recovered_callback_integration(
+        self,
+        request: MergeRequest,
+        *,
+        canonical: str,
+        candidate: str,
+        target: str,
+        previous: Mapping[str, Any],
+        receipt_key: str,
+        preflight_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Settle a prior callback mutation without invoking it again."""
+
+        prior_target = str(previous.get("target_commit") or "")
+        result = {
+            **dict(previous),
+            "status": str(
+                previous.get("status")
+                or "integrated_pending_acceptance"
+            ),
+            "merged": bool(previous.get("merged")),
+            "integrated": True,
+            "accepted": False,
+            "acceptance_pending": True,
+            "completion_authoritative": False,
+            "integration_terminal": True,
+            "callback_owned_integration": True,
+            "callback_recovered": True,
+            "callback_reinvoked": False,
+            "request_id": request.request_id,
+            "task_id": _request_value(request, "task_id"),
+            "canonical_task_id": canonical,
+            "commit_sha": candidate,
+            "target_branch": self.target_branch,
+            "target_commit": target,
+            "merge_commit": target,
+            "previous_target_commit": prior_target,
+            "finished_at": time.time(),
+        }
+        if prior_target != target:
+            result.update(
+                {
+                    "status": "integrated_pending_acceptance",
+                    "reason": "post_merge_target_changed",
+                    "validation_reason": "post_merge_target_changed",
+                }
+            )
+        if preflight_receipt is not None:
+            result["preflight"] = dict(preflight_receipt)
+        completion_metadata = {
+            "status": str(result["status"]),
+            "integrated": True,
+            "accepted": False,
+            "acceptance_pending": True,
+            "completion_authoritative": False,
+            "integration_terminal": True,
+            "callback_owned_integration": True,
+            "callback_recovered": True,
+            "target_commit": target,
+            "merge_commit": target,
+            "previous_target_commit": prior_target,
+            "validation_reason": str(
+                result.get("validation_reason") or ""
+            ),
+            "post_merge_validation": dict(
+                result.get("post_merge_validation") or {}
+            ),
+        }
+        try:
+            self._call_compatible(
+                self.queue.complete,
+                request,
+                metadata=completion_metadata,
+            )
+            result["queue_settlement"] = {
+                "status": "completed",
+                "terminal": True,
+            }
+        except MergeQueueFenceError as exc:
+            result["status"] = "integrated_pending_acceptance"
+            result["reason"] = "merge_queue_claim_fenced"
+            result["queue_settlement"] = {
+                "status": "fenced_out",
+                "terminal": False,
+                "fence_stage": "recovered_callback_queue_completion",
+                "fence_error": f"{type(exc).__name__}: {exc}",
+            }
+            self._write_receipt(
+                f"fenced-{request.request_id}", result
+            )
+        self._write_receipt(receipt_key, result)
+        return result
+
+    def _finish_integrated_pending_validation(
+        self,
+        request: MergeRequest,
+        *,
+        canonical: str,
+        candidate: str,
+        target: str,
+        started_at: float,
+        merged: bool,
+        already_merged: bool,
+        validation_reason: str,
+        post_merge_validation: Mapping[str, Any],
+        extra: Mapping[str, Any] | None = None,
+        preflight_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Settle a callback-owned mutation while acceptance stays pending.
+
+        A callback can mutate the target before its returned validation receipt
+        is inspected.  Treating a missing, failed, or stale receipt as a merge
+        failure would requeue an operation whose physical side effect already
+        landed.  Persist the exact integrated state and terminally settle only
+        the mutation unit; a reconciliation path can later produce fresh
+        acceptance evidence without running the callback again.
+        """
+
+        result: dict[str, Any] = {
+            "status": "integrated_pending_validation",
+            "merged": bool(merged),
+            "already_merged": bool(already_merged),
+            "integrated": True,
+            "accepted": False,
+            "acceptance_pending": True,
+            "completion_authoritative": False,
+            "integration_terminal": True,
+            "callback_owned_integration": True,
+            "request_id": request.request_id,
+            "task_id": _request_value(request, "task_id"),
+            "canonical_task_id": canonical,
+            "commit_sha": candidate,
+            "target_branch": self.target_branch,
+            "target_commit": target,
+            "merge_commit": target,
+            "reason": "post_merge_validation_pending",
+            "validation_reason": str(validation_reason),
+            "post_merge_validation": dict(post_merge_validation),
+            "started_at": started_at,
+            "finished_at": time.time(),
+        }
+        if extra:
+            result.update(extra)
+            # Callback internals are diagnostic only.  Preserve the stable
+            # public statement that integration landed but is not accepted.
+            result.update(
+                {
+                    "status": "integrated_pending_validation",
+                    "merged": bool(merged),
+                    "already_merged": bool(already_merged),
+                    "integrated": True,
+                    "accepted": False,
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "integration_terminal": True,
+                    "callback_owned_integration": True,
+                    "target_commit": target,
+                    "merge_commit": target,
+                    "reason": "post_merge_validation_pending",
+                    "validation_reason": str(validation_reason),
+                    "post_merge_validation": dict(
+                        post_merge_validation
+                    ),
+                }
+            )
+        if preflight_receipt is not None:
+            result["preflight"] = dict(preflight_receipt)
+
+        receipt_key = self._dedupe_key(canonical, candidate)
+        self._write_receipt(receipt_key, result)
+        completion_metadata = {
+            "status": "integrated_pending_validation",
+            "integrated": True,
+            "accepted": False,
+            "acceptance_pending": True,
+            "completion_authoritative": False,
+            "integration_terminal": True,
+            "callback_owned_integration": True,
+            "target_commit": target,
+            "merge_commit": target,
+            "validation_reason": str(validation_reason),
+            "post_merge_validation": dict(post_merge_validation),
+        }
+        try:
+            self._call_compatible(
+                self.queue.complete,
+                request,
+                metadata=completion_metadata,
+            )
+            result["queue_settlement"] = {
+                "status": "completed",
+                "terminal": True,
+            }
+            self._write_receipt(receipt_key, result)
+        except MergeQueueFenceError as exc:
+            # The physical mutation remains integrated even if a newer queue
+            # owner fenced this worker before settlement.  Never rewrite that
+            # fact as a retryable merge failure.
+            result["queue_settlement"] = {
+                "status": "fenced_out",
+                "terminal": False,
+                "reason": "merge_queue_claim_fenced",
+                "fence_error": f"{type(exc).__name__}: {exc}",
+            }
+            self._write_receipt(
+                f"fenced-{request.request_id}", result
+            )
+        return result
+
     def _finish_success(
         self,
         request: MergeRequest,
@@ -4529,6 +5005,7 @@ class MergeTrain:
         extra: Mapping[str, Any] | None = None,
         defer_completion: bool = False,
         preflight_receipt: Mapping[str, Any] | None = None,
+        callback_owned_integration: bool = False,
     ) -> dict[str, Any]:
         result: dict[str, Any] = {
             "status": status,
@@ -4544,10 +5021,14 @@ class MergeTrain:
             "started_at": started_at,
             "finished_at": time.time(),
         }
+        if callback_owned_integration:
+            result["callback_owned_integration"] = True
         if extra:
             result.update(extra)
             # Stable public semantics take precedence over callback internals.
             result.update({"status": status, "integrated": True})
+            if callback_owned_integration:
+                result["callback_owned_integration"] = True
         if preflight_receipt is not None:
             result["preflight"] = dict(preflight_receipt)
         if defer_completion:
@@ -4573,18 +5054,222 @@ class MergeTrain:
         try:
             self.queue.complete(request)
         except MergeQueueFenceError as exc:
+            if callback_owned_integration:
+                result.update(
+                    {
+                        "status": "integrated_pending_acceptance",
+                        "integrated": True,
+                        "accepted": False,
+                        "acceptance_pending": True,
+                        "completion_authoritative": False,
+                        "integration_terminal": True,
+                        "reason": "merge_queue_claim_fenced",
+                        "queue_settlement": {
+                            "status": "fenced_out",
+                            "terminal": False,
+                            "fence_stage": "before_queue_completion",
+                            "fence_error": (
+                                f"{type(exc).__name__}: {exc}"
+                            ),
+                        },
+                    }
+                )
+            else:
+                result.update(
+                    {
+                        "status": "fenced_out",
+                        "accepted": False,
+                        "acceptance_pending": False,
+                        "reason": "merge_queue_claim_fenced",
+                        "fence_error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+            if callback_owned_integration:
+                self._write_receipt(
+                    self._dedupe_key(canonical, candidate), result
+                )
+            self._write_receipt(
+                f"fenced-{request.request_id}", result
+            )
+        return result
+
+    def _verified_merge_lock_contention(
+        self,
+        callback_result: Mapping[str, Any],
+        *,
+        reason: str,
+        lock_owner_pid: int,
+    ) -> dict[str, Any]:
+        """Bind callback contention to the exact live repository lease."""
+
+        if (
+            callback_result.get("attempted") is not False
+            or reason not in MERGE_LOCK_CONTENTION_REASONS
+            or lock_owner_pid <= 0
+        ):
+            return {}
+        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(
+            strict=False
+        )
+        callback_path_text = str(callback_result.get("lock_path") or "")
+        if not callback_path_text:
+            return {}
+        try:
+            callback_path = Path(callback_path_text).resolve(strict=False)
+        except (OSError, RuntimeError):
+            return {}
+        if callback_path != expected_path:
+            return {}
+        lease = read_checkout_mutation_lease(expected_path)
+        if lease is None:
+            return {}
+        metadata = dict(lease.metadata)
+        try:
+            metadata_pid = int(metadata.get("pid") or 0)
+            metadata_repo_root = Path(
+                str(metadata.get("repo_root") or "")
+            ).resolve(strict=False)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return {}
+        if (
+            str(metadata.get("kind") or "") != "merge"
+            or metadata_pid != lock_owner_pid
+            or metadata_repo_root != self.repo_root
+        ):
+            return {}
+        callback_bindings = (
+            ("lock_owner_lease_id", "lease_id"),
+            ("lock_owner_task_id", "task_id"),
+            ("lock_owner_branch", "branch"),
+        )
+        for callback_key, metadata_key in callback_bindings:
+            callback_value = str(callback_result.get(callback_key) or "")
+            if callback_value and callback_value != str(
+                metadata.get(metadata_key) or ""
+            ):
+                return {}
+        # Use the shared daemon liveness semantics without importing the full
+        # implementation daemon (which consumes MergeTrain lazily).
+        from ..todo_daemon.core import pid_alive, process_args
+
+        if not checkout_lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+            expected_repo_root=self.repo_root,
+            process_command_line=process_args,
+            process_is_running=pid_alive,
+        ):
+            return {}
+        confirmed = read_checkout_mutation_lease(expected_path)
+        if (
+            confirmed is None
+            or confirmed.device != lease.device
+            or confirmed.inode != lease.inode
+            or confirmed.lease_id != lease.lease_id
+        ):
+            return {}
+        return {
+            "verified": True,
+            "lock_path": str(expected_path),
+            "lock_owner_pid": metadata_pid,
+            "lock_owner_lease_id": lease.lease_id,
+            "lock_owner_task_id": str(metadata.get("task_id") or ""),
+            "lock_owner_branch": str(metadata.get("branch") or ""),
+            "target_repository_id": checkout_repository_id(self.repo_root),
+        }
+
+    @staticmethod
+    def _merge_lock_deferral_count(request: MergeRequest) -> int:
+        raw_deferrals = request.metadata.get("deferrals")
+        if not isinstance(raw_deferrals, list):
+            return 0
+        return sum(
+            1
+            for entry in raw_deferrals
+            if isinstance(entry, Mapping)
+            and str(entry.get("reason") or "")
+            in MERGE_LOCK_CONTENTION_REASONS
+        )
+
+    def _finish_deferral(
+        self,
+        request: MergeRequest,
+        *,
+        reason: str,
+        details: Mapping[str, Any],
+        started_at: float,
+    ) -> dict[str, Any]:
+        """Persist non-attempted external contention without burning retries."""
+
+        result: dict[str, Any] = {
+            "status": "deferred",
+            "attempted": False,
+            "merged": False,
+            "integrated": False,
+            "accepted": False,
+            "acceptance_pending": False,
+            "request_id": request.request_id,
+            "task_id": _request_value(request, "task_id"),
+            "canonical_task_id": (
+                str(getattr(request, "canonical_identity", "") or "")
+                or _request_value(request, "canonical_task_id")
+                or _request_value(request, "task_id")
+            ),
+            "commit_sha": _request_value(
+                request,
+                "commit_sha",
+                "implementation_commit",
+                "commit",
+            ),
+            "target_branch": self.target_branch,
+            "reason": reason,
+            "failure_count": int(
+                getattr(request, "failure_count", 0) or 0
+            ),
+            "attempt": int(getattr(request, "attempt", 1) or 1),
+            "retryable": True,
+            "deferred": True,
+            "cooldown_seconds": self.merge_lock_deferral_seconds,
+            "started_at": started_at,
+            "finished_at": time.time(),
+            **dict(details),
+        }
+        merge_details = details.get("merge_result")
+        try:
+            deferred = self.queue.defer(
+                request,
+                reason=reason,
+                delay_seconds=self.merge_lock_deferral_seconds,
+                metadata={
+                    "merge_result": (
+                        dict(merge_details)
+                        if isinstance(merge_details, Mapping)
+                        else {}
+                    )
+                },
+            )
+        except MergeQueueFenceError as exc:
             result.update(
                 {
                     "status": "fenced_out",
-                    "accepted": False,
-                    "acceptance_pending": False,
+                    "deferred": False,
                     "reason": "merge_queue_claim_fenced",
                     "fence_error": f"{type(exc).__name__}: {exc}",
                 }
             )
-            self._write_receipt(
-                f"fenced-{request.request_id}", result
-            )
+        else:
+            if deferred is None:
+                result.update(
+                    {
+                        "status": "fenced_out",
+                        "deferred": False,
+                        "reason": "merge_queue_request_missing",
+                    }
+                )
+            else:
+                result["retry_not_before"] = deferred.retry_not_before
+                result["claim_generation"] = deferred.claim_generation
+        self._write_receipt(f"deferred-{request.request_id}", result)
         return result
 
     def _finish_failure(

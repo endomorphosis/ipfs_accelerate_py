@@ -1,0 +1,32 @@
+{
+  "artifact_kind": "tla2tools.jar",
+  "artifact_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tlc/1.8.0/tla2tools.jar",
+  "claims": {
+    "deployment_ready": false,
+    "managed_root_bound": true,
+    "theorem_authority": false
+  },
+  "deployment_identity": "fvt083-20260801-01",
+  "executable_digest_sha256": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+  "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tlc",
+  "external_prover_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "goal_id": "FVT-G235",
+  "interface": "ManagedRootMarker@1",
+  "lane_id": "managed-tlc-apalache",
+  "lock_match": true,
+  "locked_artifact_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_present": true,
+  "managed_root_writable": false,
+  "marker_digest_sha256": "sha256:ba4c5f86c7477008a5bfbde5cfbf1fa87111bda3a0f1491fc07d5b54f7279d99",
+  "observed_artifact_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+  "observed_at": "2026-08-05T16:19:32Z",
+  "ready": true,
+  "schema_version": "formal-verification-managed-root-marker/v1",
+  "task_id": "FVT-103",
+  "tool_id": "tlc",
+  "under_approved_immutable_root": true,
+  "under_managed_root": true,
+  "version": "1.8.0"
+}

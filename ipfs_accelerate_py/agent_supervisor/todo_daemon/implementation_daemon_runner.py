@@ -24,6 +24,54 @@ from ..runtime.event_log import append_jsonl_event
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS = 300.0
+
+
+def daemon_pass_is_idle(result: Mapping[str, Any]) -> bool:
+    """Return whether a pass made no durable or implementation progress."""
+
+    return (
+        result.get("unchanged") is True
+        and int(result.get("write_count", 0) or 0) == 0
+        and not result.get("implementation_result")
+        and not result.get("merge_reconciliation")
+        and not result.get("completion_receipt_writes")
+        and not result.get("retry_budget_resets")
+    )
+
+
+def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the bounded operator heartbeat used for an idle daemon pass."""
+
+    keys = (
+        "task_count",
+        "completed_count",
+        "ready_count",
+        "blocked_count",
+        "active_task_id",
+        "selection_idle_reason",
+        "source_digest",
+        "wake_kinds",
+        "requirement_id",
+    )
+    return {key: result[key] for key in keys if key in result}
+
+
+def log_daemon_pass_result(
+    logger: logging.Logger,
+    pass_complete_message: str,
+    result: Mapping[str, Any],
+    *,
+    emit_idle_info: bool,
+) -> None:
+    """Log changed passes in full and throttle bounded summaries for idle passes."""
+
+    if not daemon_pass_is_idle(result):
+        logger.info(pass_complete_message, result)
+        return
+    logger.debug("Full idle daemon pass result: %s", result)
+    if emit_idle_info:
+        logger.info(pass_complete_message, compact_daemon_pass_result(result))
 
 
 def bounded_daemon_wait_timeout(
@@ -1090,6 +1138,32 @@ def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(timeout_seconds)
 
 
+def resolve_database_implementation_paths(
+    parsed: argparse.Namespace,
+) -> dict[str, Path | None]:
+    """Resolve control-plane database paths for database-authoritative execution.
+
+    JSON queue/status/events/PID projections are intentionally optional and may
+    be absent under database authority.
+    """
+
+    database_path = getattr(parsed, "database_path", None)
+    if database_path is not None:
+        database_path = Path(database_path)
+    todo_path = getattr(parsed, "todo_path", None)
+    if database_path is None and todo_path is not None:
+        candidate = Path(todo_path)
+        if candidate.suffix.lower() in {".duckdb", ".ddb"}:
+            database_path = candidate
+    coordination_path = getattr(parsed, "coordination_path", None)
+    if coordination_path is not None:
+        coordination_path = Path(coordination_path)
+    return {
+        "database_path": database_path,
+        "coordination_path": coordination_path,
+    }
+
+
 def build_portal_implementation_daemon_from_args(
     parsed: argparse.Namespace,
     *,
@@ -1099,15 +1173,73 @@ def build_portal_implementation_daemon_from_args(
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
 ) -> tuple[object, ImplementationDaemonRunContext]:
-    """Build a ``PortalImplementationDaemon`` from parsed CLI args and local defaults."""
+    """Build a portal or database implementation daemon from parsed CLI args."""
 
     from .implementation_daemon import (
         DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        DatabaseImplementationDaemon,
         PortalImplementationDaemon,
+        database_program_from_daemon_namespace,
+        is_database_authority_mode,
     )
 
     apply_merge_resolver_environment(parsed)
     state_paths = implementation_state_paths(parsed)
+    program = database_program_from_daemon_namespace(parsed)
+    db_paths = resolve_database_implementation_paths(parsed)
+    database_path = db_paths["database_path"]
+    if database_path is None and program is not None and program.store_id:
+        candidate = Path(program.store_id)
+        if candidate.suffix.lower() in {".duckdb", ".ddb"}:
+            database_path = candidate
+
+    authority_mode = (
+        program.authority_mode
+        if program is not None
+        else str(getattr(parsed, "authority_mode", "") or "")
+    )
+    task_source_kind = (
+        program.task_source_kind
+        if program is not None
+        else str(getattr(parsed, "task_source_kind", "") or "")
+    )
+    if (
+        database_path is not None
+        and is_database_authority_mode(
+            authority_mode=authority_mode,
+            task_source_kind=task_source_kind,
+        )
+    ):
+        # Database-authoritative cutover: JSON projections may be absent.
+        optional_state = state_paths["state_path"]
+        optional_strategy = state_paths["strategy_path"]
+        optional_events = state_paths["events_path"]
+        # Prefer absent projections when state_dir was not explicitly needed.
+        use_projections = bool(getattr(parsed, "require_json_projections", False))
+        daemon: object = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=db_paths["coordination_path"],
+            owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
+            authority_mode=authority_mode or "embedded",
+            task_source_kind=task_source_kind or "duckdb",
+            markdown_path=(
+                parsed.todo_path
+                if str(getattr(parsed, "todo_path", "") or "").endswith(".md")
+                else None
+            ),
+            state_path=optional_state if use_projections else None,
+            strategy_path=optional_strategy if use_projections else None,
+            events_path=optional_events if use_projections else None,
+            pid_path=None,
+            queue_path=None,
+        )
+        return daemon, ImplementationDaemonRunContext(
+            parsed=parsed,
+            state_path=optional_state,
+            strategy_path=optional_strategy,
+            events_path=optional_events,
+        )
+
     worktree_submodule_paths = (
         getattr(parsed, "worktree_submodule_path", None)
         or default_worktree_submodule_paths
@@ -1120,6 +1252,18 @@ def build_portal_implementation_daemon_from_args(
     )
     daemon = PortalImplementationDaemon(
         todo_path=parsed.todo_path,
+        task_source=(
+            parsed.todo_path
+            if str(getattr(parsed, "task_source_kind", "") or "")
+            in {"markdown", "duckdb"}
+            else None
+        ),
+        task_source_kind=(
+            str(getattr(parsed, "task_source_kind", "") or "")
+            if str(getattr(parsed, "task_source_kind", "") or "")
+            in {"markdown", "duckdb"}
+            else ""
+        ),
         state_path=state_paths["state_path"],
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
@@ -1134,6 +1278,28 @@ def build_portal_implementation_daemon_from_args(
         merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
         worktree_submodule_paths=worktree_submodule_paths,
         implementation_protected_paths=implementation_protected_paths,
+        manual_completion_authority_task_ids=getattr(
+            parsed,
+            "manual_completion_authority_task_id",
+            (),
+        ),
+        manual_completion_authority_required_task_ids=getattr(
+            parsed,
+            "manual_completion_authority_required_task_id",
+            (),
+        ),
+        manual_completion_authority_epoch_id=getattr(
+            parsed,
+            "manual_completion_authority_epoch_id",
+            "",
+        ),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                parsed,
+                "manual_completion_authority_revalidation_only",
+                False,
+            )
+        ),
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
         execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
@@ -1148,6 +1314,54 @@ def build_portal_implementation_daemon_from_args(
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
+
+
+def build_database_implementation_daemon_from_args(
+    parsed: argparse.Namespace,
+    *,
+    database_path: Path | str | None = None,
+    owner_session_id: str = "",
+    provider_fn: Callable[..., Any] | None = None,
+    effect_fn: Callable[..., Any] | None = None,
+    validation_fn: Callable[..., Any] | None = None,
+) -> object:
+    """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
+
+    from .implementation_daemon import (
+        DatabaseImplementationDaemon,
+        database_program_from_daemon_namespace,
+    )
+
+    program = database_program_from_daemon_namespace(parsed)
+    db_paths = resolve_database_implementation_paths(parsed)
+    resolved_db = Path(database_path) if database_path is not None else db_paths["database_path"]
+    if resolved_db is None:
+        raise ValueError(
+            "database_path is required for DatabaseImplementationDaemon "
+            "(pass --database-path or a .duckdb --todo-path)"
+        )
+    authority_mode = (
+        program.authority_mode if program is not None else "embedded"
+    )
+    task_source_kind = (
+        program.task_source_kind if program is not None else "duckdb"
+    )
+    return DatabaseImplementationDaemon(
+        database_path=resolved_db,
+        coordination_path=db_paths["coordination_path"],
+        owner_session_id=owner_session_id
+        or str(getattr(parsed, "owner_session_id", "") or ""),
+        authority_mode=authority_mode,
+        task_source_kind=task_source_kind,
+        provider_fn=provider_fn,
+        effect_fn=effect_fn,
+        validation_fn=validation_fn,
+        state_path=None,
+        strategy_path=None,
+        events_path=None,
+        pid_path=None,
+        queue_path=None,
+    )
 
 
 def _run_hooks(
@@ -1222,14 +1436,46 @@ def run_portal_implementation_daemon_loop(
     """Run a configured daemon with optional before/after pass hooks."""
 
     parsed = context.parsed
+    authority_revalidation_only = bool(
+        getattr(
+            parsed,
+            "manual_completion_authority_revalidation_only",
+            False,
+        )
+    )
+    effective_hooks = () if authority_revalidation_only else hooks
     pass_index = 0
+    last_idle_info_at: float | None = None
     try:
         while True:
             pass_context = context.for_pass(pass_index)
-            _run_hooks(hooks, phase="before", context=pass_context, logger=logger)
+            _run_hooks(
+                effective_hooks,
+                phase="before",
+                context=pass_context,
+                logger=logger,
+            )
             result = daemon.run_once()
-            _run_hooks(hooks, phase="after", context=pass_context, logger=logger)
-            logger.info(pass_complete_message, result)
+            _run_hooks(
+                effective_hooks,
+                phase="after",
+                context=pass_context,
+                logger=logger,
+            )
+            now = time.monotonic()
+            emit_idle_info = (
+                bool(parsed.once)
+                or last_idle_info_at is None
+                or now - last_idle_info_at >= IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS
+            )
+            log_daemon_pass_result(
+                logger,
+                pass_complete_message,
+                result,
+                emit_idle_info=emit_idle_info,
+            )
+            if daemon_pass_is_idle(result) and emit_idle_info:
+                last_idle_info_at = now
             if parsed.once:
                 break
             pass_index += 1

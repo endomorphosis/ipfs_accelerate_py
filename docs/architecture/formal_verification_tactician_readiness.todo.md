@@ -3441,7 +3441,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: completion
-- Depends on: FVT-036, FVT-040, FVT-038, FVT-039, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047
+- Depends on: FVT-036, FVT-040, FVT-038, FVT-039, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047, FVT-067
 - Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
 - Validation: python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
@@ -3499,3 +3499,3743 @@ disable objective refill and use only the generated FVT bundle index.
 - Candidate kind: aggregate
 - Todo vector key: e4dddec7917fe746
 - Acceptance: Objective scan filed this gap for FVT-G200. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-053-objective-gap-2cdc520508dc.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-054 Close objective gap: Execute real Vampire and E prover semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-048, FVT-064, FVT-062
+- Outputs: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_atp_live_semantic_certification.py test/integration/toolchains/test_atp_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-054-objective-gap-964e71995499.md
+- Bundle: formal-verification-tactician/atp-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-atp-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/atp-live-semantics
+- Conflict policy: Own real ATP execution and receipts; keep SZS parsing as adapter evidence and never grant kernel authority to an unreconstructed ATP result.
+- Predicted files: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- AST symbols: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Interfaces: ATPLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G207
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/9f0a1ef914661e612ae5b4587ea05eb4607729b623e8f8f109634d2f1cb0d7fe
+- Canonical task CID: baguqeerat4fb56iumypgckxfwrmh5ic6wrqhoknwepupr4ijmngs6hfq277a
+- Semantic identity: objective-evidence-obligation/v1/a533d95ef148685a75ed6eb1a8d99a66ed1db1c96da90447048e89ed8bfd0af4
+- Acceptance subset: Vampire and E each execute theorem and counter-satisfiable problems, premise/conclusion mutations, replay, malformed TPTP, timeout/resource bounds, disagreement, and proof-object/reconstruction cases, receipts bind exact binary and artifact digests, TPTP source, assumptions, conclusion, limits, raw SZS output, and reconstruction status, an ATP result cannot exceed candidate/reconstruction authority until checked by a trusted kernel.
+- Preconditions: objective goal FVT-G207 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_atp_live_semantic_certification.py, satisfy evidence requirement: docs/architecture/formal_verification_atp_live_certificate.json
+- Evidence subset: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G207
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/a533d95ef148685a75ed6eb1a8d99a66ed1db1c96da90447048e89ed8bfd0af4
+- Missing evidence: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Embedding query: Replace SZS parser fixtures with real pinned ATP runs while preserving reconstruction and kernel-checking ceilings.
+- AST query: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Surplus group: objective/FVT-G207
+- Merge key: e4888ed3c395be93
+- Merge family: objective/FVT-G207
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 4c32f8d9f14956de
+- Acceptance: Objective scan filed this gap for FVT-G207. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-054-objective-gap-964e71995499.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-055 Close objective gap: Install Souffle and derive the SecPAL platform exception
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-038, FVT-051, FVT-064, FVT-062
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-055-objective-gap-264a1407f076.md
+- Bundle: formal-verification-tactician/authorization-vendor-toolchains
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-authorization-vendor-toolchains.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/authorization-vendor-toolchains
+- Conflict policy: Own vendor Souffle installation and external authorization production evidence; never mutate the system package manager, promote a shadow, or excuse missing supported capability.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- AST symbols: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Interfaces: ExternalAuthorizationVendorCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G209
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/7a6a9231b626a7c7a8cb004186c01d2849fb59fbd7be7170b5771a6977388635
+- Canonical task CID: baguqeerapjvjemnwe2t4pkglabaynqa5fbe7wwp3267hc4fvo4ngs5zyqy2q
+- Semantic identity: objective-evidence-obligation/v1/5330f97eec9f3b9488528e9a5141febd765ba96eed628af8e2a326c9e13d8839
+- Acceptance subset: Souffle 2.4.1 source/archive and build dependencies are immutable and checksummed, the user-local executable and artifact digest are exact, and real allow/deny/unknown/conflict/delegation plus rule/scope mutation, replay, malformed, timeout, and disagreement cases execute through it, linux-aarch64 is supported for Souffle, external SecPAL is a narrow unsupported-platform exception on linux-aarch64 under the current contract and never counts as installed, complete, authoritative, or production-certified, hermetic shadows remain differential-only.
+- Preconditions: objective goal FVT-G209 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_external_authorization_vendor_certification.py, satisfy evidence requirement: docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Evidence subset: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G209
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/5330f97eec9f3b9488528e9a5141febd765ba96eed628af8e2a326c9e13d8839
+- Missing evidence: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Embedding query: Replace the Souffle case-oracle shadow with a checksummed vendor build and keep external SecPAL support classification lock-derived.
+- AST query: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Surplus group: objective/FVT-G209
+- Merge key: 99abf449b0d6f05d
+- Merge family: objective/FVT-G209
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f3aeffc593532dc4
+- Acceptance: Objective scan filed this gap for FVT-G209. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-055-objective-gap-264a1407f076.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-056 Close objective gap: Build and certify an independent external Runtime MTL engine
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-039, FVT-052, FVT-064, FVT-062
+- Outputs: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py test/integration/toolchains/test_external_runtime_mtl_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-056-objective-gap-110d71dbeb6c.md
+- Bundle: formal-verification-tactician/runtime-mtl-external-runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-runtime-mtl-external-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/runtime-mtl-external-runtime
+- Conflict policy: Own TypeScript monitor, reproducible package build, installer, and cross-runtime certifier; do not change the Python reference or infer global proof from finite traces.
+- Predicted files: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Changed paths:
+- Context paths: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- AST symbols: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Interfaces: ExternalRuntimeMTLVendorCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G210
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/aa6e4c5b8b105722bea5e7f968122b8325d85476b7f8e8c4bf124ea259c0f45d
+- Canonical task CID: baguqeeravjxeyw4lcblsfpvf474wqerlqms5qvdww74orrf7cjhkewoa6roq
+- Semantic identity: objective-evidence-obligation/v1/a60b8e3ac481146abf4cc428012737f1f50987f9290eafd544b680c7f8c66017
+- Acceptance subset: A locked TypeScript dependency graph builds an independent Node package/executable without importing or dispatching to the Python reference, package, source, lockfile, runtime, executable, and artifact digests are bound, positive, negative, interval/event mutation, timestamp boundary, shortest-prefix replay, malformed input, timeout, bounds, and disagreement cases execute out of process, finite-trace authority and inconclusive-prefix semantics are preserved, generated Python parity wrappers remain non-production shadow evidence.
+- Preconditions: objective goal FVT-G210 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, satisfy evidence requirement: docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Evidence subset: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G210
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/a60b8e3ac481146abf4cc428012737f1f50987f9290eafd544b680c7f8c66017
+- Missing evidence: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Embedding query: Replace the Python-backed parity wrapper with a reproducibly built TypeScript/Node monitor and honest cross-runtime evidence.
+- AST query: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Surplus group: objective/FVT-G210
+- Merge key: c172d551569e89a8
+- Merge family: objective/FVT-G210
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 81f3dd2e2ff32a8d
+- Acceptance: Objective scan filed this gap for FVT-G210. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-056-objective-gap-110d71dbeb6c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-057 Close objective gap: Execute and bind Lean, Rocq, and Isabelle kernel semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-040, FVT-045, FVT-049, FVT-064, FVT-062
+- Outputs: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-057-objective-gap-5bb2c7bb7675.md
+- Bundle: formal-verification-tactician/kernel-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-kernel-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 3
+- Parallel lane: formal-verification-tactician/kernel-live-semantics
+- Conflict policy: Own kernel fan-in and live source checks; serialize expensive OPAM/Isabelle resources and preserve each kernel's separate authority.
+- Predicted files: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- AST symbols: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Interfaces: KernelLiveSemanticFanIn@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G206
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/b69124c60821fd445e848a4fcbfa6f6705a3eccc1dfe390f72bb1b8304f11b61
+- Canonical task CID: baguqeeraw2isjrqieh6uixuerjh4x6tpm4c2h3gmdx7dsd3sxmnygbhrdnqq
+- Semantic identity: objective-evidence-obligation/v1/b7f547d501ed5d6e85ed2dc95e99a9d92ba5d0da2c06278621d3521ba2aa105e
+- Acceptance subset: Lean, Rocq, and Isabelle independently execute a valid theorem, false theorem, hypothesis/conclusion mutation, deterministic replay, malformed source, timeout, and forbidden admit/axiom-oracle checks, Isabelle's live source/session helper is exercised rather than only offline fixtures, receipts bind exact kernel, dependency, source, imports/session, assumptions, theorem, and output digests, no advisor or sibling kernel substitutes for the selected kernel.
+- Preconditions: objective goal FVT-G206 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_kernel_live_semantic_fanin.py, satisfy evidence requirement: docs/architecture/formal_verification_kernel_live_certificate.json
+- Evidence subset: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Resource class: large-kernel-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Resources: large-kernel-toolchain
+- Merge fate: objective/FVT-G206
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/b7f547d501ed5d6e85ed2dc95e99a9d92ba5d0da2c06278621d3521ba2aa105e
+- Missing evidence: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Embedding query: Require each installed proof kernel to check its own generated source and retain all assumptions, imports, theorem, and mutation evidence.
+- AST query: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Surplus group: objective/FVT-G206
+- Merge key: 1cd34ad5a8603afb
+- Merge family: objective/FVT-G206
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: e2952b5dad554d48
+- Acceptance: Objective scan filed this gap for FVT-G206. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-057-objective-gap-5bb2c7bb7675.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-058 Close objective gap: Execute real Tamarin and ProVerif protocol semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-043, FVT-044, FVT-064, FVT-062
+- Outputs: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_protocol_live_semantic_certification.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/toolchains/test_proverif_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-058-objective-gap-9ae03bb40053.md
+- Bundle: formal-verification-tactician/protocol-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-protocol-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: formal-verification-tactician/protocol-live-semantics
+- Conflict policy: Own live protocol execution and per-tool receipts; never turn parser-recognized canned output into semantic proof or allow one protocol engine to stand in for the other.
+- Predicted files: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- AST symbols: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Interfaces: ProtocolLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G205
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/60188ec55df3884f56317010c90cd5bd8a3588179200a0fc58b197a011bcb028
+- Canonical task CID: baguqeeramami5rk56oee6vrroaimsdgvxwfdlcaxsiakb7cywgl2aen4waua
+- Semantic identity: objective-evidence-obligation/v1/6f9b7747f6fdfbb1f50c4a6ea1104ff44907a551690af24ed02d3065d9d3b65c
+- Acceptance subset: Both binaries execute valid secrecy/authentication protocols, concrete attacks, premise/conclusion and protocol mutations, replay, malformed models, timeout, disagreement, and bounded-search cases, receipts bind tool and dependency identities, source, query, assumptions, bound, witnesses/traces, and raw output, parser fixtures remain non-production.
+- Preconditions: objective goal FVT-G205 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_protocol_live_semantic_certification.py, satisfy evidence requirement: docs/architecture/formal_verification_protocol_live_certificate.json
+- Evidence subset: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G205
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/6f9b7747f6fdfbb1f50c4a6ea1104ff44907a551690af24ed02d3065d9d3b65c
+- Missing evidence: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Embedding query: Run the protocol corpus through the pinned Tamarin and ProVerif binaries and retain per-tool cryptographic-protocol evidence.
+- AST query: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Surplus group: objective/FVT-G205
+- Merge key: 4f7857344ce510e9
+- Merge family: objective/FVT-G205
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 1e75bcb088bccd66
+- Acceptance: Objective scan filed this gap for FVT-G205. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-058-objective-gap-9ae03bb40053.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-059 Close objective gap: Integrate the live secret-safe ZKP deployment certificate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-047, FVT-064, FVT-065
+- Outputs: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-059-objective-gap-bc1f10387661.md
+- Bundle: formal-verification-tactician/zkp-production-runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-zkp-production-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: formal-verification-tactician/zkp-production-runtime
+- Conflict policy: Own live verifier binding and secret-safe aggregation only; never generate/expose private material or manufacture deployment evidence.
+- Predicted files: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- AST symbols: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Interfaces: ZKPLiveVerifierDeployment@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G211
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/f69a9ad353edf3ddd0d798b4bcaab007be817ad3aa46d7f8af8e8f7007cf2004
+- Canonical task CID: baguqeera62njvu2t5xz53ugxtc2lzkvqa67ic6wtvjdnp6fpr2hxab6peaca
+- Semantic identity: objective-evidence-obligation/v1/f22a97cbf12460568540b297a24d34b438668972d64812dbbe86e5a6a8c9c2fa
+- Acceptance subset: The configured backend performs live verification against exact circuit, ceremony, proving-key, verification-key, public-parameter, public-input-schema, version, expiry, freshness, and revocation identities, positive and corrupted proof/key/public-input, circuit mismatch, mutation, replay, stale, and revoked cases run against it, no private witness, proving-key bytes, trapdoor, secret path, or secret value enters Git, logs, caches, public receipts, or model context, absent operator-bound public artifacts remain deployment blockers, not platform exceptions, ZKP attests and never replaces underlying semantic authority.
+- Preconditions: objective goal FVT-G211 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_zkp_live_verifier_deployment.py, satisfy evidence requirement: docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Evidence subset: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G211
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/f22a97cbf12460568540b297a24d34b438668972d64812dbbe86e5a6a8c9c2fa
+- Missing evidence: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Embedding query: Distinguish schema-valid sample bindings from a live verifier and bind the complete ZKP deployment receipt into the semantic fan-in.
+- AST query: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Surplus group: objective/FVT-G211
+- Merge key: 8fc0d8e861a26fa8
+- Merge family: objective/FVT-G211
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 327c05af81f05a7c
+- Acceptance: Objective scan filed this gap for FVT-G211. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-059-objective-gap-bc1f10387661.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-060 Close objective gap: Execute real TLC and Apalache state-model semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-042, FVT-064, FVT-062
+- Outputs: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_state_model_live_semantic_certification.py test/integration/toolchains/test_state_model_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-060-objective-gap-7220519566f7.md
+- Bundle: formal-verification-tactician/state-model-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-state-model-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 6
+- Parallel lane: formal-verification-tactician/state-model-live-semantics
+- Conflict policy: Own live state-model cases and receipts; use the installed toolchain without downloading during certification and never promote from identity or output parsing alone.
+- Predicted files: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- AST symbols: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Interfaces: StateModelLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G204
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/df6514a9340af6f60abc44216fd031d4af7522e8387097f321b669a118737034
+- Canonical task CID: baguqeera35srjkjubl3pmcv4iqqw7ubr2sxxkixihbyjp4zbwzu2cgdtoa2a
+- Semantic identity: objective-evidence-obligation/v1/97a9abc783cec75eae0110ad32949db2ef582ec14938f20477c107d5e5271e7b
+- Acceptance subset: The pinned TLC jar and Apalache executable each run a valid invariant model, a violating model with concrete counterexample, specification and invariant mutations, deterministic replay, malformed input, timeout, and bounded-state/resource cases, source model, property, bound, JVM, executable, jar/archive, and output digests are exact, canned text and parser classification remain `hermetic_parser` and cannot satisfy live external semantics.
+- Preconditions: objective goal FVT-G204 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_state_model_live_semantic_certification.py, satisfy evidence requirement: docs/architecture/formal_verification_state_model_live_certificate.json
+- Evidence subset: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Resource class: exclusive-jvm-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Resources: exclusive-jvm-toolchain
+- Merge fate: objective/FVT-G204
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/97a9abc783cec75eae0110ad32949db2ef582ec14938f20477c107d5e5271e7b
+- Missing evidence: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Embedding query: Replace classifier-backed state-model promotion with real TLC and Apalache execution against positive and adversarial models.
+- AST query: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Surplus group: objective/FVT-G204
+- Merge key: 6dcb5b22caf970cf
+- Merge family: objective/FVT-G204
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 42018eda5021c9b8
+- Acceptance: Objective scan filed this gap for FVT-G204. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-060-objective-gap-7220519566f7.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-061 Close objective gap: Install and live-certify supported hyperproperty engines
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-046, FVT-064, FVT-062
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-061-objective-gap-2bef952f34f6.md
+- Bundle: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-hyperproperty-vendor-toolchains.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 7
+- Parallel lane: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Conflict policy: Own vendor acquisition, correct per-product pins, dependencies, and live adapters; preserve bounded authority and never relabel the existing hermetic engines.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- AST symbols: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Interfaces: HyperpropertyVendorToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G208
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/e28dd1e8acec58c93b2eae40d1682200bd445d3046c61cf7bd607a20e918c265
+- Canonical task CID: baguqeera4kg5d2fm5rmmsozovzanc2bcac6uixjqi3dbz555mb5cb2iyyjsq
+- Semantic identity: objective-evidence-obligation/v1/ed3cc7bbf9d99b3d4e443f2012e46cf0a1d21d5ed66a0d80f6fd8ab9ff35102a
+- Acceptance subset: AutoHyper binds its official revision, .NET runtime, Spot tools, build inputs, executable digest, and live semantic cases, MCHyper binds its official revision, ABC/AIGER dependencies, supported fragment, and live witness/counterexample cases, the selected HyperLTL satisfiability engine has its own correct upstream identity and decidable-fragment ceiling, satisfaction, violation, observation/quantifier mutation, replay, malformed output, timeout, disagreement, and exact bounds execute through real binaries, linux-aarch64 remains supported only if that complete chain is real, case-oracle, hermetic shim, fixture, parser, or canned output cannot satisfy this goal.
+- Preconditions: objective goal FVT-G208 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, satisfy evidence requirement: docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Evidence subset: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G208
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/ed3cc7bbf9d99b3d4e443f2012e46cf0a1d21d5ed66a0d80f6fd8ab9ff35102a
+- Missing evidence: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Embedding query: Correct the upstream identities and deploy real HyperLTL satisfiability, AutoHyper, and MCHyper toolchains on every declared supported host.
+- AST query: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Surplus group: objective/FVT-G208
+- Merge key: 1a6b8435401de388
+- Merge family: objective/FVT-G208
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 24f5c575a74f68f1
+- Acceptance: Objective scan filed this gap for FVT-G208. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-061-objective-gap-2bef952f34f6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-062 Close objective gap: Repair exact probes and managed artifact identities
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: dependency-integrity
+- Depends on: FVT-041, FVT-042, FVT-044, FVT-049
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_probe_integrity.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-062-objective-gap-ed170e90f655.md
+- Bundle: formal-verification-tactician/toolchain-probe-integrity
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-probe-integrity.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 8
+- Parallel lane: formal-verification-tactician/toolchain-probe-integrity
+- Conflict policy: Own exact probe commands, reviewed identities, and atomic publication; never mutate system Java, accept an unbound artifact, trust arbitrary nonempty output, or validate a different path than the public launcher.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_probe_integrity.py
+- AST symbols: test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Interfaces: FormalVerificationProbeIntegrity@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G202
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/769254077b08376c347d2ca258bb917ac1df1b4888bbeade4392ee8a8641c94b
+- Canonical task CID: baguqeerao2jfib33ba3wynd5fsrfro4rpla56g2irc56vxsdslxivbsbzffq
+- Semantic identity: objective-evidence-obligation/v1/78d6fd2ca7b3971a065b2f7c828393e8e9ee70bfcfb36e7dc585d31a39c28c82
+- Acceptance subset: Java identity is parsed only from the quoted java/openjdk version banner after hostile Java option variables are neutralized, bare names resolve only through PATH and dry-run executes nothing, Apalache uses `version`, Isabelle uses `version`, ProVerif uses a valid identity command, and nonzero error banners cannot prove usability, TLC 1.8.0 binds SHA-256 `e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5` plus manifest tag `v1.8.0` and revision `30cc360`, genuine TLC help is recognized despite exit 1 only with required markers, returned launchers execute through the validated Java 17+ runtime, TLC and Apalache artifact plus launcher repair is staged, atomic, and rollback-safe, failed repair preserves a prior good install.
+- Preconditions: objective goal FVT-G202 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Evidence subset: test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Resource class: exclusive-jvm-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Resources: exclusive-jvm-toolchain
+- Merge fate: objective/FVT-G202
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/78d6fd2ca7b3971a065b2f7c828393e8e9ee70bfcfb36e7dc585d31a39c28c82
+- Missing evidence: test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Embedding query: Make generic and state-model identity probing command-correct, return-code-aware, digest-bound, hostile-environment-safe, and atomic.
+- AST query: test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Surplus group: objective/FVT-G202
+- Merge key: be4ad75cc5476b37
+- Merge family: objective/FVT-G202
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: c265f0f3419c3a74
+- Acceptance: Objective scan filed this gap for FVT-G202. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-062-objective-gap-ed170e90f655.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_probe_integrity.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-063 Close objective gap: Bind durable supervisor evidence and enforce expected outputs
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-integrity
+- Depends on: FVT-035, FVT-064
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- Validation: python -m pytest test/api/test_agent_supervisor_release_evidence_binding.py test/api/test_agent_supervisor_todo_daemon_port.py -k 'expected_output or completion_receipt or release_evidence' -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-063-objective-gap-a119b5b3e02b.md
+- Bundle: formal-verification-tactician/supervisor-release-evidence
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-supervisor-release-evidence.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: formal-verification-tactician/supervisor-release-evidence
+- Conflict policy: Own proposal-output enforcement and read-only release evidence; preserve path fences, never broadly force-add ignored files, and never synthesize a missing terminal receipt.
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- Changed paths:
+- Context paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- AST symbols: test/api/test_agent_supervisor_release_evidence_binding.py
+- Interfaces: AgentSupervisorReleaseEvidence@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G212
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/bef3dbab319e0d753a7462b7f34b17af31c058fe682056b8dd9b61087c8eadae
+- Canonical task CID: baguqeerax3z5xkzrtygxkotumk37gsyxv4y4awh6naqfnog5tnqqq7eovwxa
+- Semantic identity: objective-evidence-obligation/v1/9330d7f16bbafa77a3b5eb2e73f11097b1ddcf437c263437f9bd469cc39ae1b5
+- Acceptance subset: Declared outputs are compared with filesystem, proposed paths, staged paths, and ignore rules, an exact allowed ignored output is force-added only by its explicit path or the proposal fails `expected_output_ignored_or_unstaged`, a regression proves an ignored JSON and tracked source both enter the commit, the exporter reads committed bundle/task metadata, lane manifest, scheduler snapshot, task state, event manifest/JSONL, and durable member_completion receipts once and hashes raw bytes, output binds canonical task CID/key, dependency CIDs, baseline and merged trees/gitlinks, attempt/phase, continuous event sequence, validation and merge outcomes, freshness, authority, and publication state, it never edits live state and cannot treat metrics-module presence as completion.
+- Preconditions: objective goal FVT-G212 is schedulable
+- Effects: satisfy evidence requirement: test/api/test_agent_supervisor_release_evidence_binding.py
+- Evidence subset: test/api/test_agent_supervisor_release_evidence_binding.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G212
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/9330d7f16bbafa77a3b5eb2e73f11097b1ddcf437c263437f9bd469cc39ae1b5
+- Missing evidence: test/api/test_agent_supervisor_release_evidence_binding.py
+- Embedding query: Export a read-only, content-addressed execution snapshot and reject proposals whose declared outputs are ignored, absent, or unstaged.
+- AST query: test/api/test_agent_supervisor_release_evidence_binding.py
+- Surplus group: objective/FVT-G212
+- Merge key: df7f31de539425c0
+- Merge family: objective/FVT-G212
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: bc412e83e38acc38
+- Acceptance: Objective scan filed this gap for FVT-G212. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-063-objective-gap-a119b5b3e02b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/api/test_agent_supervisor_release_evidence_binding.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-064 Close objective gap: Derive exact host support and platform exceptions from the lock
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deployment-integrity
+- Depends on: FVT-006, FVT-041
+- Outputs: tools/logic/certification/platform_support.py, test/integration/toolchains/test_formal_verification_platform_support.py
+- Validation: python -m pytest test/integration/toolchains/test_formal_verification_platform_support.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-064-objective-gap-64fd42d3cc7f.md
+- Bundle: formal-verification-tactician/platform-support-classifier
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-platform-support-classifier.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 10
+- Parallel lane: formal-verification-tactician/platform-support-classifier
+- Conflict policy: Own platform normalization and classification only; never probe or install tools, infer support from PATH, or convert unavailability into unsupported status.
+- Predicted files: tools/logic/certification/platform_support.py, test/integration/toolchains/test_formal_verification_platform_support.py
+- Changed paths:
+- Context paths: tools/logic/certification/platform_support.py, test/integration/toolchains/test_formal_verification_platform_support.py
+- AST symbols: test/integration/toolchains/test_formal_verification_platform_support.py
+- Interfaces: FormalVerificationPlatformSupport@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G201
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/5dcd6b710e781dc299e9bf3bcca6e5a2afb257ebe2241f9bdacbdcc0000a7192
+- Canonical task CID: baguqeeralxgww4iopao4fgpjx454zjxfukx3ev7l4isb7g62zpomaaakogja
+- Semantic identity: objective-evidence-obligation/v1/7140fe479d3e8b202596942b2806965d383aa7a0ce9d22a50f075a7a3457dd10
+- Acceptance subset: The normalized host key is derived from the running OS and architecture, each tool reports supported_here, unsupported_here, or ambiguous from its own pins and deployment contract, `any` support is honored, absent, contradictory, or ambiguous metadata is a blocker, only an explicit host exclusion can produce a narrow platform exception, linux-aarch64 classifies HyperLTL, AutoHyper, MCHyper, Souffle, and external Runtime MTL as supported under the current lock, external SecPAL as unsupported, and ZKP as a platform-independent deployment binding, a lock mutation that adds or removes linux-aarch64 changes the classification and final digest.
+- Preconditions: objective goal FVT-G201 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_formal_verification_platform_support.py
+- Evidence subset: test/integration/toolchains/test_formal_verification_platform_support.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G201
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7140fe479d3e8b202596942b2806965d383aa7a0ce9d22a50f075a7a3457dd10
+- Missing evidence: test/integration/toolchains/test_formal_verification_platform_support.py
+- Embedding query: Give every locked tool an auditable host-platform classification so missing supported capabilities can never be relabeled as exceptions.
+- AST query: test/integration/toolchains/test_formal_verification_platform_support.py
+- Surplus group: objective/FVT-G201
+- Merge key: 925cd5a43b3cc250
+- Merge family: objective/FVT-G201
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 2507a9ad47898be8
+- Acceptance: Objective scan filed this gap for FVT-G201. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-064-objective-gap-64fd42d3cc7f.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_platform_support.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-065 Close objective gap: Aggregate full specialized receipts with composite lane handlers
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: certification-integrity
+- Depends on: FVT-040, FVT-038, FVT-039, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047, FVT-064, FVT-062
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-065-objective-gap-0bbb37a543ad.md
+- Bundle: formal-verification-tactician/semantic-receipt-aggregation
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-semantic-receipt-aggregation.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 11
+- Parallel lane: formal-verification-tactician/semantic-receipt-aggregation
+- Conflict policy: Own role registration and lossless aggregation; do not run installers, collapse by check kind, discard raw receipt identity, or let one tool overwrite a sibling handler.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Changed paths:
+- Context paths: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- AST symbols: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Interfaces: FormalVerificationSpecializedReceiptAggregation@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G203
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/aa62a2917020434ac44a13363c8ab96e7e70b356e352664b0ffd3f49ff0e4924
+- Canonical task CID: baguqeeravjrkfelqebbuvrckcm3dzcvznz7hbm2w4njgmsyp7u7ut7yojesa
+- Semantic identity: objective-evidence-obligation/v1/8d7d04f775a3f8b4e0fdc64c6b9480ee02eb0cad857628eed078ed8b604dba24
+- Acceptance subset: Handlers are keyed by `(lane_id, tool_id)` or a composite lane returns distinct per-tool receipts, kernel retains Lean, Rocq, and Isabelle evidence and protocol retains Tamarin and ProVerif evidence, state, protocol, kernel, ATP, hyperproperty, advisor, in-process and external authorization, in-process and external Runtime MTL, and ZKP certifiers are all represented, every check, case, binding, executable, artifact, dependency, source, authority ceiling, and raw receipt digest participates in the top-level digest, a second failed check of an already-present kind blocks promotion, mutating any retained check or identity changes the certificate digest.
+- Preconditions: objective goal FVT-G203 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Evidence subset: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G203
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8d7d04f775a3f8b4e0fdc64c6b9480ee02eb0cad857628eed078ed8b604dba24
+- Missing evidence: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Embedding query: Replace first-check and one-handler-per-lane fan-in with lossless, per-tool specialized evidence aggregation.
+- AST query: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Surplus group: objective/FVT-G203
+- Merge key: 4faac722330b5af9
+- Merge family: objective/FVT-G203
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f14b9b92fb5e91f6
+- Acceptance: Objective scan filed this gap for FVT-G203. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-065-objective-gap-0bbb37a543ad.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-066 Close objective gap: Build the fail-closed role-aware release candidate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-065, FVT-060, FVT-058, FVT-057, FVT-054, FVT-061, FVT-055, FVT-056, FVT-059, FVT-063
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-066-objective-gap-60f32f018e1d.md
+- Bundle: formal-verification-tactician/toolchain-release-candidate
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-candidate.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 12
+- Parallel lane: formal-verification-tactician/toolchain-release-candidate
+- Conflict policy: Own central candidate fan-in; never install during offline certification, collapse checks, hardcode success, conceal blockers, or make a self-referential current-tree claim.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- AST symbols: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Interfaces: RoleAwareFormalVerificationReleaseCandidate@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G213
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41
+- Canonical task CID: baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq
+- Semantic identity: objective-evidence-obligation/v1/c570495324747d0931b0fc707585cca9cd21104e702f53f5bb7bc97b4338300d
+- Acceptance subset: The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence, all supported managed capabilities have their required installed and specialized semantic evidence, every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest, unsupported tools alone become narrow exceptions, missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, or incomplete evidence blocks readiness at its correct ceiling, the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists.
+- Preconditions: objective goal FVT-G213 is schedulable
+- Effects: satisfy evidence requirement: test/integration/test_formal_verification_role_aware_release_candidate.py, satisfy evidence requirement: docs/architecture/formal_verification_role_aware_release_candidate.json
+- Evidence subset: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G213
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/c570495324747d0931b0fc707585cca9cd21104e702f53f5bb7bc97b4338300d
+- Missing evidence: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Embedding query: Generate a role-aware release candidate from the complete supported matrix without claiming its own future merge or deployment.
+- AST query: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Surplus group: objective/FVT-G213
+- Merge key: f67ea6dd7518f31f
+- Merge family: objective/FVT-G213
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: e54d532ffcb68fe0
+- Acceptance: Objective scan filed this gap for FVT-G213. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-066-objective-gap-60f32f018e1d.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-067 Close objective gap: Publish the post-merge deployment attestation
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-066
+- Outputs: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-067-objective-gap-e57dd283dde9.md
+- Bundle: formal-verification-tactician/toolchain-release-finalizer
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-finalizer.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 13
+- Parallel lane: formal-verification-tactician/toolchain-release-finalizer
+- Conflict policy: Sole post-merge finalizer; read live state without mutation, never attest the current task's future event, and never weaken a missing terminal receipt or publication gate.
+- Predicted files: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Changed paths:
+- Context paths: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- AST symbols: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G214
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/60911789373c3c6862592bd15371ebc2d4e4fd09dea29f7f9bbed449d5356185
+- Canonical task CID: baguqeeramcirpcjxhq6gqyszfpivg4plylkoj7ij32rj6743x3ketvjvmgcq
+- Semantic identity: objective-evidence-obligation/v1/064cc3158783ceeab9e8c3bee194f4b5ad98ed47c149c8cc822e3ff0e0cf6d6e
+- Acceptance subset: The finalizer runs only after FVT-G213 has a successful, durable, canonical member completion receipt and reachable merged commit, it verifies event-chain continuity, expected outputs, validation result, source tree, merged tree, datasets gitlink, origin publication, candidate digest, supported-capability closure, hard-zero gates, authority boundaries, quarantines, and public surfaces, it publishes either a receipt commit whose parent is the certified release commit with a strictly limited generated-artifact diff or an external content-addressed attestation, mutating any event, tree, artifact, check, binding, or publication fact invalidates the receipt, absent or stale terminal evidence remains partial and can never be called deployment-ready.
+- Preconditions: objective goal FVT-G214 is schedulable
+- Effects: satisfy evidence requirement: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, satisfy evidence requirement: docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Evidence subset: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G214
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/064cc3158783ceeab9e8c3bee194f4b5ad98ed47c149c8cc822e3ff0e0cf6d6e
+- Missing evidence: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Embedding query: After the release-candidate merge, bind its durable terminal supervisor receipt and publish the final deployment attestation without circular tree identity.
+- AST query: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Surplus group: objective/FVT-G214
+- Merge key: 8857090adf80c59a
+- Merge family: objective/FVT-G214
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 431550301f66e93a
+- Acceptance: Objective scan filed this gap for FVT-G214. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-067-objective-gap-e57dd283dde9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-068 FVT: Semantically certify reference Datalog and SecPAL authorization
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-reference
+- Depends on: FVT-037
+- Outputs: tools/logic/certification/authorization.py, test/fixtures/formal_verification/toolchains/authorization/manifest.json, test/integration/toolchains/test_authorization_semantic_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-068-objective-gap-942a311b626f.md
+- Bundle: formal-verification-tactician/authorization-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-authorization-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/authorization-certification
+- Conflict policy: Own the reference authorization lane and corpus; do not install external shadows or edit the central certificate.
+- Predicted files: tools/logic/certification/authorization.py, test/fixtures/formal_verification/toolchains/authorization/manifest.json, test/integration/toolchains/test_authorization_semantic_certification.py
+- Changed paths:
+- Context paths: tools/logic/certification/authorization.py, test/fixtures/formal_verification/toolchains/authorization/manifest.json, test/integration/toolchains/test_authorization_semantic_certification.py
+- AST symbols: tools/logic/certification/authorization.py, test/integration/toolchains/test_authorization_semantic_certification.py
+- Interfaces: AuthorizationSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G102
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/efaf93283544e9f4e045acd5a3620e6ff6717df272581f55b40be8a46f0015d5
+- Canonical task CID: baguqeera56xzgkbvitu7jycfvtk2gyqon73hc7psojmb6vnubpuki3yacxkq
+- Semantic identity: objective-evidence-obligation/v1/b5ec4c9f8adbc9ea41f4af27546d869ced03df594980a274884bfc0046544eba
+- Acceptance subset: Both in-process engines exercise allow, deny, unknown, conflict, scoped delegation, revocation, negative and malformed inputs, rule, principal, scope, and delegation mutations change or quarantine the verdict, counterexamples replay deterministically, receipts bind the exact policy and engine, certification grants authorization-decision authority, never theorem authority.
+- Preconditions: objective goal FVT-G102 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G102
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/b5ec4c9f8adbc9ea41f4af27546d869ced03df594980a274884bfc0046544eba
+- Missing evidence: objective validation repair
+- Embedding query: Promote the already usable in-process Datalog and SecPAL-style engines only after full authorization semantics are certified.
+- AST query: tools/logic/certification/authorization.py, test/integration/toolchains/test_authorization_semantic_certification.py
+- Surplus group: objective/FVT-G102
+- Merge key: 59c3f52ca1c54367
+- Merge family: objective/FVT-G102
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 8b666804b4029d5d
+- Acceptance: Objective scan filed this gap for FVT-G102. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-068-objective-gap-942a311b626f.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-069 FVT: Semantically certify finite-trace Runtime MTL
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-reference
+- Depends on: FVT-037
+- Outputs: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-069-objective-gap-2512a1e85fa3.md
+- Bundle: formal-verification-tactician/runtime-mtl-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-runtime-mtl-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/runtime-mtl-certification
+- Conflict policy: Own the in-process Runtime MTL lane, golden corpus, and focused test; do not install the external parity checker or edit the central certificate.
+- Predicted files: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Changed paths:
+- Context paths: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- AST symbols: tools/logic/certification/runtime_mtl.py, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Interfaces: RuntimeMTLSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G103
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/10e6a20993f61523ffbe8748aef4eb8797bf9c7efc61b53c0277d1e2d259f839
+- Canonical task CID: baguqeeracdtkecmt6yksh756q5ek55hlq6l37hd67rq3kpaco7i6fusz7a4q
+- Semantic identity: objective-evidence-obligation/v1/9c7204acf2056710100d82251299208ba8bf3786096290da31625fd44941c05e
+- Acceptance subset: Live satisfied and violated traces, interval and event mutations, shortest violating-prefix replay, timestamp boundaries, malformed traces, and Python/TypeScript golden parity pass, receipts bind formula, trace, clock policy, bounds, implementation, and source tree, a clean finite prefix never becomes an unbounded theorem.
+- Preconditions: objective goal FVT-G103 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G103
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/9c7204acf2056710100d82251299208ba8bf3786096290da31625fd44941c05e
+- Missing evidence: objective validation repair
+- Embedding query: Promote the already usable in-process Runtime MTL monitor only after interval, event, violation, and replay semantics are certified across supported surfaces.
+- AST query: tools/logic/certification/runtime_mtl.py, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Surplus group: objective/FVT-G103
+- Merge key: 5bc05c1ee3e139c6
+- Merge family: objective/FVT-G103
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 3a8c91f995928f3b
+- Acceptance: Objective scan filed this gap for FVT-G103. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-069-objective-gap-2512a1e85fa3.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-070 FVT: Semantically certify the pinned Lean kernel
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-reference
+- Depends on: FVT-037
+- Outputs: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Validation: ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-070-objective-gap-0fe3261673c9.md
+- Bundle: formal-verification-tactician/lean-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-lean-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/lean-certification
+- Conflict policy: Own the Lean lane handler, corpus, and focused test; do not edit the central certificate or select/download a different Elan toolchain.
+- Predicted files: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Changed paths:
+- Context paths: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- AST symbols: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Interfaces: LeanSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G101
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/688d2ebcfa232301b45907ccefdb779d6257dfdd0747c763fe6b63c7b9b2096b
+- Canonical task CID: baguqeerancgs5ph2emrqdncza7go7w3xtvrfpx65a5d4oy76nnr4ponsbfvq
+- Semantic identity: objective-evidence-obligation/v1/71e3b96ae138816dbffeb2d604b74e5ec8a058d711f63b08176c61880c4058a8
+- Acceptance subset: Exact Lean v4.31.0 compiles a true theorem, rejects false and malformed proofs, rejects hypothesis/conclusion mutations, and replays deterministically, imports, source tree, theorem, assumptions, toolchain, and output are bound, sorry, admit, unsafe escape, shim mismatch, install, download, and network use fail closed, the resulting authority is kernel proof checking only.
+- Preconditions: objective goal FVT-G101 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-type-check
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-type-check
+- Merge fate: objective/FVT-G101
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/71e3b96ae138816dbffeb2d604b74e5ec8a058d711f63b08176c61880c4058a8
+- Missing evidence: objective validation repair
+- Embedding query: Promote the already usable locked Lean toolchain only after real kernel semantics, rejection behavior, and deterministic replay are certified.
+- AST query: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Surplus group: objective/FVT-G101
+- Merge key: 018042ea69f64772
+- Merge family: objective/FVT-G101
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: ac4e26f728062df0
+- Acceptance: Objective scan filed this gap for FVT-G101. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-070-objective-gap-0fe3261673c9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-071 FVT: Execute real Vampire and E prover semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-048, FVT-064, FVT-062
+- Outputs: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_atp_live_semantic_certification.py test/integration/toolchains/test_atp_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-071-objective-gap-6e46d3a45361.md
+- Bundle: formal-verification-tactician/atp-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-atp-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 3
+- Parallel lane: formal-verification-tactician/atp-live-semantics
+- Conflict policy: Own real ATP execution and receipts; keep SZS parsing as adapter evidence and never grant kernel authority to an unreconstructed ATP result.
+- Predicted files: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- AST symbols: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Interfaces: ATPLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G207
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/79839a9f1b93f6b1517dcc64c05b34c7dfbc3a42180ad57cf068e9c9412dbacf
+- Canonical task CID: baguqeerapgbzvhy3sp3lcul5zrsmawzuy7p3yoscdafnk7hqndu4sqjnxlhq
+- Semantic identity: objective-evidence-obligation/v1/a8bb9d1fcb9fcb608d790ebc3b61f05c41a48dc1d754a48f2e65bcb74f0e1662
+- Acceptance subset: Vampire and E each execute theorem and counter-satisfiable problems, premise/conclusion mutations, replay, malformed TPTP, timeout/resource bounds, disagreement, and proof-object/reconstruction cases, receipts bind exact binary and artifact digests, TPTP source, assumptions, conclusion, limits, raw SZS output, and reconstruction status, an ATP result cannot exceed candidate/reconstruction authority until checked by a trusted kernel.
+- Preconditions: objective goal FVT-G207 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G207
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/a8bb9d1fcb9fcb608d790ebc3b61f05c41a48dc1d754a48f2e65bcb74f0e1662
+- Missing evidence: objective validation repair
+- Embedding query: Replace SZS parser fixtures with real pinned ATP runs while preserving reconstruction and kernel-checking ceilings.
+- AST query: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Surplus group: objective/FVT-G207
+- Merge key: adc20e9b5fe46e51
+- Merge family: objective/FVT-G207
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 9a63ca4c0b3178b2
+- Acceptance: Objective scan filed this gap for FVT-G207. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-071-objective-gap-6e46d3a45361.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-072 FVT: Build and certify an independent external Runtime MTL engine
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-039, FVT-069, FVT-052, FVT-064, FVT-062
+- Outputs: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-072-objective-gap-d0fd68e4de5b.md
+- Bundle: formal-verification-tactician/runtime-mtl-external-runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-runtime-mtl-external-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: formal-verification-tactician/runtime-mtl-external-runtime
+- Conflict policy: Own TypeScript monitor, reproducible package build, installer, offline install boundary, and cross-runtime certifier; do not silently build during certification, change the Python reference semantics, or infer global proof from finite traces.
+- Predicted files: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Changed paths:
+- Context paths: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- AST symbols: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Interfaces: ExternalRuntimeMTLVendorCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G210
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/1d06de87c470aad76d01e08d3bb5d3ecad01d6d02e4d367177dc6e8ae09af167
+- Canonical task CID: baguqeeradudn5b6eocvno3ib4cgtxnot5swqdvwqfzgtm4lx3rxivye26ftq
+- Semantic identity: objective-evidence-obligation/v1/fe04c5e60b0f760900b57604ed92a615e8e31797078176da594e29f991ef0af2
+- Acceptance subset: A locked TypeScript dependency graph builds an independent Node package/executable without importing or dispatching to the Python reference, the explicit opt-in user-local installation phase may run the locked build, but every offline semantic-certification path, including the in-process Runtime MTL parity helper, consumes only a preinstalled digest-verified artifact and never runs `npm install`, `npm ci`, `npm run build`, downloads, or network access, a missing or stale prebuilt artifact blocks certification instead of rebuilding, the authoritative private-HOME validation environment receives an explicit approved immutable deployment root rather than discovering mutable user paths, package, source, lockfile, runtime, launcher, launcher target, executable, and artifact digests are bound, positive, negative, interval/event mutation, timestamp boundary, shortest-prefix replay, malformed input, timeout, bounds, and disagreement cases execute out of process, finite-trace authority and inconclusive-prefix semantics are preserved, generated Python parity wrappers remain non-production shadow evidence.
+- Preconditions: objective goal FVT-G210 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G210
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/fe04c5e60b0f760900b57604ed92a615e8e31797078176da594e29f991ef0af2
+- Missing evidence: objective validation repair
+- Embedding query: Replace the Python-backed parity wrapper with a reproducibly built TypeScript/Node monitor, enforce the install-versus-offline-certification boundary, and produce honest cross-runtime evidence.
+- AST query: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Surplus group: objective/FVT-G210
+- Merge key: e6cea130ddd42e13
+- Merge family: objective/FVT-G210
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 9fd59b0d776ff6ad
+- Acceptance: Objective scan filed this gap for FVT-G210. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-072-objective-gap-d0fd68e4de5b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-073 FVT: Install Souffle and derive the SecPAL platform exception
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-038, FVT-068, FVT-051, FVT-064, FVT-062
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-073-objective-gap-2d09b3199b13.md
+- Bundle: formal-verification-tactician/authorization-vendor-toolchains
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-authorization-vendor-toolchains.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: formal-verification-tactician/authorization-vendor-toolchains
+- Conflict policy: Own vendor Souffle installation and external authorization production evidence; never mutate the system package manager, promote a shadow, or excuse missing supported capability.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- AST symbols: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Interfaces: ExternalAuthorizationVendorCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G209
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/9df352dff5ab06505f617e4a67db9d6bfd10403c2f044c9ff4c12c581824e1c2
+- Canonical task CID: baguqeeratxzvfx7vvmdfax3bpzfgpw45np6raqb4f4cezh7uyewfqgbe4hba
+- Semantic identity: objective-evidence-obligation/v1/19d67ab8848d035c12f49896b29d6abd6bbfb6c65589350fa88ebd0f594149ab
+- Acceptance subset: Souffle 2.4.1 source/archive and build dependencies are immutable and checksummed, the user-local executable and artifact digest are exact, and real allow/deny/unknown/conflict/delegation plus rule/scope mutation, replay, malformed, timeout, and disagreement cases execute through it, linux-aarch64 is supported for Souffle, external SecPAL is a narrow unsupported-platform exception on linux-aarch64 under the current contract and never counts as installed, complete, authoritative, or production-certified, hermetic shadows remain differential-only.
+- Preconditions: objective goal FVT-G209 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G209
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/19d67ab8848d035c12f49896b29d6abd6bbfb6c65589350fa88ebd0f594149ab
+- Missing evidence: objective validation repair
+- Embedding query: Replace the Souffle case-oracle shadow with a checksummed vendor build and keep external SecPAL support classification lock-derived.
+- AST query: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Surplus group: objective/FVT-G209
+- Merge key: 881f13f72716ff6d
+- Merge family: objective/FVT-G209
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 387dfc1f912ae1b1
+- Acceptance: Objective scan filed this gap for FVT-G209. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-073-objective-gap-2d09b3199b13.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-074 FVT: Execute and bind Lean, Rocq, and Isabelle kernel semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-040, FVT-070, FVT-045, FVT-049, FVT-064, FVT-062
+- Outputs: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-074-objective-gap-0a0cb716e073.md
+- Bundle: formal-verification-tactician/kernel-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-kernel-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 6
+- Parallel lane: formal-verification-tactician/kernel-live-semantics
+- Conflict policy: Own kernel fan-in and live source checks; serialize expensive OPAM/Isabelle resources and preserve each kernel's separate authority.
+- Predicted files: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- AST symbols: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Interfaces: KernelLiveSemanticFanIn@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G206
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/3f0c720648b6409e0e7cb104723f9971e9c8a7c4d4866d23d2ffe5762350cfa9
+- Canonical task CID: baguqeerah4ghebsiwzaj4dt4wechep4zohu4rj6e2sdg2i6s77sxmi2qz6uq
+- Semantic identity: objective-evidence-obligation/v1/dc50b2055a646dc4ae762c2a527ce0a4c2d066e6beb6afe8eca1c1f1235c8336
+- Acceptance subset: Lean, Rocq, and Isabelle independently execute a valid theorem, false theorem, hypothesis/conclusion mutation, deterministic replay, malformed source, timeout, and forbidden admit/axiom-oracle checks, Isabelle's live source/session helper is exercised rather than only offline fixtures, receipts bind exact kernel, dependency, source, imports/session, assumptions, theorem, and output digests, no advisor or sibling kernel substitutes for the selected kernel.
+- Preconditions: objective goal FVT-G206 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: large-kernel-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: large-kernel-toolchain
+- Merge fate: objective/FVT-G206
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/dc50b2055a646dc4ae762c2a527ce0a4c2d066e6beb6afe8eca1c1f1235c8336
+- Missing evidence: objective validation repair
+- Embedding query: Require each installed proof kernel to check its own generated source and retain all assumptions, imports, theorem, and mutation evidence.
+- AST query: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Surplus group: objective/FVT-G206
+- Merge key: 58a483eca3f96f88
+- Merge family: objective/FVT-G206
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 53fcedbedc62dc3d
+- Acceptance: Objective scan filed this gap for FVT-G206. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-074-objective-gap-0a0cb716e073.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-075 FVT: Execute real Tamarin and ProVerif protocol semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-043, FVT-044, FVT-064, FVT-062
+- Outputs: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_protocol_live_semantic_certification.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/toolchains/test_proverif_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-075-objective-gap-8573ab51e640.md
+- Bundle: formal-verification-tactician/protocol-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-protocol-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 7
+- Parallel lane: formal-verification-tactician/protocol-live-semantics
+- Conflict policy: Own live protocol execution and per-tool receipts; never turn parser-recognized canned output into semantic proof or allow one protocol engine to stand in for the other.
+- Predicted files: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- AST symbols: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Interfaces: ProtocolLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G205
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/835a1fdac10b55e2a80d81ff2ba21c106d739ac6b8b574ba3c82887f499a14ce
+- Canonical task CID: baguqeeraqnnb7wwbbnk6fkanqh7sxiq4cbwxhgwgxc2xjor4qkeh6sm2ctha
+- Semantic identity: objective-evidence-obligation/v1/e96c1abb3969b360e7cfd51f5f056da7f52a9822a5796663ccb47adfe07dd4ca
+- Acceptance subset: Both binaries execute valid secrecy/authentication protocols, concrete attacks, premise/conclusion and protocol mutations, replay, malformed models, timeout, disagreement, and bounded-search cases, receipts bind tool and dependency identities, source, query, assumptions, bound, witnesses/traces, and raw output, parser fixtures remain non-production.
+- Preconditions: objective goal FVT-G205 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G205
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/e96c1abb3969b360e7cfd51f5f056da7f52a9822a5796663ccb47adfe07dd4ca
+- Missing evidence: objective validation repair
+- Embedding query: Run the protocol corpus through the pinned Tamarin and ProVerif binaries and retain per-tool cryptographic-protocol evidence.
+- AST query: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Surplus group: objective/FVT-G205
+- Merge key: 10a734195ff40833
+- Merge family: objective/FVT-G205
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: df1f0d813d037fc4
+- Acceptance: Objective scan filed this gap for FVT-G205. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-075-objective-gap-8573ab51e640.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-076 FVT: Execute real TLC and Apalache state-model semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-042, FVT-064, FVT-062
+- Outputs: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_state_model_live_semantic_certification.py test/integration/toolchains/test_state_model_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-076-objective-gap-fad45d38d693.md
+- Bundle: formal-verification-tactician/state-model-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-state-model-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 8
+- Parallel lane: formal-verification-tactician/state-model-live-semantics
+- Conflict policy: Own live state-model cases and receipts; use the installed toolchain without downloading during certification and never promote from identity or output parsing alone.
+- Predicted files: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- AST symbols: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Interfaces: StateModelLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G204
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/5dd6afe077c3a7f8494b340e16f94906c7ae7c7372ce77c905bab38071d03bf9
+- Canonical task CID: baguqeeralxlk7ydxyot7qsklgqhbn6kja3d247dtolhhpsifxkzya4oqhp4q
+- Semantic identity: objective-evidence-obligation/v1/8036a0f059b12dfd7ce565285db4922255d53d199005d7da835e20bd2c7b47c3
+- Acceptance subset: The pinned TLC jar and Apalache executable each run a valid invariant model, a violating model with concrete counterexample, specification and invariant mutations, deterministic replay, malformed input, timeout, and bounded-state/resource cases, source model, property, bound, JVM, executable, jar/archive, and output digests are exact, canned text and parser classification remain `hermetic_parser` and cannot satisfy live external semantics.
+- Preconditions: objective goal FVT-G204 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: exclusive-jvm-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: exclusive-jvm-toolchain
+- Merge fate: objective/FVT-G204
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8036a0f059b12dfd7ce565285db4922255d53d199005d7da835e20bd2c7b47c3
+- Missing evidence: objective validation repair
+- Embedding query: Replace classifier-backed state-model promotion with real TLC and Apalache execution against positive and adversarial models.
+- AST query: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Surplus group: objective/FVT-G204
+- Merge key: 8084cf6491f8af1f
+- Merge family: objective/FVT-G204
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: dbc4238714d1c008
+- Acceptance: Objective scan filed this gap for FVT-G204. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-076-objective-gap-fad45d38d693.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-077 FVT: Install and live-certify supported hyperproperty engines
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-046, FVT-064, FVT-062
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-077-objective-gap-2a9b90e8b401.md
+- Bundle: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-hyperproperty-vendor-toolchains.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Conflict policy: Own vendor acquisition, correct per-product pins, dependencies, and live adapters; preserve bounded authority and never relabel the existing hermetic engines.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- AST symbols: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Interfaces: HyperpropertyVendorToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G208
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/a4d3c2a2f9464a5ca8e2ef474dacb6e18b7b8f1428f3932450fe173b153f3d32
+- Canonical task CID: baguqeerautj4fixzizffzkhc55du3lfw4gfxxdyufdzzgjcq7yltwfj7huza
+- Semantic identity: objective-evidence-obligation/v1/8c9fd517025fdca792ac11a96795432af31197a5d1aba3403633bfc93fe7c849
+- Acceptance subset: AutoHyper binds its official revision, .NET runtime, Spot tools, build inputs, executable digest, and live semantic cases, MCHyper binds its official revision, ABC/AIGER dependencies, supported fragment, and live witness/counterexample cases, the selected HyperLTL satisfiability engine has its own correct upstream identity and decidable-fragment ceiling, satisfaction, violation, observation/quantifier mutation, replay, malformed output, timeout, disagreement, and exact bounds execute through real binaries, linux-aarch64 remains supported only if that complete chain is real, case-oracle, hermetic shim, fixture, parser, or canned output cannot satisfy this goal.
+- Preconditions: objective goal FVT-G208 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G208
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8c9fd517025fdca792ac11a96795432af31197a5d1aba3403633bfc93fe7c849
+- Missing evidence: objective validation repair
+- Embedding query: Correct the upstream identities and deploy real HyperLTL satisfiability, AutoHyper, and MCHyper toolchains on every declared supported host.
+- AST query: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Surplus group: objective/FVT-G208
+- Merge key: 38cec81b689b7c73
+- Merge family: objective/FVT-G208
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 24c9a6d6f4dfdfe4
+- Acceptance: Objective scan filed this gap for FVT-G208. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-077-objective-gap-2a9b90e8b401.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-078 FVT: Bind durable supervisor evidence and enforce expected outputs
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-integrity
+- Depends on: FVT-035, FVT-064
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- Validation: python -m pytest test/api/test_agent_supervisor_release_evidence_binding.py test/api/test_agent_supervisor_todo_daemon_port.py -k 'expected_output or completion_receipt or release_evidence' -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-078-objective-gap-389e06f94a84.md
+- Bundle: formal-verification-tactician/supervisor-release-evidence
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-supervisor-release-evidence.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 10
+- Parallel lane: formal-verification-tactician/supervisor-release-evidence
+- Conflict policy: Own proposal-output enforcement and read-only release evidence; preserve path fences, never broadly force-add ignored files, and never synthesize a missing terminal receipt.
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- Changed paths:
+- Context paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- AST symbols: test/api/test_agent_supervisor_release_evidence_binding.py
+- Interfaces: AgentSupervisorReleaseEvidence@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G212
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/236e1d2a4bfcb570ed2996b99de251502fe86c542d54b4a52b78a20e13a34f20
+- Canonical task CID: baguqeeraenxb2ksl7s2xb3jjs24z3ysrkax6q3cufvkljjjlpcra4e5dj4qa
+- Semantic identity: objective-evidence-obligation/v1/703b63bb518042a355e0ee90f2f35ba993383bc593f2ab782609113eb126f207
+- Acceptance subset: Declared outputs are compared with filesystem, proposed paths, staged paths, and ignore rules, an exact allowed ignored output is force-added only by its explicit path or the proposal fails `expected_output_ignored_or_unstaged`, a regression proves an ignored JSON and tracked source both enter the commit, the exporter reads committed bundle/task metadata, lane manifest, scheduler snapshot, task state, event manifest/JSONL, and durable member_completion receipts once and hashes raw bytes, output binds canonical task CID/key, dependency CIDs, baseline and merged trees/gitlinks, attempt/phase, continuous event sequence, validation and merge outcomes, freshness, authority, and publication state, it never edits live state and cannot treat metrics-module presence as completion.
+- Preconditions: objective goal FVT-G212 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G212
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/703b63bb518042a355e0ee90f2f35ba993383bc593f2ab782609113eb126f207
+- Missing evidence: objective validation repair
+- Embedding query: Export a read-only, content-addressed execution snapshot and reject proposals whose declared outputs are ignored, absent, or unstaged.
+- AST query: test/api/test_agent_supervisor_release_evidence_binding.py
+- Surplus group: objective/FVT-G212
+- Merge key: 341db90de63cef3f
+- Merge family: objective/FVT-G212
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 86a3f29ea17bc7b4
+- Acceptance: Objective scan filed this gap for FVT-G212. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-078-objective-gap-389e06f94a84.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-079 FVT: Aggregate full specialized receipts with composite lane handlers
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: certification-integrity
+- Depends on: FVT-040, FVT-070, FVT-038, FVT-068, FVT-039, FVT-069, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047, FVT-064, FVT-062
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-079-objective-gap-371cbba04570.md
+- Bundle: formal-verification-tactician/semantic-receipt-aggregation
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-semantic-receipt-aggregation.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 11
+- Parallel lane: formal-verification-tactician/semantic-receipt-aggregation
+- Conflict policy: Own role registration and lossless aggregation; do not run installers, collapse by check kind, discard raw receipt identity, or let one tool overwrite a sibling handler.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Changed paths:
+- Context paths: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- AST symbols: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Interfaces: FormalVerificationSpecializedReceiptAggregation@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G203
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/2149df8ce465a94dd75ec46f9d5ec7a0652e5c5fe12dcec7b43701a156f78865
+- Canonical task CID: baguqeeraefe57dhemwuu3v26yrxz2xwhubss4xc74ew45r5ug4a2cvxxrbsq
+- Semantic identity: objective-evidence-obligation/v1/d24a875eea2b2600f39e570f6d22de03fb85775bc415b2b242e31286b0de8f9b
+- Acceptance subset: Handlers are keyed by `(lane_id, tool_id)` or a composite lane returns distinct per-tool receipts, kernel retains Lean, Rocq, and Isabelle evidence and protocol retains Tamarin and ProVerif evidence, state, protocol, kernel, ATP, hyperproperty, advisor, in-process and external authorization, in-process and external Runtime MTL, and ZKP certifiers are all represented, every check, case, binding, executable, artifact, dependency, source, authority ceiling, and raw receipt digest participates in the top-level digest, a second failed check of an already-present kind blocks promotion, mutating any retained check or identity changes the certificate digest.
+- Preconditions: objective goal FVT-G203 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G203
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/d24a875eea2b2600f39e570f6d22de03fb85775bc415b2b242e31286b0de8f9b
+- Missing evidence: objective validation repair
+- Embedding query: Replace first-check and one-handler-per-lane fan-in with lossless, per-tool specialized evidence aggregation.
+- AST query: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Surplus group: objective/FVT-G203
+- Merge key: f52c679d30fbbd0f
+- Merge family: objective/FVT-G203
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 7b7c7c17ab706f86
+- Acceptance: Objective scan filed this gap for FVT-G203. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-079-objective-gap-371cbba04570.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-080 FVT: Integrate the live secret-safe ZKP deployment certificate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-047, FVT-064, FVT-065, FVT-079
+- Outputs: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-080-objective-gap-db085157cc96.md
+- Bundle: formal-verification-tactician/zkp-production-runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-zkp-production-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/zkp-production-runtime
+- Conflict policy: Own live verifier binding and secret-safe aggregation only; never generate/expose private material or manufacture deployment evidence.
+- Predicted files: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- AST symbols: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Interfaces: ZKPLiveVerifierDeployment@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G211
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/6b8e63fdc9128735466d0f1b09f599b76650e2d4ff985d1640af1923c100b5d0
+- Canonical task CID: baguqeeranohgh7ojckdtkrtnb4nqt5mzw5tfbywu76mf2fsav4mshqiawxia
+- Semantic identity: objective-evidence-obligation/v1/22bd3226b4e9bbece187d5d2e49700dba5cd89eae7acf09838fdf97d29788d9a
+- Acceptance subset: The configured backend performs live verification against exact circuit, ceremony, proving-key, verification-key, public-parameter, public-input-schema, version, expiry, freshness, and revocation identities, positive and corrupted proof/key/public-input, circuit mismatch, mutation, replay, stale, and revoked cases run against it, no private witness, proving-key bytes, trapdoor, secret path, or secret value enters Git, logs, caches, public receipts, or model context, absent operator-bound public artifacts remain deployment blockers, not platform exceptions, ZKP attests and never replaces underlying semantic authority.
+- Preconditions: objective goal FVT-G211 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G211
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/22bd3226b4e9bbece187d5d2e49700dba5cd89eae7acf09838fdf97d29788d9a
+- Missing evidence: objective validation repair
+- Embedding query: Distinguish schema-valid sample bindings from a live verifier and bind the complete ZKP deployment receipt into the semantic fan-in.
+- AST query: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Surplus group: objective/FVT-G211
+- Merge key: 0e2c53a1e0471336
+- Merge family: objective/FVT-G211
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 071fe10fc0c18247
+- Acceptance: Objective scan filed this gap for FVT-G211. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-080-objective-gap-db085157cc96.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-081 FVT: Build the fail-closed role-aware release candidate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-065, FVT-079, FVT-060, FVT-076, FVT-058, FVT-075, FVT-057, FVT-074, FVT-054, FVT-071, FVT-061, FVT-077, FVT-055, FVT-073, FVT-056, FVT-072, FVT-059, FVT-080, FVT-063, FVT-078
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_production_elevation_fanin.py test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-081-objective-gap-40b19d22d120.md
+- Bundle: formal-verification-tactician/toolchain-release-candidate
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-candidate.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/toolchain-release-candidate
+- Conflict policy: Sole owner of the central candidate and production-elevation fan-in after its semantic/vendor dependencies merge; never install during offline certification, treat an adapter or identity manifest as a vendor binary, collapse checks, hardcode success, conceal blockers, or make a self-referential current-tree claim.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- AST symbols: test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Interfaces: RoleAwareFormalVerificationReleaseCandidate@1, ProductionSemanticElevationFanIn@1
+- Submodules:
+- Generated artifacts: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Allowed paths: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, tools/logic/certification/public_evidence.py
+- Allow concurrent with:
+- Goal id: FVT-G213
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/b63667ec67f89f8eea116ef4a996467b6cf694ff6d0ccd8ed42e02962a4bb168
+- Canonical task CID: baguqeerawy3gp3dh7cpy52qrn32ktfsgpnwpnfh7nugm3dwufybjmkslwfua
+- Semantic identity: objective-evidence-obligation/v1/753d3a02486eb1a4e6b9a5ab481d7c7934f8c0e30265acee69f80ec0685ed65f
+- Acceptance subset: The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence, `lean`, `runtime-mtl`, `datalog-authorization`, `secpal-authorization`, `coq`, and `isabelle` each have exact independently reconstructed positive, negative, mutation, and replay evidence before their corresponding production elevation is present, the independent TypeScript/Node Runtime MTL vendor lane is consumed through `ExternalRuntimeMTLVendorCertification@1`, binds its package, source, lockfile, Node runtime, launcher, target, executable, and artifact digests, and gates both external finite-trace authority and in-process Runtime MTL elevation on exact cross-runtime parity and disagreement handling, hermetic Runtime MTL wrappers never promote, real supported HyperLTL, AutoHyper, MCHyper, and Souffle vendor binaries and their native/runtime dependencies are distinguished from identity manifests, adapters, case oracles, fixtures, and shims, offline certification resolves only an approved immutable preinstalled deployment root under the authoritative private-HOME validation environment and never installs, builds, downloads, or accesses the network, all supported managed capabilities have their required installed and specialized semantic evidence, every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest, external SecPAL is an exception only when the current lock explicitly excludes the running host, missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, dependency-only, or incomplete evidence blocks readiness at its correct ceiling, the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists.
+- Preconditions: objective goal FVT-G213 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, satisfy evidence requirement: docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Evidence subset: test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G213
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/753d3a02486eb1a4e6b9a5ab481d7c7934f8c0e30265acee69f80ec0685ed65f
+- Missing evidence: test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Embedding query: Generate a role-aware release candidate from the complete supported matrix, close the exact production-semantic elevation fan-in, and do so without claiming its own future merge or deployment.
+- AST query: test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Surplus group: objective/FVT-G213
+- Merge key: 673eb0e69660f464
+- Merge family: objective/FVT-G213
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 3683654bd605b135
+- Acceptance: Objective scan filed this gap for FVT-G213. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-081-objective-gap-40b19d22d120.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_production_elevation_fanin_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-082 FVT: Publish the post-merge deployment attestation
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-066, FVT-081
+- Outputs: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-082-objective-gap-74a1187933e1.md
+- Bundle: formal-verification-tactician/toolchain-release-finalizer
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-finalizer.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/toolchain-release-finalizer
+- Conflict policy: Sole post-merge finalizer; read live state without mutation, never attest the current task's future event, and never weaken a missing terminal receipt or publication gate.
+- Predicted files: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Changed paths:
+- Context paths: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- AST symbols: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G214
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/1cb76333ecd17baf51ed0d78054ac5f4fa1cdb193a1b9edc661ba7218ef4ce06
+- Canonical task CID: baguqeerads3wgm7m2f526upnbv4akswf6t5bzwyzhinz5xdgdotsddxuzyda
+- Semantic identity: objective-evidence-obligation/v1/417c5ce5f2a66bbb9e46248da168e35382bf54016a92aa397bd860b83fe7c9b8
+- Acceptance subset: The finalizer runs only after FVT-G213 has a successful, durable, canonical member completion receipt and reachable merged commit, it verifies event-chain continuity, expected outputs, validation result, source tree, merged tree, datasets gitlink, origin publication, candidate digest, supported-capability closure, hard-zero gates, authority boundaries, quarantines, and public surfaces, it publishes either a receipt commit whose parent is the certified release commit with a strictly limited generated-artifact diff or an external content-addressed attestation, mutating any event, tree, artifact, check, binding, or publication fact invalidates the receipt, absent or stale terminal evidence remains partial and can never be called deployment-ready.
+- Preconditions: objective goal FVT-G214 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G214
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/417c5ce5f2a66bbb9e46248da168e35382bf54016a92aa397bd860b83fe7c9b8
+- Missing evidence: objective validation repair
+- Embedding query: After the release-candidate merge, bind its durable terminal supervisor receipt and publish the final deployment attestation without circular tree identity.
+- AST query: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Surplus group: objective/FVT-G214
+- Merge key: b63b2a05c17f6037
+- Merge family: objective/FVT-G214
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 66427e512b66e39c
+- Acceptance: Objective scan filed this gap for FVT-G214. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-082-objective-gap-74a1187933e1.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-083 FVT: Reissue full role-aware deployment certification
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-036, FVT-040, FVT-070, FVT-038, FVT-068, FVT-039, FVT-069, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047, FVT-067, FVT-082
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- Validation: python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-083-objective-gap-f96065e81880.md
+- Bundle: formal-verification-tactician/toolchain-release
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/toolchain-release
+- Conflict policy: Sole owner for central certificate and completion-receipt regeneration after every dependency merges; never manufacture success, weaken skips, install during offline certification, or conceal an unavailable lane.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- AST symbols: test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G200
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/4bd9d74aaba74dc5a438f4da809b3b75e4d4bda07b26cc5f2f1016b52adcaa0c
+- Canonical task CID: baguqeerajpm5osvlu5g4ljby6tnibgz3oxsnjpnapmtmyxzpcallkkw4viga
+- Semantic identity: objective-evidence-obligation/v1/7fd6f489a9427c35335aaeff9e3d6010371233b076d100695df1426fb8f85966
+- Acceptance subset: A fresh offline certificate and completion receipt bind the current parent tree, datasets gitlink, exact tool and artifact identities, every required positive/negative/mutation/replay result, authority roles and ceilings, disagreement quarantines, public surfaces, and supervisor evidence, Lean, Runtime MTL, and Datalog/SecPAL are no longer merely usable, every supported managed external capability is installed and semantically certified, any genuinely unsupported platform exception is explicit, narrowly scoped, and cannot be counted as complete or production-certified.
+- Preconditions: objective goal FVT-G200 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G200
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7fd6f489a9427c35335aaeff9e3d6010371233b076d100695df1426fb8f85966
+- Missing evidence: objective validation repair
+- Embedding query: Run the complete role-aware matrix after the explicit installation phase and reissue current-tree implementation and deployment-readiness receipts.
+- AST query: test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Surplus group: objective/FVT-G200
+- Merge key: a113695f4f1ec835
+- Merge family: objective/FVT-G200
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 0d7a4d5d2e833f34
+- Acceptance: Objective scan filed this gap for FVT-G200. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-083-objective-gap-f96065e81880.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-084 FVT:: Close formal-verification packaging and distribution coverage
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: dependency-integrity
+- Depends on: FVT-036, FVT-064
+- Outputs: setup.py, pyproject.toml, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, test/packaging/test_formal_verification_distribution_contract.py
+- Validation: python -m pytest test/packaging/test_logic_verification_clean_install.py test/packaging/test_formal_verification_distribution_contract.py test/test_pip_install_simulation.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-084-objective-gap-e66440ea4b08.md
+- Bundle: formal-verification-tactician/packaging-distribution
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-packaging-distribution.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/packaging-distribution
+- Conflict policy: Own packaging metadata and clean-install gates; do not make heavyweight prover binaries mandatory Python dependencies, hide missing wheel content with PYTHONPATH, or install anything during import and inventory.
+- Predicted files: setup.py, pyproject.toml, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, test/packaging/test_formal_verification_distribution_contract.py
+- Changed paths:
+- Context paths: setup.py, pyproject.toml, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, test/packaging/test_formal_verification_distribution_contract.py
+- AST symbols: test/packaging/test_logic_verification_clean_install.py, test/packaging/test_formal_verification_distribution_contract.py
+- Interfaces: FormalVerificationDistributionContract@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G215
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/8f638d914faec5658b32e744609c26a7f3f13e903b13cb8d264562c83e1e4537
+- Canonical task CID: baguqeerar5ry3ekpv3cwlczs45cgbhbgu7z7cpuqhmj4xdjgivrmqpq6iu3q
+- Semantic identity: objective-evidence-obligation/v1/8787575a47c3eb507479b38b3d10a32ab8d69405ec8bcfd27ad1fcd3ff3d808f
+- Acceptance subset: Root and datasets setup.py, pyproject metadata, requirements files, and extras have one machine-checked dependency inventory, namespace-package discovery includes logic backends, software verification, installer plugins, and runtime assets in built wheels, every declared plugin module exists, a clean isolated wheel install imports and inventories the Logic API without network access, downloads, builds, user-site leakage, editable-source leakage, or installation side effects, optional native and external provers remain optional and are surfaced as unavailable rather than breaking base installation.
+- Preconditions: objective goal FVT-G215 is schedulable
+- Effects: satisfy evidence requirement: test/packaging/test_formal_verification_distribution_contract.py
+- Evidence subset: test/packaging/test_formal_verification_distribution_contract.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G215
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8787575a47c3eb507479b38b3d10a32ab8d69405ec8bcfd27ad1fcd3ff3d808f
+- Missing evidence: test/packaging/test_formal_verification_distribution_contract.py
+- Embedding query: Make every public formal-verification module, reviewed installer plugin, runtime asset, and optional dependency declaration survive both source and clean wheel installations.
+- AST query: test/packaging/test_logic_verification_clean_install.py, test/packaging/test_formal_verification_distribution_contract.py
+- Surplus group: objective/FVT-G215
+- Merge key: 0c67d2994a2a48b0
+- Merge family: objective/FVT-G215
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: bc5fe50251ecc038
+- Acceptance: Objective scan filed this gap for FVT-G215. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-084-objective-gap-e66440ea4b08.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/packaging/test_formal_verification_distribution_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-085 FVT:: Implement the genuine ErgoAI advisor-toolchain path
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-064, FVT-087
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_live_toolchain_contract.py test/integration/toolchains/test_advisor_role_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-085-objective-gap-fdb5dfbe2504.md
+- Bundle: formal-verification-tactician/ergoai-live-toolchain
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-ergoai-live-toolchain.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/ergoai-live-toolchain
+- Conflict policy: Own ErgoAI provenance, dependencies, lazy installer, wrapper, and bounded semantics; never scrape an unauthoritative artifact, download during certification, treat wrapper fixtures as live execution, or elevate an advisor verdict to theorem authority.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- AST symbols: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Interfaces: ErgoAILiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G218
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/4e83e3b9c072fd1356fa3c4294673ca851a98770a5d7832973343fd6aa5817e3
+- Canonical task CID: baguqeeraj2b6hooaol6rgvx2hrbjizz4vbi2tb3quxlygkltgq75nksyc7rq
+- Semantic identity: objective-evidence-obligation/v1/8bea67970a56a02025411e374670d7c59ebb920ea7df71b904344f9089f1abc4
+- Acceptance subset: The lock binds the official ErgoAI distribution or reviewed source revision, license and acquisition conditions, archive/source digests, XSB and every runtime/build dependency, supported OS/architecture matrix, entry point, and exact identity probe, explicit lazy installation is staged, checksum-verified, atomic, relocatable, and offline after acquisition, live entailment, non-entailment, contradiction, rule/query mutation, deterministic replay, malformed input, timeout, and resource-bound cases execute through ErgoAI, results remain proposal or candidate evidence until reconstructed or checked by an independent proof authority.
+- Preconditions: objective goal FVT-G218 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Evidence subset: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G218
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8bea67970a56a02025411e374670d7c59ebb920ea7df71b904344f9089f1abc4
+- Missing evidence: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Embedding query: Replace ErgoAI wrapper and proposal-only assumptions with a locked official distribution, dependency-complete lazy installer, and bounded live semantic adapter while preserving advisor authority ceilings.
+- AST query: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Surplus group: objective/FVT-G218
+- Merge key: c3c1e3e9a1a67258
+- Merge family: objective/FVT-G218
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 4e37cb79c79de031
+- Acceptance: Objective scan filed this gap for FVT-G218. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-085-objective-gap-fdb5dfbe2504.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_ergoai_live_toolchain_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-086 FVT:: Bind the genuine SecPAL artifact-intake and capability ceiling
+
+- Status: blocked
+- Completion: superseded:FVT-101
+- Superseded by: FVT-101
+- Supersession completion authority: none
+- Historical task: true
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-055, FVT-073, FVT-087
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-086-objective-gap-d9aca6db2ede.md
+- Bundle: formal-verification-tactician/secpal-live-toolchain
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/secpal-live-toolchain
+- Conflict policy: Own SecPAL artifact provenance, platform matrix, artifact intake, and authority ceiling; never invent an upstream release, accept an unreviewed mirror, accept license terms on an operator's behalf, redistribute restricted bytes, promote sample compatibility, or label the in-process engine as the external vendor binary.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- AST symbols: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Interfaces: SecPALLiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G217
+- Completion authority: none
+- External authority blockers:
+- Canonical task key: task/v1/673ddca40390b034f58919f5226f741b2125329a9949e689dc59c27aec8c82b0
+- Canonical task CID: baguqeeram465zjadscydj5mjdh2se33udmqskmu2tfe6nco4lhbhv3emqkya
+- Semantic identity: objective-evidence-obligation/v1/d0a201df52ad6c2dc470b370be114e87721612b0dd93527a071046a825aa86ff
+- Acceptance subset: The recovered Microsoft MSI binds exact official provenance, Authenticode identity, product metadata, size, digest, EULA digest, and reviewed restrictions; intake requires an explicit local path and explicit operator license acceptance, performs no download, extraction, execution, or redistribution, publishes non-executable bytes atomically beneath a bounded user-local root, and restores the exact previous tree after failure; the live execution platform matrix is empty and every host fails closed; authentic sample execution remains separately classified as non-promotable operator compatibility and cannot create arbitrary-policy, platform, production, engine, or external-authority evidence; fixtures, in-process Datalog/SecPAL, and hermetic adapters remain separately named.
+- Preconditions: objective goal FVT-G217 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Evidence subset: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G217
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/d0a201df52ad6c2dc470b370be114e87721612b0dd93527a071046a825aa86ff
+- Missing evidence: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Embedding query: Replace ambiguous SecPAL acquisition and adapter behavior with an exact official-artifact, license-aware, transactional local intake path that proves the recovered research release cannot be promoted to a live vendor engine.
+- AST query: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Surplus group: objective/FVT-G217
+- Merge key: 66eff0af4b1533dd
+- Merge family: objective/FVT-G217
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 27c4c3f6a87f0134
+- Acceptance: Objective scan filed this gap for FVT-G217. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-086-objective-gap-d9aca6db2ede.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_secpal_live_toolchain_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+## FVT-087 FVT:: Bind the public Logic API to transactional lazy installers
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: dependency-integrity
+- Depends on: FVT-084
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py ipfs_datasets_py/tests/unit/test_lazy_dependency_installation.py ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-087-objective-gap-b46c3afbede6.md
+- Bundle: formal-verification-tactician/lazy-installer-facade
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-lazy-installer-facade.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 3
+- Parallel lane: formal-verification-tactician/lazy-installer-facade
+- Conflict policy: Own the public install facade, registry, and lifecycle; never infer permission from a probe, dispatch an unreviewed shell command, silently fall back to a shim, or let installation occur inside certification.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Changed paths:
+- Context paths: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- AST symbols: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py, ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py
+- Interfaces: LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G216
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/acde7f9caf2500740711b070b10fa4cadc5f4d314c7a1097ea28395521cda592
+- Canonical task CID: baguqeeravtph7hfpeuahibyrwbylcd5ezlof6tjrjr5bbf7kfa4vkionuwja
+- Semantic identity: objective-evidence-obligation/v1/bbf2e78467aeba4045dddaef815fd78c4f48767e9e1c3105c8f5bab7a39f226b
+- Acceptance subset: LogicVerificationAPI.install_provider resolves reviewed family plugins for SMT, kernels, state models, authorization, protocols, ATP, hyperproperties, Runtime MTL, advisors, and ZKP, probe, inventory, import, dry-run, and offline certification execute no installer command and perform no network access, installation requires an explicit allow flag and produces a bounded plan before mutation, platform, dependency, license, checksum, artifact, executable, rollback, and post-install semantic-probe results are returned as structured evidence, interrupted or failed publication preserves the previous good installation and cannot promote capability or semantic authority.
+- Preconditions: objective goal FVT-G216 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Evidence subset: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Resource class: io-artifact
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: io-artifact
+- Merge fate: objective/FVT-G216
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/bbf2e78467aeba4045dddaef815fd78c4f48767e9e1c3105c8f5bab7a39f226b
+- Missing evidence: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Embedding query: Replace placeholder and stale installer dispatch with one explicit, platform-aware, transactional lazy-install lifecycle for every reviewed prover family.
+- AST query: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py, ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py
+- Surplus group: objective/FVT-G216
+- Merge key: b7c231b32f4acdbc
+- Merge family: objective/FVT-G216
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 22412d403776657e
+- Acceptance: Objective scan filed this gap for FVT-G216. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-087-objective-gap-b46c3afbede6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-088 FVT:: Audit every deployment axis end to end
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: certification-integrity
+- Depends on: FVT-084, FVT-087, FVT-101, FVT-085
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_real_tool_matrix.py test/packaging/test_logic_verification_clean_install.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-088-objective-gap-2c7c735deb11.md
+- Bundle: formal-verification-tactician/end-to-end-assurance
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: formal-verification-tactician/end-to-end-assurance
+- Conflict policy: Own the cross-axis matrix and aggregation policy; do not hardcode green states, collapse platform exceptions into success, or let one provider stand in for another.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py
+- AST symbols: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Interfaces: FormalVerificationEndToEndAssuranceMatrix@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G220
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/227e71970b35748299bb79aed69faa1ed0f8016efb5583893c1ecafa37eb2768
+- Canonical task CID: baguqeeraej7hdfylgv2ifgn3pgxnnh5kd3ipqalo7nkyhcj4d3fpun7le5ua
+- Semantic identity: objective-evidence-obligation/v1/0f204668cce71fd642a326b78c546679b3d9e60dd9574cf1c99d9f86aaa90eb1
+- Acceptance subset: Each provider and host tuple reports separate dependency, packaging, installer, capability, semantic, platform, authority, freshness, and public-surface states with exact evidence references and reason codes, no axis inherits success from another, supported missing dependencies, missing wheel files, placeholder dispatch, stale locks, wrong-architecture artifacts, parser fixtures, advisor-only evidence, and unsupported hosts are distinguishable, SecPAL in-process and external identities and ErgoAI advisor and independent proof authority remain distinct, an adversarial test mutates every axis and proves that the joint readiness claim fails closed.
+- Preconditions: objective goal FVT-G220 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, satisfy evidence requirement: docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Evidence subset: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G220
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/0f204668cce71fd642a326b78c546679b3d9e60dd9574cf1c99d9f86aaa90eb1
+- Missing evidence: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Embedding query: Make dependency, capability, semantic, platform-binding, authority, packaging, installer-boundary, and public-surface readiness independently visible and jointly fail closed.
+- AST query: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Surplus group: objective/FVT-G220
+- Merge key: 5e53086b6ab5cce4
+- Merge family: objective/FVT-G220
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 881608d4da8e1fd4
+- Acceptance: Objective scan filed this gap for FVT-G220. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-088-objective-gap-2c7c735deb11.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+## FVT-089 FVT:: Reissue deployment certification with authoritative vendor evidence
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-067, FVT-082, FVT-088
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_authoritative_vendor_release.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/test_formal_verification_authoritative_vendor_release.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-089-objective-gap-c74869305ba9.md
+- Bundle: formal-verification-tactician/authoritative-vendor-release
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-authoritative-vendor-release.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: formal-verification-tactician/authoritative-vendor-release
+- Conflict policy: Sole owner of the authoritative vendor release after every dependency closes; never manufacture external evidence, weaken a platform or authority gate, or attest the current task's future merge.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_authoritative_vendor_release.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_authoritative_vendor_release.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- AST symbols: docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Interfaces: FormalVerificationAuthoritativeVendorRelease@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G221
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/74ebf612ce3fedbc89b9b6234685fd7ab4b1c5b373683f8273512a47261d660d
+- Canonical task CID: baguqeeraotv7mewoh7w3zcnzwyrunbp5pk2ldrntonud7attkeveojq5mygq
+- Semantic identity: objective-evidence-obligation/v1/25c959347d4cad30ccbc2794dc7f5bfa56571aad78f440f179dcf50deed52b15
+- Acceptance subset: The release binds clean-wheel evidence, explicit lazy-install receipts, exact dependency and platform identities, complete specialized semantic cases, SecPAL and ErgoAI authoritative live receipts, authority ceilings, disagreement quarantines, public-safe envelopes, durable supervisor completion, source and merged trees, recursive gitlinks, and origin publication, every dependency is reachable and fresh, fixture, shim, unsupported, proposal-only, or externally blocked lanes remain disclosed and prevent deployment-ready status.
+- Preconditions: objective goal FVT-G221 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_authoritative_vendor_release.json, satisfy evidence requirement: test/integration/test_formal_verification_authoritative_vendor_release.py
+- Evidence subset: docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G221
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/25c959347d4cad30ccbc2794dc7f5bfa56571aad78f440f179dcf50deed52b15
+- Missing evidence: docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Embedding query: Reissue the role-aware release and post-merge attestation only after packaging, lazy installers, every readiness axis, and genuine SecPAL and ErgoAI live evidence are closed.
+- AST query: docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Surplus group: objective/FVT-G221
+- Merge key: 9fe21bef9d5b4ae6
+- Merge family: objective/FVT-G221
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: a70fb0fe53a6dfc2
+- Acceptance: Objective scan filed this gap for FVT-G221. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-089-objective-gap-c74869305ba9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-090 FVT:: Complete the optional ErgoAI Java API capability
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: dependency-integrity
+- Depends on: FVT-084, FVT-087, FVT-085
+- Outputs: config/formal_verification_toolchains.lock.json, setup.py, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py test/packaging/test_formal_verification_distribution_contract.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-090-objective-gap-3a5d407335d4.md
+- Bundle: formal-verification-tactician/ergoai-java-api
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-ergoai-java-api.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/ergoai-java-api
+- Conflict policy: Own the optional JDK lock, lazy lifecycle, ErgoAI Java binding, and its focused evidence; never download a moving `latest` target without resolving and pinning its immutable identity, trust ambient `JAVA_HOME`, make a JDK a mandatory pip dependency, elevate advisor output to proof authority, or couple core ErgoAI availability to this optional capability.
+- Predicted files: config/formal_verification_toolchains.lock.json, setup.py, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, setup.py, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- AST symbols: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Interfaces: ErgoAIJavaAPIToolchainContract@1, LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G222
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/ca01c66ed6c1cfd334cd87ff77c34ffa22cf2385d484d6466efcb084b41e21e8
+- Canonical task CID: baguqeerazia4m3wwyhh5gngnq77xpq2p7irm6i4f2scnmrto7syijna6ehua
+- Semantic identity: objective-evidence-obligation/v1/cf62c255281892a7cc9274e63f32bc6cccbfe8d267545dc3fd6e559445032fa4
+- Acceptance subset: The lock selects reviewed Eclipse Temurin or another authoritative OpenJDK JDK artifact by exact version, publisher, immutable URL, SHA-256, signature or equivalent publisher evidence, license, OS, architecture, archive size, and required `java`, `javac`, and `jar` identities, only an explicit allow flag may perform a bounded acquisition and symlink-safe extraction into the validated user-local transaction root, interruption, checksum mismatch, archive traversal, unsupported hosts, stale dependency identities, or failed post-install probes roll back and remain unavailable, the managed ErgoAI wrapper binds the exact JDK identity used by its Java consumers and executes positive, negative, malformed, timeout, replay, relocation, and dependency-mutation cases, capability, dependency, semantic, platform, packaging, and authority axes remain independently visible, setup.py, pyproject, and requirements inventories classify the JDK as a reviewed external lazy dependency rather than an invalid mandatory Python package, import, probe, wheel installation, dry-run, and offline certification never download or install, core ErgoAI remains independently usable when the Java API capability is absent.
+- Preconditions: objective goal FVT-G222 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Evidence subset: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Resource class: io-artifact
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: io-artifact
+- Merge fate: objective/FVT-G222
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/cf62c255281892a7cc9274e63f32bc6cccbfe8d267545dc3fd6e559445032fa4
+- Missing evidence: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Embedding query: Turn the currently detected Java-runtime-only ErgoAI installation into a separately certified Java API capability by providing an authoritative, checksum-pinned, platform-bound, user-local JDK lifecycle without weakening the already working core ErgoAI lane.
+- AST query: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Surplus group: objective/FVT-G222
+- Merge key: 89e16b721d0b0828
+- Merge family: objective/FVT-G222
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: faea0e67f4c892d8
+- Acceptance: Objective scan filed this gap for FVT-G222. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-090-objective-gap-3a5d407335d4.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-091 FVT::: Live-certify/harden managed ErgoAI Java/JDK path
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: certification-integrity
+- Depends on: FVT-090, FVT-085
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Validation: IPFS_DATASETS_PY_TEST_LIVE_ERGOAI_JAVA=1 IPFS_DATASETS_PY_ALLOW_LAZY_INSTALL=1 PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-091-objective-gap-2db42c69ed9b.md
+- Bundle: formal-verification-tactician/ergoai-java-api-live-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-ergoai-java-api-live-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/ergoai-java-api-live-certification
+- Conflict policy: Own live Java/JDK lifecycle hardening, the ErgoAI Java consumer binding, and focused public-safe evidence; never depend on SecPAL or FVT-G219, trust ambient Java state, substitute fixtures for live vendor execution, publish an unverified or partially installed tree, delete outside the bounded HOME descendant, weaken rollback or identity checks to pass, elevate advisor evidence to proof authority, or make core ErgoAI depend on this optional lane.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- AST symbols: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Interfaces: ErgoAIJavaAPILiveCertification@1, ErgoAIJavaAPIToolchainContract@1, ErgoAILiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G223
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/4bb559bdd6f57e5063ad41698aff92375629a3ed701831f58873954fd2bc2cb6
+- Canonical task CID: baguqeerajo2vtpow6v7fay5nifuyv74sg5lcti7noamdd5miooku7uv4fs3a
+- Semantic identity: objective-evidence-obligation/v1/734049b8034a98243053e37302a179380a0267e295f57708e0b1a14ea19b14ad
+- Acceptance subset: On each reviewed host, an explicit opt-in installs the immutable official Eclipse Temurin 17.0.20+8 artifact, verifies its pinned archive digest, size, release checksum, detached signature or equivalently strong publisher evidence, vendor, license, OS, and architecture, and records exact `java`, `javac`, and `jar` versions, paths, and byte digests, the pinned official ErgoAI 3.0 tree then compiles and executes at least one real vendor Java consumer against real ErgoAI/XSB, and a synthetic HelloWorld or JDK-only probe cannot satisfy the semantic case, a real timeout terminates the complete child process tree within a bounded grace period and removes transient consumer workspaces, locks, and partial outputs, relocating the validated JDK and ErgoAI pair beneath a fresh HOME preserves identity binding and produces deterministic replay evidence without ambient `JAVA_HOME`, PATH, caches, or source-tree leakage, byte mutations of each selected Java tool and every identity-bound ErgoAI Java launcher, archive, or classpath artifact are rejected before execution and cannot be repaired into success by stale evidence, concurrent processes use a bounded cross-process single-flight lock so only one acquisition/publication occurs, all waiters observe the same validated identity, abandoned locks are recovered safely, and no partial tree is visible, a failed `force=True` replacement, including download, publisher-evidence, extraction, probe, or publication failure, rolls back to the exact previous-good tree and receipt while quarantining or deleting only bounded staged state, every mutable install, cache, staging, lock, backup, quarantine, and temporary path is a strict canonical descendant of the selected HOME, while HOME itself, sibling or prefix-collision paths, lexical traversal, and symlinked ancestors or targets fail closed, manifests and receipts bind the official publisher evidence, artifact and executable digests, platform tuple, canonical paths, ErgoAI release identity, test inputs, raw-output digests, cleanup result, and source/merged trees, the Java capability remains advisor-only, cannot discharge a proof obligation without an independent kernel or solver, and its absence or failure never makes the already certified core ErgoAI advisor unavailable.
+- Preconditions: objective goal FVT-G223 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, satisfy evidence requirement: test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Evidence subset: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Resource class: io-artifact
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: io-artifact
+- Merge fate: objective/FVT-G223
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/734049b8034a98243053e37302a179380a0267e295f57708e0b1a14ea19b14ad
+- Missing evidence: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Embedding query: Convert the managed ErgoAI Java/JDK capability from contract and fixture coverage into a live, adversarially hardened, replayable deployment path using the exact official ErgoAI 3.0 and Eclipse Temurin 17.0.20+8 identities, without coupling core ErgoAI availability to Java or raising advisor output above its authority ceiling.
+- AST query: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Surplus group: objective/FVT-G223
+- Merge key: bb7c08e54a7f353b
+- Merge family: objective/FVT-G223
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: eef9a1cd056e3b49
+- Acceptance: Objective scan filed this gap for FVT-G223. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-091-objective-gap-2db42c69ed9b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-092 Close objective gap: Publish non-promotable SecPAL operator-compatibility evidence
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-101
+- Outputs: tools/logic/certify_secpal_operator_compatibility.py, docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_operator_compatibility_receipt.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-092-objective-gap-0838d7c72929.md
+- Bundle: formal-verification-tactician/secpal-operator-compatibility
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/secpal-operator-compatibility
+- Conflict policy: Own only the offline operator-compatibility certifier, focused test, and public-safe receipt; never edit the live platform matrix, publish restricted bytes or EULA text, silently retry a failed vendor sample, or promote compatibility evidence.
+- Predicted files: tools/logic/certify_secpal_operator_compatibility.py, docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Changed paths:
+- Context paths: tools/logic/certify_secpal_operator_compatibility.py, docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- AST symbols: docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Interfaces: SecPALOperatorCompatibilityReceipt@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G224
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/429fb3c419bbd60175a8af10a69a21e66843c1214807b8298f0d8512ac32e7bd
+- Canonical task CID: baguqeeraikp3hrazxplac5niv4ikngrb4zuehqjbjad3qkmpbwcrflbs466q
+- Semantic identity: objective-evidence-obligation/v1/cad12da23b85a58d627477b97e356ad7734689d160d893347e52ae057e721d6f
+- Acceptance subset: The certifier requires explicit local MSI, extracted payload, EULA, and runtime inputs plus explicit operator license acceptance, it verifies the exact reviewed MSI, three payload, and EULA identities, all 18 named Microsoft scenarios execute exactly twice under bounded processes and normalized observations replay, the checked receipt contains only public-safe hashes and metadata, records any nondeterministic temporal boundary as a missing comprehensive case, and structurally fixes vendor-supported platform, arbitrary-policy interface, production-use permission, live authority, deployment readiness, FVT-G217 live-engine completion, and FVT-G219 completion to false, failure preserves the prior valid receipt and performs no download, installation, redistribution, or network access.
+- Preconditions: objective goal FVT-G224 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Evidence subset: test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G224
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/cad12da23b85a58d627477b97e356ad7734689d160d893347e52ae057e721d6f
+- Missing evidence: test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Embedding query: Preserve the maximum reproducible technical evidence obtainable from the recovered Microsoft SecPAL research release without converting archival sample compatibility into platform, semantic, license, or deployment authority.
+- AST query: docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Surplus group: objective/FVT-G224
+- Merge key: 1e4d33b3899033a0
+- Merge family: objective/FVT-G224
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: a2567f8aef0bf022
+- Acceptance: Objective scan filed this gap for FVT-G224. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-092-objective-gap-0838d7c72929.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_secpal_operator_compatibility_receipt.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+## FVT-093 Close objective gap: Certify usable in-process authorization and Runtime MTL semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-certification
+- Depends on: FVT-038, FVT-068, FVT-039, FVT-069, FVT-088
+- Outputs: tools/logic/certification/authorization.py, tools/logic/certification/runtime_mtl.py, docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_reference_logic_semantic_closure.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-093-objective-gap-13f4b6a1ea4b.md
+- Bundle: formal-verification-tactician/reference-logic-semantic-closure
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-reference-logic-semantic-closure.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/reference-logic-semantic-closure
+- Conflict policy: Own only in-process reference semantic certification and elevation; do not install external tools, reuse external SecPAL samples, or let one reference provider satisfy another provider's evidence.
+- Predicted files: tools/logic/certification/authorization.py, tools/logic/certification/runtime_mtl.py, docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Changed paths:
+- Context paths: tools/logic/certification/authorization.py, tools/logic/certification/runtime_mtl.py, docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- AST symbols: docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Interfaces: ReferenceLogicSemanticClosure@1, AuthorizationSemanticCertification@1, RuntimeMTLSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G225
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/365691645c92b40abbd5565c3a508cfefaab0fa0d2da8456f10320765ffe812b
+- Canonical task CID: baguqeeragzljczc4sk2avo6vkzoduuem735kwd5a2lniivxramqhmx76qevq
+- Semantic identity: objective-evidence-obligation/v1/46dbf23f4cd391e0cb126e50f00274dfb06b7c39ec9ae53497c40ad818f5660d
+- Acceptance subset: Each provider independently executes exact positive, negative, unknown/no-proof, mutation, deterministic replay, malformed-input, timeout/resource-bound, counterexample/witness, and disagreement cases against its shipped implementation, receipts bind provider bytes, source tree, property semantics, bounds, raw-output digests, parser decisions, and public-safe witnesses, Datalog and SecPAL-style reference engines gain authorization-decision authority only, Runtime MTL gains finite-trace monitoring authority only, and none gain theorem, infinite-trace, vendor SecPAL, translation, or deployment authority, mutations of any case, identity, ceiling, replay result, or evidence binding fail the corresponding semantic and authority axes closed.
+- Preconditions: objective goal FVT-G225 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_reference_logic_semantic_receipt.json, satisfy evidence requirement: test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Evidence subset: docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G225
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/46dbf23f4cd391e0cb126e50f00274dfb06b7c39ec9ae53497c40ad818f5660d
+- Missing evidence: docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Embedding query: Close the semantic and authority axes for the already usable in-process Datalog authorization, SecPAL-style authorization, and Runtime MTL providers at their exact bounded authority ceilings.
+- AST query: docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Surplus group: objective/FVT-G225
+- Merge key: 6a86775c030dfab6
+- Merge family: objective/FVT-G225
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: d9edba4f29248ba9
+- Acceptance: Objective scan filed this gap for FVT-G225. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-093-objective-gap-13f4b6a1ea4b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-094 Close objective gap: Replay managed dependency, capability, platform, and freshness bindings
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: dependency-integrity
+- Depends on: FVT-064, FVT-062, FVT-084, FVT-087, FVT-090, FVT-091, FVT-088
+- Outputs: tools/logic/certify_formal_verification_managed_environment.py, docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_managed_environment_replay.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-094-objective-gap-323f4010a6ee.md
+- Bundle: formal-verification-tactician/managed-environment-replay
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-environment-replay.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/managed-environment-replay
+- Conflict policy: Own the unified managed-environment replay tool and receipt; consume existing installers without weakening their explicit opt-in or offline boundaries, and never treat installation as semantic certification.
+- Predicted files: tools/logic/certify_formal_verification_managed_environment.py, docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_managed_environment.py, docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- AST symbols: docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Interfaces: FormalVerificationManagedEnvironmentReplay@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G226
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/762286815bcfcd54ea4242798d90f95fa132ccb8fca611119c2c29d194b214c1
+- Canonical task CID: baguqeeraoyrinak3z7gvj2scij4y3ehzl6qtftfy7stbcem4fqu5dffsctaq
+- Semantic identity: objective-evidence-obligation/v1/a3d34a81a930ea9b8f900664f452acfa20ed3f0ee873e7a64f93cc523875d04b
+- Acceptance subset: A separately invoked, explicitly authorized acquisition phase uses only reviewed immutable URLs, versions, sizes, checksums, signatures or equivalent publisher evidence, licenses, and OS/architecture pins, publication is user-local, single-flight, symlink-safe, atomic, and rollback-preserving, certification then runs with network, download, installation, ambient PATH, user-site, source-tree, and system-package mutation disabled, every currently supported Apalache, AutoHyper, Rocq/Coq, E, HyperLTL, Isabelle, MCHyper, ProVerif, Souffle, Tamarin, TLC, Vampire, ErgoAI, external Runtime MTL, and required Maude/OPAM/Stack/Temurin dependency binds exact executable, artifact, runtime, platform, and freshness identities, missing, partial, stale, relocated-without-rebinding, wrong-architecture, byte-mutated, or dependency-mutated trees fail only their owned axes and cannot be repaired by stale receipts, support dependencies remain non-semantic and non-authoritative.
+- Preconditions: objective goal FVT-G226 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_managed_environment_replay_receipt.json, satisfy evidence requirement: test/integration/toolchains/test_managed_environment_replay.py
+- Evidence subset: docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Resource class: io-artifact
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: io-artifact
+- Merge fate: objective/FVT-G226
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/a3d34a81a930ea9b8f900664f452acfa20ed3f0ee873e7a64f93cc523875d04b
+- Missing evidence: docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Embedding query: Materialize one approved managed prover environment through explicit opt-in installation, then replay every supported external dependency, capability, platform, and freshness binding offline from its immutable root.
+- AST query: docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Surplus group: objective/FVT-G226
+- Merge key: 38c151a37455ec85
+- Merge family: objective/FVT-G226
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 2a1faa6808a26dd8
+- Acceptance: Objective scan filed this gap for FVT-G226. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-094-objective-gap-323f4010a6ee.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-095 Close objective gap: Close Logic API and installer-role gaps
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: provider-surface
+- Depends on: FVT-087, FVT-094, FVT-088
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py, test/api/test_formal_verification_provider_role_closure.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_formal_verification_provider_role_closure.py ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py test/api/test_logic_verification_api_install_provider.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-095-objective-gap-5764c22457a5.md
+- Bundle: formal-verification-tactician/public-provider-role-closure
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-public-provider-role-closure.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 3
+- Parallel lane: formal-verification-tactician/public-provider-role-closure
+- Conflict policy: Own public dispatch and role classification; do not change provider semantics, promote advisors/support tools, or expose restricted SecPAL bytes.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py, test/api/test_formal_verification_provider_role_closure.py
+- Changed paths:
+- Context paths: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py, test/api/test_formal_verification_provider_role_closure.py
+- AST symbols: test/api/test_formal_verification_provider_role_closure.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py
+- Interfaces: LogicVerificationProviderRoleClosure@1, LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G227
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/3b3215b6610f461e53c8b10c3b62713d4daffbbcc1e8742a6179e8d0c4ce189f
+- Canonical task CID: baguqeerahmzblntbb5db4u6iwegdwytrhvg27654yhuhiktbphunbrgodcpq
+- Semantic identity: objective-evidence-obligation/v1/b586437971bb1dcd40c6cbb4fe4b1a9da27f382e5f915ab7855bc841936440b5
+- Acceptance subset: ErgoAI, external Runtime MTL, Souffle, and SymbolicAI have real typed inventory, probe, explicit install, and verification/advisor dispatch surfaces, legacy Microsoft SecPAL exposes only reviewed non-executable artifact intake and compatibility receipt lookup, never a live verification provider, Stack, Temurin JDK, Maude, and OPAM are explicitly support-only with semantic, authority, and public-verification axes not applicable, every installer registry entry resolves to a real bounded implementation rather than placeholder dispatch, import, inventory, dry-run, and offline certification are side-effect free, unsupported roles and provider/role confusion fail with typed non-success responses.
+- Preconditions: objective goal FVT-G227 is schedulable
+- Effects: satisfy evidence requirement: test/api/test_formal_verification_provider_role_closure.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py
+- Evidence subset: test/api/test_formal_verification_provider_role_closure.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G227
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/b586437971bb1dcd40c6cbb4fe4b1a9da27f382e5f915ab7855bc841936440b5
+- Missing evidence: test/api/test_formal_verification_provider_role_closure.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py
+- Embedding query: Make every runnable prover/advisor reachable through the stable Logic API while keeping support dependencies and archival SecPAL intake out of verification dispatch.
+- AST query: test/api/test_formal_verification_provider_role_closure.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py
+- Surplus group: objective/FVT-G227
+- Merge key: 376223237519b30f
+- Merge family: objective/FVT-G227
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 7653fe29c363acba
+- Acceptance: Objective scan filed this gap for FVT-G227. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-095-objective-gap-5764c22457a5.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/api/test_formal_verification_provider_role_closure.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-096 Close objective gap: Certify replayed state, protocol, kernel, and ATP semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-certification
+- Depends on: FVT-060, FVT-076, FVT-058, FVT-075, FVT-057, FVT-074, FVT-054, FVT-071, FVT-094
+- Outputs: tools/logic/certify_formal_verification_replayed_core_semantics.py, docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_replayed_core_external_semantics.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-096-objective-gap-8a708a76a37d.md
+- Bundle: formal-verification-tactician/replayed-core-external-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-replayed-core-external-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: formal-verification-tactician/replayed-core-external-semantics
+- Conflict policy: Own the cross-family replay aggregator and receipt; reuse family certifiers without changing their authority ceilings or installers.
+- Predicted files: tools/logic/certify_formal_verification_replayed_core_semantics.py, docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_replayed_core_semantics.py, docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- AST symbols: docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Interfaces: ReplayedCoreExternalSemantics@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G228
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/502e1abaa4ba466503e33627e3b01fafa9d0daffd180d80bf40b0c5fed6ffdcc
+- Canonical task CID: baguqeerakaxbvovexjdgka7dgyt6hma7v6u5bwx72ganqc7ubmgf73lp7xga
+- Semantic identity: objective-evidence-obligation/v1/91b7a47d3752901036fc6127ac6d9c2b1b205958667db8e40bc3e63db0093bde
+- Acceptance subset: TLC and Apalache execute bounded state/safety/liveness cases, Tamarin and ProVerif execute protocol secrecy/authentication and mutation cases, Rocq/Coq and Isabelle check accepted/rejected proof objects in their genuine kernels, Vampire and E execute theorem/non-theorem/resource-bound cases, each provider has independent positive, negative, mutation, replay, malformed, timeout, and disagreement evidence bound to the managed identity, Maude and OPAM remain support-only, no fixture, parser, wrapper, advisor, or other provider can supply a missing engine's semantic or authority axis.
+- Preconditions: objective goal FVT-G228 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_replayed_core_external_semantics.json, satisfy evidence requirement: test/integration/toolchains/test_replayed_core_external_semantics.py
+- Evidence subset: docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G228
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/91b7a47d3752901036fc6127ac6d9c2b1b205958667db8e40bc3e63db0093bde
+- Missing evidence: docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Embedding query: Re-execute and bind genuine managed semantics for the supported state-model, protocol, proof-kernel, and automated-theorem-prover families in the unified environment.
+- AST query: docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Surplus group: objective/FVT-G228
+- Merge key: c1c6d47806dd58fd
+- Merge family: objective/FVT-G228
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: cc0d1324c3b8da2f
+- Acceptance: Objective scan filed this gap for FVT-G228. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-096-objective-gap-8a708a76a37d.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-097 Close objective gap: Certify replayed hyperproperty and external authorization semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-certification
+- Depends on: FVT-061, FVT-077, FVT-055, FVT-073, FVT-094
+- Outputs: tools/logic/certify_formal_verification_replayed_hyper_authorization.py, docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_replayed_hyper_authorization_semantics.py test/integration/toolchains/test_external_authorization_vendor_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-097-objective-gap-fe069251c732.md
+- Bundle: formal-verification-tactician/replayed-hyper-authorization-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-replayed-hyper-authorization-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: formal-verification-tactician/replayed-hyper-authorization-semantics
+- Conflict policy: Own the replay fan-in for hyperproperties and Souffle; do not edit legacy SecPAL artifact intake or elevate external shadows to authorization authority.
+- Predicted files: tools/logic/certify_formal_verification_replayed_hyper_authorization.py, docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_replayed_hyper_authorization.py, docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- AST symbols: docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Interfaces: ReplayedHyperAuthorizationSemantics@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G229
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/a1793131aa674bee83ac4246a1467aa4732e7040462cf47e739ee4d32f05bc77
+- Canonical task CID: baguqeerauf4tcmnkm5f65a5mijdkcrt2urzs44caiywpi7ttt3snglyfxr3q
+- Semantic identity: objective-evidence-obligation/v1/1369f1e51f78911144fd61650bcdbfa20ec265e770c47b9520c576db1801752d
+- Acceptance subset: HyperLTL, AutoHyper, and MCHyper execute bounded satisfiable/violating information-flow hyperproperties with trace-pair witnesses, mutation, deterministic replay, malformed, timeout, and cross-engine disagreement handling, Souffle executes allow, deny, unknown, conflict, delegation, rule/scope mutation, replay, and disagreement cases through the exact managed vendor binary, each receipt binds executable, runtime, source/artifact, host, policy/formula, bounds, parser decisions, and output digests, hyperproperty authority remains bounded and Souffle remains an external authorization shadow, Microsoft SecPAL compatibility evidence is not interchangeable.
+- Preconditions: objective goal FVT-G229 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, satisfy evidence requirement: test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Evidence subset: docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G229
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/1369f1e51f78911144fd61650bcdbfa20ec265e770c47b9520c576db1801752d
+- Missing evidence: docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Embedding query: Close the genuine managed semantic and freshness bindings for HyperLTL, AutoHyper, MCHyper, and Souffle without importing legacy SecPAL vendor authority.
+- AST query: docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Surplus group: objective/FVT-G229
+- Merge key: a04839468cece86d
+- Merge family: objective/FVT-G229
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: c6b645576e47d293
+- Acceptance: Objective scan filed this gap for FVT-G229. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-097-objective-gap-fe069251c732.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-098 Close objective gap: Certify replayed monitor and advisor semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-certification
+- Depends on: FVT-056, FVT-072, FVT-085, FVT-091, FVT-094, FVT-095
+- Outputs: tools/logic/certify_formal_verification_replayed_monitor_advisors.py, docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_replayed_monitor_advisor_semantics.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-098-objective-gap-b97274c38a81.md
+- Bundle: formal-verification-tactician/replayed-monitor-advisor-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-replayed-monitor-advisor-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 6
+- Parallel lane: formal-verification-tactician/replayed-monitor-advisor-semantics
+- Conflict policy: Own the replay fan-in and advisor/monitor receipt; do not make core ErgoAI depend on Java, promote advice, or let a hermetic/parser fixture satisfy an external runtime lane.
+- Predicted files: tools/logic/certify_formal_verification_replayed_monitor_advisors.py, docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_replayed_monitor_advisors.py, docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- AST symbols: docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Interfaces: ReplayedMonitorAdvisorSemantics@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G230
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/bf779e2c874d2079801f4b0aa97eed1a9b0ed38ebe15173a2323e13dc1119c46
+- Canonical task CID: baguqeerax53z4lehjuqhtaa7jmfks7xndknq5u4oxykroordepqt3qirtrda
+- Semantic identity: objective-evidence-obligation/v1/f084e340a85536db6f210d699f14c8ac1a81d688276fd7b0e1458caf9c1f973c
+- Acceptance subset: The independent Node/TypeScript Runtime MTL engine executes positive, negative, boundary, malformed, mutation, replay, timeout, and cross-runtime parity cases against the in-process monitor with disagreement quarantine, real ErgoAI and SymbolicAI execute positive/non-entailment/contradiction/mutation/replay/malformed/resource-bound advisory cases, exact package, lockfile, runtime, launcher, target, artifact, and executable identities are bound, Runtime MTL gains finite-trace authority only after parity, while advisors remain proposal-only until independent reconstruction, Stack and Temurin remain support-only and cannot satisfy public verification, semantic, or proof-authority requirements.
+- Preconditions: objective goal FVT-G230 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, satisfy evidence requirement: test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Evidence subset: docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G230
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/f084e340a85536db6f210d699f14c8ac1a81d688276fd7b0e1458caf9c1f973c
+- Missing evidence: docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Embedding query: Re-execute the independent external Runtime MTL and genuine advisor lanes while preserving their finite-trace and advisory authority boundaries.
+- AST query: docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Surplus group: objective/FVT-G230
+- Merge key: ffa06fe845dd29a1
+- Merge family: objective/FVT-G230
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f3b8cbb1e9cbcb47
+- Acceptance: Objective scan filed this gap for FVT-G230. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-098-objective-gap-b97274c38a81.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-099 Close objective gap: Implement a separately named production-candidate SecPAL-style authorization provider
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: authorization-engine
+- Depends on: FVT-101, FVT-092, FVT-093, FVT-095
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_production_authorization_replacement.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-099-objective-gap-3721985e57d6.md
+- Bundle: formal-verification-tactician/production-authorization-replacement
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 7
+- Parallel lane: formal-verification-tactician/production-authorization-replacement
+- Conflict policy: Own the separately named replacement provider and its evidence; never edit or vendor restricted Microsoft bytes, reuse the `secpal` external provider id, or claim legal/deployment approval.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Changed paths:
+- Context paths: ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- AST symbols: docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Interfaces: ProductionAuthorizationReplacement@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G231
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/ca00feac74c55ea228dbf882a89f427e4d975ab43dbf63ace63578a976cc384e
+- Canonical task CID: baguqeeraziap5lduyvpkekg37cbkrh2cpzgzowvuhw7whlhggv4ks5wmhbha
+- Semantic identity: objective-evidence-obligation/v1/d80082413c09f2005d21d11e6a3bd56a531d86ab61e5e8e8c453bed4593d9fde
+- Acceptance subset: The provider uses a new provider id and project-owned implementation derived only from public formal specifications and independently reviewed clean-room design records, no restricted MSI, decompiled code, sample source, trademark implication, or Microsoft vendor-compatibility claim enters the implementation, the typed policy/query language covers principal identity, delegation depth/scope, can-say/can-act-as, roles, exclusions, revocation/time validity, conflict, unknown/no-proof, constraints, and deterministic proof or counterexample witnesses, positive, negative, mutation, replay, malformed, cycle/resource-bound, differential, fuzz/property, and denial-safety cases pass against an executable formal semantics, public API, packaging, lazy dependencies, caches, proof tactician, Hammer/advisors, and receipts bind the new identity and authority ceiling, the provider cannot satisfy FVT-G219 or claim Microsoft SecPAL authority.
+- Preconditions: objective goal FVT-G231 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_production_authorization_replacement_receipt.json, satisfy evidence requirement: test/integration/toolchains/test_production_authorization_replacement.py
+- Evidence subset: docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G231
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/d80082413c09f2005d21d11e6a3bd56a531d86ab61e5e8e8c453bed4593d9fde
+- Missing evidence: docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Embedding query: Provide a production-candidate authorization prover with SecPAL-style typed delegation semantics under a project-owned, license-clear identity, without copying or impersonating the retired Microsoft implementation.
+- AST query: docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Surplus group: objective/FVT-G231
+- Merge key: fcec2865efe09b57
+- Merge family: objective/FVT-G231
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f0290cdd9a104255
+- Acceptance: Objective scan filed this gap for FVT-G231. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-099-objective-gap-3721985e57d6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+## FVT-100 Close objective gap: Re-audit the post-remediation matrix and release gate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-093, FVT-094, FVT-095, FVT-096, FVT-097, FVT-098, FVT-099
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_post_remediation_assurance.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_authoritative_vendor_release.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-100-objective-gap-2a7099592b35.md
+- Bundle: formal-verification-tactician/post-remediation-assurance
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-post-remediation-assurance.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 8
+- Parallel lane: formal-verification-tactician/post-remediation-assurance
+- Conflict policy: Own only the final trusted certificate/matrix/release delta and assessment; do not weaken any upstream gate, mark external approval complete, or rewrite historical receipts.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- AST symbols: docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Interfaces: FormalVerificationPostRemediationAssurance@1, FormalVerificationEndToEndAssuranceMatrix@1, FormalVerificationAuthoritativeVendorRelease@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G233
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/81e76af489682a01b705fba01a7102aa961b9e4a8405b079d92e732803d6c59a
+- Canonical task CID: baguqeeraqhtwv5ejnavadnyf7oqbu4icvklbxhskqqc3a6ozfzzsqa6wywna
+- Semantic identity: objective-evidence-obligation/v1/4f371c0a2572ec65aaa2826d7e6a302e718503040efd37392651383c62447368
+- Acceptance subset: A trusted certificate body and every repository evidence file independently reconstruct all provider/host axes, the delta records the exact transition from the current 5-of-28 ready baseline and explains every unchanged or reopened blocker, the retired Microsoft SecPAL row remains unsupported, non-required for the replacement provider, and distinct from both in-process reference and production-candidate identities, G219 remains blocked and cannot be hidden, the separately named replacement is a new row, locally completed audit/assessment status is independent from deployment readiness, `deployment_ready` remains false until FVT-G232 approval and every required row/axis are current, content-bound, jointly ready, and independently re-derived, fully resealed optimistic matrices, stale receipts, missing provider rows, authority substitution, and unsupported-platform promotion fail closed.
+- Preconditions: objective goal FVT-G233 is schedulable
+- Effects: satisfy evidence requirement: docs/architecture/formal_verification_post_remediation_delta.json, satisfy evidence requirement: docs/architecture/formal_verification_end_to_end_assurance_matrix.json, satisfy evidence requirement: test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Evidence subset: docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G233
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/4f371c0a2572ec65aaa2826d7e6a302e718503040efd37392651383c62447368
+- Missing evidence: docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Embedding query: Rebuild the trusted certificate, end-to-end matrix, and authoritative-vendor release assessment after every locally actionable remediation, while preserving external approval and unsupported legacy-vendor blockers.
+- AST query: docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Surplus group: objective/FVT-G233
+- Merge key: 0e8d43dacefbeeb6
+- Merge family: objective/FVT-G233
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: a69a5f99ef038619
+- Acceptance: Objective scan filed this gap for FVT-G233. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-100-objective-gap-2a7099592b35.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-101 Close objective gap: Bind the genuine SecPAL artifact-intake and capability ceiling
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-055, FVT-073, FVT-087
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-101-objective-gap-6090071d053c.md
+- Bundle: formal-verification-tactician/secpal-live-toolchain
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/secpal-live-toolchain
+- Conflict policy: Own SecPAL artifact provenance, platform matrix, artifact intake, and authority ceiling; never invent an upstream release, accept an unreviewed mirror, accept license terms on an operator's behalf, redistribute restricted bytes, promote sample compatibility, or label the in-process engine as the external vendor binary.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- AST symbols: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Interfaces: SecPALLiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G217
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/d5823f3c41700f455f77ab36a7ecf1a328c25f5f81d40850ee53fb3fde6b9058
+- Canonical task CID: baguqeera2wbd6pcboahukx3xvm3kp3hrumumex27qhkaquhokp5t7xtlsbma
+- Semantic identity: objective-evidence-obligation/v1/0a4f97823b8932d380f024671fa0ac25a13a92041607a17c4019dfaf6795a559
+- Acceptance subset: The recovered Microsoft MSI binds the official publisher and archived metadata URLs, ProductVersion/ProductCode, exact size and SHA-256, independently verified Authenticode identity, exact embedded EULA digest and reviewed redistribution/execution limits, intake requires an explicit local path and explicit operator license acceptance, performs no download, extraction, execution, or redistribution, stages non-executable bytes atomically beneath a bounded user-local root, and preserves the previous exact tree on failure, the live execution supported-platform matrix is explicitly empty, every host therefore fails closed for vendor installation and semantic certification, authentic sample execution is separately classified as non-promotable operator compatibility and cannot create an engine identity, arbitrary-policy interface, platform authority, production permission, or FVT-G219 completion, fixtures, in-process Datalog/SecPAL, and hermetic adapters remain separately named and cannot impersonate the vendor tool.
+- Preconditions: objective goal FVT-G217 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G217
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/0a4f97823b8932d380f024671fa0ac25a13a92041607a17c4019dfaf6795a559
+- Missing evidence: objective validation repair
+- Embedding query: Replace ambiguous SecPAL acquisition and adapter behavior with an exact official-artifact, license-aware, transactional local intake path that proves the recovered research release cannot be promoted to a live vendor engine.
+- AST query: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Surplus group: objective/FVT-G217
+- Merge key: 6e203b00a4cb100e
+- Merge family: objective/FVT-G217
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 92bb9b45d012de57
+- Acceptance: Objective scan filed this gap for FVT-G217. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-101-objective-gap-6090071d053c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-102 Residual: managed-capability residual fan-in
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-capability-fanin
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-fanin.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-capability-fanin
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {apalache,tlc,coq,isabelle,vampire,eprover,tamarin,maude,stack,proverif,opam,secpal,souffle,ergoai,temurin-jdk,runtime-mtl-external}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G234
+- Completion authority: local
+- Canonical task key: task/v1/125d200781399cc22f3e6f3620a4ba8c6f33b0524a595f8cc01f6f5c3e1e16da
+- Canonical task CID: baguqeeracjosab4bhgomelz6n43cbjf2rrxthmcsjjmv7dgad5xvypq6c3na
+- Semantic identity: objective-evidence-obligation/v1/83758f91d6ad568364168964f66c55f3c0c08fe114e4552b789a2c5ae94df90b
+- Acceptance subset: For tools {apalache,tlc,coq,isabelle,vampire,eprover,tamarin,maude,stack,proverif,opam,secpal,souffle,ergoai,temurin-jdk,runtime-mtl-external}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G234 is schedulable
+- Effects: clear managed residual for apalache,tlc,coq,isabelle,vampire,eprover,tamarin,maude,stack,proverif,opam,secpal,souffle,ergoai,temurin-jdk,runtime-mtl-external
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G234
+- Acceptance: Close the managed-capability residual for {apalache,tlc,coq,isabelle,vampire,eprover,tamarin,maude,stack,proverif,opam,secpal,souffle,ergoai,temurin-jdk,runtime-mtl-external} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-103 Residual: Reinstall+certify TLC/Apalache managed state-model
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-tlc-apalache
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-tlc-apalache.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-tlc-apalache
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {tlc,apalache}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G235
+- Completion authority: local
+- Canonical task key: task/v1/d4baf86bb57b2e8e3536e436c426a511b624b38ae9db50089a94fba4657d3e78
+- Canonical task CID: baguqeera2s5pq25vpmxi4njw4q3mijvfcg3cjm4k5hnvace2st52izl5hz4a
+- Semantic identity: objective-evidence-obligation/v1/2951414198570da7b425c7c7915511cce2c1ef103600f4efe8de97f66495b44a
+- Acceptance subset: For tools {tlc,apalache}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G235 is schedulable
+- Effects: clear managed residual for tlc,apalache
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G235
+- Acceptance: Close the managed-capability residual for {tlc,apalache} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-104 Residual: Reinstall+certify Vampire/E ATP managed
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-vampire-eprover
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-vampire-eprover.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-vampire-eprover
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {vampire,eprover}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G236
+- Completion authority: local
+- Canonical task key: task/v1/e08aaa402286fb7c17ee6cdb69622b19ea73c899bf071c49f613d2dc2bc9a72b
+- Canonical task CID: baguqeera4cfkuqbcq35xyf7ontnwsyrldhvhhsezx4dryspwcpjnyk6ju4vq
+- Semantic identity: objective-evidence-obligation/v1/534962db21d4fe15cce41a37041e647e402fa9d8ba25f3c4fbec34262b567203
+- Acceptance subset: For tools {vampire,eprover}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G236 is schedulable
+- Effects: clear managed residual for vampire,eprover
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G236
+- Acceptance: Close the managed-capability residual for {vampire,eprover} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-105 Residual: Reinstall+certify Tamarin/Maude/stack managed
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-tamarin-maude-stack
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-tamarin-maude-stack.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-tamarin-maude-stack
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {tamarin,maude,stack}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G237
+- Completion authority: local
+- Canonical task key: task/v1/3671f17f1ee6c00b3e1bc4bf40953a22f77093336c3838aacddf769309474986
+- Canonical task CID: baguqeeragzy7c7y643aawpq3ys7ubfj2el3xbeztnq4drkwn353jgckhjgda
+- Semantic identity: objective-evidence-obligation/v1/cd9f23e26d9acc6182dc17e132dadf6fc8d2a5f520af5fc9a6d112e5004739bc
+- Acceptance subset: For tools {tamarin,maude,stack}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G237 is schedulable
+- Effects: clear managed residual for tamarin,maude,stack
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G237
+- Acceptance: Close the managed-capability residual for {tamarin,maude,stack} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-106 Residual: Reinstall+certify ProVerif/opam managed
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-proverif-opam
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-proverif-opam.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-proverif-opam
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {proverif,opam}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G238
+- Completion authority: local
+- Canonical task key: task/v1/e4463131f365d80f1f94574066b1b9446632cac060192c87322850700b97cbad
+- Canonical task CID: baguqeera4rddcmptmxma6h4uk5agnmnzirtdfswamamszbzsfbihac4xzowq
+- Semantic identity: objective-evidence-obligation/v1/4ad5a25575795e94fb65fa4168e10b459cf11569e8204d32a72d1c32c5820fbc
+- Acceptance subset: For tools {proverif,opam}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G238 is schedulable
+- Effects: clear managed residual for proverif,opam
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G238
+- Acceptance: Close the managed-capability residual for {proverif,opam} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-107 Residual: Reinstall+certify Rocq/Coq managed kernel
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-rocq-coq
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-rocq-coq.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-rocq-coq
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {coq}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G239
+- Completion authority: local
+- Canonical task key: task/v1/bfbb2fd0118cb2d8c7e8df7bde13cab9f3d65580a2fa96488745bf114420bd77
+- Canonical task CID: baguqeerax65s7uarrsznrr7i35554e6kxhz5mvmaul5jmsehiw7rcrbaxv3q
+- Semantic identity: objective-evidence-obligation/v1/9ee37f020a4ce329919262d473f430b04d85d4259f6664709f7bfcad72f30fd0
+- Acceptance subset: For tools {coq}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G239 is schedulable
+- Effects: clear managed residual for coq
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G239
+- Acceptance: Close the managed-capability residual for {coq} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-108 Residual: Reinstall+certify Isabelle managed kernel
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-isabelle
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-isabelle.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-isabelle
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {isabelle}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G240
+- Completion authority: local
+- Canonical task key: task/v1/19b61914bb16206d90bd344d245b9dac179461923939f227aa71d8127a18c196
+- Canonical task CID: baguqeeradg3bsff3cyqg3ef5grgsiw45vqlziymshe47ej5kohmbe6qyygla
+- Semantic identity: objective-evidence-obligation/v1/d6f327332a0886643baada518338404230ddd4fdb1729baa410473ee7920f402
+- Acceptance subset: For tools {isabelle}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G240 is schedulable
+- Effects: clear managed residual for isabelle
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G240
+- Acceptance: Close the managed-capability residual for {isabelle} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-109 Residual: Reinstall+certify Souffle/SecPAL vendor shadows
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-souffle-secpal
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-souffle-secpal.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-souffle-secpal
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {souffle,secpal}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G241
+- Completion authority: local
+- Canonical task key: task/v1/efd9135f8f25ada5a6dbeea78e76a076c9a457cf3286ea56c22a9551098d9dbc
+- Canonical task CID: baguqeera57mrgx4peww2ljw352ty45vao3e2iv6pgkdouvwcfkkvccmntw6a
+- Semantic identity: objective-evidence-obligation/v1/0276e6a07a72341c6a7ef7230feafeec954ded3dd1d670051f3555227d8a5549
+- Acceptance subset: For tools {souffle,secpal}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G241 is schedulable
+- Effects: clear managed residual for souffle,secpal
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G241
+- Acceptance: Close the managed-capability residual for {souffle,secpal} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-110 Residual: Reinstall+certify ErgoAI + Temurin JDK managed
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-ergoai-temurin
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-ergoai-temurin.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-ergoai-temurin
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {ergoai,temurin-jdk}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G242
+- Completion authority: local
+- Canonical task key: task/v1/fb71fee4640de2b944ce9452335d7b835b4209c974d7e02ec94e7822c30c2b78
+- Canonical task CID: baguqeera7ny75zdebxrlsrgosrjdgxl3qnnuecojotl6alwjjz4cfqymfn4a
+- Semantic identity: objective-evidence-obligation/v1/0bb0c3dd8aa99c3d48a4ef2c534dd404dd1f2ff0b69c3a74c9483c900ba125f4
+- Acceptance subset: For tools {ergoai,temurin-jdk}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G242 is schedulable
+- Effects: clear managed residual for ergoai,temurin-jdk
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G242
+- Acceptance: Close the managed-capability residual for {ergoai,temurin-jdk} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-111 Residual: Reinstall+certify runtime-mtl-external sealed vendor
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-runtime-mtl-external
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-runtime-mtl-external.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-runtime-mtl-external
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {runtime-mtl-external}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G243
+- Completion authority: local
+- Canonical task key: task/v1/471b362c96f7b42b062d62c58a0ab489438123962a5ba7e5afcd9411221d13d0
+- Canonical task CID: baguqeerai4ntmlew662cwbrnmlcyucvurfbyci4wfjn2pznpzwkbciq5cpia
+- Semantic identity: objective-evidence-obligation/v1/020f02fa8c9e4a37318f0d4fddff5071b253b080755d77b2b3f12208f2b0612f
+- Acceptance subset: For tools {runtime-mtl-external}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G243 is schedulable
+- Effects: clear managed residual for runtime-mtl-external
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G243
+- Acceptance: Close the managed-capability residual for {runtime-mtl-external} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-112 Residual: Elevate datalog/secpal-authorization production semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-094
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-elevation-datalog-secpal
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-elevation-datalog-secpal.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-elevation-datalog-secpal
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {datalog-authorization,secpal-authorization}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G244
+- Completion authority: local
+- Canonical task key: task/v1/684b9f0322314ab5df0e080bb78d7ed3a70e39f674a73b512dafc0e6c4e3fc1a
+- Canonical task CID: baguqeeranbfz6azcgffllxyobaf3pdl62otq4opwosttwujnv7aonrhd7qna
+- Semantic identity: objective-evidence-obligation/v1/7ecba9263634218bc76b0574ec16c3b6c5f0c4d6eaea65ce514d72f187f4e92f
+- Acceptance subset: For tools {datalog-authorization,secpal-authorization}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G244 is schedulable
+- Effects: clear managed residual for datalog-authorization,secpal-authorization
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G244
+- Acceptance: Close the managed-capability residual for {datalog-authorization,secpal-authorization} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+
+
+## FVT-113 Residual: Reseal matrix+deployment after managed capability closure
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: managed-capability-residual
+- Depends on: FVT-103, FVT-104, FVT-105, FVT-106, FVT-107, FVT-108, FVT-109, FVT-110, FVT-111, FVT-112
+- Outputs: docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_toolchain_certificate.json, config/formal_verification_toolchains.lock.json
+- Validation: PYTHONPATH=ipfs_datasets_py IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py::test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md
+- Bundle: formal-verification-tactician/managed-capability-reseal
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-managed-capability-reseal.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/managed-capability-reseal
+- Conflict policy: Own managed installer roots, lock pins, and live certification receipts for tools {deployment-receipt,matrix}; never mark deployment_ready true while managed blockers remain; never greenwash missing sealed roots.
+- Predicted files: config/formal_verification_toolchains.lock.json, tools/logic/certify_formal_verification_toolchains.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Goal id: FVT-G245
+- Completion authority: local
+- Canonical task key: task/v1/9d0c4855ac26bfbbcc04147942848eee856a57ff503ec7b8472e0bee2b5713a7
+- Canonical task CID: baguqeeratugeqvnme273xtaecr4ufbeo52cwuv77ka7mpochfyf64k2xcotq
+- Semantic identity: objective-evidence-obligation/v1/69f1dc5759133b6964438f97073881ac352b2ad4a9250be6340d0626e1c78b04
+- Acceptance subset: For tools {deployment-receipt,matrix}, produce a lock-matching managed installation under the approved sealed/user root, live positive/negative/mutation/replay certification receipts, and clear the corresponding managed:* deployment blockers and elevation gaps without forging digests. FVT-113 additionally reseals the role-aware certificate, matrix, and deployment receipt and records residual honest blockers only.
+- Preconditions: sealed vendor root env IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT is set when required; objective goal FVT-G245 is schedulable
+- Effects: clear managed residual for deployment-receipt,matrix
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Provider role: grok, codex-review
+- Merge fate: residual/FVT-G245
+- Acceptance: Close the managed-capability residual for {deployment-receipt,matrix} that still blocks RoleAwareFormalVerificationRelease@1 after prior FVT install tasks lease-completed without host closure. Discovery: 2026-08-05-fvt-managed-tool-residual.md.
+

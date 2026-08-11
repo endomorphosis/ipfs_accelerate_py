@@ -1,0 +1,139 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.deterministic_doctor.rollout_config@1",
+  "config_version": 1,
+  "task_id": "LPR-041",
+  "goal_id": "LPR-G110",
+  "board_namespace": "agent-supervisor-tactician-hammer-logic-repair-v1",
+  "enabled": false,
+  "default_mode": "report_only",
+  "allowed_modes": [
+    "report_only",
+    "plan",
+    "sandbox_auto",
+    "narrow_auto"
+  ],
+  "promotion": {
+    "manual": true,
+    "monotonic": true,
+    "requires_explicit_scoped_policy": true,
+    "requires_zero_safety_floors": true,
+    "kill_switch_blocks_elevation": true
+  },
+  "feature_flags": {
+    "narrow_autonomous_mutation_enabled": false,
+    "kill_switch_engaged": false,
+    "llm_router_enabled": false,
+    "llm_invocations_allowed": false,
+    "remote_model_provider_calls_allowed": false,
+    "remote_embeddings_allowed": false,
+    "network_access_allowed": false,
+    "target_code_import_allowed": false
+  },
+  "gates": {
+    "exact_evidence_snapshot_required": true,
+    "clean_rebuild_identity_equivalence_required": true,
+    "canonical_cid_preimage_validation_required": true,
+    "proof_cache_binding_revalidation_required": true,
+    "native_kernel_reconstruction_required": true,
+    "independent_countermodel_validation_required": true,
+    "complete_impact_closure_required": true,
+    "one_disposition_per_resolved_consumer": true,
+    "unique_target_value_placement_operator_required": true,
+    "closed_operator_registry_required": true,
+    "isolated_candidate_worktree_required": true,
+    "enforced_sandbox_required_for_target_execution": true,
+    "writer_lease_and_checkpoint_required": true,
+    "atomic_scc_transaction_required": true,
+    "post_edit_reindex_and_cache_invalidation_required": true,
+    "logic_and_program_fixed_point_required": true,
+    "compensating_rollback_required": true,
+    "explicit_repair_operation_required": true
+  },
+  "semantic_authority": {
+    "knowledge_graph_semantic_authority": false,
+    "vector_semantic_authority": false,
+    "embedding_semantic_authority": false,
+    "tactician_semantic_authority": false,
+    "hammer_candidate_semantic_authority": false,
+    "proof_cache_metadata_semantic_authority": false
+  },
+  "dispositions": {
+    "unknown_or_unsupported": "abstain",
+    "ambiguous": "abstain"
+  },
+  "approval_required_classes": [
+    "doctor_trusted_computing_base",
+    "stateful_behavior",
+    "public_api_or_schema",
+    "dynamic_or_generated_code",
+    "native_or_ffi",
+    "cross_repository_edit",
+    "new_external_dependency",
+    "unsupported_memory_or_lifetime_claim"
+  ],
+  "limits": {
+    "max_findings": 256,
+    "max_candidates_per_finding": 64,
+    "max_graph_nodes_per_query": 2048,
+    "max_proof_routes_per_goal": 32,
+    "max_operators_per_finding": 32,
+    "max_plan_steps": 256,
+    "max_fixed_point_iterations": 8,
+    "max_changed_files": 128,
+    "max_changed_bytes": 1048576,
+    "max_processes": 8,
+    "max_wall_time_seconds": 3600,
+    "max_cpu_time_seconds": 1800,
+    "max_memory_bytes": 4294967296
+  },
+  "release_safety_floors": {
+    "missed_mandatory_caller_rate": 0,
+    "authority_promotion_rate": 0,
+    "stale_proof_cid_admission_rate": 0,
+    "out_of_scope_sandbox_write_rate": 0,
+    "partial_transaction_rate": 0,
+    "rollback_failure_rate": 0,
+    "nondeterministic_render_rate": 0,
+    "false_fixed_point_rate": 0,
+    "llm_router_invocation_rate": 0,
+    "llm_model_provider_call_rate": 0,
+    "root_schema_capability_drift_rate": 0,
+    "embedding_canary_failure_rate": 0,
+    "reconstruction_isolation_loss_rate": 0,
+    "transaction_rollback_failure_rate": 0,
+    "material_resource_regression_rate": 0
+  },
+  "rollback": {
+    "on_nonzero_safety_floor": true,
+    "on_root_schema_capability_drift": true,
+    "on_embedding_canary_failure": true,
+    "on_reconstruction_isolation_loss": true,
+    "on_transaction_rollback_failure": true,
+    "on_material_resource_regression": true,
+    "on_kill_switch": true,
+    "demotion_is_one_stage": true,
+    "disables_narrow_auto_on_any_regression": true
+  },
+  "lifecycle_doctor": {
+    "read_only": true,
+    "idempotent": true,
+    "mutation_authorized": false,
+    "completion_authoritative": false
+  },
+  "optional_providers": {
+    "absence_is_actionable": true,
+    "absence_blocks_report_only_startup": false,
+    "absence_degrades_to_abstention": true
+  },
+  "artifacts": {
+    "rollout_module": "ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_rollout.py",
+    "config": "config/agent_supervisor_deterministic_doctor.json",
+    "validate_script": "scripts/ops/agent_supervisor/validate_deterministic_doctor.py",
+    "guide": "docs/guides/DETERMINISTIC_DOCTOR_GUIDE.md",
+    "tests": "test/api/test_agent_supervisor_deterministic_doctor_rollout.py",
+    "service_module": "ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_service.py",
+    "policy_module": "ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_policy.py",
+    "benchmark_module": "ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_benchmark.py",
+    "ops_facade": "scripts/ops/agent_supervisor/deterministic_doctor.py"
+  }
+}

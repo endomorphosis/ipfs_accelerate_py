@@ -15,28 +15,22 @@ Features:
 
 import anyio
 import logging
-import os
-import sys
 import tempfile
+from functools import partial
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 
-# Import FastMCP directly, avoiding conflicts
-try:
-    # Clear any existing MCP modules to avoid conflicts
-    mcp_modules = [mod for mod in sys.modules.keys() if mod.startswith('mcp.')]
-    for mod in mcp_modules:
-        if mod in sys.modules:
-            del sys.modules[mod]
-    
-    from fastmcp import FastMCP
-    HAVE_FASTMCP = True
-except ImportError:
-    HAVE_FASTMCP = False
-    print("⚠️ FastMCP not available. MCP server functionality will be limited.")
+# Resolve only the exact, origin-audited FastMCP distribution. This does not
+# delete or reorder process-global import state.
+from ipfs_accelerate_py.mcp.server import _import_fastmcp_v2
+
+_fastmcp_module, _fastmcp_reason = _import_fastmcp_v2()
+FastMCP = getattr(_fastmcp_module, "FastMCP", None)
+HAVE_FASTMCP = callable(FastMCP)
+if not HAVE_FASTMCP:
+    print("⚠️ FastMCP 2.14.7 is unavailable. MCP functionality will be limited.")
 
 # Import the Model Manager components
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 try:
     from ipfs_accelerate_py.model_manager import (
         ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
@@ -84,7 +78,7 @@ class AIModelMCPServer:
         if HAVE_FASTMCP:
             self.mcp = FastMCP(
                 name="AI Model Manager",
-                description="AI-powered model discovery and inference with intelligent recommendations"
+                instructions="AI-powered model discovery and inference with intelligent recommendations"
             )
             self._register_tools()
         else:
@@ -281,7 +275,10 @@ class AIModelMCPServer:
             
         logger.info(f"Starting AI Model MCP Server on {transport}")
         try:
-            await self.mcp.run(transport=transport, host=host, port=port)
+            transport_kwargs = {"transport": transport}
+            if transport != "stdio":
+                transport_kwargs.update({"host": host, "port": port})
+            await self.mcp.run_async(**transport_kwargs)
         except KeyboardInterrupt:
             logger.info("Server interrupted")
         except Exception as e:
@@ -374,11 +371,14 @@ if __name__ == "__main__":
     )
     
     if HAVE_FASTMCP:
-        anyio.run(server.run(
-            transport=args.transport,
-            host=args.host,
-            port=args.port
-        ))
+        anyio.run(
+            partial(
+                server.run,
+                transport=args.transport,
+                host=args.host,
+                port=args.port,
+            )
+        )
     else:
         print("🔧 Demo mode: Server components initialized but FastMCP not available")
         print("✅ Model Manager, Bandit Recommender, and IPFS integration working")

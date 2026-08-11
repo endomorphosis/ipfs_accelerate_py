@@ -1,0 +1,142 @@
+# Objective Bundle: formal-verification-tactician/toolchain-release-candidate
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-066 Close objective gap: Build the fail-closed role-aware release candidate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-065, FVT-060, FVT-058, FVT-057, FVT-054, FVT-061, FVT-055, FVT-056, FVT-059, FVT-063
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-066-objective-gap-60f32f018e1d.md
+- Bundle: formal-verification-tactician/toolchain-release-candidate
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-candidate.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 12
+- Parallel lane: formal-verification-tactician/toolchain-release-candidate
+- Conflict policy: Own central candidate fan-in; never install during offline certification, collapse checks, hardcode success, conceal blockers, or make a self-referential current-tree claim.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- AST symbols: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Interfaces: RoleAwareFormalVerificationReleaseCandidate@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G213
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41
+- Canonical task CID: baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq
+- Semantic identity: objective-evidence-obligation/v1/c570495324747d0931b0fc707585cca9cd21104e702f53f5bb7bc97b4338300d
+- Acceptance subset: The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence, all supported managed capabilities have their required installed and specialized semantic evidence, every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest, unsupported tools alone become narrow exceptions, missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, or incomplete evidence blocks readiness at its correct ceiling, the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists.
+- Preconditions: objective goal FVT-G213 is schedulable
+- Effects: satisfy evidence requirement: test/integration/test_formal_verification_role_aware_release_candidate.py, satisfy evidence requirement: docs/architecture/formal_verification_role_aware_release_candidate.json
+- Evidence subset: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G213
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/c570495324747d0931b0fc707585cca9cd21104e702f53f5bb7bc97b4338300d
+- Missing evidence: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Embedding query: Generate a role-aware release candidate from the complete supported matrix without claiming its own future merge or deployment.
+- AST query: test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json
+- Surplus group: objective/FVT-G213
+- Merge key: f67ea6dd7518f31f
+- Merge family: objective/FVT-G213
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: e54d532ffcb68fe0
+- Acceptance: Objective scan filed this gap for FVT-G213. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-066-objective-gap-60f32f018e1d.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/test_formal_verification_role_aware_release_candidate.py, docs/architecture/formal_verification_role_aware_release_candidate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-081 FVT: Build the fail-closed role-aware release candidate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-065, FVT-079, FVT-060, FVT-076, FVT-058, FVT-075, FVT-057, FVT-074, FVT-054, FVT-071, FVT-061, FVT-077, FVT-055, FVT-073, FVT-056, FVT-072, FVT-059, FVT-080, FVT-063, FVT-078
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_production_elevation_fanin.py test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-081-objective-gap-40b19d22d120.md
+- Bundle: formal-verification-tactician/toolchain-release-candidate
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-candidate.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/toolchain-release-candidate
+- Conflict policy: Sole owner of the central candidate and production-elevation fan-in after its semantic/vendor dependencies merge; never install during offline certification, treat an adapter or identity manifest as a vendor binary, collapse checks, hardcode success, conceal blockers, or make a self-referential current-tree claim.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- AST symbols: test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Interfaces: RoleAwareFormalVerificationReleaseCandidate@1, ProductionSemanticElevationFanIn@1
+- Submodules:
+- Generated artifacts: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Allowed paths: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, tools/logic/certification/public_evidence.py
+- Allow concurrent with:
+- Goal id: FVT-G213
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/b63667ec67f89f8eea116ef4a996467b6cf694ff6d0ccd8ed42e02962a4bb168
+- Canonical task CID: baguqeerawy3gp3dh7cpy52qrn32ktfsgpnwpnfh7nugm3dwufybjmkslwfua
+- Semantic identity: objective-evidence-obligation/v1/753d3a02486eb1a4e6b9a5ab481d7c7934f8c0e30265acee69f80ec0685ed65f
+- Acceptance subset: The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence, `lean`, `runtime-mtl`, `datalog-authorization`, `secpal-authorization`, `coq`, and `isabelle` each have exact independently reconstructed positive, negative, mutation, and replay evidence before their corresponding production elevation is present, the independent TypeScript/Node Runtime MTL vendor lane is consumed through `ExternalRuntimeMTLVendorCertification@1`, binds its package, source, lockfile, Node runtime, launcher, target, executable, and artifact digests, and gates both external finite-trace authority and in-process Runtime MTL elevation on exact cross-runtime parity and disagreement handling, hermetic Runtime MTL wrappers never promote, real supported HyperLTL, AutoHyper, MCHyper, and Souffle vendor binaries and their native/runtime dependencies are distinguished from identity manifests, adapters, case oracles, fixtures, and shims, offline certification resolves only an approved immutable preinstalled deployment root under the authoritative private-HOME validation environment and never installs, builds, downloads, or accesses the network, all supported managed capabilities have their required installed and specialized semantic evidence, every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest, external SecPAL is an exception only when the current lock explicitly excludes the running host, missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, dependency-only, or incomplete evidence blocks readiness at its correct ceiling, the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists.
+- Preconditions: objective goal FVT-G213 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, satisfy evidence requirement: docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Evidence subset: test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G213
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/753d3a02486eb1a4e6b9a5ab481d7c7934f8c0e30265acee69f80ec0685ed65f
+- Missing evidence: test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Embedding query: Generate a role-aware release candidate from the complete supported matrix, close the exact production-semantic elevation fan-in, and do so without claiming its own future merge or deployment.
+- AST query: test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Surplus group: objective/FVT-G213
+- Merge key: 673eb0e69660f464
+- Merge family: objective/FVT-G213
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 3683654bd605b135
+- Acceptance: Objective scan filed this gap for FVT-G213. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-081-objective-gap-40b19d22d120.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_production_elevation_fanin_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

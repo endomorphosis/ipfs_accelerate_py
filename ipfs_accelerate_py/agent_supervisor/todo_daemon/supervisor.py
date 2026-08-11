@@ -24,6 +24,28 @@ from .core import (
 
 JsonDict = dict[str, Any]
 
+_MERGE_RESOLVER_MODULES = frozenset(
+    {
+        "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
+        "ipfs_accelerate_py.agent_supervisor.llm_router_merge_resolver",
+    }
+)
+_MERGE_RESOLVER_SCRIPTS = frozenset(
+    {
+        "llm_merge_resolver_fallback.py",
+        "llm_router_merge_resolver.py",
+    }
+)
+_PYTHON_AGENT_WORKER_MODULES = _MERGE_RESOLVER_MODULES | frozenset(
+    {
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
+    }
+)
+_PYTHON_AGENT_WORKER_SCRIPTS = _MERGE_RESOLVER_SCRIPTS | frozenset(
+    {"grok_cli_runner.py"}
+)
+
 DEFAULT_WORKTREE_PHASES = frozenset(
     {
         "implementing",
@@ -199,7 +221,7 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         return False
     if executable in {"bash", "sh"} and len(tokens) > 1:
         return os.path.basename(tokens[1]).lower() == "llm_merge_resolver_fallback.sh"
-    if executable == "llm_router_merge_resolver.py":
+    if executable in _MERGE_RESOLVER_SCRIPTS:
         return True
     if not executable.startswith("python"):
         return False
@@ -210,12 +232,12 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         if token == "-m":
             return (
                 index + 1 < len(tokens)
-                and tokens[index + 1].lower().endswith("llm_router_merge_resolver")
+                and tokens[index + 1].lower() in _PYTHON_AGENT_WORKER_MODULES
             )
         if token.startswith("-"):
             index += 1
             continue
-        return os.path.basename(token).lower() == "llm_router_merge_resolver.py"
+        return os.path.basename(token).lower() in _PYTHON_AGENT_WORKER_SCRIPTS
     return False
 
 

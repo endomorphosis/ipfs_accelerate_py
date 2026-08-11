@@ -1,0 +1,141 @@
+# Objective Bundle: formal-verification-tactician/toolchain-release-finalizer
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-067 Close objective gap: Publish the post-merge deployment attestation
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-066
+- Outputs: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-067-objective-gap-e57dd283dde9.md
+- Bundle: formal-verification-tactician/toolchain-release-finalizer
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-finalizer.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 13
+- Parallel lane: formal-verification-tactician/toolchain-release-finalizer
+- Conflict policy: Sole post-merge finalizer; read live state without mutation, never attest the current task's future event, and never weaken a missing terminal receipt or publication gate.
+- Predicted files: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Changed paths:
+- Context paths: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- AST symbols: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G214
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/60911789373c3c6862592bd15371ebc2d4e4fd09dea29f7f9bbed449d5356185
+- Canonical task CID: baguqeeramcirpcjxhq6gqyszfpivg4plylkoj7ij32rj6743x3ketvjvmgcq
+- Semantic identity: objective-evidence-obligation/v1/064cc3158783ceeab9e8c3bee194f4b5ad98ed47c149c8cc822e3ff0e0cf6d6e
+- Acceptance subset: The finalizer runs only after FVT-G213 has a successful, durable, canonical member completion receipt and reachable merged commit, it verifies event-chain continuity, expected outputs, validation result, source tree, merged tree, datasets gitlink, origin publication, candidate digest, supported-capability closure, hard-zero gates, authority boundaries, quarantines, and public surfaces, it publishes either a receipt commit whose parent is the certified release commit with a strictly limited generated-artifact diff or an external content-addressed attestation, mutating any event, tree, artifact, check, binding, or publication fact invalidates the receipt, absent or stale terminal evidence remains partial and can never be called deployment-ready.
+- Preconditions: objective goal FVT-G214 is schedulable
+- Effects: satisfy evidence requirement: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, satisfy evidence requirement: docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Evidence subset: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G214
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/064cc3158783ceeab9e8c3bee194f4b5ad98ed47c149c8cc822e3ff0e0cf6d6e
+- Missing evidence: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Embedding query: After the release-candidate merge, bind its durable terminal supervisor receipt and publish the final deployment attestation without circular tree identity.
+- AST query: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Surplus group: objective/FVT-G214
+- Merge key: 8857090adf80c59a
+- Merge family: objective/FVT-G214
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 431550301f66e93a
+- Acceptance: Objective scan filed this gap for FVT-G214. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-067-objective-gap-e57dd283dde9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-082 FVT: Publish the post-merge deployment attestation
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-066, FVT-081
+- Outputs: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-082-objective-gap-74a1187933e1.md
+- Bundle: formal-verification-tactician/toolchain-release-finalizer
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release-finalizer.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/toolchain-release-finalizer
+- Conflict policy: Sole post-merge finalizer; read live state without mutation, never attest the current task's future event, and never weaken a missing terminal receipt or publication gate.
+- Predicted files: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Changed paths:
+- Context paths: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- AST symbols: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G214
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/1cb76333ecd17baf51ed0d78054ac5f4fa1cdb193a1b9edc661ba7218ef4ce06
+- Canonical task CID: baguqeerads3wgm7m2f526upnbv4akswf6t5bzwyzhinz5xdgdotsddxuzyda
+- Semantic identity: objective-evidence-obligation/v1/417c5ce5f2a66bbb9e46248da168e35382bf54016a92aa397bd860b83fe7c9b8
+- Acceptance subset: The finalizer runs only after FVT-G213 has a successful, durable, canonical member completion receipt and reachable merged commit, it verifies event-chain continuity, expected outputs, validation result, source tree, merged tree, datasets gitlink, origin publication, candidate digest, supported-capability closure, hard-zero gates, authority boundaries, quarantines, and public surfaces, it publishes either a receipt commit whose parent is the certified release commit with a strictly limited generated-artifact diff or an external content-addressed attestation, mutating any event, tree, artifact, check, binding, or publication fact invalidates the receipt, absent or stale terminal evidence remains partial and can never be called deployment-ready.
+- Preconditions: objective goal FVT-G214 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G214
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/417c5ce5f2a66bbb9e46248da168e35382bf54016a92aa397bd860b83fe7c9b8
+- Missing evidence: objective validation repair
+- Embedding query: After the release-candidate merge, bind its durable terminal supervisor receipt and publish the final deployment attestation without circular tree identity.
+- AST query: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Surplus group: objective/FVT-G214
+- Merge key: b63b2a05c17f6037
+- Merge family: objective/FVT-G214
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 66427e512b66e39c
+- Acceptance: Objective scan filed this gap for FVT-G214. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-082-objective-gap-74a1187933e1.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

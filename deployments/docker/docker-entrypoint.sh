@@ -47,9 +47,9 @@ install_missing_dependencies() {
         pip install --quiet --no-cache-dir "jinja2>=3.1.0" || echo "  Warning: Could not install jinja2"
     fi
     
-    if ! python3 -c "import fastmcp" 2>/dev/null; then
-        echo "  Installing fastmcp..."
-        pip install --quiet --no-cache-dir "fastmcp>=0.1.0" || echo "  Warning: Could not install fastmcp"
+    if ! python3 -c "import sys; from importlib.metadata import version; assert sys.version_info < (3, 10) or version('fastmcp') == '2.14.7'" 2>/dev/null; then
+        echo "  Installing fastmcp 2.14.7..."
+        pip install --quiet --no-cache-dir "fastmcp==2.14.7; python_version >= '3.10'" || echo "  Warning: Could not install fastmcp 2.14.7"
     fi
     
     if ! python3 -c "import ipfs_kit_py" 2>/dev/null; then

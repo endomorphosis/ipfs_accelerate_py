@@ -1,0 +1,357 @@
+{
+  "acceptance": {
+    "central_artifacts_unmodified": true,
+    "deployment_not_claimed": true,
+    "goal_id": "FVT-G235",
+    "live_positive_negative_mutation_replay": true,
+    "lock_matching_identities": true,
+    "no_forged_digests": true,
+    "task_id": "FVT-103",
+    "toolchain_production_certified": true
+  },
+  "certification_phase": {
+    "download_attempted": false,
+    "install_attempted": false,
+    "live_execution": true,
+    "network_used": false,
+    "offline": true,
+    "positive_negative_mutation_replay": true
+  },
+  "claims": {
+    "deployment": false,
+    "deployment_ready": false,
+    "lane_live_certified": true,
+    "lane_toolchain_certified": true,
+    "managed_residual_closed_for_tools": true,
+    "required_elevations_complete": false,
+    "role_aware_deployment_ready": false,
+    "theorem_authority": false
+  },
+  "discovery": "data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md",
+  "goal_id": "FVT-G235",
+  "install_receipt_digest_sha256": "sha256:a84ee795bba3e8e06eeb9c414190ffcd1c6452768994436668f3d7d023f6d198",
+  "install_receipt_path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tlc-apalache/install-receipt.json",
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "lane_id": "managed-tlc-apalache",
+  "live_semantic_certification": {
+    "acceptance": {
+      "authority_is_bounded_state_model_only": true,
+      "exact_jar_archive_digest_required": true,
+      "goal_id": "FVT-G204",
+      "hermetic_parser_cannot_satisfy_live": true,
+      "live_execution_required_for_production": true,
+      "never_theorem_authority": true,
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_repair": true,
+      "repair_task_id": "FVT-076",
+      "task_id": "FVT-060"
+    },
+    "apalache_archive_digest": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+    "apalache_binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+    "apalache_usable": true,
+    "apalache_version_match": true,
+    "authority_ceiling": "bounded",
+    "block_reasons": [],
+    "bounded_model_checking_only": true,
+    "case_counts": {
+      "apalache": 8,
+      "matched": 16,
+      "tlc": 8,
+      "total": 16
+    },
+    "cases": [
+      {
+        "case_id": "tlc.invariant_holds",
+        "expect": "passed",
+        "kind": "invariant_holds",
+        "matched": true,
+        "reason_codes": [
+          "bounded_success"
+        ],
+        "status": "passed",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.violation_trace",
+        "expect": "counterexample",
+        "kind": "violation_trace",
+        "matched": true,
+        "reason_codes": [
+          "invariant_violation"
+        ],
+        "status": "counterexample",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.mutated_next",
+        "expect": "counterexample",
+        "kind": "mutation",
+        "matched": true,
+        "reason_codes": [
+          "invariant_violation"
+        ],
+        "status": "counterexample",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.mutated_invariant",
+        "expect": "counterexample",
+        "kind": "mutation",
+        "matched": true,
+        "reason_codes": [
+          "invariant_violation"
+        ],
+        "status": "counterexample",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.deterministic_replay",
+        "expect": "passed",
+        "kind": "replay",
+        "matched": true,
+        "reason_codes": [
+          "bounded_success"
+        ],
+        "status": "passed",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.malformed_model",
+        "expect": "malformed_or_error",
+        "kind": "malformed",
+        "matched": true,
+        "reason_codes": [
+          "malformed_output"
+        ],
+        "status": "malformed",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.timeout_bound",
+        "expect": "timed_out",
+        "kind": "timeout",
+        "matched": true,
+        "reason_codes": [
+          "timeout"
+        ],
+        "status": "timed_out",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "tlc.bound_behavior",
+        "expect": "passed_bounded",
+        "kind": "bound",
+        "matched": true,
+        "reason_codes": [
+          "bounded_success",
+          "bounded_only",
+          "never_theorem_authority"
+        ],
+        "status": "passed",
+        "tool": "tlc"
+      },
+      {
+        "case_id": "apalache.invariant_holds",
+        "expect": "passed",
+        "kind": "invariant_holds",
+        "matched": true,
+        "reason_codes": [
+          "bounded_success",
+          "finite_trace_only"
+        ],
+        "status": "passed",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.violation_trace",
+        "expect": "counterexample",
+        "kind": "violation_trace",
+        "matched": true,
+        "reason_codes": [
+          "invariant_violation"
+        ],
+        "status": "counterexample",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.mutated_next",
+        "expect": "counterexample",
+        "kind": "mutation",
+        "matched": true,
+        "reason_codes": [
+          "invariant_violation"
+        ],
+        "status": "counterexample",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.mutated_invariant",
+        "expect": "counterexample",
+        "kind": "mutation",
+        "matched": true,
+        "reason_codes": [
+          "invariant_violation"
+        ],
+        "status": "counterexample",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.deterministic_replay",
+        "expect": "passed",
+        "kind": "replay",
+        "matched": true,
+        "reason_codes": [
+          "bounded_success",
+          "finite_trace_only"
+        ],
+        "status": "passed",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.malformed_model",
+        "expect": "malformed_or_error",
+        "kind": "malformed",
+        "matched": true,
+        "reason_codes": [
+          "malformed_output"
+        ],
+        "status": "malformed",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.timeout_bound",
+        "expect": "timed_out",
+        "kind": "timeout",
+        "matched": true,
+        "reason_codes": [
+          "timeout"
+        ],
+        "status": "timed_out",
+        "tool": "apalache"
+      },
+      {
+        "case_id": "apalache.bound_behavior",
+        "expect": "passed_bounded",
+        "kind": "bound",
+        "matched": true,
+        "reason_codes": [
+          "bounded_success",
+          "finite_trace_only",
+          "bounded_only",
+          "never_theorem_authority"
+        ],
+        "status": "passed",
+        "tool": "apalache"
+      }
+    ],
+    "goal_id": "FVT-G204",
+    "grants_theorem_authority": false,
+    "interface": "StateModelLiveSemanticCertification@1",
+    "java_binary_digest": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+    "java_usable": true,
+    "live_execution": true,
+    "live_semantic_corpus_passed": true,
+    "locked_apalache_archive_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+    "locked_tlc_jar_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+    "production_certified": true,
+    "receipt_digest_sha256": "0e332d21b986a2dc8aa85a09d8eec5e6269b39ce43efa8d0ae1ea77d7769d016",
+    "schema_version": "state-model-live-semantic-certification/v1",
+    "task_id": "FVT-060",
+    "tlc_binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+    "tlc_jar_digest": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+    "tlc_usable": true,
+    "tlc_version_match": true
+  },
+  "managed_capability_axes": {
+    "apalache": {
+      "capability": "ready",
+      "dependency": "ready",
+      "freshness": "ready",
+      "platform": "ready",
+      "ready": true,
+      "reason_codes": [],
+      "tool_id": "apalache",
+      "under_approved_immutable_root": true,
+      "under_managed_root": true
+    },
+    "tlc": {
+      "capability": "ready",
+      "dependency": "ready",
+      "freshness": "ready",
+      "platform": "ready",
+      "ready": true,
+      "reason_codes": [],
+      "tool_id": "tlc",
+      "under_approved_immutable_root": true,
+      "under_managed_root": true
+    }
+  },
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_present": true,
+  "observed_at": "2026-08-05T16:19:32Z",
+  "policy": {
+    "bounded_model_checking_only": true,
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_deployment_receipt": true,
+    "does_not_edit_shared_lock": true,
+    "installation_is_not_semantic_certification": true,
+    "java_is_support_only": true,
+    "never_claim_deployment_ready": true,
+    "never_theorem_authority": true,
+    "no_greenwash_missing_sealed_roots": true,
+    "reseal_owned_by": "FVT-113"
+  },
+  "prior_certification_task_ids": [
+    "FVT-060",
+    "FVT-076",
+    "FVT-094"
+  ],
+  "program": "formal-verification-tactician/managed-tlc-apalache",
+  "receipt_digest_sha256": "sha256:f0b3f9d61a9681bda17488c3ac6ed0b1743da409478b82e9c84898cb1b15b7d9",
+  "schema_version": "formal-verification-managed-residual-certification-receipt/v1",
+  "summary": {
+    "live_semantic_corpus_passed": true,
+    "managed_blockers_cleared_for_lane": [
+      "managed:tlc:supported_managed_installation_missing_or_shim_only",
+      "managed:apalache:supported_managed_installation_missing_or_shim_only",
+      "managed:tlc:locked_version_mismatch",
+      "managed:apalache:locked_version_mismatch",
+      "managed:tlc:full_semantic_check_set_missing_or_failed",
+      "managed:apalache:full_semantic_check_set_missing_or_failed"
+    ],
+    "positive_negative_mutation_replay_passed": true,
+    "toolchain_production_certified": true,
+    "tools_blocked": [],
+    "tools_certified": [
+      "tlc",
+      "apalache"
+    ]
+  },
+  "task_id": "FVT-103",
+  "tool_ids": [
+    "tlc",
+    "apalache"
+  ],
+  "toolchain_certification": {
+    "apalache_usable": true,
+    "apalache_version_match": true,
+    "authority_ceiling": "bounded",
+    "block_reasons": [],
+    "bounded_model_checking_only": true,
+    "goal_id": "FVT-G120",
+    "grants_theorem_authority": false,
+    "interface": "StateModelToolchainCertification@1",
+    "java_usable": true,
+    "locked_apalache_version": "0.58.3",
+    "locked_tlc_version": "1.8.0",
+    "production_certified": true,
+    "receipt_digest_sha256": "f847feb33036b1fa5a04939cc757146cfd1cabd84f35b35e24fdefd7497ab1f5",
+    "schema_version": "state-model-toolchain-certification/v1",
+    "semantic_corpus_passed": true,
+    "task_id": "FVT-042",
+    "tlc_usable": true,
+    "tlc_version_match": true
+  },
+  "track": "managed-capability-residual"
+}

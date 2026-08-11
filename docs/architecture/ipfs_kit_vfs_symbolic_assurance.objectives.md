@@ -19,12 +19,12 @@ criterion.
 - Goal: Build a bounded, symbolic-first supervisor loop that indexes SwissKnife and the three IPFS packages, proves or disproves declared contracts, and emits small validated repair tasks for VFS drift and security defects.
 - Evidence: vfs/repository-forest-receipt@1, vfs/exhaustive-index-receipt@1, vfs/contract-assurance-root@1, vfs/autonomous-refill-exhaustion@1
 - Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
-- Acceptance: Every direct child has fresh criterion-level evidence; no unsupported or stale result is promoted to proof; the complete frozen repository inventory is accounted for; accepted repairs retain normal authorization, validation, and merge gates; drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt.
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_vfs_generalization_equivalence.py test/api/test_agent_supervisor_vfs_root_layout_guard.py test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py -q
+- Acceptance: Every direct child has fresh criterion-level evidence; no unsupported or stale result is promoted to proof; the complete frozen repository inventory is accounted for; accepted repairs retain normal authorization, validation, and merge gates; drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt. After the assurance-generalization cutover, root `agent_supervisor/vfs_*.py` modules are forbidden; engines live under semantic packages; the IPFS Kit job is one locked profile plus thin ops facade; equivalence is profile-driven contract parity with explicit unsupported dispositions.
 - Gap task: Implement the highest-priority uncovered child criterion without expanding repository write authority.
-- Refinement: Preserve separate source identity, indexing, graph, contract, MCP++, proof, ZK, VFS, security, repair, refill, and rollout workstreams.
+- Refinement: Preserve separate source identity, indexing, graph, contract, MCP++, proof, ZK, VFS, security, repair, refill, and rollout workstreams. Prefer generic engines parameterized by profile over domain-specific root modules.
 - Embedding query: ipfs kit virtual filesystem swissknife symbolic contract proof content addressed CID multihash MCP++ zero knowledge autonomous repair
-- AST query: SupervisorControlService AnalysisPipeline VFSCore IPFSFSSpecFileSystem MCPPPServerConnector
+- AST query: SupervisorControlService AnalysisPipeline VFSCore IPFSFSSpecFileSystem MCPPPServerConnector repository_surface_inventory symbolic_assurance_rollout
 
 ## VFS-G010 Bind every observation to an explicit multi-repository authority forest
 
@@ -324,9 +324,9 @@ criterion.
 - Bundle: vfs-assurance/vfs
 - Goal: Inventory competing VFS, fsspec, bucket, journal, version, handler, endpoint, tool, SDK, and variant surfaces and map each to one reviewed canonical operation contract.
 - Evidence: vfs/canonical-operation-matrix@1, vfs/drift-inventory@1
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py, test/api/test_agent_supervisor_vfs_contract_pack.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_contract_pack.py -q
-- Acceptance: Path, IO, errors, sync/async, CID, atomicity, journal, cache, backend, authorization, and degradation semantics are covered; duplicate/variant modules and manifest drift are evidence-backed; presence alone is not labeled a defect.
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_contract_profile.py, test/api/test_agent_supervisor_program_contract_profile.py, ipfs_accelerate_py/agent_supervisor/analysis/repository_surface_inventory.py, test/api/test_agent_supervisor_repository_surface_inventory.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_contract_profile.py test/api/test_agent_supervisor_repository_surface_inventory.py -q
+- Acceptance: Path, IO, errors, sync/async, CID, atomicity, journal, cache, backend, authorization, and degradation semantics are covered; duplicate/variant modules and manifest drift are evidence-backed; presence alone is not labeled a defect. Domain vocabulary lives in the VFS job profile; generic engines stay profile-driven.
 - Gap task: Add one missing VFS surface or invariant to the canonical matrix.
 - Refinement: Separate inventory findings from repair decisions.
 - Embedding query: IPFS Kit VFS fsspec bucket journal version MCP handler endpoint drift
@@ -342,8 +342,8 @@ criterion.
 - Bundle: vfs-assurance/vfs
 - Goal: Generate finite contract fixtures and compare canonical Python, CLI, MCP, MCP++, HTTP, libp2p, and backend results under the same operation model.
 - Evidence: vfs/differential-contract-witness@1
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_differential_harness.py, test/api/test_agent_supervisor_vfs_differential_harness.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_differential_harness.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/differential_contract_harness.py, test/api/test_agent_supervisor_differential_contract_harness.py, ipfs_accelerate_py/agent_supervisor/analysis/interface_contract_parity.py, test/api/test_agent_supervisor_interface_contract_parity.py
+- Validation: python -m pytest test/api/test_agent_supervisor_differential_contract_harness.py test/api/test_agent_supervisor_interface_contract_parity.py -q
 - Acceptance: Seeded drift is detected; stable compatible behavior agrees across surfaces; mocks and unavailable backends are explicit; destructive and network operations use hermetic fixtures.
 - Gap task: Add one operation family, surface, or adversarial drift fixture.
 - Refinement: Keep runtime witnesses bound to exact fixture and toolchain CIDs.
@@ -450,8 +450,8 @@ criterion.
 - Bundle: vfs-assurance/refill
 - Goal: Benchmark cold/warm scans, incremental changes, proof routing, cache reuse, task yield, false findings, provider tokens, storage, and idle behavior.
 - Evidence: vfs/symbolic-efficiency-benchmark@1
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_benchmark.py, test/api/test_agent_supervisor_vfs_symbolic_benchmark.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_symbolic_benchmark.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/symbolic_efficiency_benchmark.py, test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py -q
 - Acceptance: Scan, parse, identity, graph, contract comparison, cache, and supported proof stages use zero LLM calls; paired repair packets reduce median provider input by at least 80 percent versus repository-context baseline without lowering seeded finding coverage; resource ceilings and cache hit claims are measured.
 - Gap task: Add one missing metric, paired fixture, or resource guard.
 - Refinement: Never optimize token count by dropping required evidence or hiding unknowns.
@@ -468,9 +468,9 @@ criterion.
 - Bundle: vfs-assurance/rollout
 - Goal: Validate completeness, precision, cache freshness, proof soundness, ZK conformance, repair safety, control-surface parity, recovery, and rollback before any automatic scope expands.
 - Evidence: vfs/adversarial-e2e-gate@1, vfs/shadow-rollout-report@1
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py, test/api/test_vfs_symbolic_assurance_e2e.py
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py test/api/test_agent_supervisor_program_analysis_zkp_conformance.py -q
-- Acceptance: Reproducible CIDs, complete inventories, zero stale authoritative hits, zero forged proof/ZK authority, seeded mismatch precision, deterministic tasks, Python/CLI/MCP parity, restart replay, and rollback are demonstrated on a frozen corpus.
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/symbolic_assurance_rollout.py, test/api/test_agent_supervisor_symbolic_assurance_rollout.py, scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py, config/ipfs_kit_vfs_symbolic_assurance.json
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_profile.py -q
+- Acceptance: Reproducible CIDs, complete inventories, zero stale authoritative hits, zero forged proof/ZK authority, seeded mismatch precision, deterministic tasks, Python/CLI/MCP parity, restart replay, and rollback are demonstrated on a frozen corpus. The IPFS Kit job is assembled only through the locked profile and thin ops facade.
 - Gap task: Add one missing adversarial, recovery, parity, or rollback gate.
 - Refinement: Promotion is per capability and returns to shadow on any binding or assurance regression.
 - Embedding query: shadow rollout adversarial proof soundness cache freshness recovery rollback parity
@@ -486,13 +486,13 @@ criterion.
 - Bundle: vfs-assurance/rollout
 - Goal: Execute the admitted pipeline over the full SwissKnife inventory and the VFS-relevant closure of the three IPFS packages, then publish the baseline finding ledger and repair taskboard.
 - Evidence: vfs/swissknife-vfs-pilot@1
-- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/pilot, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md
-- Validation: python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --verify
+- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/pilot, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md, ipfs_accelerate_py/agent_supervisor/runtime/symbolic_assurance_pilot.py, test/api/test_agent_supervisor_symbolic_assurance_pilot.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_pilot.py -q; python scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py verify
 - Acceptance: Every admitted file is accounted for; every finding is reproducible from content-addressed evidence; inconclusive results remain non-actionable; the repair board is bounded, deduplicated, goal-backed, and independently reviewable.
 - Gap task: Repair the earliest pipeline stage preventing a complete, reproducible pilot.
 - Refinement: Do not broaden scope or write authority to make the pilot pass.
 - Embedding query: SwissKnife full scan IPFS Kit VFS pilot finding ledger repair board
-- AST query: vfs_symbolic_pilot
+- AST query: SymbolicAssurancePilot dry_run_pilot
 
 ## VFS-G132 Prove vfs/repository-forest-receipt@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
@@ -505,7 +505,7 @@ criterion.
 - Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/repository-forest-receipt@1`.
 - Evidence: vfs/repository-forest-receipt@1
 - Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_vfs_generalization_equivalence.py test/api/test_agent_supervisor_vfs_root_layout_guard.py test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py -q
 - Acceptance: Every direct child has fresh criterion-level evidence ; no unsupported or stale result is promoted to proof ; the complete frozen repository inventory is accounted for ; accepted repairs retain normal authorization ; validation ; and merge gates ; drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt.
 - Refinement depth: 1
 - Embedding query: vfs/repository-forest-receipt@1
@@ -525,7 +525,7 @@ criterion.
 - Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/exhaustive-index-receipt@1`.
 - Evidence: vfs/exhaustive-index-receipt@1
 - Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_vfs_generalization_equivalence.py test/api/test_agent_supervisor_vfs_root_layout_guard.py test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py -q
 - Acceptance: Every direct child has fresh criterion-level evidence ; no unsupported or stale result is promoted to proof ; the complete frozen repository inventory is accounted for ; accepted repairs retain normal authorization ; validation ; and merge gates ; drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt.
 - Refinement depth: 1
 - Embedding query: vfs/exhaustive-index-receipt@1
@@ -545,7 +545,7 @@ criterion.
 - Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/contract-assurance-root@1`.
 - Evidence: vfs/contract-assurance-root@1
 - Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_vfs_generalization_equivalence.py test/api/test_agent_supervisor_vfs_root_layout_guard.py test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py -q
 - Acceptance: Every direct child has fresh criterion-level evidence ; no unsupported or stale result is promoted to proof ; the complete frozen repository inventory is accounted for ; accepted repairs retain normal authorization ; validation ; and merge gates ; drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt.
 - Refinement depth: 1
 - Embedding query: vfs/contract-assurance-root@1
@@ -565,7 +565,7 @@ criterion.
 - Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/autonomous-refill-exhaustion@1`.
 - Evidence: vfs/autonomous-refill-exhaustion@1
 - Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_vfs_generalization_equivalence.py test/api/test_agent_supervisor_vfs_root_layout_guard.py test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py -q
 - Acceptance: Every direct child has fresh criterion-level evidence ; no unsupported or stale result is promoted to proof ; the complete frozen repository inventory is accounted for ; accepted repairs retain normal authorization ; validation ; and merge gates ; drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt.
 - Refinement depth: 1
 - Embedding query: vfs/autonomous-refill-exhaustion@1

@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import os
 
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    persistent_task_queue as queue_module,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_bundle_identity,
     canonical_task_identity,
@@ -210,6 +213,180 @@ def test_persistent_queue_migrates_legacy_display_id_to_canonical_identity(tmp_p
     assert restored.dirty is False
 
 
+def test_persistent_queue_selection_preserves_registered_scheduling_metadata(tmp_path) -> None:
+    queue = PersistentTaskQueue.load(tmp_path / "task_queue.json", save_interval=0)
+    identity = canonical_task_identity(
+        _task("REF-001"),
+        board_namespace="main",
+        source_path="tasks.todo.md",
+    )
+    entry = queue.register_task(identity, priority="P0", track="foundation")
+
+    queue.record_selection(identity.canonical_task_cid)
+
+    assert entry.priority == "P0"
+    assert entry.track == "foundation"
+    assert entry.attempt_count == 1
+
+
+def test_authority_renewal_retry_state_is_durable_bounded_and_content_scoped(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "task_queue.json"
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(queue_module.time, "time", lambda: clock["now"])
+    original = canonical_task_identity(
+        _task("REF-001"),
+        board_namespace="main",
+        source_path="tasks.todo.md",
+    )
+    revised_task = _task("REF-001")
+    revised_task["acceptance"] = "A revised authority contract."
+    revised = canonical_task_identity(
+        revised_task,
+        board_namespace="main",
+        source_path="tasks.todo.md",
+    )
+    task_cid = original.canonical_task_cid
+    renewal_key = "renewal-key-generation-a"
+
+    # Seed every ordinary retry dimension so renewal failures must preserve
+    # non-zero values rather than merely leaving zero-valued defaults alone.
+    queue = PersistentTaskQueue.load(path)
+    queue.register_task(original, priority="P0", track="authority")
+    queue.record_selection(task_cid)
+    queue.record_failure(task_cid, "ordinary implementation failure")
+    queue.record_no_change(task_cid)
+    queue.record_merge_failure(task_cid)
+    queue.save()
+    ordinary_retry_state = {
+        field: getattr(queue.entries[task_cid], field)
+        for field in (
+            "attempt_count",
+            "selection_penalty",
+            "consecutive_failures",
+            "consecutive_no_change",
+            "merge_failure_count",
+            "cooldown_until",
+            "notes",
+        )
+    }
+
+    for strike in range(1, 4):
+        recorded = queue.record_authority_renewal_failure(
+            task_cid,
+            renewal_key,
+            reason=f"renewal failure {strike}",
+            max_failures=3,
+            base_cooldown_seconds=10,
+            max_cooldown_seconds=100,
+        )
+
+        # Reload after every strike. In particular, strike two occurs less
+        # than the default 30-second save interval after strike one.
+        queue = PersistentTaskQueue.load(path)
+        restored = queue.authority_renewal_state(task_cid, renewal_key)
+        assert restored == recorded
+        assert restored["failure_count"] == strike
+        assert restored["last_failure_at"] == clock["now"]
+        assert restored["cooldown_until"] > clock["now"]
+        assert restored["cooled_down"] is True
+        assert restored["quarantined"] is (strike == 3)
+        assert restored["requires_operator_reset"] is (strike == 3)
+        assert restored["reason"] == f"renewal failure {strike}"
+        assert {
+            field: getattr(queue.entries[task_cid], field)
+            for field in ordinary_retry_state
+        } == ordinary_retry_state
+
+        if strike < 3:
+            clock["now"] = restored["cooldown_until"] + 1
+
+    clock["now"] = restored["cooldown_until"] + 1
+    queue = PersistentTaskQueue.load(path)
+    expired = queue.authority_renewal_state(task_cid, renewal_key)
+    assert expired["cooled_down"] is False
+    assert expired["quarantined"] is True
+    assert expired["requires_operator_reset"] is True
+
+    changed_key = "renewal-key-generation-b"
+    assert queue.authority_renewal_state(task_cid, changed_key) == {
+        "renewal_key": changed_key,
+        "failure_count": 0,
+        "last_failure_at": 0.0,
+        "cooldown_until": 0.0,
+        "cooled_down": False,
+        "quarantined": False,
+        "requires_operator_reset": False,
+        "reason": "",
+    }
+    queue.record_authority_renewal_failure(
+        task_cid,
+        changed_key,
+        reason="new authority generation",
+        max_failures=3,
+        base_cooldown_seconds=10,
+        max_cooldown_seconds=100,
+    )
+    queue = PersistentTaskQueue.load(path)
+    changed_key_state = queue.authority_renewal_state(task_cid, changed_key)
+    assert changed_key_state["failure_count"] == 1
+    assert changed_key_state["quarantined"] is False
+    assert queue.authority_renewal_state(task_cid, renewal_key)["failure_count"] == 0
+    assert {
+        field: getattr(queue.entries[task_cid], field)
+        for field in ordinary_retry_state
+    } == ordinary_retry_state
+
+    assert revised.canonical_task_cid != task_cid
+    queue.register_task(revised, priority="P0", track="authority")
+    assert queue.authority_renewal_state(revised.canonical_task_cid, renewal_key)[
+        "failure_count"
+    ] == 0
+    queue.record_authority_renewal_failure(
+        revised.canonical_task_cid,
+        renewal_key,
+        reason="revised task failure",
+        max_failures=3,
+        base_cooldown_seconds=10,
+        max_cooldown_seconds=100,
+    )
+    queue = PersistentTaskQueue.load(path)
+    revised_state = queue.authority_renewal_state(
+        revised.canonical_task_cid,
+        renewal_key,
+    )
+    assert revised_state["failure_count"] == 1
+    assert revised_state["quarantined"] is False
+    revised_entry = queue.entries[revised.canonical_task_cid]
+    assert revised_entry.attempt_count == 0
+    assert revised_entry.consecutive_failures == 0
+    assert revised_entry.consecutive_no_change == 0
+    assert revised_entry.merge_failure_count == 0
+    assert revised_entry.selection_penalty == 0
+    assert revised_entry.cooldown_until == 0.0
+
+
+def test_legacy_markdown_pending_status_normalizes_to_todo(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## REF-001 Ready under the common pending spelling
+
+- Status: pending
+- Priority: P0
+- Track: foundation
+""",
+        encoding="utf-8",
+    )
+
+    [task] = parse_task_file(todo_path, "## REF-")
+
+    assert task.status == "todo"
+
+
 def test_persistent_queue_recovers_from_malformed_numeric_state(tmp_path) -> None:
     path = tmp_path / "task_queue.json"
     path.write_text(
@@ -334,6 +511,9 @@ def test_implementation_daemon_coalesces_duplicate_work_before_selection(tmp_pat
     assert selected["canonical_task_cid"] == state.active_task_cid
     queue = PersistentTaskQueue.load(tmp_path / "state" / "task_queue.json")
     assert len(queue.entries) == 1
+    [entry] = queue.entries.values()
+    assert entry.priority == "P0"
+    assert entry.attempt_count == 1
 
 
 def test_claim_lock_and_retry_history_follow_canonical_identity_across_aliases(tmp_path) -> None:

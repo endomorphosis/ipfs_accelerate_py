@@ -70,3 +70,72 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Candidate kind: aggregate
 - Todo vector key: 8492b2134ef9f355
 - Acceptance: Objective scan filed this gap for FVT-G103. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-039-objective-gap-a56fde4c45fd.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (tools/logic/certification/runtime_mtl.py, test/integration/toolchains/test_runtime_mtl_semantic_certification.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-069 FVT: Semantically certify finite-trace Runtime MTL
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-reference
+- Depends on: FVT-037
+- Outputs: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-069-objective-gap-2512a1e85fa3.md
+- Bundle: formal-verification-tactician/runtime-mtl-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-runtime-mtl-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/runtime-mtl-certification
+- Conflict policy: Own the in-process Runtime MTL lane, golden corpus, and focused test; do not install the external parity checker or edit the central certificate.
+- Predicted files: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Changed paths:
+- Context paths: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- AST symbols: tools/logic/certification/runtime_mtl.py, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Interfaces: RuntimeMTLSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G103
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/10e6a20993f61523ffbe8748aef4eb8797bf9c7efc61b53c0277d1e2d259f839
+- Canonical task CID: baguqeeracdtkecmt6yksh756q5ek55hlq6l37hd67rq3kpaco7i6fusz7a4q
+- Semantic identity: objective-evidence-obligation/v1/9c7204acf2056710100d82251299208ba8bf3786096290da31625fd44941c05e
+- Acceptance subset: Live satisfied and violated traces, interval and event mutations, shortest violating-prefix replay, timestamp boundaries, malformed traces, and Python/TypeScript golden parity pass, receipts bind formula, trace, clock policy, bounds, implementation, and source tree, a clean finite prefix never becomes an unbounded theorem.
+- Preconditions: objective goal FVT-G103 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G103
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/9c7204acf2056710100d82251299208ba8bf3786096290da31625fd44941c05e
+- Missing evidence: objective validation repair
+- Embedding query: Promote the already usable in-process Runtime MTL monitor only after interval, event, violation, and replay semantics are certified across supported surfaces.
+- AST query: tools/logic/certification/runtime_mtl.py, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Surplus group: objective/FVT-G103
+- Merge key: 5bc05c1ee3e139c6
+- Merge family: objective/FVT-G103
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 3a8c91f995928f3b
+- Acceptance: Objective scan filed this gap for FVT-G103. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-069-objective-gap-2512a1e85fa3.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

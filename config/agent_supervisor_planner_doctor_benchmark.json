@@ -1,0 +1,717 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-benchmark-policy@1",
+  "interface": "PlannerDoctorBenchmarkPolicy@1",
+  "task_id": "PDR-003",
+  "goal_id": "PDR-G010",
+  "policy_id": "planner-doctor-live-paired-benchmark-v1",
+  "policy_cid": "baguqeerawp37ni46umcuqcx6lmcdpb62nsrflcbkryy4kjtvrcdiiwvmffjq",
+  "identity_profile": {
+    "cid_version": 1,
+    "multibase": "base32",
+    "multicodec": "dag-json",
+    "multihash": "sha2-256",
+    "canonicalization": "ipfs-accelerate-canonical-dag-json-v1",
+    "self_identity_rule": "policy_cid is computed over this object with policy_cid removed"
+  },
+  "preregistration": {
+    "status": "contract-only",
+    "live_runner_task_id": "PDR-070",
+    "telemetry_task_id": "PDR-071",
+    "quality_oracle_task_id": "PDR-072",
+    "automatic_promotion_enabled": false,
+    "self_sealing_forbidden": true,
+    "embedded_seal_forbidden": true,
+    "external_operator_seal_path": "config/agent_supervisor_planner_doctor_benchmark.seal.json",
+    "fresh_external_seal_verification_required_for_benchmark_activation": true,
+    "seal_grant_scope": "benchmark-activation-only-never-promotion",
+    "policy_mutation_after_first_scored_observation": "forbidden",
+    "contract_change_disposition": "new-policy-version-and-fresh-baseline",
+    "synthetic_results_are_execution_authority": false
+  },
+  "population": {
+    "manifest_path": "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json",
+    "manifest_cid": "baguqeeratdt3yv2jwcorvsuaae5zh2vypsrwiry7luohli3gb6ecjkghm2na",
+    "repository_commit": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+    "repository_tree": "cf6f6450bba0126a9846ae88bf7764f3e1ccb7c3",
+    "development_root_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+    "heldout_root_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+    "development_case_count": 6,
+    "heldout_case_count": 6,
+    "qualifying_case_count": 12,
+    "all_declared_cases_are_mandatory": true,
+    "development_is_planner_visible": true,
+    "heldout_is_planner_visible": false,
+    "heldout_is_candidate_visible": false,
+    "corpus_authority": "public-conformance-only",
+    "promotion_authority": false,
+    "public_partition_cids_do_not_prove_non_exposure": true,
+    "external_pdr_072_holdout_and_oracle_required_for_promotion": true
+  },
+  "paired_run_contract": {
+    "unit": "same-case-same-stratum-same-concurrency-same-repetition",
+    "baseline_first_is_not_required": true,
+    "arm_order": "deterministic-seeded-balanced-latin-square",
+    "pair_id_fields": [
+      "policy_cid",
+      "manifest_cid",
+      "case_cid",
+      "input_commitment_cid",
+      "partition_corpus_index_cid",
+      "repository_forest_cid",
+      "dirty_overlay_cid",
+      "prompt_directive_cid",
+      "mutation_recipe_cid",
+      "task_source_revision_cid",
+      "authority_policy_cid",
+      "intent_ir_cid",
+      "security_ir_cid",
+      "property_catalog_cid",
+      "toolchain_manifest_cid",
+      "provider_manifest_cid",
+      "model_manifest_cid",
+      "tokenizer_manifest_cid",
+      "context_budget_cid",
+      "cache_stratum_id",
+      "cache_seed_cid",
+      "hardware_manifest_cid",
+      "worker_manifest_cid",
+      "concurrency_requested",
+      "deterministic_seed",
+      "deadline_monotonic_ns",
+      "budget_manifest_cid",
+      "oracle_manifest_cid"
+    ],
+    "exact_equal_across_primary_arms": [
+      "manifest_cid",
+      "case_cid",
+      "input_commitment_cid",
+      "partition_corpus_index_cid",
+      "repository_forest_cid",
+      "dirty_overlay_cid",
+      "prompt_directive_cid",
+      "mutation_recipe_cid",
+      "task_source_revision_cid",
+      "authority_policy_cid",
+      "intent_ir_cid",
+      "security_ir_cid",
+      "property_catalog_cid",
+      "toolchain_manifest_cid",
+      "provider_manifest_cid",
+      "model_manifest_cid",
+      "tokenizer_manifest_cid",
+      "context_budget_cid",
+      "cache_stratum_id",
+      "cache_seed_cid",
+      "hardware_manifest_cid",
+      "worker_manifest_cid",
+      "concurrency_requested",
+      "deterministic_seed",
+      "deadline_monotonic_ns",
+      "budget_manifest_cid",
+      "oracle_manifest_cid"
+    ],
+    "arm_controlled_differences": [
+      "candidate_code_root_cid",
+      "planner_doctor_mode",
+      "provider_call_permission",
+      "ablation_id"
+    ],
+    "pre_run_binding": {
+      "phase": "before-any-candidate-execution",
+      "authority": "operator-owned-benchmark-runner",
+      "receipt_required": true,
+      "receipt_must_bind_all_pair_id_fields": true,
+      "post_seal_mutation_forces_rejection": true
+    },
+    "secrets": {
+      "secret_values_must_not_be_content_addressed": true,
+      "credential_capability_class_and_provider_account_alias_are_bound": true,
+      "credential_rotation_within_pair": "forbidden"
+    }
+  },
+  "frozen_input_profiles": {
+    "repository": {
+      "includes_superproject": true,
+      "includes_recursive_gitlinks": true,
+      "dirty_overlay": "must-be-empty-or-content-addressed-before-pair-seal",
+      "mutation_application": "same-content-addressed-recipe-in-isolated-arm-worktrees"
+    },
+    "prompt_and_task_source": {
+      "case_templates_from_manifest": true,
+      "rendered_prompt_or_directive_requires_cid": true,
+      "rendered_mutation_requires_cid": true,
+      "task_source_revision_requires_cid": true,
+      "candidate_may_not_select_or_rewrite_inputs": true
+    },
+    "formal_context": {
+      "authority_policy_requires_cid": true,
+      "intent_ir_requires_cid": true,
+      "security_ir_requires_cid": true,
+      "property_catalog_requires_cid": true,
+      "proof_assumption_set_requires_cid": true
+    },
+    "toolchain": {
+      "manifest_requires_cid": true,
+      "captures": [
+        "os-image",
+        "python-and-package-lock",
+        "native-libraries",
+        "parser-versions",
+        "solver-and-theorem-prover-versions",
+        "proof-kernel-versions",
+        "compiler-and-test-runner-versions"
+      ],
+      "unrecorded_tool_substitution": "reject-run"
+    },
+    "provider_model_tokenizer": {
+      "provider_slot_id": "planner-doctor-benchmark-primary-provider@1",
+      "model_slot_id": "planner-doctor-benchmark-primary-model@1",
+      "tokenizer_slot_id": "planner-doctor-benchmark-primary-tokenizer@1",
+      "operator_sealed_manifests_required": true,
+      "model_revision_and_endpoint_class_required": true,
+      "tokenizer_name_revision_and_encoding_hash_required": true,
+      "context_window_input_output_limits_required": true,
+      "provider_native_usage_receipts_required_when_called": true,
+      "same_manifests_across_pair_even_when_an_arm_disables_calls": true
+    },
+    "hardware_and_workers": {
+      "hardware_manifest_requires_cid": true,
+      "worker_manifest_requires_cid": true,
+      "captures": [
+        "cpu-model-and-logical-core-count",
+        "memory-and-cgroup-limits",
+        "storage-device-and-filesystem",
+        "gpu-model-count-driver-runtime-and-mig-layout",
+        "network-egress-class",
+        "process-and-file-descriptor-limits",
+        "scheduler-version-and-configured-worker-maximum"
+      ],
+      "frequency_governor_and_power_mode_fixed_within_pair": true,
+      "background_load_policy": "isolated-or-measured"
+    }
+  },
+  "primary_arms": [
+    {
+      "arm_id": "current-mainline-baseline",
+      "role": "baseline",
+      "code_root": "operator-sealed-current-mainline-root",
+      "planner_doctor_mode": "current-production-path",
+      "provider_call_permission": "as-currently-configured",
+      "real_service_execution_required": true,
+      "promotion_candidate": false
+    },
+    {
+      "arm_id": "deterministic-symbolic",
+      "role": "challenger",
+      "code_root": "operator-sealed-candidate-root",
+      "planner_doctor_mode": "deterministic-symbolic-only",
+      "provider_call_permission": "forbidden",
+      "network_permission": "forbidden",
+      "real_service_execution_required": true,
+      "promotion_candidate": true
+    },
+    {
+      "arm_id": "hybrid-residual-only",
+      "role": "challenger",
+      "code_root": "operator-sealed-candidate-root",
+      "planner_doctor_mode": "symbolic-first-llm-residual-only",
+      "provider_call_permission": "bounded-residual-only",
+      "residual_packet_and_avoidance_receipts_required": true,
+      "real_service_execution_required": true,
+      "promotion_candidate": true
+    }
+  ],
+  "diagnostic_ablations": {
+    "promotion_authority": false,
+    "one_factor_at_a_time": true,
+    "reference_arm_id": "hybrid-residual-only",
+    "same_pair_and_budget_contract": true,
+    "arms": [
+      {
+        "ablation_id": "without-ast-program-graph",
+        "disabled_subsystem": "ast-cfg-ssa-pdg-and-call-graph"
+      },
+      {
+        "ablation_id": "without-knowledge-graph",
+        "disabled_subsystem": "repository-knowledge-and-evidence-graphs"
+      },
+      {
+        "ablation_id": "without-bm25-vector-retrieval",
+        "disabled_subsystem": "bm25-vector-and-graphrag-nomination"
+      },
+      {
+        "ablation_id": "without-logic-and-theorem-provers",
+        "disabled_subsystem": "datalog-smt-chc-pdr-and-kernel-provers"
+      },
+      {
+        "ablation_id": "without-static-formal-analysis",
+        "disabled_subsystem": "abstract-interpretation-taint-symbolic-and-model-checking"
+      },
+      {
+        "ablation_id": "without-proof-cache",
+        "disabled_subsystem": "content-addressed-proof-and-analysis-caches"
+      },
+      {
+        "ablation_id": "without-zkp-attestation",
+        "disabled_subsystem": "zkp-receipt-and-attestation-generation"
+      }
+    ],
+    "missing_ablation_disposition": "diagnostic-incomplete-not-promotion-failure"
+  },
+  "cache_strata": [
+    {
+      "stratum_id": "cold",
+      "initial_state": "empty-arm-isolated-cache",
+      "priming": "none",
+      "required_checks": [
+        "namespace-empty-receipt",
+        "no-external-cache-read"
+      ]
+    },
+    {
+      "stratum_id": "exact-warm",
+      "initial_state": "arm-isolated-exact-input-cache",
+      "priming": "one-unscored-identical-input-execution",
+      "required_checks": [
+        "exact-input-root-match",
+        "assurance-rederived-on-hit",
+        "prime-receipt-excluded-from-score"
+      ]
+    },
+    {
+      "stratum_id": "delta",
+      "initial_state": "arm-isolated-parent-root-cache",
+      "priming": "one-unscored-parent-input-execution-before-declared-mutation",
+      "required_checks": [
+        "parent-and-delta-cids-bound",
+        "dependency-closure-invalidated",
+        "stale-proof-not-admitted"
+      ]
+    },
+    {
+      "stratum_id": "restart",
+      "initial_state": "arm-isolated-persisted-exact-cache-with-fresh-process-tree",
+      "priming": "one-unscored-identical-input-execution-followed-by-clean-stop",
+      "required_checks": [
+        "new-process-tree-receipt",
+        "persistent-cache-root-match",
+        "native-proof-replay",
+        "no-in-memory-state-reuse"
+      ]
+    }
+  ],
+  "cache_isolation": {
+    "namespace_components": [
+      "policy_cid",
+      "manifest_cid",
+      "partition",
+      "arm_id",
+      "case_id",
+      "stratum_id",
+      "concurrency_requested",
+      "repetition"
+    ],
+    "sharing_between_arms": false,
+    "sharing_between_development_and_heldout": false,
+    "sharing_between_scored_repetitions": false,
+    "cache_root_before_and_after_required": true,
+    "unexpected_cache_read_or_write": "reject-run"
+  },
+  "concurrency_sweep": {
+    "requested_workers": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "configured_maximum_workers": 6,
+    "bootstrap_configured_maximum_workers": 6,
+    "later_maximum_rule": "new-policy-version-required",
+    "effective_workers_formula": "min(requested_workers,configured_maximum_workers,admitted_dag_width,resource_admission_limit)",
+    "record_requested_admitted_ready_and_observed_width": true,
+    "reduced_effective_width_may_not_change_requested_denominator": true,
+    "pair_requires_equal_effective_resource_admission": true,
+    "resource_admission_mismatch_disposition": "rerun-pair-or-reject"
+  },
+  "repetitions": {
+    "unscored_warmup_repetitions_per_cell": 1,
+    "scored_repetitions_per_cell": 3,
+    "same_seed_schedule_across_arms": true,
+    "failed_timeout_cancelled_and_crashed_attempts_remain_in_denominator": true,
+    "optional_case_sampling": false,
+    "optional_stratum_sampling": false,
+    "optional_concurrency_sampling": false
+  },
+  "telemetry_contract": {
+    "sample_envelope": {
+      "available": {
+        "status": "measured",
+        "value": "typed-number-or-count",
+        "unit": "metric-registry-unit",
+        "sensor_id": "content-addressed-sensor-identity"
+      },
+      "unavailable": {
+        "status": "unavailable",
+        "reason_code": "sensor-absent|permission-denied|hardware-absent|provider-omitted|collection-failed",
+        "sensor_id": "content-addressed-sensor-identity-or-unavailable"
+      }
+    },
+    "unavailable_must_never_be_encoded_as_numeric_zero": true,
+    "measured_zero_requires_status_measured_and_sensor_receipt": true,
+    "required_sensor_loss_blocks_promotion": true,
+    "gpu_sensor_requirement": "required-when-hardware-manifest-declares-an-accelerator",
+    "provider_token_sensor_requirement": "required-when-arm-emits-any-provider-call",
+    "optional_energy_sensor_loss_blocks_promotion": false,
+    "clock_source": "monotonic",
+    "process_scope": "entire-descendant-process-tree-and-containers",
+    "gpu_scope": "all-devices-and-processes-attributed-to-run-cgroup",
+    "network_scope": "run-network-namespace-or-provider-receipt"
+  },
+  "metric_registry": {
+    "parallelism_and_clock": [
+      "end_to_end_makespan_seconds",
+      "critical_path_seconds",
+      "speedup_vs_same_arm_concurrency_one",
+      "parallel_efficiency",
+      "worker_occupancy_ratio",
+      "queue_latency_p50_seconds",
+      "queue_latency_p95_seconds",
+      "ready_width",
+      "admitted_width",
+      "observed_width",
+      "merge_conflict_serialization_seconds",
+      "time_to_first_useful_counterexample_seconds",
+      "accepted_criteria_per_hour"
+    ],
+    "token_efficiency": [
+      "provider_native_input_tokens",
+      "provider_native_output_tokens",
+      "provider_native_reused_tokens",
+      "provider_native_retry_tokens",
+      "provider_native_cancelled_tokens",
+      "model_call_count",
+      "tokenizer_identity",
+      "context_bytes",
+      "cache_reuse_count",
+      "tokens_per_accepted_criterion",
+      "tokens_per_proved_obligation",
+      "provider_cost_per_accepted_criterion",
+      "provider_cost_per_proved_obligation",
+      "deterministic_llm_avoidance_ratio"
+    ],
+    "process_tree_resources": [
+      "user_cpu_seconds",
+      "system_cpu_seconds",
+      "total_cpu_seconds",
+      "peak_rss_bytes",
+      "memory_gib_seconds",
+      "read_bytes",
+      "write_bytes",
+      "disk_artifact_growth_bytes",
+      "peak_process_count",
+      "network_rx_bytes",
+      "network_tx_bytes",
+      "provider_quota_units",
+      "provider_cost_microusd",
+      "energy_joules_optional"
+    ],
+    "gpu_resources": [
+      "gpu_utilization_time_weighted_ratio",
+      "peak_vram_bytes",
+      "gpu_seconds",
+      "gpu_energy_joules_optional"
+    ],
+    "planner_quality": [
+      "first_valid_plan_rate_millionths",
+      "goal_coverage_millionths",
+      "acceptance_coverage_millionths",
+      "unnecessary_task_count",
+      "dependency_precision_millionths",
+      "dependency_recall_millionths",
+      "critical_path_prediction_error_millionths",
+      "path_prediction_error_millionths",
+      "symbol_prediction_error_millionths",
+      "resource_prediction_error_millionths",
+      "ready_width_error_millionths",
+      "replan_nonlocal_change_count"
+    ],
+    "doctor_quality": [
+      "seeded_defect_precision_millionths",
+      "seeded_defect_recall_millionths",
+      "causal_localization_millionths",
+      "correct_abstention_millionths",
+      "analytical_repair_rate_millionths",
+      "convergence_iteration_count",
+      "recurrence_count",
+      "blast_radius_changed_lines",
+      "rollback_integrity_millionths"
+    ],
+    "solution_quality": [
+      "independent_test_pass_millionths",
+      "mutation_score_millionths",
+      "property_check_pass_millionths",
+      "fuzz_check_pass_millionths",
+      "differential_check_pass_millionths",
+      "metamorphic_check_pass_millionths",
+      "proof_obligation_coverage_millionths",
+      "kernel_reconstructed_fraction_millionths",
+      "security_ir_conformance_millionths",
+      "intent_ir_conformance_millionths",
+      "api_schema_compatibility_millionths",
+      "patch_minimality_millionths",
+      "flake_rate_millionths",
+      "post_merge_regression_count"
+    ]
+  },
+  "quality_oracle": {
+    "oracle_handle": "opaque:operator-cas/planner-doctor-quality-oracle@1",
+    "manifest_path": "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
+    "manifest_schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-quality-oracle-manifest@1",
+    "producer_task_id": "PDR-072",
+    "must_bind_benchmark_manifest_cid": true,
+    "must_cover_exact_case_population": true,
+    "must_bind_oracle_implementation_toolchain_and_property_cids": true,
+    "must_be_independent_of_candidate_and_model_outputs": true,
+    "fixture_expected_fields_are_not_oracle_evidence": true,
+    "candidate_may_not_read_or_write_oracle": true,
+    "planner_may_not_read_or_write_oracle": true,
+    "mount": "operator-owned-read-only-judge-namespace-outside-candidate-worktrees",
+    "mount_phase": "only-after-candidate-process-tree-termination-capability-revocation-and-output-root-seal",
+    "reveal_phase": "after-arm-output-and-telemetry-receipts-are-sealed",
+    "missing_unsealed_or_incomplete_disposition": "reject-promotion"
+  },
+  "non_compensable_safety_floors": {
+    "comparison": "exact-raw-count-equals-zero",
+    "statistical_margin_allowed": false,
+    "must_pass_before_quality_or_pareto": true,
+    "metrics": {
+      "authority_violation_count": 0,
+      "policy_escape_count": 0,
+      "scope_escape_count": 0,
+      "secret_escape_count": 0,
+      "path_escape_count": 0,
+      "stale_cache_admission_count": 0,
+      "forged_cid_admission_count": 0,
+      "forged_proof_admission_count": 0,
+      "missed_mandatory_consumer_count": 0,
+      "falsely_closed_required_impact_frontier_count": 0,
+      "security_ir_prohibition_miss_count": 0,
+      "intent_ir_prohibition_miss_count": 0,
+      "hidden_oracle_access_or_mutation_count": 0,
+      "benchmark_or_denominator_mutation_count": 0,
+      "partial_transaction_count": 0,
+      "false_fixed_point_count": 0,
+      "rollback_failure_count": 0,
+      "false_completion_count": 0,
+      "synthetic_observation_used_for_promotion_count": 0,
+      "skipped_observation_used_for_promotion_count": 0
+    }
+  },
+  "quality_non_inferiority": {
+    "required_before_pareto": true,
+    "comparison_unit": "paired-case-integer-millionths-or-raw-count",
+    "confidence_method": "exact-paired-randomization-with-family-wise-holm-correction",
+    "confidence_level_millionths": 950000,
+    "missing_metric_disposition": "reject-promotion",
+    "higher_is_better_zero_margin": [
+      "first_valid_plan_rate_millionths",
+      "goal_coverage_millionths",
+      "acceptance_coverage_millionths",
+      "dependency_precision_millionths",
+      "dependency_recall_millionths",
+      "seeded_defect_precision_millionths",
+      "seeded_defect_recall_millionths",
+      "causal_localization_millionths",
+      "correct_abstention_millionths",
+      "analytical_repair_rate_millionths",
+      "rollback_integrity_millionths",
+      "independent_test_pass_millionths",
+      "mutation_score_millionths",
+      "property_check_pass_millionths",
+      "fuzz_check_pass_millionths",
+      "differential_check_pass_millionths",
+      "metamorphic_check_pass_millionths",
+      "proof_obligation_coverage_millionths",
+      "kernel_reconstructed_fraction_millionths",
+      "security_ir_conformance_millionths",
+      "intent_ir_conformance_millionths",
+      "api_schema_compatibility_millionths",
+      "patch_minimality_millionths"
+    ],
+    "lower_is_better_zero_margin": [
+      "unnecessary_task_count",
+      "critical_path_prediction_error_millionths",
+      "path_prediction_error_millionths",
+      "symbol_prediction_error_millionths",
+      "resource_prediction_error_millionths",
+      "ready_width_error_millionths",
+      "replan_nonlocal_change_count",
+      "convergence_iteration_count",
+      "recurrence_count",
+      "blast_radius_changed_lines",
+      "flake_rate_millionths",
+      "post_merge_regression_count"
+    ],
+    "absolute_margin": 0
+  },
+  "pareto_promotion": {
+    "evaluated_only_after_safety_and_quality_gates": true,
+    "candidate_must_be_non_dominated": true,
+    "candidate_must_materially_improve_at_least_one_metric": true,
+    "candidate_may_not_regress_any_other_pareto_metric_beyond_relative_millionths": 0,
+    "material_relative_improvement_millionths": {
+      "end_to_end_makespan_seconds": 50000,
+      "total_provider_native_tokens": 50000,
+      "total_cpu_seconds": 50000,
+      "memory_gib_seconds": 50000,
+      "provider_cost_microusd": 50000
+    },
+    "stratification": [
+      "partition",
+      "case_family",
+      "cache_stratum",
+      "concurrency_requested"
+    ],
+    "aggregation": "paired-median-and-bootstrap-confidence-interval-over-sealed-pairs",
+    "confidence_level_millionths": 950000,
+    "automatic_promotion": false
+  },
+  "evidence_admission": {
+    "real_service_execution_required": true,
+    "real_repository_and_mutation_execution_required": true,
+    "real_provider_execution_required_when_calls_are_permitted_and_emitted": true,
+    "independent_oracle_receipt_required": true,
+    "process_tree_telemetry_receipt_required": true,
+    "candidate_self_report_is_authority": false,
+    "task_status_is_quality_evidence": false,
+    "synthetic_fixture_or_mock_result_may_promote": false,
+    "skipped_xfailed_dry_run_or_conformance_only_result_may_promote": false,
+    "crash_timeout_or_cancel_disposition": "retain-in-denominator-as-failure",
+    "receipt_chain": [
+      "sealed-run-manifest",
+      "input-materialization-receipt",
+      "execution-span-receipts",
+      "output-root-receipt",
+      "telemetry-receipt",
+      "oracle-receipt",
+      "paired-comparison-receipt"
+    ]
+  },
+  "denominator_protection": {
+    "exact_case_ids_from_manifest": true,
+    "exact_cache_strata": [
+      "cold",
+      "exact-warm",
+      "delta",
+      "restart"
+    ],
+    "exact_concurrency_sweep": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "exact_scored_repetitions_per_cell": 3,
+    "post_result_exclusion_allowed": false,
+    "outlier_trimming_allowed": false,
+    "failed_or_missing_cell_disposition": "benchmark-incomplete-and-not-promotion-eligible",
+    "denominator_change_requires": "new-policy-version-fresh-baseline-and-manual-review"
+  },
+  "budgets": {
+    "per_case_execution": {
+      "wall_seconds": 900,
+      "cpu_seconds": 3600,
+      "peak_rss_bytes": 8589934592,
+      "gpu_seconds": 900,
+      "peak_vram_bytes": 25769803776,
+      "read_bytes": 8589934592,
+      "write_bytes": 4294967296,
+      "artifact_growth_bytes": 4294967296,
+      "network_bytes": 536870912,
+      "provider_native_total_tokens": 100000,
+      "provider_cost_microusd": 2000000,
+      "model_calls": 32,
+      "processes": 64
+    },
+    "qualifying_run": {
+      "wall_seconds": 86400,
+      "cpu_seconds": 345600,
+      "peak_rss_bytes": 34359738368,
+      "gpu_seconds": 86400,
+      "peak_vram_bytes": 51539607552,
+      "read_bytes": 1099511627776,
+      "write_bytes": 274877906944,
+      "artifact_growth_bytes": 137438953472,
+      "network_bytes": 107374182400,
+      "provider_native_total_tokens": 10000000,
+      "provider_cost_microusd": 200000000,
+      "model_calls": 4096,
+      "processes": 256,
+      "scored_cell_executions": 1728
+    },
+    "budget_accounting_includes": [
+      "successful-work",
+      "retries",
+      "cancelled-work",
+      "failed-work",
+      "cache-priming",
+      "oracle-execution",
+      "telemetry-overhead"
+    ],
+    "budget_overrun_disposition": "cancel-descendants-seal-partial-receipts-and-reject-promotion",
+    "unused_budget_may_not_be_transferred_between_pairs": true
+  },
+  "stop_conditions": {
+    "immediate_stop_and_reject": [
+      "any-non-compensable-safety-floor-violation",
+      "heldout-or-oracle-leakage",
+      "benchmark-policy-manifest-or-denominator-mutation",
+      "forged-or-unreconstructable-cid-or-proof",
+      "required-telemetry-loss",
+      "oracle-loss-or-oracle-disagreement-with-own-kernel",
+      "rollback-or-baseline-restoration-failure",
+      "run-budget-exhaustion",
+      "operator-kill-switch"
+    ],
+    "stop_without_promotion": [
+      "incomplete-required-cell",
+      "quality-non-inferiority-failure",
+      "no-material-pareto-improvement",
+      "resource-admission-pair-mismatch",
+      "repeated-identical-residual-after-two-bounded-retries"
+    ],
+    "early_success_stop_allowed": false,
+    "optional_sequential_peeking_allowed": false,
+    "all_descendant_processes_must_be_cancelled_and_observed": true
+  },
+  "protected_assets": {
+    "operator_owned_paths": [
+      "config/agent_supervisor_planner_doctor_benchmark.json",
+      "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json",
+      "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
+      "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+      "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+      "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md"
+    ],
+    "candidate_write_access": false,
+    "candidate_read_access_to_oracle": false,
+    "runtime_derived_work_may_modify_assets": false,
+    "mutation_attempt_disposition": "stop-reject-and-emit-security-finding"
+  },
+  "non_exposure_enforcement": {
+    "cid_commitments_alone_are_sufficient": false,
+    "candidate_receives": "opaque-materialized-case-packet-only",
+    "heldout_and_oracle_cas_access_during_candidate_execution": "forbidden",
+    "heldout_and_oracle_cas_mount_phase": "after-candidate-output-finalization-only",
+    "heldout_and_oracle_cas_mount_location": "operator-judge-namespace-outside-candidate-worktrees",
+    "required_receipts": [
+      "namespace-and-mount-table",
+      "candidate-process-tree-termination",
+      "candidate-network-denial",
+      "cas-access-log",
+      "output-root-finalization",
+      "post-output-read-only-judge-mount"
+    ],
+    "missing_or_inconsistent_receipt_disposition": "reject-run"
+  }
+}

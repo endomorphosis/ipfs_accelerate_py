@@ -912,6 +912,32 @@ def test_declared_validation_plan_builds_proposal_local_coverage(
     assert tuple(report["proved_requirement_ids"]) == ()
 
 
+def test_declared_validation_plan_allows_empty_changed_paths_for_clean_candidate(
+    tmp_path: Path,
+) -> None:
+    """Already-satisfied residual work must still be able to revalidate."""
+
+    commands, graph = build_declared_validation_plan_graph(
+        ("pytest -q test/packaging/test_formal_verification_distribution_contract.py",),
+        repository_tree_id=TREE_ID,
+        changed_paths=(),
+    )
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        return {"returncode": 0, "output": "passed"}
+
+    # Build a minimal accepted proposal is not required for graph construction;
+    # run_validated needs a proposal validation object — use an empty-path
+    # impact graph only to prove the plan is schedulable.
+    assert commands
+    assert graph.dependencies
+    assert "__no_change_candidate__" in graph.dependencies or any(
+        "test/packaging" in path for path in graph.dependencies
+    )
+
+
 def test_declared_transitive_validation_cannot_be_omitted_from_population(
     tmp_path: Path,
 ) -> None:

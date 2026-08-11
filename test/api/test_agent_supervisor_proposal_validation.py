@@ -23,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ProposalValidationReceipt,
     ProposalValidationResult,
     ProposalValidationStep,
+    parse_unified_patch,
     validate_implementation_proposal,
 )
 from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
@@ -520,6 +521,54 @@ def test_policy_allowance_cannot_widen_immutable_task_owned_scope() -> None:
         finding.code is ProposalFindingCode.PATH_OUTSIDE_SCOPE
         and "immutable task-owned scope" in finding.message
         for finding in result.findings
+    )
+
+
+def test_declared_validation_config_authority_allows_additions_only() -> None:
+    before = "[project]\nname = 'fixture'\n"
+    policy = _policy(
+        allowed_paths=("pyproject.toml",),
+        task_owned_paths=("pyproject.toml",),
+        allow_validation_config_changes=True,
+    )
+
+    additive = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=before,
+                after=before + "dependencies = ['duckdb>=1.5,<1.6']\n",
+            )
+        ),
+        policy=policy,
+    )
+    rewritten = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=before,
+                after="[project]\nname = 'renamed'\n",
+            )
+        ),
+        policy=policy,
+    )
+    weakening_addition = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=before,
+                after=before + "[tool.pytest.ini_options]\naddopts = '-k smoke'\n",
+            )
+        ),
+        policy=policy,
+    )
+
+    assert additive.accepted
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        rewritten
+    )
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        weakening_addition
     )
 
 
@@ -1126,6 +1175,9 @@ def test_in_scope_sensitive_test_source_still_rejects_secret_content(
         "super-secret-value",
         "should-not-appear",
         "env://WALLET_RPC_TOKEN",
+        "integration-test-key-not-secret",
+        "unit-test-key-not-secret",
+        "token-beta-different",
     ),
 )
 def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
@@ -1162,6 +1214,9 @@ def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
         "super-secret-value",
         "should-not-appear",
         "env://WALLET_RPC_TOKEN",
+        "integration-test-key-not-secret",
+        "unit-test-key-not-secret",
+        "token-beta-different",
     ),
 )
 def test_production_source_still_rejects_synthetic_secret_canary(
@@ -1180,6 +1235,68 @@ def test_production_source_still_rejects_synthetic_secret_canary(
         policy=_policy(
             allowed_paths=(path,),
             task_owned_paths=(path,),
+        ),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
+def test_in_scope_fixture_accepts_explicit_unquoted_synthetic_secret_canary() -> None:
+    path = "tests/fixtures/uspto/private_import/prohibited/credential_blob.txt"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=None,
+                after=(
+                    "BEGIN USPTO CREDENTIAL BLOB\n"
+                    "mfa_secret=SYNTHETIC-NOT-REAL\n"
+                    "password=not-a-real-password\n"
+                ),
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=_policy(
+            allowed_paths=("tests/fixtures/uspto/private_import",),
+            task_owned_paths=("tests/fixtures/uspto/private_import",),
+        ),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "fixture_content",
+    (
+        "password=abcd-efgh-ijkl-1234\n",
+        (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "abcdefghijklmnop\n"
+            "-----END PRIVATE KEY-----\n"
+        ),
+    ),
+    ids=("concrete-secret", "private-key"),
+)
+def test_in_scope_fixture_still_rejects_concrete_secret_content(
+    fixture_content: str,
+) -> None:
+    path = "tests/fixtures/uspto/private_import/prohibited/credential_blob.txt"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=None,
+                after=fixture_content,
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=_policy(
+            allowed_paths=("tests/fixtures/uspto/private_import",),
+            task_owned_paths=("tests/fixtures/uspto/private_import",),
         ),
     )
 
@@ -1215,14 +1332,20 @@ def test_new_secret_like_content_remains_rejected() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
-def test_exact_never_expose_sentinel_is_not_treated_as_a_secret() -> None:
+@pytest.mark.parametrize(
+    "sentinel",
+    ("should-never-appear", "should-not-appear"),
+)
+def test_exact_never_expose_sentinel_is_not_treated_as_a_secret(
+    sentinel: str,
+) -> None:
     result = validate_implementation_proposal(
         _proposal(
             _entry(
                 before="VALUE = 1\n",
                 after=(
-                    'VALUE = 2\n'
-                    'payload = {"api_key": "should-never-appear"}\n'
+                    "VALUE = 2\n"
+                    f'payload = {{"api_key": "{sentinel}"}}\n'
                 ),
             )
         ),
@@ -1231,6 +1354,60 @@ def test_exact_never_expose_sentinel_is_not_treated_as_a_secret() -> None:
 
     assert result.accepted
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+def test_exact_non_secret_credential_sentinel_is_allowed_only_in_tests() -> None:
+    test_result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path="test/api/test_secret_contract.py",
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'payload = {"api_key": "sk-live-not-a-real-key"}\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+    production_result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'payload = {"api_key": "sk-live-not-a-real-key"}\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+    embedded_result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path="test/api/test_secret_contract.py",
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'api_key = "prod-sk-live-not-a-real-key-actual"\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert test_result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(
+        test_result
+    )
+    assert not production_result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(
+        production_result
+    )
+    assert not embedded_result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(
+        embedded_result
+    )
 
 
 def test_exact_secret_material_classification_is_not_treated_as_a_secret() -> None:
@@ -1332,6 +1509,142 @@ def test_patch_must_parse_and_exactly_match_the_candidate_diff(
 
     assert not result.accepted
     assert expected_code in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    ("change_kind", "before_source", "after_source", "patch_text"),
+    [
+        (
+            DiffChangeKind.ADD,
+            None,
+            "",
+            """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+new file mode 100644
+index 0000000..e69de29
+""",
+        ),
+        (
+            DiffChangeKind.DELETE,
+            "",
+            None,
+            """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+deleted file mode 100644
+index e69de29..0000000
+""",
+        ),
+    ],
+)
+def test_canonical_empty_file_changes_are_valid_effectful_patches(
+    change_kind: DiffChangeKind,
+    before_source: str | None,
+    after_source: str | None,
+    patch_text: str,
+) -> None:
+    path = "ipfs_accelerate_py/agent_supervisor/empty.marker"
+    entry = CandidateDiffEntry(
+        old_path=path if change_kind == DiffChangeKind.DELETE else "",
+        new_path=path if change_kind == DiffChangeKind.ADD else "",
+        change_kind=change_kind,
+        before_source=before_source,
+        after_source=after_source,
+    )
+    parsed = parse_unified_patch(patch_text)
+    proposal = _v2_proposal(
+        candidate_diff=(entry,),
+        declared_paths=(path,),
+        operations=(
+            ProposalOperation(
+                operation=change_kind.value,
+                path=path,
+                old_path=entry.old_path,
+                rationale_refs=(V2_RATIONALE,),
+            ),
+        ),
+        patch_text=patch_text,
+    )
+
+    result = validate_implementation_proposal(proposal, policy=_v2_policy())
+
+    assert parsed[0].operation == change_kind.value
+    assert parsed[0].additions == 0
+    assert parsed[0].deletions == 0
+    assert result.accepted
+
+
+@pytest.mark.parametrize(
+    "patch_text",
+    [
+        """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+index e69de29..e69de29
+""",
+        """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+new file mode 100644
+""",
+        """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+new file mode 100644
+index e69de29..e69de29
+""",
+        """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+new file mode 100644
+index 0000000..deadbee
+""",
+        """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+deleted file mode 100644
+index e69de29..e69de29
+""",
+        """\
+diff --git a/ipfs_accelerate_py/agent_supervisor/empty.marker b/ipfs_accelerate_py/agent_supervisor/empty.marker
+deleted file mode 100644
+index deadbee..0000000
+""",
+    ],
+)
+def test_metadata_only_or_noncanonical_empty_file_patches_are_rejected(
+    patch_text: str,
+) -> None:
+    with pytest.raises(ProposalValidationError):
+        parse_unified_patch(patch_text)
+
+
+def test_empty_file_metadata_cannot_mask_nonempty_candidate_content() -> None:
+    path = "ipfs_accelerate_py/agent_supervisor/empty.marker"
+    entry = CandidateDiffEntry(
+        new_path=path,
+        change_kind=DiffChangeKind.ADD,
+        before_source=None,
+        after_source="payload\n",
+    )
+    patch_text = f"""\
+diff --git a/{path} b/{path}
+new file mode 100644
+index 0000000..e69de29
+"""
+
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            candidate_diff=(entry,),
+            declared_paths=(path,),
+            operations=(
+                ProposalOperation(
+                    operation="add",
+                    path=path,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+            patch_text=patch_text,
+        ),
+        policy=_v2_policy(),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.PATCH_MISMATCH in _finding_codes(result)
 
 
 def test_arbitrary_shell_command_injection_is_not_a_validation_plan() -> None:

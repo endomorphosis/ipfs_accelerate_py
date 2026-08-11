@@ -1,0 +1,208 @@
+{
+  "acceptance": {
+    "categories": [
+      "clean_prefix",
+      "event_mutation",
+      "interval_mutation",
+      "malformed",
+      "parity",
+      "satisfied",
+      "shortest_violating_prefix",
+      "timestamp_boundary",
+      "violated"
+    ],
+    "clean_prefix_never_theorem": true,
+    "finite_trace_authority_only": true,
+    "forbids_theorem_authority": true,
+    "goal_id": "FVT-G103",
+    "mutation_kinds": [
+      "event",
+      "interval"
+    ],
+    "mutations_must_change_verdict": true,
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "python_typescript_golden_parity": true,
+    "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": true,
+    "repair_task_id": "FVT-069",
+    "shortest_violating_prefix_replay": true,
+    "task_id": "FVT-039"
+  },
+  "authority_ceiling": "finite_trace",
+  "authority_scope": "finite_trace_monitor_only",
+  "case_recipes": [
+    {
+      "base_fixture_id": "ltlf-always-holds",
+      "case_id": "case:satisfied.ltlf-always",
+      "category": "satisfied",
+      "expected_status": "satisfied",
+      "expected_verdict": "true",
+      "mutation_kind": "",
+      "notes": "Complete finite LTLf always(safe) holds on a safe trace.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "mtl-closed-interval-includes-boundary",
+      "case_id": "case:satisfied.mtl-eventually",
+      "category": "satisfied",
+      "expected_status": "satisfied",
+      "expected_verdict": "true",
+      "mutation_kind": "",
+      "notes": "MTL eventually(ready) within closed [0,1] is satisfied.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "prefix-always-violation",
+      "case_id": "case:violated.prefix-always",
+      "category": "violated",
+      "expected_status": "violated",
+      "expected_verdict": "false",
+      "mutation_kind": "",
+      "notes": "Always(safe) is violated when safe is falsified.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "mtl-open-upper-excludes-boundary",
+      "case_id": "case:violated.mtl-open-upper",
+      "category": "violated",
+      "expected_status": "violated",
+      "expected_verdict": "false",
+      "mutation_kind": "",
+      "notes": "Open upper bound excludes the ready event at t=1.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "mtl-closed-interval-includes-boundary",
+      "case_id": "case:timestamp_boundary.closed",
+      "category": "timestamp_boundary",
+      "expected_status": "satisfied",
+      "expected_verdict": "true",
+      "mutation_kind": "",
+      "notes": "Closed upper bound includes the boundary timestamp.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "mtl-open-upper-excludes-boundary",
+      "case_id": "case:timestamp_boundary.open",
+      "category": "timestamp_boundary",
+      "expected_status": "violated",
+      "expected_verdict": "false",
+      "mutation_kind": "",
+      "notes": "Open upper bound excludes the boundary timestamp.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "prefix-always-inconclusive",
+      "case_id": "case:clean_prefix.always",
+      "category": "clean_prefix",
+      "expected_status": "unknown",
+      "expected_verdict": "inconclusive",
+      "mutation_kind": "",
+      "notes": "Clean finite prefix stays unknown; never becomes theorem.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "late-event-malformed",
+      "case_id": "case:malformed.late-event",
+      "category": "malformed",
+      "expected_status": "malformed",
+      "expected_verdict": "inconclusive",
+      "mutation_kind": "",
+      "notes": "Non-monotone timestamps fail closed as malformed.",
+      "recipe": "golden_fixture"
+    },
+    {
+      "base_fixture_id": "mtl-closed-interval-includes-boundary",
+      "case_id": "case:mutation.interval",
+      "category": "interval_mutation",
+      "expected_status": "violated",
+      "expected_verdict": "false",
+      "mutation_kind": "interval",
+      "notes": "Opening the upper bound flips satisfied to violated.",
+      "recipe": "mutate_interval_closed_to_open"
+    },
+    {
+      "base_fixture_id": "ltlf-always-holds",
+      "case_id": "case:mutation.event",
+      "category": "event_mutation",
+      "expected_status": "violated",
+      "expected_verdict": "false",
+      "mutation_kind": "event",
+      "notes": "Falsifying safe on the last event flips always to violated.",
+      "recipe": "mutate_event_drop_safe"
+    },
+    {
+      "base_fixture_id": "prefix-always-violation",
+      "case_id": "case:shortest_violating_prefix",
+      "category": "shortest_violating_prefix",
+      "expected_status": "violated",
+      "expected_verdict": "false",
+      "mutation_kind": "",
+      "notes": "Shortest violating prefix is discovered and replays.",
+      "recipe": "shortest_violating_prefix_replay"
+    },
+    {
+      "base_fixture_id": "",
+      "case_id": "case:parity.python_typescript",
+      "category": "parity",
+      "expected_status": "satisfied",
+      "expected_verdict": "true",
+      "mutation_kind": "",
+      "notes": "Python and TypeScript agree on golden fixtures when TS is available.",
+      "recipe": "python_typescript_golden_parity"
+    }
+  ],
+  "certification_surface": "tools.logic.certification.runtime_mtl",
+  "check_kinds": [
+    "authority",
+    "malformed",
+    "mutation",
+    "negative",
+    "parity",
+    "positive",
+    "replay"
+  ],
+  "forbids_theorem_authority": true,
+  "goal_id": "FVT-G103",
+  "handler_id": "runtime_mtl_semantic_certification@1",
+  "implementation_module": "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+  "interface": "RuntimeMTLSemanticCertification@1",
+  "lane_id": "runtime_mtl",
+  "monitor_interface": "RuntimeMTLMonitor@1",
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": true,
+  "policy": {
+    "certification_never_builds_typescript": true,
+    "clean_prefix_never_theorem": true,
+    "finite_trace_authority_only": true,
+    "in_process_only": true,
+    "mutations_must_change_verdict": true,
+    "no_central_certificate_edit": true,
+    "no_external_parity_install": true,
+    "python_typescript_golden_parity": true,
+    "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": true,
+    "requires_prebuilt_typescript_artifact": true,
+    "shortest_violating_prefix_replay": true
+  },
+  "program": "formal-verification-tactician/runtime-mtl-certification",
+  "repair_task_id": "FVT-069",
+  "required_categories": [
+    "clean_prefix",
+    "event_mutation",
+    "interval_mutation",
+    "malformed",
+    "parity",
+    "satisfied",
+    "shortest_violating_prefix",
+    "timestamp_boundary",
+    "violated"
+  ],
+  "required_mutation_kinds": [
+    "event",
+    "interval"
+  ],
+  "schema_version": "runtime-mtl-semantic-corpus/v1",
+  "task_id": "FVT-039",
+  "tool_id": "runtime-mtl"
+}

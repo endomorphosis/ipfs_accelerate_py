@@ -15,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
     ScopeExpansionReason,
     adjudicate_scope_expansion,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
+    infer_validation_impact_paths,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationScheduler,
 )
@@ -158,6 +161,147 @@ def test_explicit_validation_target_justifies_guarded_integration_test() -> None
     assert receipt.decisions[0].reason_codes == (
         ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
     )
+
+
+def test_leading_cd_resolves_validation_target_from_repository_root() -> None:
+    child_test = "ipfs_kit_py/tests/test_mcp_vfs_adapter_contract.py"
+    before_test = (
+        "def test_vfs_adapter_contract():\n"
+        "    assert adapter_version() == 1\n"
+    )
+    after_test = before_test.replace("== 1", "== 2")
+    receipt = _adjudicate(
+        (
+            _entry(
+                "ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",
+                "ADAPTER_VERSION = 1\n",
+                "ADAPTER_VERSION = 2\n",
+            ),
+            _entry(child_test, before_test, after_test),
+        ),
+        scope=("ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/test_mcp_vfs_adapter_contract.py",
+        ),
+    )
+
+    assert receipt.justified_paths == (child_test,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
+    )
+    assert receipt.decisions[0].evidence_paths == (child_test,)
+
+
+def test_leading_cd_does_not_authorize_wrong_root_duplicate() -> None:
+    wrong_root_test = "tests/test_mcp_vfs_adapter_contract.py"
+    before_test = (
+        "def test_vfs_adapter_contract():\n"
+        "    assert adapter_version() == 1\n"
+    )
+    receipt = _adjudicate(
+        (
+            _entry(
+                "ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",
+                "ADAPTER_VERSION = 1\n",
+                "ADAPTER_VERSION = 2\n",
+            ),
+            _entry(
+                wrong_root_test,
+                before_test,
+                before_test.replace("== 1", "== 2"),
+            ),
+        ),
+        scope=("ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/test_mcp_vfs_adapter_contract.py",
+        ),
+    )
+
+    assert receipt.denied_paths == (wrong_root_test,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.TEST_WITHOUT_REGRESSION_EVIDENCE,
+    )
+
+
+def test_leading_cd_root_proves_candidate_imports_declared_module() -> None:
+    declared_path = "ipfs_kit_py/ipfs_kit_py/core/performance.py"
+    candidate_path = "ipfs_kit_py/benchmarks/runtime_readiness/run.py"
+    receipt = _adjudicate(
+        (
+            _entry(
+                declared_path,
+                "class PerformanceError(Exception):\n    pass\n",
+                "class PerformanceError(Exception):\n    pass\n"
+                "def check_optimized_results():\n    return {'ok': True}\n",
+            ),
+            _entry(
+                candidate_path,
+                "def main():\n    return 0\n",
+                "def main():\n"
+                "    from ipfs_kit_py.core.performance import "
+                "check_optimized_results\n"
+                "    return 0 if check_optimized_results()['ok'] else 1\n",
+            ),
+        ),
+        scope=(declared_path,),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/runtime_readiness/release/test_backpressure.py",
+        ),
+    )
+
+    assert receipt.justified_paths == (candidate_path,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH,
+    )
+    assert receipt.decisions[0].evidence_paths == (declared_path,)
+
+
+def test_unsafe_cd_does_not_create_module_alias_authority() -> None:
+    declared_path = "ipfs_kit_py/ipfs_kit_py/core/performance.py"
+    candidate_path = "ipfs_kit_py/benchmarks/runtime_readiness/run.py"
+    receipt = _adjudicate(
+        (
+            _entry(
+                declared_path,
+                "VALUE = 1\n",
+                "VALUE = 2\n",
+            ),
+            _entry(
+                candidate_path,
+                "def main():\n    return 0\n",
+                "from ipfs_kit_py.core.performance import VALUE\n"
+                "def main():\n    return VALUE\n",
+            ),
+        ),
+        scope=(declared_path,),
+        validation_commands=(
+            "cd ../ipfs_kit_py && python -m pytest -q tests/test_perf.py",
+        ),
+    )
+
+    assert receipt.justified is False
+    assert receipt.denied_paths == (candidate_path,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "cd /tmp/ipfs_kit_py && python -m pytest tests/test_vfs.py",
+        "cd ../ipfs_kit_py && python -m pytest tests/test_vfs.py",
+        "echo ready && cd ipfs_kit_py && python -m pytest tests/test_vfs.py",
+        "cd ipfs_kit_py || python -m pytest tests/test_vfs.py",
+    ),
+)
+def test_unsafe_or_unbounded_cd_withholds_validation_path_authority(
+    command: str,
+) -> None:
+    assert infer_validation_impact_paths(command) == ()
 
 
 def test_changed_golden_fixture_cannot_claim_validation_target() -> None:
@@ -468,8 +612,77 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
         if event["type"].startswith("implementation_")
     ] == [
         "implementation_scope_adjudicated",
+        "implementation_expected_outputs_checked",
         "implementation_proposal_validated",
     ]
+
+
+def test_daemon_exact_scope_policy_overrides_dependency_adjudication(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    declared_path = repo / "pkg" / "declared.py"
+    companion_path = repo / "pkg" / "companion.py"
+    declared_path.write_text("VALUE = 1\n", encoding="utf-8")
+    companion_path.write_text(
+        "from pkg.declared import VALUE\nRESULT = VALUE\n",
+        encoding="utf-8",
+    )
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    declared_path.write_text("VALUE = 2\n", encoding="utf-8")
+    companion_path.write_text(
+        "from pkg.declared import VALUE\nRESULT = VALUE + 1\n",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ASI-EXACT",
+        title="Keep the reviewed edit envelope exact",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="quality",
+        outputs=["pkg/declared.py"],
+        validation=["python -m pytest"],
+        metadata={"Scope expansion policy": "exact"},
+    )
+    diagnostics: dict[str, object] = {}
+
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+        diagnostics=diagnostics,
+    )
+
+    assert proposal_validation.accepted is False
+    assert proposal_validation.policy.policy_version.endswith(
+        "+exact-task-scope-v1"
+    )
+    assert {
+        finding.code.value
+        for finding in proposal_validation.findings
+    } == {"path_outside_scope"}
+    assert diagnostics["scope_expansion_policy"] == "exact"
+    assert diagnostics["scope_expansion_allowed"] is False
+    assert not (repo / "events.jsonl").read_text(
+        encoding="utf-8"
+    ).count("implementation_scope_adjudicated")
 
 
 def test_daemon_keeps_unrelated_expansion_rejected(tmp_path: Path) -> None:

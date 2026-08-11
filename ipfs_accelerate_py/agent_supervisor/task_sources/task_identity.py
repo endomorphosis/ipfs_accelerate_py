@@ -13,6 +13,7 @@ from typing import Any
 
 
 TASK_IDENTITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-identity@1"
+_GLOB_MAGIC = frozenset("*?[")
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -58,6 +59,28 @@ def normalize_identity_path(value: Any) -> str:
     while text.startswith("./"):
         text = text[2:]
     return re.sub(r"/+", "/", text).rstrip("/")
+
+
+def normalize_exact_authorized_paths(value: Any) -> tuple[str, ...]:
+    """Return bounded repository-relative paths with no glob authority."""
+
+    normalized: set[str] = set()
+    for item in _sequence(value):
+        raw_path = str(item).strip()
+        if "\0" in raw_path:
+            continue
+        path = normalize_identity_path(raw_path)
+        if (
+            not path
+            or path == "."
+            or path.startswith("/")
+            or re.match(r"^[A-Za-z]:/", path)
+            or ".." in Path(path).parts
+            or any(marker in path for marker in _GLOB_MAGIC)
+        ):
+            continue
+        normalized.add(path)
+    return tuple(sorted(normalized))
 
 
 def normalize_board_namespace(value: Any) -> str:
@@ -166,7 +189,33 @@ def canonical_task_identity(
         or _mapping_value(metadata, "canonical task cid")
         or ""
     ).strip()
+    allowed_paths = normalize_exact_authorized_paths(
+        _mapping_value(source, "allowed paths")
+        or _mapping_value(metadata, "allowed paths")
+    )
     if provided_key and provided_cid:
+        if allowed_paths:
+            material = {
+                "schema": TASK_IDENTITY_SCHEMA,
+                "provided_identity": {
+                    "canonical_task_key": provided_key,
+                    "canonical_task_cid": provided_cid,
+                },
+                "authority": {
+                    "additional_allowed_paths": list(allowed_paths),
+                },
+            }
+            fingerprint = hashlib.sha256(
+                canonical_json_bytes(material)
+            ).hexdigest()
+            return TaskIdentity(
+                canonical_task_key=f"task/v1/{fingerprint}",
+                canonical_task_cid=canonical_content_cid(material),
+                semantic_fingerprint=fingerprint,
+                display_task_id=display_task_id,
+                board_namespace=namespace,
+                source_path=normalize_identity_path(source_path),
+            )
         key_suffix = provided_key.rsplit("/", 1)[-1].casefold()
         fingerprint = (
             key_suffix
@@ -258,6 +307,10 @@ def canonical_task_identity(
         if not semantic:
             raise ValueError("task identity requires semantic work metadata")
         material = {"schema": TASK_IDENTITY_SCHEMA, "semantic": semantic}
+    if allowed_paths:
+        material["authority"] = {
+            "additional_allowed_paths": list(allowed_paths),
+        }
 
     semantic_fingerprint = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
     return TaskIdentity(

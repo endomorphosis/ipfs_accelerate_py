@@ -1300,8 +1300,31 @@ class RefillScanResult(Generic[T]):
     def __getitem__(self, index: slice) -> tuple[T, ...]:
         ...
 
-    def __getitem__(self, index: Union[int, slice]) -> Union[T, tuple[T, ...]]:
+    @overload
+    def __getitem__(self, index: str) -> Any:
+        ...
+
+    def __getitem__(self, index: Union[int, slice, str]) -> Any:
+        # Legacy supervisor callers treat refill results as mapping-like
+        # envelopes (payload["objective_heap_schedule_count"]).  Prefer
+        # metadata, then the JSON contract envelope.
+        if isinstance(index, str):
+            metadata = dict(self.metadata or {})
+            if index in metadata:
+                return metadata[index]
+            envelope = self.to_dict()
+            if index in envelope:
+                return envelope[index]
+            raise KeyError(index)
         return self.items[index]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Mapping-style access for metadata / envelope fields."""
+
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable contract envelope."""

@@ -22,7 +22,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..cve_security_gate import (
+from .cve_security_gate import (
     CVESecurityGateResult,
     correlate_security_requests,
 )
@@ -1850,6 +1850,25 @@ class IRConstraintCompiler:
 
         security_decisions = []
         security_grants: list[str] = []
+        # Intent-side effects (from IntentIR candidate) and code-side effects
+        # (from the program/candidate graph) are both mandatory inputs to
+        # security forbidden-logic evaluation.  A DENY/unknown/conflict result
+        # is never offset by the other stream.
+        intent_effects_by_action: dict[str, list[Any]] = {
+            action_id: [] for action_id in actions
+        }
+        try:
+            intent_graph = _candidate_graph(request.intent_request.candidate_plan)
+            for effect in intent_graph["effects"]:
+                action_id = str(effect.get("action_id") or "")
+                if action_id in intent_effects_by_action:
+                    intent_effects_by_action[action_id].append(
+                        _effect_projection(effect)
+                    )
+        except IRConstraintCompilerError:
+            intent_effects_by_action = {
+                action_id: [] for action_id in actions
+            }
         for security_request in request.security_requests:
             matching_actions = [
                 action_id
@@ -1857,19 +1876,30 @@ class IRConstraintCompiler:
                 if security_request.content_id in binding.security_request_ids
             ]
             action_id = matching_actions[0] if len(matching_actions) == 1 else ""
-            candidate_effects = [
+            code_effects = [
                 _effect_projection(effect)
                 for effect in effects.values()
                 if effect["action_id"] == action_id
             ]
-            if _plain(security_request.expected_effect) not in candidate_effects:
+            intent_effects = list(intent_effects_by_action.get(action_id, ()))
+            expected = _plain(security_request.expected_effect)
+            if expected not in code_effects:
                 reject(
                     AdmissionRejectionCode.UNDECLARED_EFFECT,
                     AdmissionDomain.GRAPH,
                     "SecurityIR request names an effect absent from the candidate graph",
                     action_id=action_id,
                     source_ids=(security_request.content_id,),
-                    details={"expected_effect": _plain(security_request.expected_effect)},
+                    details={"expected_effect": expected, "stream": "code"},
+                )
+            if intent_effects and expected not in intent_effects:
+                reject(
+                    AdmissionRejectionCode.UNDECLARED_EFFECT,
+                    AdmissionDomain.INTENT,
+                    "SecurityIR request names an effect absent from IntentIR effects",
+                    action_id=action_id,
+                    source_ids=(security_request.content_id,),
+                    details={"expected_effect": expected, "stream": "intent"},
                 )
             candidate_action = actions.get(action_id, {})
             comparisons = {
@@ -1905,10 +1935,15 @@ class IRConstraintCompiler:
                     SecurityDecisionOutcome.UNKNOWN: AdmissionRejectionCode.SECURITY_UNKNOWN,
                     SecurityDecisionOutcome.CONFLICT: AdmissionRejectionCode.SECURITY_CONFLICT,
                 }.get(decision.outcome, AdmissionRejectionCode.SECURITY_DENY)
+                # Forbidden outcomes are always reported against both streams so
+                # a later quality/cost stage cannot compensate a hard deny.
                 reject(
                     code,
                     AdmissionDomain.SECURITY,
-                    f"SecurityIR authorization outcome is {decision.outcome.value}",
+                    (
+                        f"SecurityIR authorization outcome is {decision.outcome.value} "
+                        "against intent and code effects"
+                    ),
                     action_id=action_id,
                     source_ids=(
                         decision.content_id,
@@ -1916,7 +1951,10 @@ class IRConstraintCompiler:
                         *decision.reason_codes,
                     ),
                     details={
-                        "checks": [item.to_dict() for item in decision.checks]
+                        "checks": [item.to_dict() for item in decision.checks],
+                        "intent_effects": intent_effects,
+                        "code_effects": code_effects,
+                        "expected_effect": expected,
                     },
                 )
 

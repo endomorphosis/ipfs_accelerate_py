@@ -94,12 +94,45 @@ class RetrievalBindingError(RetrievalValidationError):
     """A candidate is not bound to the exact pinned retrieval snapshot."""
 
 
+class RetrievalIndexHealthError(RetrievalValidationError):
+    """An approximate index is unsafe to query or use for ranking."""
+
+    def __init__(self, message: str, *, reason_code: str) -> None:
+        super().__init__(message)
+        self.reason_code = _bounded_text(reason_code, 80)
+
+
 class BackendState(str, Enum):
     """Observable state of one retrieval signal."""
 
     HEALTHY = "healthy"
     UNAVAILABLE = "unavailable"
     UNHEALTHY = "unhealthy"
+
+
+@dataclass(frozen=True)
+class IndexHealthAssessment:
+    """Fail-closed health decision for a lexical/vector/graph index.
+
+    Health metadata is advisory until it passes these mechanical checks.  A
+    caller may safely expose the assessment in a receipt, but a failed
+    assessment must never contribute a ranking score.
+    """
+
+    healthy: bool
+    reason_codes: tuple[str, ...] = ()
+    detail: str = ""
+    current_root_id: str = ""
+    dimension: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "healthy": self.healthy,
+            "reason_codes": list(self.reason_codes),
+            "detail": self.detail,
+            "current_root_id": self.current_root_id,
+            "dimension": self.dimension,
+        }
 
 
 def _canonical_value(value: Any) -> Any:
@@ -265,6 +298,159 @@ def _score(value: Any) -> float:
     if not math.isfinite(number):
         return 0.0
     return round(max(0.0, min(1.0, number)), 6)
+
+
+def assess_retrieval_index_health(
+    value: Any,
+    *,
+    current_root_id: str = "",
+    expected_dimension: int = 0,
+) -> IndexHealthAssessment:
+    """Validate untrusted backend health metadata without importing a provider.
+
+    The accepted keys intentionally cover the small variations used by the
+    repository's local analysis adapters.  Unknown keys remain inert.  Unsafe
+    flags, cross-root identities, non-finite statistics, constant indexes, and
+    dimension drift all fail closed.
+    """
+
+    payload = _mapping(value)
+    reasons: set[str] = set()
+    if (
+        isinstance(expected_dimension, bool)
+        or not isinstance(expected_dimension, int)
+        or expected_dimension < 0
+    ):
+        reasons.add("invalid_dimension")
+    detail = _bounded_text(
+        payload.get("detail")
+        or payload.get("reason")
+        or payload.get("status")
+        or payload.get("state")
+        or "index health metadata",
+        _MAX_DETAIL,
+    )
+    status = str(payload.get("status") or payload.get("state") or "").casefold()
+    if payload:
+        claimed_healthy = payload.get("healthy")
+        if claimed_healthy is False or status in {
+            "failed",
+            "offline",
+            "poisoned",
+            "stale",
+            "unhealthy",
+            "disabled",
+        }:
+            reasons.add("backend_unhealthy")
+        if (
+            claimed_healthy is not True
+            and status
+            and status not in {"healthy", "ok", "ready"}
+        ):
+            reasons.add("backend_unhealthy")
+        if any(
+            payload.get(name) is True
+            for name in (
+                "poisoned",
+                "corrupt",
+                "corrupted",
+                "integrity_failed",
+                "checksum_mismatch",
+            )
+        ) or payload.get("integrity_valid") is False:
+            reasons.add("poisoned_index")
+        if any(
+            payload.get(name) is True
+            for name in ("stale", "expired", "invalidated")
+        ):
+            reasons.add("stale_index")
+        if any(
+            payload.get(name) is True
+            for name in ("constant", "is_constant", "collapsed")
+        ):
+            reasons.add("constant_index")
+        if payload.get("dimension_drift") is True:
+            reasons.add("dimension_drift")
+
+    root = _bounded_text(
+        payload.get("current_root_id")
+        or payload.get("tree_id")
+        or payload.get("repository_root_id")
+        or payload.get("root_id")
+        or "",
+        320,
+    )
+    if current_root_id and root and root != current_root_id:
+        reasons.add("stale_or_cross_root_index")
+
+    dimensions: set[int] = set()
+    for name in ("dimension", "dimensions", "embedding_dimension", "vector_dimension"):
+        raw = payload.get(name)
+        if raw in (None, ""):
+            continue
+        if isinstance(raw, Sequence) and not isinstance(
+            raw, (str, bytes, bytearray)
+        ):
+            values = raw
+        else:
+            values = (raw,)
+        for item in values:
+            if isinstance(item, bool):
+                reasons.add("invalid_dimension")
+                continue
+            try:
+                dimension = int(item)
+            except (TypeError, ValueError):
+                reasons.add("invalid_dimension")
+                continue
+            try:
+                exact_dimension = float(item)
+            except (TypeError, ValueError):
+                exact_dimension = float(dimension)
+            if dimension <= 0 or not math.isfinite(exact_dimension) or exact_dimension != dimension:
+                reasons.add("invalid_dimension")
+            else:
+                dimensions.add(dimension)
+    if len(dimensions) > 1:
+        reasons.add("dimension_drift")
+    dimension = next(iter(dimensions), 0)
+    if expected_dimension and dimension and dimension != expected_dimension:
+        reasons.add("dimension_drift")
+
+    for name in (
+        "variance",
+        "score_variance",
+        "norm",
+        "mean_norm",
+        "min_score",
+        "max_score",
+    ):
+        raw = payload.get(name)
+        if raw in (None, ""):
+            continue
+        try:
+            statistic = float(raw)
+        except (TypeError, ValueError):
+            reasons.add("invalid_index_statistic")
+            continue
+        if not math.isfinite(statistic):
+            reasons.add("non_finite_index")
+        if name in {"variance", "score_variance"} and statistic <= 0.0:
+            count = payload.get("candidate_count", payload.get("row_count", 2))
+            try:
+                if int(count) > 1:
+                    reasons.add("constant_index")
+            except (TypeError, ValueError):
+                reasons.add("invalid_index_statistic")
+
+    ordered = tuple(sorted(reasons))
+    return IndexHealthAssessment(
+        healthy=not ordered,
+        reason_codes=ordered,
+        detail=detail if not ordered else ", ".join(ordered),
+        current_root_id=root,
+        dimension=dimension,
+    )
 
 
 def _binding_text(value: Any, name: str, *, required: bool = True) -> str:
@@ -997,12 +1183,24 @@ class BoundedGraphRAGRetriever:
         vector_embedder: Callable[[str], Sequence[float]] | None = None,
         ast_backend: Any = None,
         artifact_id: str = "",
+        current_root_id: str = "",
+        expected_vector_dimension: int = 0,
         signal_weights: Mapping[str, float] | None = None,
     ) -> None:
         self.vector_backend = vector_backend
         self.vector_embedder = vector_embedder
         self.ast_backend = ast_backend
         self.artifact_id = _bounded_text(artifact_id, 320)
+        self.current_root_id = _bounded_text(current_root_id, 320)
+        if (
+            isinstance(expected_vector_dimension, bool)
+            or not isinstance(expected_vector_dimension, int)
+            or expected_vector_dimension < 0
+        ):
+            raise RetrievalValidationError(
+                "expected_vector_dimension must be a non-negative integer"
+            )
+        self.expected_vector_dimension = expected_vector_dimension
         self.weights = self._weights(signal_weights)
         self._candidates: dict[str, _Candidate] = {}
         self._aliases: dict[str, str] = {}
@@ -1013,6 +1211,10 @@ class BoundedGraphRAGRetriever:
         self._coverage_present = goal_coverage is not None
         self._proof_present = proof_scope_index is not None
         self._graph_present = evidence_graph is not None
+        self._vector_dimensions: set[int] = set()
+        self._vector_fingerprints: set[str] = set()
+        self._vector_count = 0
+        self._vector_poison_reasons: set[str] = set()
 
         self._ingest_graph(evidence_graph)
         self._ingest_records(_record_values(records), "analysis_record")
@@ -1393,11 +1595,23 @@ class BoundedGraphRAGRetriever:
             if isinstance(vector, Sequence) and not isinstance(
                 vector, (str, bytes, bytearray)
             ):
+                self._vector_count += 1
                 try:
                     normalized = tuple(float(item) for item in vector)
                 except (TypeError, ValueError):
                     normalized = ()
-                if normalized and all(math.isfinite(item) for item in normalized):
+                    self._vector_poison_reasons.add("invalid_vector")
+                if not normalized:
+                    self._vector_poison_reasons.add("empty_vector")
+                elif not all(math.isfinite(item) for item in normalized):
+                    self._vector_poison_reasons.add("non_finite_index")
+                else:
+                    self._vector_dimensions.add(len(normalized))
+                    self._vector_fingerprints.add(
+                        hashlib.sha256(
+                            _canonical_json(normalized).encode("utf-8")
+                        ).hexdigest()
+                    )
                     candidate.vectors.append(normalized)
             candidate.absorb_text(
                 candidate.title,
@@ -1839,8 +2053,9 @@ class BoundedGraphRAGRetriever:
             ),
         }
 
-    @staticmethod
-    def _backend_health(backend: Any) -> tuple[bool, str]:
+    def _backend_health(
+        self, backend: Any, *, expected_dimension: int = 0
+    ) -> tuple[bool, str]:
         health = getattr(backend, "health", None)
         if not callable(health):
             health = getattr(backend, "health_check", None)
@@ -1848,6 +2063,13 @@ class BoundedGraphRAGRetriever:
             return True, "backend callable"
         value = health()
         if isinstance(value, Mapping):
+            assessment = assess_retrieval_index_health(
+                value,
+                current_root_id=self.current_root_id,
+                expected_dimension=expected_dimension,
+            )
+            if not assessment.healthy:
+                return False, assessment.detail
             status = str(value.get("status") or value.get("state") or "").casefold()
             healthy = bool(value.get("healthy", status in {"healthy", "ok", "ready"}))
             detail = _bounded_text(
@@ -1902,6 +2124,8 @@ class BoundedGraphRAGRetriever:
         limit: int,
         *,
         method_names: tuple[str, ...],
+        reject_constant: bool = False,
+        expected_dimension: int = 0,
     ) -> dict[str, float]:
         response = self._invoke_backend(
             backend, query, limit, method_names=method_names
@@ -1929,6 +2153,8 @@ class BoundedGraphRAGRetriever:
                 response = nested or ()
         values = _sequence(response)
         scores: dict[str, float] = {}
+        observed_scores: list[float] = []
+        observed_dimensions: set[int] = set()
         for value in values[:limit]:
             if isinstance(value, Sequence) and not isinstance(
                 value, (str, bytes, bytearray, Mapping)
@@ -1936,6 +2162,39 @@ class BoundedGraphRAGRetriever:
                 row = {"id": value[0], "score": value[1]} if len(value) >= 2 else {}
             else:
                 row = _mapping(value)
+            raw_score = row.get("score", row.get("similarity", 0.0))
+            try:
+                numeric_score = float(raw_score)
+            except (TypeError, ValueError) as exc:
+                raise RetrievalIndexHealthError(
+                    "backend returned a non-numeric score",
+                    reason_code="invalid_index_score",
+                ) from exc
+            if not math.isfinite(numeric_score):
+                raise RetrievalIndexHealthError(
+                    "backend returned a non-finite score",
+                    reason_code="non_finite_index",
+                )
+            observed_scores.append(numeric_score)
+            raw_vector = row.get("embedding", row.get("vector"))
+            if isinstance(raw_vector, Sequence) and not isinstance(
+                raw_vector, (str, bytes, bytearray)
+            ):
+                try:
+                    returned_vector = tuple(float(item) for item in raw_vector)
+                except (TypeError, ValueError) as exc:
+                    raise RetrievalIndexHealthError(
+                        "backend returned a malformed vector",
+                        reason_code="invalid_vector",
+                    ) from exc
+                if not returned_vector or not all(
+                    math.isfinite(item) for item in returned_vector
+                ):
+                    raise RetrievalIndexHealthError(
+                        "backend returned an empty or non-finite vector",
+                        reason_code="non_finite_index",
+                    )
+                observed_dimensions.add(len(returned_vector))
             identity = _first(
                 row,
                 "evidence_id",
@@ -1962,8 +2221,26 @@ class BoundedGraphRAGRetriever:
             if key and key in self._candidates:
                 scores[key] = max(
                     scores.get(key, 0.0),
-                    _score(row.get("score", row.get("similarity", 0.0))),
+                    _score(numeric_score),
                 )
+        if len(observed_dimensions) > 1 or (
+            expected_dimension
+            and observed_dimensions
+            and observed_dimensions != {expected_dimension}
+        ):
+            raise RetrievalIndexHealthError(
+                "backend result vectors changed dimension",
+                reason_code="dimension_drift",
+            )
+        if (
+            reject_constant
+            and len(observed_scores) > 1
+            and max(observed_scores) == min(observed_scores)
+        ):
+            raise RetrievalIndexHealthError(
+                "backend returned a constant score index",
+                reason_code="constant_index",
+            )
         return scores
 
     def _vector_scores(
@@ -1974,7 +2251,12 @@ class BoundedGraphRAGRetriever:
     ) -> dict[str, float]:
         if self.vector_backend is not None:
             try:
-                healthy, detail = self._backend_health(self.vector_backend)
+                healthy, detail = self._backend_health(
+                    self.vector_backend,
+                    expected_dimension=(
+                        self.expected_vector_dimension or len(query.embedding)
+                    ),
+                )
                 if not healthy:
                     health["vector"] = BackendHealth(
                         "vector", BackendState.UNHEALTHY, detail, 0
@@ -1985,6 +2267,10 @@ class BoundedGraphRAGRetriever:
                     query,
                     limits.max_backend_results,
                     method_names=("search", "query", "retrieve"),
+                    reject_constant=True,
+                    expected_dimension=(
+                        self.expected_vector_dimension or len(query.embedding)
+                    ),
                 )
                 health["vector"] = BackendHealth(
                     "vector",
@@ -2001,6 +2287,27 @@ class BoundedGraphRAGRetriever:
                     0,
                 )
                 return {}
+
+        local_reasons = set(self._vector_poison_reasons)
+        if len(self._vector_dimensions) > 1:
+            local_reasons.add("dimension_drift")
+        expected_dimension = self.expected_vector_dimension or len(query.embedding)
+        if (
+            expected_dimension
+            and self._vector_dimensions
+            and self._vector_dimensions != {expected_dimension}
+        ):
+            local_reasons.add("dimension_drift")
+        if self._vector_count > 1 and len(self._vector_fingerprints) <= 1:
+            local_reasons.add("constant_index")
+        if local_reasons:
+            health["vector"] = BackendHealth(
+                "vector",
+                BackendState.UNHEALTHY,
+                ", ".join(sorted(local_reasons)),
+                0,
+            )
+            return {}
 
         vector = query.embedding
         if not vector and self.vector_embedder is not None:
@@ -2450,6 +2757,8 @@ def retrieve_analysis_evidence(
     vector_embedder: Callable[[str], Sequence[float]] | None = None,
     ast_backend: Any = None,
     artifact_id: str = "",
+    current_root_id: str = "",
+    expected_vector_dimension: int = 0,
     signal_weights: Mapping[str, float] | None = None,
     limits: RetrievalLimits | Mapping[str, Any] | None = None,
 ) -> RetrievalResponse:
@@ -2466,6 +2775,8 @@ def retrieve_analysis_evidence(
         vector_embedder=vector_embedder,
         ast_backend=ast_backend,
         artifact_id=artifact_id,
+        current_root_id=current_root_id,
+        expected_vector_dimension=expected_vector_dimension,
         signal_weights=signal_weights,
     )
     return retriever.retrieve(query, limits=limits)
@@ -2663,10 +2974,12 @@ __all__ = [
     "BoundedGraphRAGRetriever",
     "EvidenceReference",
     "GraphRAGRetriever",
+    "IndexHealthAssessment",
     "MultiSignalGraphRAGRetriever",
     "RetrievalLimits",
     "RetrievalBudgetError",
     "RetrievalBindingError",
+    "RetrievalIndexHealthError",
     "RetrievalCandidateBinding",
     "RetrievalQuery",
     "RetrievalResponse",
@@ -2676,6 +2989,7 @@ __all__ = [
     "SignalScore",
     "TruncationMetadata",
     "retrieve",
+    "assess_retrieval_index_health",
     "retrieve_analysis_evidence",
     "retrieve_graph_evidence",
     "validate_bound_retrieval_candidate",

@@ -1,8 +1,25 @@
 # API Overview
 
+**Status:** Current
+**Owner:** package maintainers
+**Audience:** Python integrators, CLI users, and maintainer agents
+**Sources:** `pyproject.toml`; `ipfs_accelerate_py/__init__.py`;
+`ipfs_accelerate_py/ipfs_accelerate.py`;
+`ipfs_accelerate_py/transformers_integration.py`;
+`ipfs_accelerate_py/cli_entry.py`; `ipfs_accelerate_py/cli.py`;
+`ipfs_accelerate_py/agent_supervisor/__init__.py`; CLI/API contract tests under
+`test/`
+**Last-verified:** 2026-08-03 @ b128cceef
+
 This is the current high-level API reference for the Python package. Detailed
-behavior remains defined by the source modules and their tests; optional
-providers may be unavailable even when the base package imports successfully.
+behavior remains defined by the source modules and their tests. Optional
+providers, routers, and integrations may appear in the package export surface
+even when they are not operational on the current host: **import success is not
+runtime health**.
+
+Prefer public root imports (`from ipfs_accelerate_py import …`) for product
+code. Deeper package paths are valid for maintainers and agent-supervisor work,
+but they are not a guarantee of stability or installed extras.
 
 ## Package metadata and imports
 
@@ -12,36 +29,92 @@ import ipfs_accelerate_py
 print(ipfs_accelerate_py.__version__)
 ```
 
-The package version is exposed as `ipfs_accelerate_py.__version__`. The public
-root exports include the following core names:
+The package version is exposed as `ipfs_accelerate_py.__version__`. Core and
+optional symbols are attached at import time when their dependencies resolve.
+Many optional symbols are still present as stubs or `None` when unavailable;
+check the matching `*_available` flag (or call the capability report) before
+relying on them.
 
-| Export | Role |
-| --- | --- |
-| `ipfs_accelerate_py` | Main compatibility-oriented accelerator class. |
-| `get_instance` | Process-wide accelerator instance with optional dependency injection. |
-| `ModelManager` | Lazily loaded model-management facade. |
-| `get_default_model_manager` | Obtain the default model manager. |
-| `generate_text` | LLM-router text generation, when the router dependencies are available. |
-| `embed_text`, `embed_texts` | Embeddings-router helpers, when configured. |
-| `P2PWorkflowScheduler` | Optional distributed workflow scheduler. |
-| `get_storage`, `IPFSKitStorage` | Optional storage integration. |
-| `accelerate_with_browser`, `get_accelerator` | Optional WebNN/WebGPU integration. |
+### Core public surface
 
-Use `hasattr()` or the corresponding availability flag before depending on an
-optional integration. For example:
+| Export | Role | Availability |
+| --- | --- | --- |
+| `ipfs_accelerate_py` | Main compatibility-oriented accelerator class. | Raises `NotImplementedError` when core is disabled or missing. |
+| `get_instance` | Process-wide accelerator instance with optional dependency injection. Construction may initialize storage, cache/configuration, daemons, and external integrations. | Same as core; not a cold probe. |
+| `ModelManager` | Lazily loaded model-management facade. | Resolved on first use; may raise if model-manager deps are missing. |
+| `get_default_model_manager` | Obtain the default model manager. | Same lazy boundary as `ModelManager`. |
+| `cli_main` | Programmatic entry to the unified CLI (`ipfs-accelerate`). | When core is enabled. |
+
+### Optional / router surface
+
+These names may appear on the package even when providers, credentials, or
+optional extras are missing. Treat the availability flags as import-time hints
+only; operational readiness still needs `get_capabilities(detail=True)` (and
+provider-specific checks).
+
+| Export | Role | Flag / note |
+| --- | --- | --- |
+| `generate_text`, `get_llm_provider`, `register_llm_provider` | LLM router. | `llm_router_available` |
+| `embed_text`, `embed_texts`, `embed_texts_batched` | Embeddings router. | `embeddings_router_available` |
+| `generate_multimodal` | Multimodal router. | `multimodal_router_available` |
+| `text_to_speech`, `speech_to_text`, `process_voice_turn` | Voice / TTS-STT router. | `voice_router_available` / `tts_router_available` |
+| `P2PWorkflowScheduler`, `P2PTask` | Optional distributed workflow scheduler. | May be `None` if the module does not import. |
+| `get_storage`, `IPFSKitStorage` | Optional storage integration. | May be `None` without IPFS kit deps. |
+| `InferenceBackendManager`, `get_backend_manager` | Inference backend manager. | `inference_backend_manager_available` |
+| `accelerate_with_browser`, `get_accelerator` | Optional WebNN/WebGPU integration. | `webnn_webgpu_available` |
 
 ```python
-from ipfs_accelerate_py import get_instance
+from ipfs_accelerate_py import (
+    get_instance,
+    llm_router_available,
+    embeddings_router_available,
+    webnn_webgpu_available,
+)
 
 accelerator = get_instance()
-print(accelerator.get_capabilities())
+print(accelerator.get_capabilities(detail=True))
+print({
+    "llm_router_available": llm_router_available,
+    "embeddings_router_available": embeddings_router_available,
+    "webnn_webgpu_available": webnn_webgpu_available,
+})
+```
+
+`get_instance()` constructs the process coordinator. It is not side-effect
+free and may initialize storage, caches, configuration, daemons, or configured
+external integrations. Use package import/version output or CLI `--help` for a
+cold verification.
+
+An `*_available` flag of `True` means the package could import that subsystem.
+It does **not** mean a provider, model, GPU, daemon, or credential is ready.
+
+Set `IPFS_ACCEL_SKIP_CORE=1` to skip heavy core imports (useful for lightweight
+tooling). Set `IPFS_ACCEL_IMPORT_EAGER=1` to force eager model-manager imports.
+
+## Console scripts
+
+Declared in packaging (`pyproject.toml` / `setup.py` entry points):
+
+| Script | Entry | Notes |
+| --- | --- | --- |
+| `ipfs-accelerate` | `ipfs_accelerate_py.cli_entry:main` | Supported unified product CLI. |
+| `ipfs_accelerate` | `ipfs_accelerate_py.ai_inference_cli:main` | Separate underscore CLI; different command surface. |
+| `ipfs-accelerate-agent-*` | agent-supervisor daemons | Operator engines; see the [Agent Supervisor Guide](../guides/AGENT_SUPERVISOR_GUIDE.md). |
+| `ipfs-accelerate-llama-cpp-serve` | `ipfs_accelerate_py.utils.llama_cpp:main` | Optional local serve helper. |
+
+When the console script is not on `PATH` (editable checkouts, incomplete
+installs), use the module form:
+
+```bash
+python -m ipfs_accelerate_py.cli --help
 ```
 
 ## Core accelerator
 
 The compatibility class is constructed with resource and metadata mappings. It
 also accepts optional injected `deps`, `ipfs_kit`, `ipfs_datasets`, and storage
-objects.
+objects. Construction is runtime initialization and can have the same storage,
+configuration, daemon, and integration effects described for `get_instance()`.
 
 ```python
 from ipfs_accelerate_py import ipfs_accelerate_py
@@ -60,7 +133,7 @@ accelerator.get_mcp_manifest(detail=True)  # MCP tools/resources/prompts
 accelerator.run_model(                         # load and run a model
     model_name="bert-base-uncased",
     inputs={"input_ids": [[101, 2023, 2003, 102]]},
-    model_type="text_generation",
+    model_type="text_embedding",
     device="cpu",
 )
 ```
@@ -72,9 +145,10 @@ endpoint-oriented applications, use `add_endpoint()`, `rm_endpoint()`,
 `get_endpoints()`, `choose_endpoint()`, and `infer()` as defined in
 `ipfs_accelerate_py/ipfs_accelerate.py`.
 
-`get_capabilities(detail=True)` is the preferred health/discovery surface. It
-reports task types, registered models/endpoints, hardware information when the
-detector is available, and the MCP manifest without returning callables.
+After coordinator initialization is acceptable,
+`get_capabilities(detail=True)` reports task types, registered models/endpoints,
+hardware information when the detector is available, and the MCP manifest
+without returning callables. It is not an offline/cold health probe.
 
 ## LLM router
 
@@ -82,7 +156,10 @@ The router is a separate provider boundary and is also used by optional agent
 planning features.
 
 ```python
-from ipfs_accelerate_py import generate_text
+from ipfs_accelerate_py import generate_text, llm_router_available
+
+if not llm_router_available:
+    raise SystemExit("LLM router did not import; install router extras/deps")
 
 answer = generate_text(
     "Summarize the role of a content identifier in one sentence.",
@@ -99,33 +176,49 @@ in [LLM Router](../LLM_ROUTER.md).
 
 ## Unified CLI
 
-The supported CLI is `ipfs-accelerate`. Its current top-level groups are:
+The supported CLI is `ipfs-accelerate` (module form:
+`python -m ipfs_accelerate_py.cli`). Its **registered** top-level groups are:
 
 ```bash
 ipfs-accelerate --help
+ipfs-accelerate agent --help
 ipfs-accelerate mcp --help
+ipfs-accelerate github --help
+ipfs-accelerate copilot --help
+ipfs-accelerate copilot-sdk --help
 ipfs-accelerate text --help
 ipfs-accelerate audio --help
 ipfs-accelerate vision --help
 ipfs-accelerate multimodal --help
 ipfs-accelerate specialized --help
 ipfs-accelerate models --help
-ipfs-accelerate github --help
 ```
 
-Examples:
+Parser-recognized examples (runtime success still depends on the installed and
+configured capability):
 
 ```bash
-ipfs-accelerate mcp start --host 0.0.0.0 --port 9000
+ipfs-accelerate agent capabilities --help
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
 ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
-ipfs-accelerate models list
-ipfs-accelerate models search "embedding"
+ipfs-accelerate --output-json models list
+ipfs-accelerate --output-json models search "embedding"
 ipfs-accelerate text --ai-help
 ```
 
-The CLI does not currently expose the historical `inference`, `hardware`,
-`workflow`, or `network` top-level groups shown in older guides. Use the MCP
-server, Python APIs, or the feature-specific tools for those capabilities.
+`--output-json` is global and must precede `models`. `models list` and
+`models search` are side-effecting runtime commands: they can initialize
+`SharedCore`/IPFS storage, contact configured endpoints, attempt optional
+provider/package setup or auto-install flows, and write configuration/cache
+state. Use `ipfs-accelerate models --help` for cold parser discovery. Catalog
+output does not prove that a provider, credential, network service, or model
+weight is available.
+
+Historical prose may still mention `ipfs-accelerate inference …`, `queue …`,
+or `network …`. Those strings are **not** registered command groups; the live
+`choices=` set rejects them. The unified CLI epilog now shows only registered
+examples. Use the groups listed above, the MCP server, or Python APIs for those
+capabilities. Full CLI reference: [CLI guide](../guides/cli/README_CLI.md).
 
 ## MCP server
 
@@ -141,7 +234,8 @@ server = create_server()
 For command-line operation:
 
 ```bash
-python -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9000
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
+python -m ipfs_accelerate_py.mcp.cli --host 127.0.0.1 --port 9000
 python -m ipfs_accelerate_py.mcp_server.fastapi_service
 ```
 
@@ -151,10 +245,21 @@ transport, policy, P2P, and deployment details.
 
 ## Agent supervisor APIs
 
-The supervisor is a separate maintainer/operator API. Its most stable contracts
-are grouped by concern:
+The supervisor is a separate maintainer/operator API. Prefer the typed product
+CLI for control operations:
 
-| Concern | Modules |
+```bash
+ipfs-accelerate agent --help
+ipfs-accelerate agent capabilities --help
+ipfs-accelerate agent status --help
+```
+
+Python and package modules remain available for embedding and automation. The
+most stable contracts are grouped by concern (module names under
+`ipfs_accelerate_py.agent_supervisor` and its domain packages such as
+`control`, `proof`, `objectives`, and `runtime`):
+
+| Concern | Modules / packages |
 | --- | --- |
 | Objective and task identity | `objective_graph`, `objective_tracker`, `task_identity`, `taskboard_store` |
 | Analysis and retrieval | `analysis_ast_index`, `analysis_cache`, `analysis_contracts`, `analysis_retrieval`, `code_evidence_graph`, `todo_vector_index` |
@@ -182,7 +287,9 @@ print({
 })
 PY
 
-python -m ipfs_accelerate_py.agent_supervisor.prover_matrix_registry \
+# Canonical module path (under agent_supervisor.proof).
+# The short alias without ".proof." is not a reliable -m entry point.
+python -m ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry \
   --output data/agent_supervisor/prover_matrix.json --no-self-tests
 ```
 

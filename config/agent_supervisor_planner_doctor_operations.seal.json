@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    {
+      "path": "scripts/ops/agent_supervisor/proof_directed_planner_doctor.py",
+      "role": "operations_script",
+      "sha256": "sha256:cbf243ca289958d74735d470bbb3cd7b655bf45816227363e8aad903346d0cc4",
+      "size_bytes": 74390
+    },
+    {
+      "path": "docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md",
+      "role": "operations_guide",
+      "sha256": "sha256:0364228a189acbab103ce945cfa3895b83bccbb030fd4661d65472b4cac5a926",
+      "size_bytes": 13260
+    },
+    {
+      "path": "test/api/test_agent_supervisor_planner_doctor_operations.py",
+      "role": "operations_test",
+      "sha256": "sha256:801aa23e2dd9e233631b8d1b1bb0856f6bdd5e89fdb45451d43f496bdfd012d7",
+      "size_bytes": 19059
+    }
+  ],
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "decision": "sealed",
+  "grant": {
+    "allowed_actions": [
+      "activate_operations_surface"
+    ],
+    "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+    "completion_authority": false,
+    "delegable": false,
+    "mutation_authority": false,
+    "policy_revision": "1",
+    "promotion_authority": false,
+    "protected_anchor_write_authority": false,
+    "task_status_authority": false,
+    "type": "operations_activation"
+  },
+  "interface": "PlannerDoctorOperationsSeal@1",
+  "operator": {
+    "authority_basis": "scheduler_delegated_operator_completion@1",
+    "automatic_controller": true,
+    "candidate": false,
+    "identity": "delegated_supervisor",
+    "model": false
+  },
+  "policy_revision": "1",
+  "receipt_id": "sha256:973a6a8bcdc43f1f0da44e94d9fe9c47fbcf807342d77d15bcfca4dc253239ba",
+  "receipt_version": "1",
+  "reviewed_base": {
+    "commit": "9f62cabbd04a3a701c9c29107119a0b5d71c9ad6",
+    "git_object_format": "sha1",
+    "relation_to_activation_head": "equal_or_ancestor",
+    "tree": "a76a464416fef12bc57f3fae64af245e763d9daa"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.operations_seal@1",
+  "task_id": "PDR-091"
+}

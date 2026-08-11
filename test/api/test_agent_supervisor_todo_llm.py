@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -42,6 +43,32 @@ def _config(tmp_path: Path, **overrides: Any) -> LlmRouterInvocation:
     )
     fields.update(overrides)
     return LlmRouterInvocation(**fields)
+
+
+def test_new_child_options_preserve_legacy_positional_constructors() -> None:
+    invocation = LlmRouterInvocation(
+        Path("."), "model", "provider", False, 17
+    )
+    assert invocation.timeout_seconds == 17
+    assert invocation.allow_cross_provider_fallback is None
+
+    envelope = LlmChildRequestEnvelope(
+        LLM_CHILD_ENVELOPE_SCHEMA,
+        LLM_CHILD_ENVELOPE_VERSION,
+        LLM_USAGE_MODE_OFF,
+        "request",
+        1,
+        "idempotency",
+        "model",
+        "provider",
+        17,
+        18,
+        0.0,
+        False,
+        "catalog-revision",
+    )
+    assert envelope.catalog_revision == "catalog-revision"
+    assert envelope.allow_cross_provider_fallback is False
 
 
 def test_request_envelope_is_bounded_versioned_and_prompt_free() -> None:
@@ -273,6 +300,48 @@ def test_enforce_mode_propagates_receipt_ids_without_prompt_leakage(
     last = last_llm_child_result()
     assert last is not None
     assert last.supervisor_receipt_id == "sup:77"
+
+
+def test_child_pins_canonical_accelerator_router_ahead_of_hostile_editable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+    hostile_root = tmp_path / "hostile-editable"
+    hostile_root.mkdir()
+    monkeypatch.setenv("PYTHONPATH", str(hostile_root))
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = list(command)
+        captured["env"] = dict(kwargs.get("env") or {})
+        captured["child_code"] = Path(command[1]).read_text(encoding="utf-8")
+
+        class Proc:
+            returncode = 0
+            pid = 991
+
+            def communicate(self, timeout=None):
+                return ("ok", "")
+
+            def poll(self):
+                return self.returncode
+
+        return Proc()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm.subprocess.Popen",
+        fake_popen,
+    )
+    assert call_llm_router("prompt", _config(tmp_path)) == "ok"
+
+    source_root = str(Path(__file__).resolve().parents[2])
+    pythonpath = captured["env"]["PYTHONPATH"].split(os.pathsep)
+    assert pythonpath == [source_root]
+    assert len(captured["command"]) == 2
+    assert Path(captured["command"][1]).name.startswith("todo-daemon-llm-child-")
+    child_code = str(captured["child_code"])
+    assert "sys.path[:] = [_canonical_source_root]" in child_code
+    assert "from ipfs_accelerate_py import llm_router" in child_code
+    assert "from ipfs_datasets_py import llm_router" not in child_code
 
 
 def test_child_failure_surfaces_without_leaking_prompt(

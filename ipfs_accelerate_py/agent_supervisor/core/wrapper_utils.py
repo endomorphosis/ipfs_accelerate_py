@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -762,14 +761,20 @@ def default_llm_merge_resolver_command(
         "exec",
         "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-terra",
         "-c",
-        'model_reasoning_effort="high"',
+        'model_reasoning_effort="medium"',
         "-C",
         ".",
         "-",
     ),
 ) -> str:
-    """Return the configured merge-resolver command, falling back to Codex when available."""
+    """Return the configured command or the packaged reviewed provider route.
+
+    ``codex_args`` remains accepted for source compatibility with older
+    wrappers, but it cannot bypass the Grok-first quota policy.
+    """
 
     if primary_env_var:
         configured = os.environ.get(primary_env_var, "").strip()
@@ -779,10 +784,14 @@ def default_llm_merge_resolver_command(
         configured = os.environ.get(fallback_env_var, "").strip()
         if configured:
             return configured
-    codex = shutil.which("codex")
-    if not codex:
-        return ""
-    return " ".join(shlex.quote(part) for part in (codex, *codex_args))
+    del codex_args
+    from ..integrations.llm_merge_resolver_fallback import (
+        llm_merge_resolver_fallback_command,
+    )
+
+    return llm_merge_resolver_fallback_command(
+        python_executable=sys.executable,
+    )
 
 
 def build_default_llm_merge_resolver_command_callback(
@@ -793,8 +802,10 @@ def build_default_llm_merge_resolver_command_callback(
         "exec",
         "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-terra",
         "-c",
-        'model_reasoning_effort="high"',
+        'model_reasoning_effort="medium"',
         "-C",
         ".",
         "-",
@@ -821,8 +832,10 @@ def build_prefixed_default_llm_merge_resolver_command_callback(
         "exec",
         "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-terra",
         "-c",
-        'model_reasoning_effort="high"',
+        'model_reasoning_effort="medium"',
         "-C",
         ".",
         "-",

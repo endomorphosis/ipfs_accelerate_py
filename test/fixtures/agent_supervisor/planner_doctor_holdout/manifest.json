@@ -1,0 +1,684 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-benchmark-manifest@1",
+  "interface": "PlannerDoctorBenchmarkManifest@1",
+  "task_id": "PDR-003",
+  "goal_id": "PDR-G010",
+  "corpus_id": "planner-doctor-repository-corpus-v1",
+  "manifest_cid": "baguqeeratdt3yv2jwcorvsuaae5zh2vypsrwiry7luohli3gb6ecjkghm2na",
+  "identity_profile": {
+    "cid_version": 1,
+    "multibase": "base32",
+    "multicodec": "dag-json",
+    "multihash": "sha2-256",
+    "canonicalization": "ipfs-accelerate-canonical-dag-json-v1",
+    "self_identity_rule": "manifest_cid is computed over this object with manifest_cid removed"
+  },
+  "source_repository": {
+    "repository_id": "github.com/endomorphosis/ipfs_accelerate_py",
+    "origin": "https://github.com/endomorphosis/ipfs_accelerate_py.git",
+    "audited_commit": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+    "audited_tree": "cf6f6450bba0126a9846ae88bf7764f3e1ccb7c3",
+    "enumeration_command": "git ls-tree -rz --full-tree -r <audited_commit>",
+    "record_fields": [
+      "mode",
+      "object_type",
+      "object_id",
+      "repository_relative_posix_path"
+    ],
+    "tracked_entry_count": 12253,
+    "includes_recursive_gitlink_records": true,
+    "working_tree_overlay_included": false,
+    "untracked_files_included": false
+  },
+  "normalization_profile": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/repository-corpus-normalization@1",
+    "profile_id": "python-ast-contract-provenance-v1",
+    "profile_cid": "baguqeeratb2sqwfslk7qqk3sgcxihojxjdx2olm3fhi2betq7qjpf573hsoa",
+    "profile_sha256": "sha256:98752858b25abf082b7230ae83b93748efa72d9b29d1a09270fc12f2f7fb3c9c",
+    "python_ast_normalization": "ast.dump(parse(utf8),annotate_fields=true,include_attributes=false)",
+    "contract_normalization": "sorted public top-level function/class signatures including public class method signatures",
+    "provenance_path_normalization": "posix-casefold-strip-declared-replica-prefix-and-backup-suffix-v1",
+    "replica_prefixes": [
+      "data/benchmarks/",
+      "test/refactored_benchmark_suite/",
+      "scripts/generators/test_generator/",
+      "test/refactored_test_suite/",
+      "scripts/generators/skill_generator/",
+      "test/refactored_generator_suite/",
+      "test/ipfs_accelerate_py/",
+      "ipfs_accelerate_py/",
+      "test/skills/backups/",
+      "test/skills/fixed_tests/"
+    ],
+    "backup_suffix_regex": "(?:\\.bak)?\\.(?:[0-9]{8}(?:_?[0-9]{6})?|[0-9]{14})$ then \\.bak$",
+    "empty_or_unparseable_ast_contract_key": "omitted",
+    "family_closure": "connected-components-over-exact-object-normalized-ast-contract-and-provenance-keys",
+    "identity_rule": "profile_cid and profile_sha256 are computed over this object with profile_cid and profile_sha256 removed"
+  },
+  "partition_policy": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-partition-policy@2",
+    "policy_cid": "baguqeeras2xzxocvbhs74ka47svq2nxfc4xjcleojebdrkrkbpjyu5vke6gq",
+    "policy_sha256": "sha256:96af9bb85509e5fe281cfcab0d36e5172e912c8e490238aa2a0bd38a76aa278d",
+    "algorithm": "sha2-256-provenance-family-modulo-v2",
+    "algorithm_version": 2,
+    "seed": "pdr-benchmark-corpus-v2",
+    "source_tree": "cf6f6450bba0126a9846ae88bf7764f3e1ccb7c3",
+    "normalization_profile_cid": "baguqeeratb2sqwfslk7qqk3sgcxihojxjdx2olm3fhi2betq7qjpf573hsoa",
+    "family_identity": "canonical-dag-json-cid-of-sorted-family-members",
+    "assignment_preimage_fields": [
+      "seed_utf8",
+      "nul",
+      "family_cid_ascii"
+    ],
+    "digest": "sha2-256",
+    "bucket_count": 5,
+    "development_buckets": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "heldout_buckets": [
+      4
+    ],
+    "ordering": "repository_relative_posix_path_utf8_bytewise",
+    "identity_rule": "policy_cid and policy_sha256 are computed over this object with policy_cid, policy_sha256, and identity_rule removed"
+  },
+  "partitions": {
+    "development": {
+      "index_schema": "ipfs_accelerate_py/agent-supervisor/repository-corpus-index@1",
+      "index_id": "planner-doctor-development-v2",
+      "index_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "index_sha256": "sha256:4860d381b81b5faaa01a24431374b70ed3baf892f3d978eb2f74bcd0c3419e66",
+      "member_count": 9899,
+      "blob_count": 9890,
+      "gitlink_count": 9,
+      "family_count": 8106,
+      "planner_visibility": "allowed",
+      "planner_mount": "read-only-filtered-development-snapshot",
+      "cache_namespace": "planner-doctor-benchmark/development/v1",
+      "may_produce_planning_context": true
+    },
+    "heldout": {
+      "index_schema": "ipfs_accelerate_py/agent-supervisor/repository-corpus-index@1",
+      "index_id": "planner-doctor-heldout-v2",
+      "index_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "index_sha256": "sha256:983b966558a009b387c55b5cff121746e6b5035267042b2544073ac1bcfb4266",
+      "member_count": 2354,
+      "blob_count": 2353,
+      "gitlink_count": 1,
+      "family_count": 2032,
+      "planner_visibility": "forbidden",
+      "planner_mount": "absent-from-candidate-and-planning-worktrees",
+      "runner_mount": "operator-owned-read-only-cas",
+      "cache_namespace": "planner-doctor-benchmark/heldout/v1",
+      "may_produce_planning_context": false
+    }
+  },
+  "partition_invariants": {
+    "disjoint": true,
+    "complete_over_enumerated_population": true,
+    "development_plus_heldout_member_count": 12253,
+    "exact_object_overlap_count": 0,
+    "normalized_ast_overlap_count": 0,
+    "normalized_contract_overlap_count": 0,
+    "provenance_family_overlap_count": 0,
+    "any_cross_partition_family_overlap_forces_corpus_rejection": true,
+    "cross_partition_cache_reuse_forbidden": true,
+    "cross_partition_vector_or_graph_index_reuse_forbidden": true,
+    "heldout_paths_bodies_prompts_mutations_and_oracles_forbidden_in_planner_context": true,
+    "heldout_access_requires_runner_lease_and_audited_read_receipt": true,
+    "candidate_process_access_to_heldout_mount_forbidden": true,
+    "leakage_forces_run_rejection": true
+  },
+  "exposure_contract": {
+    "corpus_authority": "public-conformance-only",
+    "promotion_authority": false,
+    "reason": "the source tree, partition algorithm, seed, and commitments are public and reconstructable",
+    "cids_alone_prove_non_exposure": false,
+    "required_non_exposure_evidence": [
+      "runner-namespace-mount-table-receipt",
+      "candidate-process-tree-and-network-receipt",
+      "cas-access-log-receipt",
+      "post-output-judge-mount-receipt"
+    ],
+    "candidate_input_stage": "operator materializes only the opaque case packet, then removes corpus CAS access before candidate launch",
+    "candidate_output_finalization": "terminate and observe the candidate process tree, revoke capabilities, and seal the output root",
+    "judge_stage": "only after output finalization mount heldout and oracle CAS read-only in an operator judge namespace outside candidate worktrees",
+    "future_external_promotion_corpus_and_oracle_task_id": "PDR-072",
+    "future_external_promotion_evidence_required": true
+  },
+  "case_contract": {
+    "selection_algorithm": "lowest-sha2-256-ranked-members-v1",
+    "selection_preimage_fields": [
+      "case_id_utf8",
+      "nul",
+      "member_path_utf8",
+      "nul",
+      "member_object_id_ascii"
+    ],
+    "maximum_selected_members_per_case": 24,
+    "case_identity_rule": "case_cid is computed over the case object with case_cid removed",
+    "input_identity_rule": "input_commitment_cid is computed from source_selector plus input_contract with input_commitment_cid removed",
+    "prompt_and_mutation_bodies_in_manifest": false,
+    "oracle_body_or_expected_outcome_in_manifest": false,
+    "all_cases_required_in_each_qualifying_run": true,
+    "case_removal_or_denominator_change_forces_rejection": true
+  },
+  "case_population": {
+    "case_count": 12,
+    "development_case_count": 6,
+    "heldout_case_count": 6,
+    "paired_family_count": 6,
+    "paired_families": [
+      "plan-create",
+      "plan-steer",
+      "doctor-diagnosis",
+      "security-ir",
+      "transaction-rollback",
+      "capability-degradation"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "pdr-dev-plan-create-control-plane",
+      "case_cid": "baguqeeramgab55f7psduqbctyjm3i25l5l5lkhzcx53zw4l7ty2llxtmrr4q",
+      "partition": "development",
+      "pair_family": "plan-create",
+      "execution_kind": "planner-create",
+      "source_partition_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "source_selector": {
+        "selector_seed": "pdr-dev-plan-create-control-plane",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json",
+          ".md"
+        ],
+        "maximum_members": 16
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/plan-create@1",
+        "prompt_template_id": "planner-create-control-plane@1",
+        "mutation_recipe_id": "none",
+        "task_source_seed_id": "markdown-empty-revision@1",
+        "deterministic_seed": 1001,
+        "input_commitment_cid": "baguqeerai3g5bpi4c6kz63kxdg4o62ffalfalzsqajos2yn2myw5mtfqx5wq"
+      },
+      "required_capabilities": [
+        "planner-create",
+        "repository-scan",
+        "formal-plan-admission",
+        "parallel-plan-compile"
+      ],
+      "oracle_slot_id": "oracle:pdr-dev-plan-create-control-plane@1",
+      "oracle_visibility": "independent-runner-only",
+      "planning_visibility": "development-only",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-dev-plan-steer-dependency",
+      "case_cid": "baguqeerae5g47vo7gfc3ti4rzad7a6aqdn2o3bffurbpmnjhoqootv2ts7ha",
+      "partition": "development",
+      "pair_family": "plan-steer",
+      "execution_kind": "planner-steer",
+      "source_partition_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "source_selector": {
+        "selector_seed": "pdr-dev-plan-steer-dependency",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json",
+          ".md"
+        ],
+        "maximum_members": 16
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/plan-steer@1",
+        "prompt_template_id": "planner-steer-preserve-claimed-history@1",
+        "mutation_recipe_id": "append-only-steer-delta@1",
+        "task_source_seed_id": "markdown-claimed-task@1",
+        "deterministic_seed": 1002,
+        "input_commitment_cid": "baguqeeraz7cfeah2g72fapwelgnum3iyvt3n2sbokdioetxm3xfg2fsk633a"
+      },
+      "required_capabilities": [
+        "planner-steer",
+        "plan-revision-cas",
+        "dependency-validation",
+        "parallel-plan-compile"
+      ],
+      "oracle_slot_id": "oracle:pdr-dev-plan-steer-dependency@1",
+      "oracle_visibility": "independent-runner-only",
+      "planning_visibility": "development-only",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-dev-doctor-contract-delta",
+      "case_cid": "baguqeera4hzj7j4nlkmmvees3dsg3ed7vrvkyeko37nvyutzpgjmf5lvmx2q",
+      "partition": "development",
+      "pair_family": "doctor-diagnosis",
+      "execution_kind": "doctor-diagnose-repair",
+      "source_partition_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "source_selector": {
+        "selector_seed": "pdr-dev-doctor-contract-delta",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json"
+        ],
+        "maximum_members": 20
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/doctor-contract@1",
+        "prompt_template_id": "doctor-diagnose-contract-delta@1",
+        "mutation_recipe_id": "rename-and-signature-delta@1",
+        "task_source_seed_id": "doctor-report-only@1",
+        "deterministic_seed": 1003,
+        "input_commitment_cid": "baguqeerazmrg3gx7xvmv7dnn3vafqzmyd3pdx3klfn2liejmx5qoaoowv4zq"
+      },
+      "required_capabilities": [
+        "doctor-live-snapshot",
+        "ast-impact",
+        "contract-diff",
+        "fixed-point"
+      ],
+      "oracle_slot_id": "oracle:pdr-dev-doctor-contract-delta@1",
+      "oracle_visibility": "independent-runner-only",
+      "planning_visibility": "development-only",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-dev-security-ir-forbidden-intent",
+      "case_cid": "baguqeerad5g5kdatrlbf5mxytk5ehkhgeq5by4b7wbtnbdgqw7ldc35vmcca",
+      "partition": "development",
+      "pair_family": "security-ir",
+      "execution_kind": "planner-doctor-security-gate",
+      "source_partition_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "source_selector": {
+        "selector_seed": "pdr-dev-security-ir-forbidden-intent",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json"
+        ],
+        "maximum_members": 18
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/security-ir@1",
+        "prompt_template_id": "forbidden-security-intent@1",
+        "mutation_recipe_id": "authorization-bypass@1",
+        "task_source_seed_id": "security-review@1",
+        "deterministic_seed": 1004,
+        "input_commitment_cid": "baguqeera3yhnrdlfksift6ngyrtttg5di6amgsc33k6yqz4h6hflkx4wziqq"
+      },
+      "required_capabilities": [
+        "intent-ir",
+        "security-ir",
+        "security-contract-analysis",
+        "formal-plan-admission"
+      ],
+      "oracle_slot_id": "oracle:pdr-dev-security-ir-forbidden-intent@1",
+      "oracle_visibility": "independent-runner-only",
+      "planning_visibility": "development-only",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-dev-transaction-rollback",
+      "case_cid": "baguqeerarrvd2wxmooi5mudgqkzgpy5aqobht6qtmbn3sd6jj6shxmvwibya",
+      "partition": "development",
+      "pair_family": "transaction-rollback",
+      "execution_kind": "doctor-transaction",
+      "source_partition_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "source_selector": {
+        "selector_seed": "pdr-dev-transaction-rollback",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json"
+        ],
+        "maximum_members": 18
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/transaction@1",
+        "prompt_template_id": "doctor-repair-with-rollback@1",
+        "mutation_recipe_id": "validation-failure-after-write@1",
+        "task_source_seed_id": "doctor-mutation-preview@1",
+        "deterministic_seed": 1005,
+        "input_commitment_cid": "baguqeerai7i62f4p42mjlasgfsnwddzz5kj5iuevlzdxwvnka7b56drjyd2a"
+      },
+      "required_capabilities": [
+        "isolated-worktree",
+        "mutation-permit",
+        "transaction",
+        "exact-rollback"
+      ],
+      "oracle_slot_id": "oracle:pdr-dev-transaction-rollback@1",
+      "oracle_visibility": "independent-runner-only",
+      "planning_visibility": "development-only",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-dev-provider-degradation",
+      "case_cid": "baguqeeralbjordykasftcsygl46dpmeokoivvllqudtfvobmdd43h64kulqa",
+      "partition": "development",
+      "pair_family": "capability-degradation",
+      "execution_kind": "planner-doctor-degradation",
+      "source_partition_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+      "source_selector": {
+        "selector_seed": "pdr-dev-provider-degradation",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json"
+        ],
+        "maximum_members": 12
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/degradation@1",
+        "prompt_template_id": "required-provider-unavailable@1",
+        "mutation_recipe_id": "provider-loss@1",
+        "task_source_seed_id": "report-only-degradation@1",
+        "deterministic_seed": 1006,
+        "input_commitment_cid": "baguqeeragl6sa23c7ipnc4bybz647smcnklaeobhjaiffa2leknmnopg2gya"
+      },
+      "required_capabilities": [
+        "capability-negotiation",
+        "typed-abstention",
+        "telemetry-unavailable",
+        "model-free-fallback"
+      ],
+      "oracle_slot_id": "oracle:pdr-dev-provider-degradation@1",
+      "oracle_visibility": "independent-runner-only",
+      "planning_visibility": "development-only",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-holdout-plan-create-transport-parity",
+      "case_cid": "baguqeeraearrnjf64tmx7yw54sthszet6u4dbaoagqgofm3c53w5nxfi3aaq",
+      "partition": "heldout",
+      "pair_family": "plan-create",
+      "execution_kind": "planner-create",
+      "source_partition_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "source_selector": {
+        "selector_seed": "pdr-holdout-plan-create-transport-parity",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json",
+          ".md"
+        ],
+        "maximum_members": 16
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/plan-create@1",
+        "prompt_template_id": "planner-create-transport-parity@1",
+        "mutation_recipe_id": "none",
+        "task_source_seed_id": "duckdb-empty-revision@1",
+        "deterministic_seed": 2001,
+        "input_commitment_cid": "baguqeera6g22mmcnobvioe67i5au5r3jedqjt6p2qnuu5reqd2qdu4vxtlma"
+      },
+      "required_capabilities": [
+        "planner-create",
+        "python-cli-mcp-parity",
+        "markdown-duckdb-parity",
+        "formal-plan-admission"
+      ],
+      "oracle_slot_id": "oracle:pdr-holdout-plan-create-transport-parity@1",
+      "oracle_visibility": "operator-only",
+      "planning_visibility": "forbidden",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-holdout-plan-steer-claimed-history",
+      "case_cid": "baguqeera2vnuskvvmotyk7vwreyhjdgx5tq5y25emdx4q6kjvc3lqc3x26lq",
+      "partition": "heldout",
+      "pair_family": "plan-steer",
+      "execution_kind": "planner-steer",
+      "source_partition_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "source_selector": {
+        "selector_seed": "pdr-holdout-plan-steer-claimed-history",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json",
+          ".md"
+        ],
+        "maximum_members": 18
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/plan-steer@1",
+        "prompt_template_id": "planner-steer-claimed-history@1",
+        "mutation_recipe_id": "stale-steer-and-supersession@1",
+        "task_source_seed_id": "duckdb-claimed-task@1",
+        "deterministic_seed": 2002,
+        "input_commitment_cid": "baguqeeraw7qdtk7d4ghmya2hu7oqaz7uemeiit5l7vwhljp3hh4lwiyp53ja"
+      },
+      "required_capabilities": [
+        "planner-steer",
+        "append-only-history",
+        "cas-fence",
+        "restart-replay"
+      ],
+      "oracle_slot_id": "oracle:pdr-holdout-plan-steer-claimed-history@1",
+      "oracle_visibility": "operator-only",
+      "planning_visibility": "forbidden",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-holdout-doctor-open-frontier",
+      "case_cid": "baguqeerarbyb5gluoxvwpvm43erwjy5usz3p2eger5tcjm6wla4ove7rhg5q",
+      "partition": "heldout",
+      "pair_family": "doctor-diagnosis",
+      "execution_kind": "doctor-diagnose-repair",
+      "source_partition_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "source_selector": {
+        "selector_seed": "pdr-holdout-doctor-open-frontier",
+        "allowed_object_types": [
+          "blob",
+          "commit"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json",
+          ".toml"
+        ],
+        "maximum_members": 24
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/doctor-contract@1",
+        "prompt_template_id": "doctor-open-impact-frontier@1",
+        "mutation_recipe_id": "dynamic-native-generated-frontier@1",
+        "task_source_seed_id": "doctor-report-only@1",
+        "deterministic_seed": 2003,
+        "input_commitment_cid": "baguqeerafmkubznzopdqn4vpffelcnmljbhvtaue66iziu6xgs4exg5diyqa"
+      },
+      "required_capabilities": [
+        "doctor-live-snapshot",
+        "impact-closure",
+        "typed-abstention",
+        "fixed-point"
+      ],
+      "oracle_slot_id": "oracle:pdr-holdout-doctor-open-frontier@1",
+      "oracle_visibility": "operator-only",
+      "planning_visibility": "forbidden",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-holdout-security-ir-cross-boundary",
+      "case_cid": "baguqeerauafiq4kcudz2dzqgzyowilops5p5zatmja763kj3cxcy5xaber2a",
+      "partition": "heldout",
+      "pair_family": "security-ir",
+      "execution_kind": "planner-doctor-security-gate",
+      "source_partition_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "source_selector": {
+        "selector_seed": "pdr-holdout-security-ir-cross-boundary",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json",
+          ".yaml",
+          ".yml"
+        ],
+        "maximum_members": 20
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/security-ir@1",
+        "prompt_template_id": "security-cross-trust-boundary@1",
+        "mutation_recipe_id": "taint-and-authorization-bypass@1",
+        "task_source_seed_id": "security-review@1",
+        "deterministic_seed": 2004,
+        "input_commitment_cid": "baguqeerajix5bi6qjv2fno5nrubued5hksz7r4v7mmr3v5pl2jhnrjuj6inq"
+      },
+      "required_capabilities": [
+        "intent-ir",
+        "security-ir",
+        "taint-analysis",
+        "hyperproperty-check"
+      ],
+      "oracle_slot_id": "oracle:pdr-holdout-security-ir-cross-boundary@1",
+      "oracle_visibility": "operator-only",
+      "planning_visibility": "forbidden",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-holdout-transaction-crash-recovery",
+      "case_cid": "baguqeerapwlmyfemy3bduq6zhxeyvqpexu6vext6hq36tega6lvd7lqb2qma",
+      "partition": "heldout",
+      "pair_family": "transaction-rollback",
+      "execution_kind": "doctor-transaction",
+      "source_partition_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "source_selector": {
+        "selector_seed": "pdr-holdout-transaction-crash-recovery",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json"
+        ],
+        "maximum_members": 20
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/transaction@1",
+        "prompt_template_id": "doctor-crash-mid-transaction@1",
+        "mutation_recipe_id": "crash-after-ref-cas@1",
+        "task_source_seed_id": "doctor-mutation-preview@1",
+        "deterministic_seed": 2005,
+        "input_commitment_cid": "baguqeerabncxwtsonpgfjsenk4mbux7ez4pkqty65cdwmgf26zamviydnokq"
+      },
+      "required_capabilities": [
+        "isolated-worktree",
+        "lease-fence",
+        "crash-recovery",
+        "exact-rollback"
+      ],
+      "oracle_slot_id": "oracle:pdr-holdout-transaction-crash-recovery@1",
+      "oracle_visibility": "operator-only",
+      "planning_visibility": "forbidden",
+      "promotion_eligible": false
+    },
+    {
+      "case_id": "pdr-holdout-cache-proof-replay",
+      "case_cid": "baguqeeraywmg27moqd5lxk2aehpxqtazjccfpecezblntqiwthkbxvc6vfmq",
+      "partition": "heldout",
+      "pair_family": "capability-degradation",
+      "execution_kind": "planner-doctor-degradation",
+      "source_partition_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+      "source_selector": {
+        "selector_seed": "pdr-holdout-cache-proof-replay",
+        "allowed_object_types": [
+          "blob"
+        ],
+        "suffix_allowlist": [
+          ".py",
+          ".json"
+        ],
+        "maximum_members": 18
+      },
+      "input_contract": {
+        "generator_id": "planner-doctor-case-generator/degradation@1",
+        "prompt_template_id": "stale-cache-forged-proof-replay@1",
+        "mutation_recipe_id": "cache-root-and-toolchain-drift@1",
+        "task_source_seed_id": "restart-with-persisted-cache@1",
+        "deterministic_seed": 2006,
+        "input_commitment_cid": "baguqeerassusg3fq4be6rpoa4znpdsy3inrjl5nnjq6ikouhvwknlkfg2tgq"
+      },
+      "required_capabilities": [
+        "proof-cache",
+        "native-kernel-replay",
+        "cache-invalidation",
+        "typed-abstention"
+      ],
+      "oracle_slot_id": "oracle:pdr-holdout-cache-proof-replay@1",
+      "oracle_visibility": "operator-only",
+      "planning_visibility": "forbidden",
+      "promotion_eligible": false
+    }
+  ],
+  "oracle_contract": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-oracle-binding-requirement@1",
+    "oracle_handle": "opaque:operator-cas/planner-doctor-quality-oracle@1",
+    "future_manifest_path": "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
+    "future_manifest_schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-quality-oracle-manifest@1",
+    "producer_task_id": "PDR-072",
+    "must_bind_this_manifest_cid": true,
+    "must_cover_exact_case_ids": true,
+    "must_bind_oracle_code_and_toolchain_cids": true,
+    "must_be_mounted_read_only_outside_candidate_worktrees": true,
+    "candidate_read_access": false,
+    "planner_read_access": false,
+    "oracle_body_in_this_manifest": false,
+    "expected_outcome_in_this_manifest": false,
+    "mount_phase": "after-candidate-output-finalization-only",
+    "public_conformance_partition_may_promote": false,
+    "missing_or_unsealed_oracle_disposition": "not-promotion-eligible"
+  },
+  "authority": {
+    "fixtures_are_execution_inputs": true,
+    "fixtures_are_outcome_authority": false,
+    "candidate_observations_are_oracle_authority": false,
+    "retrieval_or_model_scores_are_oracle_authority": false,
+    "independent_live_validation_required": true,
+    "synthetic_or_fixture_expected_values_may_promote": false,
+    "skipped_cases_may_promote": false,
+    "task_status_may_prove_quality_or_completion": false
+  },
+  "operator_seal_contract": {
+    "seal_handle": "opaque:operator-seal/planner-doctor-benchmark-pdr-003@1",
+    "external_receipt_path": "config/agent_supervisor_planner_doctor_benchmark.seal.json",
+    "self_sealing_forbidden": true,
+    "candidate_or_model_may_issue_seal": false,
+    "operator_identity_and_interactive_user_delegation_basis_required": true,
+    "seal_grants_benchmark_activation_only": true,
+    "seal_grants_promotion": false,
+    "absence_or_tamper_disposition": "benchmark-disabled"
+  },
+  "protection": {
+    "operator_owned": true,
+    "read_only_after_manual_review": true,
+    "candidate_mutation_forbidden": true,
+    "denominator_mutation_forbidden": true,
+    "partition_mutation_forbidden": true,
+    "oracle_slot_mutation_forbidden": true,
+    "seed_taskboard_mutation_forbidden": true,
+    "derived_runtime_work_may_modify_manifest": false
+  }
+}

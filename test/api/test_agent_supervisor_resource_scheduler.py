@@ -182,45 +182,72 @@ def test_host_pressure_applies_backpressure_before_exhaustion(
 
 
 @pytest.mark.parametrize(
-    ("advertised_resource_classes", "required_resource_class"),
-    [
-        (("cpu-small",), "cpu-proof-sanitize"),
-        ((ProofResourceClass.TYPE_CHECK.value,), "cpu-install-test"),
-    ],
+    "resource_class",
+    ("io-small", "io-network", "coordinator"),
 )
-def test_cpu_extension_resource_classes_use_advertised_local_cpu_capacity(
-    advertised_resource_classes: tuple[str, ...],
-    required_resource_class: str,
+def test_default_cpu_host_admits_prompt_plan_resource_classes(
+    resource_class: str,
 ) -> None:
     scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
-
     decision = scheduler.evaluate(
         LaneResourceRequirements(
-            lane_id=required_resource_class,
-            resource_class=required_resource_class,
+            lane_id=f"prompt-{resource_class}",
+            resource_class=resource_class,
         ),
-        host=_host(resource_classes=advertised_resource_classes),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+        ),
     )
 
     assert decision.admitted is True
     assert "resource_class_mismatch" not in decision.reasons
 
 
-def test_cpu_extension_resource_classes_do_not_bypass_host_capabilities() -> None:
-    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+@pytest.mark.parametrize(
+    "resource_class",
+    (
+        "exclusive-jvm-toolchain",
+        "large-kernel-toolchain",
+        "cpu-install-test",
+        "unknown",
+    ),
+)
+def test_default_cpu_host_admits_unregistered_cpu_workload_classes(
+    resource_class: str,
+) -> None:
+    """Objective-plan workload labels must not stall residual FVT installs."""
 
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
     decision = scheduler.evaluate(
         LaneResourceRequirements(
-            lane_id="toolchain",
-            resource_class="cpu-install-test",
-            required_capabilities=("host:container-runtime",),
+            lane_id=f"workload-{resource_class}",
+            resource_class=resource_class,
         ),
-        host=_host(resource_classes=(ProofResourceClass.VALIDATION.value,)),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+            capabilities=("cpu",),
+        ),
+    )
+
+    assert decision.admitted is True
+    assert "resource_class_mismatch" not in decision.reasons
+
+
+def test_gpu_prefixed_workload_class_still_mismatches_cpu_host() -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id="gpu-only",
+            resource_class="gpu-a100",
+        ),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+            capabilities=("cpu",),
+        ),
     )
 
     assert decision.admitted is False
-    assert "resource_class_mismatch" not in decision.reasons
-    assert "host_capability_mismatch" in decision.reasons
+    assert "resource_class_mismatch" in decision.reasons
 
 
 @pytest.mark.parametrize(

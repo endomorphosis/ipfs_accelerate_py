@@ -1308,11 +1308,270 @@ Program invariants:
 - Submodules: ipfs_datasets_py
 - Resource class: cpu-proof-solver
 
+## FVT-G201 Derive exact host support and platform exceptions from the lock
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G010, FVT-G110
+- Fib priority: 121393
+- Priority: P0
+- Track: deployment-integrity
+- Bundle: formal-verification-tactician/platform-support-classifier
+- Goal: Give every locked tool an auditable host-platform classification so missing supported capabilities can never be relabeled as exceptions.
+- Evidence: test/integration/toolchains/test_formal_verification_platform_support.py
+- Outputs: tools/logic/certification/platform_support.py, test/integration/toolchains/test_formal_verification_platform_support.py
+- Validation: python -m pytest test/integration/toolchains/test_formal_verification_platform_support.py -q
+- Acceptance: The normalized host key is derived from the running OS and architecture; each tool reports supported_here, unsupported_here, or ambiguous from its own pins and deployment contract; `any` support is honored; absent, contradictory, or ambiguous metadata is a blocker; only an explicit host exclusion can produce a narrow platform exception; linux-aarch64 classifies HyperLTL, AutoHyper, MCHyper, Souffle, and external Runtime MTL as supported under the current lock, external SecPAL as unsupported, and ZKP as a platform-independent deployment binding; a lock mutation that adds or removes linux-aarch64 changes the classification and final digest.
+- Conflict policy: Own platform normalization and classification only; never probe or install tools, infer support from PATH, or convert unavailability into unsupported status.
+- Interfaces: FormalVerificationPlatformSupport@1
+- Resource class: cpu-validation
+
+## FVT-G202 Repair exact probes and managed artifact identities
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110, FVT-G120, FVT-G131, FVT-G151
+- Fib priority: 121393
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/toolchain-probe-integrity
+- Goal: Make generic and state-model identity probing command-correct, return-code-aware, digest-bound, hostile-environment-safe, and atomic.
+- Evidence: test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_probe_integrity.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_probe_integrity.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Acceptance: Java identity is parsed only from the quoted java/openjdk version banner after hostile Java option variables are neutralized; bare names resolve only through PATH and dry-run executes nothing; Apalache uses `version`, Isabelle uses `version`, ProVerif uses a valid identity command, and nonzero error banners cannot prove usability; TLC 1.8.0 binds SHA-256 `e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5` plus manifest tag `v1.8.0` and revision `30cc360`; genuine TLC help is recognized despite exit 1 only with required markers; returned launchers execute through the validated Java 17+ runtime; TLC and Apalache artifact plus launcher repair is staged, atomic, and rollback-safe; failed repair preserves a prior good install.
+- Conflict policy: Own exact probe commands, reviewed identities, and atomic publication; never mutate system Java, accept an unbound artifact, trust arbitrary nonempty output, or validate a different path than the public launcher.
+- Interfaces: FormalVerificationProbeIntegrity@1
+- Submodules: ipfs_datasets_py
+- Resource class: exclusive-jvm-toolchain
+
+## FVT-G203 Aggregate full specialized receipts with composite lane handlers
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G101, FVT-G102, FVT-G103, FVT-G120, FVT-G130, FVT-G131, FVT-G140, FVT-G150, FVT-G151, FVT-G160, FVT-G170, FVT-G180, FVT-G181, FVT-G190, FVT-G201, FVT-G202
+- Fib priority: 196418
+- Priority: P0
+- Track: certification-integrity
+- Bundle: formal-verification-tactician/semantic-receipt-aggregation
+- Goal: Replace first-check and one-handler-per-lane fan-in with lossless, per-tool specialized evidence aggregation.
+- Evidence: test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certify_formal_verification_toolchains.py, test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Acceptance: Handlers are keyed by `(lane_id, tool_id)` or a composite lane returns distinct per-tool receipts; kernel retains Lean, Rocq, and Isabelle evidence and protocol retains Tamarin and ProVerif evidence; state, protocol, kernel, ATP, hyperproperty, advisor, in-process and external authorization, in-process and external Runtime MTL, and ZKP certifiers are all represented; every check, case, binding, executable, artifact, dependency, source, authority ceiling, and raw receipt digest participates in the top-level digest; a second failed check of an already-present kind blocks promotion; mutating any retained check or identity changes the certificate digest.
+- Conflict policy: Own role registration and lossless aggregation; do not run installers, collapse by check kind, discard raw receipt identity, or let one tool overwrite a sibling handler.
+- Interfaces: FormalVerificationSpecializedReceiptAggregation@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G204 Execute real TLC and Apalache state-model semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G120, FVT-G201, FVT-G202
+- Fib priority: 75025
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/state-model-live-semantics
+- Goal: Replace classifier-backed state-model promotion with real TLC and Apalache execution against positive and adversarial models.
+- Evidence: test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Outputs: tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_live_semantic_certification.py, docs/architecture/formal_verification_state_model_live_certificate.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_state_model_live_semantic_certification.py test/integration/toolchains/test_state_model_toolchain_certification.py -q
+- Acceptance: The pinned TLC jar and Apalache executable each run a valid invariant model, a violating model with concrete counterexample, specification and invariant mutations, deterministic replay, malformed input, timeout, and bounded-state/resource cases; source model, property, bound, JVM, executable, jar/archive, and output digests are exact; canned text and parser classification remain `hermetic_parser` and cannot satisfy live external semantics.
+- Conflict policy: Own live state-model cases and receipts; use the installed toolchain without downloading during certification and never promote from identity or output parsing alone.
+- Interfaces: StateModelLiveSemanticCertification@1
+- Resource class: exclusive-jvm-toolchain
+
+## FVT-G205 Execute real Tamarin and ProVerif protocol semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G130, FVT-G131, FVT-G201, FVT-G202
+- Fib priority: 75025
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/protocol-live-semantics
+- Goal: Run the protocol corpus through the pinned Tamarin and ProVerif binaries and retain per-tool cryptographic-protocol evidence.
+- Evidence: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Outputs: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_protocol_live_semantic_certification.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/toolchains/test_proverif_toolchain_certification.py -q
+- Acceptance: Both binaries execute valid secrecy/authentication protocols, concrete attacks, premise/conclusion and protocol mutations, replay, malformed models, timeout, disagreement, and bounded-search cases; receipts bind tool and dependency identities, source, query, assumptions, bound, witnesses/traces, and raw output; parser fixtures remain non-production.
+- Conflict policy: Own live protocol execution and per-tool receipts; never turn parser-recognized canned output into semantic proof or allow one protocol engine to stand in for the other.
+- Interfaces: ProtocolLiveSemanticCertification@1
+- Resource class: cpu-proof-solver
+
+## FVT-G206 Execute and bind Lean, Rocq, and Isabelle kernel semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G101, FVT-G150, FVT-G151, FVT-G201, FVT-G202
+- Fib priority: 75025
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/kernel-live-semantics
+- Goal: Require each installed proof kernel to check its own generated source and retain all assumptions, imports, theorem, and mutation evidence.
+- Evidence: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Outputs: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q
+- Acceptance: Lean, Rocq, and Isabelle independently execute a valid theorem, false theorem, hypothesis/conclusion mutation, deterministic replay, malformed source, timeout, and forbidden admit/axiom-oracle checks; Isabelle's live source/session helper is exercised rather than only offline fixtures; receipts bind exact kernel, dependency, source, imports/session, assumptions, theorem, and output digests; no advisor or sibling kernel substitutes for the selected kernel.
+- Conflict policy: Own kernel fan-in and live source checks; serialize expensive OPAM/Isabelle resources and preserve each kernel's separate authority.
+- Interfaces: KernelLiveSemanticFanIn@1
+- Resource class: large-kernel-toolchain
+
+## FVT-G207 Execute real Vampire and E prover semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G140, FVT-G201, FVT-G202
+- Fib priority: 46368
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/atp-live-semantics
+- Goal: Replace SZS parser fixtures with real pinned ATP runs while preserving reconstruction and kernel-checking ceilings.
+- Evidence: test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Outputs: tools/logic/certification/atp.py, test/integration/toolchains/test_atp_live_semantic_certification.py, docs/architecture/formal_verification_atp_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_atp_live_semantic_certification.py test/integration/toolchains/test_atp_toolchain_certification.py -q
+- Acceptance: Vampire and E each execute theorem and counter-satisfiable problems, premise/conclusion mutations, replay, malformed TPTP, timeout/resource bounds, disagreement, and proof-object/reconstruction cases; receipts bind exact binary and artifact digests, TPTP source, assumptions, conclusion, limits, raw SZS output, and reconstruction status; an ATP result cannot exceed candidate/reconstruction authority until checked by a trusted kernel.
+- Conflict policy: Own real ATP execution and receipts; keep SZS parsing as adapter evidence and never grant kernel authority to an unreconstructed ATP result.
+- Interfaces: ATPLiveSemanticCertification@1
+- Resource class: cpu-proof-solver
+
+## FVT-G208 Install and live-certify supported hyperproperty engines
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G170, FVT-G201, FVT-G202
+- Fib priority: 121393
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Goal: Correct the upstream identities and deploy real HyperLTL satisfiability, AutoHyper, and MCHyper toolchains on every declared supported host.
+- Evidence: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q
+- Acceptance: AutoHyper binds its official revision, .NET runtime, Spot tools, build inputs, executable digest, and live semantic cases; MCHyper binds its official revision, ABC/AIGER dependencies, executable digest, supported fragment, and live witness/counterexample cases; the selected HyperLTL satisfiability engine has its own correct upstream identity and decidable-fragment ceiling; satisfaction, violation, observation/quantifier mutation, replay, malformed output, timeout, disagreement, and exact bounds execute through real binaries; linux-aarch64 remains supported only if that complete chain is real; case-oracle, hermetic shim, fixture, parser, or canned output cannot satisfy this goal.
+- Conflict policy: Own vendor acquisition, correct per-product pins, dependencies, and live adapters; preserve bounded authority and never relabel the existing hermetic engines.
+- Interfaces: HyperpropertyVendorToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G209 Install Souffle and derive the SecPAL platform exception
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G102, FVT-G180, FVT-G201, FVT-G202
+- Fib priority: 75025
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/authorization-vendor-toolchains
+- Goal: Replace the Souffle case-oracle shadow with a checksummed vendor build and keep external SecPAL support classification lock-derived.
+- Evidence: test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_vendor_certification.py, docs/architecture/formal_verification_authorization_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Acceptance: Souffle 2.4.1 source/archive and build dependencies are immutable and checksummed, the user-local executable and artifact digest are exact, and real allow/deny/unknown/conflict/delegation plus rule/scope mutation, replay, malformed, timeout, and disagreement cases execute through it; linux-aarch64 is supported for Souffle; external SecPAL is a narrow unsupported-platform exception on linux-aarch64 under the current contract and never counts as installed, complete, authoritative, or production-certified; hermetic shadows remain differential-only.
+- Conflict policy: Own vendor Souffle installation and external authorization production evidence; never mutate the system package manager, promote a shadow, or excuse missing supported capability.
+- Interfaces: ExternalAuthorizationVendorCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G210 Build and certify an independent external Runtime MTL engine
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G103, FVT-G181, FVT-G201, FVT-G202
+- Fib priority: 75025
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/runtime-mtl-external-runtime
+- Goal: Replace the Python-backed parity wrapper with a reproducibly built TypeScript/Node monitor, enforce the install-versus-offline-certification boundary, and produce honest cross-runtime evidence.
+- Evidence: test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Outputs: ipfs_datasets_py/typescript/logic-runtime-mtl, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py, test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py, docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q
+- Acceptance: A locked TypeScript dependency graph builds an independent Node package/executable without importing or dispatching to the Python reference; the explicit opt-in user-local installation phase may run the locked build, but every offline semantic-certification path, including the in-process Runtime MTL parity helper, consumes only a preinstalled digest-verified artifact and never runs `npm install`, `npm ci`, `npm run build`, downloads, or network access; a missing or stale prebuilt artifact blocks certification instead of rebuilding; the authoritative private-HOME validation environment receives an explicit approved immutable deployment root rather than discovering mutable user paths; package, source, lockfile, runtime, launcher, launcher target, executable, and artifact digests are bound; positive, negative, interval/event mutation, timestamp boundary, shortest-prefix replay, malformed input, timeout, bounds, and disagreement cases execute out of process; finite-trace authority and inconclusive-prefix semantics are preserved; generated Python parity wrappers remain non-production shadow evidence.
+- Conflict policy: Own TypeScript monitor, reproducible package build, installer, offline install boundary, and cross-runtime certifier; do not silently build during certification, change the Python reference semantics, or infer global proof from finite traces.
+- Interfaces: ExternalRuntimeMTLVendorCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G211 Integrate the live secret-safe ZKP deployment certificate
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G190, FVT-G201, FVT-G203
+- Fib priority: 75025
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/zkp-production-runtime
+- Goal: Distinguish schema-valid sample bindings from a live verifier and bind the complete ZKP deployment receipt into the semantic fan-in.
+- Evidence: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Outputs: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q
+- Acceptance: The configured backend performs live verification against exact circuit, ceremony, proving-key, verification-key, public-parameter, public-input-schema, version, expiry, freshness, and revocation identities; positive and corrupted proof/key/public-input, circuit mismatch, mutation, replay, stale, and revoked cases run against it; no private witness, proving-key bytes, trapdoor, secret path, or secret value enters Git, logs, caches, public receipts, or model context; absent operator-bound public artifacts remain deployment blockers, not platform exceptions; ZKP attests and never replaces underlying semantic authority.
+- Conflict policy: Own live verifier binding and secret-safe aggregation only; never generate/expose private material or manufacture deployment evidence.
+- Interfaces: ZKPLiveVerifierDeployment@1
+- Resource class: cpu-proof-solver
+
+## FVT-G212 Bind durable supervisor evidence and enforce expected outputs
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G080, FVT-G201
+- Fib priority: 121393
+- Priority: P0
+- Track: supervisor-integrity
+- Bundle: formal-verification-tactician/supervisor-release-evidence
+- Goal: Export a read-only, content-addressed execution snapshot and reject proposals whose declared outputs are ignored, absent, or unstaged.
+- Evidence: test/api/test_agent_supervisor_release_evidence_binding.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py, ipfs_accelerate_py/agent_supervisor/release_evidence.py, test/api/test_agent_supervisor_release_evidence_binding.py
+- Validation: python -m pytest test/api/test_agent_supervisor_release_evidence_binding.py test/api/test_agent_supervisor_todo_daemon_port.py -k 'expected_output or completion_receipt or release_evidence' -q
+- Acceptance: Declared outputs are compared with filesystem, proposed paths, staged paths, and ignore rules; an exact allowed ignored output is force-added only by its explicit path or the proposal fails `expected_output_ignored_or_unstaged`; a regression proves an ignored JSON and tracked source both enter the commit; the exporter reads committed bundle/task metadata, lane manifest, scheduler snapshot, task state, event manifest/JSONL, and durable member_completion receipts once and hashes raw bytes; output binds canonical task CID/key, dependency CIDs, baseline and merged trees/gitlinks, attempt/phase, continuous event sequence, validation and merge outcomes, freshness, authority, and publication state; it never edits live state and cannot treat metrics-module presence as completion.
+- Conflict policy: Own proposal-output enforcement and read-only release evidence; preserve path fences, never broadly force-add ignored files, and never synthesize a missing terminal receipt.
+- Interfaces: AgentSupervisorReleaseEvidence@1
+- Resource class: cpu-validation
+
+## FVT-G213 Build the fail-closed role-aware release candidate
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G203, FVT-G204, FVT-G205, FVT-G206, FVT-G207, FVT-G208, FVT-G209, FVT-G210, FVT-G211, FVT-G212
+- Fib priority: 317811
+- Priority: P0
+- Track: completion
+- Bundle: formal-verification-tactician/toolchain-release-candidate
+- Goal: Generate a role-aware release candidate from the complete supported matrix, close the exact production-semantic elevation fan-in, and do so without claiming its own future merge or deployment.
+- Evidence: test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_production_elevation_fanin.py test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Acceptance: The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence; `lean`, `runtime-mtl`, `datalog-authorization`, `secpal-authorization`, `coq`, and `isabelle` each have exact independently reconstructed positive, negative, mutation, and replay evidence before their corresponding production elevation is present; the independent TypeScript/Node Runtime MTL vendor lane is consumed through `ExternalRuntimeMTLVendorCertification@1`, binds its package, source, lockfile, Node runtime, launcher, target, executable, and artifact digests, and gates both external finite-trace authority and in-process Runtime MTL elevation on exact cross-runtime parity and disagreement handling; hermetic Runtime MTL wrappers never promote; real supported HyperLTL, AutoHyper, MCHyper, and Souffle vendor binaries and their native/runtime dependencies are distinguished from identity manifests, adapters, case oracles, fixtures, and shims; offline certification resolves only an approved immutable preinstalled deployment root under the authoritative private-HOME validation environment and never installs, builds, downloads, or accesses the network; all supported managed capabilities have their required installed and specialized semantic evidence; every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest; external SecPAL is an exception only when the current lock explicitly excludes the running host; missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, dependency-only, or incomplete evidence blocks readiness at its correct ceiling; the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists.
+- Generated artifacts: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Allowed paths: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, tools/logic/certification/public_evidence.py
+- Conflict policy: Sole owner of the central candidate and production-elevation fan-in after its semantic/vendor dependencies merge; never install during offline certification, treat an adapter or identity manifest as a vendor binary, collapse checks, hardcode success, conceal blockers, or make a self-referential current-tree claim.
+- Interfaces: RoleAwareFormalVerificationReleaseCandidate@1, ProductionSemanticElevationFanIn@1
+- Resource class: cpu-validation
+
+## FVT-G214 Publish the post-merge deployment attestation
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G213
+- Fib priority: 514229
+- Priority: P0
+- Track: completion
+- Bundle: formal-verification-tactician/toolchain-release-finalizer
+- Goal: After the release-candidate merge, bind its durable terminal supervisor receipt and publish the final deployment attestation without circular tree identity.
+- Evidence: test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Outputs: tools/logic/finalize_formal_verification_deployment.py, test/integration/test_formal_verification_role_aware_post_merge_attestation.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Validation: python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Acceptance: The finalizer runs only after FVT-G213 has a successful, durable, canonical member completion receipt and reachable merged commit; it verifies event-chain continuity, expected outputs, validation result, source tree, merged tree, datasets gitlink, origin publication, candidate digest, supported-capability closure, hard-zero gates, authority boundaries, quarantines, and public surfaces; it publishes either a receipt commit whose parent is the certified release commit with a strictly limited generated-artifact diff or an external content-addressed attestation; mutating any event, tree, artifact, check, binding, or publication fact invalidates the receipt; absent or stale terminal evidence remains partial and can never be called deployment-ready.
+- Conflict policy: Sole post-merge finalizer; read live state without mutation, never attest the current task's future event, and never weaken a missing terminal receipt or publication gate.
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Resource class: cpu-validation
+
 ## FVT-G200 Reissue full role-aware deployment certification
 
 - Status: active
 - Parent: FVT-G000
-- Depends on: FVT-G090, FVT-G101, FVT-G102, FVT-G103, FVT-G120, FVT-G130, FVT-G131, FVT-G140, FVT-G150, FVT-G151, FVT-G160, FVT-G170, FVT-G180, FVT-G181, FVT-G190
+- Depends on: FVT-G090, FVT-G101, FVT-G102, FVT-G103, FVT-G120, FVT-G130, FVT-G131, FVT-G140, FVT-G150, FVT-G151, FVT-G160, FVT-G170, FVT-G180, FVT-G181, FVT-G190, FVT-G214
 - Fib priority: 75025
 - Priority: P0
 - Track: completion
@@ -1324,5 +1583,363 @@ Program invariants:
 - Acceptance: A fresh offline certificate and completion receipt bind the current parent tree, datasets gitlink, exact tool and artifact identities, every required positive/negative/mutation/replay result, authority roles and ceilings, disagreement quarantines, public surfaces, and supervisor evidence; Lean, Runtime MTL, and Datalog/SecPAL are no longer merely usable; every supported managed external capability is installed and semantically certified; any genuinely unsupported platform exception is explicit, narrowly scoped, and cannot be counted as complete or production-certified.
 - Conflict policy: Sole owner for central certificate and completion-receipt regeneration after every dependency merges; never manufacture success, weaken skips, install during offline certification, or conceal an unavailable lane.
 - Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G215 Close formal-verification packaging and distribution coverage
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G090, FVT-G201
+- Fib priority: 121393
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/packaging-distribution
+- Goal: Make every public formal-verification module, reviewed installer plugin, runtime asset, and optional dependency declaration survive both source and clean wheel installations.
+- Evidence: test/packaging/test_logic_verification_clean_install.py, test/packaging/test_formal_verification_distribution_contract.py
+- Outputs: setup.py, pyproject.toml, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, test/packaging/test_formal_verification_distribution_contract.py
+- Validation: python -m pytest test/packaging/test_logic_verification_clean_install.py test/packaging/test_formal_verification_distribution_contract.py test/test_pip_install_simulation.py -q
+- Acceptance: Root and datasets setup.py, pyproject metadata, requirements files, and extras have one machine-checked dependency inventory; namespace-package discovery includes logic backends, software verification, installer plugins, and runtime assets in built wheels; every declared plugin module exists; a clean isolated wheel install imports and inventories the Logic API without network access, downloads, builds, user-site leakage, editable-source leakage, or installation side effects; optional native and external provers remain optional and are surfaced as unavailable rather than breaking base installation.
+- Conflict policy: Own packaging metadata and clean-install gates; do not make heavyweight prover binaries mandatory Python dependencies, hide missing wheel content with PYTHONPATH, or install anything during import and inventory.
+- Interfaces: FormalVerificationDistributionContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G216 Bind the public Logic API to transactional lazy installers
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G215
+- Fib priority: 196418
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/lazy-installer-facade
+- Goal: Replace placeholder and stale installer dispatch with one explicit, platform-aware, transactional lazy-install lifecycle for every reviewed prover family.
+- Evidence: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py, ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py ipfs_datasets_py/tests/unit/test_lazy_dependency_installation.py ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q
+- Acceptance: LogicVerificationAPI.install_provider resolves reviewed family plugins for SMT, kernels, state models, authorization, protocols, ATP, hyperproperties, Runtime MTL, advisors, and ZKP; probe, inventory, import, dry-run, and offline certification execute no installer command and perform no network access; installation requires an explicit allow flag and produces a bounded plan before mutation; platform, dependency, license, checksum, artifact, executable, rollback, and post-install semantic-probe results are returned as structured evidence; interrupted or failed publication preserves the previous good installation and cannot promote capability or semantic authority.
+- Conflict policy: Own the public install facade, registry, and lifecycle; never infer permission from a probe, dispatch an unreviewed shell command, silently fall back to a shim, or let installation occur inside certification.
+- Interfaces: LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact
+
+## FVT-G217 Bind the genuine SecPAL artifact-intake and capability ceiling
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G209, FVT-G216
+- Fib priority: 121393
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/secpal-live-toolchain
+- Goal: Replace ambiguous SecPAL acquisition and adapter behavior with an exact official-artifact, license-aware, transactional local intake path that proves the recovered research release cannot be promoted to a live vendor engine.
+- Evidence: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Acceptance: The recovered Microsoft MSI binds the official publisher and archived metadata URLs, ProductVersion/ProductCode, exact size and SHA-256, independently verified Authenticode identity, exact embedded EULA digest and reviewed redistribution/execution limits; intake requires an explicit local path and explicit operator license acceptance, performs no download, extraction, execution, or redistribution, stages non-executable bytes atomically beneath a bounded user-local root, and preserves the previous exact tree on failure; the live execution supported-platform matrix is explicitly empty; every host therefore fails closed for vendor installation and semantic certification; authentic sample execution is separately classified as non-promotable operator compatibility and cannot create an engine identity, arbitrary-policy interface, platform authority, production permission, or FVT-G219 completion; fixtures, in-process Datalog/SecPAL, and hermetic adapters remain separately named and cannot impersonate the vendor tool.
+- Conflict policy: Own SecPAL artifact provenance, platform matrix, artifact intake, and authority ceiling; never invent an upstream release, accept an unreviewed mirror, accept license terms on an operator's behalf, redistribute restricted bytes, promote sample compatibility, or label the in-process engine as the external vendor binary.
+- Interfaces: SecPALLiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G218 Implement the genuine ErgoAI advisor-toolchain path
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G201, FVT-G216
+- Fib priority: 121393
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/ergoai-live-toolchain
+- Goal: Replace ErgoAI wrapper and proposal-only assumptions with a locked official distribution, dependency-complete lazy installer, and bounded live semantic adapter while preserving advisor authority ceilings.
+- Evidence: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_live_toolchain_contract.py test/integration/toolchains/test_advisor_role_certification.py -q
+- Acceptance: The lock binds the official ErgoAI distribution or reviewed source revision, license and acquisition conditions, archive/source digests, XSB and every runtime/build dependency, supported OS/architecture matrix, entry point, and exact identity probe; explicit lazy installation is staged, checksum-verified, atomic, relocatable, and offline after acquisition; live entailment, non-entailment, contradiction, rule/query mutation, deterministic replay, malformed input, timeout, and resource-bound cases execute through ErgoAI; results remain proposal or candidate evidence until reconstructed or checked by an independent proof authority.
+- Conflict policy: Own ErgoAI provenance, dependencies, lazy installer, wrapper, and bounded semantics; never scrape an unauthoritative artifact, download during certification, treat wrapper fixtures as live execution, or elevate an advisor verdict to theorem authority.
+- Interfaces: ErgoAILiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G219 Acquire authoritative SecPAL live evidence
+
+- Status: blocked
+- Parent: FVT-G000
+- Depends on: FVT-G217
+- Fib priority: 196418
+- Priority: P0
+- Track: external-authority
+- Bundle: formal-verification-tactician/secpal-live-authority
+- Goal: Acquire authoritative vendor SecPAL live evidence only if the publisher supplies production-compatible terms, a supported execution platform/runtime, and a general policy-query interface; otherwise preserve the recovered release strictly as archival/operator-compatibility evidence and keep deployment blocked.
+- Evidence: docs/architecture/formal_verification_secpal_live_receipt.json, test/integration/toolchains/test_secpal_authoritative_live_evidence.py
+- Outputs: docs/architecture/formal_verification_secpal_live_receipt.json, test/integration/toolchains/test_secpal_authoritative_live_evidence.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_authoritative_live_evidence.py -q
+- Acceptance: Independent allow, deny, unknown, delegation, conflict, rule/scope mutation, replay, malformed, timeout, resource-bound, and cross-engine disagreement cases run against the exact official SecPAL executable on a host covered by its reviewed platform lock; the receipt binds acquisition authority, license disposition without publishing restricted bytes, host OS and architecture, every runtime dependency, executable and artifact digests, policies, queries, bounds, raw-output digests, parser decisions, witnesses, timestamps, freshness, and deterministic replay; fixture, in-process Datalog/SecPAL, shim, parser-only, wrapper-only, proposed, identity-only, previously completed ErgoAI evidence, or unsupported-host results cannot satisfy this SecPAL authority goal.
+- Conflict policy: Own only the externally executed evidence and its public-safe envelope; never commit restricted artifacts, credentials, private paths, or raw secrets and never convert missing external authority into local completion.
+- Interfaces: SecPALAuthoritativeLiveEvidence@1
+- Completion authority: external
+- External authority blockers: publisher-issued permission for production/live use, a publisher- or independently reviewed supported execution platform/runtime, and a reviewed general policy-query interface; the recovered research MSI, operator EULA acceptance, Mono compatibility, sample programs, or archived download alone cannot satisfy these blockers
+- Resource class: cpu-proof-solver
+
+## FVT-G220 Audit every deployment axis end to end
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G215, FVT-G216, FVT-G217, FVT-G218
+- Fib priority: 317811
+- Priority: P0
+- Track: certification-integrity
+- Bundle: formal-verification-tactician/end-to-end-assurance
+- Goal: Make dependency, capability, semantic, platform-binding, authority, packaging, installer-boundary, and public-surface readiness independently visible and jointly fail closed.
+- Evidence: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_real_tool_matrix.py test/packaging/test_logic_verification_clean_install.py -q
+- Acceptance: Each provider and host tuple reports separate dependency, packaging, installer, capability, semantic, platform, authority, freshness, and public-surface states with exact evidence references and reason codes; no axis inherits success from another; supported missing dependencies, missing wheel files, placeholder dispatch, stale locks, wrong-architecture artifacts, parser fixtures, advisor-only evidence, and unsupported hosts are distinguishable; SecPAL in-process and external identities and ErgoAI advisor and independent proof authority remain distinct; an adversarial test mutates every axis and proves that the joint readiness claim fails closed.
+- Conflict policy: Own the cross-axis matrix and aggregation policy; do not hardcode green states, collapse platform exceptions into success, or let one provider stand in for another.
+- Interfaces: FormalVerificationEndToEndAssuranceMatrix@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G221 Issue the fail-closed authoritative-vendor release assessment
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G214, FVT-G220
+- Fib priority: 514229
+- Priority: P0
+- Track: completion
+- Bundle: formal-verification-tactician/authoritative-vendor-release
+- Goal: Issue a fail-closed authoritative-vendor release gate that becomes deployment-ready only after packaging, lazy installers, every readiness axis, and genuine authority-compatible SecPAL replacement and ErgoAI evidence are closed, while remaining a valid blocked audit artifact before then.
+- Evidence: docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/test_formal_verification_authoritative_vendor_release.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q
+- Acceptance: The assessment binds clean-wheel evidence, explicit lazy-install receipts, exact dependency and platform identities, complete specialized semantic cases, authority-compatible authorization and ErgoAI receipts, authority ceilings, disagreement quarantines, public-safe envelopes, durable supervisor completion, source and merged trees, recursive gitlinks, and origin publication; `assessment_complete=true` is valid while `deployment_ready=false` whenever any dependency is missing, stale, unsupported, license-ineligible, externally blocked, fixture, shim, proposal-only, or below its authority ceiling; only a fully closed fan-in may set deployment readiness.
+- Conflict policy: Sole owner of the fail-closed authoritative-vendor release assessment; consume the tactician completion receipt as immutable input, never manufacture external evidence, weaken a platform or authority gate, overwrite an upstream completion receipt, or attest the current task's future merge.
+- Interfaces: FormalVerificationAuthoritativeVendorRelease@1
+- Resource class: cpu-validation
+
+## FVT-G222 Complete the optional ErgoAI Java API capability
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G215, FVT-G216, FVT-G218
+- Fib priority: 196418
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/ergoai-java-api
+- Goal: Turn the currently detected Java-runtime-only ErgoAI installation into a separately certified Java API capability by providing an authoritative, checksum-pinned, platform-bound, user-local JDK lifecycle without weakening the already working core ErgoAI lane.
+- Evidence: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Outputs: config/formal_verification_toolchains.lock.json, setup.py, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py test/packaging/test_formal_verification_distribution_contract.py -q
+- Acceptance: The lock selects reviewed Eclipse Temurin or another authoritative OpenJDK JDK artifact by exact version, publisher, immutable URL, SHA-256, signature or equivalent publisher evidence, license, OS, architecture, archive size, and required `java`, `javac`, and `jar` identities; only an explicit allow flag may perform a bounded acquisition and symlink-safe extraction into the validated user-local transaction root; interruption, checksum mismatch, archive traversal, unsupported hosts, stale dependency identities, or failed post-install probes roll back and remain unavailable; the managed ErgoAI wrapper binds the exact JDK identity used by its Java consumers and executes positive, negative, malformed, timeout, replay, relocation, and dependency-mutation cases; capability, dependency, semantic, platform, packaging, and authority axes remain independently visible; setup.py, pyproject, and requirements inventories classify the JDK as a reviewed external lazy dependency rather than an invalid mandatory Python package; import, probe, wheel installation, dry-run, and offline certification never download or install; core ErgoAI remains independently usable when the Java API capability is absent.
+- Conflict policy: Own the optional JDK lock, lazy lifecycle, ErgoAI Java binding, and its focused evidence; never download a moving `latest` target without resolving and pinning its immutable identity, trust ambient `JAVA_HOME`, make a JDK a mandatory pip dependency, elevate advisor output to proof authority, or couple core ErgoAI availability to this optional capability.
+- Interfaces: ErgoAIJavaAPIToolchainContract@1, LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact
+
+## FVT-G223 Live-certify/harden managed ErgoAI Java/JDK path
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G222, FVT-G218
+- Fib priority: 317811
+- Priority: P0
+- Track: certification-integrity
+- Bundle: formal-verification-tactician/ergoai-java-api-live-certification
+- Goal: Convert the managed ErgoAI Java/JDK capability from contract and fixture coverage into a live, adversarially hardened, replayable deployment path using the exact official ErgoAI 3.0 and Eclipse Temurin 17.0.20+8 identities, without coupling core ErgoAI availability to Java or raising advisor output above its authority ceiling.
+- Evidence: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Validation: IPFS_DATASETS_PY_TEST_LIVE_ERGOAI_JAVA=1 IPFS_DATASETS_PY_ALLOW_LAZY_INSTALL=1 PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py -q
+- Acceptance: On each reviewed host, an explicit opt-in installs the immutable official Eclipse Temurin 17.0.20+8 artifact, verifies its pinned archive digest, size, release checksum, detached signature or equivalently strong publisher evidence, vendor, license, OS, and architecture, and records exact `java`, `javac`, and `jar` versions, paths, and byte digests; the pinned official ErgoAI 3.0 tree then compiles and executes at least one real vendor Java consumer against real ErgoAI/XSB, and a synthetic HelloWorld or JDK-only probe cannot satisfy the semantic case; a real timeout terminates the complete child process tree within a bounded grace period and removes transient consumer workspaces, locks, and partial outputs; relocating the validated JDK and ErgoAI pair beneath a fresh HOME preserves identity binding and produces deterministic replay evidence without ambient `JAVA_HOME`, PATH, caches, or source-tree leakage; byte mutations of each selected Java tool and every identity-bound ErgoAI Java launcher, archive, or classpath artifact are rejected before execution and cannot be repaired into success by stale evidence; concurrent processes use a bounded cross-process single-flight lock so only one acquisition/publication occurs, all waiters observe the same validated identity, abandoned locks are recovered safely, and no partial tree is visible; a failed `force=True` replacement, including download, publisher-evidence, extraction, probe, or publication failure, rolls back to the exact previous-good tree and receipt while quarantining or deleting only bounded staged state; every mutable install, cache, staging, lock, backup, quarantine, and temporary path is a strict canonical descendant of the selected HOME, while HOME itself, sibling or prefix-collision paths, lexical traversal, and symlinked ancestors or targets fail closed; manifests and receipts bind the official publisher evidence, artifact and executable digests, platform tuple, canonical paths, ErgoAI release identity, test inputs, raw-output digests, cleanup result, and source/merged trees; the Java capability remains advisor-only, cannot discharge a proof obligation without an independent kernel or solver, and its absence or failure never makes the already certified core ErgoAI advisor unavailable.
+- Conflict policy: Own live Java/JDK lifecycle hardening, the ErgoAI Java consumer binding, and focused public-safe evidence; never depend on SecPAL or FVT-G219, trust ambient Java state, substitute fixtures for live vendor execution, publish an unverified or partially installed tree, delete outside the bounded HOME descendant, weaken rollback or identity checks to pass, elevate advisor evidence to proof authority, or make core ErgoAI depend on this optional lane.
+- Interfaces: ErgoAIJavaAPILiveCertification@1, ErgoAIJavaAPIToolchainContract@1, ErgoAILiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact
+
+## FVT-G224 Publish non-promotable SecPAL operator-compatibility evidence
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G217
+- Fib priority: 514229
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/secpal-operator-compatibility
+- Goal: Preserve the maximum reproducible technical evidence obtainable from the recovered Microsoft SecPAL research release without converting archival sample compatibility into platform, semantic, license, or deployment authority.
+- Evidence: docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Outputs: tools/logic/certify_secpal_operator_compatibility.py, docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_operator_compatibility_receipt.py -q
+- Acceptance: The certifier requires explicit local MSI, extracted payload, EULA, and runtime inputs plus explicit operator license acceptance; it verifies the exact reviewed MSI, three payload, and EULA identities; all 18 named Microsoft scenarios execute exactly twice under bounded processes and normalized observations replay; the checked receipt contains only public-safe hashes and metadata, records any nondeterministic temporal boundary as a missing comprehensive case, and structurally fixes vendor-supported platform, arbitrary-policy interface, production-use permission, live authority, deployment readiness, FVT-G217 live-engine completion, and FVT-G219 completion to false; failure preserves the prior valid receipt and performs no download, installation, redistribution, or network access.
+- Conflict policy: Own only the offline operator-compatibility certifier, focused test, and public-safe receipt; never edit the live platform matrix, publish restricted bytes or EULA text, silently retry a failed vendor sample, or promote compatibility evidence.
+- Interfaces: SecPALOperatorCompatibilityReceipt@1
+- Resource class: cpu-validation
+
+## FVT-G225 Certify usable in-process authorization and Runtime MTL semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G102, FVT-G103, FVT-G220
+- Fib priority: 832040
+- Priority: P0
+- Track: semantic-certification
+- Bundle: formal-verification-tactician/reference-logic-semantic-closure
+- Goal: Close the semantic and authority axes for the already usable in-process Datalog authorization, SecPAL-style authorization, and Runtime MTL providers at their exact bounded authority ceilings.
+- Evidence: docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Outputs: tools/logic/certification/authorization.py, tools/logic/certification/runtime_mtl.py, docs/architecture/formal_verification_reference_logic_semantic_receipt.json, test/integration/toolchains/test_reference_logic_semantic_closure.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_reference_logic_semantic_closure.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py -q
+- Acceptance: Each provider independently executes exact positive, negative, unknown/no-proof, mutation, deterministic replay, malformed-input, timeout/resource-bound, counterexample/witness, and disagreement cases against its shipped implementation; receipts bind provider bytes, source tree, property semantics, bounds, raw-output digests, parser decisions, and public-safe witnesses; Datalog and SecPAL-style reference engines gain authorization-decision authority only, Runtime MTL gains finite-trace monitoring authority only, and none gain theorem, infinite-trace, vendor SecPAL, translation, or deployment authority; mutations of any case, identity, ceiling, replay result, or evidence binding fail the corresponding semantic and authority axes closed.
+- Conflict policy: Own only in-process reference semantic certification and elevation; do not install external tools, reuse external SecPAL samples, or let one reference provider satisfy another provider's evidence.
+- Interfaces: ReferenceLogicSemanticClosure@1, AuthorizationSemanticCertification@1, RuntimeMTLSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G226 Replay managed dependency, capability, platform, and freshness bindings
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G201, FVT-G202, FVT-G215, FVT-G216, FVT-G222, FVT-G223, FVT-G220
+- Fib priority: 1346269
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/managed-environment-replay
+- Goal: Materialize one approved managed prover environment through explicit opt-in installation, then replay every supported external dependency, capability, platform, and freshness binding offline from its immutable root.
+- Evidence: docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Outputs: tools/logic/certify_formal_verification_managed_environment.py, docs/architecture/formal_verification_managed_environment_replay_receipt.json, test/integration/toolchains/test_managed_environment_replay.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_managed_environment_replay.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py -q
+- Acceptance: A separately invoked, explicitly authorized acquisition phase uses only reviewed immutable URLs, versions, sizes, checksums, signatures or equivalent publisher evidence, licenses, and OS/architecture pins; publication is user-local, single-flight, symlink-safe, atomic, and rollback-preserving; certification then runs with network, download, installation, ambient PATH, user-site, source-tree, and system-package mutation disabled; every currently supported Apalache, AutoHyper, Rocq/Coq, E, HyperLTL, Isabelle, MCHyper, ProVerif, Souffle, Tamarin, TLC, Vampire, ErgoAI, external Runtime MTL, and required Maude/OPAM/Stack/Temurin dependency binds exact executable, artifact, runtime, platform, and freshness identities; missing, partial, stale, relocated-without-rebinding, wrong-architecture, byte-mutated, or dependency-mutated trees fail only their owned axes and cannot be repaired by stale receipts; support dependencies remain non-semantic and non-authoritative.
+- Conflict policy: Own the unified managed-environment replay tool and receipt; consume existing installers without weakening their explicit opt-in or offline boundaries, and never treat installation as semantic certification.
+- Interfaces: FormalVerificationManagedEnvironmentReplay@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact
+
+## FVT-G227 Close Logic API and installer-role gaps
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G216, FVT-G226, FVT-G220
+- Fib priority: 2178309
+- Priority: P0
+- Track: provider-surface
+- Bundle: formal-verification-tactician/public-provider-role-closure
+- Goal: Make every runnable prover/advisor reachable through the stable Logic API while keeping support dependencies and archival SecPAL intake out of verification dispatch.
+- Evidence: test/api/test_formal_verification_provider_role_closure.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py, test/api/test_formal_verification_provider_role_closure.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_formal_verification_provider_role_closure.py ipfs_datasets_py/tests/unit/logic/test_provider_role_installation_closure.py test/api/test_logic_verification_api_install_provider.py -q
+- Acceptance: ErgoAI, external Runtime MTL, Souffle, and SymbolicAI have real typed inventory, probe, explicit install, and verification/advisor dispatch surfaces; legacy Microsoft SecPAL exposes only reviewed non-executable artifact intake and compatibility receipt lookup, never a live verification provider; Stack, Temurin JDK, Maude, and OPAM are explicitly support-only with semantic, authority, and public-verification axes not applicable; every installer registry entry resolves to a real bounded implementation rather than placeholder dispatch; import, inventory, probe, dry-run, and offline certification are side-effect free; unsupported roles and provider/role confusion fail with typed non-success responses.
+- Conflict policy: Own public dispatch and role classification; do not change provider semantics, promote advisors/support tools, or expose restricted SecPAL bytes.
+- Interfaces: LogicVerificationProviderRoleClosure@1, LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G228 Certify replayed state, protocol, kernel, and ATP semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G204, FVT-G205, FVT-G206, FVT-G207, FVT-G226
+- Fib priority: 3524578
+- Priority: P0
+- Track: semantic-certification
+- Bundle: formal-verification-tactician/replayed-core-external-semantics
+- Goal: Re-execute and bind genuine managed semantics for the supported state-model, protocol, proof-kernel, and automated-theorem-prover families in the unified environment.
+- Evidence: docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Outputs: tools/logic/certify_formal_verification_replayed_core_semantics.py, docs/architecture/formal_verification_replayed_core_external_semantics.json, test/integration/toolchains/test_replayed_core_external_semantics.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_replayed_core_external_semantics.py -q
+- Acceptance: TLC and Apalache execute bounded state/safety/liveness cases; Tamarin and ProVerif execute protocol secrecy/authentication and mutation cases; Rocq/Coq and Isabelle check accepted/rejected proof objects in their genuine kernels; Vampire and E execute theorem/non-theorem/resource-bound cases; each provider has independent positive, negative, mutation, replay, malformed, timeout, and disagreement evidence bound to the managed identity; Maude and OPAM remain support-only; no fixture, parser, wrapper, advisor, or other provider can supply a missing engine's semantic or authority axis.
+- Conflict policy: Own the cross-family replay aggregator and receipt; reuse family certifiers without changing their authority ceilings or installers.
+- Interfaces: ReplayedCoreExternalSemantics@1
+- Resource class: cpu-proof-solver
+
+## FVT-G229 Certify replayed hyperproperty and external authorization semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G208, FVT-G209, FVT-G226
+- Fib priority: 5702887
+- Priority: P0
+- Track: semantic-certification
+- Bundle: formal-verification-tactician/replayed-hyper-authorization-semantics
+- Goal: Close the genuine managed semantic and freshness bindings for HyperLTL, AutoHyper, MCHyper, and Souffle without importing legacy SecPAL vendor authority.
+- Evidence: docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Outputs: tools/logic/certify_formal_verification_replayed_hyper_authorization.py, docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json, test/integration/toolchains/test_replayed_hyper_authorization_semantics.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_replayed_hyper_authorization_semantics.py test/integration/toolchains/test_external_authorization_vendor_certification.py -q
+- Acceptance: HyperLTL, AutoHyper, and MCHyper execute bounded satisfiable/violating information-flow hyperproperties with trace-pair witnesses, mutation, deterministic replay, malformed, timeout, and cross-engine disagreement handling; Souffle executes allow, deny, unknown, conflict, delegation, rule/scope mutation, replay, malformed, timeout, and disagreement cases through the exact managed vendor binary; each receipt binds executable, runtime, source/artifact, host, policy/formula, bounds, parser decisions, and output digests; hyperproperty authority remains bounded and Souffle remains an external authorization shadow; Microsoft SecPAL compatibility evidence is not interchangeable.
+- Conflict policy: Own the replay fan-in for hyperproperties and Souffle; do not edit legacy SecPAL artifact intake or elevate external shadows to authorization authority.
+- Interfaces: ReplayedHyperAuthorizationSemantics@1
+- Resource class: cpu-proof-solver
+
+## FVT-G230 Certify replayed monitor and advisor semantics
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G210, FVT-G218, FVT-G223, FVT-G226, FVT-G227
+- Fib priority: 9227465
+- Priority: P0
+- Track: semantic-certification
+- Bundle: formal-verification-tactician/replayed-monitor-advisor-semantics
+- Goal: Re-execute the independent external Runtime MTL and genuine advisor lanes while preserving their finite-trace and advisory authority boundaries.
+- Evidence: docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Outputs: tools/logic/certify_formal_verification_replayed_monitor_advisors.py, docs/architecture/formal_verification_replayed_monitor_advisor_semantics.json, test/integration/toolchains/test_replayed_monitor_advisor_semantics.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_replayed_monitor_advisor_semantics.py -q
+- Acceptance: The independent Node/TypeScript Runtime MTL engine executes positive, negative, boundary, malformed, mutation, replay, timeout, and cross-runtime parity cases against the in-process monitor with disagreement quarantine; real ErgoAI and SymbolicAI execute positive/non-entailment/contradiction/mutation/replay/malformed/resource-bound advisory cases; exact package, lockfile, runtime, launcher, target, artifact, and executable identities are bound; Runtime MTL gains finite-trace authority only after parity, while advisors remain proposal-only until independent reconstruction; Stack and Temurin remain support-only and cannot satisfy public verification, semantic, or proof-authority requirements.
+- Conflict policy: Own the replay fan-in and advisor/monitor receipt; do not make core ErgoAI depend on Java, promote advice, or let a hermetic/parser fixture satisfy an external runtime lane.
+- Interfaces: ReplayedMonitorAdvisorSemantics@1
+- Resource class: cpu-proof-solver
+
+## FVT-G231 Implement a separately named production-candidate SecPAL-style authorization provider
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G217, FVT-G224, FVT-G225, FVT-G227
+- Fib priority: 14930352
+- Priority: P0
+- Track: authorization-engine
+- Bundle: formal-verification-tactician/production-authorization-replacement
+- Goal: Provide a production-candidate authorization prover with SecPAL-style typed delegation semantics under a project-owned, license-clear identity, without copying or impersonating the retired Microsoft implementation.
+- Evidence: docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_production_authorization_replacement.py -q
+- Acceptance: The provider uses a new provider id and project-owned implementation derived only from public formal specifications and independently reviewed clean-room design records; no restricted MSI, decompiled code, sample source, trademark implication, or Microsoft vendor-compatibility claim enters the implementation; the typed policy/query language covers principal identity, delegation depth/scope, can-say/can-act-as, roles, exclusions, revocation/time validity, conflict, unknown/no-proof, constraints, and deterministic proof or counterexample witnesses; positive, negative, mutation, replay, malformed, cycle/resource-bound, differential, fuzz/property, and denial-safety cases pass against an executable formal semantics; public API, packaging, lazy dependencies, caches, proof tactician, Hammer/advisors, and receipts bind the new identity and authority ceiling; the provider cannot satisfy FVT-G219 or claim Microsoft SecPAL authority.
+- Conflict policy: Own the separately named replacement provider and its evidence; never edit or vendor restricted Microsoft bytes, reuse the `secpal` external provider id, or claim legal/deployment approval.
+- Interfaces: ProductionAuthorizationReplacement@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G232 Obtain legal, IP, and security deployment approval for the authorization replacement
+
+- Status: blocked
+- Parent: FVT-G000
+- Depends on: FVT-G231
+- Fib priority: 24157817
+- Priority: P0
+- Track: external-authority
+- Bundle: formal-verification-tactician/authorization-replacement-approval
+- Goal: Obtain independent legal/IP, security, and deployment approval for the separately named production authorization provider and bind the signed decision without exposing privileged review material.
+- Evidence: docs/architecture/formal_verification_authorization_replacement_approval.json
+- Outputs: docs/architecture/formal_verification_authorization_replacement_approval.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_authorization_replacement_external_approval.py -q
+- Acceptance: Authorized reviewers bind the exact implementation commit/tree, dependency/license inventory, clean-room record, patent/IP disposition, threat model, semantic and adversarial receipts, supported platforms, operational controls, residual risks, expiry/review date, approval scope, and revocation mechanism in a public-safe signed envelope; missing, expired, wrong-tree, self-approved, unsigned, ambiguous, or revoked evidence remains blocked and cannot be synthesized by the agent supervisor.
+- Conflict policy: External review authority only; implementation agents may validate a supplied envelope but may not author, approve, forge, infer, or weaken the decision.
+- Interfaces: AuthorizationReplacementExternalApproval@1
+- Completion authority: external
+- External authority blockers: authorized legal/IP review, independent security review, deployment owner approval, and a signed current-tree public-safe approval envelope
+- Resource class: external-review
+
+## FVT-G233 Re-audit the post-remediation matrix and release gate
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G225, FVT-G226, FVT-G227, FVT-G228, FVT-G229, FVT-G230, FVT-G231
+- Fib priority: 39088169
+- Priority: P0
+- Track: completion
+- Bundle: formal-verification-tactician/post-remediation-assurance
+- Goal: Rebuild the trusted certificate, end-to-end matrix, and authoritative-vendor release assessment after every locally actionable remediation, while preserving external approval and unsupported legacy-vendor blockers.
+- Evidence: docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_post_remediation_delta.json, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/toolchains/test_formal_verification_post_remediation_assurance.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_post_remediation_assurance.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_authoritative_vendor_release.py -q
+- Acceptance: A trusted certificate body and every repository evidence file independently reconstruct all provider/host axes; the delta records the exact transition from the current 5-of-28 ready baseline and explains every unchanged or reopened blocker; the retired Microsoft SecPAL row remains unsupported, non-required for the replacement provider, and distinct from both in-process reference and production-candidate identities; G219 remains blocked and cannot be hidden; the separately named replacement is a new row; locally completed audit/assessment status is independent from deployment readiness; `deployment_ready` remains false until FVT-G232 approval and every required row/axis are current, content-bound, jointly ready, and independently re-derived; fully resealed optimistic matrices, stale receipts, missing provider rows, authority substitution, and unsupported-platform promotion fail closed.
+- Conflict policy: Own only the final trusted certificate/matrix/release delta and assessment; do not weaken any upstream gate, mark external approval complete, or rewrite historical receipts.
+- Interfaces: FormalVerificationPostRemediationAssurance@1, FormalVerificationEndToEndAssuranceMatrix@1, FormalVerificationAuthoritativeVendorRelease@1
 - Submodules: ipfs_datasets_py
 - Resource class: cpu-validation

@@ -1,5 +1,21 @@
 # agent_supervisor
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Developers embedding or extending the supervisor
+
+**Sources:** package modules under this directory; package `__init__.py` export
+inventories; supervisor console scripts in `pyproject.toml`;
+`test/api/test_agent_supervisor_*.py`
+
+**Last-verified:** 2026-08-06 — domain-layout residual flat-module land; root holds only `__init__.py` + domain packages; `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` covers production stems
+test paths rechecked
+
+**Freshness triggers:** domain-module moves, public-export or console-script
+changes, and supervisor test relocation
+
 Control plane for **objective-driven, evidence-bounded software work**.
 
 Models propose plans and edits. Deterministic validation, leases, allowlists,
@@ -65,10 +81,11 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
 # Domain modules (examples)
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import ConflictGraph
 from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
-    GoalCompletionEvaluator,  # illustrative — use real symbols from the module
+    GoalCompletionDecision,
+    evaluate_goal_completion,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    ImplementationDaemon,  # illustrative
+    PortalImplementationDaemon,
 )
 
 # Reviewed package-root inventories (semantic names)
@@ -128,22 +145,24 @@ long-lived re-export stubs at retired flat paths.
 
 | Package | Role |
 | --- | --- |
-| `core/` | Shared foundation: conflict graph, wrappers, external completion |
+| `core/` | Shared foundation: conflict graph, wrappers, external completion, multiformats identity, layout evidence |
 | `control/` | Transport-neutral ops, CLI binding, permits, authorization |
-| `task_sources/` | Markdown/DuckDB boards, queues, indexes, task identity |
+| `task_sources/` | Markdown/DuckDB boards, queues, indexes, task identity, finding task source, symbolic finding refill |
 | `context/` | Context compiler, decision runtime, obligation capsules |
-| `prompt/` | Prompt workflow, scanning, plan admission |
-| `analysis/` | AST/index/cache/retrieval/consensus pipeline |
-| `proof/` | Formal verification, provers, attestation, proof cache |
+| `prompt/` | Prompt workflow, scanning, plan admission, workflow benchmark/rollout |
+| `analysis/` | AST/index/cache/retrieval/consensus pipeline, program graph, repository forest/corpus |
+| `proof/` | Formal verification, provers, attestation, code/CVE/security contracts, MCP++ witnesses |
 | `objectives/` | Objective heap, tracker, backlog, goal quality/completion |
-| `planning/` | Adaptive + formal planning (compile/validate/metrics) |
-| `validation/` | Proposal validation, schedulers, pre-merge gates |
-| `merge/` | Merge queue/train/resolver, locks, leases, git hygiene |
+| `planning/` | Adaptive + formal planning (compile/validate/metrics), task proposal router |
+| `validation/` | Proposal validation, schedulers, pre-merge gates, failure review, evidence output scope |
+| `merge/` | Merge queue/train/resolver, locks, leases, git hygiene, worktree lifecycle |
 | `rescue/` | Failure policy, rescue orchestrator, recovery/watchdog |
-| `runtime/` | Multi-lane runners, event log, CAS, schedulers |
+| `runtime/` | Multi-lane runners, event log, CAS, schedulers, provider execution/usage, durable process, release evidence |
 | `self_improvement/` | Self-improvement epochs, v2 contracts, refill |
-| `integrations/` | Optional bridges (LLM merge fallback, Goose, datasets) |
-| `todo_daemon/` | Implementation / supervisor daemons and git helpers |
+| `integrations/` | Optional bridges (LLM merge fallback, Goose, datasets program graph/analysis) |
+| `todo_daemon/` | Implementation / supervisor daemons, git helpers, implementation timeout |
+| `entrypoints/` | Prompt-first composition facade (contracts + lazy transport facades) |
+| `contract_analysis/` | Bounded contract-analysis execution profiles and cache adapters |
 
 Per-package detail: each directory’s `README.md`, plus semantic pages under
 [`docs/architecture/agent_supervisor/packages/`](../../docs/architecture/agent_supervisor/packages/README.md).
@@ -159,6 +178,38 @@ Per-package detail: each directory’s `README.md`, plus semantic pages under
 | Merge train | Land completed work onto integrate/main |
 | Rescue / watchdog | Quarantine and recovery paths |
 | Event log + artifacts | Audit, resume, metrics |
+
+
+## Domain layout status (flat-module cutover)
+
+The package root is **domain packages only** plus `__init__.py`. Residual
+production modules that previously accumulated as flat root files have been
+moved into permanent owners:
+
+| Cluster | Owner package | Example stems |
+| --- | --- | --- |
+| Program graph / forest / corpus | `analysis/` | `program_graph`, `repository_forest`, `program_ast_adapters` |
+| Code/CVE/security contracts | `proof/` | `code_contract_*`, `contract_*`, `cve_*`, `security_contract_analysis` |
+| Provider execution & usage | `runtime/` | `provider_execution`, `provider_usage`, `grok_cli_runner`, `durable_process` |
+| Worktree fencing | `merge/` | `worktree_lifecycle` |
+| Finding → task projection | `task_sources/` | `finding_task_source`, `symbolic_finding_refill` |
+| Datasets program bridges | `integrations/` | `ipfs_datasets_program_*_provider` |
+| Prompt workflow gates | `prompt/` | `prompt_workflow_benchmark`, `prompt_workflow_rollout` |
+| Layout evidence / CID bridge | `core/` | `asref_layout_evidence`, `multiformats_identity` |
+
+**Preferred imports** always use the domain package path:
+
+```python
+from ipfs_accelerate_py.agent_supervisor.analysis.program_graph import ProgramGraph
+from ipfs_accelerate_py.agent_supervisor.proof.code_contract_prover import CodeContractProver
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_execution import ProviderExecutionGateway
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import WorktreeLifecycleStore
+```
+
+Historical flat submodule names (`import ipfs_accelerate_py.agent_supervisor.program_graph`)
+continue to resolve through package-root `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`
+aliasing for compatibility. **Do not add new callers on flat paths.** Do not
+reintroduce long-lived re-export stub files at the package root.
 
 ## Public API surface
 
@@ -271,8 +322,9 @@ Focused suites live under `test/api/` (and package-local tests where present).
 python -m pytest test/api/test_agent_supervisor_asref_layout_evidence.py \
   test/api/test_agent_supervisor_semantic_layout_exports.py -q
 
-# Control / contracts (examples — expand as needed)
-python -m pytest test/api/test_agent_supervisor_control_conformance.py -q
+# Control / contracts
+python -m pytest test/api/test_agent_supervisor_control_conformance_v2.py \
+  test/api/test_agent_supervisor_control_plane.py -q
 ```
 
 When changing a domain package, run the nearest module tests plus any

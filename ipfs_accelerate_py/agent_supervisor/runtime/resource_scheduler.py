@@ -211,6 +211,27 @@ LEGACY_RESOURCE_CLASSES = (
     "cpu-medium",
     "cpu-large",
 )
+# Prompt/objective plans use workload-oriented labels in addition to the
+# proof scheduler's physical worker classes.  These labels still execute on a
+# CPU host; provider, network, disk, and other specialized requirements are
+# enforced independently through capabilities, provider admission, and stage
+# headroom checks.  Without this compatibility set, a default host advertising
+# the canonical proof classes rejects ordinary prompt-plan work even when it
+# has idle CPU capacity.
+GENERIC_BUNDLE_RESOURCE_CLASSES = (
+    "coordinator",
+    "crypto-small",
+    "git-merge",
+    "io-database",
+    "io-medium",
+    "io-network",
+    "io-small",
+    "network",
+    "network-small",
+    "process-control",
+    "provider-io",
+    "provider-llm",
+)
 # Default hosts advertise the architecture's distinct work classes.
 # Generic bundle classes remain interoperable through the compatibility check
 # in ``_host_reasons`` and can still be advertised explicitly by old workers.
@@ -320,14 +341,41 @@ def normalize_resource_class(value: Any, *, stage: Any = "") -> str:
 
 
 def resource_pool(resource_class: Any) -> str:
-    """Classify a resource class into independently accounted capacity."""
+    """Classify a resource class into independently accounted capacity.
+
+    Tight proof-solver/kernel/type-check classes share the
+    ``cpu-proof`` pool (bounded by ``max_cpu_proof_concurrency``).
+    Validation and ordinary bundle/legacy CPU classes use the general
+    lane pool so residual install/cert work can scale with ``max_lanes``
+    without being thrifted by proof-solver concurrency.
+    """
 
     normalized = normalize_resource_class(resource_class)
     if normalized == ProofResourceClass.MODEL_DRAFT.value:
         return "model"
     if normalized == ProofResourceClass.ARTIFACT.value:
         return "artifact"
-    return "cpu-proof"
+    if normalized in {
+        ProofResourceClass.TRANSLATION.value,
+        ProofResourceClass.SOLVER.value,
+        ProofResourceClass.KERNEL.value,
+        ProofResourceClass.TYPE_CHECK.value,
+    } or str(normalized).startswith("cpu-proof"):
+        return "cpu-proof"
+    # Explicit validation class used by residual install/cert lanes.
+    if normalized == ProofResourceClass.VALIDATION.value:
+        return "cpu-general"
+    # Legacy/generic labels historically share the proof pool for fairness
+    # projection tests and mixed analysis/validation schedules.
+    if (
+        normalized in LEGACY_RESOURCE_CLASSES
+        or normalized in GENERIC_BUNDLE_RESOURCE_CLASSES
+        or not normalized
+    ):
+        return "cpu-proof"
+    # Unregistered workload labels still execute on general CPU capacity
+    # (see ``_host_reasons`` unregistered_cpu_workload_compatible).
+    return "cpu-general"
 
 
 def _integer(value: Any, default: int = 0, *, minimum: int | None = None) -> int:
@@ -2701,6 +2749,9 @@ class ResourceScheduler:
             return self.policy.max_model_concurrency or self.policy.max_lanes
         if pool == "artifact":
             return self.policy.max_artifact_concurrency or self.policy.max_lanes
+        if pool == "cpu-general":
+            # Residual/validation/bundle work should fill available lanes.
+            return self.policy.max_lanes or self.policy.max_cpu_proof_concurrency or 1
         return self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
 
     def _host_reasons(self, host: HostResourceSnapshot, requirement: LaneResourceRequirements) -> list[str]:
@@ -2754,21 +2805,6 @@ class ResourceScheduler:
             and host.resource_classes
             and requirement.resource_class not in host.resource_classes
         ):
-            # Planner-defined CPU subclasses (for example
-            # ``cpu-proof-sanitize`` or ``cpu-install-test``) still execute on
-            # the local CPU pool.  Requiring every descriptive subclass to be
-            # copied into host telemetry makes otherwise ordinary CPU work
-            # permanently unschedulable.  Keep accelerator/provider classes
-            # fail-closed, and retain the independent capability check below
-            # for subclasses that require features such as AVX or containers.
-            cpu_extension_compatible = (
-                requirement.resource_class.startswith("cpu-")
-                and "cpu" in host.capabilities
-                and any(
-                    resource_class.startswith("cpu-")
-                    for resource_class in host.resource_classes
-                )
-            )
             legacy_compatible = (
                 requirement.resource_class in LEGACY_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(PROOF_RESOURCE_CLASSES))
@@ -2776,7 +2812,27 @@ class ResourceScheduler:
                 requirement.resource_class in PROOF_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(LEGACY_RESOURCE_CLASSES))
             )
-            if not (cpu_extension_compatible or legacy_compatible):
+            generic_bundle_compatible = (
+                requirement.resource_class in GENERIC_BUNDLE_RESOURCE_CLASSES
+                and "cpu" in host.capabilities
+            )
+            # Objective plans often label work with workload-oriented classes
+            # (e.g. exclusive-jvm-toolchain) that are not physical host classes.
+            # Those still execute on general CPU capacity; provider/capability
+            # and stage headroom checks enforce specialization separately.
+            # Keep model-pool and GPU-prefixed classes fail-closed so they do
+            # not silently admit without matching host resources.
+            unregistered_cpu_workload_compatible = (
+                "cpu" in host.capabilities
+                and resource_pool(requirement.resource_class)
+                in {"cpu-proof", "cpu-general"}
+                and not str(requirement.resource_class).startswith("gpu")
+            )
+            if not (
+                legacy_compatible
+                or generic_bundle_compatible
+                or unregistered_cpu_workload_compatible
+            ):
                 reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {
@@ -3224,11 +3280,7 @@ class ResourceScheduler:
                 active_requirements=active,
             )
             if decision.admitted:
-                pool_limit = {
-                    "cpu-proof": lease_budget.max_cpu_proof_concurrency,
-                    "model": lease_budget.max_model_concurrency,
-                    "artifact": lease_budget.max_artifact_concurrency,
-                }[req.resource_pool]
+                pool_limit = self._pool_limit(req.resource_pool)
                 pool_used = sum(
                     item.process_slots
                     for item in active
@@ -5260,6 +5312,637 @@ ScheduledProofWorkRequest = ProofWorkRequest
 ScheduledProofWorkResult = ProofWorkResult
 
 
+# ---------------------------------------------------------------------------
+# Capacity-drift gate for compiled parallel execution plans (PDR-033)
+# ---------------------------------------------------------------------------
+#
+# The parallel plan compiler freezes a capacity snapshot.  Live dispatch must
+# re-observe host/provider capacity and either proceed at the planned width,
+# degrade to a safe width, or wait — never overcommit beyond live headroom.
+
+
+CAPACITY_DRIFT_DECISION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/capacity-drift-decision@1"
+)
+COMPILED_RESOURCE_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/compiled-resource-admission@1"
+)
+
+
+class CapacityDriftAction(str, Enum):
+    """How live capacity compares to the compiled plan's frozen snapshot."""
+
+    PROCEED = "proceed"
+    DEGRADE = "degrade"
+    WAIT = "wait"
+
+
+@dataclass(frozen=True)
+class CapacityDriftDecision:
+    """Fail-closed decision when live capacity drifts from the plan snapshot."""
+
+    action: CapacityDriftAction
+    planned_width: int
+    live_width: int
+    admitted_width: int
+    planned_capacity_snapshot_id: str = ""
+    live_capacity_snapshot_id: str = ""
+    reasons: tuple[str, ...] = ()
+    overcommit_prevented: bool = False
+    wait_recommended: bool = False
+    degraded_task_ids: tuple[str, ...] = ()
+    admitted_task_ids: tuple[str, ...] = ()
+    resource_headroom: Mapping[str, int] = field(default_factory=dict)
+    provider_headroom: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        action = self.action
+        if not isinstance(action, CapacityDriftAction):
+            object.__setattr__(
+                self, "action", CapacityDriftAction(str(action).strip().lower())
+            )
+        for name in ("planned_width", "live_width", "admitted_width"):
+            value = max(0, int(getattr(self, name) or 0))
+            object.__setattr__(self, name, value)
+        object.__setattr__(
+            self,
+            "reasons",
+            tuple(dict.fromkeys(str(item) for item in self.reasons if str(item))),
+        )
+        object.__setattr__(
+            self,
+            "degraded_task_ids",
+            tuple(str(item) for item in self.degraded_task_ids if str(item)),
+        )
+        object.__setattr__(
+            self,
+            "admitted_task_ids",
+            tuple(str(item) for item in self.admitted_task_ids if str(item)),
+        )
+        object.__setattr__(
+            self,
+            "resource_headroom",
+            {
+                str(key): int(value)
+                for key, value in dict(self.resource_headroom or {}).items()
+            },
+        )
+        object.__setattr__(
+            self,
+            "provider_headroom",
+            {
+                str(key): int(value)
+                for key, value in dict(self.provider_headroom or {}).items()
+            },
+        )
+        # Never report an admitted width larger than live headroom.
+        if self.admitted_width > self.live_width:
+            object.__setattr__(self, "admitted_width", self.live_width)
+            object.__setattr__(self, "overcommit_prevented", True)
+
+    @property
+    def may_dispatch(self) -> bool:
+        return self.action in {
+            CapacityDriftAction.PROCEED,
+            CapacityDriftAction.DEGRADE,
+        } and self.admitted_width > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CAPACITY_DRIFT_DECISION_SCHEMA,
+            "action": self.action.value,
+            "planned_width": self.planned_width,
+            "live_width": self.live_width,
+            "admitted_width": self.admitted_width,
+            "planned_capacity_snapshot_id": self.planned_capacity_snapshot_id,
+            "live_capacity_snapshot_id": self.live_capacity_snapshot_id,
+            "reasons": list(self.reasons),
+            "overcommit_prevented": self.overcommit_prevented,
+            "wait_recommended": self.wait_recommended,
+            "degraded_task_ids": list(self.degraded_task_ids),
+            "admitted_task_ids": list(self.admitted_task_ids),
+            "resource_headroom": dict(self.resource_headroom),
+            "provider_headroom": dict(self.provider_headroom),
+            "may_dispatch": self.may_dispatch,
+        }
+
+
+def _capacity_int(value: Any, default: int = 0) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return max(0, default)
+
+
+def _host_live_width(
+    host: HostResourceSnapshot | Mapping[str, Any] | None,
+    *,
+    process_slots_per_task: int = 1,
+) -> int:
+    if host is None:
+        return 0
+    slots = max(1, int(process_slots_per_task or 1))
+    mapping = host if isinstance(host, Mapping) else {}
+    # Compiler-style snapshots publish cpu_slots/process_slots directly.
+    # An explicit zero is exhausted headroom, not "fall back to worker_limit".
+    if isinstance(mapping, Mapping) and (
+        "cpu_slots" in mapping or "process_slots" in mapping
+    ):
+        cpu_slots = _capacity_int(mapping.get("cpu_slots", 0), 0)
+        process_slots = _capacity_int(mapping.get("process_slots", 0), 0)
+        if "cpu_slots" not in mapping:
+            cpu_slots = process_slots
+        if "process_slots" not in mapping:
+            process_slots = cpu_slots
+        if cpu_slots <= 0 and process_slots <= 0:
+            return 0
+        positive = [item for item in (cpu_slots, process_slots) if item > 0]
+        return max(0, min(positive) // slots)
+
+    snapshot = (
+        host
+        if isinstance(host, HostResourceSnapshot)
+        else HostResourceSnapshot.from_mapping(host)
+    )
+    worker_capacity = _capacity_int(
+        getattr(snapshot, "available_worker_capacity", 0),
+        0,
+    )
+    if worker_capacity > 0:
+        return max(0, worker_capacity // slots)
+    active = _capacity_int(getattr(snapshot, "active_workers", 0), 0)
+    limit = _capacity_int(getattr(snapshot, "worker_limit", 0), 0)
+    if limit > 0:
+        return max(0, (limit - active) // slots)
+    return 0
+
+
+def _provider_live_slots(
+    providers: Mapping[str, Any]
+    | Iterable[ProviderCapacity | Mapping[str, Any]]
+    | None,
+    provider_id: str = "",
+) -> int:
+    if providers is None:
+        return UNKNOWN_LIMIT if UNKNOWN_LIMIT < 0 else 0
+
+    def _raw_slots(item: Any) -> int | None:
+        if isinstance(item, Mapping):
+            for key in (
+                "available_slots",
+                "available_concurrency",
+                "max_concurrency",
+            ):
+                if key in item and item.get(key) is not None:
+                    return max(0, int(item.get(key) or 0))
+        return None
+
+    # Prefer raw mapping fields from compiler-style provider snapshots.
+    if isinstance(providers, Mapping) and not any(
+        isinstance(providers.get(key), (Mapping, ProviderCapacity))
+        for key in providers
+        if key not in {"provider_id", "snapshot_id"}
+    ):
+        # Single provider mapping.
+        raw = _raw_slots(providers)
+        if raw is not None:
+            if provider_id and str(providers.get("provider_id") or "").strip():
+                if str(providers.get("provider_id") or "").strip().lower() != provider_id.lower():
+                    return 0
+            return raw
+
+    if isinstance(providers, Mapping):
+        iterable: Iterable[Any] = providers.values()
+    else:
+        iterable = providers
+
+    total = 0
+    matched = False
+    for item in iterable:
+        if isinstance(item, Mapping):
+            item_id = str(item.get("provider_id") or "").strip().lower()
+            raw = _raw_slots(item)
+            if provider_id and item_id and item_id != provider_id.lower():
+                continue
+            if provider_id and not item_id and raw is None:
+                continue
+            if raw is not None:
+                matched = True
+                total += raw
+                if provider_id:
+                    return raw
+            continue
+        # Fall through to normalized ProviderCapacity objects below.
+
+    if matched and not provider_id:
+        return total
+    if matched and provider_id:
+        return total
+
+    normalized = normalize_provider_capacities(providers)
+    if not normalized:
+        return 0
+    if provider_id:
+        for item in normalized:
+            if item.provider_id == provider_id:
+                return max(0, int(item.available_concurrency))
+        return 0
+    return sum(max(0, int(item.available_concurrency)) for item in normalized)
+
+
+def evaluate_capacity_drift(
+    *,
+    planned_width: int,
+    planned_capacity_snapshot_id: str = "",
+    planned_capacity: Mapping[str, Any] | HostResourceSnapshot | None = None,
+    live_host: Mapping[str, Any] | HostResourceSnapshot | None = None,
+    live_providers: Mapping[str, Any]
+    | Iterable[ProviderCapacity | Mapping[str, Any]]
+    | None = None,
+    live_capacity_snapshot_id: str = "",
+    candidate_task_ids: Sequence[str] = (),
+    process_slots_per_task: int = 1,
+    provider_id: str = "",
+    require_provider: bool = False,
+    stale_capacity: bool = False,
+    current_time_ms: int = 0,
+    capacity_fresh_until_ms: int = 0,
+) -> CapacityDriftDecision:
+    """Compare live capacity to the plan snapshot and never overcommit.
+
+    * ``proceed`` — live width still covers the planned concurrent width
+    * ``degrade`` — some headroom remains; admit a reduced concurrent set
+    * ``wait`` — no safe headroom, stale capacity, or overcommit would occur
+    """
+
+    planned = max(0, int(planned_width or 0))
+    reasons: list[str] = []
+    if stale_capacity:
+        reasons.append("stale_capacity")
+    if (
+        current_time_ms
+        and capacity_fresh_until_ms
+        and int(current_time_ms) > int(capacity_fresh_until_ms)
+    ):
+        reasons.append("capacity_expired")
+        stale_capacity = True
+
+    planned_host_width = planned
+    if planned_capacity is not None:
+        planned_host_width = max(
+            planned_host_width,
+            _host_live_width(
+                planned_capacity,
+                process_slots_per_task=process_slots_per_task,
+            ),
+        )
+
+    live_host_width = _host_live_width(
+        live_host,
+        process_slots_per_task=process_slots_per_task,
+    )
+    provider_slots = _provider_live_slots(live_providers, provider_id=provider_id)
+    live_width = live_host_width
+    if require_provider or provider_id:
+        if provider_slots == 0:
+            reasons.append("provider_capacity_exhausted")
+            live_width = 0
+        elif provider_slots > 0:
+            live_width = (
+                min(live_width, provider_slots)
+                if live_width > 0
+                else provider_slots
+            )
+        # provider_slots < 0 means unbounded / not reported: leave host width.
+
+    if live_host is None and live_providers is None:
+        reasons.append("live_capacity_unavailable")
+        live_width = 0
+
+    candidates = [str(item).strip() for item in candidate_task_ids if str(item).strip()]
+    target_width = planned if planned > 0 else len(candidates) or 1
+    overcommit_prevented = False
+
+    if stale_capacity or live_width <= 0:
+        return CapacityDriftDecision(
+            action=CapacityDriftAction.WAIT,
+            planned_width=target_width,
+            live_width=max(0, live_width),
+            admitted_width=0,
+            planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+            live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+            reasons=tuple(dict.fromkeys(reasons or ["insufficient_live_capacity"])),
+            overcommit_prevented=True,
+            wait_recommended=True,
+            degraded_task_ids=tuple(candidates),
+            admitted_task_ids=(),
+            resource_headroom={
+                "host_task_slots": max(0, live_host_width),
+                "planned_width": target_width,
+            },
+            provider_headroom={
+                "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+            },
+        )
+
+    if live_width >= target_width:
+        admitted = candidates[:target_width] if candidates else ()
+        return CapacityDriftDecision(
+            action=CapacityDriftAction.PROCEED,
+            planned_width=target_width,
+            live_width=live_width,
+            admitted_width=target_width,
+            planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+            live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+            reasons=tuple(reasons),
+            overcommit_prevented=False,
+            wait_recommended=False,
+            degraded_task_ids=tuple(candidates[target_width:]) if candidates else (),
+            admitted_task_ids=tuple(admitted) if admitted else tuple(candidates[:target_width]),
+            resource_headroom={
+                "host_task_slots": live_host_width,
+                "planned_width": target_width,
+            },
+            provider_headroom={
+                "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+            },
+        )
+
+    # Live capacity shrank: degrade to live width rather than overcommit.
+    overcommit_prevented = True
+    reasons.append("capacity_drift")
+    reasons.append("degraded_width")
+    admitted_n = min(live_width, len(candidates) if candidates else live_width)
+    if admitted_n <= 0:
+        return CapacityDriftDecision(
+            action=CapacityDriftAction.WAIT,
+            planned_width=target_width,
+            live_width=live_width,
+            admitted_width=0,
+            planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+            live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+            reasons=tuple(dict.fromkeys([*reasons, "no_safe_width"])),
+            overcommit_prevented=True,
+            wait_recommended=True,
+            degraded_task_ids=tuple(candidates),
+            admitted_task_ids=(),
+            resource_headroom={
+                "host_task_slots": live_host_width,
+                "planned_width": target_width,
+            },
+            provider_headroom={
+                "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+            },
+        )
+
+    admitted_ids = tuple(candidates[:admitted_n]) if candidates else ()
+    degraded_ids = tuple(candidates[admitted_n:]) if candidates else ()
+    return CapacityDriftDecision(
+        action=CapacityDriftAction.DEGRADE,
+        planned_width=target_width,
+        live_width=live_width,
+        admitted_width=admitted_n,
+        planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+        live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+        reasons=tuple(dict.fromkeys(reasons)),
+        overcommit_prevented=overcommit_prevented,
+        wait_recommended=False,
+        degraded_task_ids=degraded_ids,
+        admitted_task_ids=admitted_ids,
+        resource_headroom={
+            "host_task_slots": live_host_width,
+            "planned_width": target_width,
+        },
+        provider_headroom={
+            "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+        },
+    )
+
+
+@dataclass(frozen=True)
+class CompiledResourceAdmission:
+    """Resource/provider admission for one compiled assignment before claim."""
+
+    task_id: str
+    admitted: bool
+    reason: str
+    capacity_drift: CapacityDriftDecision
+    resource_class: str = ""
+    provider_id: str = ""
+    fairness_key: str = ""
+    critical_path_rank: int = 0
+    merge_train_id: str = ""
+    post_merge_validation: tuple[str, ...] = ()
+    lease_id: str = ""
+    worktree_id: str = ""
+    fence_token: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": COMPILED_RESOURCE_ADMISSION_SCHEMA,
+            "task_id": self.task_id,
+            "admitted": self.admitted,
+            "reason": self.reason,
+            "capacity_drift": self.capacity_drift.to_dict(),
+            "resource_class": self.resource_class,
+            "provider_id": self.provider_id,
+            "fairness_key": self.fairness_key,
+            "critical_path_rank": self.critical_path_rank,
+            "merge_train_id": self.merge_train_id,
+            "post_merge_validation": list(self.post_merge_validation),
+            "lease_id": self.lease_id,
+            "worktree_id": self.worktree_id,
+            "fence_token": self.fence_token,
+        }
+
+
+def admit_compiled_execution_assignments(
+    *,
+    assignments: Sequence[Mapping[str, Any]],
+    planned_width: int,
+    planned_capacity_snapshot_id: str = "",
+    planned_capacity: Mapping[str, Any] | HostResourceSnapshot | None = None,
+    live_host: Mapping[str, Any] | HostResourceSnapshot | None = None,
+    live_providers: Mapping[str, Any]
+    | Iterable[ProviderCapacity | Mapping[str, Any]]
+    | None = None,
+    live_capacity_snapshot_id: str = "",
+    critical_path: Sequence[str] = (),
+    fairness_order: Sequence[str] = (),
+    merge_steps: Mapping[str, Mapping[str, Any]] | None = None,
+    require_provider: bool = False,
+    stale_capacity: bool = False,
+    current_time_ms: int = 0,
+    capacity_fresh_until_ms: int = 0,
+    scheduler: ResourceScheduler | None = None,
+    active_requirements: Iterable[LaneResourceRequirements] = (),
+) -> tuple[CapacityDriftDecision, tuple[CompiledResourceAdmission, ...]]:
+    """Admit compiled assignments with fairness/critical-path order and no overcommit.
+
+    Callers must still acquire the compiled lease/worktree/fence names before
+    publishing a claim.  This function only decides which assignments may
+    proceed under live capacity.
+    """
+
+    records = [dict(item) for item in assignments if dict(item).get("task_id")]
+    critical_rank = {
+        str(task_id).strip(): index
+        for index, task_id in enumerate(critical_path)
+        if str(task_id).strip()
+    }
+    fairness_rank = {
+        str(task_id).strip(): index
+        for index, task_id in enumerate(fairness_order)
+        if str(task_id).strip()
+    }
+
+    def sort_key(item: Mapping[str, Any]) -> tuple[Any, ...]:
+        task_id = str(item.get("task_id") or "").strip()
+        affinity = str(item.get("affinity_key") or item.get("shard_id") or task_id)
+        return (
+            critical_rank.get(task_id, len(critical_rank)),
+            fairness_rank.get(task_id, len(fairness_rank)),
+            affinity,
+            task_id,
+        )
+
+    ordered = sorted(records, key=sort_key)
+    candidate_ids = [str(item.get("task_id") or "").strip() for item in ordered]
+    drift = evaluate_capacity_drift(
+        planned_width=planned_width or len(candidate_ids),
+        planned_capacity_snapshot_id=planned_capacity_snapshot_id,
+        planned_capacity=planned_capacity,
+        live_host=live_host,
+        live_providers=live_providers,
+        live_capacity_snapshot_id=live_capacity_snapshot_id,
+        candidate_task_ids=candidate_ids,
+        require_provider=require_provider,
+        stale_capacity=stale_capacity,
+        current_time_ms=current_time_ms,
+        capacity_fresh_until_ms=capacity_fresh_until_ms,
+        provider_id=str((ordered[0] if ordered else {}).get("provider_id") or ""),
+    )
+    admitted_set = set(drift.admitted_task_ids)
+    merge_map = {
+        str(key).strip(): dict(value)
+        for key, value in dict(merge_steps or {}).items()
+        if str(key).strip()
+    }
+    admissions: list[CompiledResourceAdmission] = []
+    active = list(active_requirements)
+    for item in ordered:
+        task_id = str(item.get("task_id") or "").strip()
+        merge = merge_map.get(task_id) or {}
+        resource_class = str(item.get("resource_class") or "").strip()
+        provider_id = str(item.get("provider_id") or "").strip()
+        fairness_key = str(
+            item.get("affinity_key") or item.get("shard_id") or task_id
+        ).strip()
+        lease_id = str(item.get("lease_id") or "").strip()
+        worktree_id = str(item.get("worktree_id") or "").strip()
+        fence_token = str(item.get("fence_token") or "").strip()
+        if task_id not in admitted_set or not drift.may_dispatch:
+            admissions.append(
+                CompiledResourceAdmission(
+                    task_id=task_id,
+                    admitted=False,
+                    reason=drift.action.value if not drift.may_dispatch else "capacity_degraded",
+                    capacity_drift=drift,
+                    resource_class=resource_class,
+                    provider_id=provider_id,
+                    fairness_key=fairness_key,
+                    critical_path_rank=critical_rank.get(task_id, len(critical_rank)),
+                    merge_train_id=str(
+                        merge.get("merge_train_id") or item.get("merge_target") or ""
+                    ),
+                    post_merge_validation=tuple(
+                        str(v)
+                        for v in (merge.get("post_merge_validation") or ())
+                        if str(v)
+                    ),
+                    lease_id=lease_id,
+                    worktree_id=worktree_id,
+                    fence_token=fence_token,
+                )
+            )
+            continue
+        if scheduler is not None and live_host is not None:
+            requirement = LaneResourceRequirements.from_mapping(
+                {
+                    "lane_id": task_id,
+                    "resource_class": resource_class or "cpu-small",
+                    "stage": "implementation",
+                    "process_slots": 1,
+                    "provider_required": bool(require_provider or provider_id),
+                    "provider_id": provider_id,
+                    "critical_path_length": max(
+                        0, len(critical_path) - critical_rank.get(task_id, 0)
+                    ),
+                    "fairness_key": fairness_key,
+                }
+            )
+            decision = scheduler.evaluate(
+                requirement,
+                host=live_host,
+                providers=live_providers,
+                active_requirements=active,
+            )
+            if not decision.admitted:
+                admissions.append(
+                    CompiledResourceAdmission(
+                        task_id=task_id,
+                        admitted=False,
+                        reason=",".join(decision.reasons) or "resource_denied",
+                        capacity_drift=drift,
+                        resource_class=resource_class,
+                        provider_id=provider_id,
+                        fairness_key=fairness_key,
+                        critical_path_rank=critical_rank.get(
+                            task_id, len(critical_rank)
+                        ),
+                        merge_train_id=str(
+                            merge.get("merge_train_id")
+                            or item.get("merge_target")
+                            or ""
+                        ),
+                        post_merge_validation=tuple(
+                            str(v)
+                            for v in (merge.get("post_merge_validation") or ())
+                            if str(v)
+                        ),
+                        lease_id=lease_id,
+                        worktree_id=worktree_id,
+                        fence_token=fence_token,
+                    )
+                )
+                continue
+            active.append(requirement)
+        admissions.append(
+            CompiledResourceAdmission(
+                task_id=task_id,
+                admitted=True,
+                reason="admitted",
+                capacity_drift=drift,
+                resource_class=resource_class,
+                provider_id=provider_id,
+                fairness_key=fairness_key,
+                critical_path_rank=critical_rank.get(task_id, len(critical_rank)),
+                merge_train_id=str(
+                    merge.get("merge_train_id") or item.get("merge_target") or ""
+                ),
+                post_merge_validation=tuple(
+                    str(v)
+                    for v in (merge.get("post_merge_validation") or ())
+                    if str(v)
+                ),
+                lease_id=lease_id,
+                worktree_id=worktree_id,
+                fence_token=fence_token,
+            )
+        )
+    return drift, tuple(admissions)
+
+
 __all__ = [
     "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
     "ADAPTIVE_STAGE_PROFILES",
@@ -5273,7 +5956,12 @@ __all__ = [
     "AdaptiveThroughputBenchmarkReceipt",
     "AdaptiveThroughputRun",
     "CANONICAL_ADAPTIVE_STAGES",
+    "CAPACITY_DRIFT_DECISION_SCHEMA",
+    "COMPILED_RESOURCE_ADMISSION_SCHEMA",
+    "CapacityDriftAction",
+    "CapacityDriftDecision",
     "ChildResourceLimits",
+    "CompiledResourceAdmission",
     "DEFAULT_RESOURCE_CLASSES",
     "FormalVerificationResourceScheduler",
     "FairWorkStealDecision",
@@ -5305,8 +5993,10 @@ __all__ = [
     "SupervisorResourceLeaseBudget",
     "TaskGenerationAdmission",
     "adaptive_stage_profile",
+    "admit_compiled_execution_assignments",
     "benchmark_adaptive_execution",
     "evaluate_adaptive_throughput_benchmark",
+    "evaluate_capacity_drift",
     "normalize_adaptive_stage",
     "normalize_provider_capacities",
     "normalize_provider_capacity",
@@ -5316,3 +6006,4 @@ __all__ = [
     "resource_pool",
     "sample_host_resources",
 ]
+

@@ -36,6 +36,16 @@ PROVIDER_SHARD_RECEIPT_EVIDENCE = "vfs/provider-shard-receipt@1"
 PROVIDER_SHARD_RECEIPT_SCHEMA = "vfs/provider-shard-receipt@1"
 PROVIDER_SHARD_GOAL_ID = "VFS-G111"
 PROVIDER_SHARD_G111_EVIDENCE_TERMS = (PROVIDER_SHARD_RECEIPT_EVIDENCE,)
+ORDERED_IMPLEMENTATION_ROUTE = {
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+        "primary_quota_exhausted"
+    ),
+    "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+    "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+    "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
+}
 
 PROTECTED_PATHS = (
     "docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md",
@@ -215,6 +225,17 @@ def _write_fake_supervisor(bin_path: Path) -> Path:
                         "env_provider": os.environ.get(
                             "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", ""
                         ),
+                        "implementation_provider_route": {
+                            name: os.environ.get(name, "")
+                            for name in (
+                                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+                                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+                                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+                                "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+                                "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+                                "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+                            )
+                        },
                         "has_objective_refill": "--objective-refill-scan" in args,
                         "has_codebase_refill": "--codebase-refill-scan" in args,
                         "protected_paths": [
@@ -608,8 +629,10 @@ def test_shards_do_not_duplicate_tasks_and_one_refill_owner(control_harness) -> 
         assert "--no-objective-ast-dataset" in grok["argv"]
         assert "--no-objective-task-janitor" in grok["argv"]
         assert "--no-objective-ast-dataset" not in codex["argv"]
-        assert grok["env_provider"] == "grok-build"
-        assert codex["env_provider"] == "codex"
+        assert grok["env_provider"] == "grok_cli"
+        assert codex["env_provider"] == "grok_cli"
+        assert grok["implementation_provider_route"] == ORDERED_IMPLEMENTATION_ROUTE
+        assert codex["implementation_provider_route"] == ORDERED_IMPLEMENTATION_ROUTE
         assert grok["merge_queue_dir"] == codex["merge_queue_dir"]
         assert grok["merge_queue_dir"] == str(state_root / "merge-queue")
         assert grok["state_dir"] != codex["state_dir"]

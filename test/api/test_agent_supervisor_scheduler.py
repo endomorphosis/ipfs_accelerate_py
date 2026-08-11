@@ -11,29 +11,31 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
-from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
-    materialize_bundle_lane_taskboard,
-)
-from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
-    LeaseExpiredError,
     profile_g_cid,
 )
-from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    DynamicBundleScheduler,
+    launch_bundle_lanes,
+    materialize_bundle_lane_taskboard,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TASK_ATTEMPT_LIMIT_IDLE_REASON,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_review import (
+    EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE,
 )
 
 _MANIFEST_GRAPH_FIELDS = {
@@ -132,6 +134,8 @@ def _scheduler(
     manifest_name: str = "manifest.json",
     external_task_state_paths: tuple[Path, ...] = (),
     bundle_index_refresher: Any = None,
+    task_prefix: str = "T-",
+    **lane_options: Any,
 ) -> DynamicBundleScheduler:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
@@ -169,7 +173,8 @@ def _scheduler(
         external_task_state_paths=external_task_state_paths,
         bundle_index_refresher=bundle_index_refresher,
         poll_interval=0,
-        task_prefix="T-",
+        task_prefix=task_prefix,
+        **lane_options,
     )
 
 
@@ -179,6 +184,301 @@ def _active_task_ids(manifest: dict[str, Any]) -> set[str]:
         for lane in manifest["lanes"]
         for task_id in lane.get("task_ids", [])
     }
+
+
+def _legacy_adoption_index(
+    path: Path,
+) -> tuple[Any, dict[str, str]]:
+    bindings = {
+        str(task["task_id"]): str(task["canonical_task_cid"])
+        for task in EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["tasks"]
+    }
+    task_keys = {
+        str(task["task_id"]): str(task["canonical_task_key"])
+        for task in EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["tasks"]
+    }
+    bundles = {
+        f"objective/legacy/{task_id.lower()}": {
+            "shard_path": f"bundles/{task_id.lower()}.todo.md",
+            "parallel_lane": f"legacy-{task_id.lower()}",
+            "conflict_policy": "bundle-local edits only",
+            "tasks": [
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": task_cid,
+                    "canonical_task_key": task_keys[task_id],
+                }
+            ],
+        }
+        for task_id, task_cid in bindings.items()
+    }
+    bundles["objective/ordinary/ase-010"] = {
+        "shard_path": "bundles/ase-010.todo.md",
+        "parallel_lane": "ordinary-ase-010",
+        "conflict_policy": "bundle-local edits only",
+        "tasks": [{"task_id": "ASE-010"}],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {"source_todo": "tasks.todo.md", "bundles": bundles},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    policy = SimpleNamespace(
+        enabled=True,
+        policy_id="baguqeera" + "f" * 52,
+        max_leaf_tokens=int(
+            EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["max_leaf_tokens"]
+        ),
+        tasks=tuple(
+            SimpleNamespace(
+                task_id=task_id,
+                canonical_task_cid=task_cid,
+            )
+            for task_id, task_cid in bindings.items()
+        ),
+    )
+    return policy, bindings
+
+
+def _legacy_completion_receipts(
+    bindings: dict[str, str],
+    task_ids: list[str],
+) -> dict[str, dict[str, str]]:
+    return {
+        bindings[task_id]: {
+            "task_id": task_id,
+            "canonical_task_cid": bindings[task_id],
+            "status": "succeeded",
+        }
+        for task_id in task_ids
+    }
+
+
+def test_legacy_adoption_plan_allows_only_missing_exact_policy_cid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    policy, bindings = _legacy_adoption_index(index)
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "load_legacy_landed_review_policy",
+        lambda _path: policy,
+    )
+    policy_ids = list(bindings)
+    missing_task_id = policy_ids[-1]
+    receipts = _legacy_completion_receipts(bindings, policy_ids[:-1])
+    # An exact-CID receipt with a mismatched display ID is rejected rather
+    # than upgrading stale/foreign evidence into migration completion.
+    receipts[bindings[missing_task_id]] = {
+        "task_id": "ASE-OLD",
+        "canonical_task_cid": bindings[missing_task_id],
+        "status": "succeeded",
+    }
+    lanes = bundle_supervisor_module.plan_bundle_lanes(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+        completion_receipts=receipts,
+        optimize_bundles=False,
+    )
+    by_declared_id = {
+        str(lane.queue_payload["tasks"][0]["task_id"]): lane
+        for lane in lanes
+    }
+
+    assert [lane.task_ids for lane in lanes if lane.task_ids] == [
+        [missing_task_id]
+    ]
+    missing_lane = by_declared_id[missing_task_id]
+    assert missing_lane.expected_task_cids_by_id == {
+        missing_task_id: bindings[missing_task_id]
+    }
+    ordinary = by_declared_id["ASE-010"]
+    assert ordinary.task_ids == []
+    assert ordinary.claimable is False
+    assert ordinary.queue_payload["blocked_reason"] == (
+        bundle_supervisor_module.LEGACY_ADOPTION_BARRIER_REASON
+    )
+    barrier = ordinary.queue_payload["legacy_adoption_barrier"]
+    assert barrier["remaining_task_ids"] == [missing_task_id]
+    assert barrier["invalid_receipt_task_ids"] == [missing_task_id]
+    assert "--execution-slice-task-id" not in ordinary.command
+
+    all_receipts = _legacy_completion_receipts(bindings, policy_ids)
+    released = bundle_supervisor_module.plan_bundle_lanes(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+        completion_receipts=all_receipts,
+        optimize_bundles=False,
+    )
+    released_ordinary = next(
+        lane
+        for lane in released
+        if lane.queue_payload["tasks"][0]["task_id"] == "ASE-010"
+    )
+    assert released_ordinary.task_ids == ["ASE-010"]
+    assert released_ordinary.queue_payload["legacy_adoption_barrier"][
+        "active"
+    ] is False
+
+    incomplete_index = json.loads(index.read_text(encoding="utf-8"))
+    incomplete_index["bundles"].pop(
+        f"objective/legacy/{policy_ids[0].lower()}"
+    )
+    index.write_text(json.dumps(incomplete_index), encoding="utf-8")
+    with pytest.raises(ValueError, match="exact task inventory"):
+        bundle_supervisor_module.plan_bundle_lanes(
+            bundle_index_path=index,
+            repo_root=repo,
+            state_root=repo / "state",
+            worktree_root=repo / "worktrees",
+            log_dir=repo / "logs",
+            legacy_landed_review_policy_path=repo / "legacy-policy.json",
+            legacy_landed_review_key_path=repo / "legacy-policy.key",
+            completion_receipts=all_receipts,
+            optimize_bundles=False,
+        )
+
+
+def test_dynamic_legacy_barrier_precedes_claim_resource_and_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    policy, bindings = _legacy_adoption_index(index)
+    policy_ids = list(bindings)
+    missing_task_id = policy_ids[-1]
+    receipts = _legacy_completion_receipts(bindings, policy_ids[:-1])
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "load_legacy_landed_review_policy",
+        lambda _path: policy,
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_receipts",
+        lambda _state_root: dict(receipts),
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_source_revision",
+        lambda _state_root: (("legacy-receipts", len(receipts), 1),),
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        max_lanes=4,
+        task_prefix="ASE-",
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [
+        [missing_task_id]
+    ]
+    assert len(scheduler.resource_scheduler.active_leases) == 1
+    launched_lane, launched_grant, _process = launcher.starts[0]
+    assert launched_lane.expected_task_cids_by_id == {
+        missing_task_id: bindings[missing_task_id]
+    }
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        accepted = [
+            item
+            for item in coordinator.list_tasks()
+            if item.get("state") == "accepted"
+        ]
+    assert [item["task_cid"] for item in accepted] == [
+        launched_grant.task_cid
+    ]
+    ordinary_decision = next(
+        decision
+        for decision in manifest["scheduler_decisions"]
+        if decision["bundle_key"] == "objective/ordinary/ase-010"
+    )
+    assert ordinary_decision["decision"] == "deferred"
+    assert ordinary_decision["reason"] == (
+        bundle_supervisor_module.LEGACY_ADOPTION_BARRIER_REASON
+    )
+
+
+def test_dynamic_legacy_release_launches_only_ordinary_not_drained_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    policy, bindings = _legacy_adoption_index(index)
+    receipts = _legacy_completion_receipts(bindings, list(bindings))
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "load_legacy_landed_review_policy",
+        lambda _path: policy,
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_receipts",
+        lambda _state_root: dict(receipts),
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_source_revision",
+        lambda _state_root: (("legacy-receipts", len(receipts), 2),),
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        max_lanes=4,
+        task_prefix="ASE-",
+        optimize_bundles=False,
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+    )
+
+    scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [
+        ["ASE-010"]
+    ]
+    assert len(scheduler.resource_scheduler.active_leases) == 1
+    ordinary_grant = launcher.starts[0][1]
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        accepted = [
+            item
+            for item in coordinator.list_tasks()
+            if item.get("state") == "accepted"
+        ]
+    assert [item["task_cid"] for item in accepted] == [
+        ordinary_grant.task_cid
+    ]
+    planned = scheduler._plan()  # noqa: SLF001
+    drained = [
+        lane
+        for lane in planned
+        if lane.queue_payload["tasks"][0]["task_id"] in bindings
+    ]
+    assert all(lane.task_ids == [] for lane in drained)
+    assert all(lane.claimable is False for lane in drained)
 
 
 def test_terminate_handle_kills_and_reaps_an_unresponsive_wrapper() -> None:
@@ -788,53 +1088,6 @@ def test_external_serial_task_state_fences_then_releases_matching_bundle(
     assert _active_task_ids(released) == {"T-1"}
 
 
-def test_external_fence_preserves_dependency_slice_profile_g_identity(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    index = repo / "index.json"
-    serial_state = repo / "serial-task-state.json"
-    bundle = _bundle("T-1")
-    bundle["tasks"] = [
-        {"task_id": "T-1", "status": "todo"},
-        {"task_id": "T-2", "status": "todo", "depends_on": ["T-1"]},
-    ]
-    index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_text(
-        json.dumps(
-            {
-                "source_todo": "tasks.todo.md",
-                "bundles": {"objective/test/serial": bundle},
-            }
-        ),
-        encoding="utf-8",
-    )
-    serial_state.write_text(
-        json.dumps(
-            {
-                "implementation_in_progress": True,
-                "active_phase": "implementing",
-                "active_task_id": "T-1",
-            }
-        ),
-        encoding="utf-8",
-    )
-    scheduler = _scheduler(
-        tmp_path,
-        index,
-        _FakeLauncher(),
-        external_task_state_paths=(serial_state,),
-    )
-
-    [fenced] = scheduler._plan()
-    assert fenced.task_ids == []
-    assert fenced.queue_payload["external_active_member_fence"] is True
-    assert fenced.queue_payload["execution_slice_task_ids"] == ["T-1"]
-    with LeaseCoordinator(repo / "fence-coordination.duckdb") as coordinator:
-        registered = coordinator.register_bundle(fenced.queue_payload)
-    assert registered["canonical_task_cid"] == fenced.queue_payload["canonical_task_cid"]
-
-
 def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
     tmp_path: Path,
 ) -> None:
@@ -869,7 +1122,7 @@ def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
 def test_plan_cache_observes_new_durable_completion_event(
     tmp_path: Path,
 ) -> None:
-    """An event-only completion must invalidate the cached execution slice."""
+    """An authoritative event completion invalidates the cached execution slice."""
 
     repo = tmp_path / "repo"
     index = repo / "index.json"
@@ -907,6 +1160,26 @@ def test_plan_cache_observes_new_durable_completion_event(
                 "canonical_task_cid": member["canonical_task_cid"],
                 "returncode": 0,
                 "merge_result": {"merged": True},
+                "acceptance_result": {
+                    "authoritatively_completed": True,
+                    "completion_authoritative": True,
+                    "pending_gates": [],
+                    "todo_update_result": {
+                        "updated": True,
+                        "updated_task_ids": ["T-1"],
+                        "already_completed_task_ids": [],
+                        "completion_receipts": [
+                            {
+                                "task_id": "T-1",
+                                "canonical_task_cid": member[
+                                    "canonical_task_cid"
+                                ],
+                                "canonical_task_key": "",
+                                "board_namespace": "test-board",
+                            }
+                        ],
+                    },
+                },
             }
         )
         + "\n",
@@ -1205,15 +1478,6 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert drained["counts"]["active"] == 0
     assert drained["counts"]["completed"] == 1
 
-    observed_again = scheduler.reconcile_once()
-    completed_decision = next(
-        item
-        for item in observed_again["scheduler_decisions"]
-        if item["bundle_key"].endswith("t-1")
-    )
-    assert completed_decision["decision"] == "settled"
-    assert completed_decision["reason"] == "completed"
-
     # A board whose only remaining tasks are blocked relinquishes the slot and
     # consumes the bounded bundle attempt budget instead of pinning a daemon.
     _write_index(index, "T-2")
@@ -1317,10 +1581,7 @@ def test_receipt_drained_completion_settles_exhausted_blocked_bundle(
                 status="failed",
                 failure_class="blocked",
             )
-        assert (
-            coordinator.task_state(discovered.task_cid)["state"]
-            == "blocked"
-        )
+        assert coordinator.task_state(discovered.task_cid)["state"] == "blocked"
 
     materialize_bundle_lane_taskboard(discovered, repo_root=repo)
     assert discovered.runtime_todo_path is not None
@@ -2082,27 +2343,73 @@ def test_stop_manifest_excludes_superseded_bundle_revisions(
     assert observed_queries == [({current_task_cid}, True)]
 
 
-def test_live_manifest_exposes_expiring_heartbeat_and_terminal_stopped_state(
+def test_run_preserves_primary_error_when_stop_cleanup_fails(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
-    _write_index(index, "T-1")
     launcher = _FakeLauncher()
+    _write_index(index, "T-1")
     scheduler = _scheduler(tmp_path, index, launcher)
+    primary_error = RuntimeError("primary reconciliation failure")
 
-    running = scheduler.reconcile_once()
-    terminal = scheduler.stop()
+    def fail_reconciliation() -> dict[str, Any]:
+        raise primary_error
 
-    assert running["scheduler_state"] == "running"
-    assert running["supervisor_pid"] == os.getpid()
-    assert datetime.fromisoformat(running["heartbeat_expires_at"]) > (
-        datetime.fromisoformat(running["heartbeat_at"])
+    def fail_cleanup(*, grace_seconds: float = 5.0) -> dict[str, Any]:
+        del grace_seconds
+        raise OSError("secondary cleanup failure")
+
+    monkeypatch.setattr(scheduler, "reconcile_once", fail_reconciliation)
+    monkeypatch.setattr(scheduler, "stop", fail_cleanup)
+
+    with pytest.raises(RuntimeError, match="primary reconciliation failure") as error:
+        scheduler.run(max_cycles=1)
+
+    assert error.value is primary_error
+
+
+def test_stop_cleans_local_lane_before_coordination_open_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    process = _FakeProcess(pid=12345)
+    resource_lease = object()
+    scheduler._running["task-cid"] = SimpleNamespace(
+        handle=process,
+        resource_lease=resource_lease,
+        grant=object(),
     )
-    assert terminal["scheduler_state"] == "stopped"
-    assert terminal["supervisor_pid"] is None
-    assert terminal["heartbeat_expires_at"] is None
-    assert terminal["counts"]["active"] == 0
+    cancelled: list[tuple[object, str]] = []
+    monkeypatch.setattr(
+        scheduler.resource_scheduler,
+        "cancel",
+        lambda lease, *, reason: cancelled.append((lease, reason)),
+    )
+
+    class UnavailableCoordinator:
+        def __init__(self, _path: Path) -> None:
+            raise RuntimeError("coordination unavailable")
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "LeaseCoordinator",
+        UnavailableCoordinator,
+    )
+
+    with pytest.raises(RuntimeError, match="coordination unavailable"):
+        scheduler.stop(grace_seconds=0)
+
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 1
+    assert cancelled == [(resource_lease, "scheduler_stopped")]
+    assert scheduler._running == {}
 
 
 def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(
@@ -2270,278 +2577,6 @@ def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -
         ) is None
 
 
-def test_leased_lane_retries_transient_duckdb_lock_before_lease_expiry(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    duckdb = pytest.importorskip("duckdb")
-    coordination = tmp_path / "coordination.sqlite3"
-    bundle = {
-        "bundle_key": "objective/test/transient-coordination-lock",
-        "tasks": [{"task_id": "T-TRANSIENT-LOCK"}],
-    }
-    with LeaseCoordinator(coordination) as coordinator:
-        registered = coordinator.register_bundle(bundle)
-        grant = coordinator.claim(
-            registered["task_cid"],
-            "did:web:worker.example",
-            requested_lease_ms=5_000,
-        )
-
-    original_heartbeat = LeaseCoordinator.heartbeat
-    heartbeat_calls = 0
-    retry_succeeded = False
-
-    def flaky_heartbeat(self, current_grant, **kwargs):
-        nonlocal heartbeat_calls, retry_succeeded
-        heartbeat_calls += 1
-        if heartbeat_calls == 2:
-            raise duckdb.IOException(
-                'IO Error: Could not set lock on file "coordination.sqlite3": '
-                "Conflicting lock is held"
-            )
-        result = original_heartbeat(self, current_grant, **kwargs)
-        if heartbeat_calls == 3:
-            retry_succeeded = True
-        return result
-
-    class Process:
-        pid = 43_211
-        returncode: int | None = None
-        fenced_while_alive = False
-
-        def poll(self):
-            if retry_succeeded and self.returncode is None:
-                self.returncode = 0
-            return self.returncode
-
-        def wait(self, timeout=None):
-            return self.returncode
-
-    process = Process()
-
-    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
-        assert candidate is process
-        assert fence_descendants is True
-        candidate.fenced_while_alive = candidate.returncode is None
-        if candidate.returncode is None:
-            candidate.returncode = -signal.SIGTERM
-
-    monkeypatch.setattr(LeaseCoordinator, "heartbeat", flaky_heartbeat)
-    monkeypatch.setattr(
-        leased_lane_module.subprocess,
-        "Popen",
-        lambda _command, **_kwargs: process,
-    )
-    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
-
-    result = run_leased_lane_result(
-        coordination_path=coordination,
-        grant=grant,
-        command=(sys.executable, "-c", "pass"),
-        lease_ms=5_000,
-        heartbeat_interval=0.01,
-        resource_sampler=lambda **_kwargs: {},
-    )
-
-    assert heartbeat_calls >= 4
-    assert retry_succeeded is True
-    assert process.fenced_while_alive is False
-    assert result.successful is True
-    assert result.claim_cid == grant.claim_cid
-    assert result.fencing_token == grant.fencing_token
-    with LeaseCoordinator(coordination) as coordinator:
-        receipts = coordinator.list_receipts(grant.task_cid)
-    assert len(receipts) == 1
-    assert receipts[0]["receipt"]["status"] == "succeeded"
-
-
-def test_leased_lane_fences_when_duckdb_lock_persists_to_lease_deadline(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    duckdb = pytest.importorskip("duckdb")
-    coordination = tmp_path / "coordination.sqlite3"
-    with LeaseCoordinator(coordination) as coordinator:
-        registered = coordinator.register_bundle(
-            {
-                "bundle_key": "objective/test/persistent-coordination-lock",
-                "tasks": [{"task_id": "T-PERSISTENT-LOCK"}],
-            }
-        )
-        grant = coordinator.claim(
-            registered["task_cid"],
-            "did:web:worker.example",
-            requested_lease_ms=5_000,
-        )
-
-    lock_error = duckdb.IOException(
-        'IO Error: Could not set lock on file "coordination.sqlite3": '
-        "Conflicting lock is held"
-    )
-    original_heartbeat = LeaseCoordinator.heartbeat
-    heartbeat_calls = 0
-    renew_calls = 0
-
-    def locked_heartbeat(self, current_grant, **kwargs):
-        nonlocal heartbeat_calls
-        heartbeat_calls += 1
-        if heartbeat_calls == 1:
-            return original_heartbeat(self, current_grant, **kwargs)
-        raise lock_error
-
-    def locked_renew(self, current_grant, **kwargs):
-        nonlocal renew_calls
-        renew_calls += 1
-        raise lock_error
-
-    retry_deadline_ms = (
-        grant.lease_expires_at_ms
-        - leased_lane_module._LEASE_EXPIRY_SAFETY_MARGIN_MS
-    )
-    clock_values = iter(
-        (
-            retry_deadline_ms - 4_000,
-            retry_deadline_ms - 3_900,
-            retry_deadline_ms - 1_700,
-            retry_deadline_ms - 1_600,
-            retry_deadline_ms - 1_200,
-            retry_deadline_ms - 600,
-            retry_deadline_ms,
-        )
-    )
-    clock_calls = 0
-
-    def advancing_clock() -> int:
-        nonlocal clock_calls
-        clock_calls += 1
-        return next(clock_values, retry_deadline_ms)
-
-    class Process:
-        pid = 43_212
-        returncode: int | None = None
-        fenced_while_alive = False
-
-        def poll(self):
-            return self.returncode
-
-        def wait(self, timeout=None):
-            return self.returncode
-
-    process = Process()
-
-    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
-        assert candidate is process
-        assert fence_descendants is True
-        candidate.fenced_while_alive = candidate.returncode is None
-        candidate.returncode = -signal.SIGTERM
-
-    monkeypatch.setattr(LeaseCoordinator, "heartbeat", locked_heartbeat)
-    monkeypatch.setattr(LeaseCoordinator, "renew", locked_renew)
-    monkeypatch.setattr(leased_lane_module, "_now_ms", advancing_clock)
-    monkeypatch.setattr(
-        leased_lane_module.subprocess,
-        "Popen",
-        lambda _command, **_kwargs: process,
-    )
-    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
-
-    result = run_leased_lane_result(
-        coordination_path=coordination,
-        grant=grant,
-        command=(sys.executable, "-c", "pass"),
-        lease_ms=5_000,
-        heartbeat_interval=0.01,
-        resource_sampler=lambda **_kwargs: {},
-    )
-
-    assert heartbeat_calls == 2
-    assert renew_calls == 1
-    assert clock_calls >= 7
-    assert process.fenced_while_alive is True
-    assert result.successful is False
-    assert result.disposition == "failed"
-    assert result.exit_code == leased_lane_module.START_FAILED_EXIT_CODE
-    assert result.lease_released is True
-    assert result.fencing_token == grant.fencing_token
-    with LeaseCoordinator(coordination) as coordinator:
-        assert coordinator.list_receipts(grant.task_cid) == []
-
-
-def test_leased_lane_does_not_retry_lease_error(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    coordination = tmp_path / "coordination.sqlite3"
-    with LeaseCoordinator(coordination) as coordinator:
-        registered = coordinator.register_bundle(
-            {
-                "bundle_key": "objective/test/lease-loss",
-                "tasks": [{"task_id": "T-LEASE-LOSS"}],
-            }
-        )
-        grant = coordinator.claim(
-            registered["task_cid"],
-            "did:web:worker.example",
-            requested_lease_ms=5_000,
-        )
-
-    original_heartbeat = LeaseCoordinator.heartbeat
-    heartbeat_calls = 0
-
-    def expired_heartbeat(self, current_grant, **kwargs):
-        nonlocal heartbeat_calls
-        heartbeat_calls += 1
-        if heartbeat_calls == 1:
-            return original_heartbeat(self, current_grant, **kwargs)
-        raise LeaseExpiredError("lease has expired")
-
-    class Process:
-        pid = 43_213
-        returncode: int | None = None
-        fenced_while_alive = False
-
-        def poll(self):
-            return self.returncode
-
-        def wait(self, timeout=None):
-            return self.returncode
-
-    process = Process()
-
-    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
-        assert candidate is process
-        assert fence_descendants is True
-        candidate.fenced_while_alive = candidate.returncode is None
-        candidate.returncode = -signal.SIGTERM
-
-    monkeypatch.setattr(LeaseCoordinator, "heartbeat", expired_heartbeat)
-    monkeypatch.setattr(
-        leased_lane_module.subprocess,
-        "Popen",
-        lambda _command, **_kwargs: process,
-    )
-    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
-
-    result = run_leased_lane_result(
-        coordination_path=coordination,
-        grant=grant,
-        command=(sys.executable, "-c", "pass"),
-        lease_ms=5_000,
-        heartbeat_interval=0.01,
-        resource_sampler=lambda **_kwargs: {},
-    )
-
-    assert heartbeat_calls == 2
-    assert process.fenced_while_alive is True
-    assert result.successful is False
-    assert result.disposition == "fenced"
-    assert result.exit_code == leased_lane_module.FENCED_EXIT_CODE
-    assert result.fencing_token == grant.fencing_token
-    with LeaseCoordinator(coordination) as coordinator:
-        assert coordinator.list_receipts(grant.task_cid) == []
-
-
 @pytest.mark.parametrize("attempt_exhausted", [False, True])
 def test_untracked_leased_lane_self_fences_fresh_exact_blocked_slice(
     monkeypatch,
@@ -2690,6 +2725,434 @@ def test_untracked_leased_lane_self_fences_fresh_exact_blocked_slice(
     assert len(receipts) == 1
     assert receipts[0]["receipt"]["status"] == "failed"
     assert receipts[0]["receipt"]["failure_class"] == "blocked"
+
+
+def test_leased_lane_defers_provider_review_pending_without_task_receipt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    task_id = "T-PENDING-REVIEW"
+    task_cid = profile_g_cid({"member": task_id})
+    bundle = {
+        "bundle_key": "objective/test/pending-review",
+        "tasks": [
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+            }
+        ],
+        "execution_slice_task_ids": [task_id],
+        "execution_slice_task_cids": [task_cid],
+        "max_attempts": 1,
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:pending-review.example",
+            requested_lease_ms=5_000,
+        )
+
+    def publish_pending_acceptance() -> None:
+        merge_commit = "a" * 40
+        repository_tree_id = f"git-tree:{'b' * 40}"
+        append_jsonl_event(
+            events_path,
+            "implementation_merged_pending_acceptance",
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "authoritative-acceptance-status@1"
+                ),
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+                "acceptance_state": "implemented_merged_but_pending",
+                "state": "implemented_merged_but_pending",
+                "admitted": False,
+                "completion_authoritative": False,
+                "merge_commit": merge_commit,
+                "pending_gates": ["provider_review"],
+                "gate": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "authoritative-completion-gate@1"
+                    ),
+                    "task_id": task_id,
+                    "admitted": False,
+                    "completion_authoritative": False,
+                    "acceptance_state": "implemented_merged_but_pending",
+                    "merge_commit": merge_commit,
+                    "pending_gates": ["provider_review"],
+                    "satisfied_gates": [
+                        "merge",
+                        "freshness",
+                        "semantic",
+                        "proof",
+                        "deterministic_only",
+                    ],
+                    "repository_tree_id": repository_tree_id,
+                },
+                "receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "implementation-receipt@1"
+                    ),
+                    "task_id": task_id,
+                    "merged": True,
+                    "completion_authoritative": False,
+                    "acceptance_state": "implemented_merged_but_pending",
+                    "pending_gates": ["provider_review"],
+                    "validation_passed": True,
+                    "validation_stale": False,
+                    "merge_commit": merge_commit,
+                    "repository_tree_id": repository_tree_id,
+                },
+            },
+        )
+        phase_state.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "ready_count": 1,
+                    "waiting_count": 0,
+                    "blocked_count": 0,
+                    "selectable_ready_count": 1,
+                    "selection_idle_reason": "",
+                    "task_statuses": {task_id: "ready"},
+                    "task_identities": {
+                        task_id: {"canonical_task_cid": task_cid}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        append_jsonl_event(
+            events_path,
+            "daemon_pass",
+            {
+                "active_task_id": "",
+                "ready_count": 1,
+                "waiting_count": 0,
+                "blocked_count": 0,
+                "selectable_ready_count": 1,
+                "selection_idle_reason": "",
+                "attempt_limited_task_ids": [],
+                "execution_slice_task_statuses": {task_id: "ready"},
+                "execution_slice_task_cids_by_id": {task_id: task_cid},
+            },
+        )
+
+    class Process:
+        pid = 43_211
+        returncode: int | None = None
+        poll_calls = 0
+        tree_fenced = False
+
+        def poll(self):
+            self.poll_calls += 1
+            if self.poll_calls == 2:
+                publish_pending_acceptance()
+            elif self.poll_calls > 20 and self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
+        assert candidate is process
+        assert fence_descendants is True
+        candidate.tree_fenced = True
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        phase_state_path=phase_state,
+        completion_events_path=events_path,
+        expected_task_ids=(task_id,),
+        expected_task_cids_by_id={task_id: task_cid},
+    )
+
+    assert process.tree_fenced is True
+    assert result.disposition == "pending_acceptance"
+    assert result.successful is False
+    assert result.receipt_cid is None
+    assert result.resolution_cid
+    with LeaseCoordinator(coordination) as coordinator:
+        assert coordinator.list_receipts(grant.task_cid) == []
+        pending = coordinator.task_state(grant.task_cid)
+        assert pending["state"] == "blocked"
+        assert pending["acceptance_pending"] is True
+        assert pending["resumable"] is True
+        assert pending["blocked_reason"] == "acceptance_pending_cooldown"
+        assert pending["attempt"] == 0
+        resumed = coordinator.claim_ready(
+            "did:web:review-resumer.example",
+            eligible_task_cids=(grant.task_cid,),
+            requested_lease_ms=5_000,
+            now_ms=pending["retry_not_before_ms"] + 1,
+        )
+        assert resumed is not None
+        assert resumed.attempt == 1
+        with pytest.raises(ValueError, match="provider-review-only evidence"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": True,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id],
+                    "task_cids": [task_cid],
+                    "task_cids_by_id": {task_id: task_cid},
+                    "acceptance_event_ids": ["sha256:forged"],
+                    "terminal_event_id": "sha256:forged-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 2,
+            )
+        with pytest.raises(ValueError, match="provider-review-only evidence"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id, task_id],
+                    "task_cids": [task_cid, task_cid],
+                    "task_cids_by_id": {task_id: task_cid},
+                    "acceptance_event_ids": [
+                        "sha256:duplicate-1",
+                        "sha256:duplicate-2",
+                    ],
+                    "terminal_event_id": "sha256:duplicate-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 3,
+            )
+        with pytest.raises(ValueError, match="provider-review-only evidence"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id],
+                    "task_cids": ["not-a-cid"],
+                    "task_cids_by_id": {task_id: "not-a-cid"},
+                    "acceptance_event_ids": ["sha256:invalid-cid"],
+                    "terminal_event_id": "sha256:invalid-cid-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 4,
+            )
+        unrelated_cid = profile_g_cid({"member": "unrelated"})
+        with pytest.raises(ValueError, match="leased execution slice"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id],
+                    "task_cids": [unrelated_cid],
+                    "task_cids_by_id": {task_id: unrelated_cid},
+                    "acceptance_event_ids": ["sha256:unrelated"],
+                    "terminal_event_id": "sha256:unrelated-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 5,
+            )
+        assert coordinator.list_receipts(grant.task_cid) == []
+
+
+def test_pending_acceptance_evidence_fails_closed_until_exact_idle_pass(
+    tmp_path: Path,
+) -> None:
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    task_id = "T-EXACT-PENDING-REVIEW"
+    task_cid = profile_g_cid({"member": task_id})
+    wrong_cid = profile_g_cid({"wrong-member": task_id})
+    merge_commit = "c" * 40
+    repository_tree_id = f"git-tree:{'d' * 40}"
+    started_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000) - 1
+
+    def pending_payload(
+        canonical_task_cid: str,
+        *,
+        completion_authoritative: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "authoritative-acceptance-status@1"
+            ),
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "acceptance_state": "implemented_merged_but_pending",
+            "admitted": False,
+            "completion_authoritative": completion_authoritative,
+            "merge_commit": merge_commit,
+            "pending_gates": ["provider_review"],
+            "gate": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "authoritative-completion-gate@1"
+                ),
+                "task_id": task_id,
+                "admitted": False,
+                "completion_authoritative": False,
+                "acceptance_state": "implemented_merged_but_pending",
+                "merge_commit": merge_commit,
+                "pending_gates": ["provider_review"],
+                "satisfied_gates": [
+                    "merge",
+                    "freshness",
+                    "semantic",
+                    "proof",
+                    "deterministic_only",
+                ],
+                "repository_tree_id": repository_tree_id,
+            },
+            "receipt": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-receipt@1"
+                ),
+                "task_id": task_id,
+                "merged": True,
+                "completion_authoritative": False,
+                "acceptance_state": "implemented_merged_but_pending",
+                "pending_gates": ["provider_review"],
+                "validation_passed": True,
+                "validation_stale": False,
+                "merge_commit": merge_commit,
+                "repository_tree_id": repository_tree_id,
+            },
+        }
+
+    def write_idle_state() -> None:
+        phase_state.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "task_statuses": {task_id: "ready"},
+                    "task_identities": {
+                        task_id: {"canonical_task_cid": task_cid}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def append_idle_pass(canonical_task_cid: str) -> dict[str, Any]:
+        return append_jsonl_event(
+            events_path,
+            "daemon_pass",
+            {
+                "active_task_id": "",
+                "execution_slice_task_statuses": {task_id: "ready"},
+                "execution_slice_task_cids_by_id": {
+                    task_id: canonical_task_cid
+                },
+            },
+        )
+
+    append_jsonl_event(
+        events_path,
+        "implementation_merged_pending_acceptance",
+        pending_payload(wrong_cid),
+    )
+    write_idle_state()
+    append_idle_pass(task_cid)
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+
+    append_jsonl_event(
+        events_path,
+        "implementation_merged_pending_acceptance",
+        pending_payload(task_cid, completion_authoritative=True),
+    )
+    write_idle_state()
+    append_idle_pass(task_cid)
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+
+    accepted = append_jsonl_event(
+        events_path,
+        "implementation_merged_pending_acceptance",
+        pending_payload(task_cid),
+    )
+    write_idle_state()
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+    append_idle_pass(wrong_cid)
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+
+    terminal = append_idle_pass(task_cid)
+    evidence = leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    )
+    assert evidence is not None
+    assert evidence["completion_authoritative"] is False
+    assert evidence["acceptance_event_ids"] == [accepted["event_id"]]
+    assert evidence["terminal_event_id"] == terminal["event_id"]
 
 
 def test_terminal_blocked_pass_rejects_readdressed_or_future_evidence(

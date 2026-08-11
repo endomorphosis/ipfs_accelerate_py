@@ -147,12 +147,20 @@ class ProposalFindingCode(str, Enum):
     BASELINE_CONTENT_MISMATCH = "baseline_content_mismatch"
     CANDIDATE_IDENTITY_MISMATCH = "candidate_identity_mismatch"
     EXPECTED_EFFECT_MISMATCH = "expected_effect_mismatch"
+    EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED = (
+        "expected_output_ignored_or_unstaged"
+    )
     HARDLINK_BOUNDARY_FORBIDDEN = "hardlink_boundary_forbidden"
     PROTECTED_PATH_FORBIDDEN = "protected_path_forbidden"
     REPOSITORY_PATH_RACE = "repository_path_race"
     REPOSITORY_CONTENT_MISMATCH = "repository_content_mismatch"
     ARCHIVE_CHANGE_FORBIDDEN = "archive_change_forbidden"
     VALIDATION_WEAKENING_FORBIDDEN = "validation_weakening_forbidden"
+    # LPR-017 overlay gate findings (only emitted when enable_live_logic_repair).
+    OMITTED_CALLERS = "omitted_callers"
+    SIGNATURE_ARITY_INCREASE = "signature_arity_increase"
+    UNKNOWN_FRONTIER_REQUIRED = "unknown_frontier_required"
+    LOGIC_REPAIR_OVERLAY_REJECTED = "logic_repair_overlay_rejected"
 
 
 QUALIFYING_FAIL_FAST_CODES = frozenset(
@@ -347,8 +355,18 @@ _ARCHIVE_MAGIC = (
     b"Rar!\x1a\x07",
 )
 _GENERATED_MARKERS_RE = re.compile(
-    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:@generated|generated (?:file|code)|"
-    r"do not edit|automatically generated)\b"
+    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:"
+    r"@generated\b|"
+    r"generated\s+(?:file|code)\b|"
+    r"automatically\s+generated\b|"
+    r"do\s+not\s+edit"
+    r"(?:\s+(?:this|the)\s+(?:file|code))?\s*[.!]?\s*$|"
+    r"do\s+not\s+edit\s*[:;.!-]\s*[^\r\n]{0,80}"
+    r"\b(?:generated|auto-generated|automatically\s+generated)\b|"
+    r"do\s+not\s+edit\s+(?:(?:this|the)\s+)?"
+    r"(?:generated|auto-generated|automatically\s+generated)\s+"
+    r"(?:file|code)\b"
+    r")"
 )
 _VALIDATION_CONFIG_PATHS = (
     ".github/workflows/",
@@ -358,6 +376,42 @@ _VALIDATION_CONFIG_PATHS = (
     "setup.cfg",
     "tox.ini",
 )
+_VALIDATION_WEAKENING_ADDITION_RE = re.compile(
+    r"(?im)(?:"
+    r"^\s*(?:addopts|filterwarnings)\s*=|"
+    r"^\s*(?:continue-on-error|fail-fast)\s*[:=]\s*(?:true|false)\s*$|"
+    r"^\s*xfail_strict\s*=\s*false\s*$|"
+    r"\bpytest\b[^\r\n]*(?:\s-k\s|--ignore\b|--deselect\b|--maxfail\b)|"
+    r"\|\|\s*true\b"
+    r")"
+)
+
+
+def _validation_config_change_is_additive(entry: CandidateDiffEntry) -> bool:
+    """Allow only non-weakening insertions into an existing config file."""
+
+    if (
+        entry.change_kind is DiffChangeKind.DELETE
+        or entry.before_source is None
+        or entry.after_source is None
+    ):
+        return False
+    before_lines = entry.before_source.splitlines(keepends=True)
+    after_lines = entry.after_source.splitlines(keepends=True)
+    added_lines: list[str] = []
+    after_index = 0
+    for before_line in before_lines:
+        while (
+            after_index < len(after_lines)
+            and after_lines[after_index] != before_line
+        ):
+            added_lines.append(after_lines[after_index])
+            after_index += 1
+        if after_index >= len(after_lines):
+            return False
+        after_index += 1
+    added_lines.extend(after_lines[after_index:])
+    return not _VALIDATION_WEAKENING_ADDITION_RE.search("".join(added_lines))
 
 
 def _strict_repo_path(value: Any, *, field_name: str) -> str:
@@ -610,6 +664,20 @@ class ParsedPatchFile:
     binary: bool = False
 
 
+_EMPTY_GIT_BLOB_IDS = (
+    "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813",
+)
+
+
+def _is_empty_git_blob_id(value: str) -> bool:
+    """Return whether an abbreviated SHA-1/SHA-256 object id is the empty blob."""
+
+    return bool(value) and any(
+        blob_id.startswith(value) for blob_id in _EMPTY_GIT_BLOB_IDS
+    )
+
+
 def parse_unified_patch(
     patch_text: str,
     *,
@@ -651,6 +719,8 @@ def parse_unified_patch(
         binary = False
         saw_content = False
         saw_old_header = saw_new_header = False
+        saw_new_file_mode = saw_deleted_file_mode = False
+        index_old_hash = index_new_hash = ""
         index += 1
         while index < len(lines) and not lines[index].startswith("diff --git "):
             current = lines[index]
@@ -664,8 +734,10 @@ def parse_unified_patch(
                     raise ProposalValidationError("binary patch payloads are forbidden")
             if current.startswith("new file mode "):
                 operation = "add"
+                saw_new_file_mode = True
             elif current.startswith("deleted file mode "):
                 operation = "delete"
+                saw_deleted_file_mode = True
             elif current.startswith(("old mode ", "new mode ")):
                 operation = "type_change"
             elif current.startswith("rename from "):
@@ -728,9 +800,20 @@ def parse_unified_patch(
                     raise ProposalValidationError("truncated unified-diff hunk")
                 saw_content = saw_content or additions > 0 or deletions > 0
                 continue
+            elif current.startswith("index "):
+                match = re.fullmatch(
+                    r"index ([0-9a-fA-F]{4,64})\.\.([0-9a-fA-F]{4,64})"
+                    r"(?: \d+)?",
+                    current,
+                )
+                if match is None or index_old_hash or index_new_hash:
+                    raise ProposalValidationError(
+                        "malformed or duplicate Git patch index metadata"
+                    )
+                index_old_hash = match.group(1).lower()
+                index_new_hash = match.group(2).lower()
             elif current and not binary and not current.startswith(
                 (
-                    "index ",
                     "similarity index ",
                     "dissimilarity index ",
                     r"\ No newline at end of file",
@@ -741,10 +824,29 @@ def parse_unified_patch(
                 # of the patch envelope.
                 raise ProposalValidationError("unrecognized Git patch content")
             index += 1
-        if operation in {"add", "delete", "modify"} and not binary and not (
-            saw_old_header and saw_new_header and saw_content
-        ):
-            raise ProposalValidationError("text patch section requires headers and an effectful hunk")
+        if operation in {"add", "delete", "modify"} and not binary:
+            effectful_hunk = saw_old_header and saw_new_header and saw_content
+            empty_file_add = (
+                operation == "add"
+                and saw_new_file_mode
+                and not saw_deleted_file_mode
+                and bool(index_old_hash)
+                and set(index_old_hash) == {"0"}
+                and _is_empty_git_blob_id(index_new_hash)
+            )
+            empty_file_delete = (
+                operation == "delete"
+                and saw_deleted_file_mode
+                and not saw_new_file_mode
+                and _is_empty_git_blob_id(index_old_hash)
+                and bool(index_new_hash)
+                and set(index_new_hash) == {"0"}
+            )
+            if not (effectful_hunk or empty_file_add or empty_file_delete):
+                raise ProposalValidationError(
+                    "text patch section requires headers and an effectful hunk "
+                    "or canonical empty-file metadata"
+                )
         files.append(
             ParsedPatchFile(
                 old_path=old_path,
@@ -981,6 +1083,16 @@ class ProposalValidationPolicy:
     # This is the immutable scope assigned by the task authority.  The policy
     # may narrow it through ``allowed_paths`` but can never widen it.
     task_owned_paths: tuple[str, ...] = ()
+    # LPR-017: when true, intercept ordinary proposals as read-only overlays
+    # and reject/expand signature changes that omit resolved callers.
+    enable_live_logic_repair: bool = False
+    # Optional bound callers / frontier for hermetic overlay analysis.
+    logic_repair_resolved_callers: tuple[str, ...] = ()
+    logic_repair_unknown_frontier: tuple[str, ...] = ()
+    logic_repair_compatibility_proofs: tuple[str, ...] = ()
+    logic_repair_no_change_proofs: tuple[str, ...] = ()
+    # When true, expand write set instead of hard-rejecting omitted callers.
+    logic_repair_expand_write_set: bool = True
 
     def __post_init__(self) -> None:
         allowed = _strings(self.allowed_paths)
@@ -1028,9 +1140,18 @@ class ProposalValidationPolicy:
             "require_python_syntax",
             "require_structured_details",
             "require_patch_text",
+            "enable_live_logic_repair",
+            "logic_repair_expand_write_set",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ProposalValidationError(f"{name} must be a boolean")
+        for name in (
+            "logic_repair_resolved_callers",
+            "logic_repair_unknown_frontier",
+            "logic_repair_compatibility_proofs",
+            "logic_repair_no_change_proofs",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
         for name in (
             "expected_task_id",
             "expected_plan_id",
@@ -1130,6 +1251,14 @@ class ProposalValidationPolicy:
             "max_output_items": self.max_output_items,
             "max_findings": self.max_findings,
             "policy_version": self.policy_version,
+            "enable_live_logic_repair": self.enable_live_logic_repair,
+            "logic_repair_resolved_callers": self.logic_repair_resolved_callers,
+            "logic_repair_unknown_frontier": self.logic_repair_unknown_frontier,
+            "logic_repair_compatibility_proofs": (
+                self.logic_repair_compatibility_proofs
+            ),
+            "logic_repair_no_change_proofs": self.logic_repair_no_change_proofs,
+            "logic_repair_expand_write_set": self.logic_repair_expand_write_set,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -1207,6 +1336,24 @@ class ProposalValidationPolicy:
             max_findings=int(payload.get("max_findings", 32)),
             policy_version=str(payload.get("policy_version") or "strict-proposal-v1"),
             policy_id=str(payload.get("policy_id") or ""),
+            enable_live_logic_repair=bool(
+                payload.get("enable_live_logic_repair", False)
+            ),
+            logic_repair_resolved_callers=tuple(
+                payload.get("logic_repair_resolved_callers") or ()
+            ),
+            logic_repair_unknown_frontier=tuple(
+                payload.get("logic_repair_unknown_frontier") or ()
+            ),
+            logic_repair_compatibility_proofs=tuple(
+                payload.get("logic_repair_compatibility_proofs") or ()
+            ),
+            logic_repair_no_change_proofs=tuple(
+                payload.get("logic_repair_no_change_proofs") or ()
+            ),
+            logic_repair_expand_write_set=bool(
+                payload.get("logic_repair_expand_write_set", True)
+            ),
         )
 
 
@@ -2788,6 +2935,11 @@ _SYNTHETIC_TEST_SECRET_CANARY_RE = re.compile(
     r"""(?:secret|api[-_ ]?key|access[-_ ]?token|auth[-_ ]?token|"""
     r"""refresh[-_ ]?token|client[-_ ]?secret|password)"""
     r"""(?:[-_ ]value)?|"""
+    r"""(?:integration|unit)[-_ ]test[-_ ](?:api[-_ ]?)?key"""
+    r"""[-_ ]not[-_ ]secret|"""
+    r"""(?:token|key)[-_ ](?:alpha|beta)(?:[-_ ]different)?|"""
+    r"""not[-_ ]a[-_ ]real[-_ ]"""
+    r"""(?:password|secret|api[-_ ]?key|access[-_ ]?token)|"""
     r"""should[-_ ]not[-_ ]appear"""
     r""")$"""
 )
@@ -2796,8 +2948,11 @@ _SYNTHETIC_TEST_SECRET_REFERENCE_RE = re.compile(
     r"""vault://[A-Za-z0-9_.][A-Za-z0-9_./-]{0,255})$"""
 )
 _NEVER_EXPOSE_SENTINEL_RE = re.compile(
-    r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
+    r"""(?ix)^(?:should|must)[_-]?(?:never|not)[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
+)
+_TEST_ONLY_NON_SECRET_SENTINEL_RE = re.compile(
+    r"(?i)^sk[_-]live[_-]not[_-]a[_-]real[_-]key$"
 )
 _SECRET_CLASSIFICATION_LABEL_RE = re.compile(
     r"""(?ix)^secret[_-]?material$"""
@@ -2866,6 +3021,25 @@ def _is_scoped_python_test_source(
         path.endswith((".py", ".pyi"))
         and _is_test_path(path)
         and policy.path_is_in_scope(path)
+    )
+
+
+def _is_scoped_test_fixture(
+    path: str,
+    policy: ProposalValidationPolicy,
+) -> bool:
+    """Return whether ``path`` is inside a task-owned test-fixture tree.
+
+    Fixture files may need inert credential-shaped canaries to prove that an
+    importer rejects prohibited material.  The content exception remains
+    narrower than ordinary test-source authority: it applies only below the
+    conventional fixture roots, only inside both policy scope envelopes, and
+    only to exact synthetic values recognized below.  Private keys and
+    concrete credential values remain forbidden.
+    """
+
+    return path.startswith(("test/fixtures/", "tests/fixtures/")) and (
+        policy.path_is_in_scope(path)
     )
 
 
@@ -2942,7 +3116,11 @@ def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
     return "".join(introduced)
 
 
-def _is_concrete_secret_value(raw_value: str) -> bool:
+def _is_concrete_secret_value(
+    raw_value: str,
+    *,
+    allow_test_sentinel: bool = False,
+) -> bool:
     value = raw_value.strip()
     quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
     if quoted:
@@ -2968,16 +3146,21 @@ def _is_concrete_secret_value(raw_value: str) -> bool:
     # closed.
     if _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value):
         return False
+    # A focused security fixture uses this exact value to exercise rejection
+    # of secret-bearing fields.  Admit it only in test files and only as the
+    # complete literal; prefixes/suffixes remain concrete secret material.
+    if allow_test_sentinel and _TEST_ONLY_NON_SECRET_SENTINEL_RE.fullmatch(value):
+        return False
     return True
 
 
 def _is_synthetic_test_secret_canary(raw_value: str) -> bool:
-    """Return whether a quoted value is an explicit non-credential test value."""
+    """Return whether a value is an explicit non-credential test canary."""
 
-    quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(raw_value.strip())
-    if not quoted:
-        return False
-    value = quoted.group("value").strip()
+    value = raw_value.strip()
+    quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
+    if quoted:
+        value = quoted.group("value").strip()
     return bool(
         _SYNTHETIC_TEST_SECRET_CANARY_RE.fullmatch(value)
         or _SYNTHETIC_TEST_SECRET_REFERENCE_RE.fullmatch(value)
@@ -2994,9 +3177,13 @@ def _entry_introduces_secret(
         return False
     if _PRIVATE_KEY_CONTENT_RE.search(introduced):
         return True
+    allow_test_sentinel = _is_test_path(entry.new_path or entry.old_path)
     for match in _SECRET_ASSIGNMENT_RE.finditer(introduced):
         value = match.group("value")
-        if not _is_concrete_secret_value(value):
+        if not _is_concrete_secret_value(
+            value,
+            allow_test_sentinel=allow_test_sentinel,
+        ):
             continue
         if (
             allow_synthetic_test_canaries
@@ -3112,6 +3299,12 @@ def _command_is_allowed(
                 return False
         clauses.append(command_t[start:])
         return all(compound_clause_is_safe(clause) for clause in clauses)
+
+    # Exact task-board allowlist hit: trust the reviewed command when the
+    # executable itself is not a shell interpreter. This admits env-assignment
+    # prefixes (PYTHONPATH=...) that are already on the task validation plan.
+    if command_t in prefixes_t and clause_executable_is_safe(command_t):
+        return True
 
     if not clause_is_safe(command_t):
         return False
@@ -3735,9 +3928,15 @@ class ProposalValidator:
                 entry.path,
                 policy,
             )
+            scoped_test_fixture = _is_scoped_test_fixture(
+                entry.path,
+                policy,
+            )
             sensitive_content = _entry_introduces_secret(
                 entry,
-                allow_synthetic_test_canaries=scoped_python_test_source,
+                allow_synthetic_test_canaries=(
+                    scoped_python_test_source or scoped_test_fixture
+                ),
             )
             path_requires_secret_authority = (
                 sensitive_path
@@ -3780,19 +3979,24 @@ class ProposalValidator:
                     "generated content markers require explicit policy authority",
                     entry.path,
                 )
-            if (
-                not policy.allow_validation_config_changes
-                and any(
-                    _path_matches(entry.path, config_path)
-                    for config_path in _VALIDATION_CONFIG_PATHS
-                )
+            if any(
+                _path_matches(entry.path, config_path)
+                for config_path in _VALIDATION_CONFIG_PATHS
             ):
-                add(
-                    ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
-                    ProposalGate.CONTENT,
-                    "validation configuration changes require explicit task authority",
-                    entry.path,
-                )
+                if not policy.allow_validation_config_changes:
+                    add(
+                        ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
+                        ProposalGate.CONTENT,
+                        "validation configuration changes require explicit task authority",
+                        entry.path,
+                    )
+                elif not _validation_config_change_is_additive(entry):
+                    add(
+                        ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
+                        ProposalGate.CONTENT,
+                        "authorized validation configuration changes must be additive and non-weakening",
+                        entry.path,
+                    )
             if (
                 _is_test_path(entry.path)
                 and entry.change_kind is not DiffChangeKind.DELETE
@@ -3856,6 +4060,101 @@ class ProposalValidator:
                     ProposalFindingCode.COMMAND_FORBIDDEN,
                     ProposalGate.VALIDATION,
                     "validation command is not an allowed argv prefix",
+                )
+
+        # LPR-017: intercept ordinary proposals as read-only candidate overlays
+        # before mutation.  Default-off preserves legacy proposal flows.
+        if policy.enable_live_logic_repair and not findings:
+            try:
+                from ..todo_daemon.live_logic_repair_controller import (
+                    CandidateOverlayContractDeltaGate,
+                    LiveLogicRepairPolicy,
+                    OverlayGateDisposition,
+                )
+
+                base_sources: dict[str, str] = {}
+                candidate_sources: dict[str, str] = {}
+                write_set: list[str] = []
+                for entry in proposal.effective_entries:
+                    path = entry.path
+                    write_set.append(path)
+                    if entry.before_source is not None:
+                        base_sources[path] = entry.before_source
+                    if entry.after_source is not None:
+                        candidate_sources[path] = entry.after_source
+                overlay_policy = LiveLogicRepairPolicy(
+                    enable_live_logic_repair=True,
+                    expand_write_set_on_omission=(
+                        policy.logic_repair_expand_write_set
+                    ),
+                    reject_omitted_callers=True,
+                )
+                gate = CandidateOverlayContractDeltaGate(overlay_policy)
+                overlay_result = gate.evaluate(
+                    proposal_id=proposal.proposal_id,
+                    repository_id=proposal.repository_id,
+                    base_tree_id=proposal.repository_tree_id
+                    or proposal.baseline_id
+                    or "tree:base",
+                    candidate_tree_id=proposal.repository_tree_id
+                    or "tree:candidate",
+                    write_set=write_set,
+                    base_sources=base_sources,
+                    candidate_sources=candidate_sources,
+                    resolved_callers=policy.logic_repair_resolved_callers,
+                    unknown_frontier=policy.logic_repair_unknown_frontier,
+                    compatibility_proofs=(
+                        policy.logic_repair_compatibility_proofs
+                    ),
+                    no_change_proofs=policy.logic_repair_no_change_proofs,
+                )
+                if overlay_result.disposition in {
+                    OverlayGateDisposition.REJECTED,
+                    OverlayGateDisposition.ABSTAINED,
+                    OverlayGateDisposition.DEFERRED,
+                }:
+                    code = ProposalFindingCode.LOGIC_REPAIR_OVERLAY_REJECTED
+                    if "omitted_callers" in overlay_result.reason_codes:
+                        code = ProposalFindingCode.OMITTED_CALLERS
+                    elif (
+                        "unknown_frontier_required"
+                        in overlay_result.reason_codes
+                    ):
+                        code = ProposalFindingCode.UNKNOWN_FRONTIER_REQUIRED
+                    elif (
+                        "signature_arity_increase"
+                        in overlay_result.reason_codes
+                    ):
+                        code = ProposalFindingCode.SIGNATURE_ARITY_INCREASE
+                    add(
+                        code,
+                        ProposalGate.AST_INTERFACE,
+                        overlay_result.detail
+                        or "live logic-repair overlay rejected proposal",
+                    )
+                # EXPANDED is allowed only when the expanded write set remains
+                # inside the existing proposal scope; otherwise reject.
+                elif (
+                    overlay_result.disposition
+                    is OverlayGateDisposition.EXPANDED
+                ):
+                    expanded = set(overlay_result.expanded_write_set)
+                    scope = set(proposal.changed_paths) | set(write_set)
+                    if not expanded.issubset(scope):
+                        add(
+                            ProposalFindingCode.OMITTED_CALLERS,
+                            ProposalGate.AST_INTERFACE,
+                            (
+                                "signature change requires caller paths "
+                                "outside the proposal write set; reject or "
+                                "re-admit an expanded atomic plan"
+                            ),
+                        )
+            except Exception as exc:  # fail-closed
+                add(
+                    ProposalFindingCode.LOGIC_REPAIR_OVERLAY_REJECTED,
+                    ProposalGate.AST_INTERFACE,
+                    f"live logic-repair overlay gate failed: {exc}",
                 )
 
         # Gate trace is complete even after a failure because all proposal

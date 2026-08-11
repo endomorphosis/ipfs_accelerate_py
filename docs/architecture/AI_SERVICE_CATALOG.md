@@ -1,5 +1,24 @@
 # AI Service Catalog
 
+**Status:** Reference
+**Owner:** model-catalog / service-architecture
+**Audience:** Developers, operators, and agents that consume catalog identities,
+snapshots, resolution, and MCP/MCP++ projections
+**Scope:** Schema v1 records, operation taxonomy, lifecycle and operational
+state, source precedence, security and non-invocation boundary, and rollout
+gates for the information plane
+**Non-goals:** Router invocation, streaming, provider client construction, or
+endpoint-usage reservation (see [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md));
+MCP transport and UCAN policy (see [MCP_RUNTIME.md](MCP_RUNTIME.md))
+**Sources:** `ipfs_accelerate_py/model_catalog/` (`schema.py`, `catalog.py`,
+`registry.py`, `resolver.py`, `snapshot.py`, `sources/`);
+`ipfs_accelerate_py/api_integrations/model_registry.py`
+(`RUNTIME_SOURCE_PRECEDENCE`);
+[MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md)
+**Last verified:** `2bf2cebd3` (2026-08-03); schema version, closed operation
+set, lifecycle vocabulary, operational tri-state fields, and default source
+precedence constants checked against the tree
+
 The AI Service Catalog is the canonical information and resolution plane for
 AI services in `ipfs_accelerate_py`. It answers what is known, which operations
 are declared, and which binding satisfies a set of constraints. It is not a

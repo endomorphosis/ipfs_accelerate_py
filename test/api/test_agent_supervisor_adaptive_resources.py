@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     benchmark_adaptive_execution,
     evaluate_adaptive_throughput_benchmark,
     normalize_adaptive_stage,
+    resource_pool,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     RESOURCE_ADMISSION_METRICS_SCHEMA,
@@ -148,6 +149,48 @@ def test_adaptive_admission_round_robins_stages_and_exports_lane_metrics() -> No
     assert snapshot.by_stage["analysis"].cancelled == 1
     assert snapshot.by_stage["validation"].accepted == 1
     assert snapshot.to_dict()["observed_at_ms"] == 2_000
+
+
+def test_resource_pool_splits_validation_from_proof_solver_classes() -> None:
+    assert resource_pool("cpu-proof-solver") == "cpu-proof"
+    assert resource_pool("cpu-proof-kernel") == "cpu-proof"
+    assert resource_pool("cpu-validation") == "cpu-general"
+    assert resource_pool("cpu-small") == "cpu-proof"
+    # Validation residual work can fill max_lanes without proof-pool thrift.
+    scheduler = ResourceScheduler(
+        _policy(max_lanes=4, max_cpu_proof_concurrency=1)
+    )
+    schedule = scheduler.schedule(
+        [
+            LaneResourceRequirements(
+                lane_id="residual-a",
+                stage="analysis",
+                resource_class="cpu-validation",
+            ),
+            LaneResourceRequirements(
+                lane_id="residual-b",
+                stage="analysis",
+                resource_class="cpu-validation",
+            ),
+            LaneResourceRequirements(
+                lane_id="solver-a",
+                stage="proof",
+                resource_class="cpu-proof-solver",
+            ),
+            LaneResourceRequirements(
+                lane_id="solver-b",
+                stage="proof",
+                resource_class="cpu-proof-solver",
+            ),
+        ],
+        host=_host(worker_limit=4, available_worker_capacity=4),
+    )
+    by_id = {decision.lane_id: decision for decision in schedule.decisions}
+    assert by_id["residual-a"].admitted is True
+    assert by_id["residual-b"].admitted is True
+    assert by_id["solver-a"].admitted is True
+    assert by_id["solver-b"].admitted is False
+    assert "cpu_proof_concurrency" in by_id["solver-b"].reasons
 
 
 def test_resource_pools_expose_fair_order_and_backpressure() -> None:

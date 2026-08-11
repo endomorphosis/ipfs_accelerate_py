@@ -22,6 +22,8 @@ objectives, planning, validation, prompt
 merge, rescue, runtime, self_improvement
   ↑
 todo_daemon (implementation), integrations
+  ↑
+entrypoints (prompt-first composition facade)
 ```
 
 ### Rules
@@ -31,6 +33,8 @@ todo_daemon (implementation), integrations
 | Acyclic | No package cycles |
 | Bottom-up only | Higher layers may import lower; not the reverse |
 | No daemon in core | `core` must not import `todo_daemon`, `runtime`, `merge`, `rescue` |
+| No upward entrypoint import | No lower domain package may import `entrypoints`; only the product/transport edge imports it |
+| Cold composition | `entrypoints` may compose lower packages lazily, but import/discovery may load only provider-free contracts |
 | No long-lived flat stubs | Do not reintroduce retired root-level re-export modules |
 | Domain imports | `from ipfs_accelerate_py.agent_supervisor.<pkg>.<mod> import …` |
 
@@ -56,6 +60,7 @@ todo_daemon (implementation), integrations
 | `self_improvement/` | Meta-improvement | Epochs, refill, v2 contracts | Ops |
 | `integrations/` | Optional bridges | LLM merge fallback, Goose, datasets | Edge |
 | `todo_daemon/` | Executable daemons | Implementation/supervisor loops, git helpers | Edge |
+| `entrypoints/` | Prompt-first composition | Closed request/result contracts; lazy Python, CLI, MCP and MCP++ facades | Facade |
 
 Semantic pages: [packages/README.md](packages/README.md).  
 Code-tree READMEs: `ipfs_accelerate_py/agent_supervisor/<package>/README.md`.
@@ -77,6 +82,7 @@ Code-tree READMEs: `ipfs_accelerate_py/agent_supervisor/<package>/README.md`.
 | Implementation daemon behavior | `todo_daemon/` |
 | Optional external tool bridge | `integrations/` |
 | Self-improvement epoch logic | `self_improvement/` |
+| Prompt-only Python/CLI/MCP facade or inference receipt | `entrypoints/` |
 | A new *program* (board + objectives only) | `docs/architecture/` boards; **code still in domain packages** |
 
 ---
@@ -133,6 +139,31 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
 Historical flat stems may resolve via package-root aliasing for compatibility;
 do not add new callers on those paths.
 
+### Entrypoint composition surface
+
+`agent_supervisor.entrypoints` is the sole highest-layer composition package.
+Its eager public inventory is `ENTRYPOINT_CONTRACT_EXPORTS`; package exports
+preserve identity with `entrypoints.contracts`. Runtime/service facades must be
+lazy and listed in `ENTRYPOINT_LAZY_FACADE_EXPORTS`.
+
+The boundary is intentionally one-way:
+
+```text
+product CLI / Python / MCP / MCP++
+                |
+                v
+           entrypoints
+                |
+                v
+      existing domain packages
+```
+
+An `entrypoints` import cannot scan a repository, load an implementation
+provider, import a daemon/runtime factory, open DuckDB/Parquet/IPLD/IPFS, or
+start a process. Lower domain packages cannot import upward. DuckDB remains
+the mutable single-writer coordination shard; Parquet/IPLD/CAR/IPFS remain
+immutable replication formats and do not convey authority.
+
 ---
 
 ## Historical layout cutover
@@ -142,6 +173,18 @@ Domain-layout program evidence tables (ASREF-G0xx package goals) live in
 **historical / scanner-oriented**, not the day-to-day developer map.
 
 ---
+
+
+---
+
+## Flat-module residual land (2026-08-06)
+
+Package root no longer hosts production modules other than `__init__.py`.
+Previously flat stems (program graph/forest, code/CVE contracts, provider
+execution, worktree lifecycle, finding task sources, etc.) live under their
+domain packages. The authoritative stem → package map is
+`AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` in the package root `__init__.py`.
+Historical flat import paths resolve via package-root aliasing only.
 
 ## Related
 

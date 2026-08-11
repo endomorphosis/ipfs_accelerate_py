@@ -603,7 +603,11 @@ def calibrate_fallback_tokenizer(
 
 @dataclass(frozen=True)
 class ProviderTokenUsage(_LedgerContract):
-    """One provider measurement; classified counters do not double charge."""
+    """One provider measurement; classified counters do not double charge.
+
+    ``cancelled_tokens`` is an explicit classification of the same charged
+    total (like retry/failed-attempt tokens).  It never adds a second charge.
+    """
 
     SCHEMA: ClassVar[str] = PROVIDER_TOKEN_USAGE_SCHEMA
 
@@ -617,6 +621,7 @@ class ProviderTokenUsage(_LedgerContract):
     tool_tokens: int = 0
     retry_tokens: int = 0
     failed_attempt_tokens: int = 0
+    cancelled_tokens: int = 0
     cost_microunits: int = 0
     calibration_id: str = ""
     endpoint_event_id: str = ""
@@ -644,6 +649,7 @@ class ProviderTokenUsage(_LedgerContract):
             "tool_tokens",
             "retry_tokens",
             "failed_attempt_tokens",
+            "cancelled_tokens",
         ):
             object.__setattr__(
                 self, name, _integer(getattr(self, name), name)
@@ -690,6 +696,10 @@ class ProviderTokenUsage(_LedgerContract):
         if self.failed_attempt_tokens > self.total_tokens:
             raise TokenLedgerValidationError(
                 "failed_attempt_tokens cannot exceed total_tokens"
+            )
+        if self.cancelled_tokens > self.total_tokens:
+            raise TokenLedgerValidationError(
+                "cancelled_tokens cannot exceed total_tokens"
             )
         if self.input_tokens > self.envelope.max_context_tokens:
             raise TokenLedgerValidationError(
@@ -746,6 +756,7 @@ class ProviderTokenUsage(_LedgerContract):
             "tool_tokens": self.tool_tokens,
             "retry_tokens": self.retry_tokens,
             "failed_attempt_tokens": self.failed_attempt_tokens,
+            "cancelled_tokens": self.cancelled_tokens,
             "cost_microunits": self.cost_microunits,
             "calibration_id": self.calibration_id,
             "endpoint_event_id": self.endpoint_event_id,
@@ -769,6 +780,7 @@ class ProviderTokenUsage(_LedgerContract):
             "tool_tokens",
             "retry_tokens",
             "failed_attempt_tokens",
+            "cancelled_tokens",
             "cost_microunits",
             "calibration_id",
             "endpoint_event_id",
@@ -793,6 +805,7 @@ class ProviderTokenUsage(_LedgerContract):
             tool_tokens=payload.get("tool_tokens", 0),
             retry_tokens=payload.get("retry_tokens", 0),
             failed_attempt_tokens=payload.get("failed_attempt_tokens", 0),
+            cancelled_tokens=payload.get("cancelled_tokens", 0),
             cost_microunits=payload.get("cost_microunits", 0),
             calibration_id=payload.get("calibration_id", ""),
             endpoint_event_id=payload.get("endpoint_event_id", ""),
@@ -950,7 +963,11 @@ TerminalAttribution = TerminalCriterionAttribution
 
 @dataclass(frozen=True)
 class TokenAttribution(_LedgerContract):
-    """One lifecycle event's complete provider usage attribution."""
+    """One lifecycle event's complete provider usage attribution.
+
+    Optional ``span_id`` joins the attribution to a benchmark causal span
+    without replacing lifecycle identity keys.
+    """
 
     SCHEMA: ClassVar[str] = TOKEN_ATTRIBUTION_SCHEMA
 
@@ -963,6 +980,7 @@ class TokenAttribution(_LedgerContract):
     validation_result: ValidationResult
     terminal_attribution_id: str
     usage: ProviderTokenUsage
+    span_id: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "binding", _binding(self.binding))
@@ -973,6 +991,11 @@ class TokenAttribution(_LedgerContract):
             "terminal_attribution_id",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "span_id",
+            _text(self.span_id, "span_id", required=False),
+        )
         object.__setattr__(
             self,
             "attempt",
@@ -1037,6 +1060,7 @@ class TokenAttribution(_LedgerContract):
             "validation_result": self.validation_result,
             "terminal_attribution_id": self.terminal_attribution_id,
             "usage": self.usage.to_record(),
+            "span_id": self.span_id,
         }
 
     @classmethod
@@ -1055,6 +1079,7 @@ class TokenAttribution(_LedgerContract):
             "validation_result",
             "terminal_attribution_id",
             "usage",
+            "span_id",
             "attribution_id",
             "content_id",
         }
@@ -1076,6 +1101,7 @@ class TokenAttribution(_LedgerContract):
                 "terminal_attribution_id", ""
             ),
             usage=payload.get("usage", {}),
+            span_id=payload.get("span_id", ""),
         )
         if payload.get("task_id", result.task_id) != result.task_id:
             raise TokenLedgerValidationError("task_id is foreign to binding")
@@ -1261,6 +1287,7 @@ class TokenLedgerReport(_LedgerContract):
     fallback_tokens: int
     rejected_tokens: int
     abandoned_tokens: int
+    cancelled_tokens: int
     total_cost_microunits: int
     accepted_evidence_gain: int
     criterion_costs: tuple[CriterionTokenCost, ...]
@@ -1285,6 +1312,7 @@ class TokenLedgerReport(_LedgerContract):
             "fallback_tokens",
             "rejected_tokens",
             "abandoned_tokens",
+            "cancelled_tokens",
             "total_cost_microunits",
             "accepted_evidence_gain",
         ):
@@ -1343,6 +1371,10 @@ class TokenLedgerReport(_LedgerContract):
         if self.failed_attempt_tokens > total_tokens:
             raise TokenLedgerValidationError(
                 "total failed-attempt tokens cannot exceed total tokens"
+            )
+        if self.cancelled_tokens > total_tokens:
+            raise TokenLedgerValidationError(
+                "total cancelled tokens cannot exceed total tokens"
             )
         if self.provider_native_tokens + self.fallback_tokens != self.total_tokens:
             raise TokenLedgerValidationError(
@@ -1426,6 +1458,7 @@ class TokenLedgerReport(_LedgerContract):
             "fallback_tokens": self.fallback_tokens,
             "rejected_tokens": self.rejected_tokens,
             "abandoned_tokens": self.abandoned_tokens,
+            "cancelled_tokens": self.cancelled_tokens,
             "total_cost_microunits": self.total_cost_microunits,
             "accepted_evidence_gain": self.accepted_evidence_gain,
             "total_tokens": self.total_tokens,
@@ -1462,6 +1495,7 @@ class TokenLedgerReport(_LedgerContract):
             "fallback_tokens",
             "rejected_tokens",
             "abandoned_tokens",
+            "cancelled_tokens",
             "total_cost_microunits",
             "accepted_evidence_gain",
             "total_tokens",
@@ -1496,6 +1530,7 @@ class TokenLedgerReport(_LedgerContract):
             fallback_tokens=payload.get("fallback_tokens", 0),
             rejected_tokens=payload.get("rejected_tokens", 0),
             abandoned_tokens=payload.get("abandoned_tokens", 0),
+            cancelled_tokens=payload.get("cancelled_tokens", 0),
             total_cost_microunits=payload.get("total_cost_microunits", 0),
             accepted_evidence_gain=payload.get("accepted_evidence_gain", 0),
             criterion_costs=payload.get("criterion_costs", ()),
@@ -1684,6 +1719,18 @@ class SupervisorTokenLedger(_LedgerContract):
                 raise TokenLedgerValidationError(
                     "failed-attempt token classification is incomplete"
                 )
+            # Explicit cancelled_tokens must cover the full charge when set on a
+            # cancelled lifecycle event; zero remains allowed so older ledgers
+            # can rely on report-time derivation from StageEventKind.CANCELLED.
+            if (
+                event.kind is StageEventKind.CANCELLED
+                and attribution.usage.cancelled_tokens
+                and attribution.usage.cancelled_tokens
+                != attribution.usage.total_tokens
+            ):
+                raise TokenLedgerValidationError(
+                    "cancelled_tokens on a cancelled event must equal total_tokens"
+                )
             usage = attribution.usage
             if usage.source is UsageSource.CALIBRATED_FALLBACK:
                 used_calibration_ids.add(usage.calibration_id)
@@ -1813,6 +1860,18 @@ class SupervisorTokenLedger(_LedgerContract):
         total_tokens = sum(item.total_tokens for item in usages)
         total_cost = sum(item.cost_microunits for item in usages)
         evidence_gain = sum(item.evidence_gain for item in accepted_criteria)
+        events_by_id = {
+            item.event_id: item for item in self.lifecycle_events
+        }
+        cancelled_total = 0
+        for attribution in self.attributions:
+            if attribution.usage.cancelled_tokens:
+                cancelled_total += attribution.usage.cancelled_tokens
+            elif (
+                events_by_id[attribution.event_id].kind
+                is StageEventKind.CANCELLED
+            ):
+                cancelled_total += attribution.usage.total_tokens
         return TokenLedgerReport(
             binding_id=self.binding.binding_id,
             lifecycle_event_count=len(self.lifecycle_events),
@@ -1857,6 +1916,7 @@ class SupervisorTokenLedger(_LedgerContract):
                 ].disposition
                 is TerminalDisposition.ABANDONED
             ),
+            cancelled_tokens=cancelled_total,
             total_cost_microunits=total_cost,
             accepted_evidence_gain=evidence_gain,
             criterion_costs=tuple(costs),
@@ -2146,6 +2206,98 @@ def adapt_efficiency_receipt(
 
 
 adapt_v1_efficiency_receipt = adapt_efficiency_receipt
+
+
+def bind_attribution_to_span(
+    attribution: TokenAttribution | Mapping[str, Any],
+    span_id: str,
+) -> TokenAttribution:
+    """Return a copy of ``attribution`` joined to a benchmark causal span."""
+
+    if isinstance(attribution, Mapping):
+        attribution = TokenAttribution.from_dict(attribution)
+    if not isinstance(attribution, TokenAttribution):
+        raise TokenLedgerValidationError(
+            "attribution must be TokenAttribution"
+        )
+    span_id = _text(span_id, "span_id")
+    if attribution.span_id and attribution.span_id != span_id:
+        raise TokenLedgerValidationError(
+            "token attribution is already bound to a different span"
+        )
+    if attribution.span_id == span_id:
+        return attribution
+    return TokenAttribution(
+        binding=attribution.binding,
+        event_id=attribution.event_id,
+        stage=attribution.stage,
+        attempt=attribution.attempt,
+        context_id=attribution.context_id,
+        cache_decision=attribution.cache_decision,
+        validation_result=attribution.validation_result,
+        terminal_attribution_id=attribution.terminal_attribution_id,
+        usage=attribution.usage,
+        span_id=span_id,
+    )
+
+
+def attributions_for_span(
+    ledger: SupervisorTokenLedger,
+    span_id: str,
+) -> tuple[TokenAttribution, ...]:
+    """Select attributions joined to ``span_id`` (exact once per event)."""
+
+    span_id = _text(span_id, "span_id")
+    if not isinstance(ledger, SupervisorTokenLedger):
+        raise TokenLedgerValidationError(
+            "ledger must be SupervisorTokenLedger"
+        )
+    return tuple(
+        item for item in ledger.attributions if item.span_id == span_id
+    )
+
+
+def provider_native_token_totals_for_span(
+    ledger: SupervisorTokenLedger,
+    span_id: str,
+) -> dict[str, int]:
+    """Aggregate provider-native input/output/reused/retry/cancelled tokens.
+
+    Counts each attribution exactly once.  Kill/cancel/retry work remains in
+    the totals rather than being dropped.  When no attribution is bound to the
+    span, every counter is zero and the caller should treat provider metrics as
+    omitted rather than inventing measured zeros at the telemetry layer.
+    """
+
+    selected = attributions_for_span(ledger, span_id)
+    if not selected:
+        # Fall back to the full ledger population when span binding was not
+        # used (legacy ledgers).  Callers that need strict span isolation
+        # should bind attributions before projecting.
+        selected = ledger.attributions
+    input_tokens = sum(item.usage.input_tokens for item in selected)
+    output_tokens = sum(item.usage.output_tokens for item in selected)
+    reused_tokens = sum(item.usage.reused_tokens for item in selected)
+    retry_tokens = sum(item.usage.retry_tokens for item in selected)
+    events_by_id = {item.event_id: item for item in ledger.lifecycle_events}
+    cancelled_tokens = 0
+    model_calls = 0
+    for item in selected:
+        model_calls += 1
+        if item.usage.cancelled_tokens:
+            cancelled_tokens += item.usage.cancelled_tokens
+        elif events_by_id[item.event_id].kind is StageEventKind.CANCELLED:
+            cancelled_tokens += item.usage.total_tokens
+    return {
+        "provider_native_input_tokens": input_tokens,
+        "provider_native_output_tokens": output_tokens,
+        "provider_native_reused_tokens": reused_tokens,
+        "provider_native_retry_tokens": retry_tokens,
+        "provider_native_cancelled_tokens": cancelled_tokens,
+        "model_call_count": model_calls,
+        "total_tokens": sum(item.usage.total_tokens for item in selected),
+        "cost_microunits": sum(item.usage.cost_microunits for item in selected),
+    }
 
 
 def token_ledger_authority_bounds() -> dict[str, bool]:
@@ -2491,9 +2643,12 @@ __all__ = [
     "adapt_efficiency_metrics_from_reconciled_events",
     "adapt_efficiency_receipt",
     "adapt_v1_efficiency_receipt",
+    "attributions_for_span",
+    "bind_attribution_to_span",
     "build_token_ledger",
     "calibrate_fallback_tokenizer",
     "consume_reconciled_endpoint_events_exactly_once",
+    "provider_native_token_totals_for_span",
     "provider_usage_from_reconciled_endpoint_event",
     "token_ledger_authority_bounds",
 ]

@@ -5,6 +5,8 @@ import logging
 import sys
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredDaemonBootstrapRunner,
     ConfiguredImplementationDaemonRunner,
@@ -32,9 +34,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runne
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import checkout_lock_owner_is_active
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
     PortalTaskState,
+    _configured_agent_implementation_route_plan,
     default_llm_merge_resolver_command,
     parse_args,
+    task_declares_validation_config_change,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
@@ -46,6 +51,36 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     split_validation_commands,
 )
 from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
+
+
+def test_validation_config_authority_requires_declared_task_output() -> None:
+    base = {
+        "task_id": "DQP-005",
+        "title": "schema",
+        "status": "todo",
+        "completion": "automatic",
+        "priority": "P0",
+        "track": "schema",
+    }
+
+    assert task_declares_validation_config_change(
+        PortalTask(**base, outputs=["pyproject.toml"])
+    )
+    assert task_declares_validation_config_change(
+        PortalTask(
+            **base,
+            metadata={"predicted files": ".github/workflows/validate.yml"},
+        )
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=["src/schema.py"])
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=[".github/workflows/"])
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=["*.toml"])
+    )
 
 
 def test_validation_command_helpers_unwrap_markdown_inline_code():
@@ -147,6 +182,92 @@ def test_supervisor_propagates_execution_slice_task_ids_to_daemon(tmp_path: Path
         for index, value in enumerate(command)
         if value == "--execution-slice-task-id"
     ] == ["HSSL-BENCH-011"]
+
+
+def test_manual_completion_authority_revalidation_only_propagates_end_to_end(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed_supervisor = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implement",
+            "--manual-completion-authority-task-id",
+            "EX-001",
+            "--manual-completion-authority-revalidation-only",
+        ]
+    )
+
+    config = supervisor_config_from_args(
+        parsed_supervisor,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert parsed_supervisor.manual_completion_authority_revalidation_only is True
+    assert config.manual_completion_authority_revalidation_only is True
+    assert command.count(
+        "--manual-completion-authority-revalidation-only"
+    ) == 1
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+
+    command_without_mode = [
+        argument
+        for argument in command
+        if argument != "--manual-completion-authority-revalidation-only"
+    ]
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(command_without_mode)
+    )
+
+    parsed_daemon = parse_args(command[4:])
+    daemon, _context = build_portal_implementation_daemon_from_args(
+        parsed_daemon,
+        repo_root=tmp_path,
+    )
+
+    assert parsed_daemon.manual_completion_authority_revalidation_only is True
+    assert daemon.manual_completion_authority_revalidation_only is True
+
+
+def test_manual_completion_authority_revalidation_only_defaults_false_and_rejects_extra_flag(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed_supervisor = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+        ]
+    )
+
+    config = supervisor_config_from_args(
+        parsed_supervisor,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert parsed_supervisor.manual_completion_authority_revalidation_only is False
+    assert config.manual_completion_authority_revalidation_only is False
+    assert "--manual-completion-authority-revalidation-only" not in command
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(
+            [
+                *command,
+                "--manual-completion-authority-revalidation-only",
+            ]
+        )
+    )
 
 
 def test_daemon_execution_slice_cannot_select_an_earlier_ready_bundle_member(
@@ -260,6 +381,10 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
 
 
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.shutil.which",
         lambda name: "/usr/bin/codex" if name == "codex" else None,
@@ -278,6 +403,23 @@ def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: P
 
     assert daemon.worktree_root == (tmp_path / "tmp" / "implementation-worktrees").resolve()
     assert command[command.index("-C") + 1] == str(workspace.resolve())
+
+
+def test_daemon_partial_sealed_route_metadata_still_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "primary_quota_exhausted",
+    )
+
+    with pytest.raises(ValueError, match="complete six-field tuple"):
+        _configured_agent_implementation_route_plan(tmp_path)
 
 
 def test_daemon_links_shared_dependencies_from_configured_source_root(tmp_path: Path, monkeypatch):
@@ -519,6 +661,8 @@ def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path:
     assert daemon.worktree_submodule_paths == ("module-a", "module-b")
     assert daemon.objective_path == tmp_path / "objective.md"
     assert daemon.objective_bundle_dir == tmp_path / "bundles"
+    assert parsed.manual_completion_authority_revalidation_only is False
+    assert daemon.manual_completion_authority_revalidation_only is False
     assert context.state_path == tmp_path / "state" / "example_task_state.json"
     assert context.strategy_path == tmp_path / "state" / "example_strategy.json"
     assert context.events_path == tmp_path / "state" / "example_events.jsonl"
@@ -566,6 +710,101 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
     assert calls == ["before:0", "after:0"]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_run_portal_implementation_daemon_loop_suppresses_hooks_for_revalidation_only():
+    class FakeDaemon:
+        def run_once(self) -> dict[str, int]:
+            calls.append("run_once")
+            return {"count": 1}
+
+    parsed = argparse.Namespace(
+        once=True,
+        interval=999,
+        manual_completion_authority_revalidation_only=True,
+    )
+    context = ImplementationDaemonRunContext(
+        parsed=parsed,
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("events.jsonl"),
+    )
+    calls: list[str] = []
+
+    def forbidden_hook(_context: ImplementationDaemonRunContext) -> None:
+        calls.append("hook")
+
+    run_portal_implementation_daemon_loop(
+        FakeDaemon(),
+        context,
+        logger=logging.getLogger("test-daemon-runner-revalidation-only"),
+        hooks=(
+            DaemonLoopHook("before", "before hook: %s", forbidden_hook),
+            DaemonLoopHook("after", "after hook: %s", forbidden_hook),
+        ),
+    )
+
+    assert calls == ["run_once"]
+
+def test_idle_daemon_pass_logging_is_compact_and_throttled(caplog):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        log_daemon_pass_result,
+    )
+
+    result = {
+        "task_count": 51,
+        "completed_count": 41,
+        "ready_count": 0,
+        "blocked_count": 10,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
+        "unchanged": True,
+        "write_count": 0,
+        "implementation_result": None,
+        "merge_reconciliation": [],
+        "completion_receipt_writes": [],
+        "retry_budget_resets": [],
+        "large_diagnostic": "x" * 10_000,
+    }
+    logger = logging.getLogger("test-idle-daemon-pass-logging")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        log_daemon_pass_result(
+            logger,
+            "pass complete: %s",
+            result,
+            emit_idle_info=True,
+        )
+        log_daemon_pass_result(
+            logger,
+            "pass complete: %s",
+            result,
+            emit_idle_info=False,
+        )
+
+    assert caplog.text.count("pass complete:") == 1
+    assert "no_shard_selectable_ready_tasks" in caplog.text
+    assert "large_diagnostic" not in caplog.text
+
+
+def test_changed_daemon_pass_logging_keeps_full_diagnostics(caplog):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        log_daemon_pass_result,
+    )
+
+    result = {
+        "unchanged": False,
+        "write_count": 1,
+        "implementation_result": {"task_id": "KGP-001"},
+    }
+    logger = logging.getLogger("test-changed-daemon-pass-logging")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        log_daemon_pass_result(
+            logger,
+            "pass complete: %s",
+            result,
+            emit_idle_info=False,
+        )
+
+    assert "KGP-001" in caplog.text
 
 
 def test_run_configured_portal_implementation_daemon_builds_and_runs_once(tmp_path: Path):

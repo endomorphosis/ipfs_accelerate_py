@@ -1,0 +1,706 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.authority_policy@1",
+  "interface": "PlannerDoctorAuthorityPolicy@1",
+  "policy_revision": "1",
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "task_id": "PDR-002",
+  "lifecycle": {
+    "seal_state": "external_receipt_required",
+    "seal_mechanism": "external_content_addressed_operator_receipt",
+    "completion_mode": "manual",
+    "self_sealing_forbidden": true,
+    "immutable_after_manual_completion": true,
+    "candidate_mutation_forbidden": true,
+    "activation_requires_verified_seal_receipt": true
+  },
+  "manual_seal": {
+    "required": true,
+    "operator_controlled_receipt_required": true,
+    "receipt_path": "config/agent_supervisor_planner_doctor_authority_policy.seal.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.authority_policy_seal@1",
+    "receipt_interface": "PlannerDoctorAuthorityPolicySeal@1",
+    "receipt_identity_algorithm": "sha2-256 over canonical receipt body excluding receipt_id",
+    "receipt_authentication": "protected_scheduler_expected_receipt_id_pin",
+    "receipt_self_hash_is_authorization": false,
+    "protected_scheduler_identity_pin_required": true,
+    "task_status_is_seal_authority": false,
+    "execution_permit_is_seal_authority": false,
+    "candidate_may_issue_receipt": false,
+    "model_may_issue_receipt": false,
+    "automatic_controller_may_issue_receipt": false,
+    "receipt_bindings": [
+      "authority_policy_canonical_root",
+      "operator_identity",
+      "policy_revision",
+      "repository_tree",
+      "threat_model_content_root",
+      "authority_test_content_root"
+    ],
+    "required_artifact_paths": [
+      "config/agent_supervisor_planner_doctor_authority_policy.json",
+      "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+      "test/api/test_agent_supervisor_planner_doctor_authority_policy.py"
+    ],
+    "allowed_grant_actions": [
+      "activate_policy_revision"
+    ],
+    "mutation_authority_granted": false,
+    "completion_authority_granted": false,
+    "promotion_authority_granted": false,
+    "protected_anchor_write_authority_granted": false,
+    "absence_or_invalid_disposition": "shadow_report_only",
+    "activation_requires_fresh_policy_load": true,
+    "long_running_supervisor_must_not_reuse_pre_seal_policy_snapshot": true
+  },
+  "canonicalization": {
+    "encoding": "utf-8",
+    "profile": "sorted-key compact JSON with no insignificant whitespace",
+    "duplicate_keys_forbidden": true,
+    "floating_point_forbidden": true,
+    "non_finite_numbers_forbidden": true,
+    "content_identity": "sha2-256 over canonical UTF-8 policy bytes",
+    "stored_self_identity": false
+  },
+  "contract_bindings": {
+    "control_authorities": [
+      "read",
+      "proposal",
+      "mutation"
+    ],
+    "proof_assurance_levels": [
+      "unverified",
+      "candidate",
+      "solver_checked",
+      "kernel_verified",
+      "attested"
+    ],
+    "proof_assurance_order": [
+      "unverified",
+      "candidate",
+      "solver_checked",
+      "kernel_verified",
+      "attested"
+    ],
+    "operation_authority_contract": "OperationAuthority",
+    "proof_assurance_contract": "AssuranceLevel",
+    "control_service_interface": "SupervisorControlService@1",
+    "deterministic_doctor_service_interface": "DeterministicDoctorService@1",
+    "reuse_existing_control_permits": true,
+    "reuse_existing_proof_cache": true,
+    "reuse_existing_completion_authority": true,
+    "new_authority_lattice_forbidden": true
+  },
+  "defaults": {
+    "planner_mode": "shadow",
+    "doctor_mode": "report_only",
+    "rollout_mode": "shadow",
+    "mutation_authorized": false,
+    "automatic_promotion_enabled": false,
+    "derived_refill_enabled": false,
+    "completion_authoritative": false,
+    "unknown_or_unsupported_disposition": "abstain",
+    "ambiguous_disposition": "abstain"
+  },
+  "authority_ladder": [
+    {
+      "name": "nomination",
+      "order": 0,
+      "maximum_assurance": "candidate",
+      "sources": [
+        "ast_index",
+        "bm25",
+        "embedding",
+        "graphrag",
+        "history",
+        "knowledge_graph",
+        "llm_output",
+        "proof_cache_metadata",
+        "synthetic_fixture",
+        "vector_index"
+      ],
+      "may": [
+        "discover",
+        "rank",
+        "retrieve",
+        "suggest_candidate",
+        "suggest_premise"
+      ],
+      "may_not": [
+        "admit",
+        "authorize_write",
+        "certify_self",
+        "claim_completion",
+        "promote",
+        "satisfy_proof"
+      ],
+      "semantic_authority": false,
+      "mutation_authority": false,
+      "completion_authority": false
+    },
+    {
+      "name": "observation",
+      "order": 1,
+      "maximum_assurance": "candidate",
+      "sources": [
+        "independent_parser_rebuild",
+        "independent_static_analysis",
+        "independent_test",
+        "runtime_trace"
+      ],
+      "may": [
+        "record_bounded_fact",
+        "record_counterexample_candidate",
+        "support_validation"
+      ],
+      "may_not": [
+        "authorize_write",
+        "claim_kernel_proof",
+        "claim_unbounded_semantics",
+        "declare_completion",
+        "upgrade_own_assurance"
+      ],
+      "semantic_authority": false,
+      "mutation_authority": false,
+      "completion_authority": false
+    },
+    {
+      "name": "bounded_check",
+      "order": 2,
+      "maximum_assurance": "solver_checked",
+      "sources": [
+        "bounded_model_checker",
+        "constraint_solver",
+        "independent_countermodel_validator",
+        "property_test",
+        "sat_solver",
+        "smt_solver"
+      ],
+      "required_bindings": [
+        "assumptions",
+        "bounds",
+        "current_authority_roots",
+        "property",
+        "provider_capability",
+        "toolchain"
+      ],
+      "may": [
+        "disprove_with_independently_validated_counterexample",
+        "establish_bounded_property",
+        "emit_solver_checked_receipt"
+      ],
+      "may_not": [
+        "authorize_write_alone",
+        "claim_kernel_verified",
+        "claim_outside_recorded_bounds",
+        "declare_completion_alone"
+      ],
+      "semantic_authority": "bounded_only",
+      "mutation_authority": false,
+      "completion_authority": false
+    },
+    {
+      "name": "kernel_proof",
+      "order": 3,
+      "maximum_assurance": "kernel_verified",
+      "sources": [
+        "independent_native_kernel_reconstruction"
+      ],
+      "required_bindings": [
+        "current_authority_roots",
+        "exact_premises",
+        "exact_theorem",
+        "kernel_identity",
+        "native_proof_object",
+        "pinned_toolchain"
+      ],
+      "may": [
+        "satisfy_scoped_proof_obligation",
+        "support_proof_gated_admission"
+      ],
+      "may_not": [
+        "authorize_write_without_control_permit",
+        "claim_unencoded_property",
+        "declare_goal_completion_without_completion_evidence",
+        "reuse_stale_proof"
+      ],
+      "semantic_authority": "encoded_theorem_only",
+      "mutation_authority": false,
+      "completion_authority": false
+    },
+    {
+      "name": "attestation",
+      "order": 4,
+      "maximum_assurance": "attested",
+      "sources": [
+        "independent_cryptographic_attestation_verifier"
+      ],
+      "required_bindings": [
+        "attestation_scheme",
+        "committed_inputs",
+        "current_authority_roots",
+        "kernel_verified_receipt",
+        "public_verification_key",
+        "verification_program"
+      ],
+      "may": [
+        "attest_bounded_computation",
+        "attest_committed_counter_aggregation",
+        "attest_policy_membership",
+        "attest_private_witness_possession",
+        "attest_receipt_lineage"
+      ],
+      "may_not": [
+        "authorize_write_without_control_permit",
+        "claim_arbitrary_program_correctness",
+        "claim_completion",
+        "claim_inventory_completeness",
+        "claim_translator_soundness",
+        "upgrade_underlying_semantic_scope"
+      ],
+      "semantic_authority": "inherited_from_verified_statement",
+      "mutation_authority": false,
+      "completion_authority": false
+    }
+  ],
+  "preview_apply_separation": {
+    "required": true,
+    "preview": {
+      "control_authorities": [
+        "read",
+        "proposal"
+      ],
+      "allowed_effect_kinds": [
+        "observe",
+        "propose"
+      ],
+      "repository_write_allowed": false,
+      "authoritative_state_write_allowed": false,
+      "process_lifecycle_effect_allowed": false,
+      "permit_grants_apply_authority": false
+    },
+    "apply": {
+      "control_authority": "mutation",
+      "enabled_by_default": false,
+      "explicit_operator_authority_required": true,
+      "fresh_authorization_decision_required": true,
+      "fresh_single_scope_permit_required": true,
+      "idempotency_key_required": true,
+      "expected_effects_required": true,
+      "writer_lease_required": true,
+      "fencing_epoch_required": true,
+      "isolated_candidate_worktree_required": true,
+      "checkpoint_required": true,
+      "rollback_plan_required": true,
+      "current_tree_revalidation_immediately_before_dispatch": true
+    },
+    "preview_artifact_may_be_applied_directly": false,
+    "apply_requires_new_request_and_fresh_bindings": true
+  },
+  "capability_scope": {
+    "permit_fields_required": [
+      "caller",
+      "expires_at",
+      "expected_effect_ids",
+      "fencing_epoch",
+      "grant_ids",
+      "idempotency_key",
+      "lease_id",
+      "objective_id",
+      "objective_revision",
+      "operation",
+      "path_allowlist",
+      "policy_revision",
+      "repository_id",
+      "repository_root",
+      "resource_bounds",
+      "state_root",
+      "tree_id"
+    ],
+    "exact_operation_required": true,
+    "exact_effect_set_required": true,
+    "exact_path_allowlist_required": true,
+    "exact_resource_bounds_required": true,
+    "expiry_required": true,
+    "scope_widening_forbidden": true,
+    "delegation_forbidden": true,
+    "path_escape_forbidden": true,
+    "cross_repository_write_forbidden_without_separate_permit": true,
+    "unused_authority_must_not_be_inferred": true
+  },
+  "current_tree_revalidation": {
+    "required": true,
+    "unknown_is_current": false,
+    "bindings": [
+      "benchmark_manifest_root",
+      "capability_catalog_root",
+      "dirty_overlay_root",
+      "intent_ir_root",
+      "parser_index_translator_roots",
+      "policy_root",
+      "provider_policy_root",
+      "recursive_gitlink_roots",
+      "security_ir_root",
+      "superproject_commit",
+      "superproject_tree",
+      "task_source_revision",
+      "toolchain_roots"
+    ],
+    "required_at": [
+      "cache_replay",
+      "plan_admission",
+      "pre_execution",
+      "post_generation",
+      "immediately_before_mutation_dispatch",
+      "merge_admission",
+      "merged_tree_revalidation",
+      "completion_evaluation",
+      "promotion"
+    ],
+    "drift_disposition": "abstain_and_replan",
+    "stale_replay_disposition": "reject"
+  },
+  "deterministic_doctor_boundary": {
+    "mode": "report_only",
+    "enabled_at_bootstrap": false,
+    "mutation_authorized": false,
+    "llm_router_enabled": false,
+    "llm_invocations_allowed": false,
+    "remote_model_provider_calls_allowed": false,
+    "remote_embeddings_allowed": false,
+    "network_access_allowed": false,
+    "target_code_import_allowed": false,
+    "knowledge_graph_semantic_authority": false,
+    "vector_semantic_authority": false,
+    "embedding_semantic_authority": false,
+    "proof_cache_metadata_semantic_authority": false,
+    "optional_provider_failure_disposition": "typed_abstention",
+    "automatic_fallback_to_model_forbidden": true
+  },
+  "hybrid_model_boundary": {
+    "distinct_from_deterministic_doctor": true,
+    "enabled_by_default": false,
+    "explicit_operator_policy_required": true,
+    "bounded_residual_syntax_only": true,
+    "model_output_authority": "nomination",
+    "model_write_authority": false,
+    "model_completion_authority": false,
+    "may_suppress_required_queries": false,
+    "may_select_credentials": false,
+    "may_select_provider_endpoints": false,
+    "proposal_overlay_revalidation_required": true,
+    "inherits_deterministic_doctor_authority": false
+  },
+  "provider_and_secret_boundaries": {
+    "credentials_source": "backend_or_environment_only",
+    "credentials_in_prompt_forbidden": true,
+    "credentials_in_task_source_forbidden": true,
+    "credentials_in_argv_forbidden": true,
+    "credentials_in_log_forbidden": true,
+    "credentials_in_receipt_forbidden": true,
+    "credentials_in_cache_key_forbidden": true,
+    "private_witness_in_public_artifact_forbidden": true,
+    "provider_payload_body_in_control_receipt_forbidden": true,
+    "network_default": "deny",
+    "network_requires_separate_scoped_operator_policy": true,
+    "provider_failure_is_pass": false,
+    "provider_result_semantic_authority": false,
+    "provider_health_version_and_policy_binding_required": true
+  },
+  "proof_and_security_gates": {
+    "retrieval_is_nomination_only": true,
+    "candidate_proof_is_authoritative": false,
+    "solver_result_is_kernel_proof": false,
+    "ordinary_test_is_proof": false,
+    "generated_test_may_certify_its_generator": false,
+    "serialized_boolean_may_claim_proof": false,
+    "native_kernel_reconstruction_required_for_authoritative_proof": true,
+    "independent_countermodel_validation_required_for_refutation": true,
+    "proof_cache_hit_rederives_assurance": true,
+    "proof_cache_hit_may_upgrade_assurance": false,
+    "security_ir_required": true,
+    "intent_ir_required": true,
+    "intent_and_generated_code_checked": true,
+    "security_unknown_disposition": "reject",
+    "security_conflict_disposition": "reject",
+    "forbidden_logic_disposition": "reject",
+    "missing_required_security_proof_disposition": "reject",
+    "authoritative_security_proof_minimum": "kernel_verified",
+    "simulated_zk_may_emit_attested": false,
+    "attestation_requires_kernel_verified_receipt": true,
+    "zkp_semantic_scope_may_expand_underlying_claim": false
+  },
+  "mutation_transaction": {
+    "real_byte_change_required_for_commit": true,
+    "complete_impact_closure_required": true,
+    "one_disposition_per_resolved_consumer_required": true,
+    "open_required_frontier_disposition": "abstain",
+    "atomic_scc_transaction_required": true,
+    "prepared_before_dispatch_required": true,
+    "compare_and_swap_ref_update_required": true,
+    "expected_effect_match_required": true,
+    "undeclared_effect_disposition": "reject_and_rollback",
+    "partial_commit_allowed": false,
+    "partial_failure_disposition": "compensate_repair_or_quarantine",
+    "independent_rollback_validation_required": true,
+    "post_edit_reindex_required": true,
+    "dependency_local_cache_invalidation_required": true,
+    "live_logic_and_program_fixed_point_required": true,
+    "prebuilt_fixed_point_mapping_is_authoritative": false,
+    "fixed_point_boolean_is_authoritative": false,
+    "second_order_findings_trigger_bounded_iteration": true,
+    "oscillation_disposition": "rollback_and_escalate",
+    "unchanged_residual_disposition": "rollback_and_escalate",
+    "budget_exhaustion_disposition": "rollback_and_escalate"
+  },
+  "protected_anchors": {
+    "paths": [
+      "config/agent_supervisor_planner_doctor_authority_policy.json",
+      "config/agent_supervisor_planner_doctor_authority_policy.seal.json",
+      "config/agent_supervisor_planner_doctor_benchmark.json",
+      "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json",
+      "docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md",
+      "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+      "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+      "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md",
+      "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+      "test/api/test_agent_supervisor_planner_doctor_authority_policy.py",
+      "test/fixtures/agent_supervisor/planner_doctor_holdout"
+    ],
+    "protected_fields": [
+      "benchmark.denominators",
+      "benchmark.hidden_oracle",
+      "benchmark.holdout_manifest",
+      "benchmark.non_inferiority_margins",
+      "benchmark.population",
+      "benchmark.safety_floors",
+      "promotion_policy",
+      "task_source.seed"
+    ],
+    "candidate_read_hidden_oracle_body_allowed": false,
+    "candidate_write_allowed": false,
+    "model_write_allowed": false,
+    "automatic_controller_write_allowed": false,
+    "derived_runtime_task_source_may_mutate_seed_board": false,
+    "manual_operator_change_requires_new_policy_revision": true,
+    "post_change_rebaseline_required": true
+  },
+  "task_source_and_holdout_protection": {
+    "seed_task_source_is_operator_owned": true,
+    "candidate_may_set_seed_task_status": false,
+    "candidate_may_add_seed_tasks": false,
+    "candidate_may_edit_seed_goals": false,
+    "derived_refill_uses_separate_runtime_source": true,
+    "derived_refill_enabled_at_bootstrap": false,
+    "hidden_oracle_body_available_to_candidate": false,
+    "hidden_oracle_result_available_before_submission": false,
+    "synthetic_fixture_is_live_evidence": false,
+    "skipped_check_is_live_evidence": false,
+    "benchmark_mutation_disposition": "reject_quarantine_and_escalate"
+  },
+  "holdout_storage_boundary": {
+    "same_repository_path_protection_establishes_secrecy": false,
+    "in_repository_artifacts_are_metadata_only": true,
+    "in_repository_allowed_fields": [
+      "denominators",
+      "opaque_handles",
+      "population_metadata",
+      "root_cids"
+    ],
+    "hidden_bodies_storage": "independent_evaluator_owned_read_only_repository_or_cas",
+    "hidden_bodies_in_candidate_worktree_allowed": false,
+    "hidden_bodies_in_provider_context_allowed": false,
+    "hidden_bodies_in_transcript_allowed": false,
+    "candidate_os_read_access_allowed": false,
+    "candidate_finalization_required_before_evaluator_mount": true,
+    "two_phase_unmounted_then_evaluator_only_mount_required": true,
+    "mount_read_only_required": true,
+    "symlink_escape_rejected": true,
+    "hardlink_escape_rejected": true,
+    "development_holdout_disjointness_checks": [
+      "entry_cid",
+      "normalized_ast_id",
+      "normalized_contract_id",
+      "provenance_family_id"
+    ],
+    "overlap_disposition": "reject_benchmark_run"
+  },
+  "completion_policy": {
+    "task_count_is_completion_authority": false,
+    "task_status_is_completion_authority": false,
+    "candidate_claim_is_completion_authority": false,
+    "all_tasks_complete_is_sufficient": false,
+    "fresh_acceptance_evidence_required": true,
+    "independent_validation_required": true,
+    "required_assurance_must_be_satisfied": true,
+    "current_root_binding_required": true,
+    "child_goal_coverage_required": true,
+    "unresolved_contradictions_allowed": false,
+    "unresolved_required_uncertainty_allowed": false,
+    "replayed_terminal_receipt_required": true,
+    "zero_safety_floors_required": true,
+    "completion_authority_owner": "existing_goal_completion_contract"
+  },
+  "promotion_policy": {
+    "default_decision": "shadow",
+    "manual": true,
+    "monotonic": true,
+    "paired_live_evidence_required": true,
+    "fresh_current_tree_evaluation_required": true,
+    "independent_holdout_required": true,
+    "synthetic_evidence_may_promote": false,
+    "skipped_checks_may_promote": false,
+    "quality_non_compensable": true,
+    "noncompensable_gate_failure_disposition": "reject_or_rollback",
+    "candidate_may_change_judge": false
+  },
+  "manual_escalation": {
+    "required": true,
+    "default_disposition": "abstain",
+    "mode_while_pending": "report_only",
+    "operator_decision_binds_fresh_roots": true,
+    "approval_required_classes": [
+      "cross_repository_edit",
+      "doctor_trusted_computing_base",
+      "dynamic_or_generated_code",
+      "native_or_ffi",
+      "new_external_dependency",
+      "public_api_or_schema",
+      "stateful_behavior",
+      "unsupported_memory_or_lifetime_claim"
+    ],
+    "triggers": [
+      "ambiguous_or_unknown_required_property",
+      "approval_required_change_class",
+      "capability_or_provider_loss",
+      "cross_repository_effect",
+      "hidden_oracle_or_benchmark_change",
+      "kill_switch_clear",
+      "new_network_or_provider_scope",
+      "protected_anchor_change",
+      "proof_or_security_requirement_not_met",
+      "repeated_oscillation_or_unchanged_residual",
+      "rollback_or_recovery_failure",
+      "scope_or_effect_expansion"
+    ],
+    "candidate_approval_allowed": false,
+    "model_approval_allowed": false,
+    "automatic_self_approval_allowed": false
+  },
+  "kill_switch": {
+    "available": true,
+    "engaged_by_default": false,
+    "automatic_engage_on_noncompensable_gate_failure": true,
+    "operator_may_engage": true,
+    "candidate_may_clear": false,
+    "model_may_clear": false,
+    "automatic_controller_may_clear": false,
+    "operator_only_clear": true,
+    "clear_requires_audit_and_current_tree_revalidation": true,
+    "engaged_mode": "report_only",
+    "blocks_new_mutation_dispatch": true,
+    "blocks_promotion": true,
+    "blocks_derived_refill": true,
+    "blocks_model_provider_calls": true,
+    "prepared_transaction_disposition": "cancel",
+    "dispatching_transaction_disposition": "compensate_repair_or_quarantine",
+    "committed_transaction_disposition": "independent_revalidate_or_rollback"
+  },
+  "forbidden_transitions": [
+    {
+      "id": "benchmark_or_oracle_mutation_to_valid_evaluation",
+      "disposition": "reject_quarantine_and_escalate"
+    },
+    {
+      "id": "cache_hit_to_assurance_upgrade",
+      "disposition": "reject"
+    },
+    {
+      "id": "candidate_or_self_certification_to_authority",
+      "disposition": "reject"
+    },
+    {
+      "id": "candidate_work_to_protected_anchor_mutation",
+      "disposition": "reject_quarantine_and_escalate"
+    },
+    {
+      "id": "model_output_to_write",
+      "disposition": "reject"
+    },
+    {
+      "id": "partial_transaction_to_commit",
+      "disposition": "rollback_or_quarantine"
+    },
+    {
+      "id": "prebuilt_or_boolean_fixed_point_to_completion",
+      "disposition": "reject"
+    },
+    {
+      "id": "provider_or_retrieval_result_to_semantic_authority",
+      "disposition": "reject"
+    },
+    {
+      "id": "simulated_zk_to_attested",
+      "disposition": "reject"
+    },
+    {
+      "id": "stale_replay_to_current_evidence",
+      "disposition": "reject"
+    },
+    {
+      "id": "synthetic_or_skipped_evidence_to_live_promotion",
+      "disposition": "reject"
+    },
+    {
+      "id": "task_count_or_task_status_to_completion",
+      "disposition": "reject"
+    },
+    {
+      "id": "unproved_unknown_or_conflicting_security_to_admission",
+      "disposition": "reject"
+    },
+    {
+      "id": "verified_attestation_to_unencoded_semantic_claim",
+      "disposition": "reject"
+    }
+  ],
+  "safety_floors": {
+    "authority_promotion_rate": 0,
+    "authority_violation_count": 0,
+    "benchmark_oracle_mutation_count": 0,
+    "deterministic_llm_invocation_count": 0,
+    "deterministic_network_access_count": 0,
+    "deterministic_remote_embedding_call_count": 0,
+    "deterministic_remote_provider_call_count": 0,
+    "embedding_canary_failure_rate": 0,
+    "false_completion_count": 0,
+    "false_fixed_point_count": 0,
+    "false_fixed_point_rate": 0,
+    "forged_receipt_admission_count": 0,
+    "llm_model_provider_call_rate": 0,
+    "llm_router_invocation_rate": 0,
+    "material_resource_regression_rate": 0,
+    "missed_mandatory_caller_rate": 0,
+    "missed_mandatory_consumer_count": 0,
+    "nondeterministic_render_rate": 0,
+    "open_required_impact_frontier_count": 0,
+    "out_of_scope_sandbox_write_rate": 0,
+    "partial_transaction_count": 0,
+    "partial_transaction_rate": 0,
+    "path_escape_count": 0,
+    "policy_scope_escape_count": 0,
+    "protected_anchor_mutation_count": 0,
+    "quality_non_inferiority_breach_count": 0,
+    "reconstruction_isolation_loss_rate": 0,
+    "rollback_failure_count": 0,
+    "rollback_failure_rate": 0,
+    "root_schema_capability_drift_rate": 0,
+    "secret_exposure_count": 0,
+    "skipped_live_promotion_count": 0,
+    "stale_proof_cid_admission_rate": 0,
+    "stale_replay_admission_count": 0,
+    "synthetic_live_promotion_count": 0,
+    "transaction_rollback_failure_rate": 0,
+    "unknown_security_admission_count": 0,
+    "unproved_security_admission_count": 0
+  }
+}

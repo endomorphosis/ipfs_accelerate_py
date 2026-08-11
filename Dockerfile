@@ -97,12 +97,14 @@ RUN git clone --depth 1 --filter=blob:none \
 # ipfs_model_manager_py) that currently lack installable packaging metadata
 # on their main branches and break CI image builds. Install the local
 # extras plus core ML/serving wheels that *are* on PyPI.
-RUN pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 fastmcp>=0.1.0 && \
+# Force binary z3-solver first (see testing stage note about ARM64/QEMU).
+RUN pip install --only-binary=:all: "z3-solver>=4.13.4.0,<=4.15.4.0" && \
+    pip install "flask>=3.0.0" "flask-cors>=4.0.0" "werkzeug>=3.0.0" "fastmcp==2.14.7; python_version >= '3.10'" && \
     pip install -e ".[testing,mcp,webnn,viz]" && \
     pip install --no-cache-dir \
       "torch>=2.1" \
       "transformers>=4.46" \
-      "uvicorn>=0.27.0" \
+      "uvicorn>=0.35.0" \
       "sentence-transformers" || true
 
 # Copy startup validation and entrypoint scripts
@@ -139,8 +141,12 @@ RUN git clone --depth 1 --filter=blob:none \
  && rm -rf /tmp/ipfs_kit_py
 
 # Install package with ONLY testing dependencies (not the heavy ML libs)
-# This significantly reduces image size and build time
-RUN pip install -e ".[minimal,testing,mcp]" \
+# This significantly reduces image size and build time.
+# Pre-install z3-solver from binary wheels only: under ARM64/QEMU a source
+# build of z3-solver is multi-minute and often fails without a C++20
+# toolchain (<format>). requirements.txt pins a manylinux_2_34 aarch64 line.
+RUN pip install --only-binary=:all: "z3-solver>=4.13.4.0,<=4.15.4.0" \
+ && pip install -e ".[minimal,testing,mcp]" \
  && chown -R appuser:appuser /app \
  && chmod -R u+w /app
 

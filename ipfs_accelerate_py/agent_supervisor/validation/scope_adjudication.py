@@ -18,7 +18,10 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from ..proof.code_proof_obligations import CandidateDiffEntry, DiffChangeKind
 from ..proof.formal_verification_contracts import canonical_json, content_identity
-from .validation_commands import infer_validation_impact_paths
+from .validation_commands import (
+    infer_validation_impact_paths,
+    validation_command_repository_root,
+)
 
 
 SCOPE_ADJUDICATION_SCHEMA = (
@@ -128,6 +131,33 @@ def _module_name(path: str) -> str:
     if stem != "__init__":
         parts.append(stem)
     return ".".join(parts)
+
+
+def _module_names(
+    path: str,
+    *,
+    validation_roots: Sequence[str] = (),
+) -> frozenset[str]:
+    """Return exact module names under repository and validated roots.
+
+    A monorepo path such as ``project/pkg/module.py`` has the repository-root
+    name ``project.pkg.module``.  When a declared validation command has one
+    bounded leading ``cd project &&`` clause, Python code in that validation
+    may instead import it as ``pkg.module``.  Preserve both exact names so the
+    scope gate can prove that relationship without trusting ``sys.path`` edits
+    in candidate code or guessing arbitrary source roots.
+    """
+
+    normalized_path = _normalize_path(path)
+    if not normalized_path:
+        return frozenset()
+    names = {_module_name(normalized_path)}
+    for root in _normalized_paths(validation_roots):
+        prefix = root.rstrip("/") + "/"
+        if not normalized_path.startswith(prefix):
+            continue
+        names.add(_module_name(normalized_path[len(prefix) :]))
+    return frozenset(name for name in names if name)
 
 
 def _imported_modules(
@@ -772,6 +802,13 @@ def adjudicate_scope_expansion(
         for command in validation_commands
         for path in infer_validation_impact_paths(str(command))
     )
+    validation_roots = _normalized_paths(
+        root
+        for command in validation_commands
+        if (
+            root := validation_command_repository_root(str(command))
+        )
+    )
     concrete_scope_paths = tuple(
         path
         for path in scope_paths
@@ -826,9 +863,14 @@ def adjudicate_scope_expansion(
                 imported_before = set()
             before_imports[path] = imported_before
     modules = {
-        path: module
+        path: module_names
         for path in python_paths
-        if (module := _module_name(path))
+        if (
+            module_names := _module_names(
+                path,
+                validation_roots=validation_roots,
+            )
+        )
     }
     transitive_import_evidence = _bounded_import_closure_evidence(
         workspace_path=workspace_path,
@@ -936,12 +978,15 @@ def adjudicate_scope_expansion(
             )
             continue
 
-        path_module = modules.get(path, "")
+        path_modules = modules.get(path, frozenset())
         path_imports = imports.get(path, set())
         candidate_imports_declared = tuple(
             declared
             for declared in concrete_scope_paths
-            if modules.get(declared) in path_imports
+            if any(
+                module in path_imports
+                for module in modules.get(declared, ())
+            )
         )
         if (
             is_test
@@ -951,12 +996,15 @@ def adjudicate_scope_expansion(
             candidate_imports_declared = tuple(
                 declared
                 for declared in candidate_imports_declared
-                if modules.get(declared) in previous_modules
+                if any(
+                    module in previous_modules
+                    for module in modules.get(declared, ())
+                )
             )
         declared_imports_candidate = tuple(
             declared
             for declared in concrete_scope_paths
-            if path_module and path_module in imports.get(declared, set())
+            if path_modules.intersection(imports.get(declared, set()))
         )
         if is_test and candidate_imports_declared:
             decisions.append(

@@ -8,13 +8,26 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
+    RefillScanResult,
+    ScanTerminalReason,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as implementation_supervisor_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+    parse_args,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ConfiguredSupervisorBootstrapRunner,
     ConfiguredSupervisorRuntime,
     ConfiguredSupervisorRuntimeExports,
-    ImplementationSupervisorRunContext,
     ImplementationSupervisorDefaults,
+    ImplementationSupervisorRunContext,
     ObjectiveRefillDefaults,
     SupervisorRunHook,
     apply_goal_completion_projection,
@@ -39,15 +52,95 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_r
     run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
-    RefillScanResult,
-    ScanTerminalReason,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
-    PortalImplementationSupervisor,
-    PortalSupervisorConfig,
-    parse_args,
-)
+
+
+def test_plan_bound_empty_wave_starts_no_supervisor_or_daemon(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def unexpected_start(*_args, **_kwargs):
+        raise AssertionError("an empty plan-bound wave must not start a track")
+
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "run_supervisor_tracks",
+        unexpected_start,
+    )
+
+    assert multi_supervisor_runner.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--plan-bound-wave",
+        ]
+    ) == 0
+
+
+def test_plan_bound_outer_supervisor_propagates_nested_typed_return_code(
+    monkeypatch,
+) -> None:
+    nested_result = SimpleNamespace(
+        status="child_exited",
+        restart_count=0,
+        last_exit_code=(
+            implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+        ),
+        last_recycle_reason="child_exit",
+        last_run_id="run:test",
+        last_log_path="daemon.log",
+    )
+
+    class OneShotLoop:
+        def __init__(self, _config, *, watchdog_hook):
+            assert callable(watchdog_hook)
+
+        def run(self):
+            return nested_result
+
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(
+        plan_bound_dispatch=True,
+        execution_slice_task_ids=("TASK-A",),
+        execution_slice_task_cids=("cid-a",),
+        plan_bound_revision_cid="revision",
+        plan_bound_slice_id="slice",
+    )
+    supervisor.shared_supervisor_loop_class = OneShotLoop
+    supervisor.ensure_event_log_file = lambda: None
+    supervisor._validated_plan_bound_slice = lambda: None
+    supervisor.ensure_managed_daemon_pid_file = lambda: {"blocked": False}
+    supervisor._record_event = lambda *_args, **_kwargs: None
+    supervisor.build_supervisor_loop_config = lambda: object()
+    supervisor._supervisor_loop_watchdog_decision = lambda *_args: None
+    assert supervisor.run_forever() == (
+        implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+    )
+
+    class MainSupervisor:
+        def __init__(self, _config):
+            pass
+
+        def run_forever(self) -> int:
+            return implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "parse_args",
+        lambda _argv: SimpleNamespace(once=False, log_level="INFO"),
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "supervisor_config_from_args",
+        lambda _args, *, repo_root: object(),
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "PortalImplementationSupervisor",
+        MainSupervisor,
+    )
+    assert implementation_supervisor_module.main([]) == (
+        implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+    )
 
 
 def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(tmp_path: Path):
@@ -78,6 +171,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             objective_scan_min_open_tasks=3,
             objective_scan_max_findings=7,
             objective_scan_cooldown_seconds=60,
+            objective_scan_exclude_paths=("data/state", "var/runtime"),
             objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
             objective_surplus_findings_per_goal=4,
             objective_surplus_min_terms_per_todo=2,
@@ -115,6 +209,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.todo_path == tmp_path / "tasks.todo.md"
     assert parsed.state_prefix == "custom"
     assert parsed.objective_scan_max_findings == 99
+    assert parsed.objective_scan_exclude_path == ["data/state", "var/runtime"]
     assert parsed.objective_goal_migration_preview is True
     assert parsed.objective_goal_migration_batch_size == 7
     assert parsed.objective_goal_completion_gate_path == tmp_path / "completion-gate.json"
@@ -227,6 +322,10 @@ def test_build_portal_implementation_supervisor_from_args_applies_defaults(tmp_p
     assert supervisor.config.repo_root == tmp_path
     assert supervisor.config.daemon_script_path == daemon_script
     assert supervisor.config.worktree_submodule_paths == ("module-a", "module-b")
+    assert parsed.manual_completion_authority_revalidation_only is False
+    assert (
+        supervisor.config.manual_completion_authority_revalidation_only is False
+    )
     assert context.state_path == tmp_path / "state" / "example_task_state.json"
     assert context.strategy_path == tmp_path / "state" / "example_strategy.json"
     assert context.events_path == tmp_path / "state" / "example_supervisor_events.jsonl"
@@ -267,6 +366,43 @@ def test_task_specific_max_timeout_extends_only_the_parent_watchdog(
         supervisor.build_supervisor_loop_config().watchdog_stale_after_seconds
         == 7320
     )
+
+
+def test_no_implement_daemon_retains_reconciliation_path_identity(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    worktree_root = tmp_path / "managed-worktrees"
+    objective = tmp_path / "objectives.md"
+    parsed = parse_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--no-implement",
+            "--worktree-root",
+            str(worktree_root),
+            "--worktree-submodule-path",
+            "ipfs_datasets_py",
+            "--objective-path",
+            str(objective),
+            "--once",
+        ]
+    )
+    supervisor, _context = build_portal_implementation_supervisor_from_args(
+        parsed,
+        repo_root=tmp_path,
+    )
+
+    command = supervisor._build_daemon_command()
+    assert "--implement" not in command
+    assert command[command.index("--worktree-root") + 1] == str(worktree_root)
+    assert command[command.index("--worktree-submodule-path") + 1] == (
+        "ipfs_datasets_py"
+    )
+    assert command[command.index("--objective-path") + 1] == str(objective)
 
 
 def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(caplog):
@@ -314,6 +450,56 @@ def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(c
     assert calls == ["before:state.json", "run_once", "after:daemon-events.jsonl"]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_run_portal_implementation_supervisor_suppresses_hooks_for_revalidation_only():
+    class FakeSupervisor:
+        def run_once(self) -> dict[str, int]:
+            calls.append("run_once")
+            return {"checks": 1}
+
+        def run_forever(self) -> None:
+            calls.append("run_forever")
+
+    calls: list[str] = []
+    parsed = argparse.Namespace(
+        once=True,
+        manual_completion_authority_revalidation_only=True,
+    )
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("supervisor-events.jsonl"),
+        daemon_events_path=Path("daemon-events.jsonl"),
+    )
+
+    def forbidden_hook(_context: ImplementationSupervisorRunContext) -> None:
+        calls.append("hook")
+
+    def forbidden_runtime_repair(
+        _context: ImplementationSupervisorRunContext,
+    ) -> None:
+        calls.append("repair")
+
+    result = run_portal_implementation_supervisor(
+        FakeSupervisor(),
+        context,
+        logger=logging.getLogger("test-supervisor-runner-revalidation-only"),
+        hooks=(
+            SupervisorRunHook("before", "before hook: %s", forbidden_hook),
+            SupervisorRunHook(
+                "after_once",
+                "after hook: %s",
+                forbidden_hook,
+            ),
+        ),
+        repair_runtime_callback=forbidden_runtime_repair,
+    )
+
+    assert result == {"checks": 1}
+    assert calls == ["run_once"]
 
 
 def _scan_result(
@@ -392,6 +578,51 @@ def test_persist_supervisor_scan_receipt_keeps_strategy_projection_compact(tmp_p
     assert marker not in strategy_path.read_text(encoding="utf-8")
     assert marker not in events_path.read_text(encoding="utf-8")
     assert marker in Path(state_dir / generated_projection["artifact_path"]).read_text(encoding="utf-8")
+
+
+def test_persist_supervisor_scan_receipt_deduplicates_disabled_maintenance(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    strategy_path = state_dir / "example_strategy.json"
+    events_path = state_dir / "example_supervisor_events.jsonl"
+    first = _scan_result(ScanTerminalReason.DISABLED)
+    first = RefillScanResult(
+        **{
+            **first.__dict__,
+            "scan_mode": "disabled",
+        }
+    )
+    second = RefillScanResult(
+        terminal_reason=ScanTerminalReason.DISABLED,
+        scan_mode="disabled",
+        analyzer_version=first.analyzer_version,
+        repository_id=first.repository_id,
+        tree_id="tree-changed-by-supervisor-artifacts",
+        started_at=first.finished_at + timedelta(seconds=1),
+        finished_at=first.finished_at + timedelta(seconds=2),
+    )
+
+    first_projection = persist_supervisor_scan_receipt(
+        first,
+        scan_kind="codebase",
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        events_path=events_path,
+    )
+    second_projection = persist_supervisor_scan_receipt(
+        second,
+        scan_kind="codebase",
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        events_path=events_path,
+    )
+
+    assert second_projection == first_projection
+    assert len(list((state_dir / "example_scan_receipts").glob("*.json"))) == 1
+    assert len(events_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_goal_completion_projection_updates_strategy_and_live_status(tmp_path: Path):

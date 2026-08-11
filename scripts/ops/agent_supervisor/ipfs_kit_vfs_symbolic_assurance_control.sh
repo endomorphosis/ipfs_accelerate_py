@@ -56,6 +56,18 @@ readonly -a SECRET_ENV_DENYLIST=(
   "TOKEN"
   "SECRET"
 )
+# Every model-capable lane uses one reviewed route.  The legacy lane names and
+# provider probes remain capacity/admission partitions; neither grants direct
+# Codex dispatch authority.  The daemon requires a task-bound Grok quota
+# exhaustion receipt before selecting the exact Codex fallback below.
+readonly -a ORDERED_IMPLEMENTATION_ROUTE_ENV=(
+  "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_cli"
+  "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER=codex"
+  "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER=primary_quota_exhausted"
+  "IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5"
+  "IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra"
+  "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=medium"
+)
 
 if [[ -z "${HOME:-}" ]]; then
   echo "HOME must be set so the external supervisor state root can be resolved" >&2
@@ -864,19 +876,19 @@ launch_lane() {
   while IFS= read -r -d '' item; do
     args+=("${item}")
   done < <(lane_args "${lane}" "${shard}")
+  provider_env=(
+    "${ORDERED_IMPLEMENTATION_ROUTE_ENV[@]}"
+    "IPFS_ACCELERATE_AGENT_GROK_BIN=${IPFS_ACCELERATE_AGENT_GROK_BIN:-${HOME}/.local/bin/grok}"
+  )
 
-  # Refill authority is exclusive to the grok lane. Provider loss never moves
-  # objective/codebase refill onto the codex shard.
+  # Refill authority is exclusive to the grok-admission lane. Provider loss
+  # never moves objective/codebase refill onto the second shard. Both shards
+  # still execute the sealed Grok-first route above.
   if [[ "${provider}" == "grok-build" ]]; then
     if [[ "${lane}" != "${REFILL_OWNER_LANE}" ]]; then
       echo "Refusing refill owner mismatch: lane=${lane} owner=${REFILL_OWNER_LANE}" >&2
       return 2
     fi
-    provider_env=(
-      "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok-build"
-      "IPFS_ACCELERATE_AGENT_GROK_BIN=${IPFS_ACCELERATE_AGENT_GROK_BIN:-${HOME}/.local/bin/grok}"
-      "IPFS_ACCELERATE_AGENT_GROK_MODEL=${IPFS_ACCELERATE_AGENT_GROK_MODEL:-grok-4.5}"
-    )
     args+=(
       "--objective-refill-scan"
       "--objective-path" "${OBJECTIVE_ABS}"
@@ -923,9 +935,6 @@ launch_lane() {
       "--codebase-scan-skip-prefix" ".worktrees"
     )
   else
-    provider_env=(
-      "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=codex"
-    )
     args+=(
       "--no-retry-budget-guardrail"
       "--no-dependency-guardrail"

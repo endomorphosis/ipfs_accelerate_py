@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
     pid_alive,
     terminate_pid_tree,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import core as core_module
 
 
 pytestmark = pytest.mark.skipif(
@@ -26,6 +27,70 @@ def _wait_until_dead(pid: int, *, timeout: float = 3.0) -> None:
     while pid_alive(pid) and time.monotonic() < deadline:
         time.sleep(0.02)
     assert not pid_alive(pid)
+
+
+def test_strict_fence_rejects_reused_root_before_any_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 4242
+    monkeypatch.setattr(
+        core_module,
+        "_process_identity_snapshot",
+        lambda: {pid: ("S", 1, pid, pid, "999")},
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "kill",
+        lambda *_args, **_kwargs: pytest.fail("reused PID was signalled"),
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "killpg",
+        lambda *_args, **_kwargs: pytest.fail("reused process group was signalled"),
+    )
+
+    assert not terminate_pid_tree(
+        pid,
+        grace_seconds=0.0,
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=pid,
+        expected_root_start_time_ticks=123,
+    )
+
+
+def test_strict_fence_rejects_claimed_process_group_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 4243
+    monkeypatch.setattr(
+        core_module,
+        "_process_identity_snapshot",
+        lambda: {pid: ("S", 1, 777, 777, "123")},
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "kill",
+        lambda *_args, **_kwargs: pytest.fail(
+            "process with a mismatched ownership group was signalled"
+        ),
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "killpg",
+        lambda *_args, **_kwargs: pytest.fail(
+            "mismatched process group was signalled"
+        ),
+    )
+
+    assert not terminate_pid_tree(
+        pid,
+        grace_seconds=0.0,
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=pid,
+        expected_root_start_time_ticks=123,
+    )
 
 
 def test_terminate_pid_tree_fences_descendant_in_separate_session(

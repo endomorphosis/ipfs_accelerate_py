@@ -9,6 +9,14 @@ fenced by a newer lease.
 ``run_leased_lane`` retains the original integer-returning API and command-line
 interface.  ``run_leased_lane_result`` exposes the same lifecycle as a small,
 immutable result for in-process schedulers and tests.
+
+FVT-G212 / FVT-078 objective validation repair: leased-lane durable completion
+fencing shares the member-completion receipt schema with
+``AgentSupervisorReleaseEvidence@1``.  The synthetic discovery term
+``objective validation repair`` is re-exported from
+:mod:`ipfs_accelerate_py.agent_supervisor.release_evidence` so scans re-find
+the validation gate on this predicted path without granting completion or
+proof authority.
 """
 
 from __future__ import annotations
@@ -25,8 +33,26 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
+from ..runtime.release_evidence import (
+    MEMBER_COMPLETION_RECEIPT_SCHEMA as _MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as _OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID as _OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+    objective_validation_repair_evidence_terms as _objective_validation_repair_evidence_terms,
+)
+
+# Exact-text discovery key for FVT-078 objective validation repair (re-export).
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = (
+    _OBJECTIVE_VALIDATION_REPAIR_EVIDENCE
+)
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = (
+    _OBJECTIVE_VALIDATION_REPAIR_TASK_ID
+)
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert _objective_validation_repair_evidence_terms() == (
+    "objective validation repair",
+)
 from ..runtime.event_log import event_log_sources, read_jsonl_events
 from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 from ..todo_daemon.core import terminate_pid_tree
@@ -45,6 +71,7 @@ _DUCKDB_LOCK_ERROR_MARKERS = (
 
 LaneDisposition = Literal[
     "completed",
+    "pending_acceptance",
     "blocked",
     "failed",
     "cancelled",
@@ -67,6 +94,7 @@ class LeasedLaneResult:
     started_at_ms: int
     finished_at_ms: int
     receipt_cid: str | None = None
+    resolution_cid: str | None = None
     lease_released: bool = False
     error: str = ""
 
@@ -78,6 +106,7 @@ class LeasedLaneResult:
         # terminated and authority belongs to another accepted fencing token.
         return self.disposition in {
             "completed",
+            "pending_acceptance",
             "blocked",
             "failed",
             "cancelled",
@@ -240,11 +269,27 @@ def _execution_slice_violation(
     return active_task_id
 
 
-_MEMBER_COMPLETION_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
-)
+# Durable member receipts share one schema with AgentSupervisorReleaseEvidence@1.
+# The constant is imported from release_evidence so G212 exports and leased-lane
+# completion fencing cannot drift.
 _TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
+)
+_PENDING_ACCEPTANCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/pending-acceptance@1"
+)
+_ACCEPTANCE_STATUS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/authoritative-acceptance-status@1"
+)
+_IMPLEMENTATION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/implementation-receipt@1"
+)
+_AUTHORITATIVE_COMPLETION_GATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/authoritative-completion-gate@1"
+)
+_PENDING_ACCEPTANCE_RETRY_DELAY_MS = 30_000
+_PROVIDER_REVIEW_SATISFIED_GATES = frozenset(
+    {"merge", "freshness", "semantic", "proof", "deterministic_only"}
 )
 
 
@@ -413,6 +458,203 @@ def _fresh_durable_member_completion_receipts(
         "completion_receipt_boundary": "durable_event_log",
         "completion_events_path": str(events_path),
         "completion_event_ids": sorted(event_ids),
+    }
+
+
+def _fresh_provider_review_pending_acceptance(
+    state_path: Path | None,
+    events_path: Path | None,
+    expected_task_cids_by_id: Mapping[str, str],
+    *,
+    started_at_ms: int,
+) -> dict[str, Any] | None:
+    """Return exact durable evidence for resumable provider review.
+
+    Every admitted execution-slice member must remain ready on the board and
+    have a fresh ``implementation_merged_pending_acceptance`` event proving
+    that merge and all non-review gates passed.  A later exact ``daemon_pass``
+    proves the child reached an idle boundary.  Anything partial, stale,
+    readdressed, or authoritative fails closed.
+    """
+
+    if state_path is None or events_path is None or not expected_task_cids_by_id:
+        return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(state, Mapping):
+        return None
+    if state.get("implementation_in_progress") is not False:
+        return None
+    if str(state.get("active_task_id") or "").strip():
+        return None
+    heartbeat_at_ms = _timestamp_ms(state.get("heartbeat_at"))
+    observed_at_ms = _now_ms()
+    if (
+        heartbeat_at_ms is None
+        or heartbeat_at_ms < int(started_at_ms)
+        or heartbeat_at_ms > observed_at_ms + 1_000
+    ):
+        return None
+    identities = state.get("task_identities")
+    statuses = state.get("task_statuses")
+    if not isinstance(identities, Mapping) or not isinstance(statuses, Mapping):
+        return None
+    for task_id, task_cid in expected_task_cids_by_id.items():
+        identity = identities.get(task_id)
+        if (
+            not isinstance(identity, Mapping)
+            or str(identity.get("canonical_task_cid") or "").strip()
+            != task_cid
+            or _normalized_task_status(statuses.get(task_id)) != "ready"
+        ):
+            return None
+
+    events: list[dict[str, Any]] = []
+    for source in event_log_sources((events_path,), include_rotated=True):
+        events.extend(read_jsonl_events(source))
+    pending_by_task_id: dict[str, dict[str, Any]] = {}
+    pending_at_by_task_id: dict[str, int] = {}
+    for event in events:
+        if str(event.get("type") or "") != "implementation_merged_pending_acceptance":
+            continue
+        event_at_ms = _timestamp_ms(event.get("timestamp"))
+        if (
+            event_at_ms is None
+            or event_at_ms < int(started_at_ms)
+            or event_at_ms > observed_at_ms + 1_000
+        ):
+            continue
+        task_id = str(event.get("task_id") or "").strip()
+        expected_cid = expected_task_cids_by_id.get(task_id)
+        if not expected_cid:
+            continue
+        gate = event.get("gate")
+        receipt = event.get("receipt")
+        pending = tuple(
+            str(item).strip()
+            for item in (event.get("pending_gates") or ())
+            if str(item).strip()
+        )
+        if not isinstance(gate, Mapping) or not isinstance(receipt, Mapping):
+            continue
+        gate_pending = tuple(
+            str(item).strip()
+            for item in (gate.get("pending_gates") or ())
+            if str(item).strip()
+        )
+        receipt_pending = tuple(
+            str(item).strip()
+            for item in (receipt.get("pending_gates") or ())
+            if str(item).strip()
+        )
+        satisfied = {
+            str(item).strip()
+            for item in (gate.get("satisfied_gates") or ())
+            if str(item).strip()
+        }
+        merge_commit = str(event.get("merge_commit") or "").strip()
+        repository_tree_id = str(gate.get("repository_tree_id") or "").strip()
+        if (
+            event.get("schema") != _ACCEPTANCE_STATUS_SCHEMA
+            or str(event.get("canonical_task_cid") or "").strip()
+            != expected_cid
+            or event.get("admitted") is not False
+            or event.get("completion_authoritative") is not False
+            or str(event.get("acceptance_state") or event.get("state") or "")
+            != "implemented_merged_but_pending"
+            or pending != ("provider_review",)
+            or gate.get("admitted") is not False
+            or gate.get("schema") != _AUTHORITATIVE_COMPLETION_GATE_SCHEMA
+            or str(gate.get("task_id") or "").strip() != task_id
+            or gate.get("completion_authoritative") is not False
+            or str(gate.get("acceptance_state") or "")
+            != "implemented_merged_but_pending"
+            or gate_pending != ("provider_review",)
+            or not _PROVIDER_REVIEW_SATISFIED_GATES.issubset(satisfied)
+            or gate.get("merge_commit") != merge_commit
+            or receipt.get("merged") is not True
+            or receipt.get("schema") != _IMPLEMENTATION_RECEIPT_SCHEMA
+            or str(receipt.get("task_id") or "").strip() != task_id
+            or receipt.get("completion_authoritative") is not False
+            or str(receipt.get("acceptance_state") or "")
+            != "implemented_merged_but_pending"
+            or receipt_pending != ("provider_review",)
+            or receipt.get("validation_passed") is not True
+            or receipt.get("validation_stale") is not False
+            or not merge_commit
+            or str(receipt.get("merge_commit") or "").strip() != merge_commit
+            or not repository_tree_id
+            or str(receipt.get("repository_tree_id") or "").strip()
+            != repository_tree_id
+            or not str(event.get("event_id") or "").strip()
+        ):
+            continue
+        pending_by_task_id[task_id] = dict(event)
+        pending_at_by_task_id[task_id] = event_at_ms
+
+    if set(pending_by_task_id) != set(expected_task_cids_by_id):
+        return None
+    pending_not_before_ms = max(pending_at_by_task_id.values())
+    if heartbeat_at_ms < pending_not_before_ms:
+        return None
+
+    terminal_pass: dict[str, Any] | None = None
+    terminal_pass_at_ms = 0
+    expected_ids = set(expected_task_cids_by_id)
+    for event in events:
+        if str(event.get("type") or "") != "daemon_pass":
+            continue
+        event_at_ms = _timestamp_ms(event.get("timestamp"))
+        if (
+            event_at_ms is None
+            or event_at_ms < pending_not_before_ms
+            or event_at_ms > observed_at_ms + 1_000
+            or str(event.get("active_task_id") or "").strip()
+        ):
+            continue
+        pass_cids = event.get("execution_slice_task_cids_by_id")
+        pass_statuses = event.get("execution_slice_task_statuses")
+        if not isinstance(pass_cids, Mapping) or not isinstance(pass_statuses, Mapping):
+            continue
+        if set(pass_cids) != expected_ids or set(pass_statuses) != expected_ids:
+            continue
+        if any(
+            str(pass_cids.get(task_id) or "").strip() != task_cid
+            or _normalized_task_status(pass_statuses.get(task_id)) != "ready"
+            for task_id, task_cid in expected_task_cids_by_id.items()
+        ):
+            continue
+        if not str(event.get("event_id") or "").strip():
+            continue
+        if event_at_ms >= terminal_pass_at_ms:
+            terminal_pass = dict(event)
+            terminal_pass_at_ms = event_at_ms
+    if terminal_pass is None:
+        return None
+
+    ordered_task_ids = sorted(expected_task_cids_by_id)
+    return {
+        "schema": _PENDING_ACCEPTANCE_SCHEMA,
+        "acceptance_pending": True,
+        "completion_authoritative": False,
+        "admitted": False,
+        "pending_gates": ["provider_review"],
+        "task_ids": ordered_task_ids,
+        "task_cids": [
+            expected_task_cids_by_id[task_id] for task_id in ordered_task_ids
+        ],
+        "task_cids_by_id": {
+            task_id: expected_task_cids_by_id[task_id]
+            for task_id in ordered_task_ids
+        },
+        "acceptance_event_ids": sorted(
+            str(event["event_id"]) for event in pending_by_task_id.values()
+        ),
+        "terminal_event_id": str(terminal_pass["event_id"]),
+        "terminal_event_at_ms": terminal_pass_at_ms,
+        "phase_state_heartbeat_at_ms": heartbeat_at_ms,
     }
 
 
@@ -833,9 +1075,11 @@ def run_leased_lane_result(
     """Run ``command`` and return its fenced, identity-bound disposition.
 
     Successful children produce a successful receipt (which completes the
-    task).  Non-zero children produce a retryable failed receipt, signals
-    produce a cancelled receipt, and both cases release the task for another
-    worker.  Exit code 75 is treated as a blocked/retryable child convention.
+    task).  Provider-review-only acceptance gaps produce a deferred claim
+    resolution with no task receipt. Non-zero children produce a retryable
+    failed receipt, signals produce a cancelled receipt, and both cases release
+    the task for another worker. Exit code 75 is treated as a blocked/retryable
+    child convention.
     If renewal or heartbeat proves the grant stale, the child is synchronously
     stopped and no stale receipt is manufactured.  Supplying execution-slice
     display IDs requires an exact canonical-CID binding.  Bundle callers also
@@ -965,6 +1209,7 @@ def run_leased_lane_result(
         stopping_signal: int | None = None
         execution_scope_error = ""
         completed_execution_slice: dict[str, Any] | None = None
+        pending_acceptance_slice: dict[str, Any] | None = None
         blocked_execution_slice: dict[str, Any] | None = None
         stop_event = threading.Event()
 
@@ -1020,6 +1265,22 @@ def run_leased_lane_result(
                         "Stopping leased lane %s after fresh completion of %s",
                         grant.task_cid,
                         completed_execution_slice["completed_task_ids"],
+                    )
+                    _terminate_child(process, fence_descendants=True)
+                    break
+                pending_acceptance_slice = (
+                    _fresh_provider_review_pending_acceptance(
+                        phase_state_path,
+                        completion_events_path,
+                        expected_task_identity_map,
+                        started_at_ms=phase_state_not_before_ms,
+                    )
+                )
+                if pending_acceptance_slice is not None:
+                    logger.info(
+                        "Stopping leased lane %s with resumable provider review pending for %s",
+                        grant.task_cid,
+                        pending_acceptance_slice["task_ids"],
                     )
                     _terminate_child(process, fence_descendants=True)
                     break
@@ -1163,6 +1424,28 @@ def run_leased_lane_result(
                     _terminate_child(process, fence_descendants=True)
             if (
                 completed_execution_slice is None
+                and pending_acceptance_slice is None
+                and stopping_signal is None
+                and not execution_scope_error
+            ):
+                pending_acceptance_slice = (
+                    _fresh_provider_review_pending_acceptance(
+                        phase_state_path,
+                        completion_events_path,
+                        expected_task_identity_map,
+                        started_at_ms=phase_state_not_before_ms,
+                    )
+                )
+                if pending_acceptance_slice is not None:
+                    logger.info(
+                        "Accepting final resumable provider-review gap for %s after child exit %s",
+                        pending_acceptance_slice["task_ids"],
+                        observed_exit_code,
+                    )
+                    _terminate_child(process, fence_descendants=True)
+            if (
+                completed_execution_slice is None
+                and pending_acceptance_slice is None
                 and blocked_execution_slice is None
                 and stopping_signal is None
                 and not execution_scope_error
@@ -1191,18 +1474,27 @@ def run_leased_lane_result(
                 and stopping_signal is None
                 and not execution_scope_error
             )
-            blocked_by_state = (
-                blocked_execution_slice is not None
+            pending_acceptance_by_state = (
+                pending_acceptance_slice is not None
                 and not completed_by_state
                 and stopping_signal is None
                 and not execution_scope_error
             )
+            blocked_by_state = (
+                blocked_execution_slice is not None
+                and not completed_by_state
+                and not pending_acceptance_by_state
+                and stopping_signal is None
+                and not execution_scope_error
+            )
             completed_execution_output = dict(completed_execution_slice or {})
+            pending_acceptance_output = dict(pending_acceptance_slice or {})
             blocked_execution_output = dict(blocked_execution_slice or {})
             missing_completion_evidence = (
                 bool(expected_task_identity_map)
                 and child_exit_code == 0
                 and not completed_by_state
+                and not pending_acceptance_by_state
                 and not blocked_by_state
                 and stopping_signal is None
                 and not execution_scope_error
@@ -1211,7 +1503,11 @@ def run_leased_lane_result(
                 0
                 if completed_by_state
                 else FENCED_EXIT_CODE
-                if blocked_by_state or missing_completion_evidence
+                if (
+                    pending_acceptance_by_state
+                    or blocked_by_state
+                    or missing_completion_evidence
+                )
                 else child_exit_code
             )
             if stopping_signal is not None:
@@ -1223,6 +1519,9 @@ def run_leased_lane_result(
             elif completed_by_state:
                 receipt_status = "succeeded"
                 disposition = "completed"
+            elif pending_acceptance_by_state:
+                receipt_status = ""
+                disposition = "pending_acceptance"
             elif blocked_by_state:
                 receipt_status = "failed"
                 disposition = "blocked"
@@ -1238,6 +1537,8 @@ def run_leased_lane_result(
             else:
                 receipt_status = "failed"
                 disposition = "failed"
+            receipt: Mapping[str, Any] | None = None
+            resolution: Mapping[str, Any] | None = None
             try:
                 # Publish a final live-capacity observation before the receipt
                 # closes the lease.  The lane slot can be reassigned as soon as
@@ -1253,10 +1554,18 @@ def run_leased_lane_result(
                         occupied_workers=0,
                     ),
                 )
-                receipt = coordinator.receipt(
-                    grant,
-                    status=receipt_status,
-                    output=(
+                if pending_acceptance_by_state:
+                    resolution = coordinator.defer_pending_acceptance(
+                        grant,
+                        evidence=pending_acceptance_output,
+                        retry_delay_ms=_PENDING_ACCEPTANCE_RETRY_DELAY_MS,
+                        now_ms=_now_ms(),
+                    )
+                else:
+                    receipt = coordinator.receipt(
+                        grant,
+                        status=receipt_status,
+                        output=(
                         {
                             "exit_code": lane_exit_code,
                             "child_exit_code": child_exit_code,
@@ -1292,16 +1601,16 @@ def run_leased_lane_result(
                         }
                         if execution_scope_error
                         else None
-                    ),
-                    failure_class=(
-                        "none"
-                        if receipt_status == "succeeded"
-                        else "blocked"
-                        if blocked_by_state
-                        else "retryable"
-                    ),
-                    started_at_ms=started_at_ms,
-                )
+                        ),
+                        failure_class=(
+                            "none"
+                            if receipt_status == "succeeded"
+                            else "blocked"
+                            if blocked_by_state
+                            else "retryable"
+                        ),
+                        started_at_ms=started_at_ms,
+                    )
             except LeaseError as exc:
                 # The takeover's fencing token is authoritative; the old lane
                 # must not manufacture a receipt after losing ownership.
@@ -1346,6 +1655,11 @@ def run_leased_lane_result(
                 started_at_ms=started_at_ms,
                 finished_at_ms=_now_ms(),
                 receipt_cid=_receipt_cid(receipt),
+                resolution_cid=(
+                    str(resolution.get("resolution_cid") or "") or None
+                    if resolution is not None
+                    else None
+                ),
                 lease_released=True,
                 error=execution_scope_error,
             )
@@ -1467,6 +1781,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "FENCED_EXIT_CODE",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "START_FAILED_EXIT_CODE",
     "LeasedLaneResult",
     "build_parser",

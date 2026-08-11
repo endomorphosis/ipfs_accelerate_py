@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 import math
 import os
 import signal
@@ -16,10 +18,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
+from ..core.wrapper_utils import with_exclusive_flag_default
 from ..merge.checkout_lock import serialized_lock_update
 from ..runtime.event_log import unique_backup_path
-from ..core.wrapper_utils import with_exclusive_flag_default
+from ..merge.worktree_lifecycle import (
+    OwnerLiveness,
+    ProcessBirthIdentity,
+    owner_liveness,
+    read_process_birth,
+)
 from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
+
+
+SUPERVISED_CHILD_IDENTITY_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.supervised-child-identity@1"
+)
+SUPERVISED_CHILD_IDENTITY_PATH_ENV = (
+    "IPFS_ACCELERATE_SUPERVISED_CHILD_IDENTITY_PATH"
+)
+SUPERVISED_CHILD_OWNER_SCOPE_ENV = (
+    "IPFS_ACCELERATE_SUPERVISED_CHILD_OWNER_SCOPE"
+)
 
 
 @dataclass
@@ -92,6 +111,111 @@ class SupervisedChild:
     child_pid_path: Path
     latest_log_path: Optional[Path] = None
     started_at: str = ""
+    identity_path: Optional[Path] = None
+    identity_record_id: str = ""
+    identity_process_birth: Optional[ProcessBirthIdentity] = None
+    owned_process_group_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SupervisedChildIdentity:
+    """Durable PID-reuse-resistant identity for one supervisor-owned child."""
+
+    process_birth: ProcessBirthIdentity
+    command: tuple[str, ...]
+    owner_scope: Mapping[str, str]
+    created_at: str
+    record_id: str = ""
+
+    def to_dict(self, *, include_record_id: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": SUPERVISED_CHILD_IDENTITY_SCHEMA,
+            "process_birth": self.process_birth.to_dict(),
+            "command": list(self.command),
+            "command_id": _supervised_child_content_identity(
+                {"command": list(self.command)}
+            ),
+            "owner_scope": {
+                str(key): str(value)
+                for key, value in sorted(self.owner_scope.items())
+            },
+            "created_at": str(self.created_at),
+        }
+        if include_record_id:
+            payload["record_id"] = self.record_id or (
+                _supervised_child_content_identity(payload)
+            )
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any] | None,
+    ) -> "SupervisedChildIdentity | None":
+        data = dict(payload or {})
+        expected_fields = {
+            "schema",
+            "process_birth",
+            "command",
+            "command_id",
+            "owner_scope",
+            "created_at",
+            "record_id",
+        }
+        if set(data) != expected_fields:
+            return None
+        if data.get("schema") != SUPERVISED_CHILD_IDENTITY_SCHEMA:
+            return None
+        raw_birth = data.get("process_birth")
+        raw_command = data.get("command")
+        raw_scope = data.get("owner_scope")
+        if (
+            not isinstance(raw_birth, Mapping)
+            or not isinstance(raw_command, list)
+            or not raw_command
+            or not all(isinstance(item, str) and item for item in raw_command)
+            or not isinstance(raw_scope, Mapping)
+            or not all(
+                isinstance(key, str)
+                and key
+                and isinstance(value, str)
+                and value
+                for key, value in raw_scope.items()
+            )
+            or not isinstance(data.get("created_at"), str)
+            or not data.get("created_at")
+            or not isinstance(data.get("record_id"), str)
+        ):
+            return None
+        try:
+            birth = ProcessBirthIdentity.from_dict(raw_birth)
+        except (TypeError, ValueError):
+            return None
+        if (
+            birth.pid <= 1
+            or birth.start_time_ticks <= 0
+            or not birth.boot_id
+        ):
+            return None
+        command = tuple(raw_command)
+        if data.get("command_id") != _supervised_child_content_identity(
+            {"command": list(command)}
+        ):
+            return None
+        normalized = dict(data)
+        record_id = str(normalized.pop("record_id") or "")
+        if record_id != _supervised_child_content_identity(normalized):
+            return None
+        return cls(
+            process_birth=birth,
+            command=command,
+            owner_scope={
+                str(key): str(value)
+                for key, value in raw_scope.items()
+            },
+            created_at=str(data["created_at"]),
+            record_id=record_id,
+        )
 
 
 @dataclass(frozen=True)
@@ -166,6 +290,7 @@ def launch_process_child(
     stderr: Any = None,
     start_new_session: bool = True,
     text: bool = False,
+    pass_fds: Sequence[int] = (),
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults."""
 
@@ -180,6 +305,11 @@ def launch_process_child(
         "stderr": stderr,
         "start_new_session": start_new_session,
     }
+    normalized_pass_fds = tuple(int(item) for item in pass_fds)
+    if normalized_pass_fds:
+        # Preserve compatibility with injected/fake ``Popen`` callables and
+        # non-POSIX launchers when no descriptor inheritance was requested.
+        kwargs["pass_fds"] = normalized_pass_fds
     if text:
         kwargs["text"] = True
     return subprocess.Popen([str(part) for part in command], **kwargs)
@@ -829,6 +959,14 @@ def _captured_process_text(value: Any) -> str:
     return str(value)
 
 
+class ProcessGroupCancelled(RuntimeError):
+    """Raised after a cancellation predicate fences an owned process group."""
+
+    def __init__(self, reason: str = "cancellation_requested") -> None:
+        self.reason = str(reason or "cancellation_requested")
+        super().__init__(self.reason)
+
+
 def run_process_group_capture(
     command: Sequence[str],
     *,
@@ -912,6 +1050,7 @@ def run_process_group_stream(
     *,
     cwd: Path | str,
     stdout: Any,
+    stderr: Any = subprocess.STDOUT,
     input_text: Optional[str] = None,
     env: Optional[Mapping[str, object]] = None,
     timeout_seconds: float,
@@ -919,9 +1058,12 @@ def run_process_group_stream(
     max_timeout_seconds: float | None = None,
     progress_paths: Sequence[Path | str] = (),
     on_progress: Callable[[Mapping[str, Any]], None] | None = None,
+    cancel_requested: Callable[[], bool | str] | None = None,
+    cancellation_reason: str = "cancellation_requested",
     progress_poll_seconds: float = 1.0,
     termination_grace_seconds: float = 5.0,
     text: bool = True,
+    pass_fds: Sequence[int] = (),
 ) -> subprocess.CompletedProcess[Any]:
     """Run a streamed child in an owned process group and fence it on timeout.
 
@@ -941,7 +1083,9 @@ def run_process_group_stream(
     hard_timeout: float | None = None
     poll_seconds: float | None = None
     monitor_progress = (
-        progress_timeout_seconds is not None or on_progress is not None
+        progress_timeout_seconds is not None
+        or on_progress is not None
+        or cancel_requested is not None
     )
     if progress_timeout_seconds is not None:
         idle_timeout = float(progress_timeout_seconds)
@@ -993,9 +1137,10 @@ def run_process_group_stream(
         env=env,
         stdin=subprocess.PIPE if input_text is not None else None,
         stdout=stdout,
-        stderr=subprocess.STDOUT,
+        stderr=stderr,
         start_new_session=True,
         text=text,
+        pass_fds=pass_fds,
     )
     try:
         if not monitor_progress:
@@ -1015,6 +1160,7 @@ def run_process_group_stream(
             )
             progress_marker = _stream_progress_marker(
                 stdout,
+                stderr=stderr,
                 progress_paths=progress_paths,
             )
             progress_events = 0
@@ -1048,6 +1194,15 @@ def run_process_group_stream(
 
             while process.poll() is None:
                 now = time.monotonic()
+                if cancel_requested is not None:
+                    cancellation = cancel_requested()
+                    if cancellation:
+                        reason = (
+                            cancellation
+                            if isinstance(cancellation, str)
+                            else cancellation_reason
+                        )
+                        raise ProcessGroupCancelled(str(reason))
                 timeout_reason = ""
                 if now >= hard_deadline:
                     timeout_reason = (
@@ -1088,6 +1243,7 @@ def run_process_group_stream(
                     pass
                 next_marker = _stream_progress_marker(
                     stdout,
+                    stderr=stderr,
                     progress_paths=progress_paths,
                 )
                 if next_marker != progress_marker:
@@ -1114,6 +1270,23 @@ def run_process_group_stream(
                             pass
             if input_thread is not None:
                 input_thread.join(timeout=0.1)
+    except ProcessGroupCancelled:
+        # A canonical-board cancellation is an authority hand-off, so the
+        # provider tree must be unable to execute before the caller can release
+        # its task/resource claims. Freeze first to close TERM-handler fork
+        # races, include the stable process group owned by the session leader,
+        # and do not return until the strict fence proves every member gone.
+        terminate_pid_tree(
+            process.pid,
+            grace_seconds=max(0.0, float(termination_grace_seconds)),
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=process.pid,
+        )
+        # The strict fence treats zombies as non-executable; reap the direct
+        # child before propagating cancellation so no process resource leaks.
+        process.wait()
+        raise
     except subprocess.TimeoutExpired as exc:
         terminate_pid_tree(
             process.pid,
@@ -1175,6 +1348,7 @@ def run_process_group_stream(
 def _stream_progress_marker(
     stdout: Any,
     *,
+    stderr: Any = None,
     progress_paths: Sequence[Path | str],
     max_entries: int = 512,
 ) -> tuple[tuple[str, int, int], ...]:
@@ -1186,6 +1360,20 @@ def _stream_progress_marker(
         marker.append(("<stdout>", int(stat.st_size), int(stat.st_mtime_ns)))
     except (AttributeError, OSError, ValueError):
         pass
+    if not any(
+        stderr is sentinel
+        for sentinel in (
+            None,
+            subprocess.STDOUT,
+            subprocess.PIPE,
+            subprocess.DEVNULL,
+        )
+    ):
+        try:
+            stat = os.fstat(stderr.fileno())
+            marker.append(("<stderr>", int(stat.st_size), int(stat.st_mtime_ns)))
+        except (AttributeError, OSError, ValueError):
+            pass
 
     remaining = max(0, int(max_entries))
     for raw_path in progress_paths:
@@ -1354,6 +1542,176 @@ def terminate_processes_with_grace(
     return results
 
 
+def _supervised_child_content_identity(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        dict(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def supervised_child_identity_path(child_pid_path: Path) -> Path:
+    """Return the sidecar path paired with a legacy raw PID marker."""
+
+    suffix = child_pid_path.suffix
+    stem = child_pid_path.name[: -len(suffix)] if suffix else child_pid_path.name
+    return child_pid_path.with_name(f"{stem}.identity.json")
+
+
+def _configured_child_identity_path(spec: SupervisedChildSpec) -> Path | None:
+    raw_path = str(
+        spec.env.get(SUPERVISED_CHILD_IDENTITY_PATH_ENV, "") or ""
+    ).strip()
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    return path if path.is_absolute() else spec.repo_root / path
+
+
+def _configured_child_owner_scope(
+    spec: SupervisedChildSpec,
+) -> dict[str, str] | None:
+    raw_scope = str(
+        spec.env.get(SUPERVISED_CHILD_OWNER_SCOPE_ENV, "") or ""
+    ).strip()
+    if not raw_scope:
+        return None
+    try:
+        payload = json.loads(raw_scope)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or not payload:
+        return None
+    if not all(
+        isinstance(key, str)
+        and key
+        and isinstance(value, str)
+        and value
+        for key, value in payload.items()
+    ):
+        return None
+    return {str(key): str(value) for key, value in payload.items()}
+
+
+def _write_bytes_atomic(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(
+        f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def load_supervised_child_identity(
+    path: Path,
+) -> SupervisedChildIdentity | None:
+    """Load one closed, content-addressed child identity record."""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    return SupervisedChildIdentity.from_dict(payload)
+
+
+def write_supervised_child_identity(
+    path: Path,
+    *,
+    pid: int,
+    command: Sequence[str],
+    owner_scope: Mapping[str, str],
+    require_direct_child: bool = False,
+) -> SupervisedChildIdentity:
+    """Capture and atomically persist the exact birth identity of ``pid``."""
+
+    try:
+        process_birth = read_process_birth(int(pid))
+    except OSError as exc:
+        raise RuntimeError("supervised child process identity unavailable") from exc
+    if (
+        process_birth is None
+        or process_birth.start_time_ticks <= 0
+        or not process_birth.boot_id
+    ):
+        raise RuntimeError("supervised child process identity unavailable")
+    if require_direct_child and process_birth.parent_pid != os.getpid():
+        raise RuntimeError("supervised child is not owned by this launcher")
+    identity = SupervisedChildIdentity(
+        process_birth=process_birth,
+        command=tuple(str(part) for part in command),
+        owner_scope={str(key): str(value) for key, value in owner_scope.items()},
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    payload = identity.to_dict()
+    persisted = SupervisedChildIdentity.from_dict(payload)
+    if persisted is None:
+        raise RuntimeError("could not construct supervised child identity")
+    _write_bytes_atomic(
+        path,
+        (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    return persisted
+
+
+def supervised_child_identity_liveness(
+    identity: SupervisedChildIdentity,
+) -> OwnerLiveness:
+    """Evaluate an identity without treating a reused numeric PID as alive."""
+
+    return owner_liveness(identity.process_birth)
+
+
+def read_process_command_argv(pid: int) -> tuple[str, ...] | None:
+    """Read exact argv from procfs, returning None when it cannot be proven."""
+
+    try:
+        raw = (Path("/proc") / str(int(pid)) / "cmdline").read_bytes()
+    except (OSError, ValueError):
+        return None
+    if not raw:
+        return None
+    try:
+        return tuple(
+            part.decode("utf-8")
+            for part in raw.split(b"\0")
+            if part
+        )
+    except UnicodeError:
+        return None
+
+
+def terminate_direct_child_process(
+    process: subprocess.Popen[Any],
+    *,
+    grace_seconds: float = 1.0,
+) -> bool:
+    """Reap a just-launched direct child without relying on procfs identity."""
+
+    try:
+        if process.poll() is not None:
+            process.wait(timeout=0)
+            return True
+        process.terminate()
+        try:
+            process.wait(timeout=max(0.0, float(grace_seconds)))
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=max(1.0, float(grace_seconds)))
+        return process.poll() is not None
+    except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
+        return False
+
+
 def _prepare_marker_path(path: Path, *, remove_existing_file: bool) -> Optional[Path]:
     if path.is_symlink():
         path.unlink()
@@ -1372,17 +1730,35 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
 
     log_path = spec.resolve(spec.log_path)
     child_pid_path = spec.resolve(spec.child_pid_path)
+    identity_path = _configured_child_identity_path(spec)
+    owner_scope = _configured_child_owner_scope(spec)
+    if (identity_path is None) != (owner_scope is None):
+        raise RuntimeError(
+            "supervised child identity path and owner scope must be configured together"
+        )
+    if identity_path is not None and not spec.start_new_session:
+        raise RuntimeError(
+            "identity-protected child requires a dedicated process session"
+        )
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
     log_path.parent.mkdir(parents=True, exist_ok=True)
     child_pid_path.parent.mkdir(parents=True, exist_ok=True)
     _prepare_marker_path(log_path, remove_existing_file=False)
     _prepare_marker_path(child_pid_path, remove_existing_file=False)
+    if identity_path is not None:
+        identity_path.parent.mkdir(parents=True, exist_ok=True)
+        if identity_path.exists() or identity_path.is_symlink():
+            raise RuntimeError(
+                "supervised child identity marker was not reconciled"
+            )
     if latest_log_path is not None:
         latest_log_path.parent.mkdir(parents=True, exist_ok=True)
         _prepare_marker_path(latest_log_path, remove_existing_file=True)
         latest_log_path.symlink_to(log_path.name)
 
     env = {key: str(value) for key, value in spec.env.items()}
+    env.pop(SUPERVISED_CHILD_IDENTITY_PATH_ENV, None)
+    env.pop(SUPERVISED_CHILD_OWNER_SCOPE_ENV, None)
     out_handle = log_path.open("ab")
     try:
         process = launch_process_child(
@@ -1396,7 +1772,48 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
         )
     finally:
         out_handle.close()
-    child_pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+    persisted_identity: SupervisedChildIdentity | None = None
+    if identity_path is not None and owner_scope is not None:
+        try:
+            persisted_identity = write_supervised_child_identity(
+                identity_path,
+                pid=int(process.pid),
+                command=spec.command,
+                owner_scope=owner_scope,
+                require_direct_child=True,
+            )
+        except Exception:
+            direct_child_stopped = terminate_direct_child_process(
+                process,
+                grace_seconds=1.0,
+            )
+            launched_birth = None
+            if not direct_child_stopped:
+                try:
+                    launched_birth = read_process_birth(int(process.pid))
+                except OSError:
+                    launched_birth = None
+            if (
+                not direct_child_stopped
+                and launched_birth is not None
+                and launched_birth.parent_pid == os.getpid()
+            ):
+                terminate_pid_tree(
+                    int(process.pid),
+                    grace_seconds=1.0,
+                    freeze_first=True,
+                    require_gone=True,
+                    owned_process_group_id=(
+                        int(process.pid) if spec.start_new_session else None
+                    ),
+                    expected_root_start_time_ticks=(
+                        launched_birth.start_time_ticks
+                    ),
+                )
+            raise
+    # The raw PID remains the compatibility/commit marker and is written only
+    # after the PID-reuse-resistant identity record is durable.
+    _write_bytes_atomic(child_pid_path, f"{process.pid}\n".encode("ascii"))
     return SupervisedChild(
         pid=int(process.pid),
         command=tuple(spec.command),
@@ -1404,7 +1821,35 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
         child_pid_path=child_pid_path,
         latest_log_path=latest_log_path,
         started_at=datetime.now(timezone.utc).isoformat(),
+        identity_path=identity_path,
+        identity_record_id=(
+            persisted_identity.record_id
+            if persisted_identity is not None
+            else ""
+        ),
+        identity_process_birth=(
+            persisted_identity.process_birth
+            if persisted_identity is not None
+            else None
+        ),
+        owned_process_group_id=(
+            int(process.pid) if persisted_identity is not None else None
+        ),
     )
+
+
+def adopt_or_launch_supervised_child(
+    spec: SupervisedChildSpec,
+    *,
+    launch_lock_path: Path,
+) -> SupervisedChild:
+    """Atomically adopt or launch one child for a supervisor scope."""
+
+    with serialized_lock_update(launch_lock_path):
+        adopted = adopt_supervised_child(spec)
+        if adopted is not None:
+            return adopted
+        return launch_supervised_child(spec)
 
 
 def supervised_child_command_matches(command_line: str, command: Sequence[str]) -> bool:
@@ -1422,12 +1867,86 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     """Return a live matching child from the PID marker instead of launching a duplicate."""
 
     child_pid_path = spec.resolve(spec.child_pid_path)
+    identity_path = _configured_child_identity_path(spec)
+    owner_scope = _configured_child_owner_scope(spec)
+    if (identity_path is None) != (owner_scope is None):
+        raise RuntimeError(
+            "supervised child identity path and owner scope must be configured together"
+        )
+    if identity_path is not None and not spec.start_new_session:
+        raise RuntimeError(
+            "identity-protected child requires a dedicated process session"
+        )
     pid = read_pid_file(child_pid_path)
+    identity: SupervisedChildIdentity | None = None
+    if identity_path is not None and owner_scope is not None and (
+        not pid or not pid_alive(pid)
+    ):
+        identity_exists = identity_path.exists() or identity_path.is_symlink()
+        if identity_exists:
+            identity = load_supervised_child_identity(identity_path)
+            if identity is None:
+                raise RuntimeError(
+                    "orphaned supervised child identity is invalid"
+                )
+            liveness = supervised_child_identity_liveness(identity)
+            if liveness is OwnerLiveness.UNKNOWN:
+                raise RuntimeError(
+                    "orphaned supervised child identity liveness is unknown"
+                )
+            if liveness is OwnerLiveness.DEAD:
+                for path in (child_pid_path, identity_path):
+                    if not path.exists() and not path.is_symlink():
+                        continue
+                    backup = unique_backup_path(path, "stale-child-identity")
+                    path.rename(backup)
+                return None
+            if (
+                identity.command != tuple(spec.command)
+                or dict(identity.owner_scope) != owner_scope
+                or read_process_command_argv(identity.process_birth.pid)
+                != identity.command
+            ):
+                raise RuntimeError(
+                    "orphaned supervised child ownership identity mismatch"
+                )
+            _write_bytes_atomic(
+                child_pid_path,
+                f"{identity.process_birth.pid}\n".encode("ascii"),
+            )
+            pid = identity.process_birth.pid
     if not pid or not pid_alive(pid):
         return None
     command_line = process_args(pid)
     if not supervised_child_command_matches(command_line, spec.command):
         return None
+    if identity_path is not None and owner_scope is not None:
+        identity = load_supervised_child_identity(identity_path)
+        process_argv = read_process_command_argv(int(pid))
+        if identity is None:
+            # A live legacy child is migratable only when it already matches
+            # the exact desired command. A config-mismatched legacy PID is
+            # rejected by the implementation supervisor before this point.
+            if process_argv != tuple(spec.command):
+                raise RuntimeError(
+                    "legacy supervised child exact command is unproven"
+                )
+            identity = write_supervised_child_identity(
+                identity_path,
+                pid=int(pid),
+                command=spec.command,
+                owner_scope=owner_scope,
+            )
+        if (
+            identity.process_birth.pid != int(pid)
+            or identity.command != tuple(spec.command)
+            or dict(identity.owner_scope) != owner_scope
+            or supervised_child_identity_liveness(identity)
+            is not OwnerLiveness.ALIVE
+        ):
+            raise RuntimeError("supervised child ownership identity mismatch")
+        if process_argv != identity.command:
+            raise RuntimeError("supervised child command identity mismatch")
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
     log_path = spec.resolve(spec.log_path)
     if latest_log_path is not None:
@@ -1449,6 +1968,39 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
         child_pid_path=child_pid_path,
         latest_log_path=latest_log_path,
         started_at=datetime.now(timezone.utc).isoformat(),
+        identity_path=identity_path,
+        identity_record_id=(identity.record_id if identity is not None else ""),
+        identity_process_birth=(
+            identity.process_birth if identity is not None else None
+        ),
+        owned_process_group_id=(int(pid) if identity is not None else None),
+    )
+
+
+def _supervised_child_identity_matches_handle(
+    child: SupervisedChild,
+    identity: SupervisedChildIdentity | None,
+) -> bool:
+    """Bind a durable child handle to the exact identity generation it adopted."""
+
+    if identity is None:
+        return False
+    if (
+        not child.identity_record_id
+        or child.identity_process_birth is None
+        or child.owned_process_group_id != int(child.pid)
+    ):
+        return False
+    if child.identity_record_id and identity.record_id != child.identity_record_id:
+        return False
+    if (
+        child.identity_process_birth is not None
+        and identity.process_birth != child.identity_process_birth
+    ):
+        return False
+    return bool(
+        identity.process_birth.pid == int(child.pid)
+        and identity.command == tuple(child.command)
     )
 
 
@@ -1456,9 +2008,28 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
     """Remove a child pid file if it still refers to the expected child."""
 
     child_pid_path = child.child_pid_path
+    identity_path = getattr(child, "identity_path", None)
     if isinstance(child, SupervisedChildSpec):
         child_pid_path = child.resolve(child.child_pid_path)
+        identity_path = _configured_child_identity_path(child)
     expected = str(pid if pid is not None else getattr(child, "pid", "")).strip()
+    identity_path = identity_path or supervised_child_identity_path(
+        child_pid_path
+    )
+    identity = load_supervised_child_identity(identity_path)
+    if isinstance(child, SupervisedChild):
+        identity_required = child.identity_path is not None
+        if (
+            (identity_required and identity is None)
+            or (
+                identity is not None
+                and not _supervised_child_identity_matches_handle(
+                    child,
+                    identity,
+                )
+            )
+        ):
+            return False
     try:
         current = child_pid_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
@@ -1471,6 +2042,10 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
     if expected and current != expected:
         return False
     child_pid_path.unlink(missing_ok=True)
+    if identity is not None and (
+        not expected or str(identity.process_birth.pid) == expected
+    ):
+        identity_path.unlink(missing_ok=True)
     return True
 
 
@@ -1482,8 +2057,56 @@ def terminate_supervised_child(
 ) -> bool:
     """Terminate a supervisor child process tree and optionally clear its pid file."""
 
-    stopped = terminate_pid_tree(child.pid, grace_seconds=grace_seconds)
-    if clear_pid_file:
+    default_identity_path = supervised_child_identity_path(
+        child.child_pid_path
+    )
+    identity_path = child.identity_path or default_identity_path
+    identity_required = child.identity_path is not None
+    identity_enabled = bool(
+        identity_required
+        or identity_path.exists()
+        or identity_path.is_symlink()
+    )
+    identity = (
+        load_supervised_child_identity(identity_path)
+        if identity_enabled
+        else None
+    )
+    if identity_enabled:
+        if (
+            not _supervised_child_identity_matches_handle(child, identity)
+            or supervised_child_identity_liveness(identity)
+            is not OwnerLiveness.ALIVE
+            or read_process_command_argv(int(child.pid))
+            != identity.command
+        ):
+            # A numeric PID can be recycled between supervisor observations.
+            # Preserve both markers when exact ownership cannot be proven.
+            return False
+    stopped = terminate_pid_tree(
+        child.pid,
+        grace_seconds=grace_seconds,
+        freeze_first=identity_enabled,
+        require_gone=identity_enabled,
+        owned_process_group_id=(
+            child.owned_process_group_id if identity_enabled else None
+        ),
+        expected_root_start_time_ticks=(
+            identity.process_birth.start_time_ticks
+            if identity is not None
+            else None
+        ),
+    )
+    may_clear_identity_markers = bool(
+        not identity_enabled
+        or stopped
+        or (
+            identity is not None
+            and supervised_child_identity_liveness(identity)
+            is OwnerLiveness.DEAD
+        )
+    )
+    if clear_pid_file and may_clear_identity_markers:
         clear_child_pid_file(child)
     return stopped
 
@@ -1495,7 +2118,30 @@ def wait_for_child_exit(child: SupervisedChild, *, poll_interval_seconds: float 
         try:
             waited_pid, status = os.waitpid(child.pid, os.WNOHANG)
         except ChildProcessError:
-            return 0
+            identity = (
+                load_supervised_child_identity(child.identity_path)
+                if child.identity_path is not None
+                else None
+            )
+            if child.identity_path is not None:
+                if not _supervised_child_identity_matches_handle(
+                    child,
+                    identity,
+                ):
+                    raise RuntimeError(
+                        "supervised child exit identity does not match its handle"
+                    )
+                liveness = supervised_child_identity_liveness(identity)
+                if liveness is OwnerLiveness.DEAD:
+                    return 0
+                if liveness is OwnerLiveness.UNKNOWN:
+                    raise RuntimeError(
+                        "supervised child exit liveness is unknown"
+                    )
+            elif not pid_alive(child.pid):
+                return 0
+            time.sleep(max(0.01, float(poll_interval_seconds)))
+            continue
         if waited_pid == child.pid:
             if os.WIFEXITED(status):
                 return os.WEXITSTATUS(status)

@@ -6,6 +6,14 @@ with task prefix `VFS-`. Tasks implement the plan in
 witness bodies must remain content-addressed artifacts. Model prompts receive
 compact references and bounded spans only.
 
+**Generalization cutover (LPR-028):** historical root
+`ipfs_accelerate_py/agent_supervisor/vfs_*.py` coordinates are retired. Open and
+projected Outputs / Predicted files / Validation fields on this board name
+semantic-package engines (`analysis/`, `validation/`, `runtime/`, `control/`),
+the locked integration profile, and
+`scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py` only. Do not
+reintroduce root compatibility shims or `agent_supervisor.vfs_*` imports.
+
 ## VFS-001 Define program-assurance evidence, claim, finding, and stage-receipt contracts
 
 - Status: completed
@@ -494,13 +502,13 @@ compact references and bounded spans only.
 - Track: vfs-drift
 - Depends on: VFS-005, VFS-008, VFS-014
 - Goal id: VFS-G090
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_surface_inventory.py, test/api/test_agent_supervisor_vfs_surface_inventory.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_surface_inventory.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/repository_surface_inventory.py, test/api/test_agent_supervisor_repository_surface_inventory.py
+- Validation: python -m pytest test/api/test_agent_supervisor_repository_surface_inventory.py -q
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/vfs
 - Parallel lane: vfs-inventory
 - Resource class: cpu-medium
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_surface_inventory.py, test/api/test_agent_supervisor_vfs_surface_inventory.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/repository_surface_inventory.py, test/api/test_agent_supervisor_repository_surface_inventory.py
 - Conflict policy: Read ipfs_kit_py as evidence and emit inventory artifacts; do not repair VFS modules in this task.
 - Symbolic first: true
 - LLM context budget bytes: 16384
@@ -514,13 +522,13 @@ compact references and bounded spans only.
 - Track: vfs-drift
 - Depends on: VFS-015, VFS-025
 - Goal id: VFS-G090
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py, test/api/test_agent_supervisor_vfs_contract_pack.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_contract_pack.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_contract_profile.py, test/api/test_agent_supervisor_program_contract_profile.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_contract_profile.py -q
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/vfs
 - Parallel lane: vfs-contract-pack
 - Resource class: cpu-medium
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py, test/api/test_agent_supervisor_vfs_contract_pack.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/program_contract_profile.py, test/api/test_agent_supervisor_program_contract_profile.py
 - Conflict policy: Build contracts from reviewed evidence and record conflicts; do not pick an implementation as canonical by popularity.
 - Symbolic first: true
 - LLM context budget bytes: 16384
@@ -534,13 +542,13 @@ compact references and bounded spans only.
 - Track: vfs-drift
 - Depends on: VFS-016, VFS-026
 - Goal id: VFS-G091
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_differential_harness.py, test/api/test_agent_supervisor_vfs_differential_harness.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_differential_harness.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/differential_contract_harness.py, test/api/test_agent_supervisor_differential_contract_harness.py
+- Validation: python -m pytest test/api/test_agent_supervisor_differential_contract_harness.py -q
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/vfs
 - Parallel lane: vfs-differential
 - Resource class: cpu-large
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_differential_harness.py, test/api/test_agent_supervisor_vfs_differential_harness.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/differential_contract_harness.py, test/api/test_agent_supervisor_differential_contract_harness.py
 - Conflict policy: Use temporary memory/local backends and bounded subprocesses; never touch user VFS state.
 - Symbolic first: true
 - LLM context budget bytes: 16384
@@ -554,13 +562,13 @@ compact references and bounded spans only.
 - Track: vfs-drift
 - Depends on: VFS-017, VFS-018, VFS-026
 - Goal id: VFS-G091
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_mcp_contract_checker.py, test/api/test_agent_supervisor_vfs_mcp_contract_checker.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_mcp_contract_checker.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/interface_contract_parity.py, test/api/test_agent_supervisor_interface_contract_parity.py
+- Validation: python -m pytest test/api/test_agent_supervisor_interface_contract_parity.py -q
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/vfs
 - Parallel lane: vfs-mcp-parity
 - Resource class: cpu-medium
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_mcp_contract_checker.py, test/api/test_agent_supervisor_vfs_mcp_contract_checker.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/interface_contract_parity.py, test/api/test_agent_supervisor_interface_contract_parity.py
 - Conflict policy: Consume MCP resolver/runtime receipts and VFS contracts; do not regenerate package manifests.
 - Symbolic first: true
 - LLM context budget bytes: 16384
@@ -694,13 +702,13 @@ compact references and bounded spans only.
 - Track: autonomous-refill
 - Depends on: VFS-011, VFS-016, VFS-020, VFS-032, VFS-034
 - Goal id: VFS-G121
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_benchmark.py, test/api/test_agent_supervisor_vfs_symbolic_benchmark.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_symbolic_benchmark.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/symbolic_efficiency_benchmark.py, test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py -q
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/refill
 - Parallel lane: assurance-benchmark
 - Resource class: cpu-large
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_benchmark.py, test/api/test_agent_supervisor_vfs_symbolic_benchmark.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/symbolic_efficiency_benchmark.py, test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py
 - Conflict policy: Benchmark immutable fixtures and isolated caches; no adaptive promotion or provider network calls.
 - Symbolic first: true
 - LLM context budget bytes: 16384
@@ -714,13 +722,13 @@ compact references and bounded spans only.
 - Track: assurance-rollout
 - Depends on: VFS-018, VFS-024, VFS-027, VFS-028, VFS-030, VFS-033, VFS-034, VFS-035
 - Goal id: VFS-G130
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py, test/api/test_vfs_symbolic_assurance_e2e.py
-- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/symbolic_assurance_rollout.py, test/api/test_agent_supervisor_symbolic_assurance_rollout.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_rollout.py -q
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/rollout
 - Parallel lane: assurance-rollout
 - Resource class: cpu-large
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py, test/api/test_vfs_symbolic_assurance_e2e.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control/symbolic_assurance_rollout.py, test/api/test_agent_supervisor_symbolic_assurance_rollout.py
 - Conflict policy: Integrate only after producer tasks land; preserve shadow default and existing SupervisorControlService authority.
 - Symbolic first: true
 - LLM context budget bytes: 16384
@@ -734,13 +742,13 @@ compact references and bounded spans only.
 - Track: assurance-rollout
 - Depends on: VFS-003, VFS-036
 - Goal id: VFS-G131
-- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md, test/api/test_agent_supervisor_vfs_symbolic_pilot.py
-- Validation: python -m pytest test/api/test_agent_supervisor_vfs_symbolic_pilot.py -q; python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --verify
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/symbolic_assurance_pilot.py, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md, test/api/test_agent_supervisor_symbolic_assurance_pilot.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_assurance_pilot.py -q; python scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py verify
 - Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Bundle: vfs-assurance/rollout
 - Parallel lane: frozen-pilot
 - Resource class: cpu-large
-- Predicted files: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md, test/api/test_agent_supervisor_vfs_symbolic_pilot.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/symbolic_assurance_pilot.py, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md, test/api/test_agent_supervisor_symbolic_assurance_pilot.py
 - Conflict policy: The pilot reads the frozen external SwissKnife checkout and configured submodules; it may write only bounded accelerator artifacts and the generated findings board.
 - Symbolic first: true
 - LLM context budget bytes: 16384

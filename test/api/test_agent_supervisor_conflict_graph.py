@@ -118,6 +118,58 @@ class CapabilityRouter:
     assert json.loads(json.dumps(surface.to_dict()))["task_cid"] == "cid-a"
 
 
+def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
+    tmp_path: Path,
+) -> None:
+    tasks = [
+        {
+            "task_id": "UIR-011",
+            "task_cid": "cid-011",
+            "metadata": {
+                "goal id": "UIR-G020",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+                "allow concurrent with": "UIR-012",
+                "resource class": "cpu-small",
+                "token class": "medium",
+                "estimated tokens": "8000",
+                "estimated context tokens": "10000",
+                "estimated validation seconds": "120",
+                "merge fate": "objective/UIR-G020",
+            },
+        },
+        {
+            "task_id": "UIR-012",
+            "task_cid": "cid-012",
+            "metadata": {
+                "goal id": "UIR-G021",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+            },
+        },
+    ]
+
+    graph = materialize_task_conflict_graph(tasks, repo_root=tmp_path)
+    surface = graph.surfaces["cid-011"]
+
+    assert surface.goal_id == "UIR-G020"
+    assert surface.files == ["external/ipfs_datasets/pkg/shared.py"]
+    assert surface.predicted_paths == ["external/ipfs_datasets/pkg/shared.py"]
+    assert surface.allow_concurrent_with == ["UIR-012"]
+    assert surface.resource_class == "cpu-small"
+    assert surface.token_class == "medium"
+    assert surface.estimated_tokens == 8000
+    assert surface.estimated_context_tokens == 10000
+    assert surface.estimated_validation_seconds == 120
+    assert surface.merge_fate == "objective/UIR-G020"
+
+    allowed_edge = _edge(graph, "cid-011", "cid-012")
+    assert allowed_edge.explicitly_allowed is True
+    colors = {
+        assignment.task_cid: assignment.color
+        for assignment in graph.assignments
+    }
+    assert colors["cid-011"] == colors["cid-012"]
+
+
 def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(tmp_path: Path) -> None:
     tasks = [
         {
@@ -474,6 +526,60 @@ def test_managed_submodule_disjoint_paths_can_opt_in_to_concurrency(
         and "explicit concurrency override" in decision["explanation"]
         for decision in concurrent_by_key["bundle/alpha"].conflict_decisions
     )
+
+
+def test_implemented_lanes_downgrade_disjoint_submodule_override_to_root_claim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
+                    "files": [f"vendor/runtime/src/{name}.py"],
+                    "predicted_files": [f"vendor/runtime/src/{name}.py"],
+                    "submodules": ["vendor/runtime"],
+                    "interfaces": [f"{name.title()}API@1"],
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implement=True,
+        worktree_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert "bundle/beta" in by_key["bundle/alpha"].conflicting_task_ids
+    assert "bundle/alpha" in by_key["bundle/beta"].conflicting_task_ids
+    assert (
+        by_key["bundle/alpha"].conflict_color
+        != by_key["bundle/beta"].conflict_color
+    )
+    assert not any(
+        decision["action"] == "concurrent_override"
+        for lane in lanes
+        for decision in lane.conflict_decisions
+    )
+    assert all("--implement" in lane.command for lane in lanes)
 
 
 @pytest.mark.parametrize(
@@ -892,3 +998,57 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
 
     assert "bundle/other" not in by_key["bundle/base"].conflicting_task_ids
     assert by_key["bundle/base"].conflict_surface["files"] == ["src/base.py"]
+
+
+def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
+    tmp_path: Path,
+) -> None:
+    tasks = [
+        {
+            "task_id": "UIR-011",
+            "task_cid": "cid-011",
+            "metadata": {
+                "goal id": "UIR-G020",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+                "allow concurrent with": "UIR-012",
+                "resource class": "cpu-small",
+                "token class": "medium",
+                "estimated tokens": "8000",
+                "estimated context tokens": "10000",
+                "estimated validation seconds": "120",
+                "merge fate": "objective/UIR-G020",
+            },
+        },
+        {
+            "task_id": "UIR-012",
+            "task_cid": "cid-012",
+            "metadata": {
+                "goal id": "UIR-G021",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+            },
+        },
+    ]
+
+    graph = materialize_task_conflict_graph(tasks, repo_root=tmp_path)
+    surface = graph.surfaces["cid-011"]
+
+    assert surface.goal_id == "UIR-G020"
+    assert surface.files == ["external/ipfs_datasets/pkg/shared.py"]
+    assert surface.predicted_paths == [
+        "external/ipfs_datasets/pkg/shared.py"
+    ]
+    assert surface.allow_concurrent_with == ["UIR-012"]
+    assert surface.resource_class == "cpu-small"
+    assert surface.token_class == "medium"
+    assert surface.estimated_tokens == 8000
+    assert surface.estimated_context_tokens == 10000
+    assert surface.estimated_validation_seconds == 120
+    assert surface.merge_fate == "objective/UIR-G020"
+
+    allowed_edge = _edge(graph, "cid-011", "cid-012")
+    assert allowed_edge.explicitly_allowed is True
+    colors = {
+        assignment.task_cid: assignment.color
+        for assignment in graph.assignments
+    }
+    assert colors["cid-011"] == colors["cid-012"]

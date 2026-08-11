@@ -3135,15 +3135,25 @@ def build_declared_validation_plan_graph(
             }
         )
     )
-    if not changed:
-        raise ValidationDAGError(
-            "declared validation plan requires changed paths"
-        )
     specs = build_validation_commands(commands)
     if not specs:
         raise ValidationDAGError(
             "declared validation plan requires at least one command"
         )
+    # Clean / already-satisfied residual candidates have no patch. Still
+    # authorize the declared validation population by seeding graph roots
+    # from command impact targets (or a stable synthetic root) so empty-patch
+    # revalidation can complete instead of thrashing on ValidationDAGError.
+    if not changed:
+        seed_paths: set[str] = set()
+        for spec in specs:
+            for value in spec.impact_paths:
+                path = _normalize_impact_path(value)
+                if path:
+                    seed_paths.add(path)
+        if not seed_paths:
+            seed_paths.add("__no_change_candidate__")
+        changed = tuple(sorted(seed_paths))
 
     dependencies: dict[str, tuple[str, ...]] = {
         path: () for path in changed
@@ -5423,6 +5433,11 @@ class ValidationScheduler:
         result.setdefault("started_at", utc_now())
         result.setdefault("finished_at", utc_now())
         result["returncode"] = int(result.get("returncode", 1))
+        # Emit an explicit boolean in every freshly executed command receipt.
+        # Security-sensitive consumers must be able to distinguish a proven
+        # non-timeout from a legacy/partial record that simply omitted the
+        # field.
+        result["timed_out"] = bool(result.get("timed_out", False))
         result["cache_hit"] = False
         result["cache_key"] = cache_key.digest
         result["stage"] = spec.stage.label

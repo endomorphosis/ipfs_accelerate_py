@@ -26,21 +26,7 @@ __version__ = "0.1.0"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ipfs_accelerate_mcp")
 
-# Best-effort minimal deps (optional)
-try:
-    from ipfs_accelerate_py.utils.auto_install import ensure_packages
-
-    ensure_packages(
-        {
-            "fastapi": "fastapi",
-            "uvicorn": "uvicorn",
-            "fastmcp": "fastmcp",
-        }
-    )
-except Exception:
-    pass
-
-from .server import IPFSAccelerateMCPServer, StandaloneMCP
+from .server import IPFSAccelerateMCPServer, StandaloneMCP, _import_fastmcp_v2
 
 
 class LegacyMCPServer:
@@ -396,17 +382,8 @@ def check_dependencies() -> Dict[str, bool]:
     for dep in list(deps.keys()):
         try:
             if dep == "fastmcp":
-                # `fastmcp` depends on the PyPI `mcp` package. When running from
-                # a repo checkout, a top-level `./mcp` folder can shadow that
-                # dependency via CWD on sys.path.
-                original_sys_path = list(sys.path)
-                try:
-                    cwd = os.getcwd()
-                    sys.path = [p for p in sys.path if p not in ("", ".", cwd)]
-                    __import__(dep)
-                    deps[dep] = True
-                finally:
-                    sys.path = original_sys_path
+                module, _ = _import_fastmcp_v2()
+                deps[dep] = module is not None
                 continue
 
             __import__(dep)
@@ -417,15 +394,7 @@ def check_dependencies() -> Dict[str, bool]:
     return deps
 
 
-dependencies = check_dependencies()
-missing_dependencies = [dep for dep, installed in dependencies.items() if not installed]
-if missing_dependencies:
-    strict = os.getenv("IPFS_ACCEL_MCP_STRICT", "").lower() in ("1", "true", "yes")
-    if strict:
-        logger.warning(f"Missing dependencies: {', '.join(missing_dependencies)}")
-        logger.warning("Some features may not be available.")
-        logger.warning("Install all dependencies with: pip install fastmcp uvicorn psutil numpy torch")
-    else:
-        logger.info(
-            f"Optional dependencies not found: {', '.join(missing_dependencies)} (running with fallbacks)"
-        )
+# Backward-compatible names without import-time dependency probing. Call
+# check_dependencies() explicitly when a diagnostic snapshot is needed.
+dependencies: Dict[str, bool] = {}
+missing_dependencies = []

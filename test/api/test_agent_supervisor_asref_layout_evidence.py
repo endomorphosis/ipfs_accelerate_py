@@ -146,7 +146,7 @@ def test_asref_g100_launch_recipe_and_protected_paths() -> None:
     assert "--implementation-provider" in recipe["argv"]
     assert "grok" in recipe["argv"]
     assert "--dry-run" in recipe["argv"]
-    assert ASREF_DEFAULT_IMPLEMENTATION_PROVIDER == "grok"
+    assert ASREF_DEFAULT_IMPLEMENTATION_PROVIDER == "auto"
 
     launch_script = REPO_ROOT / "scripts/ops/asref_module_refactor_supervisor.py"
     multi = REPO_ROOT / "scripts/ops/agent_supervisor/asref_multi_lane_launch.py"
@@ -263,7 +263,7 @@ def test_asref_module_refactor_supervisor_preflight_runs() -> None:
     assert payload["asref_goal_status"][ASREF_G100] is True
     assert payload["inventory_present"] is True
     assert set(payload["protected_paths"]) == set(ASREF_PROTECTED_PATHS)
-    assert payload["default_implementation_provider"] == "grok"
+    assert payload["default_implementation_provider"] == "auto"
 
 
 def test_semantic_layout_export_aliases() -> None:

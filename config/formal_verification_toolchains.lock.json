@@ -1,13 +1,18 @@
 {
-  "schema_version": "offline-toolchain-lock/v1",
-  "interface": "OfflineToolchainLock@1",
+  "schema_version": "formal-verification-deployment-lock/v2",
+  "interface": "FormalVerificationDeploymentLock@2",
+  "offline_toolchain_lock_interface": "OfflineToolchainLock@1",
+  "offline_toolchain_lock_schema": "offline-toolchain-lock/v1",
   "packaging_gate_interface": "FormalVerificationPackagingGate@1",
-  "goal_id": "FVT-G010",
-  "task_id": "FVT-006",
-  "program": "formal-verification-tactician/readiness",
-  "description": "Hermetic offline lock of external formal-verification tool identities. Verification and packaging gates must bind exact pinned versions, detect shim/toolchain mismatches, and never install, download, or open network sockets during offline verification.",
-  "binding_mode": "declarative_pin_inventory",
+  "goal_id": "FVT-G110",
+  "task_id": "FVT-041",
+  "predecessor_goal_id": "FVT-G010",
+  "predecessor_task_id": "FVT-006",
+  "program": "formal-verification-tactician/toolchain-locks",
+  "description": "Reviewed FormalVerificationDeploymentLock@2: every formerly declared installation gap and incomplete managed pin carries version/license/platform/source/checksum or immutable package-lock identity plus an installer entry. Installs are user-local, explicit opt-in only. Imports, discovery, tests, and offline certification never install, download, open the network, or mutate a system package manager. Unsupported platforms fail closed.",
+  "binding_mode": "reviewed_deployment_lock",
   "registry_interface": "VerificationToolchainRegistry@1",
+  "installer_registry_interface": "FormalVerificationInstallerRegistry@1",
   "install_policy": {
     "schema_version": "verification-toolchain-install-policy/v1",
     "never_on_import": true,
@@ -16,7 +21,9 @@
     "requires_pin_or_declared_gap": true,
     "requires_checksum_for_managed_artifacts": true,
     "forbid_system_package_mutation_in_tests": true,
-    "forbid_curl_pipe_shell": true
+    "forbid_curl_pipe_shell": true,
+    "user_local_only": true,
+    "install_root": "~/.local/share/ipfs_datasets_py/theorem-provers"
   },
   "offline_verification_policy": {
     "forbid_install": true,
@@ -27,6 +34,95 @@
     "require_exact_pin_match_for_production_certification": true,
     "path_presence_is_not_usability": true,
     "shim_toolchain_mismatch_fails_closed": true
+  },
+  "platform_policy": {
+    "schema_version": "formal-verification-platform-policy/v1",
+    "supported_platforms": [
+      "linux-x86_64",
+      "linux-aarch64",
+      "darwin-x86_64",
+      "darwin-arm64"
+    ],
+    "unsupported_platforms_fail_closed": true,
+    "unsupported_effect": "refuse_install_and_refuse_production_certification",
+    "notes": "Platforms outside supported_platforms must fail explicitly; they never silently degrade to PATH heuristics."
+  },
+  "zkp_deployment_artifact_schema": {
+    "schema_version": "zkp-deployment-artifact/v1",
+    "interface": "ZkpDeploymentArtifactSchema@1",
+    "secret_safe": true,
+    "forbid_private_witness_in_lock": true,
+    "forbid_proving_key_bytes_in_lock": true,
+    "forbid_trapdoor_material_in_lock": true,
+    "allowed_fields": [
+      "circuit_id",
+      "circuit_public_digest",
+      "proving_system",
+      "public_params_digest",
+      "artifact_uri",
+      "sha256",
+      "platform",
+      "version"
+    ],
+    "forbidden_fields": [
+      "private_witness",
+      "proving_key",
+      "trapdoor",
+      "secret",
+      "witness_bytes",
+      "sk"
+    ],
+    "notes": "Shared lock binds public deployment identities only; private witnesses and proving keys remain out-of-band."
+  },
+  "replaced_install_gaps": {
+    "tlc": {
+      "tool_ids": [
+        "tlc"
+      ],
+      "status": "replaced_by_deployment_contract"
+    },
+    "hyper_tools": {
+      "tool_ids": [
+        "hyperltl",
+        "autohyper",
+        "mchyper"
+      ],
+      "status": "replaced_by_deployment_contract",
+      "goal_id": "FVT-G208",
+      "task_id": "FVT-061",
+      "repair_task_id": "FVT-077",
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+      "interface": "HyperpropertyVendorToolchainCertification@1",
+      "receipt_path": "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+      "notes": "FVT-077 is the objective validation repair that re-proves FVT-G208 and binds the synthetic discovery term objective validation repair. Hermetic engines remain differential-only and never satisfy vendor production evidence."
+    },
+    "datalog_secpal_external": {
+      "tool_ids": [
+        "souffle",
+        "secpal"
+      ],
+      "status": "replaced_by_deployment_contract",
+      "goal_id": "FVT-G217",
+      "task_id": "FVT-086",
+      "repair_task_id": "FVT-101",
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
+      "interface": "SecPALLiveToolchainContract@1",
+      "notes": "FVT-101 is the objective validation repair that re-proves FVT-G217 and binds the synthetic discovery term objective validation repair. Genuine SecPAL artifact intake is transactional and non-executable; the live platform matrix remains empty and cannot promote operator compatibility or fixtures to a vendor engine."
+    },
+    "runtime_mtl_external": {
+      "tool_ids": [
+        "runtime-mtl-external"
+      ],
+      "status": "replaced_by_deployment_contract"
+    },
+    "circuit_witness": {
+      "tool_ids": [
+        "zkp-circuit"
+      ],
+      "status": "replaced_by_secret_safe_deployment_schema"
+    }
   },
   "detection_rules": {
     "lean_shim_toolchain_mismatch": {
@@ -59,6 +155,21 @@
         "production_certified": false,
         "offline_verification": "fail_closed_without_upgrade_or_download"
       }
+    },
+    "unsupported_platform": {
+      "id": "unsupported_platform",
+      "severity": "high",
+      "description": "Requested install platform is outside the reviewed support matrix.",
+      "inputs": [
+        "requested_platform",
+        "supported_platforms"
+      ],
+      "predicate": "requested_platform not in supported_platforms",
+      "effect": {
+        "usable": false,
+        "production_certified": false,
+        "install": "refuse_explicitly"
+      }
     }
   },
   "managed_pin_versions": {
@@ -66,6 +177,7 @@
     "vampire": "5.0.1",
     "eprover": "3.2.5",
     "apalache": "0.58.3",
+    "tlc": "1.8.0",
     "tamarin": "1.12.0",
     "maude": "3.5.1",
     "proverif": "2.05",
@@ -73,7 +185,16 @@
     "coq": "9.1.1",
     "isabelle": "Isabelle2025-2",
     "ergoai": "3.0",
-    "opam": "2.5.2"
+    "opam": "2.5.2",
+    "souffle": "2.4.1",
+    "hyperltl": "e3a41290",
+    "autohyper": "c94722d1",
+    "mchyper": "87f0f857",
+    "secpal": "1.0.0-reviewed",
+    "runtime-mtl-external": "1.0.0-reviewed",
+    "symbolicai": ">=1.14.0,<2.0.0",
+    "stack": "3.11.1",
+    "temurin-jdk": "17.0.20+8"
   },
   "checksummed_release_inventory": {
     "apalache": {
@@ -108,38 +229,468 @@
     },
     "cvc5": {
       "version": "1.3.3",
-      "url": "",
-      "sha256": ""
+      "url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-Linux-x86_64-static.zip",
+      "sha256": "413f56f01f3a7374105c654581e67249eb66d4e430e748b17962d595cd4861b6",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-Linux-x86_64-static.zip",
+          "sha256": "413f56f01f3a7374105c654581e67249eb66d4e430e748b17962d595cd4861b6"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-Linux-arm64-static.zip",
+          "sha256": "2572d01b142a6bfebdcb259f5a395f6228d2db5609f7dcc9a60851a5f1a58655"
+        },
+        "darwin-x86_64": {
+          "url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-macOS-x86_64-static.zip",
+          "sha256": "45e4156e9285162ae7e43504fa451ca2f618994f0d83fdd661d945f208d75f14"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-macOS-arm64-static.zip",
+          "sha256": "0ad2df5de1b35c0fda6afa9ca9f7b542a615c2137e1ec678a45deccdda1871b2"
+        }
+      }
     },
     "vampire": {
       "version": "5.0.1",
-      "url": "",
-      "sha256": ""
+      "url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-Linux-X64.zip",
+      "sha256": "6ff2f42ea7fb9753ee104efc3e623d5e39443190f7c82a63e1e1517bf9d2cde3",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-Linux-X64.zip",
+          "sha256": "6ff2f42ea7fb9753ee104efc3e623d5e39443190f7c82a63e1e1517bf9d2cde3"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-Linux-ARM64.zip",
+          "sha256": "2fc419d3ac1eb075b4ceb6ce770242247507afd8c64f897799e479643f4b2c6b"
+        },
+        "darwin-x86_64": {
+          "url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-macOS-X64.zip",
+          "sha256": "e252f1bf8c41f17f620a0009f8952809fc473a1250cad010fc1a8c43ae9af1a9"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-macOS-ARM64.zip",
+          "sha256": "8c92e649fe7bc622a70000afbdf5a5c51007b384e2d8b8235c95474cc7a68f35"
+        }
+      }
     },
     "lean": {
       "version": "v4.31.0",
       "url": "",
-      "sha256": ""
+      "sha256": "",
+      "identity_kind": "immutable_toolchain_identity",
+      "toolchain_identity": "leanprover/lean4:v4.31.0"
     },
     "rocq": {
       "version": "9.1.1",
       "url": "",
-      "sha256": ""
+      "sha256": "",
+      "identity_kind": "opam_package",
+      "package_identity": "rocq-prover.9.1.1"
     },
     "isabelle": {
       "version": "Isabelle2025-2",
-      "url": "",
-      "sha256": ""
+      "url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_linux.tar.gz",
+      "sha256": "a20a507bc7c1270d8be96a9f3fbec06345387789d2dc2c4d3df6260d47bfb33c",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_linux.tar.gz",
+          "sha256": "a20a507bc7c1270d8be96a9f3fbec06345387789d2dc2c4d3df6260d47bfb33c"
+        },
+        "linux-aarch64": {
+          "url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_linux_arm.tar.gz",
+          "sha256": "650a9669b4a087675afb34294d82ded2f0704d47d580dd9ed45cddc9f1764bdd"
+        },
+        "darwin-x86_64": {
+          "url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_macos.tar.gz",
+          "sha256": "8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e"
+        },
+        "darwin-arm64": {
+          "url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_macos.tar.gz",
+          "sha256": "8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e"
+        }
+      }
     },
     "opam": {
       "version": "2.5.2",
-      "url": "",
-      "sha256": ""
+      "url": "https://github.com/ocaml/opam/releases/download/2.5.2/opam-2.5.2-x86_64-linux",
+      "sha256": "edfca2630c373b44b7ee1c2f81cd8dcf67468d0db57d6c02158de553ac63dbd4",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/ocaml/opam/releases/download/2.5.2/opam-2.5.2-x86_64-linux",
+          "sha256": "edfca2630c373b44b7ee1c2f81cd8dcf67468d0db57d6c02158de553ac63dbd4"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/ocaml/opam/releases/download/2.5.2/opam-2.5.2-arm64-linux",
+          "sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9"
+        }
+      }
     },
     "stack": {
       "version": "3.11.1",
-      "url": "",
-      "sha256": ""
+      "url": "https://github.com/commercialhaskell/stack/releases/download/v3.11.1/stack-3.11.1-linux-x86_64.tar.gz",
+      "sha256": "1fda71e657cd8d355625cc66b61b352699279dfee2664c014a392163bd19a952",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/commercialhaskell/stack/releases/download/v3.11.1/stack-3.11.1-linux-x86_64.tar.gz",
+          "sha256": "1fda71e657cd8d355625cc66b61b352699279dfee2664c014a392163bd19a952"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/commercialhaskell/stack/releases/download/v3.11.1/stack-3.11.1-linux-aarch64.tar.gz",
+          "sha256": "1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0"
+        }
+      }
+    },
+    "tlc": {
+      "version": "1.8.0",
+      "url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar",
+      "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+      "identity_kind": "immutable_release_tag",
+      "release_tag": "v1.8.0",
+      "revision": "30cc360"
+    },
+    "souffle": {
+      "version": "2.4.1",
+      "url": "https://github.com/souffle-lang/souffle/archive/refs/tags/2.4.1.tar.gz",
+      "sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+      "identity_kind": "immutable_source_tag",
+      "release_tag": "2.4.1",
+      "is_checksummed": true,
+      "build_dependencies": {
+        "cmake": ">=3.15",
+        "flex": ">=2.6",
+        "bison": ">=3.0",
+        "mcpp": ">=2.7",
+        "sqlite3": ">=3.0",
+        "libffi": ">=3.0",
+        "python3": ">=3.8"
+      }
+    },
+    "ergoai": {
+      "version": "3.0",
+      "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+      "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+      "identity_kind": "immutable_release_tag",
+      "release_tag": "v3.0_release",
+      "artifact_size_bytes": 53064767,
+      "license_components": [
+        "Apache-2.0",
+        "LGPL-2.0"
+      ],
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_execute": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_free_install_paths": true
+      },
+      "entry_point": "runergo",
+      "identity_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "ErgoAI 3.0"
+      },
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        }
+      },
+      "build_dependencies": {
+        "sh": "POSIX",
+        "bash": "required_by_bundled_autoconf_scripts",
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "cc": "observed_by_bundled_config_guess",
+        "as": "observed_compiler_driver_dependency",
+        "flex": ">=2.6",
+        "bison": ">=3.0",
+        "m4": "required_by_bison_when_regeneration_is_needed",
+        "ar": "required_by_bundled_xsb_build",
+        "ranlib": "required_by_bundled_xsb_build",
+        "ld": "required_by_bundled_xsb_build",
+        "tar": "required_by_official_self_extractor",
+        "gzip": "required_by_official_self_extractor",
+        "cp": "GNU_coreutils_copy_for_private_runtime_workspaces",
+        "dirname": "POSIX_path_resolution_for_launchers",
+        "ln": "POSIX_symlink_for_shared_immutable_xsb",
+        "mkdir": "POSIX_runtime_workspace_creation",
+        "mktemp": "private_runtime_workspace_creation",
+        "mv": "atomic_java_build_output_publication",
+        "rm": "private_runtime_workspace_cleanup",
+        "df": "required_by_official_makeself_header",
+        "tail": "required_by_official_makeself_header",
+        "awk": "required_by_official_makeself_header",
+        "head": "required_by_official_makeself_header",
+        "wc": "required_by_official_makeself_header",
+        "tr": "required_by_official_makeself_header",
+        "which": "required_by_official_configure_scripts",
+        "md5sum": "required_by_official_makeself_header",
+        "basename": "required_by_official_makeself_header",
+        "cut": "required_by_official_makeself_header",
+        "dd": "required_by_official_makeself_header",
+        "expr": "required_by_official_makeself_header",
+        "pwd": "required_by_official_configure_scripts",
+        "date": "required_by_official_configure_scripts",
+        "sed": "required_by_official_configure_scripts",
+        "grep": "required_by_official_configure_scripts",
+        "cat": "required_by_official_configure_scripts",
+        "echo": "observed_by_bundled_build_scripts",
+        "chmod": "required_by_official_configure_scripts",
+        "touch": "required_by_official_configure_scripts",
+        "uname": "required_by_bundled_xsb_build",
+        "find": "required_by_bundled_xsb_build",
+        "sort": "required_by_bundled_xsb_build",
+        "install": "required_by_bundled_xsb_build",
+        "env": "required_by_bundled_xsb_build",
+        "rmdir": "observed_by_bundled_autoconf_scripts",
+        "hostname": "observed_by_bundled_autoconf_scripts",
+        "ls": "observed_by_bundled_autoconf_scripts",
+        "diff": "observed_by_bundled_autoconf_scripts",
+        "readlink": "observed_by_official_runergo",
+        "split": "observed_by_bundled_autoconf_scripts",
+        "tee": "observed_by_bundled_autoconf_scripts",
+        "arch": "observed_by_bundled_config_guess"
+      },
+      "required_absolute_commands": [
+        "/bin/sh",
+        "/bin/bash",
+        "/bin/rm",
+        "/bin/echo",
+        "/bin/touch",
+        "/bin/uname",
+        "/bin/arch",
+        "/usr/bin/uname",
+        "/usr/bin/arch"
+      ],
+      "dependency_version_floors": {
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "flex": ">=2.6",
+        "bison": ">=3.0"
+      },
+      "runtime_dependencies": {
+        "xsb": "bundled_with_official_release_compile_for_host",
+        "runergo": "official_entry_point",
+        "posix_shell": "required_for_launchers",
+        "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      },
+      "config_hardening": {
+        "schema_version": "ergoai-config-hardening/v1",
+        "source_sha256": "3bee8a6aa7d17854b81f14fe87cb35a5c89a0c275362266b7eef9a2e5f1fcaa4",
+        "hardened_sha256": "b21e4a85b9cc214d4e61f5204124baf2dd6daecf597dd4cd72ba040b7bc0bed9",
+        "private_xsb_workspace_required": true,
+        "exact_replacement_count": 6
+      },
+      "bound_build_environment": {
+        "schema_version": "ergoai-bound-build-environment/v1",
+        "path_model": "private-staging-only/v1",
+        "ambient_toolchain_overrides_inherited": false,
+        "allowlisted_environment_keys": [
+          "ALL_PROXY",
+          "DISPLAY",
+          "ERGOAI_MANAGED_XSB_TMPDIR",
+          "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+          "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+          "FORMAL_VERIFICATION_FORBID_INSTALL",
+          "FORMAL_VERIFICATION_FORBID_NETWORK",
+          "GIT_TERMINAL_PROMPT",
+          "HOME",
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "LANG",
+          "LC_ALL",
+          "NO_PROXY",
+          "PATH",
+          "PIP_DISABLE_PIP_VERSION_CHECK",
+          "PIP_NO_INDEX",
+          "SHELL",
+          "TERM",
+          "TMPDIR",
+          "all_proxy",
+          "http_proxy",
+          "https_proxy",
+          "no_proxy"
+        ]
+      },
+      "bound_runtime_environment_contract": {
+        "schema_version": "ergoai-bound-runtime-environment/v1",
+        "path_model": "managed-symlink-only-exact-identities/v1",
+        "ambient_path_inherited": false,
+        "symlink_only_exact_command_identities": true,
+        "optional_java_requires_complete_capability": true
+      },
+      "runtime_execution_policy": "private-ergoai-copy-shared-immutable-xsb/v1",
+      "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+      "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+      "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+      "developer_rebuild_metadata_relocated": false,
+      "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4",
+      "publication_commit_point": "atomic_identity_manifest_replace",
+      "runtime_state_policy": "mutable-nonauthoritative-outside-vendor-identity/v1",
+      "lazy_install": {
+        "staged": true,
+        "checksum_verified": true,
+        "atomic": true,
+        "relocatable": true,
+        "offline_after_acquisition": true,
+        "never_on_import": true,
+        "never_during_certification": true
+      }
+    },
+    "hyperltl": {
+      "version": "e3a41290",
+      "url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+      "sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+      "identity_kind": "immutable_git_commit",
+      "release_tag": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+      "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+      "is_checksummed": true,
+      "upstream_product": "eahyper",
+      "source": "https://github.com/reactive-systems/eahyper",
+      "build_dependencies": {
+        "ocaml": ">=4.08",
+        "dune": ">=2.0",
+        "menhir": ">=20201216",
+        "opam": ">=2.0"
+      },
+      "runtime_dependencies": {},
+      "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)"
+    },
+    "autohyper": {
+      "version": "c94722d1",
+      "url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+      "sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+      "identity_kind": "immutable_git_commit",
+      "release_tag": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+      "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+      "is_checksummed": true,
+      "upstream_product": "autohyper",
+      "source": "https://github.com/AutoHyper/AutoHyper",
+      "build_dependencies": {
+        "dotnet-sdk": "8.0.300",
+        "spot": ">=2.12",
+        "spot-tools": "ltl2tgba,autfilt,dstar2tgba"
+      },
+      "runtime_dependencies": {
+        "dotnet-runtime": "8.0",
+        "spot": ">=2.12"
+      }
+    },
+    "mchyper": {
+      "version": "87f0f857",
+      "url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+      "sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+      "identity_kind": "immutable_git_commit",
+      "release_tag": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+      "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+      "is_checksummed": true,
+      "upstream_product": "mchyper",
+      "source": "https://github.com/reactive-systems/MCHyper",
+      "build_dependencies": {
+        "ghc": ">=8.4",
+        "cabal": ">=2.4",
+        "python": ">=2.7",
+        "abc": "1.01",
+        "aiger-tools": "1.9.4"
+      },
+      "runtime_dependencies": {
+        "abc": "1.01",
+        "aiger-tools": "1.9.4"
+      },
+      "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths"
+    },
+    "temurin-jdk": {
+      "version": "17.0.20+8",
+      "publisher": "Eclipse Adoptium",
+      "release_name": "jdk-17.0.20+8",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://adoptium.net/",
+      "identity_kind": "immutable_release_archive",
+      "required_tool_identities": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "be7668bc030d578b83d6d5ef9221d6d6729bbbca8cf94a7d52e16ac68b5a5a35",
+          "artifact_size_bytes": 193273593,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "x86_64"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+          "artifact_size_bytes": 191960283,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "aarch64"
+        }
+      },
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_extract": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_safe_extraction": true,
+        "never_trust_ambient_java_home": true,
+        "never_download_moving_latest": true,
+        "single_flight_lock": true,
+        "force_replacement_rolls_back_to_previous_good": true,
+        "home_bounded_mutable_paths": true,
+        "publisher_evidence_required": true,
+        "hello_world_cannot_satisfy_vendor_consumer": true
+      },
+      "optional_for": [
+        "ergoai"
+      ],
+      "capability": "ergoai-java-api",
+      "java_api_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+      "java_api_live_certification_interface": "ErgoAIJavaAPILiveCertification@1",
+      "goal_id": "FVT-G222",
+      "task_id": "FVT-090",
+      "live_goal_id": "FVT-G223",
+      "live_task_id": "FVT-091"
     }
   },
   "tools": [
@@ -157,6 +708,10 @@
         "software_verification"
       ],
       "installer_entry": "ensure_z3",
+      "installer_plugin": "solver",
+      "license": "MIT",
+      "source": "https://github.com/Z3Prover/z3",
+      "identity_kind": "python_package",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -166,7 +721,9 @@
           "sha256": "",
           "platform": "any",
           "notes": "Python package pin",
-          "is_checksummed": false
+          "is_checksummed": false,
+          "license": "MIT",
+          "source": "https://pypi.org/project/z3-solver/"
         }
       ],
       "gap_id": null,
@@ -180,7 +737,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "cvc5",
@@ -196,16 +755,58 @@
         "software_verification"
       ],
       "installer_entry": "ensure_cvc5",
+      "installer_plugin": "solver",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/cvc5/cvc5",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "cvc5",
           "version": "1.3.3",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "any",
-          "notes": "Platform-specific static binary digests in prover_installer",
-          "is_checksummed": false
+          "artifact_url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-Linux-x86_64-static.zip",
+          "sha256": "413f56f01f3a7374105c654581e67249eb66d4e430e748b17962d595cd4861b6",
+          "platform": "linux-x86_64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/cvc5/cvc5"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "cvc5",
+          "version": "1.3.3",
+          "artifact_url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-Linux-arm64-static.zip",
+          "sha256": "2572d01b142a6bfebdcb259f5a395f6228d2db5609f7dcc9a60851a5f1a58655",
+          "platform": "linux-aarch64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/cvc5/cvc5"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "cvc5",
+          "version": "1.3.3",
+          "artifact_url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-macOS-x86_64-static.zip",
+          "sha256": "45e4156e9285162ae7e43504fa451ca2f618994f0d83fdd661d945f208d75f14",
+          "platform": "darwin-x86_64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/cvc5/cvc5"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "cvc5",
+          "version": "1.3.3",
+          "artifact_url": "https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.3/cvc5-macOS-arm64-static.zip",
+          "sha256": "0ad2df5de1b35c0fda6afa9ca9f7b542a615c2137e1ec678a45deccdda1871b2",
+          "platform": "darwin-arm64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/cvc5/cvc5"
         }
       ],
       "gap_id": null,
@@ -219,7 +820,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "vampire",
@@ -234,16 +837,58 @@
         "atp"
       ],
       "installer_entry": "ensure_vampire",
+      "installer_plugin": "atp",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/vprover/vampire",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "vampire",
           "version": "5.0.1",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "any",
+          "artifact_url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-Linux-X64.zip",
+          "sha256": "6ff2f42ea7fb9753ee104efc3e623d5e39443190f7c82a63e1e1517bf9d2cde3",
+          "platform": "linux-x86_64",
           "notes": "",
-          "is_checksummed": false
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/vprover/vampire"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "vampire",
+          "version": "5.0.1",
+          "artifact_url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-Linux-ARM64.zip",
+          "sha256": "2fc419d3ac1eb075b4ceb6ce770242247507afd8c64f897799e479643f4b2c6b",
+          "platform": "linux-aarch64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/vprover/vampire"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "vampire",
+          "version": "5.0.1",
+          "artifact_url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-macOS-X64.zip",
+          "sha256": "e252f1bf8c41f17f620a0009f8952809fc473a1250cad010fc1a8c43ae9af1a9",
+          "platform": "darwin-x86_64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/vprover/vampire"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "vampire",
+          "version": "5.0.1",
+          "artifact_url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-macOS-ARM64.zip",
+          "sha256": "8c92e649fe7bc622a70000afbdf5a5c51007b384e2d8b8235c95474cc7a68f35",
+          "platform": "darwin-arm64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://github.com/vprover/vampire"
         }
       ],
       "gap_id": null,
@@ -257,7 +902,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "eprover",
@@ -272,6 +919,10 @@
         "atp"
       ],
       "installer_entry": "ensure_eprover",
+      "installer_plugin": "atp",
+      "license": "GPL-2.0-or-later",
+      "source": "https://wwwlehre.dhbw-stuttgart.de/~sschulz/E/E.html",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -281,7 +932,9 @@
           "sha256": "074c8e5fc3062476341ce790fd15ad8004d322d6b6627844bd2768a8830bd4ae",
           "platform": "any",
           "notes": "",
-          "is_checksummed": true
+          "is_checksummed": true,
+          "license": "GPL-2.0-or-later",
+          "source": "https://wwwlehre.dhbw-stuttgart.de/~sschulz/E/E.html"
         }
       ],
       "gap_id": null,
@@ -295,7 +948,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "apalache",
@@ -312,6 +967,10 @@
         "state_model"
       ],
       "installer_entry": "ensure_apalache",
+      "installer_plugin": "state_model",
+      "license": "Apache-2.0",
+      "source": "https://github.com/apalache-mc/apalache",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -321,26 +980,31 @@
           "sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
           "platform": "any",
           "notes": "",
-          "is_checksummed": true
+          "is_checksummed": true,
+          "license": "Apache-2.0",
+          "source": "https://github.com/apalache-mc/apalache"
         }
       ],
       "gap_id": null,
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
-          "--version"
+          "version"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "artifact_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "tlc",
       "display_name": "TLC explicit-state model checker",
-      "availability": "declared_gap",
+      "availability": "managed_pin",
       "runtime": "jvm",
       "resource_class": "jvm",
       "executable_candidates": [
@@ -352,20 +1016,63 @@
         "tla",
         "state_model"
       ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "tlc",
+      "installer_entry": "ensure_tlc",
+      "installer_plugin": "state_model",
+      "license": "MIT",
+      "source": "https://github.com/tlaplus/tlaplus",
+      "identity_kind": "immutable_release_tag",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "tlc",
+          "version": "1.8.0",
+          "artifact_url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar",
+          "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+          "platform": "any",
+          "notes": "Reviewed TLA+ tools 1.8.0 release artifact; installer requires this immutable jar digest before staging or publication",
+          "is_checksummed": true,
+          "license": "MIT",
+          "source": "https://github.com/tlaplus/tlaplus",
+          "revision": "30cc360",
+          "release_tag": "v1.8.0"
+        }
+      ],
+      "gap_id": null,
       "offline_probe": {
-        "method": "bounded_version_argv",
+        "method": "bounded_tlc_help_semantics",
         "argv": [
-          "--version"
+          "-help"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1
+        ],
+        "required_markers": [
+          "TLC - provides model checking and simulation of TLA+ specifications",
+          "SYNOPSIS",
+          "DESCRIPTION"
+        ],
+        "artifact_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+        "release_tag": "v1.8.0",
+        "revision": "30cc360"
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "tlc",
+        "artifact_kind": "jvm_jar",
+        "release_tag": "v1.8.0",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "revision": "30cc360"
+      }
     },
     {
       "tool_id": "tamarin",
@@ -380,6 +1087,10 @@
         "protocol"
       ],
       "installer_entry": "ensure_tamarin",
+      "installer_plugin": "tamarin",
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/tamarin-prover/tamarin-prover",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -387,9 +1098,23 @@
           "version": "1.12.0",
           "artifact_url": "https://github.com/tamarin-prover/tamarin-prover/releases/download/1.12.0/tamarin-prover-1.12.0-linux64-ubuntu.tar.gz",
           "sha256": "201be06f469e47cff554df6ca93db8366fc2c69d70c61fcbd1370a1074b469c6",
-          "platform": "any",
+          "platform": "linux-x86_64",
           "notes": "",
-          "is_checksummed": true
+          "is_checksummed": true,
+          "license": "GPL-3.0-or-later",
+          "source": "https://github.com/tamarin-prover/tamarin-prover"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "tamarin",
+          "version": "1.12.0",
+          "artifact_url": "https://github.com/tamarin-prover/tamarin-prover/archive/refs/tags/1.12.0.tar.gz",
+          "sha256": "35f0262e770db3632fcb297deb6ecc2d7c724c693fecfe97892e8224fa161956",
+          "platform": "source",
+          "notes": "Source archive for non-linux64 platforms",
+          "is_checksummed": true,
+          "license": "GPL-3.0-or-later",
+          "source": "https://github.com/tamarin-prover/tamarin-prover"
         }
       ],
       "gap_id": null,
@@ -403,7 +1128,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "maude",
@@ -418,6 +1145,10 @@
         "protocol"
       ],
       "installer_entry": "ensure_maude",
+      "installer_plugin": "tamarin",
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/maude-lang/Maude",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -425,9 +1156,23 @@
           "version": "3.5.1",
           "artifact_url": "https://github.com/maude-lang/Maude/releases/download/Maude3.5.1/Maude-3.5.1-linux-x86_64.zip",
           "sha256": "72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c",
-          "platform": "any",
+          "platform": "linux-x86_64",
           "notes": "",
-          "is_checksummed": true
+          "is_checksummed": true,
+          "license": "GPL-3.0-or-later",
+          "source": "https://github.com/maude-lang/Maude"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "maude",
+          "version": "3.5.1",
+          "artifact_url": "https://deb.debian.org/debian/pool/main/m/maude/maude_3.5.1-1+b1_arm64.deb",
+          "sha256": "4ed71228ef698a6019ee011e54fbb04fe74145fce465e65838a6c92f743ef730",
+          "platform": "linux-aarch64",
+          "notes": "Debian arm64 package pin",
+          "is_checksummed": true,
+          "license": "GPL-3.0-or-later",
+          "source": "https://github.com/maude-lang/Maude"
         }
       ],
       "gap_id": null,
@@ -441,7 +1186,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "proverif",
@@ -456,6 +1203,10 @@
         "protocol"
       ],
       "installer_entry": "ensure_proverif",
+      "installer_plugin": "proverif",
+      "license": "GPL-2.0-or-later",
+      "source": "https://proverif.inria.fr/",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -465,21 +1216,25 @@
           "sha256": "4871f53c32ab4a04669a060c4886ba5d9080496963fb980a9a62d2c429ceabc4",
           "platform": "any",
           "notes": "",
-          "is_checksummed": true
+          "is_checksummed": true,
+          "license": "GPL-2.0-or-later",
+          "source": "https://proverif.inria.fr/"
         }
       ],
       "gap_id": null,
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
-          "--version"
+          "-help"
         ],
         "timeout_seconds": 5,
         "network": false
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "lean",
@@ -495,6 +1250,10 @@
         "reconstruction"
       ],
       "installer_entry": "ensure_lean",
+      "installer_plugin": "kernel",
+      "license": "Apache-2.0",
+      "source": "https://github.com/leanprover/lean4",
+      "identity_kind": "immutable_toolchain_identity",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -503,8 +1262,10 @@
           "artifact_url": "",
           "sha256": "",
           "platform": "any",
-          "notes": "",
-          "is_checksummed": false
+          "notes": "Immutable elan toolchain identity leanprover/lean4:v4.31.0",
+          "is_checksummed": false,
+          "license": "Apache-2.0",
+          "source": "https://github.com/leanprover/lean4"
         }
       ],
       "gap_id": null,
@@ -520,7 +1281,17 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "artifact_kind": "elan_toolchain",
+        "toolchain_identity": "leanprover/lean4:v4.31.0",
+        "requires_checksum_at_install": false,
+        "unsupported_platforms_fail_closed": true
+      }
     },
     {
       "tool_id": "coq",
@@ -537,6 +1308,10 @@
         "reconstruction"
       ],
       "installer_entry": "ensure_coq",
+      "installer_plugin": "rocq",
+      "license": "LGPL-2.1-only",
+      "source": "https://rocq-prover.org/",
+      "identity_kind": "opam_package",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
@@ -545,8 +1320,10 @@
           "artifact_url": "",
           "sha256": "",
           "platform": "any",
-          "notes": "",
-          "is_checksummed": false
+          "notes": "Isolated OPAM package identity rocq-prover.9.1.1",
+          "is_checksummed": false,
+          "license": "LGPL-2.1-only",
+          "source": "https://rocq-prover.org/"
         }
       ],
       "gap_id": null,
@@ -560,7 +1337,18 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "artifact_kind": "opam_package",
+        "package_identity": "rocq-prover.9.1.1",
+        "opam_repository": "https://rocq-prover.org/opam/released",
+        "requires_checksum_at_install": false,
+        "unsupported_platforms_fail_closed": true
+      }
     },
     {
       "tool_id": "isabelle",
@@ -577,35 +1365,79 @@
         "hammer"
       ],
       "installer_entry": "ensure_isabelle",
+      "installer_plugin": "isabelle",
+      "license": "BSD-3-Clause",
+      "source": "https://isabelle.in.tum.de/",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "isabelle",
           "version": "Isabelle2025-2",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "any",
+          "artifact_url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_linux.tar.gz",
+          "sha256": "a20a507bc7c1270d8be96a9f3fbec06345387789d2dc2c4d3df6260d47bfb33c",
+          "platform": "linux-x86_64",
           "notes": "",
-          "is_checksummed": false
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://isabelle.in.tum.de/"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "isabelle",
+          "version": "Isabelle2025-2",
+          "artifact_url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_linux_arm.tar.gz",
+          "sha256": "650a9669b4a087675afb34294d82ded2f0704d47d580dd9ed45cddc9f1764bdd",
+          "platform": "linux-aarch64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://isabelle.in.tum.de/"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "isabelle",
+          "version": "Isabelle2025-2",
+          "artifact_url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_macos.tar.gz",
+          "sha256": "8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e",
+          "platform": "darwin-x86_64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://isabelle.in.tum.de/"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "isabelle",
+          "version": "Isabelle2025-2",
+          "artifact_url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_macos.tar.gz",
+          "sha256": "8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e",
+          "platform": "darwin-arm64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://isabelle.in.tum.de/"
         }
       ],
       "gap_id": null,
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
-          "--version"
+          "version"
         ],
         "timeout_seconds": 5,
         "network": false
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "hyperltl",
-      "display_name": "HyperLTL external engine",
-      "availability": "declared_gap",
+      "display_name": "EAHyper HyperLTL satisfiability engine",
+      "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "hyperproperty",
       "executable_candidates": [
@@ -615,25 +1447,86 @@
       "families": [
         "hyperproperty"
       ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "hyper_tools",
+      "installer_entry": "ensure_hyperltl",
+      "installer_plugin": "hyperproperty",
+      "license": "MIT",
+      "source": "https://github.com/reactive-systems/eahyper",
+      "identity_kind": "immutable_git_commit",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "hyperltl",
+          "version": "e3a41290",
+          "artifact_url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+          "sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+          "platform": "any",
+          "notes": "Official EAHyper commit pin for HyperLTL satisfiability; binds source archive digest and decidable-fragment ceiling",
+          "is_checksummed": true,
+          "license": "MIT",
+          "source": "https://github.com/reactive-systems/eahyper",
+          "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a"
+        }
+      ],
+      "gap_id": null,
       "offline_probe": {
-        "method": "bounded_version_argv",
+        "method": "bounded_usage_identity",
         "argv": [
-          "--version"
+          "-h"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1,
+          2
+        ],
+        "required_markers": [
+          "formula"
+        ]
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "hyper_tools",
+        "artifact_kind": "git_commit_source_archive",
+        "release_tag": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+        "build_dependencies": {
+          "ocaml": ">=4.08",
+          "dune": ">=2.0",
+          "menhir": ">=20201216",
+          "opam": ">=2.0"
+        },
+        "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)",
+        "upstream_product": "eahyper",
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+          "source_archive_url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+          "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+          "hermetic_engines_are_differential_only": true,
+          "never_promote_hermetic_engine_as_vendor": true,
+          "case_oracle_cannot_satisfy_vendor": true,
+          "linux_aarch64_supported": true,
+          "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)"
+        }
+      }
     },
     {
       "tool_id": "autohyper",
-      "display_name": "AutoHyper external engine",
-      "availability": "declared_gap",
+      "display_name": "AutoHyper HyperLTL model checker",
+      "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "hyperproperty",
       "executable_candidates": [
@@ -643,25 +1536,92 @@
       "families": [
         "hyperproperty"
       ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "hyper_tools",
+      "installer_entry": "ensure_autohyper",
+      "installer_plugin": "hyperproperty",
+      "license": "MIT",
+      "source": "https://github.com/AutoHyper/AutoHyper",
+      "identity_kind": "immutable_git_commit",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "autohyper",
+          "version": "c94722d1",
+          "artifact_url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+          "sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+          "platform": "any",
+          "notes": "Official AutoHyper commit pin; binds .NET 8 runtime, Spot tools, build inputs, and executable digest",
+          "is_checksummed": true,
+          "license": "MIT",
+          "source": "https://github.com/AutoHyper/AutoHyper",
+          "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109"
+        }
+      ],
+      "gap_id": null,
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
           "--version"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1
+        ],
+        "identity_from_path_pin": true
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "hyper_tools",
+        "artifact_kind": "git_commit_source_archive",
+        "release_tag": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+        "build_dependencies": {
+          "dotnet-sdk": "8.0.300",
+          "spot": ">=2.12",
+          "spot-tools": "ltl2tgba,autfilt,dstar2tgba"
+        },
+        "runtime_dependencies": {
+          "dotnet-runtime": "8.0",
+          "spot": ">=2.12"
+        },
+        "upstream_product": "autohyper",
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+          "source_archive_url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+          "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+          "hermetic_engines_are_differential_only": true,
+          "never_promote_hermetic_engine_as_vendor": true,
+          "case_oracle_cannot_satisfy_vendor": true,
+          "linux_aarch64_supported": true,
+          "dotnet_runtime": "8.0",
+          "dotnet_sdk": "8.0.300",
+          "spot_version": ">=2.12",
+          "spot_tools": [
+            "ltl2tgba",
+            "autfilt",
+            "dstar2tgba"
+          ]
+        }
+      }
     },
     {
       "tool_id": "mchyper",
-      "display_name": "MCHyper external engine",
-      "availability": "declared_gap",
+      "display_name": "MCHyper hardware HyperLTL model checker",
+      "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "hyperproperty",
       "executable_candidates": [
@@ -671,20 +1631,86 @@
       "families": [
         "hyperproperty"
       ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "hyper_tools",
+      "installer_entry": "ensure_mchyper",
+      "installer_plugin": "hyperproperty",
+      "license": "MIT",
+      "source": "https://github.com/reactive-systems/MCHyper",
+      "identity_kind": "immutable_git_commit",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "mchyper",
+          "version": "87f0f857",
+          "artifact_url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+          "sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+          "platform": "any",
+          "notes": "Official MCHyper commit pin; binds ABC/AIGER dependencies, supported fragment, and live witness/counterexample cases",
+          "is_checksummed": true,
+          "license": "MIT",
+          "source": "https://github.com/reactive-systems/MCHyper",
+          "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9"
+        }
+      ],
+      "gap_id": null,
       "offline_probe": {
-        "method": "bounded_version_argv",
+        "method": "bounded_usage_identity",
         "argv": [
-          "--version"
+          "-h"
         ],
         "timeout_seconds": 5,
-        "network": false
+        "network": false,
+        "accepted_returncodes": [
+          0,
+          1
+        ],
+        "required_markers": [
+          "Usage"
+        ]
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "hyper_tools",
+        "artifact_kind": "git_commit_source_archive",
+        "release_tag": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+        "build_dependencies": {
+          "ghc": ">=8.4",
+          "cabal": ">=2.4",
+          "python": ">=2.7",
+          "abc": "1.01",
+          "aiger-tools": "1.9.4"
+        },
+        "runtime_dependencies": {
+          "abc": "1.01",
+          "aiger-tools": "1.9.4"
+        },
+        "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths",
+        "upstream_product": "mchyper",
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+          "source_archive_url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+          "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+          "hermetic_engines_are_differential_only": true,
+          "never_promote_hermetic_engine_as_vendor": true,
+          "case_oracle_cannot_satisfy_vendor": true,
+          "linux_aarch64_supported": true,
+          "abc_version": "1.01",
+          "aiger_tools_version": "1.9.4"
+        }
+      }
     },
     {
       "tool_id": "datalog-authorization",
@@ -698,6 +1724,10 @@
         "datalog"
       ],
       "installer_entry": "",
+      "installer_plugin": "",
+      "license": "Apache-2.0",
+      "source": "ipfs_datasets_py.logic.backends.datalog",
+      "identity_kind": "in_process",
       "pins": [],
       "gap_id": null,
       "offline_probe": {
@@ -710,7 +1740,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "secpal-authorization",
@@ -724,6 +1756,10 @@
         "secpal"
       ],
       "installer_entry": "",
+      "installer_plugin": "",
+      "license": "Apache-2.0",
+      "source": "ipfs_datasets_py.logic.backends.datalog",
+      "identity_kind": "in_process",
       "pins": [],
       "gap_id": null,
       "offline_probe": {
@@ -736,12 +1772,14 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "souffle",
       "display_name": "External Souffl\u00e9 Datalog engine",
-      "availability": "declared_gap",
+      "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "authorization",
       "executable_candidates": [
@@ -751,125 +1789,23 @@
         "authorization",
         "datalog"
       ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "datalog_secpal_external",
-      "offline_probe": {
-        "method": "bounded_version_argv",
-        "argv": [
-          "--version"
-        ],
-        "timeout_seconds": 5,
-        "network": false
-      },
-      "network_during_verification": false,
-      "install_during_verification": false,
-      "download_during_verification": false
-    },
-    {
-      "tool_id": "secpal",
-      "display_name": "External SecPAL engine",
-      "availability": "declared_gap",
-      "runtime": "native",
-      "resource_class": "authorization",
-      "executable_candidates": [
-        "secpal"
-      ],
-      "families": [
-        "authorization",
-        "secpal"
-      ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "datalog_secpal_external",
-      "offline_probe": {
-        "method": "bounded_version_argv",
-        "argv": [
-          "--version"
-        ],
-        "timeout_seconds": 5,
-        "network": false
-      },
-      "network_during_verification": false,
-      "install_during_verification": false,
-      "download_during_verification": false
-    },
-    {
-      "tool_id": "runtime-mtl",
-      "display_name": "In-process runtime MTL monitor",
-      "availability": "in_process",
-      "runtime": "in_process",
-      "resource_class": "monitor",
-      "executable_candidates": [],
-      "families": [
-        "temporal",
-        "runtime_mtl"
-      ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": null,
-      "offline_probe": {
-        "method": "bounded_version_argv",
-        "argv": [
-          "--version"
-        ],
-        "timeout_seconds": 5,
-        "network": false
-      },
-      "network_during_verification": false,
-      "install_during_verification": false,
-      "download_during_verification": false
-    },
-    {
-      "tool_id": "runtime-mtl-external",
-      "display_name": "External runtime MTL monitor (gap)",
-      "availability": "declared_gap",
-      "runtime": "native",
-      "resource_class": "monitor",
-      "executable_candidates": [
-        "runtime-mtl",
-        "mtl-monitor"
-      ],
-      "families": [
-        "temporal",
-        "runtime_mtl"
-      ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "runtime_mtl_external",
-      "offline_probe": {
-        "method": "bounded_version_argv",
-        "argv": [
-          "--version"
-        ],
-        "timeout_seconds": 5,
-        "network": false
-      },
-      "network_during_verification": false,
-      "install_during_verification": false,
-      "download_during_verification": false
-    },
-    {
-      "tool_id": "symbolicai",
-      "display_name": "SymbolicAI advisor",
-      "availability": "advisor_only",
-      "runtime": "python",
-      "resource_class": "advisor",
-      "executable_candidates": [],
-      "families": [
-        "advisor"
-      ],
-      "installer_entry": "ensure_symbolicai",
+      "installer_entry": "ensure_souffle",
+      "installer_plugin": "authorization",
+      "license": "UPL-1.0",
+      "source": "https://github.com/souffle-lang/souffle",
+      "identity_kind": "immutable_source_tag",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
-          "tool_id": "symbolicai",
-          "version": ">=1.14.0,<2.0.0",
-          "artifact_url": "",
-          "sha256": "",
+          "tool_id": "souffle",
+          "version": "2.4.1",
+          "artifact_url": "https://github.com/souffle-lang/souffle/archive/refs/tags/2.4.1.tar.gz",
+          "sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
           "platform": "any",
-          "notes": "",
-          "is_checksummed": false
+          "notes": "Immutable checksummed GitHub release tag 2.4.1 source archive; vendor install binds this digest",
+          "is_checksummed": true,
+          "license": "UPL-1.0",
+          "source": "https://github.com/souffle-lang/souffle"
         }
       ],
       "gap_id": null,
@@ -883,7 +1819,380 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "datalog_secpal_external",
+        "artifact_kind": "source_tag",
+        "release_tag": "2.4.1",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [
+          "linux-x86_64",
+          "linux-aarch64",
+          "darwin-x86_64",
+          "darwin-arm64"
+        ],
+        "build_dependencies": {
+          "cmake": ">=3.15",
+          "flex": ">=2.6",
+          "bison": ">=3.0",
+          "mcpp": ">=2.7",
+          "sqlite3": ">=3.0",
+          "libffi": ">=3.0",
+          "python3": ">=3.8"
+        },
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+          "hermetic_shadows_are_differential_only": true,
+          "never_promote_hermetic_shadow_as_vendor": true
+        }
+      }
+    },
+    {
+      "tool_id": "secpal",
+      "display_name": "External SecPAL engine",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "authorization",
+      "executable_candidates": [
+        "secpal"
+      ],
+      "families": [
+        "authorization",
+        "secpal"
+      ],
+      "installer_entry": "ensure_secpal",
+      "installer_plugin": "authorization",
+      "license": "Microsoft SecPAL Research Release EULA",
+      "source": "https://www.microsoft.com/en-us/research/project/secpal/",
+      "identity_kind": "operator_bound_artifact",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "secpal",
+          "version": "1.0.0-reviewed",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "Compatibility identity for the retired SecPAL line. The recovered official MSI has ProductVersion 1.0.0; this managed-pin label is not an executable version claim. Deployment-contract supported_platforms is the live execution matrix and is intentionally empty; platform-neutral artifact intake is modeled separately.",
+          "is_checksummed": false,
+          "license": "Microsoft SecPAL Research Release EULA",
+          "source": "https://www.microsoft.com/en-us/research/project/secpal/"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "datalog_secpal_external",
+        "artifact_kind": "operator_bound",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [],
+        "platform_exceptions": {
+          "linux-x86_64": {
+            "classification": "unsupported_here",
+            "narrow_scope": true,
+            "installed": false,
+            "complete": false,
+            "authoritative": false,
+            "production_certified": false,
+            "notes": "The recovered official MSI establishes artifact provenance only. It supplies no reviewed general policy CLI or Linux execution-support contract, so linux-x86_64 cannot install, certify, or count as complete."
+          },
+          "linux-aarch64": {
+            "classification": "unsupported_here",
+            "narrow_scope": true,
+            "installed": false,
+            "complete": false,
+            "authoritative": false,
+            "production_certified": false,
+            "notes": "External SecPAL has no reviewed linux-aarch64 vendor pin under the current contract; never counts as installed, complete, authoritative, or production-certified on this host."
+          }
+        },
+        "vendor_install": {
+          "mode": "operator_bound_platform_matrix",
+          "hermetic_shadows_are_differential_only": true,
+          "never_promote_hermetic_shadow_as_vendor": true,
+          "upstream_distribution_status": "retired",
+          "installer_implemented": false,
+          "artifact_intake_implemented": true,
+          "operator_artifact": {
+            "schema_version": "secpal-reviewed-operator-artifact/v1",
+            "status": "reviewed_restricted_artifact",
+            "evidence_class": "reviewed_official_artifact",
+            "artifact_provisioning": "explicit_local_path_only",
+            "artifact_format": "msi",
+            "artifact_filename": "SecPal_Research_Release.msi",
+            "artifact_sha256": "c1988b9f1f6a2fb602bac4fc777a1765e59e74126285a095684a4743ea683159",
+            "artifact_size_bytes": 2458624,
+            "publisher": "Microsoft Research",
+            "release_version": "1.0.0",
+            "product_name": "Microsoft SecPAL Research Release",
+            "product_code": "{957BD905-629C-45B0-AA93-EC1AAD218115}",
+            "upgrade_code": "{7CCC29E2-7A1E-4222-B286-1469B0810D19}",
+            "package_revision": "{50E0C48B-84D3-4256-B6A7-5CDF0FC2EE7B}",
+            "original_download_url": "http://ftp.research.microsoft.com/downloads/81e28b29-10be-4551-9ede-1690f32e1581/SecPal_Research_Release.msi",
+            "archived_project_metadata_url": "https://web.archive.org/web/20090803173817id_/http://research.microsoft.com/en-us/downloads/81e28b29-10be-4551-9ede-1690f32e1581/default.aspx",
+            "archived_binary_evidence_url": "https://web.archive.org/web/20151206102411id_/ftp://ftp.research.microsoft.com/downloads/81e28b29-10be-4551-9ede-1690f32e1581/SecPal_Research_Release.msi",
+            "archive_is_acquisition_authority": false,
+            "provenance_evidence_sha256": "",
+            "authenticode_evidence": {
+              "verified": true,
+              "signer": "Microsoft Corporation",
+              "description": "Microsoft.Research.Secpal",
+              "timestamp": "2007-06-09T03:54:32Z",
+              "sha1": "4e09b091fb6d770867fdbf3cb2fa7a8c2c53b002",
+              "calculated_message_digest_sha1": "0cd8cfb8b6cfb5de07df9c466090f5bc93e53c6b",
+              "signer_serial": "610751c700000000000e",
+              "timestamp_serial": "614752ba000000000004",
+              "signature_verification_succeeded": true,
+              "signature_crl_verification_succeeded_at_review": true,
+              "verified_signatures": 1,
+              "offline_tests_require_current_crl": false
+            },
+            "license_evidence": {
+              "identifier": "Microsoft SecPAL Research Release EULA",
+              "embedded_path": "EULA.rtf",
+              "sha256": "de075e7848fb737b9da3cfec5ce7c906742f4767fa04ed2bc38e69e2dd5e4fad",
+              "reviewed": true,
+              "acceptance_required": true,
+              "redistribution_terms": "prohibited_third_parties_must_obtain_from_microsoft",
+              "execution_terms": "design_develop_test_or_research_only_not_intended_for_live_environment"
+            },
+            "runtime_contract": {
+              "kind": "dotnet-framework-assembly",
+              "version_constraint": "CLR v2.0.50727",
+              "binary_format": "PE32",
+              "launcher_candidates": [],
+              "runtime_validated": false
+            },
+            "executable_contract": {
+              "interface": "",
+              "entrypoint": "",
+              "version_probe_argv": [],
+              "semantic_argv": [],
+              "semantic_probe": "",
+              "cli_available": false,
+              "reviewed_payloads": [
+                "Microsoft.Research.SecPal.Dll",
+                "AuditLogViewer.exe",
+                "SecPalSamples.exe"
+              ],
+              "notes": "The official MSI contains a library, viewer, samples, documentation, and source; it contains no reviewed policy-file command-line interface."
+            },
+            "platform_matrix_evidence": {
+              "sha256": "",
+              "reviewed": true,
+              "msi_summary_template": ";1033",
+              "payload_binary_format": "PE32 CLR IL",
+              "artifact_platforms": [],
+              "artifact_intake_platforms": [
+                "any-user-local-host"
+              ],
+              "live_execution_supported_platforms": [],
+              "linux_execution_supported": false
+            },
+            "operator_compatibility_probe": {
+              "schema_version": "secpal-operator-compatibility-probe/v1",
+              "status": "observed_unbound",
+              "evidence_class": "operator_compatibility_probe",
+              "host_platform": "linux-aarch64",
+              "runtime": "mono-sgen",
+              "runtime_version": "6.8.0.105",
+              "runtime_package_identity_bound": false,
+              "authentic_core_loaded": true,
+              "core_dll_sha256": "2afacfc4121332c7fec5df32911e9a8b8d9926807af15d8c71b41a2928ee8b0a",
+              "samples_executable_sha256": "9a46e3bbf7bc58f0b9964814def3dd1224cd3893bfc34c72c13f3b8190599a07",
+              "sample_scenarios_executed": 18,
+              "sample_scenarios_exit_zero": true,
+              "representative_scenarios_observed": [
+                "DelegationScenario",
+                "TwoLevelDelegationScenario",
+                "ExclusionScenario",
+                "RoleExclusionScenario",
+                "CanActAs",
+                "Capability"
+              ],
+              "arbitrary_policy_interface_verified": false,
+              "contract_complete": false,
+              "block_reasons": [
+                "runtime_package_identity_unbound",
+                "replayable_evidence_unbound",
+                "operator_sample_semantics_incomplete",
+                "arbitrary_policy_interface_missing"
+              ],
+              "evidence_sha256": "",
+              "vendor_supported_platform": false,
+              "production_use_permitted": false,
+              "live_certification_eligible": false,
+              "notes": "Authentic Microsoft SecPalSamples.exe and Microsoft.Research.SecPal.Dll were observed under an isolated Mono runtime. This is operator compatibility evidence only; the Mono package identity and replayable evidence are not yet bound, and the result supplies neither a general policy CLI nor vendor platform support."
+            },
+            "transactional_install": true,
+            "rollback_required": true,
+            "fixtures_can_promote": false,
+            "downloads_permitted": false,
+            "redistribution_permitted": false,
+            "production_use_permitted": false,
+            "artifact_intake_only": true,
+            "live_certification_eligible": false
+          }
+        }
+      }
+    },
+    {
+      "tool_id": "runtime-mtl",
+      "display_name": "In-process runtime MTL monitor",
+      "availability": "in_process",
+      "runtime": "in_process",
+      "resource_class": "monitor",
+      "executable_candidates": [],
+      "families": [
+        "temporal",
+        "runtime_mtl"
+      ],
+      "installer_entry": "",
+      "installer_plugin": "",
+      "license": "Apache-2.0",
+      "source": "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+      "identity_kind": "in_process",
+      "pins": [],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
+    },
+    {
+      "tool_id": "runtime-mtl-external",
+      "display_name": "External runtime MTL monitor",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "monitor",
+      "executable_candidates": [
+        "runtime-mtl-external",
+        "runtime-mtl",
+        "mtl-monitor"
+      ],
+      "families": [
+        "temporal",
+        "runtime_mtl"
+      ],
+      "installer_entry": "ensure_runtime_mtl_external",
+      "installer_plugin": "runtime_mtl",
+      "license": "Apache-2.0",
+      "source": "ipfs_datasets_py/typescript/logic-runtime-mtl",
+      "identity_kind": "typescript_package",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "runtime-mtl-external",
+          "version": "1.0.0-reviewed",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "Reviewed external MTL monitor deployment identity for differential parity",
+          "is_checksummed": false,
+          "license": "Apache-2.0",
+          "source": "ipfs_datasets_py/typescript/logic-runtime-mtl"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "runtime_mtl_external",
+        "artifact_kind": "typescript_package",
+        "package_identity": "@ipfs-datasets/logic-runtime-mtl",
+        "requires_checksum_at_install": false,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [
+          "any"
+        ]
+      }
+    },
+    {
+      "tool_id": "symbolicai",
+      "display_name": "SymbolicAI advisor",
+      "availability": "advisor_only",
+      "runtime": "python",
+      "resource_class": "advisor",
+      "executable_candidates": [],
+      "families": [
+        "advisor"
+      ],
+      "installer_entry": "ensure_symbolicai",
+      "installer_plugin": "advisors",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/ExtensityAI/symbolicai",
+      "identity_kind": "python_package",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "symbolicai",
+          "version": ">=1.14.0,<2.0.0",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "PyPI package range pin",
+          "is_checksummed": false,
+          "license": "BSD-3-Clause",
+          "source": "https://pypi.org/project/symbolicai/"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "ergoai",
@@ -901,16 +2210,40 @@
         "atp"
       ],
       "installer_entry": "ensure_ergoai",
+      "installer_plugin": "advisors",
+      "license": "Apache-2.0",
+      "source": "https://github.com/ErgoAI/ErgoEngine",
+      "identity_kind": "immutable_release_tag",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "ergoai",
           "version": "3.0",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "any",
-          "notes": "",
-          "is_checksummed": false
+          "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+          "platform": "linux-x86_64",
+          "release_tag": "v3.0_release",
+          "identity_kind": "immutable_release_tag",
+          "artifact_size_bytes": 53064767,
+          "notes": "Official source-bearing ErgoAI 3.0 .run installer; checksum verified before execution",
+          "is_checksummed": true,
+          "license": "Apache-2.0",
+          "source": "https://github.com/ErgoAI/ErgoEngine"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "ergoai",
+          "version": "3.0",
+          "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+          "platform": "linux-aarch64",
+          "release_tag": "v3.0_release",
+          "identity_kind": "immutable_release_tag",
+          "artifact_size_bytes": 53064767,
+          "notes": "Official source-bearing ErgoAI 3.0 .run installer, compiled and semantically exercised on Linux aarch64; checksum verified before execution",
+          "is_checksummed": true,
+          "license": "Apache-2.0",
+          "source": "https://github.com/ErgoAI/ErgoEngine"
         }
       ],
       "gap_id": null,
@@ -924,12 +2257,373 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "artifact_kind": "release_installer",
+        "release_tag": "v3.0_release",
+        "requires_checksum_at_install": true,
+        "unsupported_platforms_fail_closed": true,
+        "supported_platforms": [
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "license_components": [
+          "Apache-2.0",
+          "LGPL-2.0"
+        ],
+        "required_build_commands": [
+          "sh",
+          "bash",
+          "make",
+          "gcc",
+          "cc",
+          "as",
+          "flex",
+          "bison",
+          "m4",
+          "ar",
+          "ranlib",
+          "ld",
+          "tar",
+          "gzip",
+          "cp",
+          "dirname",
+          "ln",
+          "mkdir",
+          "mktemp",
+          "mv",
+          "rm",
+          "df",
+          "tail",
+          "awk",
+          "head",
+          "wc",
+          "tr",
+          "which",
+          "md5sum",
+          "basename",
+          "cut",
+          "dd",
+          "expr",
+          "pwd",
+          "date",
+          "sed",
+          "grep",
+          "cat",
+          "echo",
+          "chmod",
+          "touch",
+          "uname",
+          "find",
+          "sort",
+          "install",
+          "env",
+          "rmdir",
+          "hostname",
+          "ls",
+          "diff",
+          "readlink",
+          "split",
+          "tee",
+          "arch"
+        ],
+        "required_absolute_commands": [
+          "/bin/sh",
+          "/bin/bash",
+          "/bin/rm",
+          "/bin/echo",
+          "/bin/touch",
+          "/bin/uname",
+          "/bin/arch",
+          "/usr/bin/uname",
+          "/usr/bin/arch"
+        ],
+        "dependency_version_floors": {
+          "make": ">=3.81",
+          "gcc": ">=4.8",
+          "flex": ">=2.6",
+          "bison": ">=3.0"
+        },
+        "runtime_dependencies": {
+          "xsb": "bundled_with_official_release_compile_for_host",
+          "runergo": "official_entry_point",
+          "posix_shell": "required_for_launchers",
+          "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+        },
+        "optional_java_api_dependencies": {
+          "runtime": [
+            "java>=1.8",
+            "which",
+            "dirname"
+          ],
+          "build": [
+            "java>=1.8",
+            "javac",
+            "jar",
+            "which",
+            "dirname",
+            "touch"
+          ],
+          "missing_optional_capabilities_do_not_block_core_ergoai": true,
+          "managed_jdk_tool_id": "temurin-jdk",
+          "never_trust_ambient_java_home": true
+        },
+        "config_hardening": {
+          "schema_version": "ergoai-config-hardening/v1",
+          "source_sha256": "3bee8a6aa7d17854b81f14fe87cb35a5c89a0c275362266b7eef9a2e5f1fcaa4",
+          "hardened_sha256": "b21e4a85b9cc214d4e61f5204124baf2dd6daecf597dd4cd72ba040b7bc0bed9",
+          "private_xsb_workspace_required": true,
+          "exact_replacement_count": 6
+        },
+        "bound_build_environment": {
+          "schema_version": "ergoai-bound-build-environment/v1",
+          "path_model": "private-staging-only/v1",
+          "ambient_toolchain_overrides_inherited": false,
+          "allowlisted_environment_keys": [
+            "ALL_PROXY",
+            "DISPLAY",
+            "ERGOAI_MANAGED_XSB_TMPDIR",
+            "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+            "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+            "FORMAL_VERIFICATION_FORBID_INSTALL",
+            "FORMAL_VERIFICATION_FORBID_NETWORK",
+            "GIT_TERMINAL_PROMPT",
+            "HOME",
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "LANG",
+            "LC_ALL",
+            "NO_PROXY",
+            "PATH",
+            "PIP_DISABLE_PIP_VERSION_CHECK",
+            "PIP_NO_INDEX",
+            "SHELL",
+            "TERM",
+            "TMPDIR",
+            "all_proxy",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy"
+          ]
+        },
+        "bound_runtime_environment_contract": {
+          "schema_version": "ergoai-bound-runtime-environment/v1",
+          "path_model": "managed-symlink-only-exact-identities/v1",
+          "ambient_path_inherited": false,
+          "symlink_only_exact_command_identities": true,
+          "optional_java_requires_complete_capability": true
+        },
+        "runtime_execution_policy": "private-ergoai-copy-shared-immutable-xsb/v1",
+        "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+        "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+        "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+        "developer_rebuild_metadata_relocated": false,
+        "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4",
+        "publication_commit_point": "atomic_identity_manifest_replace",
+        "runtime_state_policy": "mutable-nonauthoritative-outside-vendor-identity/v1",
+        "entry_point": "runergo",
+        "identity_probe": {
+          "method": "bounded_version_argv",
+          "argv": [
+            "--version"
+          ],
+          "timeout_seconds": 5,
+          "network": false,
+          "expected_identity_substring": "ErgoAI 3.0"
+        },
+        "acquisition_conditions": {
+          "requires_explicit_opt_in": true,
+          "checksum_required_before_execute": true,
+          "download_during_certification_forbidden": true,
+          "user_local_only": true,
+          "offline_after_acquisition": true,
+          "atomic_staged_install": true,
+          "relocatable_install_root": true,
+          "bounded_acquisition": true,
+          "symlink_free_install_paths": true
+        },
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true
+        },
+        "authority_ceiling": "advisory",
+        "evidence_class": "proposal_or_candidate_until_independent_reconstruction",
+        "live_semantic_checks_required": [
+          "entailment",
+          "non_entailment",
+          "contradiction",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ],
+        "live_toolchain_contract_interface": "ErgoAILiveToolchainContract@1",
+        "goal_id": "FVT-G218",
+        "task_id": "FVT-085",
+        "optional_java_api_managed_jdk_tool_id": "temurin-jdk",
+        "optional_java_api_never_trusts_ambient_java_home": true,
+        "optional_java_api_missing_does_not_block_core": true
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      }
+    },
+    {
+      "tool_id": "temurin-jdk",
+      "display_name": "Eclipse Temurin JDK 17 (managed ErgoAI Java API)",
+      "availability": "managed_pin",
+      "runtime": "jvm",
+      "resource_class": "jvm",
+      "executable_candidates": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "families": [
+        "advisors",
+        "flogic"
+      ],
+      "installer_entry": "ensure_temurin_jdk",
+      "installer_plugin": "advisors",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://adoptium.net/",
+      "identity_kind": "immutable_release_archive",
+      "publisher": "Eclipse Adoptium",
+      "support_only": true,
+      "authority_tool": false,
+      "optional_capability": "ergoai-java-api",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "temurin-jdk",
+          "version": "17.0.20+8",
+          "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "be7668bc030d578b83d6d5ef9221d6d6729bbbca8cf94a7d52e16ac68b5a5a35",
+          "platform": "linux-x86_64",
+          "notes": "Reviewed Eclipse Temurin 17.0.20+8 OpenJDK JDK for linux-x86_64; publisher signature and sha256.txt evidence bound; never use ambient JAVA_HOME",
+          "is_checksummed": true,
+          "license": "GPL-2.0-with-classpath-exception",
+          "source": "https://adoptium.net/",
+          "publisher": "Eclipse Adoptium",
+          "release_name": "jdk-17.0.20+8",
+          "artifact_size_bytes": 193273593,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "x86_64",
+          "required_tool_identities": [
+            "java",
+            "javac",
+            "jar"
+          ],
+          "identity_kind": "immutable_release_archive"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "temurin-jdk",
+          "version": "17.0.20+8",
+          "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+          "platform": "linux-aarch64",
+          "notes": "Reviewed Eclipse Temurin 17.0.20+8 OpenJDK JDK for linux-aarch64; publisher signature and sha256.txt evidence bound; never use ambient JAVA_HOME",
+          "is_checksummed": true,
+          "license": "GPL-2.0-with-classpath-exception",
+          "source": "https://adoptium.net/",
+          "publisher": "Eclipse Adoptium",
+          "release_name": "jdk-17.0.20+8",
+          "artifact_size_bytes": 191960283,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "aarch64",
+          "required_tool_identities": [
+            "java",
+            "javac",
+            "jar"
+          ],
+          "identity_kind": "immutable_release_archive"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "-version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "17.0.20"
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "requires_checksum_at_install": true,
+        "release_tag": "jdk-17.0.20+8",
+        "publisher": "Eclipse Adoptium",
+        "symlink_safe_extraction": true,
+        "never_trust_ambient_java_home": true,
+        "never_download_moving_latest": true,
+        "optional_java_api_for_ergoai": true,
+        "missing_capability_does_not_block_core_ergoai": true,
+        "live_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+        "live_certification_interface": "ErgoAIJavaAPILiveCertification@1",
+        "goal_id": "FVT-G222",
+        "task_id": "FVT-090",
+        "live_goal_id": "FVT-G223",
+        "live_task_id": "FVT-091",
+        "single_flight_lock": true,
+        "force_replacement_rolls_back_to_previous_good": true,
+        "home_bounded_mutable_paths": true,
+        "publisher_evidence_required": true,
+        "hello_world_cannot_satisfy_vendor_consumer": true,
+        "timeout_terminates_process_tree": true,
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true,
+          "never_on_probe": true,
+          "never_on_dry_run": true
+        }
+      }
     },
     {
       "tool_id": "zkp-circuit",
       "display_name": "Production ZKP circuit binding",
-      "availability": "declared_gap",
+      "availability": "managed_pin",
       "runtime": "in_process",
       "resource_class": "circuit",
       "executable_candidates": [],
@@ -937,9 +2631,26 @@
         "attestation",
         "zkp"
       ],
-      "installer_entry": "",
-      "pins": [],
-      "gap_id": "circuit_witness",
+      "installer_entry": "ensure_zkp_circuit",
+      "installer_plugin": "zkp",
+      "license": "Apache-2.0",
+      "source": "config/formal_verification_zkp_deployment.lock.json",
+      "identity_kind": "deployment_artifact_schema",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "zkp-circuit",
+          "version": "deployment-bound",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "Secret-safe deployment binding only; no private witness material in lock",
+          "is_checksummed": false,
+          "license": "Apache-2.0",
+          "source": "config/formal_verification_zkp_deployment.lock.json"
+        }
+      ],
+      "gap_id": null,
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
@@ -950,7 +2661,19 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "schema_version": "formal-verification-deployment-contract/v1",
+        "status": "reviewed",
+        "replaces_gap_id": "circuit_witness",
+        "artifact_kind": "zkp_deployment_binding",
+        "requires_checksum_at_install": true,
+        "secret_safe": true,
+        "forbid_private_witness_in_lock": true,
+        "unsupported_platforms_fail_closed": true
+      }
     },
     {
       "tool_id": "opam",
@@ -965,17 +2688,35 @@
         "kernel",
         "protocol"
       ],
-      "installer_entry": "",
+      "installer_entry": "ensure_opam",
+      "installer_plugin": "rocq",
+      "license": "LGPL-2.1-only",
+      "source": "https://github.com/ocaml/opam",
+      "identity_kind": "release_archive",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "opam",
           "version": "2.5.2",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "any",
+          "artifact_url": "https://github.com/ocaml/opam/releases/download/2.5.2/opam-2.5.2-x86_64-linux",
+          "sha256": "edfca2630c373b44b7ee1c2f81cd8dcf67468d0db57d6c02158de553ac63dbd4",
+          "platform": "linux-x86_64",
           "notes": "",
-          "is_checksummed": false
+          "is_checksummed": true,
+          "license": "LGPL-2.1-only",
+          "source": "https://opam.ocaml.org/"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "opam",
+          "version": "2.5.2",
+          "artifact_url": "https://github.com/ocaml/opam/releases/download/2.5.2/opam-2.5.2-arm64-linux",
+          "sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9",
+          "platform": "linux-aarch64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "LGPL-2.1-only",
+          "source": "https://opam.ocaml.org/"
         }
       ],
       "gap_id": null,
@@ -989,7 +2730,9 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     },
     {
       "tool_id": "java",
@@ -1005,6 +2748,10 @@
         "state_model"
       ],
       "installer_entry": "",
+      "installer_plugin": "",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://openjdk.org/",
+      "identity_kind": "host_runtime",
       "pins": [],
       "gap_id": null,
       "offline_probe": {
@@ -1017,7 +2764,69 @@
       },
       "network_during_verification": false,
       "install_during_verification": false,
-      "download_during_verification": false
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "notes": "Host JVM detection for TLA/state-model tooling only. The managed ErgoAI Java API capability is temurin-jdk and never trusts ambient JAVA_HOME.",
+      "does_not_satisfy_ergoai_java_api": true
+    },
+    {
+      "tool_id": "stack",
+      "display_name": "Haskell Stack bootstrap",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "protocol",
+      "executable_candidates": [
+        "stack"
+      ],
+      "families": [
+        "protocol"
+      ],
+      "installer_entry": "ensure_stack",
+      "installer_plugin": "tamarin",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/commercialhaskell/stack",
+      "identity_kind": "release_archive",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "stack",
+          "version": "3.11.1",
+          "artifact_url": "https://github.com/commercialhaskell/stack/releases/download/v3.11.1/stack-3.11.1-linux-x86_64.tar.gz",
+          "sha256": "1fda71e657cd8d355625cc66b61b352699279dfee2664c014a392163bd19a952",
+          "platform": "linux-x86_64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://docs.haskellstack.org/"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "stack",
+          "version": "3.11.1",
+          "artifact_url": "https://github.com/commercialhaskell/stack/releases/download/v3.11.1/stack-3.11.1-linux-aarch64.tar.gz",
+          "sha256": "1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0",
+          "platform": "linux-aarch64",
+          "notes": "",
+          "is_checksummed": true,
+          "license": "BSD-3-Clause",
+          "source": "https://docs.haskellstack.org/"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true
     }
   ],
   "stable_python_operations": [
@@ -1040,6 +2849,7 @@
     "ipfs_datasets_py.logic.backends.toolchains",
     "ipfs_datasets_py.logic.backends.process",
     "ipfs_datasets_py.logic.backends.registry",
+    "ipfs_datasets_py.logic.backends.installers.registry",
     "ipfs_datasets_py.logic.software_verification.vc",
     "ipfs_datasets_py.logic.software_verification.contracts",
     "ipfs_datasets_py.logic.software_verification.receipts",
@@ -1054,5 +2864,24 @@
       "built_types": "dist/src/index.d.ts",
       "interface": "RuntimeMTLMonitor@1"
     }
-  ]
+  ],
+  "hyperproperty_vendor": {
+    "interface": "HyperpropertyVendorToolchainCertification@1",
+    "goal_id": "FVT-G208",
+    "task_id": "FVT-061",
+    "repair_task_id": "FVT-077",
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+    "receipt_path": "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+    "tool_ids": [
+      "hyperltl",
+      "autohyper",
+      "mchyper"
+    ],
+    "linux_aarch64_supported": true,
+    "hermetic_engines_are_differential_only": true,
+    "never_promote_hermetic_engine_as_vendor": true,
+    "case_oracle_cannot_satisfy_vendor": true,
+    "notes": "Distinguish hermetic differential engines (FVT-G170) from vendor production certification (FVT-G208). FVT-077 is the objective validation repair that re-proves FVT-G208 and binds the synthetic discovery term objective validation repair. linux-aarch64 remains supported only when the complete vendor chain is real."
+  }
 }

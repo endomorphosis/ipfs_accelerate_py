@@ -17,9 +17,8 @@ from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
-    adopt_supervised_child,
+    adopt_or_launch_supervised_child,
     clear_child_pid_file,
-    launch_supervised_child,
     supervised_log_path,
     supervisor_run_id,
     terminate_supervised_child,
@@ -49,6 +48,9 @@ class SupervisorLoopDecision:
         return cls(action="stop", reason=reason, status=status)
 
 
+WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
+
+
 @dataclass(frozen=True)
 class SupervisorLoopConfig:
     """Configuration for a reusable child-process supervisor loop."""
@@ -69,6 +71,9 @@ class SupervisorLoopConfig:
     child_env: Mapping[str, str] = field(default_factory=dict)
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
     status_extra_fields: Mapping[str, Any] = field(default_factory=dict)
+    watchdog_quiescent_status_predicate: Optional[
+        WatchdogQuiescentStatusPredicate
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +89,10 @@ class SupervisorLoopResult:
 
 
 WatchdogHook = Callable[["SupervisorLoop", SupervisedChild, Mapping[str, Any]], SupervisorLoopDecision]
+StaleHeartbeatHook = Callable[
+    ["SupervisorLoop", SupervisedChild, Mapping[str, Any]],
+    Optional[SupervisorLoopDecision],
+]
 SupervisorLoopConfigFactory = Callable[[argparse.Namespace], SupervisorLoopConfig]
 
 
@@ -118,11 +127,13 @@ class SupervisorLoop:
         config: SupervisorLoopConfig,
         *,
         watchdog_hook: Optional[WatchdogHook] = None,
+        stale_heartbeat_hook: Optional[StaleHeartbeatHook] = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
         self.watchdog_hook = watchdog_hook
+        self.stale_heartbeat_hook = stale_heartbeat_hook
         self.sleep = sleep
         self.monotonic = monotonic
         self.status = SupervisorStatusContext(
@@ -137,6 +148,9 @@ class SupervisorLoop:
                     config.watchdog_log_heartbeat_fallback
                 ),
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "watchdog_quiescent_log_fallback": (
+                    config.watchdog_quiescent_status_predicate is not None
+                ),
                 "watchdog_accept_fresh_child_log": config.watchdog_accept_fresh_child_log,
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
@@ -247,6 +261,53 @@ class SupervisorLoop:
         except Exception:
             return False
 
+    def _quiescent_child_log_activity(
+        self,
+        child: SupervisedChild,
+    ) -> dict[str, Any]:
+        """Return bounded child-log evidence for a stale semantic projection."""
+
+        threshold = max(0.0, float(self.config.watchdog_stale_after_seconds))
+        checked: set[Path] = set()
+        for candidate in (child.latest_log_path, child.log_path):
+            if candidate is None:
+                continue
+            path = Path(candidate)
+            if path in checked:
+                continue
+            checked.add(path)
+            try:
+                if not path.is_file():
+                    continue
+                stat_result = path.stat()
+                age_seconds = max(0.0, time.time() - stat_result.st_mtime)
+            except OSError:
+                continue
+            child_alive = pid_alive(child.pid)
+            return {
+                "child_log_path": str(path),
+                "child_log_age_seconds": round(age_seconds, 3),
+                "child_log_size_bytes": stat_result.st_size,
+                "child_log_stale_after_seconds": threshold,
+                "child_log_fresh": bool(
+                    child_alive
+                    and stat_result.st_size > 0
+                    and threshold > 0.0
+                    and age_seconds <= threshold
+                ),
+                "daemon_pid": child.pid,
+                "daemon_pid_alive": child_alive,
+            }
+        return {
+            "child_log_path": "",
+            "child_log_age_seconds": None,
+            "child_log_size_bytes": None,
+            "child_log_stale_after_seconds": threshold,
+            "child_log_fresh": False,
+            "daemon_pid": child.pid,
+            "daemon_pid_alive": pid_alive(child.pid),
+        }
+
     def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
         heartbeat = heartbeat_snapshot(
             current_status,
@@ -256,7 +317,24 @@ class SupervisorLoop:
             heartbeat.heartbeat_at is None
             and self.config.watchdog_stale_after_seconds <= 0
         )
-        if heartbeat_failed:
+        heartbeat_detail = heartbeat.to_payload()
+        predicate = self.config.watchdog_quiescent_status_predicate
+        if heartbeat_failed and predicate is not None:
+            try:
+                projection_quiescent = bool(predicate(current_status))
+            except Exception:
+                projection_quiescent = False
+            heartbeat_detail["projection_quiescent"] = projection_quiescent
+            if projection_quiescent:
+                log_activity = self._quiescent_child_log_activity(child)
+                heartbeat_detail.update(log_activity)
+                heartbeat_failed = not bool(log_activity["child_log_fresh"])
+            if heartbeat_failed:
+                return SupervisorLoopDecision.recycle(
+                    "stale_heartbeat",
+                    detail=heartbeat_detail,
+                )
+        elif heartbeat_failed:
             log_fallback_enabled = self.config.watchdog_accept_fresh_child_log
             raw_log_path = getattr(child, "log_path", None) if log_fallback_enabled else None
             log_path = Path(raw_log_path) if raw_log_path else None
@@ -282,8 +360,7 @@ class SupervisorLoop:
             ):
                 log_fresh = self._child_log_heartbeat_is_fresh()
             if not log_fresh:
-                detail = heartbeat.to_payload()
-                detail.update(
+                heartbeat_detail.update(
                     {
                         "child_log_path": str(log_path) if log_path else "",
                         "child_log_age_seconds": (
@@ -297,7 +374,7 @@ class SupervisorLoop:
                 )
                 return SupervisorLoopDecision.recycle(
                     "stale_heartbeat",
-                    detail=detail,
+                    detail=heartbeat_detail,
                 )
         try:
             threshold = float(
@@ -379,6 +456,17 @@ class SupervisorLoop:
         current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
         decision = self.default_watchdog(child, current_status)
         if decision.action != "continue":
+            if (
+                decision.reason == "stale_heartbeat"
+                and self.stale_heartbeat_hook is not None
+            ):
+                exception = self.stale_heartbeat_hook(
+                    self,
+                    child,
+                    current_status,
+                )
+                if exception is not None:
+                    return exception
             return decision
         if self.watchdog_hook is not None:
             return self.watchdog_hook(self, child, current_status)
@@ -393,7 +481,20 @@ class SupervisorLoop:
             self.last_run_id = run_id
             self.last_log_path = log_path
             try:
-                child = adopt_supervised_child(child_spec) or launch_supervised_child(child_spec)
+                launch_lock_path = self.config.spec.resolve(
+                    self.config.spec.supervisor_lock_path
+                )
+                if launch_lock_path is None:
+                    resolved_child_pid_path = child_spec.resolve(
+                        child_spec.child_pid_path
+                    )
+                    launch_lock_path = resolved_child_pid_path.with_name(
+                        f".{resolved_child_pid_path.name}.launch.lock"
+                    )
+                child = adopt_or_launch_supervised_child(
+                    child_spec,
+                    launch_lock_path=launch_lock_path,
+                )
             except Exception as exc:
                 self.last_exit_code = 127
                 self.last_recycle_reason = "launch_failed"
@@ -438,7 +539,18 @@ class SupervisorLoop:
                     if decision.action == "stop":
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
-                        terminate_supervised_child(child, grace_seconds=self.config.stop_grace_seconds)
+                        stopped = terminate_supervised_child(
+                            child,
+                            grace_seconds=self.config.stop_grace_seconds,
+                            clear_pid_file=False,
+                        )
+                        if not stopped:
+                            final_status = "termination_blocked"
+                            self.last_recycle_reason = (
+                                "supervised_child_termination_unproven"
+                            )
+                            stop_requested = True
+                            break
                         self.last_exit_code = wait_for_child_exit(child)
                         stop_requested = True
                         break
@@ -451,13 +563,25 @@ class SupervisorLoop:
                             log_path=log_path,
                             extra={"watchdog_decision": decision.detail},
                         )
-                        terminate_supervised_child(child, grace_seconds=self.config.stop_grace_seconds)
+                        stopped = terminate_supervised_child(
+                            child,
+                            grace_seconds=self.config.stop_grace_seconds,
+                            clear_pid_file=False,
+                        )
+                        if not stopped:
+                            final_status = "termination_blocked"
+                            self.last_recycle_reason = (
+                                "supervised_child_termination_unproven"
+                            )
+                            stop_requested = True
+                            break
                         self.last_exit_code = wait_for_child_exit(child)
                         recycled = True
                         break
                 self.sleep(max(0.01, min(float(self.config.heartbeat_seconds), float(self.config.poll_seconds))))
 
-            clear_child_pid_file(child)
+            if final_status != "termination_blocked":
+                clear_child_pid_file(child)
             if stop_requested:
                 break
             run_duration = self.monotonic() - child_started_at

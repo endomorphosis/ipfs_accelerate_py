@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import subprocess
 import threading
 import time
 
@@ -12,8 +13,12 @@ from ipfs_accelerate_py.agent_supervisor.merge import (
     checkout_lock as checkout_lock_module,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
+    checkout_lock_owner_is_active,
+    checkout_mutation_lock_path,
+    checkout_repository_id,
     release_checkout_mutation_lease,
     remove_inactive_checkout_mutation_lock,
     serialized_lock_update,
@@ -37,6 +42,160 @@ def _pending_files(lock_path: Path) -> list[Path]:
     return list(
         lock_path.parent.glob(f".{lock_path.name}.*.pending")
     )
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    return result.stdout.strip()
+
+
+def _seed_git_repository(path: Path) -> Path:
+    path.mkdir()
+    _git(path, "init")
+    _git(path, "checkout", "-b", "main")
+    _git(path, "config", "user.name", "Test User")
+    _git(path, "config", "user.email", "test@example.invalid")
+    (path / "seed.txt").write_text("seed\n", encoding="utf-8")
+    _git(path, "add", "seed.txt")
+    _git(path, "commit", "-m", "seed")
+    return path
+
+
+def _owner_is_active(metadata: dict[str, object], repo_root: Path) -> bool:
+    return checkout_lock_owner_is_active(
+        metadata,
+        expected_kind="implementation-main-merge",
+        expected_repo_root=repo_root,
+        process_command_line=lambda _pid: "test-checkout-lock.py",
+        process_is_running=lambda pid: pid == os.getpid(),
+    )
+
+
+def _legacy_exact_path_owner_is_active(
+    metadata: dict[str, object],
+    repo_root: Path,
+) -> bool:
+    """Model the pre-migration exact-path predicate still running in peers."""
+
+    legacy_repo_root = str(metadata.get("repo_root") or "")
+    if (
+        legacy_repo_root
+        and Path(legacy_repo_root).resolve() != repo_root.resolve()
+    ):
+        return False
+    return int(metadata.get("pid") or 0) == os.getpid()
+
+
+def test_sibling_worktree_preserves_and_cannot_replace_live_checkout_lease(
+    tmp_path: Path,
+) -> None:
+    primary = _seed_git_repository(tmp_path / "primary")
+    sibling = tmp_path / "sibling"
+    _git(primary, "worktree", "add", "-b", "sibling", str(sibling))
+    foreign = _seed_git_repository(tmp_path / "foreign")
+
+    lock_path = checkout_mutation_lock_path(primary)
+    assert lock_path.resolve() == checkout_mutation_lock_path(sibling).resolve()
+    assert checkout_repository_id(primary) == checkout_repository_id(sibling)
+
+    metadata = _metadata(primary, operation="original-owner")
+    assert metadata["repo_root"] == ""
+    assert metadata["worktree_root"] == str(primary.resolve())
+    assert metadata["repository_id"] == checkout_repository_id(primary)
+    spoofed_identity = checkout_lock_metadata(
+        kind="implementation-main-merge",
+        repo_root=primary,
+        owner_script="test-checkout-lock.py",
+        extra={
+            "repo_root": str(foreign.resolve()),
+            "worktree_root": str(foreign.resolve()),
+            "repository_id": checkout_repository_id(foreign),
+        },
+    )
+    assert spoofed_identity["repo_root"] == ""
+    assert spoofed_identity["worktree_root"] == str(primary.resolve())
+    assert spoofed_identity["repository_id"] == checkout_repository_id(
+        primary
+    )
+    # This is the exact predicate used by pre-migration daemons. An empty
+    # legacy path lets them reach the live-PID check during a rolling upgrade.
+    assert _legacy_exact_path_owner_is_active(
+        metadata,
+        sibling,
+    )
+
+    lease, reason, incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda owner: _owner_is_active(owner, primary),
+    )
+    assert lease is not None
+    assert reason == "acquired"
+    assert incumbent is None
+    assert _owner_is_active(metadata, sibling)
+
+    sibling_metadata = _metadata(sibling, operation="sibling-contender")
+    contender, reason, incumbent, _waited = (
+        acquire_checkout_mutation_lease(
+            lock_path,
+            sibling_metadata,
+            owner_active=lambda owner: _owner_is_active(owner, sibling),
+        )
+    )
+    assert contender is None
+    assert reason == "lock_exists"
+    assert incumbent == metadata
+    assert not remove_inactive_checkout_mutation_lock(
+        lock_path,
+        expected_metadata=metadata,
+        owner_active=lambda owner: _owner_is_active(owner, sibling),
+    )
+    assert (
+        adopt_inactive_checkout_mutation_lease(
+            lease,
+            sibling_metadata,
+            owner_active=lambda owner: _owner_is_active(owner, sibling),
+        )
+        is None
+    )
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == metadata
+
+    # Legacy records with a concrete sibling path compare by Git common-dir,
+    # while a conclusively different physical repository is rejected.
+    legacy_metadata = dict(metadata)
+    legacy_metadata.pop("repository_id")
+    legacy_metadata.pop("worktree_root")
+    legacy_metadata["repo_root"] = str(primary.resolve())
+    assert _owner_is_active(legacy_metadata, sibling)
+    assert not _owner_is_active(metadata, foreign)
+    assert not _owner_is_active(legacy_metadata, foreign)
+
+    # Missing repository authority is inconclusive and therefore preserved,
+    # even when the process probe cannot establish liveness.
+    uncertain_metadata = {
+        "kind": "implementation-main-merge",
+        "pid": 0,
+        "repo_root": "",
+        "worktree_root": "",
+        "repository_id": "",
+    }
+    assert checkout_lock_owner_is_active(
+        uncertain_metadata,
+        expected_kind="implementation-main-merge",
+        expected_repo_root=sibling,
+        process_command_line=lambda _pid: "",
+        process_is_running=lambda _pid: False,
+    )
+
+    assert release_checkout_mutation_lease(lease)
+    assert not lock_path.exists()
 
 
 def test_atomic_publication_fsyncs_and_captures_identity_before_link(
@@ -257,6 +416,24 @@ def test_release_requires_acquired_inode_and_preserves_replacement(
 
     assert not release_checkout_mutation_lease(lease)
     assert json.loads(lock_path.read_text(encoding="utf-8")) == metadata
+
+
+def test_release_is_idempotent_when_exact_lease_is_already_absent(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="already-released-owner")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+
+    lock_path.unlink()
+
+    assert release_checkout_mutation_lease(lease)
+    assert not lock_path.exists()
 
 
 def test_release_requires_acquired_lease_id_on_same_inode(

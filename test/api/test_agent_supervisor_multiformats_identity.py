@@ -15,24 +15,13 @@ cache-key and fail-closed ``vfs/dependency-cache@1`` surface.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from ipfs_datasets_py.utils.cid_utils import (
-    canonical_dag_json_bytes as package_canonical_dag_json_bytes,
-)
-from ipfs_datasets_py.utils.cid_utils import (
-    cid_for_bytes as package_cid_for_bytes,
-)
-from ipfs_datasets_py.utils.cid_utils import (
-    cid_for_dag_json as package_cid_for_dag_json,
-)
-from ipfs_datasets_py.utils.cid_utils import (
-    validate_cid as package_validate_cid,
-)
 
 from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     ALLOWED_CODECS,
@@ -94,6 +83,39 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     require_canonical_dag_json_bytes,
     validate_cid,
 )
+try:
+    _shared_cid_spec = importlib.util.find_spec(
+        "ipfs_datasets_py.utils.cid_utils"
+    )
+except ModuleNotFoundError:
+    _shared_cid_spec = None
+_shared_cid_origin = (
+    Path(_shared_cid_spec.origin).resolve()
+    if _shared_cid_spec is not None and _shared_cid_spec.origin
+    else None
+)
+_pinned_submodule_root = Path(__file__).resolve().parents[2] / "ipfs_datasets_py"
+
+if (
+    _shared_cid_origin is not None
+    and _shared_cid_origin.is_relative_to(_pinned_submodule_root.resolve())
+):
+    # Import errors from an initialized pinned provider are real conformance
+    # failures; do not hide broken provider dependencies behind a fallback.
+    from ipfs_datasets_py.utils.cid_utils import (
+        canonical_dag_json_bytes as package_canonical_dag_json_bytes,
+        cid_for_bytes as package_cid_for_bytes,
+        cid_for_dag_json as package_cid_for_dag_json,
+        validate_cid as package_validate_cid,
+    )
+else:  # pragma: no cover - exercised by hermetic empty-submodule validation
+    from ipfs_accelerate_py.utils.cid_utils import (
+        canonical_dag_json_bytes as package_canonical_dag_json_bytes,
+        cid_for_bytes as package_cid_for_bytes,
+        cid_for_dag_json as package_cid_for_dag_json,
+        validate_cid as package_validate_cid,
+    )
+
 from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
     CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS as CACHE_PROOF_EVIDENCE,
     CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS as CACHE_PROOF_GOALS,

@@ -4532,6 +4532,71 @@ V2RewardResistantEvaluator = V2SelfImprovementEvaluator
 build_reward_resistant_evaluation_report = evaluate_v2_self_improvement
 
 
+# ---------------------------------------------------------------------------
+# PDR-080 live epoch bridge (PlannerDoctorEpoch ↔ generation-2 residuals)
+# ---------------------------------------------------------------------------
+
+PLANNER_DOCTOR_LIVE_EPOCH_REQUIREMENT_ID: Final[str] = (
+    "pdr-080-bounded-live-self-improvement-epoch"
+)
+PLANNER_DOCTOR_LIVE_EPOCH_MAX_GOALS: Final[int] = MAX_V2_SUCCESSOR_GOALS
+PLANNER_DOCTOR_LIVE_EPOCH_MAX_TASKS: Final[int] = MAX_V2_SUCCESSOR_TASKS
+
+
+def v2_residuals_from_planner_doctor_epoch(
+    residuals: Sequence[V2ResidualSignal | Mapping[str, Any]],
+    *,
+    epoch_id: str,
+    stop_reason: str,
+) -> tuple[V2ResidualSignal, ...]:
+    """Normalize epoch residuals for generation-2 successor admission.
+
+    The live epoch controller (``planner_doctor_epoch``) owns the FSM,
+    budgets, and journal.  This helper only re-validates residual payloads so
+    refill (PDR-081) can consume them without re-entering the test-only
+    ``run_self_improvement_epoch`` path.
+    """
+
+    epoch_text = _text(epoch_id, "epoch_id", maximum=192)
+    stop = _text(stop_reason, "stop_reason", maximum=64)
+    source_id = _text(f"epoch:{epoch_text}:{stop}", "source_receipt_id", maximum=192)
+    normalized: list[V2ResidualSignal] = []
+    for item in residuals:
+        residual = (
+            item
+            if isinstance(item, V2ResidualSignal)
+            else V2ResidualSignal.from_dict(item)
+        )
+        if not residual.source_receipt_id:
+            residual = replace(residual, source_receipt_id=source_id)
+        normalized.append(residual)
+        if len(normalized) > MAX_V2_SUCCESSOR_RESIDUALS:
+            raise V2SelfEvaluationError("epoch residual budget exceeded")
+    return tuple(normalized)
+
+
+def planner_doctor_epoch_successor_policy(
+    *,
+    max_goals: int = PLANNER_DOCTOR_LIVE_EPOCH_MAX_GOALS,
+    max_tasks: int = PLANNER_DOCTOR_LIVE_EPOCH_MAX_TASKS,
+) -> V2SuccessorGenerationPolicy:
+    """Finite successor policy for residuals emitted by a live epoch."""
+
+    goals = _integer(max_goals, "max_goals", minimum=1, maximum=MAX_V2_SUCCESSOR_GOALS)
+    tasks = _integer(max_tasks, "max_tasks", minimum=1, maximum=MAX_V2_SUCCESSOR_TASKS)
+    return V2SuccessorGenerationPolicy(
+        max_goals=goals,
+        max_tasks=tasks,
+        max_residuals=MAX_V2_SUCCESSOR_RESIDUALS,
+        max_tokens=MAX_V2_SUCCESSOR_TOKENS,
+        max_open_work=MAX_V2_SUCCESSOR_OPEN_WORK,
+        max_rejections=MAX_V2_SUCCESSOR_REJECTIONS,
+        max_depth=3,
+        min_confidence=0.5,
+        min_semantic_novelty=0.0,
+    )
+
+
 __all__ = [
     "ACTIONABLE_V2_RESIDUAL_KINDS",
     "ANTI_GAMING_CHECKS",
@@ -4542,6 +4607,9 @@ __all__ = [
     "MAX_V2_SUCCESSOR_REJECTIONS",
     "MAX_V2_SUCCESSOR_RESIDUALS",
     "MAX_V2_SUCCESSOR_TASKS",
+    "PLANNER_DOCTOR_LIVE_EPOCH_MAX_GOALS",
+    "PLANNER_DOCTOR_LIVE_EPOCH_MAX_TASKS",
+    "PLANNER_DOCTOR_LIVE_EPOCH_REQUIREMENT_ID",
     "REQUIRED_V2_OBJECTIVE_DIMENSIONS",
     "REWARD_RESISTANT_EVALUATION_GOAL_ID",
     "REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID",
@@ -4587,8 +4655,10 @@ __all__ = [
     "build_reward_resistant_evaluation_report",
     "evaluate_v2_self_improvement",
     "generate_v2_successor_goals",
+    "planner_doctor_epoch_successor_policy",
     "preview_v2_refill_epoch",
     "replay_v2_self_evaluation",
     "run_v2_refill_epoch",
+    "v2_residuals_from_planner_doctor_epoch",
     "verify_v2_self_evaluation_report",
 ]
