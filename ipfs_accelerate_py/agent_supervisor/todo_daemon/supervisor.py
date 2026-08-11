@@ -30,6 +30,11 @@ _MERGE_RESOLVER_MODULES = frozenset(
         "ipfs_accelerate_py.agent_supervisor.llm_router_merge_resolver",
     }
 )
+_AGENT_WORKER_MODULES = frozenset(
+    {
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    }
+)
 _MERGE_RESOLVER_SCRIPTS = frozenset(
     {
         "llm_merge_resolver_fallback.py",
@@ -223,7 +228,8 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         if token == "-m":
             return (
                 index + 1 < len(tokens)
-                and tokens[index + 1].lower() in _MERGE_RESOLVER_MODULES
+                and tokens[index + 1].lower()
+                in (_MERGE_RESOLVER_MODULES | _AGENT_WORKER_MODULES)
             )
         if token.startswith("-"):
             index += 1
