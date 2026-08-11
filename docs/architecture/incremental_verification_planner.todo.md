@@ -371,7 +371,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-011 Implement deterministic counterexample minimization
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
