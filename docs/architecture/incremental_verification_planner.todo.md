@@ -154,7 +154,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-004 Implement the admitted explicit-argv verification process runner
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
