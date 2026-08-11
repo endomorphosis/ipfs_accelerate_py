@@ -8348,10 +8348,13 @@ class PortalImplementationDaemon:
         self,
         task_id: str,
         attempt: int,
+        *,
+        canonical_task_cid: str = "",
     ) -> bool:
-        """Return whether a durable finish event exists for task/attempt."""
+        """Return whether a durable finish exists for this task revision/attempt."""
 
         task_id = str(task_id or "").strip()
+        canonical_task_cid = str(canonical_task_cid or "").strip()
         attempt_number = int(attempt or 0)
         if not task_id or attempt_number <= 0:
             return False
@@ -8361,6 +8364,11 @@ class PortalImplementationDaemon:
             if str(event.get("task_id") or "") != task_id:
                 continue
             if int(event.get("attempt") or 0) != attempt_number:
+                continue
+            if canonical_task_cid and (
+                str(event.get("canonical_task_cid") or "").strip()
+                != canonical_task_cid
+            ):
                 continue
             return True
         return False
@@ -11671,6 +11679,11 @@ class PortalImplementationDaemon:
                 and self._task_attempt_has_implementation_finish(
                     recovered_task_id,
                     recovered_attempt_number,
+                    canonical_task_cid=str(
+                        previous.active_task_cid
+                        or previous.last_implementation_task_cid
+                        or ""
+                    ),
                 )
             )
             if finished_attempt:
@@ -44231,11 +44244,11 @@ class PortalImplementationDaemon:
     def _completion_persistence_recovery_candidates(
         self,
         lifecycle_events: Sequence[Mapping[str, Any]],
-    ) -> dict[tuple[str, str], dict[str, Any]]:
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
         """Return exact landed candidates still lacking durable completion."""
 
         recovery_by_candidate: dict[
-            tuple[str, str],
+            tuple[str, str, str],
             dict[str, Any] | None,
         ] = {}
         for event in lifecycle_events:
@@ -44247,7 +44260,11 @@ class PortalImplementationDaemon:
             )
             if not task_id or not implementation_commit:
                 continue
-            candidate_key = (task_id, implementation_commit)
+            candidate_key = (
+                task_id,
+                self._event_primary_task_cid(event),
+                implementation_commit,
+            )
             if event.get("resolved") is True:
                 recovery_by_candidate[candidate_key] = None
             elif (
@@ -44267,6 +44284,9 @@ class PortalImplementationDaemon:
 
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
+        current_tasks_by_id = self._current_todo_tasks_by_id_for_reconciliation(
+            pending_only=False,
+        )
         current_task_ids = self._current_todo_task_ids_for_reconciliation()
         lifecycle_events = self._iter_merge_lifecycle_events()
         persistence_recovery_candidates = (
@@ -44277,15 +44297,19 @@ class PortalImplementationDaemon:
         persistence_recovery_candidate_keys = set(
             persistence_recovery_candidates
         )
-        candidates: dict[tuple[str, str], dict[str, Any]] = {}
-        reconciled_candidates: set[tuple[str, str]] = set()
-        abandoned_candidates: set[tuple[str, str]] = set()
+        candidates: dict[tuple[str, str, str], dict[str, Any]] = {}
+        reconciled_candidates: set[tuple[str, str, str]] = set()
+        abandoned_candidates: set[tuple[str, str, str]] = set()
         target_branch = self._main_branch_name()
         for event in lifecycle_events:
             if str(event.get("type") or "") == "merge_reconciled":
                 task_id = str(event.get("task_id") or "")
                 implementation_commit = str(event.get("implementation_commit") or "")
-                candidate_key = (task_id, implementation_commit)
+                candidate_key = (
+                    task_id,
+                    self._event_primary_task_cid(event),
+                    implementation_commit,
+                )
                 merge_result = event.get("merge_result") or {}
                 merge_reason = merge_result.get("reason") if isinstance(merge_result, dict) else ""
                 reconcile_reason = str(event.get("reason") or "")
@@ -44329,7 +44353,18 @@ class PortalImplementationDaemon:
             implementation_commit = str(
                 event.get("implementation_commit") or ""
             )
-            candidate_key = (task_id, implementation_commit)
+            candidate_key = (
+                task_id,
+                self._event_primary_task_cid(event),
+                implementation_commit,
+            )
+            if current_tasks_by_id is not None and not (
+                self._event_matches_current_task_revision(
+                    event,
+                    current_tasks_by_id=current_tasks_by_id,
+                )
+            ):
+                continue
             if (
                 task_id in skip_task_ids
                 and candidate_key not in persistence_recovery_candidate_keys
@@ -44357,7 +44392,7 @@ class PortalImplementationDaemon:
             cleanup_failed = isinstance(cleanup, dict) and bool(cleanup) and not cleanup.get("cleaned", False)
             if not cleanup_failed and not self._merge_result_needs_reconciliation(merge_result):
                 continue
-            key = (task_id, implementation_commit)
+            key = candidate_key
             candidate_event = dict(event)
             candidate_event.pop("completion_persistence_recovery", None)
             recovery_event = persistence_recovery_candidates.get(key)
@@ -44449,16 +44484,17 @@ class PortalImplementationDaemon:
         for event in candidates.values():
             task_id = str(event.get("task_id") or "")
             implementation_commit = str(event.get("implementation_commit") or "")
-            candidate_key = (task_id, implementation_commit)
+            candidate_key = (
+                task_id,
+                self._event_primary_task_cid(event),
+                implementation_commit,
+            )
             if (
                 candidate_key in reconciled_candidates
                 or candidate_key in abandoned_candidates
             ):
                 continue
-            if (
-                task_id,
-                implementation_commit,
-            ) in persistence_recovery_candidate_keys:
+            if candidate_key in persistence_recovery_candidate_keys:
                 unresolved.append(event)
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
@@ -44469,16 +44505,141 @@ class PortalImplementationDaemon:
                 unresolved.append(event)
         return unresolved
 
-    def _current_todo_task_ids_for_reconciliation(self) -> set[str] | None:
+    def _current_todo_tasks_by_id_for_reconciliation(
+        self,
+        *,
+        pending_only: bool,
+    ) -> dict[str, list[PortalTask]] | None:
         try:
             tasks = self._load_tasks()
         except (OSError, UnicodeDecodeError, TaskSourceError, ValueError):
             return None
-        return {
-            task.task_id
-            for task in tasks
-            if normalize_status(task.status) not in {"blocked", "completed"}
+        current: dict[str, list[PortalTask]] = {}
+        for task in tasks:
+            if pending_only and normalize_status(task.status) in {
+                "blocked",
+                "completed",
+            }:
+                continue
+            current.setdefault(task.task_id, []).append(task)
+        return current
+
+    def _current_todo_task_ids_for_reconciliation(self) -> set[str] | None:
+        current = self._current_todo_tasks_by_id_for_reconciliation(
+            pending_only=True,
+        )
+        return set(current) if current is not None else None
+
+    @staticmethod
+    def _event_primary_task_cid(event: Mapping[str, Any]) -> str:
+        """Return one non-contradictory primary CID carried by an event."""
+
+        task_id = str(event.get("task_id") or "").strip()
+        merge_result = event.get("merge_result")
+        merge_mapping = merge_result if isinstance(merge_result, Mapping) else {}
+        observed = {
+            str(value).strip()
+            for value in (
+                event.get("canonical_task_cid"),
+                event.get("task_cid"),
+                event.get("canonical_task_id"),
+                merge_mapping.get("canonical_task_cid"),
+                merge_mapping.get("task_cid"),
+                merge_mapping.get("canonical_task_id"),
+            )
+            if str(value or "").strip()
         }
+        for raw_bindings in (
+            event.get("completion_task_cids"),
+            merge_mapping.get("completion_task_cids"),
+        ):
+            if isinstance(raw_bindings, Mapping) and task_id:
+                bound = str(raw_bindings.get(task_id) or "").strip()
+                if bound:
+                    observed.add(bound)
+        return next(iter(observed)) if len(observed) == 1 else ""
+
+    def _event_matches_current_task_revision(
+        self,
+        event: Mapping[str, Any],
+        *,
+        current_tasks_by_id: Mapping[str, Sequence[PortalTask]],
+    ) -> bool:
+        """Bind one historical scheduling event to the exact current task CID.
+
+        Display task IDs are mutable labels.  Queue, failure, cooldown, and
+        attempt history from a superseded task revision must not change the
+        scheduling state of a new contract that reuses the same display ID.
+        """
+
+        task_id = str(event.get("task_id") or "").strip()
+        matches = list(current_tasks_by_id.get(task_id) or ())
+        if not task_id or len(matches) != 1:
+            return False
+        current_identity = self._identity_for_task(matches[0])
+        current_task_cid = current_identity.canonical_task_cid
+        if not current_task_cid:
+            return False
+
+        merge_result = event.get("merge_result")
+        merge_mapping = merge_result if isinstance(merge_result, Mapping) else {}
+        observed_primary_cids = {
+            str(value).strip()
+            for value in (
+                event.get("canonical_task_cid"),
+                event.get("task_cid"),
+                event.get("canonical_task_id"),
+                merge_mapping.get("canonical_task_cid"),
+                merge_mapping.get("task_cid"),
+                merge_mapping.get("canonical_task_id"),
+            )
+            if str(value or "").strip()
+        }
+        observed_primary_keys = {
+            str(value).strip()
+            for value in (
+                event.get("canonical_task_key"),
+                merge_mapping.get("canonical_task_key"),
+            )
+            if str(value or "").strip()
+        }
+
+        raw_binding_maps = (
+            event.get("completion_task_cids"),
+            merge_mapping.get("completion_task_cids"),
+        )
+        for raw_bindings in raw_binding_maps:
+            if raw_bindings is None:
+                continue
+            if not isinstance(raw_bindings, Mapping) or not raw_bindings:
+                return False
+            normalized_bindings = {
+                str(bound_task_id).strip(): str(bound_task_cid).strip()
+                for bound_task_id, bound_task_cid in raw_bindings.items()
+                if str(bound_task_id).strip() and str(bound_task_cid).strip()
+            }
+            if len(normalized_bindings) != len(raw_bindings):
+                return False
+            for bound_task_id, bound_task_cid in normalized_bindings.items():
+                bound_matches = list(
+                    current_tasks_by_id.get(bound_task_id) or ()
+                )
+                if (
+                    len(bound_matches) != 1
+                    or self._canonical_ref(bound_matches[0])
+                    != bound_task_cid
+                ):
+                    return False
+            bound_primary_cid = normalized_bindings.get(task_id)
+            if not bound_primary_cid:
+                return False
+            observed_primary_cids.add(bound_primary_cid)
+
+        return bool(observed_primary_cids or observed_primary_keys) and (
+            observed_primary_cids in (set(), {current_task_cid})
+            and observed_primary_keys
+            in (set(), {current_identity.canonical_task_key})
+        )
 
     @staticmethod
     def _merge_result_needs_reconciliation(merge_result: dict[str, Any]) -> bool:
@@ -44540,6 +44701,12 @@ class PortalImplementationDaemon:
 
     def _has_unresolved_merge_failure(self, task: PortalTask, previous: PortalTaskState) -> bool:
         if previous.last_implementation_task_id != task.task_id:
+            return False
+        if (
+            previous.last_implementation_task_cid
+            and previous.last_implementation_task_cid
+            != self._canonical_ref(task)
+        ):
             return False
         if not previous.last_implementation_commit:
             return False
@@ -47419,12 +47586,20 @@ class PortalImplementationDaemon:
         return None
 
     def _latest_implementation_finished_by_task(self) -> dict[str, dict[str, Any]]:
+        current_tasks_by_id = self._current_todo_tasks_by_id_for_reconciliation(
+            pending_only=False,
+        )
+        if current_tasks_by_id is None:
+            return {}
         latest: dict[str, dict[str, Any]] = {}
         for event in self._iter_events():
             if str(event.get("type") or "") != "implementation_finished":
                 continue
             task_id = str(event.get("task_id") or "")
-            if task_id:
+            if task_id and self._event_matches_current_task_revision(
+                event,
+                current_tasks_by_id=current_tasks_by_id,
+            ):
                 latest[task_id] = event
         return latest
 
@@ -47436,7 +47611,22 @@ class PortalImplementationDaemon:
 
         target_branch = self._main_branch_name()
         pending: set[str] = set()
-        for task_id, event in (latest_results or self._latest_implementation_finished_by_task()).items():
+        results = (
+            latest_results
+            if latest_results is not None
+            else self._latest_implementation_finished_by_task()
+        )
+        current_tasks_by_id = self._current_todo_tasks_by_id_for_reconciliation(
+            pending_only=False,
+        )
+        for task_id, event in results.items():
+            if current_tasks_by_id is not None and not (
+                self._event_matches_current_task_revision(
+                    event,
+                    current_tasks_by_id=current_tasks_by_id,
+                )
+            ):
+                continue
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
@@ -47458,7 +47648,22 @@ class PortalImplementationDaemon:
         quarantined: set[str] = set()
         if not hasattr(self.merge_queue, "get"):
             return quarantined
-        for task_id, event in (latest_results or self._latest_implementation_finished_by_task()).items():
+        results = (
+            latest_results
+            if latest_results is not None
+            else self._latest_implementation_finished_by_task()
+        )
+        current_tasks_by_id = self._current_todo_tasks_by_id_for_reconciliation(
+            pending_only=False,
+        )
+        for task_id, event in results.items():
+            if current_tasks_by_id is not None and not (
+                self._event_matches_current_task_revision(
+                    event,
+                    current_tasks_by_id=current_tasks_by_id,
+                )
+            ):
+                continue
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
@@ -53078,17 +53283,14 @@ class PortalImplementationDaemon:
                 )
             ]
         # The durable queue is authoritative across isolated lane state dirs.
-        # Consult both canonical and display identities for compatibility with
-        # queue records written before canonical task ids were introduced.
+        # Display IDs are mutable aliases, so only the current canonical task
+        # revision may suppress dispatch.
         ready = [
             task
             for task in ready
             if self._manual_completion_authority_revalidation_only_task(task)
-            or (
-                not self.merge_queue.has_pending_for_task(
-                    self._canonical_ref(task)
-                )
-                and not self.merge_queue.has_pending_for_task(task.task_id)
+            or not self.merge_queue.has_pending_for_task(
+                self._canonical_ref(task)
             )
         ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
