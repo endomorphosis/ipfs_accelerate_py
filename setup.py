@@ -7,11 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from setuptools import find_packages, setup
-
-CONTRACT_REPAIR_DISTRIBUTIONS = frozenset(
-    {"z3-solver", "cvc5", "mypy", "ruff"}
-)
+from setuptools import Command, find_packages, setup
+from setuptools.errors import ExecError
 
 
 def _run(cmd: list[str]) -> int:
@@ -78,12 +75,12 @@ def _maybe_install_torch() -> None:
     """Optionally install CUDA-enabled torch into the current environment.
 
     IMPORTANT:
-      - This legacy compatibility hook is disabled by default and requires
-        IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH=1 (or true/yes/on).
       - This only runs for legacy `setup.py install` / `setup.py develop` flows.
       - For normal `pip install .` (PEP517/wheel), setuptools install hooks are not reliable.
         Use the provided helper scripts in `scripts/` for deterministic installs.
     """
+    # Packaging must be inert by default.  This legacy escape hatch is retained
+    # for compatibility, but only an explicit true value may invoke pip.
     enabled = os.environ.get(
         "IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "0"
     ).strip().lower() in {"1", "true", "yes", "on"}
@@ -133,9 +130,58 @@ def _maybe_install_torch() -> None:
     return
 
 
+class ProofReuseProvision(Command):
+    """Explicitly invoke the bounded runtime proof-reuse provisioner.
+
+    This is never run by ``install``, ``develop``, wheel, sdist, or metadata
+    commands.  It delegates to the installed/source-tree CLI so the existing
+    allowlists, consent gates, timeouts, locks, and typed fallbacks remain the
+    single implementation of provisioning policy.
+    """
+
+    description = (
+        "explicitly provision allowlisted NLTK data and/or native Groth16"
+    )
+    user_options = [
+        ("nltk-data", None, "request allowlisted NLTK data resources"),
+        ("groth16-native", None, "request the reviewed native Groth16 binary"),
+        ("require-ready", None, "fail when a requested capability is unavailable"),
+    ]
+    boolean_options = ["nltk-data", "groth16-native", "require-ready"]
+
+    def initialize_options(self) -> None:
+        self.nltk_data = False
+        self.groth16_native = False
+        self.require_ready = False
+
+    def finalize_options(self) -> None:
+        # Boolean options are normalized by setuptools. With no capability
+        # option the delegated CLI intentionally requests both capabilities.
+        return None
+
+    def run(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli",
+        ]
+        if self.nltk_data:
+            command.append("--nltk-data")
+        if self.groth16_native:
+            command.append("--groth16-native")
+        if self.require_ready:
+            command.append("--require-ready")
+        returncode = _run(command)
+        if returncode:
+            raise ExecError(
+                "proof-reuse provisioning reported unavailable requested "
+                f"capabilities (exit {returncode})"
+            )
+
+
 def _get_cmdclass():
-    """Attach pip-based torch auto-install to legacy setuptools flows."""
-    cmdclass = {}
+    """Return explicit commands plus compatibility legacy install classes."""
+    cmdclass = {"proof_reuse_provision": ProofReuseProvision}
 
     try:
         from setuptools.command.install import install as _install
@@ -176,45 +222,52 @@ def _read_requirements(req_path: Path) -> list[str]:
     return requirements
 
 
-def _require_contract_repair_distributions(requirements: list[str]) -> None:
-    """Fail packaging when the supervisor toolchain drifts out of requirements."""
-
-    declared = {
-        re.split(r"[\s\[<>=!~;@]", requirement, maxsplit=1)[0]
-        .replace("_", "-")
-        .lower()
-        for requirement in requirements
-    }
-    missing = sorted(CONTRACT_REPAIR_DISTRIBUTIONS - declared)
-    if missing:
-        raise RuntimeError(
-            "requirements.txt is missing contract-repair distributions: "
-            + ", ".join(missing)
-        )
-
-
 def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
     if not pyproject_path.exists():
         return {}
     try:
         import tomllib  # py3.11+
-    except Exception:  # pragma: no cover
-        import tomli as tomllib  # type: ignore
-    data = tomllib.loads(pyproject_path.read_text())
+    except Exception:  # pragma: no cover - exercised with an import blocker.
+        try:
+            import tomli as tomllib  # type: ignore
+        except Exception:
+            # ``tomli`` is a PEP 517 build requirement on Python <3.11, but an
+            # operator may invoke ``python setup.py proof_reuse_provision`` in
+            # a source checkout without first constructing an isolated build
+            # environment.  Keep that explicit command available and inert;
+            # requirements-proof-reuse.txt below restores its scoped extra.
+            return {}
+    try:
+        data = tomllib.loads(pyproject_path.read_text())
+    except (OSError, TypeError, UnicodeError, ValueError):
+        # Metadata parsing must never turn the explicit fail-graceful
+        # provision command into an installer or network recovery path.
+        return {}
     return (data.get("project", {}) or {}).get("optional-dependencies", {}) or {}
 
 
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
-# requirements.txt is the single source of truth for core dependency contracts.
-# In particular, the urllib3 range and Python-marked FastMCP pin must not be
-# duplicated independently in setup.py.
-# Optional ErgoAI Java API Eclipse Temurin JDK is a reviewed external lazy
-# dependency (tool_id=temurin-jdk) and is intentionally not a pip requirement.
 install_requires = _read_requirements(this_directory / "requirements.txt")
-_require_contract_repair_distributions(install_requires)
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
+proof_reuse_requirements = _read_requirements(
+    this_directory / "requirements-proof-reuse.txt"
+)
+if proof_reuse_requirements:
+    # Keep legacy setup.py metadata aligned with the PEP 621 extra and
+    # requirements-proof-reuse.txt.  Core install_requires carries strict
+    # content-addressing (multiformats/pymultihash), schema validation, and the
+    # NLTK Python distribution.  NLTK corpus/model downloads are deliberately
+    # not setuptools hooks.  Datasets-ZK
+    # (ipfs_datasets_py verifier) remains a first-use exact Git-blob snapshot
+    # materialized by ProofReuseLazyDependencyInstaller in an owner-private
+    # content-addressed cache (no pip/VCS, build hooks, submodules, or global
+    # site-packages mutation) because that distribution depends back on
+    # ipfs_accelerate_py. Groth16 is a reviewed native Cargo build, not a PyPI
+    # requirement; its separate explicit first-use provisioner never runs
+    # trusted setup or generates circuit keys.
+    extras_require["proof-reuse"] = proof_reuse_requirements
 
 setup(
     name="ipfs_accelerate_py",
@@ -254,11 +307,12 @@ setup(
             "ipfs-accelerate-agent-artifact-query=ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main",
             "ipfs-accelerate-agent-implementation-daemon=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main",
             "ipfs-accelerate-agent-implementation-supervisor=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
-            "ipfs-accelerate-agent-durable-process=ipfs_accelerate_py.agent_supervisor.runtime.durable_process:main",
             "ipfs-accelerate-agent-merge-resolver=ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main",
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
-            "ipfs-accelerate-contract-repair-deps=ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies:main",
+            "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
-        ]
+        ],
+        # Proof-reuse plugin is optional; prefer entry-point-free discovery for CI import modes.
+
     },
 )

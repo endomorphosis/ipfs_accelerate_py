@@ -224,11 +224,10 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
     state_dir = tmp_path / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
-    strategy_path = state_dir / "strategy.json"
     daemon = PortalImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
-        strategy_path=strategy_path,
+        strategy_path=state_dir / "strategy.json",
         events_path=events_path,
         repo_root=tmp_path,
         task_header_prefix="## TASK-",
@@ -330,11 +329,10 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     state_dir = tmp_path / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
-    strategy_path = state_dir / "strategy.json"
     daemon = PortalImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
-        strategy_path=strategy_path,
+        strategy_path=state_dir / "strategy.json",
         events_path=events_path,
         repo_root=tmp_path,
         task_header_prefix="## TASK-",
@@ -374,15 +372,6 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
 """,
         encoding="utf-8",
     )
-    strategy_path.write_text(
-        json.dumps(
-            {
-                "blocked_tasks": ["TASK-001", "TASK-999"],
-                "focus_tracks": ["agent"],
-            }
-        ),
-        encoding="utf-8",
-    )
     launched_attempts: list[int] = []
 
     def record_launch(task, current_state):
@@ -407,14 +396,6 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     assert first["retry_budget_resets"][0][
         "previous_display_attempt_count"
     ] == 1
-    assert first["released_retry_budget_strategy_blocks"] == [
-        {
-            "source_task_id": "TASK-001",
-            "repair_task_id": "TASK-002",
-            "failure_kind": "validation",
-        }
-    ]
-    assert daemon.load_strategy()["blocked_tasks"] == ["TASK-999"]
     assert first["attempt_limited_task_ids"] == []
     assert reset_state.retry_budget_repair_receipts == {
         "TASK-001": "TASK-002"

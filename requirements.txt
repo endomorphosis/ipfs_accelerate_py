@@ -3,8 +3,7 @@ anyio>=4.0.0
 aiohttp>=3.8.1
 duckdb>=0.7.0
 ipfshttpclient>=0.8.0a2
-websockets==10.4; python_version < "3.10"
-websockets>=15.0.1; python_version >= "3.10"
+websockets>=10.1
 
 # Arrow (required by ipfs_kit_py cache/zero-copy features)
 pyarrow>=14.0.0
@@ -13,20 +12,15 @@ pyarrow>=14.0.0
 torch>=2.1
 transformers>=4.46
 
-# Shared HTTP constraint. Vendored ipfs_datasets_py tightens this to >=2.5
-# when the packages are resolved together.
-# Shared HTTP constraint. Keep urllib3 2.5+ for ipfs_datasets_py compatibility.
-urllib3>=2.5.0,<3.0.0
+# Compatibility: ipfshttpclient may still depend on urllib3<2
+urllib3<2
 
 # HTTP + auth helpers
 requests>=2.28.0
 cryptography>=41.0.0
 
 # MCP server + dashboard (used by the systemd service)
-fastmcp==2.14.7; python_version >= "3.10"
-fastapi>=0.110.0,<1.0.0
-uvicorn>=0.27.0,<0.35.0; python_version < "3.10"
-uvicorn>=0.35.0,<1.0.0; python_version >= "3.10"
+fastmcp>=0.1.0
 flask>=3.0.0
 flask-cors>=4.0.0
 werkzeug>=3.0.0
@@ -34,25 +28,26 @@ werkzeug>=3.0.0
 # GitHub integration (provides the `github` module)
 PyGithub>=2.3.0
 
-# Proof-gated contract-repair Python toolchain.
-# These are also available through the explicit first-use loader in
-# ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies.
-# TypeScript is intentionally absent: it is an npm package and the same loader
-# provisions the reviewed compiler API into a versioned user-local directory.
-# Cap below 4.15.5: newer 4.15.8+/4.16/5.x ship only manylinux_2_38 aarch64
-# wheels. Debian bookworm (glibc 2.36) cannot use those, so pip falls back to a
-# multi-minute Z3 source build that fails under ARM64/QEMU (needs C++20
-# <format>). 4.13.4–4.15.4 publish manylinux_2_34 aarch64 wheels that install
-# cleanly on bookworm and still satisfy the contract-repair minimum.
-z3-solver>=4.13.4.0,<=4.15.4.0
-cvc5==1.3.3
-mypy>=1.8.0,<2.0.0
-ruff>=0.12.0,<1.0.0
-
 # Utilities
 tqdm>=4.64.0
 numpy>=1.23.0
-packaging>=23.2
 toml>=0.10.2
-multiformats>=0.3.0
+
+# Proof-reuse/datasets Python surfaces.  These are ordinary Python
+# distributions only: NLTK corpus downloads and the Groth16 Rust backend remain
+# explicit first-use capabilities and never run as packaging side effects.
+nltk>=3.8.1,<4
+jsonschema>=4,<5
+
+# Strict content-addressing (core).  Kept aligned with the proof-reuse extra
+# and pyproject/setup metadata.  Datasets-ZK verification is *not* core: the
+# proof-reuse lazy installer materializes a closed exact Git-blob snapshot in
+# its owner-private content-addressed cache only when an exact lookup requests
+# that capability. It runs no pip/VCS installer or package build hook (see
+# requirements-proof-reuse.txt and [project.optional-dependencies].proof-reuse).
+multiformats>=0.3,<1
 pymultihash>=0.8.2
+
+# ipfs_datasets_py is intentionally not a core dependency.  Its distribution
+# depends back on ipfs_accelerate_py; the proof-reuse resolver materializes only
+# the exact reviewed verifier snapshot without mutating global site-packages.

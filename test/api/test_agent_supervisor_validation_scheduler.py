@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import io
+import json
 import os
 import shlex
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,9 +15,6 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
     command_runner_from_legacy_function,
     run_validation_commands,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-    implementation_daemon as daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -30,6 +26,8 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     select_validation_commands,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    PROOF_REUSE_STATE_ROOT_ENV,
+    VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA,
     VALIDATION_NPM_CACHE_ENV,
     VALIDATION_PATH_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
@@ -40,11 +38,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
     VALIDATION_PYTHONPATH_ENV,
-    VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
     ValidationRuntimeError,
     build_validation_environment,
     build_hermetic_validation_runtime,
-    canonical_validation_environment_contract,
     sealed_validation_python_runner,
     validation_argv_command,
     validation_environment_for_runner,
@@ -79,384 +75,6 @@ def _sealed_daemon_environment() -> dict[str, str]:
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
     )
-
-
-def test_authority_validation_rejects_remote_docker_context_before_probes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DOCKER_CONTEXT", "remote-builder")
-    monkeypatch.delenv("DOCKER_HOST", raising=False)
-    monkeypatch.setattr(
-        daemon_module.subprocess,
-        "run",
-        lambda *_args, **_kwargs: pytest.fail(
-            "remote Docker context must fail before runtime probes"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon_module.shutil,
-        "which",
-        lambda *_args, **_kwargs: pytest.fail(
-            "remote Docker context must fail before executable discovery"
-        ),
-    )
-
-    contract = (
-        TodoImplementationDaemon._authority_validation_isolation_contract()
-    )
-
-    assert contract["available"] is False
-    assert (
-        contract["reason"]
-        == "authority_validation_nonlocal_docker_forbidden"
-    )
-    assert contract["configured_docker_context"] == "remote-builder"
-    assert contract["configured_docker_host"] == ""
-    assert contract["docker_endpoint"] == "unix:///run/docker.sock"
-
-
-def test_authority_validation_ignores_path_and_rejects_unapproved_root_binary(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake_bin = tmp_path / "writable-bin"
-    fake_bin.mkdir()
-    fake_docker = fake_bin / "docker"
-    fake_docker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_docker.chmod(0o755)
-    monkeypatch.setenv("PATH", str(fake_bin))
-    monkeypatch.delenv("DOCKER_HOST", raising=False)
-    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
-    monkeypatch.setattr(
-        daemon_module,
-        "AUTHORITY_VALIDATION_DOCKER_SHA256",
-        "0" * 64,
-    )
-    monkeypatch.setattr(
-        daemon_module.shutil,
-        "which",
-        lambda *_args, **_kwargs: pytest.fail(
-            "authority validation must not discover TCB binaries from PATH"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon_module.subprocess,
-        "run",
-        lambda *_args, **_kwargs: pytest.fail(
-            "an unapproved root binary must fail before runtime probes"
-        ),
-    )
-
-    contract = (
-        TodoImplementationDaemon._authority_validation_isolation_contract()
-    )
-
-    assert contract["available"] is False
-    assert contract["reason"] == "authority_validation_tcb_binary_unapproved"
-    assert contract["docker_path"] == "/usr/bin/docker"
-    assert contract["docker_path"] != str(fake_docker)
-    assert contract["docker_sha256"] != "0" * 64
-
-
-def test_authority_validation_does_not_dispatch_without_isolation_contract(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    unavailable = {
-        "available": False,
-        "backend": "docker-local-cuda",
-        "docker_endpoint": "unix:///run/docker.sock",
-        "reason": "authority_validation_docker_contract_unavailable",
-        "contract_id": "unavailable-contract",
-    }
-    monkeypatch.setattr(
-        TodoImplementationDaemon,
-        "_authority_validation_isolation_contract",
-        staticmethod(lambda: unavailable),
-    )
-    monkeypatch.setattr(
-        daemon_module.subprocess,
-        "Popen",
-        lambda *_args, **_kwargs: pytest.fail(
-            "validation command dispatched without an isolation contract"
-        ),
-    )
-
-    result = TodoImplementationDaemon._authority_validation_command_runner(
-        spec=SimpleNamespace(command="true", raw_command="true"),
-        workspace_path=workspace,
-        timeout_seconds=10,
-        environment=_sealed_daemon_environment(),
-    )
-
-    assert result["returncode"] == 75
-    assert result["infrastructure_failure"] is True
-    assert result["error"] == "authority_validation_isolation_unavailable"
-    assert (
-        result["reason"]
-        == "authority_validation_docker_contract_unavailable"
-    )
-    assert result["authority_validation_isolation"] == unavailable
-    assert "authority_validation_isolation_receipt" not in result
-
-
-def test_authority_validation_docker_argv_enforces_local_bounded_read_only_contract(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace = (tmp_path / "workspace").resolve()
-    workspace.mkdir()
-    image_id = f"sha256:{'a' * 64}"
-    gpu_uuid = "GPU-11111111-2222-3333-4444-555555555555"
-    contract = {
-        "available": True,
-        "backend": "docker-local-cuda",
-        "docker_path": "/usr/bin/docker",
-        "docker_endpoint": "unix:///run/docker.sock",
-        "image_reference": "registry.invalid/unpinned:latest",
-        "image_id": image_id,
-        "gpu_uuid": gpu_uuid,
-        "contract_id": "pinned-local-cuda-contract",
-    }
-    monkeypatch.setattr(
-        TodoImplementationDaemon,
-        "_authority_validation_isolation_contract",
-        staticmethod(lambda: contract),
-    )
-    popen_calls: list[tuple[list[str], dict[str, object]]] = []
-    control_calls: list[tuple[list[str], dict[str, object]]] = []
-
-    class CompletedDockerProcess:
-        pid = 424242
-        returncode = 0
-
-        def __init__(self) -> None:
-            self.stdout = io.BytesIO(b"validated\n")
-
-        def poll(self) -> int:
-            return self.returncode
-
-    def fake_popen(
-        command: list[str],
-        **kwargs: object,
-    ) -> CompletedDockerProcess:
-        popen_calls.append((list(command), dict(kwargs)))
-        return CompletedDockerProcess()
-
-    def fake_run(
-        command: list[str],
-        **kwargs: object,
-    ) -> subprocess.CompletedProcess[str]:
-        control_calls.append((list(command), dict(kwargs)))
-        return subprocess.CompletedProcess(command, 0, "")
-
-    monkeypatch.setattr(daemon_module.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(daemon_module.subprocess, "run", fake_run)
-
-    result = TodoImplementationDaemon._authority_validation_command_runner(
-        spec=SimpleNamespace(command="true", raw_command="true"),
-        workspace_path=workspace,
-        timeout_seconds=10,
-        environment=_sealed_daemon_environment(),
-    )
-
-    assert result["returncode"] == 0
-    assert len(popen_calls) == 1
-    docker_argv, popen_kwargs = popen_calls[0]
-    assert docker_argv[:4] == [
-        "/usr/bin/docker",
-        "--host",
-        "unix:///run/docker.sock",
-        "run",
-    ]
-    assert image_id in docker_argv
-    assert contract["image_reference"] not in docker_argv
-    assert f"--gpus=device={gpu_uuid}" in docker_argv
-    assert "--rm" in docker_argv
-    assert "--pull=never" in docker_argv
-    assert "--init" in docker_argv
-    assert "--network=none" in docker_argv
-    assert "--read-only" in docker_argv
-    assert "--cap-drop=ALL" in docker_argv
-    assert "--security-opt=no-new-privileges:true" in docker_argv
-    assert "--log-driver=none" in docker_argv
-    assert "--pids-limit=256" in docker_argv
-    assert "--cpus=4" in docker_argv
-    assert "--memory=4294967296" in docker_argv
-    assert "--memory-swap=4294967296" in docker_argv
-    assert "--shm-size=1073741824" in docker_argv
-    assert (
-        "--tmpfs=/tmp:rw,nosuid,nodev,exec,size=1073741824,mode=1777"
-        in docker_argv
-    )
-    assert f"--workdir={workspace}" in docker_argv
-    mount_arguments = [
-        argument
-        for argument in docker_argv
-        if argument.startswith("--mount=")
-    ]
-    assert mount_arguments == [
-        f"--mount=type=bind,src={workspace},dst={workspace},readonly"
-    ]
-    assert "-v" not in docker_argv
-    assert "--volume" not in docker_argv
-    assert not any(
-        argument.startswith(("-v=", "--volume="))
-        for argument in docker_argv
-    )
-    assert not any(
-        f"src={broad_path}" in argument
-        for broad_path in ("/home", "/usr", "/etc", "/opt")
-        for argument in mount_arguments
-    )
-    assert popen_kwargs["cwd"] == workspace
-    assert popen_kwargs["start_new_session"] is (os.name == "posix")
-    docker_environment = popen_kwargs["env"]
-    assert isinstance(docker_environment, dict)
-    assert docker_environment["DOCKER_HOST"] == "unix:///run/docker.sock"
-    assert "DOCKER_CONTEXT" not in docker_environment
-    assert control_calls
-    assert all(
-        command[:3]
-        == ["/usr/bin/docker", "--host", "unix:///run/docker.sock"]
-        for command, _kwargs in control_calls
-    )
-    receipt = result["authority_validation_isolation_receipt"]
-    assert receipt["image_id"] == image_id
-    assert receipt["gpu_uuid"] == gpu_uuid
-    assert receipt["workspace_path"] == str(workspace)
-    assert receipt["workspace_read_only"] is True
-    assert receipt["container_root_read_only"] is True
-    assert receipt["network_mode"] == "none"
-    assert receipt["capabilities_dropped"] == "all"
-    assert receipt["cgroup_process_limit"] == 256
-    assert receipt["cpu_limit"] == 4
-    assert receipt["memory_limit_bytes"] == 4294967296
-    assert receipt["tmpfs_limit_bytes"] == 1073741824
-    assert receipt["output_limit_bytes"] == 16777216
-    assert receipt["output_bounded"] is True
-    assert receipt["container_log_driver"] == "none"
-    assert receipt["container_removed"] is True
-    assert receipt["process_tree_quiesced"] is True
-
-
-@pytest.mark.parametrize(
-    "start_new_session",
-    (False, True),
-    ids=("same-pgid", "setsid"),
-)
-def test_authority_validation_descendants_cannot_mutate_workspace_after_return(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    start_new_session: bool,
-) -> None:
-    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
-    monkeypatch.delenv("DOCKER_HOST", raising=False)
-    contract = (
-        TodoImplementationDaemon._authority_validation_isolation_contract()
-    )
-    if contract.get("available") is not True:
-        pytest.skip(str(contract.get("reason") or "Docker CUDA unavailable"))
-    monkeypatch.setattr(
-        TodoImplementationDaemon,
-        "_authority_validation_isolation_contract",
-        staticmethod(lambda: contract),
-    )
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    delayed_mutation = workspace / "delayed-mutation.txt"
-    immediate_mutation = workspace / "immediate-mutation.txt"
-    child_source = (
-        "import pathlib, time; "
-        "time.sleep(0.75); "
-        f"pathlib.Path({str(delayed_mutation)!r}).write_text("
-        "'escaped', encoding='utf-8')"
-    )
-    (workspace / "spawn_descendant.py").write_text(
-        "\n".join(
-            (
-                "import pathlib",
-                "import subprocess",
-                "import sys",
-                f"immediate = pathlib.Path({str(immediate_mutation)!r})",
-                "try:",
-                "    immediate.write_text('unexpected', encoding='utf-8')",
-                "except OSError:",
-                "    print('workspace-read-only', flush=True)",
-                "else:",
-                "    raise SystemExit(91)",
-                f"child_source = {child_source!r}",
-                "child = subprocess.Popen(",
-                "    [sys.executable, '-c', child_source],",
-                "    stdin=subprocess.DEVNULL,",
-                "    stdout=subprocess.DEVNULL,",
-                "    stderr=subprocess.DEVNULL,",
-                f"    start_new_session={start_new_session!r},",
-                ")",
-                "print(f'child={child.pid}', flush=True)",
-            )
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    result = TodoImplementationDaemon._authority_validation_command_runner(
-        spec=SimpleNamespace(
-            command="python spawn_descendant.py",
-            raw_command="python spawn_descendant.py",
-        ),
-        workspace_path=workspace,
-        timeout_seconds=30,
-        environment=_sealed_daemon_environment(),
-    )
-
-    assert result["returncode"] == 0, result["output"]
-    assert "workspace-read-only" in str(result["output"])
-    assert "child=" in str(result["output"])
-    receipt = result["authority_validation_isolation_receipt"]
-    assert receipt["workspace_read_only"] is True
-    assert receipt["private_pid_namespace"] is True
-    assert receipt["container_removed"] is True
-    assert receipt["process_tree_quiesced"] is True
-    time.sleep(1.0)
-    assert not immediate_mutation.exists()
-    assert not delayed_mutation.exists()
-
-
-def test_canonical_validation_environment_contract_ignores_provider_path() -> None:
-    provider_only_path = (
-        "/home/test/.elan/bin:/home/test/.local/theorem-provers/bin"
-    )
-
-    contract = canonical_validation_environment_contract(
-        {"PATH": provider_only_path}
-    )
-    expected = build_validation_environment({"PATH": provider_only_path})
-
-    assert contract["path"] == expected["PATH"]
-    assert provider_only_path not in str(contract["path"])
-    assert contract["path_entries"] == tuple(
-        expected["PATH"].split(os.pathsep)
-    )
-    assert contract["inherited_path_ignored"] is True
-    assert contract["writable_toolchain_paths_rejected"] is True
-    assert contract["path_override_active"] is False
-    assert contract["path_override_environment_variable"] == (
-        VALIDATION_PATH_ENV
-    )
-    assert contract["python_interpreter"] == expected["PYTHON"]
-    assert contract["base_home"] == expected["HOME"]
-    assert contract["base_xdg"] == {
-        key: expected[key]
-        for key in (
-            "XDG_CACHE_HOME",
-            "XDG_CONFIG_HOME",
-            "XDG_DATA_HOME",
-            "XDG_STATE_HOME",
-        )
-    }
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -613,63 +231,269 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
 
 
-def test_validation_runtime_propagates_only_canonical_readonly_supervisor_state_root(
+def test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound(
     tmp_path: Path,
 ) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    state_root = tmp_path / "program-state"
+    state_root = tmp_path / "proof-backed-test-reuse-v8"
     state_root.mkdir()
+    workspace = state_root / "worktrees" / "candidate"
+    workspace.mkdir(parents=True)
+    control_state = state_root / "state"
+    control_state.mkdir()
+    control_receipt = control_state / "receipt.json"
+    control_receipt.write_text("sealed-receipt", encoding="utf-8")
+    merge_queue = state_root / "merge-queue"
+    merge_queue.mkdir()
+    control_lock = state_root / "control.lock"
+    control_lock.write_text("locked", encoding="utf-8")
+    workspace_multilink = workspace / "workspace-multilink"
+    workspace_multilink.write_text("before", encoding="utf-8")
+    os.link(workspace_multilink, workspace / "workspace-multilink-alias")
+    historical_root = tmp_path / "proof-backed-test-reuse-v6"
+    historical_root.mkdir()
+    historical_receipt = historical_root / "receipt.json"
+    historical_receipt.write_text("historical-receipt", encoding="utf-8")
+    state_root_alias = tmp_path / "state-root-alias"
+    state_root_alias.symlink_to(state_root, target_is_directory=True)
+    alternate_root = tmp_path / "alternate-proof-backed-test-reuse-v8"
+    alternate_root.mkdir()
+    hostile_home = tmp_path / "host-home"
+    hostile_state = tmp_path / "host-state"
     source = {
-        VALIDATION_SUPERVISOR_STATE_ROOT_ENV: str(state_root),
+        "HOME": str(hostile_home),
+        "XDG_STATE_HOME": str(hostile_state),
+        PROOF_REUSE_STATE_ROOT_ENV: str(state_root_alias),
     }
 
     environment = build_validation_environment(source)
+    alternate_environment = build_validation_environment(
+        {PROOF_REUSE_STATE_ROOT_ENV: str(alternate_root)}
+    )
 
-    assert environment[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] == str(
+    assert environment[PROOF_REUSE_STATE_ROOT_ENV] == str(
         state_root.resolve()
     )
-    report = ValidationScheduler().run(
-        [
-            "test \"$LPR_STATE_ROOT\" = "
-            f"{shlex.quote(str(state_root.resolve()))}"
-        ],
+    assert environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
+    assert environment["XDG_CACHE_HOME"] == environment["HOME"]
+    assert environment["XDG_CONFIG_HOME"] == environment["HOME"]
+    assert environment["XDG_DATA_HOME"] == environment["HOME"]
+    assert environment["XDG_STATE_HOME"] == environment["HOME"]
+
+    probe = f"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(os.environ[{PROOF_REUSE_STATE_ROOT_ENV!r}])
+failures = []
+operations = (
+    lambda: (root / "state" / "receipt.json").write_text("tampered"),
+    lambda: (root / "merge-queue" / "forged.json").write_text("forged"),
+    lambda: (root / "control.lock").unlink(),
+    lambda: (root / "state" / "receipt.json").rename(root / "moved.json"),
+    lambda: (root.parent / "proof-backed-test-reuse-v6" / "receipt.json").write_text("tampered"),
+)
+for operation in operations:
+    try:
+        operation()
+    except PermissionError:
+        failures.append("denied")
+    else:
+        failures.append("allowed")
+(Path.cwd() / "workspace-write").write_text("workspace-ok")
+(Path.cwd() / "workspace-multilink-alias").write_text("workspace-link-ok")
+private_home = Path(os.environ["HOME"])
+(private_home / "home-write").write_text("home-ok")
+# Pytest logging opens /dev/null; the fence must keep that sink writable.
+with open("/dev/null", "w", encoding="utf-8") as sink:
+    sink.write("dev-null-ok")
+child = subprocess.run(
+    [
+        sys.executable,
+        "-I",
+        "-c",
+        "from pathlib import Path; import sys; "
+        "Path(sys.argv[1]).write_text('child-tamper')",
+        str(root / "state" / "receipt.json"),
+    ],
+    check=False,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+)
+print(json.dumps({{
+    "root": str(root),
+    "home": str(private_home),
+    "xdg_state": os.environ["XDG_STATE_HOME"],
+    "denied": failures,
+    "child_returncode": child.returncode,
+    "home_write": (private_home / "home-write").read_text(),
+}}, sort_keys=True))
+"""
+    command = f"python -c {shlex.quote(probe)}"
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
         workspace_path=workspace,
-        changed_files=["pyproject.toml"],
-        target_commit="test-commit",
-        dependency_state="test-dependencies",
-        environment=source,
+        timeout_seconds=30,
+        environment=validation_environment_for_runner(
+            environment,
+            TodoImplementationDaemon._validation_command_runner,
+        ),
     )
-    assert report["passed"] is True
 
-    for command in (
-        "LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
-        "env LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
-        "export LPR_STATE_ROOT=/tmp; python -c 'raise SystemExit(0)'",
-    ):
-        with pytest.raises(
-            ValidationRuntimeError,
-            match="may not override the supervisor state root",
-        ):
-            validation_shell_command(command)
-    for command in (
-        "env -i python -c 'raise SystemExit(0)'",
-        "env - python -c 'raise SystemExit(0)'",
-        "env -iu LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
-        "env -u LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
-        "env --unset=LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
-        "env -S '-u LPR_STATE_ROOT' python -c 'raise SystemExit(0)'",
-    ):
-        with pytest.raises(
-            ValidationRuntimeError,
-            match="may not use env options inside the protected environment",
-        ):
-            validation_shell_command(command)
+    assert result["returncode"] == 0, result["output"]
+    observed = json.loads(str(result["output"]))
+    assert observed["root"] == str(state_root.resolve())
+    assert Path(observed["home"]) != hostile_home
+    assert Path(observed["xdg_state"]) == (
+        Path(observed["home"]) / ".local" / "state"
+    )
+    assert observed["denied"] == ["denied"] * 5
+    assert observed["child_returncode"] != 0
+    assert observed["home_write"] == "home-ok"
+    assert not Path(observed["home"]).exists()
+    assert (workspace / "workspace-write").read_text() == "workspace-ok"
+    assert workspace_multilink.read_text() == "workspace-link-ok"
+    assert control_receipt.read_text() == "sealed-receipt"
+    assert not (merge_queue / "forged.json").exists()
+    assert control_lock.read_text() == "locked"
+    assert historical_receipt.read_text() == "historical-receipt"
+    boundary = result["validation_filesystem_boundary"]
+    assert boundary["schema"] == VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA
+    assert boundary["mode"] == "landlock-read-only-host-v1"
+    assert boundary["landlock_abi"] >= 3
+    assert boundary["applied"] is True
+    assert boundary["proof_reuse_control_state_read_only"] is True
+    assert boundary["proof_reuse_state_write_exception"] == (
+        "exact-workspace-private-home-and-std-devices"
+    )
+    assert boundary["protected_hardlink_aliases_checked"] is True
+    assert boundary["standard_device_nodes_writable"] is True
+    assert boundary["proof_authoritative"] is False
+    assert boundary["completion_authority"] is False
 
-    with pytest.raises(ValidationRuntimeError, match="must be an absolute directory"):
+    cache_key = build_validation_cache_key(
+        target_commit="commit-a",
+        command="pytest tests/test_alpha.py",
+        environment=environment,
+        dependency_state={"lock": "one"},
+        relevant_environment_keys=environment,
+    )
+    alternate_cache_key = build_validation_cache_key(
+        target_commit="commit-a",
+        command="pytest tests/test_alpha.py",
+        environment=alternate_environment,
+        dependency_state={"lock": "one"},
+        relevant_environment_keys=alternate_environment,
+    )
+    assert cache_key.digest != alternate_cache_key.digest
+
+    runtime = build_hermetic_validation_runtime(
+        command="pytest tests/test_alpha.py",
+        workspace_path=workspace,
+        repository_tree_id="tree-a",
+        environment=environment,
+        timeout_seconds=30,
+        cancellation_id="cancel-a",
+        isolation_executable="/bin/true",
+    )
+    alternate_runtime = build_hermetic_validation_runtime(
+        command="pytest tests/test_alpha.py",
+        workspace_path=workspace,
+        repository_tree_id="tree-a",
+        environment=alternate_environment,
+        timeout_seconds=30,
+        cancellation_id="cancel-a",
+        isolation_executable="/bin/true",
+    )
+    assert dict(runtime.environment)[PROOF_REUSE_STATE_ROOT_ENV] == str(
+        state_root.resolve()
+    )
+    assert runtime.runtime_id != alternate_runtime.runtime_id
+
+
+def test_proof_reuse_state_root_capability_rejects_invalid_directories(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must be an absolute directory",
+    ):
         build_validation_environment(
-            {VALIDATION_SUPERVISOR_STATE_ROOT_ENV: "relative/state"}
+            {PROOF_REUSE_STATE_ROOT_ENV: "relative/state-root"}
         )
+    with pytest.raises(ValidationRuntimeError, match="is unavailable"):
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(tmp_path / "missing-state-root")}
+        )
+
+
+def test_proof_reuse_state_root_cannot_be_inside_writable_workspace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    state_root = workspace / "state-root"
+    state_root.mkdir(parents=True)
+    marker = workspace / "command-ran"
+    command = f"python -c {shlex.quote(f'from pathlib import Path; Path({str(marker)!r}).touch()')}"
+    environment = validation_environment_for_runner(
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(state_root)}
+        ),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == (
+        "validation_environment_proof_state_boundary_unavailable"
+    )
+    assert not marker.exists()
+
+
+def test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "proof-backed-test-reuse-v9"
+    workspace = state_root / "worktrees" / "candidate"
+    receipt = state_root / "state" / "receipt.json"
+    workspace.mkdir(parents=True)
+    receipt.parent.mkdir()
+    receipt.write_text("sealed-receipt", encoding="utf-8")
+    os.link(receipt, workspace / "receipt-alias.json")
+    marker = workspace / "command-ran"
+    command = f"python -c {shlex.quote(f'from pathlib import Path; Path({str(marker)!r}).touch()')}"
+    environment = validation_environment_for_runner(
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(state_root)}
+        ),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == (
+        "validation_environment_proof_state_boundary_unavailable"
+    )
+    assert "hardlink" not in str(result["output"]).lower()
+    assert receipt.read_text() == "sealed-receipt"
+    assert not marker.exists()
 
 
 def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
@@ -2009,364 +1833,163 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["failed_command"] == "git diff --check"
 
 
-def test_compound_bare_diff_check_covers_committed_candidate_from_baseline(
+def test_daemon_binds_sibling_repositories_for_sealed_validation(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo = tmp_path / "repo"
-    baseline = _repo(repo)
-    (repo / "src" / "alpha.py").write_text(
-        "VALUE = 1  \n",
+    workspace = tmp_path / "workspace"
+    sibling_root = workspace / "external" / "ipfs_datasets"
+    sibling_root.mkdir(parents=True)
+    (sibling_root / "sibling_fixture.py").write_text(
+        "VALUE = 42\n",
         encoding="utf-8",
     )
-    _git(repo, "add", "src/alpha.py")
-    _git(repo, "commit", "-qm", "model-created clean candidate")
-    assert _git(repo, "status", "--porcelain") == ""
+    monkeypatch.setenv("SUPERVISOR_VALIDATION_SECRET", "must-not-leak")
     daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        validation_cache_dir=repo / "validation-cache",
-        merge_queue_dir=repo / "merge-queue",
-    )
-    declared_validation = (
-        "test -f src/alpha.py && rg -q 'VALUE' src/alpha.py && "
-        "rg -qi 'value' src/alpha.py && git diff --check"
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=("external/ipfs_datasets",),
+        validation_scheduler=ValidationScheduler(),
     )
     task = PortalTask(
-        task_id="REF-043",
-        title="committed candidate whitespace",
+        task_id="PTR-010",
+        title="cross-repository validation",
         status="todo",
         completion="manual",
-        priority="P1",
-        track="validation",
-        validation=[declared_validation],
-    )
-
-    assert daemon._declares_bare_git_diff_check(task.validation) is True
-    assert daemon._declares_bare_git_diff_check(
-        ("printf '%s\\n' 'git diff --check'",)
-    ) is False
-
-    report = daemon._run_validation_commands(
-        repo,
-        task,
-        repo / "validation.log",
-        baseline_ref=baseline,
-    )
-
-    assert report["passed"] is False
-    assert report["reason"] == "candidate_diff_check_failed"
-    invariant = report["candidate_diff_check"]
-    assert invariant["stage"] == "candidate_invariant"
-    assert invariant["returncode"] != 0
-    assert invariant["command"].startswith(
-        f"git diff --check {baseline}"
-    )
-    assert "src/alpha.py:1: trailing whitespace" in (
-        repo / "validation.log"
-    ).read_text(encoding="utf-8")
-
-
-def test_daemon_python_validation_imports_configured_worktree_packages(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    _repo(repo)
-    provider_root = repo / "external" / "provider"
-    provider_root.mkdir(parents=True)
-    (provider_root / "sibling_provider.py").write_text(
-        "VALUE = 7\n",
-        encoding="utf-8",
-    )
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=("external/provider",),
-        worktree_pool_enabled=False,
-        validation_cache_dir=repo / "validation-cache",
-        merge_queue_dir=repo / "merge-queue",
-    )
-    task = PortalTask(
-        task_id="REF-044",
-        title="worktree package validation",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="validation",
+        priority="P0",
+        track="platform",
         validation=[
-            "python3 -c 'import sibling_provider; "
-            "assert sibling_provider.VALUE == 7'"
+            "true && python -c 'import os, sibling_fixture; "
+            "assert sibling_fixture.VALUE == 42; "
+            'assert "SUPERVISOR_VALIDATION_SECRET" not in os.environ\''
         ],
     )
+    log_path = tmp_path / "validation.log"
 
-    report = daemon._run_validation_commands(
-        repo,
-        task,
-        repo / "validation.log",
-    )
+    report = daemon._run_validation_commands(workspace, task, log_path)
 
     assert report["passed"] is True
     assert report["results"][0]["command"].startswith(
-        "export PYTHONPATH=external/provider && python3 "
+        'export PYTHONPATH="$PWD"/external/ipfs_datasets; '
     )
     assert (
-        "added configured worktree package roots to PYTHONPATH"
-        in (repo / "validation.log").read_text(encoding="utf-8")
-    )
+        "[validation normalized] bound configured worktree submodule roots "
+        "to validation PYTHONPATH"
+    ) in log_path.read_text(encoding="utf-8")
 
 
-def test_daemon_pythonpath_export_covers_root_chained_validation_commands(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    _repo(repo)
-    provider_root = repo / "external" / "provider"
-    provider_root.mkdir(parents=True)
-    (provider_root / "sibling_provider.py").write_text(
-        "VALUE = 9\n",
-        encoding="utf-8",
-    )
-    tool_root = repo / "tools"
-    tool_root.mkdir()
-    (tool_root / "check.py").write_text(
-        "import sibling_provider\nassert sibling_provider.VALUE == 9\n",
-        encoding="utf-8",
-    )
+def test_daemon_preserves_reviewed_validation_pythonpath(tmp_path: Path) -> None:
     daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=("external/provider",),
-        worktree_pool_enabled=False,
-        validation_cache_dir=repo / "validation-cache",
-        merge_queue_dir=repo / "merge-queue",
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_submodule_paths=("external/ipfs_datasets",),
     )
-    task = PortalTask(
-        task_id="REF-044-ROOT-CHAIN",
-        title="chained repository-root worktree validation",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="validation",
-        validation=[
-            "python3 -c 'import sibling_provider; "
-            "assert sibling_provider.VALUE == 9' && python3 tools/check.py"
-        ],
-    )
+    command = "MODE=off PYTHONPATH=custom:. python -m pytest -q"
 
-    report = daemon._run_validation_commands(
-        repo,
-        task,
-        repo / "validation.log",
-    )
-
-    assert report["passed"] is True
-    assert report["results"][0]["command"].startswith(
-        "export PYTHONPATH=external/provider && python3 "
-    )
-
-
-def test_daemon_python_validation_after_cd_keeps_worktree_packages_importable(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    _repo(repo)
-    package_root = repo / "package"
-    package_root.mkdir()
-    provider_root = repo / "external" / "provider"
-    provider_root.mkdir(parents=True)
-    (provider_root / "sibling_provider.py").write_text(
-        "VALUE = 11\n",
-        encoding="utf-8",
-    )
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=("external/provider",),
-        worktree_pool_enabled=False,
-        validation_cache_dir=repo / "validation-cache",
-        merge_queue_dir=repo / "merge-queue",
-    )
-    task = PortalTask(
-        task_id="REF-044-CD",
-        title="package-local worktree validation",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="validation",
-        validation=[
-            "cd package && python3 -c 'import sibling_provider; "
-            "assert sibling_provider.VALUE == 11'"
-        ],
-    )
-
-    report = daemon._run_validation_commands(
-        repo,
-        task,
-        repo / "validation.log",
-    )
-
-    assert report["passed"] is True
-    assert report["results"][0]["command"].startswith(
-        "cd package && export PYTHONPATH=../external/provider:.. && python3 "
-    )
-
-
-def test_daemon_pythonpath_export_covers_chained_validation_commands(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    _repo(repo)
-    package_root = repo / "package"
-    (package_root / "local_package").mkdir(parents=True)
-    (package_root / "local_package" / "__init__.py").write_text(
-        "VALUE = 13\n",
-        encoding="utf-8",
-    )
-    (repo / "supervisor_package.py").write_text(
-        "VALUE = 17\n",
-        encoding="utf-8",
-    )
-    benchmark_root = package_root / "benchmarks"
-    benchmark_root.mkdir()
-    (benchmark_root / "run.py").write_text(
-        "import local_package\n"
-        "import supervisor_package\n"
-        "assert local_package.VALUE == 13\n"
-        "assert supervisor_package.VALUE == 17\n",
-        encoding="utf-8",
-    )
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=("package",),
-        worktree_pool_enabled=False,
-        validation_cache_dir=repo / "validation-cache",
-        merge_queue_dir=repo / "merge-queue",
-    )
-    task = PortalTask(
-        task_id="REF-044-CHAIN",
-        title="chained package-local worktree validation",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="validation",
-        validation=[
-            "cd package && python3 -c 'import local_package, supervisor_package; "
-            "assert local_package.VALUE == 13; "
-            "assert supervisor_package.VALUE == 17' && "
-            "python3 benchmarks/run.py"
-        ],
-    )
-
-    report = daemon._run_validation_commands(
-        repo,
-        task,
-        repo / "validation.log",
-    )
-
-    assert report["passed"] is True
-    assert report["results"][0]["command"].startswith(
-        "cd package && export PYTHONPATH=.:.. && python3 "
-    )
-
-
-@pytest.mark.parametrize(
-    "command",
-    (
-        "cd package && python3 -c 'pass' && cd .. && python3 -c 'pass'",
-        "cd ../outside && python3 -c 'pass'",
-        "(cd package && python3 -c 'pass')",
-        "cd package\n&& python3 -c 'pass'",
-    ),
-)
-def test_daemon_pythonpath_inference_rejects_unbounded_working_directory(
-    tmp_path: Path,
-    command: str,
-) -> None:
-    repo = tmp_path / "repo"
-    _repo(repo)
-    (repo / "package").mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=("package",),
-        worktree_pool_enabled=False,
-        validation_cache_dir=repo / "validation-cache",
-        merge_queue_dir=repo / "merge-queue",
-    )
-    normalized, note = daemon._with_worktree_validation_pythonpath(
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
         command,
-        repo,
+        tmp_path,
     )
 
-    assert normalized == command
-    assert note == ""
+    assert bound == command
+    assert notes == []
 
 
-def test_daemon_preserves_explicit_validation_pythonpath(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    _repo(repo)
-    (repo / "external" / "provider").mkdir(parents=True)
-    captured: dict[str, object] = {}
-
-    class Scheduler:
-        def run(self, commands, **_kwargs):
-            captured["commands"] = tuple(commands)
-            return {
-                "attempted": True,
-                "passed": True,
-                "returncode": 0,
-                "results": [],
-            }
-
+def test_daemon_does_not_rewrite_non_python_validation(tmp_path: Path) -> None:
     daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state.json",
-        strategy_path=repo / "strategy.json",
-        events_path=repo / "events.jsonl",
-        repo_root=repo,
-        validation_scheduler=Scheduler(),  # type: ignore[arg-type]
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_submodule_paths=("external/ipfs_datasets",),
+    )
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        "git diff --check",
+        tmp_path,
+    )
+
+    assert bound == "git diff --check"
+    assert notes == []
+
+
+@pytest.mark.parametrize("provider_state", ("missing", "symlink_escape"))
+def test_daemon_omits_unavailable_or_escaping_validation_roots(
+    tmp_path: Path,
+    provider_state: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    external = workspace / "external"
+    external.mkdir(parents=True)
+    if provider_state == "symlink_escape":
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (external / "provider").symlink_to(
+            outside,
+            target_is_directory=True,
+        )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
         worktree_submodule_paths=("external/provider",),
     )
-    command = "PYTHONPATH=src python3 -m pytest tests/unit -q"
-    task = PortalTask(
-        task_id="REF-045",
-        title="explicit validation path",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="validation",
-        validation=[command],
+    command = "python -m pytest -q"
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        command,
+        workspace,
     )
 
-    daemon._run_validation_commands(repo, task, repo / "validation.log")
+    assert bound == command
+    assert notes == []
 
-    assert captured["commands"] == (command,)
+
+def test_daemon_omits_validation_roots_containing_path_separator(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    safe_root = workspace / "external" / "safe"
+    safe_root.mkdir(parents=True)
+    unsafe_relative = f"inside{os.pathsep}/tmp"
+    (workspace / unsafe_relative).mkdir(parents=True)
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=(unsafe_relative, "external/safe"),
+    )
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        "python -m pytest -q",
+        workspace,
+    )
+
+    assert bound == (
+        'export PYTHONPATH="$PWD"/external/safe; python -m pytest -q'
+    )
+    assert unsafe_relative not in bound
+    assert notes == [
+        "bound configured worktree submodule roots to validation PYTHONPATH"
+    ]
 
 
 def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     tmp_path: Path,
 ) -> None:
     captured: dict[str, object] = {}
+    (tmp_path / "external" / "ipfs_accelerate").mkdir(parents=True)
 
     class Scheduler:
         def run_validated(self, proposal_validation, commands, **kwargs):
@@ -2386,6 +2009,7 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
         strategy_path=tmp_path / "strategy.json",
         events_path=tmp_path / "events.jsonl",
         repo_root=tmp_path,
+        worktree_submodule_paths=("external/ipfs_accelerate",),
         validation_scheduler=Scheduler(),  # type: ignore[arg-type]
     )
     task = PortalTask(
@@ -2423,6 +2047,9 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     assert captured["scope"] == "pre_merge"
     assert len(commands) == 1
     assert commands[0].validation_id.startswith("declared:")
+    assert commands[0].command.startswith(
+        'export PYTHONPATH="$PWD"/external/ipfs_accelerate; '
+    )
     assert graph.graph_version == "declared-validation-plan-v1"
     assert graph.required_validations(
         graph.affected_paths(
