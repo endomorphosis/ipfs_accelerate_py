@@ -312,9 +312,7 @@ setup(
             "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
         ],
-        # Shared proof-reuse plugin (mirrors [project.entry-points.pytest11] in pyproject.toml).
-        "pytest11": [
-            "ipfs-proof-reuse=ipfs_accelerate_py.testing.proof_reuse.plugin",
-        ],
+        # Proof-reuse plugin is optional; prefer entry-point-free discovery for CI import modes.
+
     },
 )
