@@ -1,0 +1,1245 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt_only_self_improvement_v3.scheduler_config@1",
+  "audited_baseline_commit": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+  "taskboard_path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md",
+  "validator_path": "ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py",
+  "task_prefix": "ASE3-",
+  "goal_prefix": "ASE3-G",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "merge_target_branch": "agent/prompt-self-improvement-v3",
+  "source_binding": {
+    "accelerator_required_ancestor": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+    "accelerator_required_branch": "agent/prompt-self-improvement-v3",
+    "require_clean_worktree_at_task_start": true,
+    "record_repository_tree_at_launch": true,
+    "changed_revision_requires_fresh_convergence_and_validation": true,
+    "historical_ase_or_ase2_completion_is_authority": false
+  },
+  "initial_projection": {
+    "task_count": 30,
+    "goal_count": 10,
+    "root_goal_id": "ASE3-G000",
+    "bootstrap_task_id": "ASE3-000",
+    "canonical_task_ids": [
+      "ASE3-000",
+      "ASE3-001",
+      "ASE3-002",
+      "ASE3-003",
+      "ASE3-004",
+      "ASE3-005",
+      "ASE3-006",
+      "ASE3-007",
+      "ASE3-008",
+      "ASE3-009",
+      "ASE3-010",
+      "ASE3-011",
+      "ASE3-012",
+      "ASE3-013",
+      "ASE3-014",
+      "ASE3-018",
+      "ASE3-019",
+      "ASE3-020",
+      "ASE3-021",
+      "ASE3-023",
+      "ASE3-024",
+      "ASE3-025",
+      "ASE3-026",
+      "ASE3-027",
+      "ASE3-028",
+      "ASE3-029",
+      "ASE3-030",
+      "ASE3-031",
+      "ASE3-032",
+      "ASE3-033"
+    ],
+    "noncanonical_transition_task_ids": [
+      "ASE3-022"
+    ],
+    "first_parallel_wave": [
+      "ASE3-001",
+      "ASE3-002",
+      "ASE3-003"
+    ],
+    "terminal_task_id": "ASE3-014"
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": false,
+  "objective_refill_enabled": true,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 30,
+  "check_interval_seconds": 15,
+  "stale_seconds": 300,
+  "watchdog_startup_grace_seconds": 120,
+  "max_restarts": 3,
+  "max_task_attempts": 2,
+  "implementation_retry_budget": 2,
+  "validation_retry_budget": 2,
+  "merge_retry_budget": 2,
+  "implementation_timeout_seconds": 3600,
+  "implementation_max_timeout_seconds": 7200,
+  "implementation_log_stall_seconds": 300,
+  "worktree_submodule_paths": [],
+  "protected_paths": [
+    ".gitignore",
+    "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json",
+    "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md",
+    "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md",
+    "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+    "ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py",
+    "test/api/test_agent_supervisor_prompt_v3_convergence.py",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/current_main_baseline.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/historical_state_contradictions.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/rescue_artifact_dispositions.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/clean_integration_worktree_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/post_wave3_residuals_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_recovery_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_merge_receipt_ase3_006_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/false_completion_merge_receipt_ase3_018_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_validation_event_ase3_019_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/self_host_seed_failure_ase3_019_attempt_2_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_activation_receipt.json",
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_post_activation_observation_receipt.json"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/prompt_only_self_improvement_v3/live",
+    "state": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state",
+    "worktrees": "data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees",
+    "merge_queue": "data/agent_supervisor/prompt_only_self_improvement_v3/live/merge-queue",
+    "logs": "data/agent_supervisor/prompt_only_self_improvement_v3/live/logs",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "ase3-lane-0",
+      "strict_shard_remainder": 0
+    },
+    {
+      "index": 1,
+      "name": "ase3-lane-1",
+      "strict_shard_remainder": 1
+    },
+    {
+      "index": 2,
+      "name": "ase3-lane-2",
+      "strict_shard_remainder": 2
+    }
+  ],
+  "task_groups": {
+    "ASE3-G010": [
+      "ASE3-000"
+    ],
+    "ASE3-G020": [
+      "ASE3-001",
+      "ASE3-002",
+      "ASE3-018",
+      "ASE3-019",
+      "ASE3-027",
+      "ASE3-029",
+      "ASE3-028"
+    ],
+    "ASE3-G030": [
+      "ASE3-004",
+      "ASE3-024"
+    ],
+    "ASE3-G040": [
+      "ASE3-003",
+      "ASE3-005",
+      "ASE3-006",
+      "ASE3-030",
+      "ASE3-031",
+      "ASE3-032",
+      "ASE3-023",
+      "ASE3-025"
+    ],
+    "ASE3-G050": [
+      "ASE3-007",
+      "ASE3-021"
+    ],
+    "ASE3-G055": [
+      "ASE3-020",
+      "ASE3-033"
+    ],
+    "ASE3-G060": [
+      "ASE3-008",
+      "ASE3-026"
+    ],
+    "ASE3-G070": [
+      "ASE3-009",
+      "ASE3-010",
+      "ASE3-011",
+      "ASE3-012"
+    ],
+    "ASE3-G080": [
+      "ASE3-013",
+      "ASE3-014"
+    ]
+  },
+  "task_dependencies": {
+    "ASE3-000": [],
+    "ASE3-001": [
+      "ASE3-000"
+    ],
+    "ASE3-002": [
+      "ASE3-000"
+    ],
+    "ASE3-003": [
+      "ASE3-000"
+    ],
+    "ASE3-004": [
+      "ASE3-001",
+      "ASE3-002"
+    ],
+    "ASE3-005": [
+      "ASE3-003",
+      "ASE3-004"
+    ],
+    "ASE3-006": [
+      "ASE3-003",
+      "ASE3-004"
+    ],
+    "ASE3-007": [
+      "ASE3-004"
+    ],
+    "ASE3-008": [
+      "ASE3-006",
+      "ASE3-020",
+      "ASE3-021"
+    ],
+    "ASE3-009": [
+      "ASE3-005",
+      "ASE3-008",
+      "ASE3-026"
+    ],
+    "ASE3-010": [
+      "ASE3-009"
+    ],
+    "ASE3-011": [
+      "ASE3-009"
+    ],
+    "ASE3-012": [
+      "ASE3-010",
+      "ASE3-011"
+    ],
+    "ASE3-013": [
+      "ASE3-008",
+      "ASE3-012",
+      "ASE3-026"
+    ],
+    "ASE3-014": [
+      "ASE3-013"
+    ],
+    "ASE3-018": [
+      "ASE3-001"
+    ],
+    "ASE3-019": [
+      "ASE3-002"
+    ],
+    "ASE3-020": [
+      "ASE3-003",
+      "ASE3-005",
+      "ASE3-018",
+      "ASE3-019",
+      "ASE3-021",
+      "ASE3-024",
+      "ASE3-025",
+      "ASE3-028"
+    ],
+    "ASE3-021": [
+      "ASE3-004",
+      "ASE3-006",
+      "ASE3-007",
+      "ASE3-019",
+      "ASE3-022",
+      "ASE3-024",
+      "ASE3-025"
+    ],
+    "ASE3-023": [
+      "ASE3-003",
+      "ASE3-004",
+      "ASE3-005",
+      "ASE3-006"
+    ],
+    "ASE3-024": [
+      "ASE3-003",
+      "ASE3-004",
+      "ASE3-028"
+    ],
+    "ASE3-025": [
+      "ASE3-004",
+      "ASE3-023",
+      "ASE3-024"
+    ],
+    "ASE3-026": [
+      "ASE3-008",
+      "ASE3-020",
+      "ASE3-021",
+      "ASE3-025"
+    ],
+    "ASE3-027": [
+      "ASE3-001",
+      "ASE3-018"
+    ],
+    "ASE3-028": [
+      "ASE3-029"
+    ],
+    "ASE3-029": [
+      "ASE3-022"
+    ],
+    "ASE3-030": [
+      "ASE3-019"
+    ],
+    "ASE3-031": [
+      "ASE3-030"
+    ],
+    "ASE3-032": [
+      "ASE3-031"
+    ],
+    "ASE3-033": [
+      "ASE3-000"
+    ]
+  },
+  "acceptance_prerequisites": {
+    "ASE3-023": [
+      "ASE3-030",
+      "ASE3-031",
+      "ASE3-032"
+    ],
+    "ASE3-022": [
+      "ASE3-030",
+      "ASE3-031",
+      "ASE3-032"
+    ]
+  },
+  "protected_transition_construction": {
+    "task_id": "ASE3-033",
+    "ordinary_dependencies": [
+      "ASE3-000"
+    ],
+    "pre_q_integration_freeze_prerequisites": [
+      "ASE3-019",
+      "ASE3-030",
+      "ASE3-031",
+      "ASE3-032",
+      "ASE3-023",
+      "ASE3-027"
+    ],
+    "prerequisite_review_kind": "independent",
+    "prerequisite_acceptance_status_required": false,
+    "q_parent_requires_independently_audited_replayed_ase3_033_tooling": true,
+    "q_status_transition": {
+      "task_id": "ASE3-033",
+      "from": "todo",
+      "to": "completed",
+      "other_status_changes_allowed": false,
+      "changed_paths": [
+        "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_acceptance_q_inventory.json",
+        "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+      ]
+    },
+    "ase3_033_completed_required_from_phase": "R",
+    "required_before_phases": [
+      "R",
+      "P019",
+      "A019",
+      "A030",
+      "P031",
+      "A031",
+      "A032",
+      "A023/027",
+      "L",
+      "birth"
+    ],
+    "product_outputs": [
+      "ipfs_accelerate_py/agent_supervisor/core/protected_acceptance_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/merge/protected_acceptance_transition.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/protected_acceptance_transition.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/protected_acceptance_transition_cli.py",
+      "test/api/test_agent_supervisor_prompt_v3_transition.py",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_acceptance_q_inventory.json",
+      ".gitignore",
+      "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json",
+      "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md",
+      "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md",
+      "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+      "ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py",
+      "test/api/test_agent_supervisor_prompt_v3_convergence.py"
+    ],
+    "package_dependency_dag": {
+      "core_imports": [],
+      "merge_imports": [
+        "core"
+      ],
+      "entrypoint_imports": [
+        "core",
+        "merge",
+        "entrypoints.local_profile"
+      ],
+      "merge_signer_evidence_validator_dependencies": "injected_protocols",
+      "merge_may_import_entrypoints": false
+    },
+    "public_apis": [
+      "freeze_prompt_v3_product_provenance",
+      "build_prompt_v3_root_pin",
+      "initialize_prompt_v3_reviewer_after_root_pin",
+      "build_prompt_v3_provider_authorization",
+      "canonical_prompt_v3_review_bytes",
+      "sign_prompt_v3_operator_artifact",
+      "build_prompt_v3_phase_candidate",
+      "run_prompt_v3_phase_evidence",
+      "validate_prompt_v3_phase_candidate",
+      "publish_prompt_v3_phase_candidate",
+      "reject_prompt_v3_phase_candidate",
+      "observe_prompt_v3_quiescence",
+      "build_prompt_v3_reload_authorization",
+      "consume_prompt_v3_a031_authorization",
+      "append_prompt_v3_a031_failure_attempt",
+      "reauthorize_prompt_v3_p031_attempt",
+      "load_verified_prompt_v3_runtime_launch_authority"
+    ],
+    "schemas": {
+      "product_generation": "ipfs_accelerate_py.agent_supervisor.prompt-v3-product-generation@1",
+      "phase_authority": "ipfs_accelerate_py.agent_supervisor.prompt-v3-phase-authority@1",
+      "p031_authorization": "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-launch-authorization@2",
+      "phase_receipt": "ipfs_accelerate_py.agent_supervisor.prompt-v3-phase-receipt@2",
+      "reload_authorization": "ipfs_accelerate_py.agent_supervisor.provider-attempt-daemon-reload@2"
+    },
+    "product_generation_contract": {
+      "roles": [
+        "source",
+        "replay",
+        "integrated"
+      ],
+      "source_and_replay_are_q_ancestors": false,
+      "integrated_is_q_ancestor": true,
+      "generation_order": [
+        "ASE3-019",
+        "ASE3-030",
+        "ASE3-031",
+        "ASE3-032",
+        "ASE3-023",
+        "ASE3-027"
+      ],
+      "ordered_commit_counts": {
+        "ASE3-019": 2,
+        "ASE3-030": 2,
+        "ASE3-031": 1,
+        "ASE3-032": 1,
+        "ASE3-023": 3,
+        "ASE3-027": 2
+      },
+      "required_generation_fields": [
+        "task_id",
+        "ordered_commit_count",
+        "source",
+        "replay",
+        "integrated",
+        "final_commits"
+      ],
+      "required_role_fields": [
+        "base_commit",
+        "ordered_commits",
+        "final_commit"
+      ],
+      "required_commit_fields": [
+        "ordinal",
+        "commit",
+        "parent",
+        "tree",
+        "changed_paths",
+        "files",
+        "canonical_patch_base64",
+        "canonical_patch_sha256"
+      ],
+      "required_file_fields": [
+        "path",
+        "mode",
+        "raw",
+        "blob"
+      ],
+      "each_ordered_commit_has_exactly_one_parent": true,
+      "exact_parent_chain_required": true,
+      "first_commit_parent_equals_role_base": true,
+      "later_commit_parent_equals_previous_commit": true,
+      "final_commit_equals_last_ordered_commit": true,
+      "final_commit_map_contract": {
+        "exact_task_keys": [
+          "ASE3-019",
+          "ASE3-030",
+          "ASE3-031",
+          "ASE3-032",
+          "ASE3-023",
+          "ASE3-027"
+        ],
+        "exact_role_keys": [
+          "source",
+          "replay",
+          "integrated"
+        ],
+        "values_equal_declared_role_final_commits": true,
+        "declared_role_final_commits_equal_last_ordered_commits": true
+      },
+      "reconstruct_every_ordered_commit_patch_stream": true,
+      "patch_reconstruction_operands": [
+        "parent",
+        "commit"
+      ],
+      "canonical_diff_argv": [
+        "git",
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-renames",
+        "--binary",
+        "--full-index"
+      ],
+      "canonical_patch_encoding": "standard-base64",
+      "patch_stream_comparison_key": [
+        "task_id",
+        "ordinal"
+      ],
+      "source_replay_integrated_patch_streams_byte_identical": true,
+      "preserve_exact_reviewed_file_modes": true,
+      "reviewed_mode_examples": {
+        "ipfs_accelerate_py/llm_router.py": "100755"
+      },
+      "cross_task_or_cross_commit_evidence_substitution_allowed": false,
+      "portable_verification_contract": {
+        "fresh_clone_plus_prune_must_verify": true,
+        "ambient_local_refs_or_worktree_only_objects_allowed": false,
+        "keep_alive_refs_required": false,
+        "bundle_artifact_required": false,
+        "durable_object_carrier": {
+          "kind": "sealed_product_generation_record",
+          "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-product-generation@1"
+        },
+        "source_and_replay_verify_from_sealed_record_only": true,
+        "source_and_replay_git_object_reachability_required": false,
+        "integrated_commits_must_be_reachable_q_ancestors": true,
+        "ase3_033_tooling_must_be_present_in_q_parent_tree": true,
+        "sealed_record_fields_sufficient_for_source_replay": [
+          "ordinal",
+          "commit",
+          "parent",
+          "tree",
+          "changed_paths",
+          "files",
+          "canonical_patch_base64",
+          "canonical_patch_sha256"
+        ],
+        "git_diff_reconstruction": {
+          "required_when_parent_and_commit_objects_present": true,
+          "portable_fallback": "sealed_canonical_patch_base64_and_file_raw_blob_mode",
+          "ambient_ref_carrier_forbidden": true
+        }
+      }
+    },
+    "q_inventory_contract": {
+      "path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_acceptance_q_inventory.json",
+      "allowed_authority": [
+        "pre_existing_lifecycle_root_identity_did",
+        "stable_policy"
+      ],
+      "forbidden": [
+        "future_pin_sentinel",
+        "reviewer_identity",
+        "profile",
+        "profile_content",
+        "lifecycle_anchor",
+        "signature",
+        "time_observation",
+        "test_observation",
+        "capsule_output",
+        "generation"
+      ]
+    },
+    "phase_authority_contract": {
+      "fresh_for_every_phase": true,
+      "phases": [
+        "R",
+        "P019",
+        "A019",
+        "A030",
+        "P031",
+        "A031",
+        "A032",
+        "A023/027",
+        "L",
+        "birth"
+      ],
+      "authority_or_witness_reuse_allowed": false,
+      "receipt_binds_phase_local_authority": true,
+      "a019_binds_actual_provider_authorization_v2_digest": true,
+      "p031_required_fields": [
+        "purpose",
+        "nonce",
+        "not_before",
+        "expires_at",
+        "durable_one_consumer_cas"
+      ],
+      "p031_consumer": "A031-acceptance-preload-only",
+      "p031_runtime_reuse_allowed": false,
+      "p031_attempt_ledger": {
+        "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-p031-attempt-ledger@1",
+        "maximum_attempts": 3,
+        "append_only": true,
+        "signed_failure_evidence_required": true,
+        "fresh_nonce_and_expiry_per_attempt": true,
+        "effect_started_authorization_terminal": true,
+        "failed_attempt_overwrite_or_erasure_allowed": false,
+        "task_status_before_successful_A031": "todo"
+      },
+      "reload_v2_prior_authorization_nullable": true,
+      "reload_v2_fresh_native_authorization_required": true,
+      "reload_v2_native_authorization_bindings": [
+        "target_generation",
+        "accepted_A031_pin",
+        "accepted_A032_gate",
+        "accepted_A023_gate"
+      ],
+      "reload_v2_native_authorization_consumer": "scheduler-plan-revision-store-before-spawn",
+      "reload_v2_native_authorization_durable_one_consumer_cas": true,
+      "reload_same_generation_recovery": {
+        "bounded": true,
+        "requires_dead_and_effectless_observation": true,
+        "adopts_consumed_generation_authorization": true,
+        "provider_replay_allowed": false
+      }
+    },
+    "signing_adapter_contract": {
+      "api": "sign_prompt_v3_operator_artifact",
+      "receipt_payload_encoding": "strict-ascii-only",
+      "canonical_bytes_compatible_with": "entrypoints.local_profile.sign_profile_binding",
+      "receipt_mapping_round_trips_to_identical_sign_profile_binding_canonical_bytes": true,
+      "sign_profile_binding_signature_encoding": "standard-base64",
+      "signature_transcode": [
+        "strict-standard-base64-decode",
+        "require-ed25519-64-byte-signature",
+        "base64url-without-padding-encode"
+      ],
+      "public_key_verification_required": true,
+      "expected_repository_bindings": [
+        "repository_id",
+        "repository_head",
+        "repository_tree"
+      ],
+      "expected_authority_bindings": [
+        "profile_id",
+        "profile_generation",
+        "authority_id",
+        "artifact_sha256"
+      ],
+      "post_sign_active_profile_and_generation_reload_required": true,
+      "post_sign_reload_must_equal_pre_sign_profile_and_generation": true,
+      "rotation_or_revocation_race_denied": true,
+      "ambient_signing_key_environment_variable": "AGENT_SUPERVISOR_LOCAL_PROFILE_KEY",
+      "ambient_signing_key_environment_allowed": false,
+      "root_pin_builder": {
+        "api": "build_prompt_v3_root_pin",
+        "public_artifact_only": true,
+        "exact_inputs": [
+          "pre_existing_lifecycle_root_identity_did",
+          "stable_policy",
+          "repository_id",
+          "repository_head",
+          "repository_tree"
+        ],
+        "exact_output_fields": [
+          "schema",
+          "root_identity_did",
+          "stable_policy_sha256",
+          "repository_id",
+          "repository_head",
+          "repository_tree",
+          "canonical_sha256"
+        ],
+        "private_key_profile_content_or_future_generation_allowed": false,
+        "canonical_ascii_bytes_required": true,
+        "expected_repository_and_root_authority_verification_required": true,
+        "safe_dirfd_projection_required": true,
+        "public_artifact_mode": "0400"
+      }
+    },
+    "builder_safety": {
+      "isolated_clean_exact_ref_required": true,
+      "sanitized_git_environment_required": true,
+      "git_replace_grafts_and_config_redirection_forbidden": true,
+      "alternate_index_required": true,
+      "working_index_or_auto_commit_paths_allowed": false,
+      "single_parent_required": true,
+      "exact_tree_path_mode_raw_blob_required": true,
+      "child_validators_and_exact_suites_required": true,
+      "required_suite_commands": [
+        "python ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py --check-all",
+        "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+        "python -m pytest test/api/test_agent_supervisor_control_plane_capsule_identity.py test/api/test_agent_supervisor_control_plane.py test/api/test_agent_supervisor_multiformats_identity.py test/api/test_llm_router_agent_implementation_route.py -q",
+        "python -m pytest test/api/test_agent_supervisor_native_dependency_pin.py -q",
+        "python -m pytest -q test/api/test_agent_supervisor_duckdb_connection_policy.py test/api/test_agent_supervisor_duckdb_state.py test/api/test_agent_supervisor_duckdb_task_source.py test/api/test_agent_supervisor_lease_coordination.py",
+        "python -m pytest test/api/test_agent_supervisor_prompt_v3_parallelism.py test/api/test_agent_supervisor_configured_board_scheduler.py test/api/test_agent_supervisor_implementation_supervisor_runner.py -q",
+        "python -m pytest test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py test/api/test_agent_supervisor_prompt_v3_resolution.py test/api/test_agent_supervisor_inference_runtime.py test/api/test_agent_supervisor_target_resolver.py test/api/test_agent_supervisor_state_resolver.py test/api/test_agent_supervisor_profile_resolver.py test/api/test_agent_supervisor_objective_resolver.py test/api/test_agent_supervisor_capability_resolver.py test/api/test_agent_supervisor_authority_resolver.py -q",
+        "python -m pytest test/api/test_agent_supervisor_prompt_v3_transition.py test/api/test_agent_supervisor_prompt_v3_convergence.py -q"
+      ],
+      "publication": {
+        "target_ref_resolved_once": true,
+        "canonical_lease_held_across_validation_and_publication": true,
+        "worktree_holder_discovery": "sanitized-git-worktree-list-porcelain-z",
+        "unheld_target_ref": {
+          "method": "git-update-ref-cas",
+          "expected_old_oid_required": true,
+          "rescue_ref_created_by_cas_before_publish": true
+        },
+        "checked_out_exact_target_ref": {
+          "method": "sanitized-git-merge-ff-only",
+          "exact_argv": [
+            "git",
+            "-c",
+            "core.hooksPath=<owned-empty-directory>",
+            "-c",
+            "commit.gpgSign=false",
+            "-c",
+            "tag.gpgSign=false",
+            "merge",
+            "--ff-only",
+            "--no-edit",
+            "<candidate-commit>"
+          ],
+          "same_canonical_lease_required": true,
+          "symbolic_head_must_equal_target_ref": true,
+          "hooks_allowed": false,
+          "commit_or_tag_signing_allowed": false,
+          "candidate_must_fast_forward_expected_old_oid": true,
+          "required_pre_and_post_state": [
+            "target_ref",
+            "symbolic_HEAD",
+            "ref_oid",
+            "HEAD_oid",
+            "tree_oid",
+            "index_tree_oid",
+            "worktree_status_porcelain_v2_z"
+          ],
+          "pre_state_must_be_exact_and_clean": true,
+          "post_ref_head_tree_index_must_equal_candidate": true,
+          "post_worktree_must_be_clean": true
+        },
+        "detached_only_rejection_of_real_checked_out_target_allowed": false,
+        "failure_recovery": {
+          "rescue_ref_required": true,
+          "target_ref_restore_by_checked_cas": true,
+          "checked_out_target_restore_from_verified_rescue_under_same_lease": true,
+          "exact_pre_state_reverification_required": true,
+          "rescue_ref_retained_on_unrecovered_failure": true
+        }
+      },
+      "gitignore_correction": {
+        "path": ".gitignore",
+        "replace_exact_line": "core",
+        "with_exact_line": "/core",
+        "preserve_root_core_dump_ignore": true,
+        "nested_agent_supervisor_core_must_not_be_ignored": true,
+        "source_mode": "100755",
+        "target_mode": "100644"
+      },
+      "filesystem": {
+        "dirfd_relative_io_required": true,
+        "o_nofollow_required": true,
+        "single_link_required": true,
+        "owner_required": true,
+        "group_or_other_writable_allowed": false,
+        "public_artifact_mode": "0400",
+        "private_key_mode": "0600",
+        "builder_created_q_and_protected_artifact_mode": "100644",
+        "pre_existing_or_reviewed_tracked_modes_preserved": true,
+        "runtime_chmod_removes_group_other_write": true,
+        "directory_group_or_other_writable_allowed": false,
+        "fsync_and_atomic_rename_required": true
+      }
+    },
+    "activation_contract": {
+      "post_l_birth_required": true,
+      "configured_target_ref_resolved_once": true,
+      "rev_parse_head_argument_count": 1,
+      "activation_before_post_l_birth_allowed": false
+    },
+    "runtime_launch_authority_contract": {
+      "loader_api": "load_verified_prompt_v3_runtime_launch_authority",
+      "full_committed_chain_required": [
+        "Q",
+        "R",
+        "P019",
+        "A019",
+        "A030",
+        "P031",
+        "A031",
+        "A032",
+        "A023/027",
+        "L"
+      ],
+      "required_acceptance_joins": [
+        "A031",
+        "A032",
+        "ASE3-023"
+      ],
+      "returns_strict_dto_only_after_full_verification": true,
+      "outer_consumer": "ASE3-023-scheduler-plan-revision-store",
+      "sealed_child_binds": [
+        "dto_sha256",
+        "chain_head",
+        "chain_tree",
+        "A031_pin_id",
+        "A032_receipt_id",
+        "A023_receipt_id",
+        "L_authorization_id",
+        "target_generation"
+      ],
+      "sealed_child_may_import_convergence_validator": false,
+      "a031_acceptance_only_operations": [
+        "consume_prompt_v3_a031_authorization",
+        "append_prompt_v3_a031_failure_attempt",
+        "reauthorize_prompt_v3_p031_attempt"
+      ],
+      "runtime_l_consumption_owner": "ASE3-023-PlanRevisionStore"
+    },
+    "required_transition_tests": [
+      "test_q_inventory_rejects_every_future_pin_sentinel",
+      "test_ase3_031_and_032_require_task_correct_replay_provenance",
+      "test_every_pre_q_generation_reconstructs_exact_source_replay_integrated_commit_streams",
+      "test_multi_commit_generation_chains_parents_and_final_commit_map_are_exact",
+      "test_product_provenance_preserves_reviewed_modes_and_builder_artifacts_are_100644",
+      "test_a019_binds_actual_provider_authorization_v2_digest",
+      "test_birth_resolves_configured_target_ref_once_to_one_head",
+      "test_every_phase_requires_fresh_authority_and_witness",
+      "test_activation_is_impossible_before_valid_post_l_birth",
+      "test_p031_is_a031_only_and_failure_reauthorization_is_bounded_append_only",
+      "test_l_runtime_authorization_is_distinct_and_consumed_before_spawn",
+      "test_runtime_authority_loader_returns_strict_dto_after_full_chain_only",
+      "test_signing_adapter_uses_ascii_canonical_bytes_and_verified_ed25519_transcode",
+      "test_signing_adapter_denies_repository_authority_rotation_revocation_and_ambient_key_races",
+      "test_root_pin_builder_emits_only_exact_verified_public_artifact",
+      "test_unheld_target_publication_uses_update_ref_cas_under_canonical_lease",
+      "test_checked_out_target_publication_uses_hook_free_sign_free_ff_only_merge",
+      "test_publication_failure_recovers_exact_pre_state_and_never_rejects_real_target_as_detached_only",
+      "test_nested_agent_supervisor_core_is_not_gitignored",
+      "test_public_artifact_key_and_directory_modes_fail_closed"
+    ]
+  },
+  "neutral_contract_layering": {
+    "task_id": "ASE3-029",
+    "task_contract_sha256": "sha256:ea0eae512a86fc9e6098e329d58fcd0963c1706ec621b4da45b1cbdee6f08061",
+    "canonical_task_cid": "baguqeerapt2k36spo3uom3rhn5rucmvnlkqbk5k3nxznd2wetwznq4rg6h2a",
+    "depends_on": [
+      "ASE3-022"
+    ],
+    "accepted_tree_inventory": {
+      "source_task_id": "ASE3-023",
+      "source_head_required": true,
+      "source_tree_required": true,
+      "analyzer_implementation_sha256_required": true,
+      "normalized_edge_records_required": true,
+      "inventory_sha256_required": true,
+      "roadmap_fixed_edge_or_importer_count_allowed": false
+    },
+    "neutral_contract_files": [
+      "ipfs_accelerate_py/agent_supervisor/contracts/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/contracts/authority.py",
+      "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
+      "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py"
+    ],
+    "lower_effect_owners": {
+      "provider_attempt_cas": "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "profile_key_lifecycle": "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "plan_store_transactions": "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py"
+    },
+    "compatibility_entrypoint_wrappers": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py"
+    ],
+    "explicit_injection_roots": [
+      "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py"
+    ],
+    "ambient_effect_registry_allowed": false,
+    "zero_runtime_or_todo_daemon_entrypoint_imports_required": true,
+    "neutral_import_time_io_allowed": false,
+    "capsule_security_critical_paths": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py"
+    ],
+    "protected_route_invariants": {
+      "unchanged_types": [
+        "AgentImplementationRoutePlan",
+        "AgentImplementationFallbackDecision"
+      ],
+      "capacity_projection_dispatch_authorized": false,
+      "independent_protected_review_required": true
+    },
+    "scheduler_authorization_baseline": {
+      "schema": "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@2",
+      "signed_lifecycle_witness_required": true,
+      "lifecycle_root_pin_required": true,
+      "group_or_other_writable_allowed": false,
+      "all_affected_suites_green_before_relocation": true
+    },
+    "daemon_runner_authorization_baseline": {
+      "test_path": "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+      "stale_test_name": "test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+      "ambient_only_route_fixture_allowed": false,
+      "canonical_signed_accepted_route_authorization_and_binding_required": true,
+      "accepted_public_artifact_mode": "0400",
+      "owned_regular_nonsymlink_required": true,
+      "private_signer_material_secure_mode_required": true,
+      "complete_file_must_pass": true,
+      "test_deselection_allowed": false,
+      "route_verifier_bypass_allowed": false,
+      "route_weakening_allowed": false
+    },
+    "downstream_task_id": "ASE3-028",
+    "downstream_requires_accepted_ase3_029": true
+  },
+  "protected_identity_acceptance": {
+    "task_id": "ASE3-030",
+    "status": "reserved",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1",
+    "artifact_phase": "A",
+    "sequence_phase": "A030",
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": [
+      "ASE3-023",
+      "ASE3-022"
+    ]
+  },
+  "protected_native_dependency_launch_authorization": {
+    "task_id": "ASE3-031",
+    "status": "reserved",
+    "authorization_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+    "authorization_schema": "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-launch-authorization@1",
+    "artifact_phase": "P",
+    "sequence_phase": "P031",
+    "signed_by_accepted_local_profile_required": true,
+    "accepted_authorization_id_exact_match_required": true,
+    "inspection_evidence_is_authority": false,
+    "authorization_may_claim_launch_effect": false,
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": [
+      "ASE3-031"
+    ],
+    "required_before_runtime_effects": [
+      "ASE3-023"
+    ]
+  },
+  "protected_native_dependency_acceptance": {
+    "task_id": "ASE3-031",
+    "status": "reserved",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-acceptance@1",
+    "artifact_phase": "A",
+    "sequence_phase": "A031",
+    "authorization_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+    "accepted_authorization_id_exact_match_required": true,
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": [
+      "ASE3-023",
+      "ASE3-022"
+    ]
+  },
+  "protected_duckdb_connection_policy_acceptance": {
+    "task_id": "ASE3-032",
+    "status": "reserved",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.ase3-032-duckdb-connection-policy-acceptance@1",
+    "artifact_phase": "A",
+    "sequence_phase": "A032",
+    "requires_prior_acceptance_tasks": [
+      "ASE3-030",
+      "ASE3-031"
+    ],
+    "strict_validator_and_manifest_binding_required": true,
+    "required_before_task_acceptance": [
+      "ASE3-023",
+      "ASE3-022"
+    ]
+  },
+  "protected_native_duckdb_acceptance_sequence": {
+    "status": "reserved",
+    "phases": [
+      {
+        "phase": "Q",
+        "parent_phase": null,
+        "task_ids": [
+          "ASE3-033"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_acceptance_q_inventory.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      },
+      {
+        "phase": "R",
+        "parent_phase": "Q",
+        "task_ids": [],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json"
+        ]
+      },
+      {
+        "phase": "P019",
+        "parent_phase": "R",
+        "task_ids": [],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json"
+        ]
+      },
+      {
+        "phase": "A019",
+        "parent_phase": "P019",
+        "task_ids": [
+          "ASE3-019"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      },
+      {
+        "phase": "A030",
+        "parent_phase": "A019",
+        "task_ids": [
+          "ASE3-030"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      },
+      {
+        "phase": "P031",
+        "parent_phase": "A030",
+        "task_ids": [],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json"
+        ]
+      },
+      {
+        "phase": "A031",
+        "parent_phase": "P031",
+        "task_ids": [
+          "ASE3-031"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      },
+      {
+        "phase": "A032",
+        "parent_phase": "A031",
+        "task_ids": [
+          "ASE3-032"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      },
+      {
+        "phase": "A023/027",
+        "parent_phase": "A032",
+        "task_ids": [
+          "ASE3-023",
+          "ASE3-027"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      },
+      {
+        "phase": "L",
+        "parent_phase": "A023/027",
+        "task_ids": [
+          "ASE3-022"
+        ],
+        "changed_paths": [
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+          "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/convergence_manifest.json",
+          "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        ]
+      }
+    ],
+    "root_pin_phase": "R",
+    "provider_preparation_phase": "P019",
+    "native_authorization_phase": "P031",
+    "direct_single_parent_required": true,
+    "exact_changed_paths_required": true,
+    "manifest_parent_chain_required": true,
+    "same_phase_status_dependencies_forbidden": true,
+    "status_transition_requires_accepted_parent_phase": true,
+    "signed_receipt_chronology_required": true,
+    "parallel_phase_receipts_need_no_sibling_order": true,
+    "pre_effect_authorization_only_phases": [
+      "P031",
+      "L"
+    ],
+    "runtime_effect_receipt_phases": [
+      "A031",
+      "A023/027"
+    ],
+    "post_launch_birth_receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json",
+    "post_launch_birth_receipt_schema": "ipfs_accelerate_py.agent_supervisor.provider-attempt-generation-birth@1",
+    "post_launch_birth_receipt_required_after_phase": "L",
+    "post_launch_birth_receipt_forbidden_through_phase": "L",
+    "post_launch_birth_not_before_reload_authorization": true,
+    "required_before_task_acceptance": [
+      "ASE3-023",
+      "ASE3-022"
+    ]
+  },
+  "protected_runtime_activation": {
+    "task_id": "ASE3-026",
+    "status": "completed",
+    "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_activation_receipt.json",
+    "receipt_schema": "ipfs_accelerate_py.agent_supervisor.protected-runtime-activation-authorization@1",
+    "receipt_phase": "pre_effect_authorization",
+    "authorization_may_claim_activation_effect": false,
+    "post_activation_observation_receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/protected_runtime_post_activation_observation_receipt.json",
+    "post_activation_observation_receipt_schema": "ipfs_accelerate_py.agent_supervisor.protected-runtime-post-activation-observation@1",
+    "post_activation_observation_required_for_completion": true,
+    "post_activation_required_observations": [
+      "lifecycle_process_birth",
+      "lifecycle_lease_fence_heartbeat_and_cursor",
+      "monitor_process_birth",
+      "monitor_lease_fence_heartbeat_and_cursor",
+      "refill_append_recompile_dispatch_or_adoption"
+    ],
+    "one_generation_cas_lease_required": true,
+    "operator_review_required": true,
+    "strict_validator_and_manifest_binding_required": true
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_or_auth_unavailable",
+    "fallback_reasoning_effort": "high",
+    "route_authorization_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "refill_policy": {
+    "enable_after_task": "ASE3-026",
+    "activation_task_id": "ASE3-026",
+    "prompt_program_refill_enabled": true,
+    "saga_schema": "ipfs_accelerate_py.agent_supervisor.durable-refill-saga@1",
+    "saga_cursor_states": [
+      "EVALUATING",
+      "APPEND_RESERVED",
+      "APPENDED",
+      "PLAN_INVALIDATED",
+      "RECOMPILED",
+      "DISPATCHED",
+      "ADOPTED"
+    ],
+    "saga_terminal_states": [
+      "DISPATCHED",
+      "ADOPTED"
+    ],
+    "saga_terminal_states_are_alternatives": true,
+    "saga_cursor_durable": true,
+    "monitor_phase_deadlines_required": true,
+    "max_goals_per_epoch": 8,
+    "max_tasks_per_epoch": 24,
+    "max_open_tasks": 48,
+    "max_depth": 3,
+    "max_epochs": 3,
+    "max_attempts_per_task": 2,
+    "unchanged_residual_cooldown_seconds": 3600,
+    "mutate_seed_board": false
+  },
+  "monitor_policy": {
+    "enabled": true,
+    "detached": true,
+    "activation_task_id": "ASE3-026",
+    "durable_guardian": "ReviewedHostNamespaceReconciler",
+    "guardian_scope": "host_namespace",
+    "guardian_review_required": true,
+    "semantic_progress_source": "configured_board_scheduler",
+    "heartbeat_seconds": 5,
+    "stale_control_seconds": 30,
+    "semantic_progress_seconds": 300,
+    "max_recoveries_per_window": 3,
+    "recovery_window_seconds": 1800,
+    "canary_task_id": "ASE3-013",
+    "canary_observation_seconds": 900,
+    "post_recovery_continuous_health_seconds": 900,
+    "continuous_health_required": true,
+    "monotonic_elapsed_receipt_required": true,
+    "prompt_may_override_observation_window": false,
+    "running_requires_joined_lifecycle_monitor_evidence": true,
+    "running_join_fields": [
+      "lifecycle_process_birth",
+      "lifecycle_lease",
+      "lifecycle_fence",
+      "lifecycle_heartbeat",
+      "lifecycle_event_cursor",
+      "monitor_process_birth",
+      "monitor_lease",
+      "monitor_fence",
+      "monitor_heartbeat",
+      "monitor_event_cursor"
+    ],
+    "immutable_history_and_cursor_vectors_required": true,
+    "unknown_outcome_effect_replay_authorized": false,
+    "queue_drain_is_completion": false,
+    "branch_local_completion_is_completion": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "ASE3-014",
+    "accepted_tasks_only_satisfy_dependencies": true,
+    "all_goal_evidence_current_on_release_tree": true,
+    "final_forced_residual_scan_required": true,
+    "active_signed_rollout_required": true,
+    "stale_partial_simulated_skipped_soft_or_print_only_evidence_satisfies_release": false
+  }
+}

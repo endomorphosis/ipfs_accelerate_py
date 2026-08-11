@@ -1,0 +1,27 @@
+{
+  "bundle_cid": "baguqeeraeync6zvzkug3cnw74womq2exwgqgwjs5jtnvbwywntunuyism3jq",
+  "bundles": {
+    "cli-facade": [
+      "ASE3-010"
+    ],
+    "conformance": [
+      "ASE3-012"
+    ],
+    "mcp-facade": [
+      "ASE3-011"
+    ],
+    "protected-runtime-activation": [
+      "ASE3-026"
+    ],
+    "python-facade": [
+      "ASE3-009"
+    ],
+    "rollout-closeout": [
+      "ASE3-014"
+    ],
+    "self-host-canary": [
+      "ASE3-013"
+    ]
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.v3-bundle-index@1"
+}

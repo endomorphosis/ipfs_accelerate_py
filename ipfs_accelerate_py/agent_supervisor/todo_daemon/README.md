@@ -60,6 +60,26 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.<module> import ...
 
 Relative imports stay package-local (`from .<module> import ...`).
 
+## Ordered provider fallback policies
+
+`grok-codex` provider aliases use the no-shell
+`agent_supervisor/provider_fallback_runner.py`, but the canonical
+`ipfs_accelerate_py.llm_router` owns readiness, failure classification, and the
+fallback decision. The fixed agent policy is
+`IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY=grok_quota_auth_or_unavailable`:
+Grok remains primary, while Codex may run only for a typed quota exhaustion,
+authentication failure, or launch unavailability before side effects and with
+an unchanged candidate workspace. Timeout, transport, generic nonzero,
+malformed-output, ordinary task failure, unknown activity, or workspace
+mutation remains terminal. The adapter sanitizes both output streams and emits
+bounded, task/attempt/stage-bound route telemetry with
+`completion_authority=false`; normal proposal, validation, and merge gates
+remain authoritative.
+
+This explicit agent-CLI route is separate from `llm_router.generate_text`.
+Generic agent/tool requests continue to prohibit cross-provider retries after
+side effects.
+
 ## Extending
 
 1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).

@@ -160,10 +160,11 @@ def configure_agent_supervisor_tools(manager: HierarchicalToolManager) -> None:
 
     def load_agent_supervisor_tools(value: HierarchicalToolManager) -> None:
         from .tools.agent_supervisor_tools import (  # noqa: PLC0415
-            register_native_agent_supervisor_tools,
+            register_all_agent_supervisor_tools,
         )
 
-        register_native_agent_supervisor_tools(value)
+        # Control-plane operations + ASE3-011 prompt-lifecycle facade tools.
+        register_all_agent_supervisor_tools(value)
 
     manager.register_category_loader(
         "agent_supervisor",

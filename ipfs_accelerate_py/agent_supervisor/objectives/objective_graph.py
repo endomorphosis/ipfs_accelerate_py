@@ -27,7 +27,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..validation.evidence_output_scope import (
+from ..evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
     normalize_evidence_output_path,
@@ -4661,8 +4661,6 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
 
 def safe_bundle_key(value: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip("/ ").lower()).strip("-")
-    if safe in {".", ".."}:
-        raise ValueError("bundle key must not resolve to a relative path component")
     return safe or "objective-general"
 
 
@@ -6594,88 +6592,20 @@ def priority_rank(value: str) -> int:
     return 9
 
 
-_TASK_SCHEDULING_POLICY_FIELDS = frozenset(
-    {"is_schedulable", "review_only"}
-)
-_AMBIGUOUS_TASK_SCHEDULING_POLICY = (
-    "<ambiguous-task-scheduling-policy>"
-)
-
-
 def _task_record_mapping(task: Any) -> dict[str, Any]:
-    result: dict[str, Any] | None = None
     if isinstance(task, Mapping):
-        result = dict(task)
-    elif hasattr(task, "to_dict"):
+        return dict(task)
+    if hasattr(task, "to_dict"):
         value = task.to_dict()
         if isinstance(value, Mapping):
-            result = dict(value)
-    if result is None and hasattr(task, "__dataclass_fields__"):
-        result = asdict(task)
-    if result is None:
-        result = {
-            name: getattr(task, name)
-            for name in dir(task)
-            if not name.startswith("_") and not callable(getattr(task, name, None))
-        }
-
-    # PortalTask deliberately retains the human Markdown labels in a nested
-    # metadata mapping.  Promote non-destructive wire-format aliases so the
-    # dependency scheduler sees the same goal, authority, and scheduling
-    # fields as task-source and daemon consumers.
-    #
-    # Scheduling booleans are an authorization boundary.  Preserve duplicate
-    # normalized aliases as an explicit ambiguity instead of making their
-    # meaning depend on mapping insertion order.  This mirrors the direct
-    # implementation daemon's fail-closed handling.
-    policy_values: dict[str, list[Any]] = {
-        name: [] for name in _TASK_SCHEDULING_POLICY_FIELDS
+            return dict(value)
+    if hasattr(task, "__dataclass_fields__"):
+        return asdict(task)
+    return {
+        name: getattr(task, name)
+        for name in dir(task)
+        if not name.startswith("_") and not callable(getattr(task, name, None))
     }
-    for key, value in tuple(result.items()):
-        normalized = normalize_field_key(str(key))
-        if normalized in policy_values:
-            policy_values[normalized].append(value)
-        elif normalized:
-            result.setdefault(normalized, value)
-    metadata = result.get("metadata")
-    if isinstance(metadata, Mapping):
-        for key, value in metadata.items():
-            normalized = normalize_field_key(str(key))
-            if normalized in policy_values:
-                policy_values[normalized].append(value)
-            elif normalized:
-                result.setdefault(normalized, value)
-    for name, values in policy_values.items():
-        if len(values) == 1:
-            result[name] = values[0]
-        elif len(values) > 1:
-            result[name] = _AMBIGUOUS_TASK_SCHEDULING_POLICY
-    return result
-
-
-def _task_record_flag_resolution(
-    task: Mapping[str, Any],
-    name: str,
-    default: bool,
-) -> tuple[bool, bool]:
-    """Return a strict scheduling boolean and whether it was well formed."""
-
-    if name not in task:
-        return default, True
-    value = task[name]
-    if value == _AMBIGUOUS_TASK_SCHEDULING_POLICY:
-        return default, False
-    if isinstance(value, bool):
-        return value, True
-    if isinstance(value, int) and value in {0, 1}:
-        return bool(value), True
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"0", "false", "no", "off"}:
-            return False, True
-        if normalized in {"1", "true", "yes", "on"}:
-            return True, True
-    return default, False
 
 
 def _task_record_flag(
@@ -6683,36 +6613,26 @@ def _task_record_flag(
     name: str,
     default: bool,
 ) -> bool:
-    """Read one policy boolean, projecting malformed values fail closed."""
+    """Read a persisted task boolean without treating ``"false"`` as true."""
 
-    value, valid = _task_record_flag_resolution(task, name, default)
-    if valid:
-        return value
-    # An invalid schedulable declaration cannot authorize execution.  An
-    # invalid review-only declaration is conservatively projected as review
-    # only for bundle/index consumers.
-    return name == "review_only"
+    value = task.get(name, default)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+    return bool(value)
 
 
 def _task_record_scheduling_allowed(task: Mapping[str, Any]) -> bool:
     """Return whether policy allows a task to participate in scheduling."""
 
-    is_schedulable, schedulable_valid = _task_record_flag_resolution(
+    return _task_record_flag(
         task,
         "is_schedulable",
         True,
-    )
-    review_only, review_only_valid = _task_record_flag_resolution(
-        task,
-        "review_only",
-        False,
-    )
-    return (
-        schedulable_valid
-        and review_only_valid
-        and is_schedulable
-        and not review_only
-    )
+    ) and not _task_record_flag(task, "review_only", False)
 
 
 def _task_record_is_schedulable(task: Mapping[str, Any]) -> bool:
@@ -9381,40 +9301,6 @@ def _objective_goal_task_ids_from_todo(
     return task_ids_by_goal
 
 
-def _project_objective_dependencies_to_task_ids(
-    dependencies: Iterable[str],
-    *,
-    known_goal_ids: Iterable[str],
-    task_ids_by_goal: Mapping[str, Sequence[str]],
-    materialized_task_ids: Iterable[str],
-) -> list[str]:
-    """Project objective-goal references onto executable task identities.
-
-    A known goal without a materialized task is an abstract planning node, not
-    an executable prerequisite, so it contributes no task-level edge.  Goal
-    references with materialized tasks expand to those task IDs.  Every other
-    reference is retained so concrete task IDs and unknown aliases continue to
-    fail closed in the task dependency graph instead of being silently lost.
-    """
-
-    known_goals = set(_unique_strings(known_goal_ids))
-    materialized_tasks = set(_unique_strings(materialized_task_ids))
-    projected: list[str] = []
-    for dependency in _unique_strings(dependencies):
-        if dependency in materialized_tasks:
-            projected.append(dependency)
-            continue
-        mapped_task_ids = _unique_strings(
-            task_ids_by_goal.get(dependency, ())
-        )
-        if mapped_task_ids:
-            projected.extend(mapped_task_ids)
-            continue
-        if dependency not in known_goals:
-            projected.append(dependency)
-    return _unique_strings(projected)
-
-
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     """Return canonical task identities already materialized on a board."""
 
@@ -10156,40 +10042,6 @@ def _objective_reprojection_committed(
     )
 
 
-def _objective_discovery_receipt_matches(
-    discovery_path: Path,
-    *,
-    task_id: str,
-    finding: ObjectiveFinding,
-    identity: TaskIdentity,
-    evidence_outputs: Sequence[str],
-) -> bool:
-    """Verify that a recovery discovery receipt describes the exact finding."""
-
-    try:
-        text = discovery_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-
-    def exact_line(label: str, value: str) -> bool:
-        pattern = rf"^{re.escape(label)}:[ \t]*{re.escape(value)}[ \t]*$"
-        return len(re.findall(pattern, text, flags=re.MULTILINE)) == 1
-
-    if not text.startswith(f"# {task_id} Objective Goal Gap\n"):
-        return False
-    if not (
-        exact_line("Fingerprint", finding.fingerprint)
-        and exact_line("Goal id", finding.goal_id)
-        and exact_line("Bundle", finding.bundle_key)
-    ):
-        return False
-    return not evidence_outputs or _objective_reprojection_committed(
-        discovery_path,
-        identity=identity,
-        evidence_outputs=evidence_outputs,
-    )
-
-
 def _objective_evidence_reprojection_sweep_scope(
     markdown: str,
     *,
@@ -10716,8 +10568,6 @@ def render_task_block(
 - Resource class: {finding.resource_class or "cpu-medium"}
 - Token class: {finding.token_class or "medium"}
 - Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
-- Context budget tokens: 4096
-- Provider role: grok, codex-review
 - Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
 - Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key}
 - Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
@@ -10994,23 +10844,7 @@ def write_bundle_shards(
         for item in (info.get("tasks") or [])
         if isinstance(item, Mapping)
     ]
-    # Bundle indexes retain the admitted work contract and also annotate its
-    # execution projection with resolved dependency CIDs.  On a later
-    # generation pass those two dependency representations must not be
-    # combined as though both were admission inputs: doing so makes a valid
-    # contract appear stale and prevents incremental bundle regeneration.
-    # Rehydrate contract-bearing rows before rebuilding the planning graph,
-    # matching the bundle supervisor's fail-closed projection boundary.
-    from ..core.conflict_graph import rehydrate_task_work_contract_projection
-
-    planning_index_tasks = [
-        rehydrate_task_work_contract_projection(item)
-        for item in all_index_tasks
-    ]
-    index_planning_graph = materialize_task_planning_graph(
-        planning_index_tasks,
-        repo_root=repo_root,
-    )
+    index_planning_graph = materialize_task_planning_graph(all_index_tasks, repo_root=repo_root)
     index_graph = index_planning_graph.dependency_graph
     index_incoming: dict[str, set[str]] = {cid: set() for cid in index_graph.nodes}
     for edge in index_graph.edges:
@@ -11263,26 +11097,6 @@ def generate_objective_todos(
         materialized_task_ids = set(
             task_ids_from_todo(todo_text, task_prefix=task_prefix)
         )
-        indexed_task_ids: set[str] = set()
-        bundle_index_path = bundle_dir / "index.json"
-        if bundle_index_path.is_file():
-            try:
-                bundle_index_payload = json.loads(
-                    bundle_index_path.read_text(encoding="utf-8")
-                )
-            except (OSError, json.JSONDecodeError):
-                bundle_index_payload = {}
-            if isinstance(bundle_index_payload, Mapping):
-                indexed_task_ids = {
-                    str(item.get("task_id") or "").strip()
-                    for info in (
-                        bundle_index_payload.get("bundles") or {}
-                    ).values()
-                    if isinstance(info, Mapping)
-                    for item in (info.get("tasks") or [])
-                    if isinstance(item, Mapping)
-                    and str(item.get("task_id") or "").strip()
-                }
 
         # Objective cards written before typed evidence-output authority were
         # introduced are already covered by the obligation dedupe below.  A
@@ -11434,140 +11248,6 @@ def generate_objective_todos(
                 )
             )
 
-        # A crash can occur after the locked source board and bundle shard are
-        # written but before the aggregate bundle index is replaced.  On the
-        # retry, ordinary obligation deduplication correctly prevents another
-        # card, but it must not leave the existing card absent from the index.
-        # Reconstruct only an exact idle generator card whose current finding,
-        # content identity, discovery receipt, and expected shard all bind.
-        # This is recovery of an already admitted task, not authority to admit
-        # a new or edited task from Markdown alone.
-        reprojected_task_ids = {
-            record.task_id for record in reprojected_records
-        }
-        task_blocks = _objective_task_blocks(
-            todo_text,
-            task_prefix=task_prefix,
-        )
-        for finding in reprojection_candidates:
-            if not finding.dedupe_key:
-                continue
-            matching_blocks = [
-                block
-                for block in task_blocks
-                if block.one("evidence obligation key")
-                == finding.dedupe_key
-                and block.one("goal id") == finding.goal_id
-                and block.one("bundle") == finding.bundle_key
-            ]
-            if len(matching_blocks) != 1:
-                continue
-            block = matching_blocks[0]
-            if (
-                block.task_id in indexed_task_ids
-                or block.task_id in reprojected_task_ids
-            ):
-                continue
-            status = (
-                str(block.one("status") or "")
-                .strip()
-                .casefold()
-                .replace("-", "_")
-                .replace(" ", "_")
-            )
-            if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
-                continue
-            evidence_output_fields = block.metadata.get(
-                EVIDENCE_OUTPUTS_METADATA_KEY,
-                (),
-            )
-            if len(evidence_output_fields) > 1:
-                continue
-            raw_evidence_outputs = (
-                split_evidence_output_values(evidence_output_fields[0])
-                if evidence_output_fields
-                else []
-            )
-            evidence_outputs = tuple(
-                normalize_evidence_output_path(value)
-                for value in raw_evidence_outputs
-            )
-            if (
-                any(not value for value in evidence_outputs)
-                or len(set(evidence_outputs)) != len(evidence_outputs)
-                or any(
-                    raw != normalized
-                    for raw, normalized in zip(
-                        raw_evidence_outputs,
-                        evidence_outputs,
-                    )
-                )
-            ):
-                continue
-            identity = objective_finding_task_identity(
-                block.task_id,
-                finding,
-                evidence_outputs=evidence_outputs,
-            )
-            if (
-                block.one("canonical task key")
-                != identity.canonical_task_key
-                or block.one("canonical task cid")
-                != identity.canonical_task_cid
-            ):
-                continue
-            discovery_path = _resolve_generated_artifact_path(
-                str(block.one("discovery evidence") or ""),
-                repo_root=repo_root,
-                artifact_root=discovery_dir,
-                require_file=True,
-            )
-            shard_path = _resolve_generated_artifact_path(
-                str(block.one("bundle shard") or ""),
-                repo_root=repo_root,
-                artifact_root=bundle_dir,
-                require_file=True,
-            )
-            expected_shard_path = bundle_path(
-                bundle_dir,
-                finding.bundle_key,
-            ).resolve()
-            if (
-                discovery_path is None
-                or shard_path is None
-                or shard_path != expected_shard_path
-                or not _objective_discovery_receipt_matches(
-                    discovery_path,
-                    task_id=block.task_id,
-                    finding=finding,
-                    identity=identity,
-                    evidence_outputs=evidence_outputs,
-                )
-            ):
-                continue
-            projected_dependencies = (
-                _normalized_exact_values(
-                    str(block.one("depends on") or "")
-                )
-                or ()
-            )
-            reprojected_records.append(
-                ObjectiveTaskRecord(
-                    task_id=block.task_id,
-                    task_block=block.text.rstrip() + "\n",
-                    finding=replace(
-                        finding,
-                        dependencies=list(projected_dependencies),
-                    ),
-                    discovery_path=discovery_path,
-                    depends_on=projected_dependencies,
-                    evidence_outputs=evidence_outputs,
-                    reprojected=True,
-                    board_namespace=board_namespace,
-                )
-            )
-            reprojected_task_ids.add(block.task_id)
-
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
 
         def finding_obligation_segments(
@@ -11639,8 +11319,6 @@ def generate_objective_todos(
             discovery_dir,
             task_prefix=task_prefix,
         )
-        generated_todo_prefix = todo_text.rstrip()
-        dependency_refs_by_task_id: dict[str, tuple[str, ...]] = {}
         for finding in findings:
             task_id = next_task_id(
                 todo_text,
@@ -11698,34 +11376,25 @@ def generate_objective_todos(
                     if goal_id in packet_goal_ids
                     and any(str(requirement).strip() for requirement in requirements)
                 }
-            # A packet aggregate is the execution unit which satisfies every
-            # explicitly bound packet goal.  Retaining one of those goals as
-            # its own prerequisite creates an impossible ``task -> goal ->
-            # task`` cycle.  Only bindings with concrete evidence requirements
-            # qualify; malformed or merely descriptive packet metadata remains
-            # fail-closed.
-            dependency_references = [
-                dependency
-                for dependency in _unique_strings(
-                    [*depends_on, *finding.dependencies]
-                )
-                if dependency not in packet_internal_goal_dependencies
-            ]
-            projected_dependencies = (
-                _project_objective_dependencies_to_task_ids(
-                    dependency_references,
-                    known_goal_ids=objective_goals_by_id,
-                    task_ids_by_goal=task_ids_by_goal,
-                    materialized_task_ids=materialized_task_ids,
-                )
-            )
-            dependency_refs_by_task_id[task_id] = tuple(
-                dependency
-                for dependency in _unique_strings(
-                    [*depends_on, *finding.dependencies]
-                )
-                if dependency not in packet_internal_goal_dependencies
-            )
+            projected_dependencies: list[str] = []
+            for dependency in _unique_strings(
+                [*depends_on, *finding.dependencies]
+            ):
+                # A packet aggregate is the execution unit which satisfies
+                # every explicitly bound packet goal.  Retaining one of those
+                # goals as its own prerequisite creates an impossible
+                # ``task -> goal -> task`` cycle.  Only bindings with concrete
+                # evidence requirements qualify; malformed or merely
+                # descriptive packet metadata remains fail-closed.
+                if dependency in packet_internal_goal_dependencies:
+                    continue
+                if dependency in materialized_task_ids:
+                    projected_dependencies.append(dependency)
+                else:
+                    projected_dependencies.extend(
+                        task_ids_by_goal.get(dependency) or [dependency]
+                    )
+            projected_dependencies = _unique_strings(projected_dependencies)
             projected_finding = replace(
                 finding,
                 dependencies=projected_dependencies,
@@ -11761,60 +11430,6 @@ def generate_objective_todos(
                 )
             )
 
-        # Dependency goal projection must not depend on objective-heap scan
-        # order.  The first rendering pass allocates stable task IDs and
-        # records every newly materialized goal.  Re-render those new cards
-        # once against the complete same-cycle goal map so a dependent goal
-        # that happened to sort before its prerequisite binds the new task ID
-        # instead of retaining a stale historical task or an unresolved goal
-        # alias.  Canonical objective task identity intentionally excludes
-        # scheduling dependencies, so this projection does not rotate CIDs.
-        if records:
-            rerendered_records: list[ObjectiveTaskRecord] = []
-            rerendered_blocks: list[str] = []
-            for record in records:
-                projected_dependencies = (
-                    _project_objective_dependencies_to_task_ids(
-                        dependency_refs_by_task_id.get(record.task_id, ()),
-                        known_goal_ids=objective_goals_by_id,
-                        task_ids_by_goal=task_ids_by_goal,
-                        materialized_task_ids=materialized_task_ids,
-                    )
-                )
-                projected_finding = replace(
-                    record.finding,
-                    dependencies=projected_dependencies,
-                )
-                task_block = render_task_block(
-                    task_id=record.task_id,
-                    finding=projected_finding,
-                    discovery_path=record.discovery_path,
-                    bundle_shard=repo_relative_path(
-                        repo_root,
-                        bundle_path(bundle_dir, projected_finding.bundle_key),
-                    ),
-                    discovery_output_path=discovery_output_path,
-                    evidence_outputs=record.evidence_outputs or (),
-                    board_namespace=board_namespace,
-                    protected_output_paths=protected_output_paths,
-                )
-                rerendered_records.append(
-                    replace(
-                        record,
-                        task_block=task_block,
-                        finding=projected_finding,
-                        depends_on=tuple(projected_dependencies),
-                    )
-                )
-                rerendered_blocks.append(task_block.strip())
-            records[:] = rerendered_records
-            todo_text = (
-                generated_todo_prefix
-                + "\n\n"
-                + "\n\n".join(rerendered_blocks)
-                + "\n"
-            )
-
         if records or reprojected_records:
             replace_locked_taskboard(taskboard, todo_text)
 
@@ -11843,35 +11458,21 @@ def generate_objective_todos(
     ):
         try:
             from ..task_sources.todo_vector_index import (
-                _project_bundle_work_contracts_onto_records,
                 parse_todo_vector_records,
             )
 
             existing_vector_payload = json.loads(
                 index_path.read_text(encoding="utf-8")
             )
-            projected_records = parse_todo_vector_records(
-                repo_root=repo_root,
-                todo_path=todo_path,
-                task_header_prefix=task_markdown_heading_prefix(
-                    task_prefix
-                ),
-            )
-            if bundle_index_path.exists():
-                # The persisted vector projection is hydrated with the
-                # scheduler's admitted work contracts.  Compare like with
-                # like here; a raw Markdown parse deliberately lacks those
-                # contracts and otherwise makes every no-op refill look
-                # stale, rotating generated timestamps and DuckDB state.
-                projected_records = (
-                    _project_bundle_work_contracts_onto_records(
-                        bundle_index_path=bundle_index_path,
-                        records=projected_records,
-                    )
-                )
             projected_vector_records = [
                 record.to_dict()
-                for record in projected_records
+                for record in parse_todo_vector_records(
+                    repo_root=repo_root,
+                    todo_path=todo_path,
+                    task_header_prefix=task_markdown_heading_prefix(
+                        task_prefix
+                    ),
+                )
             ]
             vector_projection_stale = (
                 not isinstance(existing_vector_payload, Mapping)
@@ -12201,16 +11802,8 @@ def build_bundle_task_payloads(
             "tasks": raw_tasks,
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
+            "max_attempts": selected_max_attempts,
         }
-        # Zero is the shared unlimited sentinel.  Preserve it explicitly so
-        # the queue payload and its embedded Profile-G TaskSpec cannot diverge
-        # by letting the adapter substitute its bounded default.
-        # Keep the worker, queue, and immutable Profile-G TaskSpec on one
-        # attempt policy.  Profile-G v1 permits zero as the unlimited sentinel;
-        # omitting it here would make the adapter silently substitute its
-        # finite compatibility default even though the worker remains
-        # unlimited.
-        task_payload["max_attempts"] = selected_max_attempts
         task_payloads.append(task_payload)
 
     flat_tasks = [

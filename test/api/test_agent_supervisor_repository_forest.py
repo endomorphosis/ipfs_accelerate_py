@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     empty_dirty_overlay_digest,
     forests_share_portable_identity,
     initial_vfs_assurance_forest_policy,
+    inspect_gitlink_closure,
     make_repository_id,
     path_within_repository,
     resolve_repository_root,
@@ -262,6 +263,83 @@ def test_submodule_content_change_changes_closure(tmp_path: Path) -> None:
     assert after.portable_closure.gitlinks[0].tree != before.portable_closure.gitlinks[0].tree
     assert after.descriptor_cid != before.descriptor_cid
     assert "gitlink_head_mismatch" in after.reason_codes
+
+
+def test_recursive_gitlink_identity_distinguishes_sibling_nested_names(
+    tmp_path: Path,
+) -> None:
+    leaf = _init_repo(tmp_path / "leaf", name="leaf")
+    shared = _init_repo(tmp_path / "shared", name="shared")
+    _add_submodule(shared, leaf, "nested")
+    parent = _init_repo(tmp_path / "parent", name="parent")
+    _add_submodule(parent, shared, "left")
+    _add_submodule(parent, shared, "right")
+    _git(
+        parent,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    )
+
+    descriptor = build_repository_descriptor(
+        parent,
+        alias=DEFAULT_ACCELERATOR_ALIAS,
+        authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
+    )
+
+    entries = descriptor.portable_closure.gitlinks
+    top_level = tuple(item for item in entries if item.depth == 0)
+    nested = tuple(item for item in entries if item.depth == 1)
+    assert descriptor.portable_closure.gitlink_closure_complete is True
+    assert len(top_level) == 2
+    assert len(nested) == 2
+    assert len({item.gitlink_id for item in entries}) == 4
+    assert {item.parent_gitlink_id for item in nested} == {
+        item.gitlink_id for item in top_level
+    }
+
+
+def test_uninitialized_gitlink_cannot_inherit_parent_root_or_head(
+    tmp_path: Path,
+) -> None:
+    child = _init_repo(tmp_path / "child", name="child")
+    parent = _init_repo(tmp_path / "parent", name="parent")
+    _add_submodule(parent, child, "child-component")
+    _git(parent, "submodule", "deinit", "-f", "--", "child-component")
+    # Keep an empty directory at the gitlink location.  From this directory,
+    # an unconstrained rev-parse walks upward and reports the parent checkout.
+    (parent / "child-component").mkdir(exist_ok=True)
+
+    commit = _git(parent, "rev-parse", "HEAD")
+    entries, complete, reasons = inspect_gitlink_closure(parent, commit)
+
+    assert entries == ()
+    assert complete is False
+    assert reasons == ("gitlink_checkout_root_mismatch",)
+
+
+def test_incomplete_gitlink_closure_cannot_satisfy_descriptor(
+    tmp_path: Path,
+) -> None:
+    child = _init_repo(tmp_path / "child", name="child")
+    parent = _init_repo(tmp_path / "parent", name="parent")
+    _add_submodule(parent, child, "child-component")
+    _git(parent, "submodule", "deinit", "-f", "--", "child-component")
+    (parent / "child-component").mkdir(exist_ok=True)
+
+    descriptor = build_repository_descriptor(
+        parent,
+        alias=DEFAULT_ACCELERATOR_ALIAS,
+        authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
+    )
+
+    assert descriptor.portable_closure.gitlink_closure_complete is False
+    assert "gitlink_checkout_root_mismatch" in descriptor.reason_codes
+    assert descriptor_satisfies_repository_descriptor(descriptor) is False
+    assert prove_repository_descriptor(descriptor)["satisfied"] is False
 
 
 def test_path_escape_is_rejected(tmp_path: Path) -> None:

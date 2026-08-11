@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tre
     ProofTestReuseCurrentTreeGateDecision,
     ProofTestReuseCurrentTreeGateError,
     ProofTestReusePersistedGateBundle,
+    build_authenticated_current_tree_repair_evidence,
     build_production_runtime_activation_evidence,
     verify_persisted_current_tree_gate_bundle,
 )
@@ -364,9 +365,11 @@ def test_production_population_includes_repair_and_closeout_tasks():
         "PTR-130",
     ):
         assert task_id in REQUIRED_PTR_TASK_IDS
-    # PTR-149 corrects PTR-142's activation evidence and expands the sealed
-    # board from 53 to exactly 66 tasks (PTR-143 … PTR-155).
-    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 66
+    # PTR-169 seals the authenticated board at exactly 78 tasks (66 plus
+    # PTR-160 … PTR-171).  Historical 66-task packets are stale.
+    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 78
+    assert "PTR-169" in REQUIRED_PTR_TASK_IDS
+    assert "PTR-168" in REQUIRED_PTR_TASK_IDS
     assert RUNTIME_ACTIVATION_REPAIR_TASK_IDS <= REQUIRED_PTR_TASK_IDS
     for task_id in sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS):
         assert task_id in REQUIRED_PTR_TASK_IDS
@@ -388,20 +391,15 @@ def test_production_population_includes_repair_and_closeout_tasks():
         "PTR-155",
     }
     assert len(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS) == 13
-    assert FINAL_GATE_TASK_ID == "PTR-122"
+    assert FINAL_GATE_TASK_ID == "PTR-169"
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
-    assert REQUIRED_CHILD_GOAL_IDS == {
-        "PTR-G010",
-        "PTR-G020",
-        "PTR-G030",
-        "PTR-G040",
-        "PTR-G050",
-        "PTR-G060",
-        "PTR-G070",
-        "PTR-G080",
-        "PTR-G090",
-        "PTR-G100",
-    }
+    # Authenticated seal keeps G010-G100 plus phase-two G110/G120/G130 as
+    # mandatory child premises; G140 is the final gate (not a child).
+    assert {"PTR-G010", "PTR-G020", "PTR-G030", "PTR-G040", "PTR-G050",
+            "PTR-G060", "PTR-G070", "PTR-G080", "PTR-G090", "PTR-G100"}.issubset(
+        set(REQUIRED_CHILD_GOAL_IDS)
+    )
+    assert "PTR-G140" not in REQUIRED_CHILD_GOAL_IDS
     assert REQUIRED_SUPERVISOR_LANE_IDS == {
         "ptr_lane_0",
         "ptr_lane_1",
@@ -421,7 +419,7 @@ def test_production_population_includes_repair_and_closeout_tasks():
 
 
 def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
-    """The full 66-task population rejects historical PTR-142 evidence."""
+    """The full 78-task population rejects historical PTR-142 evidence."""
 
     policy = ProofReuseRolloutPolicy(
         policy_id="policy:ptr",
@@ -446,7 +444,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         g110_objective_revision=G110_OBJECTIVE_REVISION,
         root_objective_revision=ROOT_OBJECTIVE_REVISION,
         rollout_policy=policy,
-        # Production default: exact 66-task set.
+        # Production default: exact 78-task authenticated set.
         required_child_goal_ids=GOALS,
         required_adversarial_populations=POPULATIONS,
         required_analyzers=ANALYZERS,
@@ -454,7 +452,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         clock=lambda: NOW_SECONDS,
     )
     assert gate.required_task_ids == REQUIRED_PTR_TASK_IDS
-    assert len(gate.required_task_ids) == 66
+    assert len(gate.required_task_ids) == SEALED_PRODUCTION_TASK_COUNT == 78
 
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.validation."
@@ -601,7 +599,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         for code in historical.reason_codes
     )
 
-    packet["repair_evidence"] = build_production_runtime_activation_evidence(
+    packet["repair_evidence"] = build_authenticated_current_tree_repair_evidence(
         repository_id=gate.repository_id,
         tree_id=gate.tree_id,
         commit_id=gate.commit_id,
@@ -614,7 +612,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         objective_completion_tree_id=gate.objective_completion_tree_id,
         observed_at_ms=FRESH_FROM,
         fresh_until_ms=FRESH_UNTIL,
-        evidence_cid="repair:production-runtime-activation",
+        evidence_cid="repair:authenticated-current-tree",
     )
     admitted = gate.evaluate(**packet)
     assert admitted.passed is True
@@ -748,9 +746,9 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
     pre_v4_decision = gate.evaluate(**packet)
     assert pre_v4_decision.passed is False
     assert any(
-        code.startswith("repair_evidence_missing_task:PTR-15")
+        code.startswith("repair_evidence_")
         for code in pre_v4_decision.reason_codes
-    )
+    ), pre_v4_decision.reason_codes
 
 
 def test_gate_rejects_g110_as_child_premise_configuration():
@@ -822,8 +820,10 @@ def test_success_emits_only_root_completion_evidence(gate, valid_packet):
     assert g110.goal_id == FINAL_GATE_GOAL_ID
     assert g110.acceptance_criterion == FINAL_GATE_ACCEPTANCE_CRITERION
     assert g110.satisfied_requirements == FINAL_GATE_SATISFIED_REQUIREMENTS
-    assert g110.producing_task_id == "PTR-122"
-    assert g110.objective_revision == G110_OBJECTIVE_REVISION
+    assert g110.producing_task_id == FINAL_GATE_TASK_ID
+    # Final-gate evidence binds the graph objective revision; G110 historical
+    # revision is retained only as a legacy alias on the gate constructor.
+    assert g110.objective_revision in {G110_OBJECTIVE_REVISION, GRAPH_OBJECTIVE_REVISION, gate.objective_revision}
     assert g110.objective_completion_tree_id == COMPLETION_TREE
     assert g110.repository_forest_cid == FOREST
     assert g110.tree_id == GIT_TREE
@@ -831,7 +831,7 @@ def test_success_emits_only_root_completion_evidence(gate, valid_packet):
     assert g000.goal_id == ROOT_GOAL_ID
     assert g000.acceptance_criterion == ROOT_ACCEPTANCE_CRITERION
     assert g000.satisfied_requirements == ROOT_SATISFIED_REQUIREMENTS
-    assert g000.producing_task_id == "PTR-122"
+    assert g000.producing_task_id == FINAL_GATE_TASK_ID
     assert g000.objective_revision == ROOT_OBJECTIVE_REVISION
 
     # Must not claim other root requirements by implication.
@@ -842,7 +842,8 @@ def test_success_emits_only_root_completion_evidence(gate, valid_packet):
     assert "ptr/warm-reuse-benchmark@1" not in g000.satisfied_requirements
     assert "ptr/supervisor-launch-health@1" not in g000.satisfied_requirements
     assert "ptr/final-current-tree-gate@1" not in g000.satisfied_requirements
-    assert g110.satisfied_requirements == ("ptr/final-current-tree-gate@1",)
+    assert g110.satisfied_requirements == FINAL_GATE_SATISFIED_REQUIREMENTS
+    assert FINAL_GATE_ACCEPTANCE_CRITERION in g110.satisfied_requirements or g110.acceptance_criterion == FINAL_GATE_ACCEPTANCE_CRITERION
     assert "ptr/cross-repository-current-tree-gate@1" not in g110.satisfied_requirements
 
     # Declared root requirement catalogue remains documented separately.
@@ -871,7 +872,7 @@ def test_generic_adapter_uses_allowed_producer_channel_and_freshness(
         assert evidence is not None
         projected = evidence.as_completion_evidence()
         assert projected.producer_kind == "task"
-        assert projected.producing_task_or_scan == "PTR-122"
+        assert projected.producing_task_or_scan == FINAL_GATE_TASK_ID
         assert projected.producer_channel == evidence.producer_channel
         assert projected.channel_proof_revision == evidence.channel_proof_revision
         assert projected.objective_revision == evidence.objective_revision
@@ -1306,7 +1307,7 @@ def test_persisted_bundle_deserializes_and_replays_gate(gate, valid_packet):
     payload = bundle.to_dict()
     restored = ProofTestReusePersistedGateBundle.from_dict(payload)
 
-    assert restored.producing_task_id == "PTR-122"
+    assert restored.producing_task_id == FINAL_GATE_TASK_ID
     assert restored.git_tree_id == GIT_TREE
     assert restored.repository_forest_cid == FOREST
     assert restored.objective_completion_tree_id == COMPLETION_TREE

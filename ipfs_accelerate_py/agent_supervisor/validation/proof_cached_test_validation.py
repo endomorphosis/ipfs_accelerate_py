@@ -39,7 +39,7 @@ from ..proof.test_execution_contracts import (
     TestPassReceipt,
     TestProofCertificate,
 )
-from ..analysis.repository_forest import (
+from ..repository_forest import (
     AuthorityMode,
     RepositoryAuthority,
     RepositoryDescriptor,

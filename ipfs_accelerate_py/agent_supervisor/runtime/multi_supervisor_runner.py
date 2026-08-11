@@ -13,8 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from types import MappingProxyType
-from typing import Callable, Mapping, MutableMapping, Protocol, Sequence
+from typing import Callable, Mapping, Sequence
 
 from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
@@ -26,34 +25,6 @@ from ..core.wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaul
 
 
 OutputFn = Callable[[str], None]
-
-ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
-    {
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
-            "primary_quota_exhausted"
-        ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
-        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
-        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
-    }
-)
-_COMPATIBLE_GROK_PRIMARY_ALIASES = frozenset(
-    {
-        "grok",
-        "grok_cli",
-        "grok-cli",
-        "grok_build",
-        "grok-build",
-        "xai_cli",
-        "xai-cli",
-    }
-)
-
-
-class _SupportsFileno(Protocol):
-    def fileno(self) -> int: ...
 
 
 def _env_int(name: str, default: int) -> int:
@@ -518,77 +489,30 @@ def _env_default_value(value: bool | int | str) -> str:
     return str(value)
 
 
-def seal_ordered_implementation_provider_route(
-    environment: MutableMapping[str, str] | None = None,
-) -> dict[str, str]:
-    """Atomically default or validate the reviewed implementation route.
-
-    Validation precedes every mutation.  An unset route receives all six
-    bindings together.  Compatible legacy Grok primary aliases are
-    canonicalized to ``grok_cli``; any other explicit value fails closed and
-    leaves the environment unchanged.
-    """
-
-    target = os.environ if environment is None else environment
-    observed = {
-        name: str(target.get(name, "") or "").strip()
-        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
-    }
-    incompatible: dict[str, str] = {}
-    for name, value in observed.items():
-        if not value:
-            continue
-        expected = ORDERED_IMPLEMENTATION_PROVIDER_ROUTE[name]
-        if (
-            name == "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
-            and value.lower() in _COMPATIBLE_GROK_PRIMARY_ALIASES
-        ):
-            continue
-        if value != expected:
-            incompatible[name] = value
-    if incompatible:
-        details = ", ".join(
-            f"{name}={value!r}"
-            for name, value in sorted(incompatible.items())
-        )
-        raise ValueError(
-            "implementation supervisors require the exact six-field "
-            "grok_cli/grok-4.5 -> codex/gpt-5.6-terra medium "
-            "primary_quota_exhausted route; incompatible explicit "
-            f"configuration: {details}"
-        )
-    target.update(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
-    return dict(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
-
-
 def implementation_multi_supervisor_env_defaults(
     *,
     python_unbuffered: bool | int | str | None = True,
-    grok_merge_resolver_timeout_seconds: int | str | None = 900,
-    codex_merge_resolver_timeout_seconds: int | str | None = 600,
-    # Retained as ignored keyword-only compatibility shims. Copilot is not a
-    # member of the reviewed merge-resolver route.
-    copilot_merge_resolver_timeout_seconds: int | str | None = None,
+    codex_merge_resolver_timeout_seconds: int | str | None = 900,
+    copilot_merge_resolver_timeout_seconds: int | str | None = 600,
     prefer_copilot_merge_resolver: bool | int | str | None = None,
 ) -> dict[str, str]:
     """Return reusable environment defaults for long-running implementation supervisors."""
 
-    del copilot_merge_resolver_timeout_seconds, prefer_copilot_merge_resolver
     defaults: dict[str, str] = {}
     if python_unbuffered is not None:
         defaults["PYTHONUNBUFFERED"] = _env_default_value(python_unbuffered)
-    if grok_merge_resolver_timeout_seconds is not None:
-        defaults["GROK_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
-            grok_merge_resolver_timeout_seconds
-        )
     if codex_merge_resolver_timeout_seconds is not None:
         defaults["CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
             codex_merge_resolver_timeout_seconds
         )
-    # Emit the complete ordered route as one atomic default.  Supplying only
-    # the Codex model would make legacy ``auto`` selection treat Codex as the
-    # primary and bypass the Grok quota gate.
-    defaults.update(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
+    if copilot_merge_resolver_timeout_seconds is not None:
+        defaults["COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
+            copilot_merge_resolver_timeout_seconds
+        )
+    if prefer_copilot_merge_resolver is not None:
+        defaults["PREFER_COPILOT_MERGE_RESOLVER"] = _env_default_value(
+            prefer_copilot_merge_resolver
+        )
     return defaults
 
 
@@ -790,24 +714,6 @@ def build_repo_implementation_multi_supervisor_launcher(
             env_var=runtime_env_var,
         )
         effective_prepare_environment = runtime_environment.ensure_pythonpath
-    provided_env_defaults = dict(_env_default_items(env_defaults))
-    caller_route_defaults = {
-        name: provided_env_defaults[name]
-        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
-        if name in provided_env_defaults
-    }
-    sealed_route_defaults = seal_ordered_implementation_provider_route(
-        caller_route_defaults
-    )
-    effective_env_defaults = implementation_multi_supervisor_env_defaults()
-    effective_env_defaults.update(
-        {
-            name: value
-            for name, value in provided_env_defaults.items()
-            if name not in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
-        }
-    )
-    effective_env_defaults.update(sealed_route_defaults)
     return build_configured_multi_supervisor_launcher(
         repo_root=repo_root,
         duration_seconds=duration_seconds,
@@ -828,7 +734,7 @@ def build_repo_implementation_multi_supervisor_launcher(
         implementation_track_configs=implementation_track_configs,
         common_args=common_args,
         detach=detach,
-        env_defaults=effective_env_defaults,
+        env_defaults=env_defaults,
         prepare_environment=effective_prepare_environment,
     )
 
@@ -852,10 +758,10 @@ def implementation_supervisor_common_args(
     codebase_scan_cooldown_seconds: int = 900,
     codebase_refill_timeout_seconds: int = 600,
     llm_merge_resolver_timeout_seconds: int = 1800,
-    strict_task_sharding: bool = False,
 ) -> list[str]:
     """Return standard common args for long-running implementation supervisors."""
 
+    effective_llm_merge_resolver_command = llm_merge_resolver_command or implementation_command
     args = [
         "--implement",
         "--objective-refill-scan",
@@ -893,10 +799,8 @@ def implementation_supervisor_common_args(
     ]
     if implementation_command:
         args.extend(["--implementation-command", implementation_command])
-    if llm_merge_resolver_command:
-        args.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
-    if strict_task_sharding:
-        args.append("--strict-task-sharding")
+    if effective_llm_merge_resolver_command:
+        args.extend(["--llm-merge-resolver-command", effective_llm_merge_resolver_command])
     return args
 
 
@@ -913,20 +817,6 @@ def _remove_stale_pid_marker_if_unchanged(pid_path: Path, stale_pid: int) -> boo
 
     current_pid = read_pid_file(pid_path)
     if current_pid != stale_pid or pid_alive(current_pid):
-        return False
-    return remove_runtime_marker(pid_path)
-
-
-def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
-    """Remove a PID projection only while it still names this runner.
-
-    Unlike :func:`_remove_stale_pid_marker_if_unchanged`, this helper may be
-    used by the still-running master process during its orderly teardown.  A
-    changed marker is never removed, so a concurrently started replacement
-    retains its projection.
-    """
-
-    if read_pid_file(pid_path) != expected_pid:
         return False
     return remove_runtime_marker(pid_path)
 
@@ -1012,91 +902,6 @@ def _relative_or_absolute_path(repo_root: Path, value: object) -> Path | None:
         return None
     path = Path(text)
     return path if path.is_absolute() else repo_root / path
-
-
-def _track_task_state_path(track: SupervisorTrack, *, repo_root: Path) -> Path | None:
-    """Resolve a track's task-state projection without trusting an escape path."""
-
-    resolved = track.resolve(repo_root)
-    state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
-    status = _read_json_dict(_inferred_supervisor_status_path(resolved))
-    candidate = _relative_or_absolute_path(
-        repo_root,
-        status.get("current_status_path")
-        or status.get("progress_path")
-        or status.get("state_path"),
-    )
-    if candidate is None:
-        name = resolved.supervisor_pid_path.name
-        suffix = "_supervisor.pid"
-        if not name.endswith(suffix):
-            return None
-        candidate = resolved.supervisor_pid_path.with_name(
-            f"{name[:-len(suffix)]}_task_state.json"
-        )
-    candidate = candidate.resolve(strict=False)
-    return candidate if _path_within(candidate, state_root) else None
-
-
-def terminal_task_state_fields(
-    track: SupervisorTrack,
-    *,
-    repo_root: Path,
-    fresh_after_epoch_seconds: float,
-) -> dict[str, object]:
-    """Return fail-closed terminal-quiescence fields for one implementation track.
-
-    Freshness is mandatory.  This prevents a prior completed projection from
-    terminating a new run before its child has observed a changed board.
-    Launchers should preflight already-completed boards instead of starting a
-    timed runner solely to rediscover old terminal state.
-    """
-
-    path = _track_task_state_path(track, repo_root=repo_root)
-    if path is None:
-        return {"terminal_quiescent": False, "task_state_status": "untracked"}
-    payload = _read_json_dict(path)
-    if not payload:
-        return {
-            "terminal_quiescent": False,
-            "task_state_status": "missing",
-            "task_state_path": str(path),
-        }
-    try:
-        modified_at = path.stat().st_mtime
-    except OSError:
-        modified_at = 0.0
-    fresh = modified_at + 1e-6 >= float(fresh_after_epoch_seconds)
-    task_count = int(payload.get("task_count") or 0)
-    completed_count = int(payload.get("completed_count") or 0)
-    active_task_id = str(payload.get("active_task_id") or "").strip()
-    implementation_in_progress = bool(payload.get("implementation_in_progress"))
-    eligible_ready_count = int(payload.get("eligible_ready_count") or 0)
-    blocked_count = int(payload.get("blocked_count") or 0)
-    external_reserved_count = int(payload.get("external_reserved_count") or 0)
-    terminal = bool(
-        fresh
-        and task_count > 0
-        and completed_count == task_count
-        and not active_task_id
-        and not implementation_in_progress
-        and eligible_ready_count == 0
-        and blocked_count == 0
-        and external_reserved_count == 0
-    )
-    return {
-        "terminal_quiescent": terminal,
-        "task_state_status": "terminal" if terminal else "nonterminal",
-        "task_state_path": str(path),
-        "task_state_fresh": fresh,
-        "task_count": task_count,
-        "completed_count": completed_count,
-        "active_task_id": active_task_id,
-        "implementation_in_progress": implementation_in_progress,
-        "eligible_ready_count": eligible_ready_count,
-        "blocked_count": blocked_count,
-        "external_reserved_count": external_reserved_count,
-    }
 
 
 def supervisor_status_health_fields(
@@ -1302,7 +1107,6 @@ def stop_tracks(
     """Stop exact marker-bound wrapper trees and verify no descendants remain."""
 
     stopped: list[int] = []
-    removed_runtime_markers: list[str] = []
     all_fenced = True
     _emit(output, "stopping supervisor wrapper and managed daemons")
     for track in tracks:
@@ -1324,24 +1128,10 @@ def stop_tracks(
                 process.wait(timeout=max(0.1, grace_seconds))
             except subprocess.TimeoutExpired:
                 pass
-        if fenced and process is not None:
-            resolved = track.resolve(repo_root)
-            if _remove_stale_pid_marker_if_unchanged(
-                resolved.supervisor_pid_path,
-                process.pid,
-            ):
-                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
-            daemon_pid = read_pid_file(resolved.daemon_pid_path)
-            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
-                resolved.daemon_pid_path,
-                daemon_pid,
-            ):
-                removed_runtime_markers.append(str(resolved.daemon_pid_path))
     return {
         "stopped_pids": sorted(set(stopped)),
         "stopped_count": len(set(stopped)),
         "all_trees_fenced": all_fenced,
-        "removed_runtime_markers": removed_runtime_markers,
     }
 
 
@@ -1357,13 +1147,11 @@ def run_supervisor_tracks(
     python_executable: str = "python3",
     master_pid_path: Path | None = None,
     label: str = "multi-supervisor",
-    exit_when_all_tracks_terminal: bool = False,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
 
     resolved_repo_root = repo_root.resolve()
-    resolved_master_pid: Path | None = None
     if master_pid_path is not None:
         resolved_master_pid = _resolve_path(resolved_repo_root, master_pid_path)
         resolved_master_pid.parent.mkdir(parents=True, exist_ok=True)
@@ -1378,8 +1166,6 @@ def run_supervisor_tracks(
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     interrupted = ""
-    terminal_quiescent = False
-    run_started_at = time.time()
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
         for track in tracks:
@@ -1393,7 +1179,6 @@ def run_supervisor_tracks(
 
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
-            terminal_tracks: set[str] = set()
             sleep_for = min(
                 max(0.05, heartbeat_interval_seconds),
                 max(0.0, deadline - time.monotonic()),
@@ -1453,14 +1238,6 @@ def run_supervisor_tracks(
                             python_executable=python_executable,
                             output=output,
                         )
-                    elif exit_when_all_tracks_terminal:
-                        task_fields = terminal_task_state_fields(
-                            resolved,
-                            repo_root=resolved_repo_root,
-                            fresh_after_epoch_seconds=run_started_at,
-                        )
-                        if task_fields.get("terminal_quiescent"):
-                            terminal_tracks.add(track.name)
                     continue
                 old_pid = None if process is None else process.pid
                 _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
@@ -1480,18 +1257,7 @@ def run_supervisor_tracks(
                     python_executable=python_executable,
                     output=output,
                 )
-            if (
-                exit_when_all_tracks_terminal
-                and tracks
-                and len(terminal_tracks) == len(tracks)
-            ):
-                terminal_quiescent = True
-                _emit(output, "all supervisor tracks reached fresh terminal quiescence")
-                break
-        if terminal_quiescent:
-            _emit(output, "completed after terminal board drain")
-        else:
-            _emit(output, "completed requested run window")
+        _emit(output, "completed requested run window")
     except SupervisorRunInterrupted as exc:
         interrupted = str(exc)
         _emit(output, f"interrupted: {interrupted}")
@@ -1505,20 +1271,11 @@ def run_supervisor_tracks(
             grace_seconds=stop_grace_seconds,
             output=output,
         )
-        master_pid_removed = bool(
-            resolved_master_pid is not None
-            and stop_payload["all_trees_fenced"]
-            and _remove_owned_pid_projection(resolved_master_pid, os.getpid())
-        )
     return {
         "completed": not interrupted,
         "interrupted": interrupted,
         "track_count": len(tracks),
         "stopped_count": stop_payload["stopped_count"],
-        "all_trees_fenced": stop_payload["all_trees_fenced"],
-        "removed_runtime_markers": stop_payload["removed_runtime_markers"],
-        "master_pid_removed": master_pid_removed,
-        "terminal_quiescent": terminal_quiescent,
     }
 
 
@@ -1534,14 +1291,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--master-log", type=Path, default=None)
     parser.add_argument("--master-pid-path", type=Path, default=None)
     parser.add_argument("--label", default="multi-supervisor")
-    parser.add_argument(
-        "--exit-when-all-tracks-terminal",
-        action="store_true",
-        help=(
-            "End the run after every track publishes a fresh, complete, idle, "
-            "unblocked task projection. Stale projections never trigger exit."
-        ),
-    )
     parser.add_argument("--python-executable", default="python3")
     parser.add_argument("--track", action="append", default=[])
     parser.add_argument(
@@ -1606,14 +1355,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Each lane gets isolated state/worktree paths and task-shard args; merges remain serialized."
         ),
     )
-    parser.add_argument(
-        "--implementation-supervisor-strict-task-sharding",
-        action="store_true",
-        help=(
-            "Disable cross-shard ready-task fallback in every implementation-supervisor "
-            "lane, preventing lanes from borrowing the same retry work."
-        ),
-    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -1641,20 +1382,6 @@ def _without_detach(argv: Sequence[str]) -> list[str]:
     return cleaned
 
 
-def _stream_targets_path(stream: _SupportsFileno, path: Path) -> bool:
-    """Return whether a writable stream and path identify the same file."""
-
-    try:
-        stream_stat = os.fstat(stream.fileno())
-        path_stat = path.stat()
-    except (AttributeError, OSError, TypeError, ValueError):
-        return False
-    return (stream_stat.st_dev, stream_stat.st_ino) == (
-        path_stat.st_dev,
-        path_stat.st_ino,
-    )
-
-
 def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, object]:
     """Launch this runner detached, redirecting output to the master log."""
 
@@ -1680,11 +1407,6 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
     finally:
         out_handle.close()
     master_pid.write_text(f"{process.pid}\n", encoding="utf-8")
-    # The child normally removes its own projection after fencing every
-    # track.  Cover the short-run race where it exits before this parent can
-    # publish the detached PID.
-    if process.poll() is not None or not pid_alive(process.pid):
-        _remove_stale_pid_marker_if_unchanged(master_pid, process.pid)
     return {
         "stamp": args.stamp,
         "master_pid": process.pid,
@@ -1698,12 +1420,11 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
 
     common_args: list[str] = []
     if args.implementation_supervisor_defaults:
+        command = args.implementation_supervisor_command
         common_args.extend(
             implementation_supervisor_common_args(
-                implementation_command=args.implementation_supervisor_command,
-                llm_merge_resolver_command=(
-                    args.implementation_supervisor_llm_merge_resolver_command
-                ),
+                implementation_command=command,
+                llm_merge_resolver_command=args.implementation_supervisor_llm_merge_resolver_command or command,
                 stale_seconds=args.implementation_supervisor_stale_seconds,
                 check_interval=args.implementation_supervisor_check_interval,
                 daemon_interval=args.implementation_supervisor_daemon_interval,
@@ -1719,26 +1440,8 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 codebase_scan_cooldown_seconds=args.implementation_supervisor_codebase_scan_cooldown_seconds,
                 codebase_refill_timeout_seconds=args.implementation_supervisor_codebase_refill_timeout_seconds,
                 llm_merge_resolver_timeout_seconds=args.implementation_supervisor_llm_merge_resolver_timeout_seconds,
-                strict_task_sharding=bool(
-                    getattr(
-                        args,
-                        "implementation_supervisor_strict_task_sharding",
-                        False,
-                    )
-                ),
             )
         )
-    if (
-        bool(
-            getattr(
-                args,
-                "implementation_supervisor_strict_task_sharding",
-                False,
-            )
-        )
-        and "--strict-task-sharding" not in common_args
-    ):
-        common_args.append("--strict-task-sharding")
     common_args.extend(args.common_arg)
     return common_args
 
@@ -1764,29 +1467,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(args_list)
     if not args.track and not args.implementation_track:
         parser.error("at least one --track or --implementation-track is required")
-    if args.implementation_track or args.implementation_supervisor_defaults:
-        try:
-            seal_ordered_implementation_provider_route()
-        except ValueError as exc:
-            parser.error(str(exc))
-        # Fail closed before leasing worktrees when the Grok/Codex entry module
-        # is missing provider-command symbols; heal known gaps automatically.
-        try:
-            from .provider_command_binding import (
-                ProviderCommandBindingError,
-                preflight_provider_entry_module,
-            )
-
-            preflight_provider_entry_module(
-                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
-            )
-        except ProviderCommandBindingError as exc:
-            parser.error(f"provider command binding preflight failed: {exc}")
-        except Exception as exc:  # noqa: BLE001 — surface import failures as preflight
-            parser.error(
-                "provider entry module preflight failed: "
-                f"{type(exc).__name__}: {exc}"
-            )
     if args.detach:
         payload = launch_detached(args, args_list)
         for key in ("stamp", "master_pid", "master_log", "master_pid_file"):
@@ -1797,13 +1477,10 @@ def main(argv: list[str] | None = None) -> int:
     tracks = tracks_from_parsed_args(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
-        stdout_is_master_log = _stream_targets_path(sys.stdout, master_log)
-
         def output(message: str) -> None:
             print(message, flush=True)
-            if not stdout_is_master_log:
-                log_handle.write((message + "\n").encode("utf-8"))
-                log_handle.flush()
+            log_handle.write((message + "\n").encode("utf-8"))
+            log_handle.flush()
 
         run_supervisor_tracks(
             tracks,
@@ -1816,7 +1493,6 @@ def main(argv: list[str] | None = None) -> int:
             python_executable=args.python_executable,
             master_pid_path=master_pid,
             label=args.label,
-            exit_when_all_tracks_terminal=args.exit_when_all_tracks_terminal,
             output=output,
         )
     return 0
