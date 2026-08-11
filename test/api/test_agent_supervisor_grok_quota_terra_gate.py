@@ -169,6 +169,21 @@ def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _seal_quota_high_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = {
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV: "grok_cli",
+        implementation_daemon.IMPLEMENTATION_FALLBACK_PROVIDER_ENV: "codex",
+        implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV: (
+            "primary_quota_exhausted"
+        ),
+        implementation_daemon._GROK_MODEL_ENV: "grok-4.5",
+        implementation_daemon._CODEX_MODEL_ENV: "gpt-5.6-terra",
+        implementation_daemon._CODEX_REASONING_EFFORT_ENV: "high",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+
 def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
     tmp_path: Path,
     monkeypatch,
@@ -216,6 +231,62 @@ def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
     assert set(nonce) <= set("0123456789abcdef")
     head = " ".join(command[: command.index("--codex-fallback-command-json")])
     assert "codex" not in head
+
+
+def test_daemon_quota_high_route_is_bound_without_authorizing_auth_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seal_quota_high_route(monkeypatch)
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/opt/providers/grok")
+    monkeypatch.setattr(
+        implementation_daemon, "_goose_meta_spark_available", lambda: False
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/opt/providers/codex",
+    )
+
+    daemon = _daemon(tmp_path)
+    daemon._require_primary_provider_readiness(None)
+    command = daemon._build_implementation_command(tmp_path)
+
+    fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="high"' in fallback
+    nonce = command[command.index("--grok-failure-receipt-nonce") + 1]
+    assert len(nonce) == 64
+    binding = json.loads(
+        command[command.index("--agent-implementation-route-json") + 1]
+    )
+    resolved = llm_router.resolve_agent_implementation_route_binding(
+        binding,
+        repo_root=tmp_path,
+    )
+    assert resolved.route_id == "agent-supervisor-grok45-terra56-high-hard-quota-v1"
+    assert resolved.fallback_trigger == "primary_quota_exhausted"
+    assert resolved.fallback_reasoning_effort == "high"
+    assert resolved.permits_authentication_unavailable is False
+
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: False)
+    with pytest.raises(
+        implementation_daemon.ImplementationRetryDeferred,
+        match="explicit Grok provider is unavailable",
+    ):
+        daemon._require_primary_provider_readiness(None)
 
 
 @pytest.mark.parametrize("override_source", ("constructor", "environment"))

@@ -52078,7 +52078,13 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
-        if route_plan and route_plan.permits_authentication_unavailable:
+        if route_plan and (
+            route_plan.permits_authentication_unavailable
+            or (
+                route_plan.fallback_trigger == "primary_quota_exhausted"
+                and route_plan.fallback_reasoning_effort == "high"
+            )
+        ):
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
                     "sealed Grok/Codex route rejects explicit implementation "
@@ -52136,7 +52142,9 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 model_override=route_plan.primary_model_id,
                 failure_receipt_nonce=secrets.token_hex(32),
-                allow_auth_unavailable_fallback=True,
+                allow_auth_unavailable_fallback=(
+                    route_plan.permits_authentication_unavailable
+                ),
                 fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
                 route_plan=route_plan,
                 sealed_runner_path=(

@@ -611,7 +611,15 @@ def _validate_tasks(text: str, scheduler: Mapping[str, object], errors: list[str
             validation_text = str(task.metadata.get("validation") or "")
             if "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:." not in validation_text:
                 errors.append(f"{task.task_id} validation lacks exact nested package roots")
-            if "python -m pytest" in validation_text and "--timeout=" not in validation_text:
+            if re.search(r"(?:^|[;\s])python(?:\s|$)", validation_text):
+                errors.append(
+                    f"{task.task_id} validation uses unavailable unversioned python"
+                )
+            if "/usr/bin/python3" not in validation_text:
+                errors.append(
+                    f"{task.task_id} validation lacks the sealed Python executable"
+                )
+            if "python3 -m pytest" in validation_text and "--timeout=" not in validation_text:
                 errors.append(f"{task.task_id} pytest validation lacks a per-test timeout")
 
     for task_id, dependencies in edges.items():
