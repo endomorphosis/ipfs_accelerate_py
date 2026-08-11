@@ -30,27 +30,33 @@ is also not assumed here.
 
 `SCH-000` must be completed manually before any implementation supervisor is
 launched. It must replace the two unresolved values below with exact 40-hex
-commits after the phase-one semantic-index closeout and the `ipfs_kit_py`
-state-root/CAS closeout:
+commits after the repaired `ipfs_datasets_py` semantic-state/Merkle/capsule
+closeout and the repaired `ipfs_kit_py` versioned state-root/CAS closeout:
 
 ```text
-IPFS_DATASETS_SEMANTIC_INDEX_COMMIT = UNRESOLVED
-IPFS_KIT_DURABLE_ROOT_COMMIT        = UNRESOLVED
+IPFS_DATASETS_SEMANTIC_STATE_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT
+IPFS_KIT_DURABLE_ROOT_COMMIT        = UNRESOLVED_FINAL_REPAIRED_COMMIT
 ```
 
 The gate fails closed if either value is unresolved, is not a commit reachable
 from the intended repository, or does not pass its producer's contract tests.
-Workers may not infer a pin from a mutable branch, current checkout, editable
-install, submodule pointer, or ambient `PYTHONPATH` ordering.
+The dependency seal also records the exact accelerate baseline and MCP++ wire
+commit, repository origins, interface/schema fingerprints, and Python 3.12
+toolchain. A deterministic seal validator must check those values; `git
+rev-parse` alone is not validation. Workers may not infer a pin from a mutable
+branch, current checkout, editable install, submodule pointer, or ambient
+`PYTHONPATH` ordering.
 
 ## 2. Scope and completion outcome
 
 The release is a complete local loop over a controlled Python fixture repository
 or a deliberately selected stable kernel in `ipfs_datasets_py`. It must:
 
-1. obtain a deterministic repository state from the phase-one scanner;
-2. consume its symbol-level Merkle graph and confidence classifications;
-3. compile and reuse semantic capsules for unchanged dependencies;
+1. obtain a deterministic repository state from the repaired phase-one scanner;
+2. consume the datasets-owned symbol-level Merkle DAG and confidence
+   classifications;
+3. request and reuse datasets-owned semantic capsules for unchanged
+   dependencies;
 4. consume state deltas and propagate explicit invalidation obligations;
 5. select affected pytest tests and configured proof obligations;
 6. build a minimum-sufficient, assurance-aware `ContextPack`;
@@ -83,16 +89,19 @@ commands, environment bindings, and selected inputs have been recorded.
 
 | Concern | Existing authority | Decision |
 |---|---|---|
-| Python repository state, symbols, typed graph, deltas, invalidation, explanations | Final pinned `ipfs_datasets_py.logic.software_contracts.semantic_index` public API | Consume through `SemanticStateProvider`; never reconstruct AST identity or graph semantics in accelerate. |
+| Python repository state, symbols, typed graph, Merkle manifest, capsules, deltas, invalidation, explanations, exact source retrieval | Final pinned repaired `ipfs_datasets_py.logic.software_contracts` semantic-state public API | Consume through `SemanticStateProvider`; never reconstruct AST identity, graph semantics, capsule facts, or source identity in accelerate. |
 | Semantic content identity | Final pinned semantic-index records and their `software_contracts.content` CIDs | Preserve supplied CIDs and verify round trips; never translate them into a second identity. |
 | MCP++ wire shapes | MCP-IDL Profile A, CID-native artifacts Profile B, and Event DAG Profile F at `dc316465…` | Encode a local interface descriptor and conformance vectors against those profiles. No semantic-specific upstream schema was found, so local payload schemas remain namespaced extensions carried by the MCP++ envelope. |
 | MCP++ artifact bytes and real CIDv1 | `ipfs_accelerate_py.mcp_server.mcplusplus.artifacts.canonicalize_artifact` plus `ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid.cid_for_bytes` | Use this pair for harness wire artifacts. Do not use the SHA-256 string returned by `artifacts.compute_artifact_cid`. Add vectors proving Kubo-compatible CIDv1. |
 | Immutable coordination storage | Lazy `ipfs_kit_py.mcp_server.mcplusplus.coordination_storage.DurableCoordinationStore`, `BlockBackend`, and `IPFSHeliaBlockBackend` | Inject through a small protocol. Local store is hermetic; remote block transport is optional. Do not use Iroh/bucket CAS or the accelerate `VerifiedIPLDBackend` as the semantic root authority. |
-| Mutable current-root CAS and WAL | Generic root-CAS surface delivered at the final `ipfs_kit_py` pin | `SCH-003` binds only to `put`, `get`, `get_bytes`, `read_root`, `compare_and_swap_root`, and `recover`; its concrete import path is sealed in `SCH-000`. |
+| Mutable current-root CAS and WAL | Generic generation-bearing root-CAS surface delivered at the final `ipfs_kit_py` pin | `SCH-003` binds only to `put`, `get`, `get_bytes`, `has`, `read_root`, `compare_and_swap_root`, and `recover`; its concrete import path is sealed in `SCH-000`. |
+| Context budgeting and provider-visible source coverage | `agent_supervisor.context.context_compiler.ContextCompiler`, `context_contracts`, and `todo_daemon.production_context_slice` | Project semantic capsules/raw source into existing context references and production slices; do not build a second generic context optimizer. |
 | Resource admission and cancellation | `agent_supervisor.runtime.resource_scheduler.ResourceScheduler` and cancellation-aware work contracts | Wrap these types rather than introducing a scheduler. |
 | Provider execution | `agent_supervisor.runtime.provider_execution.ProviderExecutionGateway` | Use its reservation/idempotency path, with a stricter harness promotion gate that rejects simulated/degraded/replayed-as-new results in production. |
 | Worktree ownership and fencing | `merge.worktree_lifecycle.WorktreeLifecycleStore` and `merge.lease_coordination.LeaseCoordinator` | Acquire before `git worktree add`, fence every mutation/publication, and recover by durable attempt identity. |
-| Validation command parsing | `validation.validation_commands` | Reuse command classification and scope rules; execute only explicit argv in the worktree with bounded output/time. |
+| Proposal and patch admission | `validation.proposal_validation` plus `todo_daemon.production_context_slice.assert_proposal_covered_by_context` | Reuse strict parsing, immutable scope, preimage coverage, and rejection receipts before Git application. |
+| Validation execution | `validation.validation_commands`, `validation.validation_runtime`, and `validation.validation_scheduler.ValidationScheduler.run_staged` | The semantic selector supplies explicit commands; do not invoke the legacy `run_impact_selected` selector or add a subprocess scheduler. |
+| Proof execution | `proof.proof_scheduler.ProofScheduler` and formal-verification capability records | Reuse capability probing and typed unavailable results; do not build a prover. |
 | Restart/replay journal | `runtime.event_log` | Append bounded semantic-session events and checkpoint replay cursors. It is a journal, not a task-queue or semantic-state authority. |
 
 `PersistentTaskQueue` is deliberately not an authority or dependency of this
@@ -127,12 +136,14 @@ ipfs_accelerate_py/agent_supervisor/semantic_state/
 ```
 
 Names may be combined only where doing so reduces surface without mixing
-authorities. Tests live in `tests/agent_supervisor/semantic_state/`, the
-controlled repository in `tests/fixtures/semantic_state_harness/controlled_repo/`,
+authorities. Tests live in the pytest-discovered `test/api/semantic_state/`, the
+controlled repository in `test/fixtures/semantic_state_harness/controlled_repo/`,
 and the exactly-40-task corpus in `benchmarks/semantic_state/tasks/`.
 
 The root `pyproject.toml` and `setup.py` receive only the matching
-`semantic-state` console entry. No legacy CLI or MCP server is expanded.
+`semantic-state` console entry and package the closed interface schema for
+`importlib.resources` access. A built-wheel smoke test must prove both the
+schema and console entry are present. No legacy CLI or MCP server is expanded.
 
 ## 5. Architecture and data flow
 
@@ -141,9 +152,10 @@ Git/tree snapshot
       |
       v
 SemanticStateProvider ------------------------------+
-  state + graph + delta + invalidation              |
+  state + Merkle DAG + capsules + delta             |
+  + invalidation + exact tree-bound source          |
       |                                              |
-      +--> CapsuleCompiler --> TestSelector          |
+      +--> CapsuleAdmission --> TestSelector         |
       |           |                 |                |
       +-----------+--> ContextPacker                 |
                           |                           |
@@ -177,9 +189,10 @@ are rejected. At minimum:
 - `Availability`: `available`, `unavailable`;
 - `UnavailableResult`: operation, provider/adapter ID, stable reason code,
   retryable flag, and bounded diagnostic text;
-- `SemanticCapsule`: stable symbol ID, version CID, source CID, confidence,
-  authoritative facts, hint-only facts, dependencies, tests, proofs,
-  validity/binding CIDs, and raw-source requirement;
+- `SemanticCapsuleRef`: the datasets-owned capsule CID, stable symbol ID,
+  version/source CIDs, confidence, validity bindings, and raw-source
+  requirement; authoritative semantic facts remain in the referenced datasets
+  capsule;
 - `ContextPack`: objective, exact raw target/surrounding/test code, dependency
   capsules, obligations/counterexamples/delta/interfaces/assumptions,
   exclusions, token accounting, risk, route, and escalation recommendation;
@@ -194,6 +207,11 @@ are rejected. At minimum:
   simulation flag, freshness, and acceptance eligibility;
 - `HarnessResult`: accepted/rejected/unavailable, old/new roots, patch, receipts,
   obligations, event head, and stable reasons.
+- `RootRef`: root CID plus monotonic generation used as the complete CAS token;
+- `SemanticStateRootManifest`: repository identity, base/candidate Git tree,
+  datasets state and Merkle-root CIDs, capsule-index/delta/invalidation/
+  obligation/selection/receipt CIDs, dependency/configuration/policy/interface/
+  toolchain bindings, event head, versions, and acceptance disposition.
 
 Timestamps, local paths, process IDs, wall-clock durations, and provider billing
 observations may appear in operational receipts but never alter a deterministic
@@ -214,14 +232,20 @@ class SemanticStateProvider(Protocol):
     def explain_symbol(self, repository_state, symbol_id): ...
     def explain_impact(self, repository_state, changed_symbol_ids): ...
     def watch_repository(self, repo_path, callback, *, debounce_ms): ...
+    def compile_semantic_capsule(self, repository_state, symbol_id): ...
+    def read_source_blob(self, repository_state, path, *, expected_source_cid): ...
+    def read_source_span(self, repository_state, symbol_id): ...
 ```
 
-The adapter validates returned state/root/version CIDs and closed confidence
+The adapter validates returned state/Merkle/capsule/version CIDs and closed confidence
 values (`exact`, `conservative`, `heuristic`, `opaque`). It does not reach into
 the semantic-index implementation to recover facts absent from its public
 records. Missing capabilities produce `UnavailableResult`, never empty/exact
 state. Git/tree or deterministic filesystem snapshots remain authoritative;
-watch notifications never become mutations or state.
+watch notifications never become mutations or state. Source retrieval reads the
+exact scanned Git tree/blob and verifies the expected source CID. Reading the
+current filesystem after a scan is forbidden; a source race produces typed
+staleness and a rescan request.
 
 The harness consumes the scanner's modules, imports, symbols, signatures,
 annotations, decorators, exceptions, state reads/writes, calls, inheritance,
@@ -234,10 +258,11 @@ CID change invalidates descriptor receipts and client-adapter obligations. These
 are harness bindings layered on the phase-one delta; they do not mutate the
 phase-one graph authority.
 
-## 8. Semantic capsule compiler
+## 8. Semantic capsule authority and admission
 
-`capsules.py` compiles one capsule per requested symbol version from exact
-semantic-index records:
+The datasets semantic-state producer compiles one capsule per requested symbol
+version. Accelerate's `capsules.py` verifies, binds, caches, and projects those
+capsules without re-extracting or restating authoritative semantic facts:
 
 - normalized AST facts and stable/version identities;
 - public signature, annotations, defaults, decorators, and explicit contracts;
@@ -252,11 +277,13 @@ summaries are stored only in `heuristic_annotations`, bind the exact input
 capsule CID and model/provider version, and can never raise confidence or
 satisfy a verification obligation.
 
-Capsule reuse requires equality of symbol-version CID, extractor/schema
+Capsule reuse requires equality of capsule CID, symbol-version CID, extractor/schema
 versions, dependency/policy/interface/configuration bindings, and non-stale
 status. `exact` and `conservative` capsules may substitute for unchanged
 dependency code with visible caveats. `heuristic`, `opaque`, missing,
-invalidated, or unknown capsules force raw source retrieval.
+invalidated, or unknown capsules force raw source retrieval. `CapsuleCache` is
+only an index over `DurableSemanticStatePort`; it does not introduce another
+filesystem, database, block, CID, or mutable-root authority.
 
 ## 9. Incremental invalidation and obligations
 
@@ -313,8 +340,11 @@ a typed unavailable obligation/receipt; it is never reported as a passed proof.
 
 ## 11. Assurance-aware context packing
 
-`context_pack.py` optimizes minimum context subject to coverage and assurance
-constraints. It always contains:
+`context_pack.py` adapts semantic inputs into
+`ContextCompiler`/`ContextReference` records and a verified
+`ProductionContextSliceManifest`. The existing compiler optimizes minimum
+context subject to the additional semantic coverage and assurance constraints.
+The resulting pack always contains:
 
 - task/objective;
 - exact raw target code and exact surrounding edit context;
@@ -340,6 +370,8 @@ packer recommends escalation or human review instead of silently truncating.
 `ProviderExecutionGateway`, `LeaseCoordinator`, `WorktreeLifecycleStore`, and
 `runtime.event_log`:
 
+- deterministic task parsing and datasets capsule/summary projection are
+  explicit scheduled work kinds; optional model summaries remain heuristic;
 - resource admission occurs before parsing batches, capsule compilation, tests,
   provers, and provider invocation;
 - leases include attempt identity and fencing tokens;
@@ -356,9 +388,15 @@ legacy mock hardware or mock inference coordinators.
 confidence, risk class, affected dependency cone, unresolved obligations,
 prior repair failures, and available proofs. Routing results use the five
 required classes. Providers are injected by typed capability; none is hardcoded.
-`deterministic_only` means no model invocation. Production mode rejects absent
-providers and any gateway result marked simulated, degraded-to-simulation, or
-replayed without a previously admitted production receipt. Development
+`deterministic_only` means no model invocation, and `human_review_required`
+halts before invocation or root publication. Production uses
+`ProviderExecutionMode.ENFORCE` and requires available coordination, a real
+coordinator/invoker, verified provider attribution, and a non-simulated
+reservation. It rejects `sim:`/`degraded:` reservations, off/simulated/degraded
+phases, fallback reason codes, mismatched effective providers, and replay
+without a previously admitted production receipt. Any `llm_router.generate_text`
+adapter passes `allow_local_fallback=False` and
+`allow_cross_provider_fallback=False`. Development
 simulation is labeled in every result and can never satisfy production
 verification or state-root acceptance.
 
@@ -390,8 +428,10 @@ class DurableSemanticStatePort(Protocol):
     def get(self, cid): ...
     def get_bytes(self, cid): ...
     def has(self, cid): ...
-    def read_root(self, repository_id): ...
-    def compare_and_swap_root(self, repository_id, expected_root, new_root): ...
+    def read_root(self, repository_id) -> RootRef | None: ...
+    def compare_and_swap_root(
+        self, repository_id, expected: RootRef | None, new_root_cid
+    ) -> RootRef: ...
     def recover(self): ...
 ```
 
@@ -401,7 +441,15 @@ lazy and injected. Writes store and verify all immutable blocks first, append a
 prepared WAL transition, perform expected-old CAS, mark committed, and expose
 the new root atomically. Recovery either completes an already-published valid
 root or retains the old root; corruption fails closed. Two distinct concurrent
-writers from one expected root cannot both succeed.
+writers from one expected root cannot both succeed. The monotonic generation is
+part of the expected token, so an A-to-B-to-A sequence cannot admit an ABA-stale
+writer. The CAS target is always a stored and transitively verifiable
+`SemanticStateRootManifest`, never a bare unexplained repository-state CID.
+Observed and rejected candidate manifests may remain as immutable blocks, but
+only an accepted manifest is reachable from the current `RootRef`. The initial
+scan uses an explicit `None -> bootstrap manifest` CAS and labels that manifest
+indexed rather than patch-verified; later verification receipts cannot be
+inferred from bootstrap state.
 
 `receipts.py` binds every receipt to the exact pre/post tree, semantic roots,
 selection, commands, toolchain, dependency/lock/config/policy/interface CIDs,
@@ -412,24 +460,32 @@ but can never satisfy acceptance.
 
 ## 14. Fenced isolated patch workflow
 
-`worktree.py` and `harness.py` implement exactly this acceptance sequence:
+`worktree.py` composes `managed_git_worktree`/`GitWorktreeSession`,
+`WorktreeLifecycleStore`, `LeaseCoordinator`, strict proposal validation, and
+the production-context preimage gate. It asserts that the worktree base is the
+exact scanned commit/tree; if the shared helper cannot select that base, only a
+narrow reviewed base-ref extension is permitted. `worktree.py` and `harness.py`
+implement exactly this acceptance sequence:
 
 1. acquire a fenced attempt and create a disposable Git worktree;
 2. materialize the accepted `ContextPack` by CID;
 3. invoke the configured model adapter through the production gate;
-4. validate that the response is a bounded unified diff;
+4. validate the untrusted proposal through `proposal_validation`, prove every
+   patch preimage was visible in the bound production context, parse a bounded
+   unified diff, and run `git apply --check`;
 5. reject paths outside the declared allowlist, binary patches, symlink escapes,
    submodule changes, and control/runtime/state paths;
-6. apply the patch with Git in the disposable worktree;
+6. apply the already-checked patch with Git in the disposable worktree;
 7. rescan and identify actually changed symbols;
 8. recompute the delta and invalidation obligations;
 9. run declared static checks;
 10. run selected pytest nodes;
 11. run configured available proof obligations;
 12. optionally run the full suite as oracle, mandatorily when policy escalates;
-13. emit immutable artifacts, verification receipts, and the next event node;
-14. compare-and-swap the new semantic-state root only after every acceptance
-    gate passes.
+13. store the graph, capsule index, context pack, delta, obligations, patch,
+    immutable receipts, next event node, and complete root manifest;
+14. compare-and-swap the stored manifest CID using the prior `RootRef` only
+    after every acceptance gate passes.
 
 Rejection leaves the current root unchanged and records a bounded rejection
 receipt. Cleanup is fenced and recoverable. No accepted source commit is made in
@@ -498,6 +554,10 @@ committed snapshots/mutations for:
 18. concurrent watchers/writers;
 19. out-of-scope model patch.
 
+The same controlled repository also supplies explicit end-to-end mutations for
+side-effect/security-policy changes, dependency/lockfile changes, policy
+changes, MCP interface/client-adapter changes, and a post-scan source race.
+
 The release suite proves bounded invalidation, all known dependent
 invalidations, raw-source fallback for opaque behavior, stale-receipt rejection,
 zero controlled-fixture test-selection false negatives, full-suite fallback,
@@ -522,7 +582,11 @@ The checked-in corpus contains exactly 40 reproducible maintenance tasks:
 Every task records baseline raw/retrieval context tokens, semantic `ContextPack`
 tokens, exact raw code excluded, capsule count, invalidation cone, selected and
 full tests, proof obligations, model route, acceptance/rejection, assumptions,
-and uncertainty. Both context modes use the same pinned tokenizer/estimator and
+and uncertainty. Checked-in candidate patches are replay/oracle fixtures only:
+they are always marked `production_eligible=false`, never produce a model
+receipt, and never advance a production root. Candidate verification outcome is
+reported separately from production acceptance. Both context modes use the
+same pinned tokenizer/estimator and
 coverage policy. Required target/test/opaque source cannot be removed to improve
 the result.
 
@@ -530,7 +594,9 @@ The initial gates are at least 30% median input-context reduction overall, zero
 known stale receipts admitted, zero controlled-fixture selection false
 negatives, deterministic state roots, and all uncertainty represented in each
 pack. Results include reduction by task type, precision/recall, fallback rate,
-latency by stage, artifact bytes, and route distribution. Failed and escalated
+latency by stage, artifact bytes, and route distribution. `--check` compares
+only deterministic semantic fields; wall-clock latency is explicitly
+observational. Failed and escalated
 tasks remain in the denominator.
 
 ## 19. Parallel delivery plan
@@ -541,12 +607,12 @@ The exact dependency DAG is encoded in the taskboard. Its waves are:
 A0  SCH-000
 A1  SCH-001 | SCH-002 | SCH-003 | SCH-014
 A2  SCH-004 | SCH-006 | SCH-016
-A3  SCH-005 | SCH-007 | SCH-010
-A4  SCH-008
+A3  SCH-005
+A4  SCH-007 | SCH-008 | SCH-010
 A5  SCH-009
 A6  SCH-011
-A7  SCH-012
-A8  SCH-013 | SCH-015 | SCH-017
+A7  SCH-012 | SCH-017
+A8  SCH-013 | SCH-015
 A9  SCH-018
 ```
 
