@@ -21168,6 +21168,18 @@ class PortalImplementationDaemon:
                 int(request.attempt or 0),
                 baseline_ref=str(metadata.get("baseline_ref") or ""),
                 changed_submodule_paths=changed_submodule_paths,
+                expected_candidate_commit=(
+                    implementation_commit
+                    if candidate_schema
+                    == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                    else ""
+                ),
+                expected_candidate_tree=(
+                    str(metadata.get("candidate_tree") or "")
+                    if candidate_schema
+                    == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                    else ""
+                ),
                 **merge_authority_kwargs,
             )
             if submodule_durability_preflight.get("attempted", False):
@@ -36894,6 +36906,8 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        expected_candidate_commit: str = "",
+        expected_candidate_tree: str = "",
         manual_completion_authority_task_ids: Sequence[str] = (),
         manual_completion_authority_context_id: str = "",
         manual_completion_authority_evidence: Mapping[str, Any] | None = None,
@@ -36916,6 +36930,8 @@ class PortalImplementationDaemon:
                 attempt,
                 baseline_ref=baseline_ref,
                 changed_submodule_paths=changed_submodule_paths,
+                expected_candidate_commit=expected_candidate_commit,
+                expected_candidate_tree=expected_candidate_tree,
                 manual_completion_authority_task_ids=(
                     manual_completion_authority_task_ids
                 ),
@@ -36940,7 +36956,11 @@ class PortalImplementationDaemon:
                 "started_at": utc_now(),
                 "identical_untracked_paths": [],
             },
-            extra={"baseline_ref": baseline_ref},
+            extra={
+                "baseline_ref": baseline_ref,
+                "expected_candidate_commit": expected_candidate_commit,
+                "expected_candidate_tree": expected_candidate_tree,
+            },
         )
 
     def _merge_branch_to_main_locked(
@@ -36951,6 +36971,8 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        expected_candidate_commit: str = "",
+        expected_candidate_tree: str = "",
         manual_completion_authority_task_ids: Sequence[str] = (),
         manual_completion_authority_context_id: str = "",
         manual_completion_authority_evidence: Mapping[str, Any] | None = None,
@@ -37007,23 +37029,106 @@ class PortalImplementationDaemon:
                 }
             return None
 
+        target_branch = self._main_branch_name()
+        live_candidate_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            branch_name,
+        )
+        immutable_candidate = bool(expected_candidate_commit)
+        candidate_commit = live_candidate_commit
+        candidate_tree = ""
+        if immutable_candidate:
+            candidate_commit = self._resolve_git_commit_in_repo(
+                self.repo_root,
+                expected_candidate_commit,
+            )
+            candidate_tree = (
+                self._candidate_repository_tree(candidate_commit)
+                if candidate_commit
+                else ""
+            )
+            binding_reason = ""
+            if (
+                not live_candidate_commit
+                or not candidate_commit
+                or live_candidate_commit.casefold()
+                != candidate_commit.casefold()
+                or candidate_commit.casefold()
+                != expected_candidate_commit.strip().casefold()
+            ):
+                binding_reason = "merge_branch_candidate_mismatch"
+            elif (
+                not expected_candidate_tree
+                or not candidate_tree
+                or candidate_tree.casefold()
+                != expected_candidate_tree.strip().casefold()
+            ):
+                binding_reason = "merge_candidate_tree_mismatch"
+            if binding_reason:
+                result = {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "branch": branch_name,
+                    "target_branch": target_branch,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "merge_commit": "",
+                    "stdout": "",
+                    "stderr": "",
+                    "reason": binding_reason,
+                    "expected_candidate_commit": expected_candidate_commit,
+                    "candidate_commit": candidate_commit,
+                    "branch_commit": live_candidate_commit,
+                    "expected_candidate_tree": expected_candidate_tree,
+                    "candidate_tree": candidate_tree,
+                    "identical_untracked_paths": [],
+                    "submodule_merge_results": [],
+                }
+                self._record_event("merge_finished", result)
+                return result
+
         merge_authority_denial = merge_authority_cas_rejection()
         if merge_authority_denial is not None:
             return merge_authority_denial
         self._preserve_generated_nested_worktree_directories()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
-        target_branch = self._main_branch_name()
-        candidate_commit = self._resolve_git_commit_in_repo(
-            self.repo_root,
-            branch_name,
-        )
-        # Attempt to rebase stale submodule pointers before merge
+        # Preparation can be long-running and may expose a manual-completion
+        # authority generation change.  Recheck immediately before either the
+        # immutable skip record or the legacy in-place rebase boundary.
         merge_authority_denial = merge_authority_cas_rejection()
         if merge_authority_denial is not None:
             return merge_authority_denial
-        submodule_rebase = self._rebase_stale_submodule_pointers(branch_name, target_branch)
-        if submodule_rebase.get("rebased"):
-            self._record_event("submodule_pointer_rebase", submodule_rebase)
+        if immutable_candidate:
+            # A schema-v3 queue candidate is immutable.  Rebasing its live ref
+            # would rewrite the commit after proposal, validation, and
+            # candidate binding, and a post-merge ancestry check is too late
+            # to undo target mutation.
+            submodule_rebase = {
+                "attempted": False,
+                "rebased": False,
+                "reason": "immutable_candidate_rebase_forbidden",
+                "branch": branch_name,
+                "target_branch": target_branch,
+                "candidate_commit": candidate_commit,
+            }
+            self._record_event(
+                "submodule_pointer_rebase_skipped",
+                submodule_rebase,
+            )
+        else:
+            # Preserve the legacy direct-call path until its callers carry an
+            # immutable queue binding.
+            submodule_rebase = self._rebase_stale_submodule_pointers(
+                branch_name,
+                target_branch,
+            )
+            if submodule_rebase.get("rebased"):
+                self._record_event("submodule_pointer_rebase", submodule_rebase)
+                candidate_commit = self._resolve_git_commit_in_repo(
+                    self.repo_root,
+                    branch_name,
+                )
         if baseline_ref and not self._git_ref_is_ancestor(baseline_ref, target_branch):
             result = {
                 "attempted": False,
@@ -37238,6 +37343,39 @@ class PortalImplementationDaemon:
             merge_authority_denial = merge_authority_cas_rejection()
             if merge_authority_denial is not None:
                 return merge_authority_denial
+            live_candidate_commit = self._resolve_git_commit_in_repo(
+                self.repo_root,
+                branch_name,
+            )
+            if immutable_candidate and (
+                not live_candidate_commit
+                or live_candidate_commit.casefold()
+                != candidate_commit.casefold()
+            ):
+                result = {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "branch": branch_name,
+                    "target_branch": target_branch,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "merge_commit": "",
+                    "stdout": "",
+                    "stderr": "",
+                    "reason": "merge_branch_candidate_mismatch",
+                    "expected_candidate_commit": expected_candidate_commit,
+                    "candidate_commit": candidate_commit,
+                    "branch_commit": live_candidate_commit,
+                    "expected_candidate_tree": expected_candidate_tree,
+                    "candidate_tree": candidate_tree,
+                    "main_worktree_path": str(merge_workspace),
+                    "used_ephemeral_main_worktree": merge_workspace_ephemeral,
+                    "identical_untracked_paths": identical_untracked_paths,
+                    "submodule_merge_results": [],
+                }
+                self._record_event("merge_finished", result)
+                return result
             removed_untracked = self._remove_untracked_paths_for_merge(identical_untracked_paths, cwd=merge_workspace)
             self._record_event(
                 "merge_started",
@@ -37253,12 +37391,15 @@ class PortalImplementationDaemon:
                     "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
                 },
             )
+            merge_source = (
+                candidate_commit if immutable_candidate else branch_name
+            )
             command = [
                 "git",
                 "merge",
                 "--no-ff",
                 "--no-edit",
-                branch_name,
+                merge_source,
             ]
             pre_merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
             merge = subprocess.run(
@@ -43570,11 +43711,17 @@ class PortalImplementationDaemon:
                 results.append(result)
                 continue
             branch_exists = bool(branch and self._git_ref_exists(branch))
+            immutable_candidate = bool(
+                implementation_commit
+                and self._event_primary_task_cid(event)
+                and str(event.get("canonical_task_key") or "").strip()
+            )
             landed_ref_source = ""
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 landed_ref_source = "implementation_commit"
             elif (
-                branch_exists
+                not immutable_candidate
+                and branch_exists
                 and self._git_ref_is_ancestor(branch, target_branch)
             ):
                 # A resolver may rebase or otherwise rewrite the daemon-owned
@@ -43911,7 +44058,17 @@ class PortalImplementationDaemon:
                 results.append(result)
                 continue
             merge_ref = branch if branch_exists else ""
-            merge_ref_source = "branch" if branch_exists else ""
+            # A revision-bound candidate may only reconcile through a branch
+            # still bound to its immutable implementation commit.  The merge
+            # gate below performs that exact comparison; a rewritten live
+            # branch is not substitute authority for a schema-v3 request.
+            merge_ref_source = (
+                "immutable_candidate_branch"
+                if immutable_candidate and merge_ref
+                else "branch"
+                if merge_ref
+                else ""
+            )
             if not merge_ref and self._git_ref_exists(implementation_commit):
                 merge_ref = implementation_commit
                 merge_ref_source = "implementation_commit"
@@ -43957,6 +44114,14 @@ class PortalImplementationDaemon:
                     task,
                     attempt,
                     baseline_ref=str(event.get("baseline_ref") or ""),
+                    expected_candidate_commit=(
+                        implementation_commit if immutable_candidate else ""
+                    ),
+                    expected_candidate_tree=(
+                        self._candidate_repository_tree(implementation_commit)
+                        if immutable_candidate
+                        else ""
+                    ),
                 )
             except Exception as exc:
                 result = {

@@ -3689,11 +3689,16 @@ class MergeTrain:
                     },
                     started_at=started_at,
                 )
-            retryable = callback_reason not in {
+            integration_occurred = (
+                callback_result.get("integration_occurred") is True
+            )
+            retryable = not integration_occurred and callback_reason not in {
                 "invalid_merge_request",
                 "candidate_commit_missing",
                 "validation_failed",
                 "branch_has_no_changes",
+                "merge_branch_candidate_mismatch",
+                "merge_candidate_tree_mismatch",
             } | set(AUTHORITY_QUARANTINE_REASONS)
             return self._finish_failure(
                 request,
