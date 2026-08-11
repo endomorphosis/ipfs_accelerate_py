@@ -8,13 +8,26 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
+    RefillScanResult,
+    ScanTerminalReason,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as implementation_supervisor_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+    parse_args,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ConfiguredSupervisorBootstrapRunner,
     ConfiguredSupervisorRuntime,
     ConfiguredSupervisorRuntimeExports,
-    ImplementationSupervisorRunContext,
     ImplementationSupervisorDefaults,
+    ImplementationSupervisorRunContext,
     ObjectiveRefillDefaults,
     SupervisorRunHook,
     apply_goal_completion_projection,
@@ -39,15 +52,95 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_r
     run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
-    RefillScanResult,
-    ScanTerminalReason,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
-    PortalImplementationSupervisor,
-    PortalSupervisorConfig,
-    parse_args,
-)
+
+
+def test_plan_bound_empty_wave_starts_no_supervisor_or_daemon(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def unexpected_start(*_args, **_kwargs):
+        raise AssertionError("an empty plan-bound wave must not start a track")
+
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "run_supervisor_tracks",
+        unexpected_start,
+    )
+
+    assert multi_supervisor_runner.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--plan-bound-wave",
+        ]
+    ) == 0
+
+
+def test_plan_bound_outer_supervisor_propagates_nested_typed_return_code(
+    monkeypatch,
+) -> None:
+    nested_result = SimpleNamespace(
+        status="child_exited",
+        restart_count=0,
+        last_exit_code=(
+            implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+        ),
+        last_recycle_reason="child_exit",
+        last_run_id="run:test",
+        last_log_path="daemon.log",
+    )
+
+    class OneShotLoop:
+        def __init__(self, _config, *, watchdog_hook):
+            assert callable(watchdog_hook)
+
+        def run(self):
+            return nested_result
+
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(
+        plan_bound_dispatch=True,
+        execution_slice_task_ids=("TASK-A",),
+        execution_slice_task_cids=("cid-a",),
+        plan_bound_revision_cid="revision",
+        plan_bound_slice_id="slice",
+    )
+    supervisor.shared_supervisor_loop_class = OneShotLoop
+    supervisor.ensure_event_log_file = lambda: None
+    supervisor._validated_plan_bound_slice = lambda: None
+    supervisor.ensure_managed_daemon_pid_file = lambda: {"blocked": False}
+    supervisor._record_event = lambda *_args, **_kwargs: None
+    supervisor.build_supervisor_loop_config = lambda: object()
+    supervisor._supervisor_loop_watchdog_decision = lambda *_args: None
+    assert supervisor.run_forever() == (
+        implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+    )
+
+    class MainSupervisor:
+        def __init__(self, _config):
+            pass
+
+        def run_forever(self) -> int:
+            return implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "parse_args",
+        lambda _argv: SimpleNamespace(once=False, log_level="INFO"),
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "supervisor_config_from_args",
+        lambda _args, *, repo_root: object(),
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "PortalImplementationSupervisor",
+        MainSupervisor,
+    )
+    assert implementation_supervisor_module.main([]) == (
+        implementation_supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+    )
 
 
 def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(tmp_path: Path):

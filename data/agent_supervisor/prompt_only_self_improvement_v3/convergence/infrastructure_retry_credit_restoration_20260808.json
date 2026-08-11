@@ -1,0 +1,461 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.infrastructure-retry-credit-restoration@1",
+  "packet_id": "ase3-retry-credit-restoration-20260808-bwrap-loopback",
+  "captured_at": "2026-08-08T08:11:30Z",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "repository": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "incident_head": "ce21809798358468218306729e05575bed688291",
+    "incident_tree": "2d759e17d6d544ea00a3a88a1fea003d639a3ff0",
+    "scheduler_config_path": "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json",
+    "scheduler_config_sha256": "sha256:87e8d1acfeb4cee723c1e795e12dbf9cb4b4e92d34a002c008ac9f79579a44d0",
+    "taskboard_path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+    "taskboard_sha256": "sha256:550341b5d1b60a98aace98bcd86649e157c43d1e8562a395c998d543187d5734",
+    "convergence_validator_path": "ipfs_accelerate_py/agent_supervisor/validation/prompt_v3_convergence.py",
+    "convergence_validator_sha256": "sha256:740931c5aac4327b851001e82ddda94c5c04026d7926f6831117e46e31e75262"
+  },
+  "causal_classification": {
+    "failure_kind": "implementation",
+    "stage": "fallback_provider_workspace_command_sandbox",
+    "primary_route": {
+      "provider": "grok_cli",
+      "model": "grok-4.5",
+      "failure": "HTTP 403 personal-team-blocked:spending-limit"
+    },
+    "fallback_route": {
+      "provider": "codex",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "sandbox": "workspace-write",
+      "codex_version": "0.147.0"
+    },
+    "infrastructure_signature": "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted",
+    "pytest_rootdir_diagnosis": {
+      "validation_cwd": "disposable_worktree_repository_root",
+      "observed_rootdir": "<workspace>/test",
+      "observed_config_path": "test/pytest.ini",
+      "nearest_config_discovery_is_expected": true,
+      "launcher_bug": false,
+      "explicit_board_target_paths_remain_cwd_relative": true,
+      "missing_path_cause": "The fallback changed no files, so the future v3 test outputs named by the source tasks were still absent from the incident tree. The pytest rootdir observation did not cause the missing paths."
+    },
+    "explanation": "The exact quota-authorized fallback launched, but its workspace command sandbox failed before even a true probe. Codex returned zero after reporting the block, so validation ran against an unchanged checkout and only observed missing task outputs. There was no candidate validation regression."
+  },
+  "repair_policy": {
+    "repair_schema": "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1",
+    "repair_failure_kind": "implementation",
+    "raw_attempt_counter_mutation_authorized": false,
+    "raw_task_queue_mutation_authorized": false,
+    "consumer": "TodoImplementationDaemon._reset_attempt_budgets_for_completed_retry_repairs",
+    "required_runtime_mode": "ordinary_run_once_not_manual_completion_authority_revalidation_only",
+    "expected_event_type": "task_retry_budget_reset",
+    "expected_receipt_binding": "retry_budget_repair_receipts[source_task_id]=repair_task_id",
+    "ingestion": {
+      "wrapper_argv": [
+        "python",
+        "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+        "--repo-root",
+        ".",
+        "--config",
+        "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json",
+        "launch",
+        "--foreground",
+        "--duration-seconds",
+        "90"
+      ],
+      "wrapper_has_explicit_no_implement_option": false,
+      "implementation_authority_is_omitted": true,
+      "rendered_common_arg": "--no-implement",
+      "lane_count": 3,
+      "strict_task_sharding": true,
+      "all_lanes_consume_all_completed_repair_receipts_before_task_selection": true
+    },
+    "expected_queue_reset": [
+      "consecutive_failures",
+      "consecutive_no_change",
+      "merge_failure_count",
+      "selection_penalty",
+      "cooldown_until",
+      "notes"
+    ],
+    "preserved_queue_history": [
+      "attempt_count",
+      "last_selected_at",
+      "last_completed_at"
+    ]
+  },
+  "incidents": [
+    {
+      "repair_task_id": "ASE3-015",
+      "repair_task_shard": 1,
+      "source_task_id": "ASE3-001",
+      "source_task_shard": 0,
+      "source_task_key": "task/v1/6bc2d168588b318de499a23332ccb4d077f14f83ad5642df235edb02022f440f",
+      "source_task_cid": "baguqeeranpbnc2cyrmyy3zezuiztftfu2b37ct4dvvlefxzdl3nqearpiqhq",
+      "lane": 0,
+      "attempt": 1,
+      "attempt_consumed": true,
+      "provider_dispatched": true,
+      "implementation_returncode": 4,
+      "implementation_started": {
+        "event_id": "sha256:8b94796e7d0f58c320142dd0adf06b51c5adf99649f97cabb1f64d53e47c566b",
+        "sequence": 13,
+        "timestamp": "2026-08-08T07:52:34.405909+00:00",
+        "command_argv_sha256": "sha256:bb8da782635b82f67ef57bf4a892c9205995232bae0acd225b36ed0e4dc35c3c"
+      },
+      "implementation_finished": {
+        "event_id": "sha256:424b55169f48d1950d545e69bf686af1b461c4966ba6937bc184e54a31019324",
+        "sequence": 19,
+        "timestamp": "2026-08-08T07:53:18.967026+00:00"
+      },
+      "event_log_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-0/ase3_lane_0_events.jsonl",
+        "size_bytes": 120309,
+        "sha256": "sha256:f2c406a68b7af16b8ac9eeb640c0fb29401e32a4e3340561d44e18e700ee8931",
+        "manifest_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-0/ase3_lane_0_events.jsonl.manifest.json",
+        "manifest_sha256": "sha256:8848e59890a84ea31a1e13f5dc9409e42092a42425a5de841c9e207ed49066a6",
+        "manifest_digest": "sha256:2a938a8366d783a55b5adc5c53958ec79af368d4b7baff558c215a2964df38d4",
+        "snapshot_id": "event-log-snapshot:sha256:a8c4ba8046b854a8096d956cfb756c860ab54d4cbad94392a85e490832c5c365",
+        "last_event_id": "sha256:8af8a0456aa63d2434473f477d820bcf9dee37a36fa0004c86ca4878f2b055d2",
+        "latest_sequence": 21
+      },
+      "implementation_log": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-0/implementation_logs/ase3-001-attempt-1.log",
+        "size_bytes": 17065,
+        "sha256": "sha256:f59ea1cd7135ffbaa50ec079b0541afa9c58fc86b7b3b7770d15d041bea4aff8",
+        "infrastructure_signature_lines": [33, 36]
+      },
+      "validation_observation": {
+        "attempted": true,
+        "passed": false,
+        "returncode": 4,
+        "reason": "declared_validation_failed",
+        "error": "validation_command_failed",
+        "failed_command": "python -m pytest test/api/test_agent_supervisor_prompt_v3_resolution.py test/api/test_agent_supervisor_inference_runtime.py -q",
+        "candidate_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed_files": []
+      },
+      "state_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-0/ase3_lane_0_task_state.json",
+        "size_bytes": 16725,
+        "sha256": "sha256:8dfe8a604b036dd606d4e2d928321038ad5b68f20b1f2317256f0ee5685d7140",
+        "display_attempt_count": 1,
+        "canonical_attempt_count": 1,
+        "implementation_in_progress": false,
+        "active_task_id": "",
+        "retry_budget_repair_receipts": {}
+      },
+      "task_queue_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-0/task_queue.json",
+        "size_bytes": 23487,
+        "sha256": "sha256:2d8c28af1f6d4f2de6f36991da48623f7acd21804a283ece3484f09bb2a304eb",
+        "attempt_count": 2,
+        "consecutive_failures": 1,
+        "consecutive_no_change": 0,
+        "merge_failure_count": 0,
+        "selection_penalty": 100,
+        "cooldown_until": 1786175898.9597807,
+        "notes": "not_attempted"
+      },
+      "zero_diff_and_pool_proof": {
+        "baseline_commit": "ce21809798358468218306729e05575bed688291",
+        "worktree_head": "ce21809798358468218306729e05575bed688291",
+        "worktree_tree": "2d759e17d6d544ea00a3a88a1fea003d639a3ff0",
+        "worktree_status_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "commit_created": false,
+        "commit_reason": "expected_output_ignored_or_unstaged",
+        "cleanup_cleaned": true,
+        "cleanup_deleted_branch": true,
+        "cleanup_pooled": true,
+        "cleanup_removed_worktree": false,
+        "pool_release_reason": "clean_prepared_workspace",
+        "pool_state_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/.pool-state/5dd91674ef05-5dd693d609eb.json",
+        "pool_state_size_bytes": 887,
+        "pool_state_sha256": "sha256:0adefb63495397dae9c56c52cc049d760039d639db2a13401e4b4554c815aa0c",
+        "pool_state": "idle",
+        "pool_lease_pid": 0,
+        "pool_entry_id": "5dd91674ef05-5dd693d609eb",
+        "pool_cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+        "lifecycle_fence": 5,
+        "lifecycle_state": "terminal"
+      }
+    },
+    {
+      "repair_task_id": "ASE3-016",
+      "repair_task_shard": 1,
+      "source_task_id": "ASE3-002",
+      "source_task_shard": 1,
+      "source_task_key": "task/v1/2735a3ed42512819dd4e1ec8dc10173a507f3d61704d5cd4526ad5750bfdec2e",
+      "source_task_cid": "baguqeerae422h3kckeubtxkod3enyeaxhjih6plbobgvzvcsnlkxkc755qxa",
+      "lane": 1,
+      "attempt": 1,
+      "attempt_consumed": true,
+      "provider_dispatched": true,
+      "implementation_returncode": 4,
+      "implementation_started": {
+        "event_id": "sha256:98a0cda07e7c8eddfeea18cab3d835f37cb73d604a869cd7e0abada185624d4b",
+        "sequence": 22,
+        "timestamp": "2026-08-08T07:52:34.972823+00:00",
+        "command_argv_sha256": "sha256:a41a66aaa16d423ecc099e67d9170b61c9a4444fc225c62a215da070f559c90c"
+      },
+      "implementation_finished": {
+        "event_id": "sha256:aa188681828cf9efe02622dc0b6371056626efc3ba38a507c4a44da1d6952ab5",
+        "sequence": 28,
+        "timestamp": "2026-08-08T07:53:41.899796+00:00"
+      },
+      "event_log_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/ase3_lane_1_events.jsonl",
+        "size_bytes": 134122,
+        "sha256": "sha256:ff2d2a8b4bb0f7c3051134f7680809274e035e66ec0c256b50b0b8b3188e4f65",
+        "manifest_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/ase3_lane_1_events.jsonl.manifest.json",
+        "manifest_sha256": "sha256:5d314b2e964f10d061bb1b298d2e1f61259795d1b8e697c9d1cac90b4da9a9eb",
+        "manifest_digest": "sha256:e137e958d7cde7b6d67bc9274d87613fe2e8e87ef3a2bd0a800ec4859909ac04",
+        "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+        "last_event_id": "sha256:16974f56953feaf83991bb8adfbe5923d8ce774d9d42ee743eeb0aef9fbac70c",
+        "latest_sequence": 30
+      },
+      "implementation_log": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/implementation_logs/ase3-002-attempt-1.log",
+        "size_bytes": 17589,
+        "sha256": "sha256:ea7fd712aef5479298762fdb934aa2fdc71fb557a584e5a83f502149fa12bb12",
+        "infrastructure_signature_lines": [33, 38, 45]
+      },
+      "validation_observation": {
+        "attempted": true,
+        "passed": false,
+        "returncode": 4,
+        "reason": "declared_validation_failed",
+        "error": "validation_command_failed",
+        "failed_command": "python -m pytest test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py -q",
+        "candidate_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed_files": []
+      },
+      "state_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/ase3_lane_1_task_state.json",
+        "size_bytes": 16725,
+        "sha256": "sha256:ee4e30ddb3884244d32f8d49fbd283e1f1b2d8500309cd2a0452803c5eb4dfca",
+        "display_attempt_count": 1,
+        "canonical_attempt_count": 1,
+        "implementation_in_progress": false,
+        "active_task_id": "",
+        "retry_budget_repair_receipts": {}
+      },
+      "task_queue_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/task_queue.json",
+        "size_bytes": 23488,
+        "sha256": "sha256:d9e6230d94c59755025008ae783f556d5efc5a909d2568014e227499343f491c",
+        "attempt_count": 9,
+        "consecutive_failures": 1,
+        "consecutive_no_change": 0,
+        "merge_failure_count": 0,
+        "selection_penalty": 100,
+        "cooldown_until": 1786175921.8879566,
+        "notes": "not_attempted"
+      },
+      "zero_diff_and_pool_proof": {
+        "baseline_commit": "ce21809798358468218306729e05575bed688291",
+        "worktree_head": "ce21809798358468218306729e05575bed688291",
+        "worktree_tree": "2d759e17d6d544ea00a3a88a1fea003d639a3ff0",
+        "worktree_status_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "commit_created": false,
+        "commit_reason": "expected_output_ignored_or_unstaged",
+        "cleanup_cleaned": true,
+        "cleanup_deleted_branch": true,
+        "cleanup_pooled": true,
+        "cleanup_removed_worktree": false,
+        "pool_release_reason": "clean_prepared_workspace",
+        "pool_state_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/.pool-state/5dd91674ef05-f300cc054883.json",
+        "pool_state_size_bytes": 889,
+        "pool_state_sha256": "sha256:ed8c30d664c81a33b0cba74665f5b9d5ba888bc6135f1d45c25ab6ce92848331",
+        "pool_state": "idle",
+        "pool_lease_pid": 0,
+        "pool_entry_id": "5dd91674ef05-f300cc054883",
+        "pool_cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+        "lifecycle_fence": 5,
+        "lifecycle_state": "terminal"
+      }
+    },
+    {
+      "repair_task_id": "ASE3-017",
+      "repair_task_shard": 0,
+      "source_task_id": "ASE3-003",
+      "source_task_shard": 2,
+      "source_task_key": "task/v1/64d809c57ea0c991405b67005284013cc965265fb11855950c28e46596cd8438",
+      "source_task_cid": "baguqeeramtmatrl6udezcqc3m4affbabhtewkjs7wemflfimfdsglfwnqq4a",
+      "lane": 2,
+      "attempt": 1,
+      "attempt_consumed": true,
+      "provider_dispatched": true,
+      "implementation_returncode": 4,
+      "implementation_started": {
+        "event_id": "sha256:53ad7fde0f528706db33ce6083ced15c7b40b33c7bc88973f6264f65fec5776a",
+        "sequence": 24,
+        "timestamp": "2026-08-08T07:52:34.688493+00:00",
+        "command_argv_sha256": "sha256:6c2b292e69b82249bb8e7fd8188d7b75892be471bad65fd57cc556da049d36a8"
+      },
+      "implementation_finished": {
+        "event_id": "sha256:3720bf8bfe06b105353233fcada9e08fe9fafd9473441ca5c549908fa9d539a0",
+        "sequence": 30,
+        "timestamp": "2026-08-08T07:53:31.183372+00:00"
+      },
+      "event_log_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-2/ase3_lane_2_events.jsonl",
+        "size_bytes": 139646,
+        "sha256": "sha256:6aa03e9c2f12e642a98ea8ed4f395e95a4befb07418df67008b326bcca803c21",
+        "manifest_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-2/ase3_lane_2_events.jsonl.manifest.json",
+        "manifest_sha256": "sha256:f086531234c12c87bafd0d22532b8f8050874d9dfa776cca4f9e1956a2a30052",
+        "manifest_digest": "sha256:14cee8b32bb97762e636a882da48e4cde88cd189511717a81787a91a4a7f3973",
+        "snapshot_id": "event-log-snapshot:sha256:1ba21bdad23134d9ca270331ba0ea74534451045da11dd190da7c869de6de658",
+        "last_event_id": "sha256:4034389d39761d7cc56d4fdf2ff429b61ba743b2da99610d422db68b0c2882d1",
+        "latest_sequence": 32
+      },
+      "implementation_log": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-2/implementation_logs/ase3-003-attempt-1.log",
+        "size_bytes": 18953,
+        "sha256": "sha256:44455ae28900bfe42daac6b5932791ba2daa91c7f572eb1ab448b24f7fa4cfd1",
+        "infrastructure_signature_lines": [33, 37, 44]
+      },
+      "validation_observation": {
+        "attempted": true,
+        "passed": false,
+        "returncode": 4,
+        "reason": "declared_validation_failed",
+        "error": "validation_command_failed",
+        "failed_command": "python -m pytest test/api/test_agent_supervisor_prompt_v3_run_registry.py test/api/test_agent_supervisor_run_registry.py -q",
+        "candidate_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed_files": []
+      },
+      "state_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-2/ase3_lane_2_task_state.json",
+        "size_bytes": 16725,
+        "sha256": "sha256:0b878cccd347a81c58c817084a38f7d3687e02c4d088f736f491a76e6ebd9b0b",
+        "display_attempt_count": 1,
+        "canonical_attempt_count": 1,
+        "implementation_in_progress": false,
+        "active_task_id": "",
+        "retry_budget_repair_receipts": {}
+      },
+      "task_queue_snapshot": {
+        "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-2/task_queue.json",
+        "size_bytes": 23488,
+        "sha256": "sha256:9cf8222b9074697c00cc598972f115b2eb0c6b0ef1b4bc23fb2de683271db500",
+        "attempt_count": 11,
+        "consecutive_failures": 1,
+        "consecutive_no_change": 0,
+        "merge_failure_count": 0,
+        "selection_penalty": 100,
+        "cooldown_until": 1786175911.1765082,
+        "notes": "not_attempted"
+      },
+      "zero_diff_and_pool_proof": {
+        "baseline_commit": "ce21809798358468218306729e05575bed688291",
+        "worktree_head": "ce21809798358468218306729e05575bed688291",
+        "worktree_tree": "2d759e17d6d544ea00a3a88a1fea003d639a3ff0",
+        "worktree_status_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "commit_created": false,
+        "commit_reason": "expected_output_ignored_or_unstaged",
+        "cleanup_cleaned": true,
+        "cleanup_deleted_branch": true,
+        "cleanup_pooled": true,
+        "cleanup_removed_worktree": false,
+        "pool_release_reason": "clean_prepared_workspace",
+        "pool_state_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/.pool-state/5dd91674ef05-09e7be909944.json",
+        "pool_state_size_bytes": 889,
+        "pool_state_sha256": "sha256:a42be94f51011b4c832fafc0e960029a022dd8537fda885282c33c451247868f",
+        "pool_state": "idle",
+        "pool_lease_pid": 0,
+        "pool_entry_id": "5dd91674ef05-09e7be909944",
+        "pool_cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+        "lifecycle_fence": 5,
+        "lifecycle_state": "terminal"
+      }
+    }
+  ],
+  "remediation": {
+    "commit": "ad49402fe510b208c6762c6dc8306ec352d0907d",
+    "exact_route_smoke": {
+      "status": "passed",
+      "repository_commit": "ad49402fe510b208c6762c6dc8306ec352d0907d",
+      "repository_tree": "abbe36bfe34e4a470f67d2c0f5d47d777366c70f",
+      "receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/exact_codex_route_smoke_20260808.json",
+      "receipt_id": "exact-codex-route-smoke-ad49402f-20260808",
+      "receipt_size_bytes": 6509,
+      "receipt_sha256": "sha256:f19f39bc6b39ec3ac15e8183ec69f5a09acbd9443693ab818a193ea4b69b2206",
+      "container_image_digest": "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6",
+      "container_image_label": "2026-08-03-v2",
+      "command_argv": [
+        "python",
+        "-m",
+        "pytest",
+        "test/api/test_agent_supervisor_prompt_v3_convergence.py",
+        "-q"
+      ],
+      "command_argv_canonicalization": "sha256 of UTF-8 compact JSON emitted by json.dumps(argv, separators=(\",\", \":\"))",
+      "command_argv_sha256": "sha256:806fd80efc41d9a8b1e06db86cee923adba021bd45dae77ee927c63475e6cc39",
+      "exit_code": 0,
+      "provider": "codex",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "sandbox": "workspace-write",
+      "sentinel_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/exact_codex_route_smoke_sentinel_20260808.txt",
+      "sentinel_size_bytes": 84,
+      "sentinel_sha256": "sha256:5e2f39d723e08c1695fee3f48fa146adf7caba5bbbaf0f2454f3d7d79fb8f11d",
+      "infrastructure_signature_absent": true,
+      "full_route_interactive_output_persisted": false,
+      "board_pytest_collection": {
+        "status": "passed",
+        "python_executable": "/opt/ipfs-task-tools/bin/python",
+        "python_version": "3.12.3",
+        "pytest_version": "9.0.3",
+        "cwd": "/tmp/ase3-exact-route-worktree.EQ1emu/repo",
+        "command": "python -m pytest test/api/test_agent_supervisor_prompt_v3_convergence.py -q",
+        "target_paths": [
+          "test/api/test_agent_supervisor_prompt_v3_convergence.py"
+        ],
+        "command_argv_sha256": "sha256:806fd80efc41d9a8b1e06db86cee923adba021bd45dae77ee927c63475e6cc39",
+        "exit_code": 0,
+        "rootdir": "/tmp/ase3-exact-route-worktree.EQ1emu/repo/test",
+        "pytest_config_path": "test/pytest.ini",
+        "collected_test_count": 46,
+        "passed_test_count": 46,
+        "failed_test_count": 0,
+        "duration_seconds": 1.08,
+        "missing_path_signature_absent": true,
+        "import_error_signature_absent": true,
+        "toolchain_error_signature_absent": true,
+        "bwrap_signature_absent": true
+      },
+      "production_shaped_command_replay": {
+        "evidence_kind": "command_only_pinned_docker_boundary_replay",
+        "route_invoked": false,
+        "captured_at": "2026-08-08T08:57:49Z",
+        "container_id": "30d4844ca9b493eaeda251fafc71010783cfa8ec4fdc103fb5ebcfe93f94235b",
+        "container_name": "ipfs-accelerate-codex-449979-feedface00112233445566778899aabb",
+        "docker_die_event_exit_code": 0,
+        "docker_events_image_and_isolation_label_match": true,
+        "same_image_environment_mount_and_runtime_boundary": true,
+        "same_repository_commit_and_tree": true,
+        "same_cwd": true,
+        "same_command_argv": true,
+        "combined_output_sha256": "sha256:3173c70bd00bc328d7925de39ce066265ce2179b8f31c3da214bfc2d221ca009",
+        "pytest_wrote_separate_stderr": false,
+        "exit_code": 0,
+        "collected_test_count": 46,
+        "passed_test_count": 46,
+        "duration_seconds": 0.75,
+        "workspace_sentinel_unchanged": true
+      }
+    }
+  },
+  "completion_gate": {
+    "repair_tasks_may_be_marked_completed_when": "remediation.commit is 40 lowercase hex; exact_route_smoke.repository_commit equals remediation.commit; repository_tree equals that commit's tree; receipt_path and sentinel_path are repository-safe evidence paths; their sizes and SHA-256 bindings verify; exact_route_smoke.status is passed with exit_code 0 and infrastructure_signature_absent true; board_pytest_collection preserves the exact board command and target paths from a disposable repository cwd, passes with positive collected and passed counts, and has no missing-path, import, toolchain, or bwrap failure signature; and the separate command-only pinned-Docker replay corroborates the same command, checkout, boundary, and passing count without claiming to replay the provider route",
+    "requirements": [
+      "Verify remediation.commit is the final 40-hex remediation commit, exact_route_smoke.repository_commit matches it, and repository_tree is that commit's Git tree.",
+      "Verify the tracked exact-route receipt byte size, SHA-256, receipt ID, and nested bindings prove the remediation commit and tree ran Codex gpt-5.6-terra medium under requested workspace-write authority inside the enforcing pinned-Docker boundary, executed the exact board command, and wrote the expected sentinel.",
+      "Require exact_route_smoke.status=passed, exit_code=0, and infrastructure_signature_absent=true.",
+      "Require board_pytest_collection.status=passed, cwd equal to the disposable repository root, the exact unchanged board command and explicit target paths, exit_code=0, positive collected_test_count and passed_test_count, and every missing-path/import/toolchain/bwrap absence field true. Record pytest rootdir and config path as observations; a deterministic nearer test/pytest.ini rootdir is allowed.",
+      "Require production_shaped_command_replay to bind the same commit, tree, cwd, image/environment/mount/runtime boundary, exact argv, zero exit, positive matching collection/pass counts, and combined-output SHA-256 while route_invoked remains false.",
+      "Commit this receipt and the three protected-board status transitions before any implementation-enabled relaunch."
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -288,6 +289,156 @@ def _persist_active_attempt_state(
     state.last_implementation_task_cid = identity.canonical_task_cid
     state.save(daemon.state_path)
     return state
+
+
+def _quiesced_terminal_task_claim(
+    tmp_path: Path,
+    *,
+    task_status: str = "completed",
+    live_claim_owner: bool = False,
+) -> tuple[
+    PortalImplementationDaemon,
+    PortalTask,
+    PortalTaskState,
+    Path,
+    dict[str, object],
+]:
+    """Model the DQP shutdown gap: clean lane, terminal worktree, stale claim."""
+
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = replace(_task(outputs=["src/example.py"]), status=task_status)
+    identity = daemon._identity_for_task(task)
+    attempt = 4
+    started_at = "2026-08-09T00:15:25+00:00"
+    state = PortalTaskState(
+        last_implementation_task_id=task.task_id,
+        last_implementation_task_key=identity.canonical_task_key,
+        last_implementation_task_cid=identity.canonical_task_cid,
+        last_implementation_started_at=started_at,
+        last_implementation_worktree_path=str(workspace),
+        last_implementation_branch="lane",
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: attempt},
+        implementation_attempts_by_cid={identity.canonical_task_cid: attempt},
+        task_statuses={task.task_id: task_status},
+    )
+    state.save(daemon.state_path)
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
+
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 73,
+        start_time_ticks=1,
+        boot_id="provably-dead-worktree-owner",
+    )
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=attempt,
+        lane_id="terminated-lane",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target="main",
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=dead_owner,
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    terminal = daemon.worktree_lifecycle.reclaim_dead_owner_for_controlled_restart(
+        workspace,
+        expected_state_dir=str(daemon.state_path.parent.resolve()),
+        reason="controlled_restart_dead_owner",
+    )
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+    )
+    claim = daemon._build_implementation_task_claim_metadata(
+        task,
+        attempt,
+        started_at,
+    )
+    if live_claim_owner:
+        assert claim["pid"] == os.getpid()
+    else:
+        # Exercise the dead PID binding used by the live DQP claim.
+        claim["pid"] = 2**30 - 79
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(claim_path, claim)
+    )
+    assert acquired is True
+    return daemon, task, state, claim_path, claim
+
+
+def _record_exact_unfinished_attempt_recovery(
+    daemon: PortalImplementationDaemon,
+    task: PortalTask,
+    state: PortalTaskState,
+    *,
+    include_start: bool = True,
+    recovery_branch: str | None = None,
+    later_event_type: str = "",
+) -> None:
+    identity = daemon._identity_for_task(task)
+    common = {
+        "task_id": task.task_id,
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "attempt": 4,
+    }
+    if include_start:
+        daemon._record_event(
+            "implementation_started",
+            {
+                **common,
+                "timestamp": "2026-08-09T00:15:26+00:00",
+                "worktree_path": state.last_implementation_worktree_path,
+                "branch": state.last_implementation_branch,
+            },
+        )
+    daemon._record_event(
+        "implementation_state_recovered",
+        {
+            **common,
+            "timestamp": "2026-08-09T00:15:27+00:00",
+            "reason": "inflight_process_missing",
+            "worktree_path": state.last_implementation_worktree_path,
+            "branch": (
+                state.last_implementation_branch
+                if recovery_branch is None
+                else recovery_branch
+            ),
+            "attempt_recovery": {
+                "task_id": task.task_id,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "attempt": 4,
+                "previous_display_count": 4,
+                "previous_cid_count": 4,
+                "released": True,
+                "released_to": 3,
+                "consumed": False,
+            },
+            "finished_attempt": False,
+        },
+    )
+    if later_event_type:
+        daemon._record_event(
+            later_event_type,
+            {
+                **common,
+                "timestamp": "2026-08-09T00:15:28+00:00",
+                "worktree_path": state.last_implementation_worktree_path,
+                "branch": state.last_implementation_branch,
+            },
+        )
 
 
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
@@ -1245,6 +1396,566 @@ def test_quiesced_shutdown_terminalizes_exact_dead_lifecycle_owner_and_unblocks_
         state_dir=str(tmp_path / "replacement-state"),
     )
     assert retry.state is WorkspaceLifecycleState.PREPARING
+
+
+def test_quiesced_shutdown_releases_exact_dead_canonical_claim_from_clean_state(
+    tmp_path: Path,
+) -> None:
+    daemon, task, _state, claim_path, claim = _quiesced_terminal_task_claim(
+        tmp_path
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == "already_quiesced"
+    release = result["task_claim_reconciliation"]
+    assert release["reconciled"] is True
+    assert release["blocked"] is False
+    assert release["reason"] == "quiesced_task_claim_released"
+    assert release["task_id"] == task.task_id
+    assert release["canonical_task_cid"] == daemon._canonical_ref(task)
+    assert release["attempt"] == 4
+    assert release["claim_lease_id"] == claim["lease_id"]
+    assert release["owner_pid"] == claim["pid"]
+    assert release["state_dir"] == str(daemon.state_path.parent.resolve())
+    assert not claim_path.exists()
+
+    receipt_path = Path(release["receipt_path"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt_body = dict(receipt)
+    receipt_id = receipt_body.pop("receipt_id")
+    assert receipt["schema"] == (
+        implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA
+    )
+    assert receipt["phase"] == "released"
+    assert receipt["operation_id"] == release["operation_id"]
+    assert receipt["claim"]["lease_id"] == claim["lease_id"]
+    assert receipt["claim"]["claim_id"] == release["claim_id"]
+    assert receipt["worktree_lifecycle"]["state"] == "terminal"
+    assert receipt_id == implementation_daemon_module.content_identity(
+        receipt_body
+    )
+    assert receipt_id == release["receipt_id"]
+
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    [release_event] = [
+        event
+        for event in events
+        if event["type"] == "implementation_task_claim_released"
+    ]
+    assert release_event["receipt_id"] == receipt_id
+    assert release_event["operation_id"] == release["operation_id"]
+    assert release_event["canonical_task_cid"] == daemon._canonical_ref(task)
+    assert release_event["claim_lease_id"] == claim["lease_id"]
+
+    replay = daemon.reconcile_quiesced_active_attempt()
+    assert replay["reconciled"] is True
+    assert replay["task_claim_reconciliation"]["reason"] == "no_task_claim"
+    assert not claim_path.exists()
+
+
+def test_quiesced_shutdown_releases_legacy_claim_without_worktree_root(
+    tmp_path: Path,
+) -> None:
+    daemon, _task, _state, claim_path, claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    legacy_claim = dict(claim)
+    legacy_claim["worktree_root"] = ""
+    claim_path.write_text(
+        json.dumps(legacy_claim, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "quiesced_task_claim_released"
+    receipt = json.loads(
+        Path(release["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["claim"]["legacy_worktree_root_missing"] is True
+    assert not claim_path.exists()
+
+
+def test_quiesced_claim_release_accepts_exact_unfinished_attempt_recovery(
+    tmp_path: Path,
+) -> None:
+    daemon, task, state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    state.implementation_attempts[task.task_id] = 3
+    state.implementation_attempts_by_cid[canonical_task_cid] = 3
+    state.save(daemon.state_path)
+    identity = daemon._identity_for_task(task)
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "attempt": 4,
+            "worktree_path": state.last_implementation_worktree_path,
+            "branch": state.last_implementation_branch,
+        },
+    )
+    daemon._record_event(
+        "implementation_state_recovered",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "attempt": 4,
+            "reason": "inflight_process_missing",
+            "worktree_path": state.last_implementation_worktree_path,
+            "branch": state.last_implementation_branch,
+            "attempt_recovery": {
+                "task_id": task.task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": 4,
+                "previous_display_count": 4,
+                "previous_cid_count": 4,
+                "released": True,
+                "released_to": 3,
+                "consumed": False,
+            },
+            "finished_attempt": False,
+        },
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "quiesced_task_claim_released"
+    evidence = release["released_unfinished_attempt"]
+    assert evidence["released_from"] == 4
+    assert evidence["released_to"] == 3
+    assert evidence["event_id"].startswith("sha256:")
+    receipt = json.loads(
+        Path(release["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["released_unfinished_attempt"] == evidence
+    assert not claim_path.exists()
+
+
+def test_quiesced_claim_release_refuses_mismatched_attempt_recovery_event(
+    tmp_path: Path,
+) -> None:
+    daemon, task, state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    state.implementation_attempts[task.task_id] = 3
+    state.implementation_attempts_by_cid[canonical_task_cid] = 3
+    state.save(daemon.state_path)
+    identity = daemon._identity_for_task(task)
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "attempt": 4,
+            "worktree_path": state.last_implementation_worktree_path,
+            "branch": state.last_implementation_branch,
+        },
+    )
+    daemon._record_event(
+        "implementation_state_recovered",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "attempt": 4,
+            "reason": "inflight_process_missing",
+            "worktree_path": state.last_implementation_worktree_path,
+            "branch": "different-attempt-branch",
+            "attempt_recovery": {
+                "task_id": task.task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": 4,
+                "previous_display_count": 4,
+                "previous_cid_count": 4,
+                "released": True,
+                "released_to": 3,
+                "consumed": False,
+            },
+            "finished_attempt": False,
+        },
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "task_claim_identity_mismatch"
+    assert claim_path.exists()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "claim_attempt_string",
+        "display_attempt_string",
+        "canonical_attempt_boolean",
+        "display_attempt_missing",
+        "display_attempt_not_predecessor",
+    ],
+)
+def test_quiesced_claim_release_requires_exact_raw_attempt_counters(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    daemon, task, state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    state.implementation_attempts[task.task_id] = 3
+    state.implementation_attempts_by_cid[canonical_task_cid] = 3
+    state.save(daemon.state_path)
+    _record_exact_unfinished_attempt_recovery(daemon, task, state)
+
+    if corruption == "claim_attempt_string":
+        claim_payload = json.loads(claim_path.read_text(encoding="utf-8"))
+        claim_payload["attempt"] = "4"
+        claim_path.write_text(
+            json.dumps(claim_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        state_payload = json.loads(
+            daemon.state_path.read_text(encoding="utf-8")
+        )
+        if corruption == "display_attempt_string":
+            state_payload["implementation_attempts"][task.task_id] = "3"
+        elif corruption == "canonical_attempt_boolean":
+            state_payload["implementation_attempts_by_cid"][
+                canonical_task_cid
+            ] = True
+        elif corruption == "display_attempt_missing":
+            del state_payload["implementation_attempts"][task.task_id]
+        else:
+            state_payload["implementation_attempts"][task.task_id] = 2
+        daemon.state_path.write_text(
+            json.dumps(state_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    result = daemon._reconcile_quiesced_implementation_task_claim(state)
+
+    assert result["reconciled"] is False
+    assert result["reason"] == "task_claim_identity_mismatch"
+    assert claim_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("include_start", "later_event_type"),
+    [
+        (False, ""),
+        (True, "implementation_started"),
+        (True, "implementation_finished"),
+    ],
+)
+def test_quiesced_claim_release_rejects_ambiguous_recovery_timeline(
+    tmp_path: Path,
+    include_start: bool,
+    later_event_type: str,
+) -> None:
+    daemon, task, state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    state.implementation_attempts[task.task_id] = 3
+    state.implementation_attempts_by_cid[canonical_task_cid] = 3
+    state.save(daemon.state_path)
+    _record_exact_unfinished_attempt_recovery(
+        daemon,
+        task,
+        state,
+        include_start=include_start,
+        later_event_type=later_event_type,
+    )
+
+    result = daemon._reconcile_quiesced_implementation_task_claim(state)
+
+    assert result["reconciled"] is False
+    assert result["reason"] == "task_claim_identity_mismatch"
+    assert claim_path.exists()
+
+
+def test_supervisor_startup_preflight_releases_quiesced_dead_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _task_value, _state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(daemon.todo_path),
+            "--state-dir",
+            str(daemon.state_path.parent),
+            "--implementation-protected-path",
+            POLICY_PATH,
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(
+            args,
+            repo_root=daemon.repo_root,
+            state_path=daemon.state_path,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_build_worktree_reconciliation_daemon",
+        lambda: daemon,
+    )
+    maintenance_started: list[bool] = []
+
+    def preflight(*, include_refill: bool) -> dict[str, object]:
+        assert include_refill is False
+        assert not claim_path.exists()
+        maintenance_started.append(True)
+        return {"stuck": False}
+
+    class StoppedLoop:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def run(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                status="stopped",
+                restart_count=0,
+                last_exit_code=None,
+                last_recycle_reason="",
+                last_run_id="",
+                last_log_path="",
+            )
+
+    monkeypatch.setattr(supervisor, "ensure_event_log_file", lambda: {})
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_managed_daemon_pid_file",
+        lambda: {"repaired": False, "reason": "missing"},
+    )
+    monkeypatch.setattr(supervisor, "run_once", preflight)
+    supervisor.shared_supervisor_loop_class = StoppedLoop
+
+    supervisor._run_forever_loop()
+
+    assert maintenance_started == [True]
+    assert not claim_path.exists()
+    receipts = list(
+        (
+            daemon.state_path.parent
+            / implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
+        ).glob("*.json")
+    )
+    assert len(receipts) == 1
+    assert json.loads(receipts[0].read_text(encoding="utf-8"))["phase"] == (
+        "released"
+    )
+
+
+def test_worktree_reconciliation_daemon_preserves_lane_shard_identity(
+    tmp_path: Path,
+) -> None:
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.todo.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "2",
+            "--strict-task-sharding",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=tmp_path)
+    )
+
+    daemon = supervisor._build_worktree_reconciliation_daemon()
+
+    assert daemon.task_shard_count == 4
+    assert daemon.task_shard_index == 2
+    assert daemon.strict_task_sharding is True
+
+
+def test_supervisor_startup_does_not_reconcile_live_managed_daemon(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+
+    class StoppedLoop:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def run(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                status="stopped",
+                restart_count=0,
+                last_exit_code=None,
+                last_recycle_reason="",
+                last_run_id="",
+                last_log_path="",
+            )
+
+    monkeypatch.setattr(supervisor, "ensure_event_log_file", lambda: {})
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_managed_daemon_pid_file",
+        lambda: {"repaired": False, "reason": "active", "pid": os.getpid()},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_quiesced_task_claim_at_startup",
+        lambda: pytest.fail("a live managed daemon must retain its claims"),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "run_once",
+        lambda *, include_refill: {"stuck": False},
+    )
+    supervisor.shared_supervisor_loop_class = StoppedLoop
+
+    supervisor._run_forever_loop()
+
+
+def test_quiesced_claim_release_refuses_live_owner(
+    tmp_path: Path,
+) -> None:
+    daemon, _task_value, _state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(
+            tmp_path,
+            live_claim_owner=True,
+        )
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "task_claim_reconciliation_blocked"
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "task_claim_owner_still_active"
+    assert release["owner_pid"] == os.getpid()
+    assert claim_path.exists()
+    assert not (
+        daemon.state_path.parent
+        / implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
+    ).exists()
+
+
+def test_quiesced_claim_release_refuses_nonterminal_task(
+    tmp_path: Path,
+) -> None:
+    daemon, _task_value, _state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(
+            tmp_path,
+            task_status="ready",
+        )
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "canonical_task_not_terminal"
+    assert release["observed_task_status"] == "todo"
+    assert claim_path.exists()
+
+
+def test_quiesced_claim_release_refuses_noncanonical_lifecycle_bytes(
+    tmp_path: Path,
+) -> None:
+    daemon, _task, state, claim_path, _claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        Path(state.last_implementation_worktree_path)
+    )
+    record_payload = json.loads(record_path.read_text(encoding="utf-8"))
+    record_payload["unexpected_field"] = True
+    corrupted_bytes = (
+        json.dumps(record_payload, indent=2, sort_keys=True) + "\n"
+    )
+    record_path.write_text(corrupted_bytes, encoding="utf-8")
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    release = result["task_claim_reconciliation"]
+    assert release["reason"] == "task_claim_worktree_lifecycle_malformed"
+    assert claim_path.exists()
+    assert record_path.read_text(encoding="utf-8") == corrupted_bytes
+
+
+def test_quiesced_claim_release_exact_cas_preserves_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _task_value, state, claim_path, claim = (
+        _quiesced_terminal_task_claim(tmp_path)
+    )
+    replacement = dict(claim)
+    replacement["lease_id"] = "replacement-lease-that-must-survive"
+    original_load = daemon._load_exact_json_object
+    claim_reads = 0
+
+    def replace_before_compare(path: Path):
+        nonlocal claim_reads
+        if path == claim_path:
+            claim_reads += 1
+            if claim_reads == 2:
+                claim_path.write_text(
+                    json.dumps(replacement, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+        return original_load(path)
+
+    monkeypatch.setattr(
+        daemon,
+        "_load_exact_json_object",
+        replace_before_compare,
+    )
+
+    release = daemon._reconcile_quiesced_implementation_task_claim(
+        state
+    )
+
+    assert release["reconciled"] is False
+    assert release["blocked"] is True
+    assert release["reason"] == "task_claim_compare_and_delete_lost"
+    assert json.loads(claim_path.read_text(encoding="utf-8"))["lease_id"] == (
+        "replacement-lease-that-must-survive"
+    )
+    receipt_dir = (
+        daemon.state_path.parent
+        / implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
+    )
+    [prepared_path] = list(receipt_dir.glob("*.json"))
+    assert json.loads(prepared_path.read_text(encoding="utf-8"))["phase"] == (
+        "prepared"
+    )
 
 
 @pytest.mark.parametrize(

@@ -24,8 +24,36 @@ import time
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from types import MappingProxyType
+from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
+
+from ...llm_router import (
+    AgentImplementationInvocationBinding,
+    AgentImplementationRoutePlan,
+    agent_implementation_control_plane_source_generation,
+    bind_agent_implementation_attempt_store,
+    bind_agent_implementation_route_invocation,
+    build_agent_implementation_control_plane_pin,
+    decide_agent_implementation_fallback,
+    extract_agent_implementation_route_outcomes,
+    load_agent_implementation_route_authorization,
+    materialize_agent_implementation_control_plane_capsule,
+    parse_agent_implementation_effect_authorization_context,
+    parse_agent_implementation_quota_evidence,
+    resolve_agent_implementation_private_state_path,
+    resolve_agent_implementation_route,
+    resolve_agent_implementation_route_binding,
+    seal_agent_implementation_control_plane_capsule,
+    valid_agent_implementation_failure_receipt,
+    valid_agent_implementation_route_outcome,
+    verify_agent_implementation_sealed_control_plane,
+)
+from ..control.provider_attempt_store import (
+    DurableProviderAttemptCAS,
+    ProviderAttemptReservation,
+    ProviderAttemptStoreError,
+)
 
 from .. import implementation_timeout as _implementation_timeout
 from ..context.context_compiler import (
@@ -64,8 +92,10 @@ from .implementation_timeout import (
 )
 from ..runtime.provider_failure_policy import (
     extract_grok_failure_receipts,
+    extract_grok_route_outcomes,
     valid_grok_failure_receipt,
     valid_grok_hard_quota_receipt,
+    valid_grok_route_outcome,
 )
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -102,6 +132,7 @@ from ..merge.worktree_lifecycle import (
     LifecycleFailureKind,
     OwnerLiveness,
     OwnershipError,
+    ProcessBirthIdentity,
     WorkspaceLifecycleRecord,
     WorkspaceLifecycleState,
     WorktreeLifecycleError,
@@ -343,6 +374,16 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "quiesced-implementation-task-claim-release@1"
+)
+IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME = (
+    "implementation-task-claim-release-receipts"
+)
+IMPLEMENTATION_TASK_TERMINAL_STATUSES = frozenset(
+    {"completed", "cancelled", "skipped", "failed", "quarantined"}
+)
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
 )
@@ -422,8 +463,12 @@ IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
     r"|grok_cli_runner"
     r"|cli_implement_runner"
-    r"|ipfs-accelerate-grok"
+    r"|ipfs-accelerate-(?:grok|codex)"
     r")"
+)
+IMPLEMENTATION_DOCKER_ISOLATION_LABELS = (
+    "ipfs_accelerate.grok_isolation=true",
+    "ipfs_accelerate.codex_fallback_isolation=true",
 )
 # How long a recently written implement log keeps a missing process from
 # being recovered as dead (docker restarts briefly drop process visibility).
@@ -433,7 +478,117 @@ GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
 )
 PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
 DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
-PROVIDER_CAPACITY_LOG_TAIL_BYTES = 128 * 1024
+# A protected terminal record may carry the complete bounded eight-owner
+# adoption/quarantine lineage (up to the router's 512KiB record ceiling).
+# Read enough stable LF-framed tail for that record plus its paired receipt.
+PROVIDER_CAPACITY_LOG_TAIL_BYTES = 1024 * 1024
+
+
+def _stable_owned_log_tail(
+    path: Path,
+    maximum_bytes: int,
+    *,
+    reject_group_writable: bool = True,
+) -> tuple[str, str]:
+    """Read one LF-framed bounded tail through a stable no-follow descriptor."""
+
+    if (
+        isinstance(maximum_bytes, bool)
+        or not isinstance(maximum_bytes, int)
+        or maximum_bytes <= 0
+    ):
+        raise OSError("log tail bound is invalid")
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    cursor = Path(candidate.anchor)
+    for component in candidate.parts[1:]:
+        if component in {"", "."}:
+            continue
+        if component == "..":
+            raise OSError("log path contains parent traversal")
+        cursor /= component
+        metadata = os.lstat(cursor)
+        if stat_module.S_ISLNK(metadata.st_mode):
+            raise OSError("log path contains a symlink component")
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("no-follow log reads are unavailable")
+    descriptor = os.open(
+        lexical,
+        os.O_RDONLY
+        | nofollow
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0),
+    )
+    try:
+        before = os.fstat(descriptor)
+
+        def valid(item: os.stat_result) -> bool:
+            return bool(
+                stat_module.S_ISREG(item.st_mode)
+                and item.st_uid == os.geteuid()
+                and item.st_nlink == 1
+                and not (
+                    stat_module.S_IMODE(item.st_mode)
+                    & (0o022 if reject_group_writable else 0o002)
+                )
+            )
+
+        if not valid(before):
+            raise OSError("log is not an owned stable regular file")
+        tail_start = max(0, before.st_size - maximum_bytes)
+        read_start = max(0, tail_start - 1)
+        expected = before.st_size - read_start
+        os.lseek(descriptor, read_start, os.SEEK_SET)
+        chunks: list[bytes] = []
+        remaining = expected
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        bounded = b"".join(chunks)
+        after = os.fstat(descriptor)
+        final = os.lstat(lexical)
+    finally:
+        os.close(descriptor)
+
+    def identity(item: os.stat_result) -> tuple[int, ...]:
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
+
+    if (
+        not valid(after)
+        or not valid(final)
+        or len(bounded) != expected
+        or identity(before) != identity(after)
+        or identity(after) != identity(final)
+    ):
+        raise OSError("log changed while its bounded tail was read")
+    tail_offset = tail_start - read_start
+    tail = bounded[tail_offset:]
+    if tail_start == 0 or bounded[:tail_offset] == b"\n":
+        receipt_tail = tail
+    else:
+        next_lf = tail.find(b"\n")
+        receipt_tail = tail[next_lf + 1 :] if next_lf >= 0 else b""
+    return (
+        tail.decode("utf-8", errors="replace"),
+        receipt_tail.decode("utf-8", errors="replace"),
+    )
+
+
 PROVIDER_CAPACITY_PATTERNS = (
     ("codex", re.compile(r"you(?:'|\u2019)?ve hit your usage limit", re.IGNORECASE)),
     ("copilot", re.compile(r"you(?:'|\u2019)?ve reached your additional usage limit", re.IGNORECASE)),
@@ -565,6 +720,37 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+)
+_ROUTE_BOARD_NAMESPACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
+)
+_ROUTE_AUTHORIZATION_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH"
+)
+_ROUTE_AUTHORIZATION_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SHA256"
+)
+_ROUTE_AUTHORIZATION_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_ID"
+)
+_ROUTE_AUTHORIZATION_KIND_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_KIND"
+)
+_ROUTE_SOURCE_HEAD_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
+)
+_ROUTE_SOURCE_TREE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE"
+)
+_ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
+_PROVIDER_ATTEMPT_STORE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER_ATTEMPT_STORE"
+)
 # Legacy production-route toggles retained as env names for test/operator
 # cleanup only. Automatic routing is always on for supported providers.
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
@@ -1682,22 +1868,26 @@ def _grok_cli_command(
     workspace_path: Path,
     model_override: str | None = None,
     failure_receipt_nonce: str = "",
+    allow_auth_unavailable_fallback: bool = False,
+    fallback_reasoning_effort: str = "medium",
+    enable_codex_fallback: bool = True,
+    route_plan: AgentImplementationRoutePlan | None = None,
+    sealed_runner_path: str = "",
 ) -> list[str]:
-    """Build a Grok CLI agent command through the quota-routed runner.
+    """Build a Grok CLI agent command through the typed-failure runner.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
 
     When a trusted system Codex install is resolvable, attach the exact
-    Terra fallback argv using the configured closed reasoning effort so a
-    single Grok invocation may fall through
-    only after independently verified hard-quota exhaustion. Codex is never
+    Terra fallback argv so a single Grok invocation may fall through only
+    after the runner validates the configured failure policy. Codex is never
     attached without that runner-owned authority gate.
     """
 
     if not _grok_binary():
         raise RuntimeError("grok CLI is not installed")
-    if not _grok_cli_available():
+    if not _grok_cli_available() and not allow_auth_unavailable_fallback:
         raise RuntimeError(
             "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
         )
@@ -1717,10 +1907,6 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
-    fallback_reasoning_effort = (
-        os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip()
-        or DEFAULT_CODEX_REASONING_EFFORT
-    )
     from ..runtime.grok_cli_runner import build_grok_quota_routed_agent_command
 
     command = build_grok_quota_routed_agent_command(
@@ -1730,7 +1916,23 @@ def _grok_cli_command(
         codex_bin=str(shutil.which("codex") or ""),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
         fallback_reasoning_effort=fallback_reasoning_effort,
+        enable_codex_fallback=enable_codex_fallback,
+        accepted_runner_path=(
+            sealed_runner_path
+            if route_plan is not None
+            and route_plan.permits_authentication_unavailable
+            and route_plan.invocation_binding is not None
+            and sealed_runner_path
+            else ""
+        ),
     )
+    if (
+        allow_auth_unavailable_fallback
+        and "--codex-fallback-command-json" not in command
+    ):
+        raise RuntimeError(
+            "typed Grok authentication fallback requires a trusted Codex CLI"
+        )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.5":
         if "--model" in command:
@@ -1740,6 +1942,17 @@ def _grok_cli_command(
     if failure_receipt_nonce:
         command.extend(
             ["--grok-failure-receipt-nonce", failure_receipt_nonce]
+        )
+    if route_plan is not None:
+        command.extend(
+            [
+                "--agent-implementation-route-json",
+                json.dumps(
+                    route_plan.as_binding_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
         )
     return command
 
@@ -1766,6 +1979,108 @@ _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.5"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
+
+
+def _configured_agent_implementation_route_plan(
+    repo_root: Path,
+) -> AgentImplementationRoutePlan | None:
+    """Resolve an attempted sealed route through the canonical router.
+
+    A provider name by itself is the legacy daemon selector and does not
+    attempt the ordered six-field route.  Any ordered-route or authorization
+    metadata still enters the sealed parser and therefore fails closed when
+    incomplete.
+    """
+
+    route_values = {
+        "primary_provider_id": os.environ.get(
+            IMPLEMENTATION_PROVIDER_ENV, ""
+        ).strip(),
+        "primary_model_id": os.environ.get(_GROK_MODEL_ENV, "").strip(),
+        "fallback_provider_id": os.environ.get(
+            IMPLEMENTATION_FALLBACK_PROVIDER_ENV, ""
+        ).strip(),
+        "fallback_model_id": os.environ.get(_CODEX_MODEL_ENV, "").strip(),
+        "fallback_trigger": os.environ.get(
+            IMPLEMENTATION_FALLBACK_TRIGGER_ENV, ""
+        ).strip(),
+        "fallback_reasoning_effort": os.environ.get(
+            _CODEX_REASONING_EFFORT_ENV, ""
+        ).strip(),
+    }
+    authorization_values = {
+        "board_namespace": os.environ.get(
+            _ROUTE_BOARD_NAMESPACE_ENV, ""
+        ).strip(),
+        "artifact_path": os.environ.get(
+            _ROUTE_AUTHORIZATION_PATH_ENV, ""
+        ).strip(),
+        "artifact_sha256": os.environ.get(
+            _ROUTE_AUTHORIZATION_SHA256_ENV, ""
+        ).strip(),
+        "authorization_id": os.environ.get(
+            _ROUTE_AUTHORIZATION_ID_ENV, ""
+        ).strip(),
+        "authorization_kind": os.environ.get(
+            _ROUTE_AUTHORIZATION_KIND_ENV, ""
+        ).strip(),
+        "source_head": os.environ.get(_ROUTE_SOURCE_HEAD_ENV, "").strip(),
+        "source_tree": os.environ.get(_ROUTE_SOURCE_TREE_ENV, "").strip(),
+        "route_id": os.environ.get(_ROUTE_ID_ENV, "").strip(),
+    }
+    sealed_tuple_attempted = any(
+        value
+        for field, value in route_values.items()
+        if field != "primary_provider_id"
+    )
+    authorization_attempted = any(authorization_values.values())
+    if not sealed_tuple_attempted and not authorization_attempted:
+        return None
+    authorization = None
+    if any(authorization_values.values()):
+        if not all(authorization_values.values()):
+            raise ValueError(
+                "scoped agent route authorization environment is incomplete"
+            )
+        authorization = load_agent_implementation_route_authorization(
+            repo_root=repo_root,
+            artifact_path=authorization_values["artifact_path"],
+            board_namespace=authorization_values["board_namespace"],
+            expected_sha256=authorization_values["artifact_sha256"],
+            expected_authorization_id=authorization_values[
+                "authorization_id"
+            ],
+        )
+        if (
+            authorization.authorization_kind
+            != authorization_values["authorization_kind"]
+            or authorization.source_head != authorization_values["source_head"]
+            or authorization.source_tree != authorization_values["source_tree"]
+        ):
+            raise ValueError("scoped agent route authorization binding drifted")
+    plan = resolve_agent_implementation_route(
+        **route_values,
+        authorization=authorization,
+    )
+    if authorization is not None and plan.route_id != authorization_values[
+        "route_id"
+    ]:
+        raise ValueError("scoped agent implementation route identity drifted")
+    return plan
+
+
+def _ordered_grok_codex_route_configured(
+    repo_root: Path | None = None,
+) -> bool:
+    """Compatibility audit helper for the scoped auth/quota route."""
+
+    try:
+        plan = _configured_agent_implementation_route_plan(
+            Path.cwd() if repo_root is None else repo_root
+        )
+    except (OSError, ValueError):
+        return False
+    return bool(plan and plan.permits_authentication_unavailable)
 GROK_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {
         "grok",
@@ -2103,6 +2418,19 @@ RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
 RETRY_BUDGET_REPAIR_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
 )
+RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION = (
+    "ipfs_accelerate_py.agent_supervisor.retry-budget-repair-rearm@1"
+)
+STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
+    "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
+)
+RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
+    "todo_daemon/implementation_daemon.py",
+    "objectives/backlog_refinery.py",
+    "validation/proposal_validation.py",
+    "validation/implementation_auto_rescue.py",
+    "task_sources/persistent_task_queue.py",
+)
 RECONCILIATION_GUARDRAIL_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
 )
@@ -2158,6 +2486,34 @@ def is_retry_budget_repair_task(task: Any) -> bool:
     return bool(retry_budget_repair_source(task)[0])
 
 
+def retry_budget_repair_runtime_revision(
+    agent_supervisor_root: Path | None = None,
+) -> str:
+    """Hash the loaded recovery engine's source boundary.
+
+    A repair budget must become eligible again after a later supervisor fix,
+    without requiring an operator to edit durable state or remember to bump a
+    constant.  Bind the revision to the small set of modules that own repair
+    generation, proposal admission, auto-rescue, and retry persistence.
+    """
+
+    root = (
+        agent_supervisor_root.resolve()
+        if agent_supervisor_root is not None
+        else Path(__file__).resolve().parents[1]
+    )
+    digest = hashlib.sha256()
+    digest.update(RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8"))
+    digest.update(b"\0")
+    for relative in RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
+        path = root / relative
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return "sha256:" + digest.hexdigest()
+
+
 def pending_retry_budget_repair_sources(
     tasks: Sequence[Any],
     *,
@@ -2191,6 +2547,81 @@ def pending_retry_budget_repair_sources(
         if source_task_id and source_task_id not in completed:
             blocked.add(source_task_id)
     return blocked
+
+
+def inherit_retry_budget_repair_validation(
+    tasks: Sequence[PortalTask],
+) -> list[PortalTask]:
+    """Upgrade legacy discovery-only repairs to the source validation.
+
+    Older generated repair appendices used ``test -f <discovery>`` as their
+    sole validation.  That proves only that the supervisor wrote its failure
+    report before dispatch; it cannot prove the repair.  Keep the board bytes
+    immutable, but execute a recognized generated repair with its source
+    task's reviewed validation contract.  Explicit non-discovery repair
+    validation remains untouched.
+    """
+
+    tasks_by_id = {task.task_id: task for task in tasks}
+    effective: list[PortalTask] = []
+    for task in tasks:
+        source_task_id, _failure_kind = retry_budget_repair_source(task)
+        source_task = tasks_by_id.get(source_task_id)
+        metadata = {
+            str(key).strip().lower().replace("_", " "): str(value).strip()
+            for key, value in (task.metadata or {}).items()
+            if str(value).strip()
+        }
+        discovery_path = metadata.get("retry repair discovery", "")
+        current_validation = [
+            normalize_validation_command_text(str(command))
+            for command in (task.validation or ())
+            if normalize_validation_command_text(str(command))
+        ]
+        discovery_only = not current_validation
+        if len(current_validation) == 1 and discovery_path:
+            try:
+                discovery_only = shlex.split(current_validation[0]) == [
+                    "test",
+                    "-f",
+                    discovery_path,
+                ]
+            except ValueError:
+                discovery_only = False
+        source_validation = [
+            normalize_validation_command_text(str(command))
+            for command in (
+                getattr(source_task, "validation", ()) or ()
+            )
+            if normalize_validation_command_text(str(command))
+            and not normalize_validation_command_text(str(command)).startswith(
+                (
+                    "validation_pre_dispatch:",
+                    "validation_gate_failed",
+                )
+            )
+        ]
+        if (
+            source_task is None
+            or not source_task_id
+            or not discovery_only
+            or not source_validation
+        ):
+            effective.append(task)
+            continue
+        effective_metadata = dict(task.metadata)
+        effective_metadata["validation"] = "; ".join(source_validation)
+        effective_metadata["retry repair validation inherited from"] = (
+            source_task_id
+        )
+        effective.append(
+            replace(
+                task,
+                validation=source_validation,
+                metadata=effective_metadata,
+            )
+        )
+    return effective
 
 
 def normalize_retry_validation_path(value: Any) -> str:
@@ -2881,6 +3312,53 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def task_declares_validation_config_change(task: PortalTask) -> bool:
+    """Return whether the task explicitly owns a validation-config path.
+
+    Validation configuration remains fail-closed by default.  The narrow
+    exception is an exact path declared in Outputs or Predicted files; a
+    provider-suggested/allowed path alone never grants this authority.
+    """
+
+    from ..validation.proposal_validation import _VALIDATION_CONFIG_PATHS
+
+    predicted = str(
+        (task.metadata or {}).get("predicted files")
+        or (task.metadata or {}).get("predicted_files")
+        or ""
+    )
+    declared_paths = tuple(
+        dict.fromkeys(
+            [
+                *task_declared_output_paths(task),
+                *(
+                    part.strip()
+                    for part in predicted.split(",")
+                    if part.strip()
+                ),
+            ]
+        )
+    )
+    for path in declared_paths:
+        if (
+            not path
+            or path.endswith("/")
+            or any(character in path for character in "*?[]{}")
+        ):
+            continue
+        if any(
+            path == config_path
+            or (
+                config_path.endswith("/")
+                and path.startswith(config_path)
+                and len(path) > len(config_path)
+            )
+            for config_path in _VALIDATION_CONFIG_PATHS
+        ):
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class ImplementationTimeoutPolicy:
     """One task's bounded implementation lease and progress-idle deadline."""
@@ -3075,7 +3553,16 @@ class PortalTaskState:
     task_identities: dict[str, dict[str, Any]] = field(default_factory=dict)
     implementation_attempts: dict[str, int] = field(default_factory=dict)
     implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
+    protected_implementation_attempts: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
+    retry_budget_repair_rearm_receipts: dict[str, list[str]] = field(
+        default_factory=dict
+    )
+    stale_proposal_replay_rearm_receipts: dict[str, list[str]] = field(
+        default_factory=dict
+    )
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -3198,10 +3685,44 @@ class PortalTaskState:
                     for key, value in (payload.get("implementation_attempts_by_cid") or {}).items()
                     if str(value).isdigit()
                 },
+                protected_implementation_attempts={
+                    str(key): dict(value)
+                    for key, value in (
+                        payload.get("protected_implementation_attempts") or {}
+                    ).items()
+                    if isinstance(value, dict)
+                },
                 retry_budget_repair_receipts={
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
                     if str(key).strip() and str(value).strip()
+                },
+                retry_budget_repair_rearm_receipts={
+                    str(key): [
+                        str(item)
+                        for item in value
+                        if str(item).strip()
+                    ]
+                    for key, value in (
+                        payload.get("retry_budget_repair_rearm_receipts") or {}
+                    ).items()
+                    if str(key).strip()
+                    and isinstance(value, list)
+                },
+                stale_proposal_replay_rearm_receipts={
+                    str(key): [
+                        str(item)
+                        for item in value
+                        if str(item).strip()
+                    ]
+                    for key, value in (
+                        payload.get(
+                            "stale_proposal_replay_rearm_receipts"
+                        )
+                        or {}
+                    ).items()
+                    if str(key).strip()
+                    and isinstance(value, list)
                 },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
                 last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
@@ -3343,6 +3864,10 @@ def state_file_repair_reason(path: Path) -> str:
         "task_identities",
         "implementation_attempts",
         "implementation_attempts_by_cid",
+        "protected_implementation_attempts",
+        "retry_budget_repair_receipts",
+        "retry_budget_repair_rearm_receipts",
+        "stale_proposal_replay_rearm_receipts",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -3635,6 +4160,27 @@ class PortalImplementationDaemon:
         self.events_path = events_path
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
+        self._scoped_recovery_attempts: dict[str, int] = {}
+        self._scoped_control_plane = None
+        self._scoped_control_plane_launch = None
+        self._scoped_recovery_control_plane_launches: dict[str, Any] = {}
+        if implement and os.environ.get(
+            _ROUTE_AUTHORIZATION_PATH_ENV, ""
+        ).strip():
+            imported_capsule = _IMPORTED_CONTROL_PLANE_CAPSULE
+            imported_launch = _IMPORTED_CONTROL_PLANE_LAUNCH
+            if imported_capsule is not None and imported_launch is not None:
+                # This snapshot was sealed before import returned, so later
+                # integration-checkout mutations cannot select a different
+                # router/runner generation for this long-lived daemon.
+                self._scoped_control_plane = imported_capsule
+                self._scoped_control_plane_launch = imported_launch
+            else:
+                raise ValueError(
+                    "accepted control-plane import generation was not sealed; "
+                    "protected routing cannot derive code from later mutable "
+                    "checkout bytes"
+                )
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
             source_options: dict[str, Any] = {}
@@ -4076,9 +4622,14 @@ class PortalImplementationDaemon:
                 raise TaskSourceIntegrityError(
                     "configured task source differs from the durable checkpoint"
                 )
-        self._runtime_last_source_digest = str(
-            self._runtime_checkpoint.get("source_digest") or ""
-        )
+        # A checkpoint may durably observe a new source head before the task
+        # projection which it caches has converged to that head. A newly
+        # constructed daemon also baselines filesystem watchers at current
+        # bytes, so no notification would expose that interrupted boundary.
+        # Keep the checkpoint for recovery evidence, but require this process
+        # to materialize one current reconciliation before using its unchanged
+        # fast path.
+        self._runtime_last_source_digest = ""
         cached_result = self._runtime_checkpoint.get("result")
         self._runtime_last_result = (
             dict(cached_result) if isinstance(cached_result, Mapping) else None
@@ -4233,20 +4784,28 @@ class PortalImplementationDaemon:
 
     def _load_tasks(self) -> list[PortalTask]:
         if self.task_source is None:
-            return parse_task_file(self.todo_path, self.task_header_prefix)
-        self.task_source.check_integrity().require_valid()
-        records: list[TaskSourceTask] = []
-        cursor = ""
-        while True:
-            page = self.task_source.query(
-                cursor=cursor,
-                limit=TASK_SOURCE_QUERY_LIMIT,
+            tasks = parse_task_file(
+                self.todo_path,
+                self.task_header_prefix,
             )
-            records.extend(page.tasks)
-            cursor = page.next_cursor
-            if not cursor:
-                break
-        return [self._portal_task_from_source_task(task) for task in records]
+        else:
+            self.task_source.check_integrity().require_valid()
+            records: list[TaskSourceTask] = []
+            cursor = ""
+            while True:
+                page = self.task_source.query(
+                    cursor=cursor,
+                    limit=TASK_SOURCE_QUERY_LIMIT,
+                )
+                records.extend(page.tasks)
+                cursor = page.next_cursor
+                if not cursor:
+                    break
+            tasks = [
+                self._portal_task_from_source_task(task)
+                for task in records
+            ]
+        return inherit_retry_budget_repair_validation(tasks)
 
     def _task_source_identity_record(self) -> dict[str, Any] | None:
         if self.task_source is None:
@@ -6343,7 +6902,6 @@ class PortalImplementationDaemon:
         can keep those scans outside the exclusive lease.
         """
 
-        resolved_task_id = task.task_id if task is not None else task_id
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
                 workspace_path,
@@ -7881,6 +8439,730 @@ class PortalImplementationDaemon:
             "terminal_reason": terminal.terminal_reason,
         }
 
+    def _terminal_authority_for_quiesced_task_claim(
+        self,
+        state: PortalTaskState,
+        *,
+        task_id: str,
+        canonical_task_key: str,
+        canonical_task_cid: str,
+        board_namespace: str,
+        attempt: int,
+    ) -> tuple[WorkspaceLifecycleRecord | None, str, str]:
+        """Prove the task revision and its exact worktree are terminal."""
+
+        workspace = str(
+            state.last_implementation_worktree_path
+            or state.active_worktree_path
+            or ""
+        ).strip()
+        if not workspace:
+            return None, "", "task_claim_worktree_lifecycle_unbound"
+        workspace_path = Path(workspace)
+        record_path = self.worktree_lifecycle.workspace_path_for(workspace_path)
+        record = self.worktree_lifecycle.load_workspace(workspace_path)
+        if record is None:
+            reason = (
+                "task_claim_worktree_lifecycle_malformed"
+                if record_path.exists()
+                else "task_claim_worktree_lifecycle_missing"
+            )
+            return None, "", reason
+        raw_record = self._load_exact_json_object(record_path)
+        if raw_record is None or raw_record != record.to_dict():
+            return None, "", "task_claim_worktree_lifecycle_malformed"
+        expected_state_dir = normalize_workspace_path(
+            self.state_path.parent.resolve()
+        )
+        if (
+            not record.is_terminal
+            or record.task_id != task_id
+            or record.canonical_task_cid != canonical_task_cid
+            or record.attempt != attempt
+            or normalize_workspace_path(record.repo_root)
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(record.state_dir) != expected_state_dir
+            or normalize_workspace_path(record.workspace_path)
+            != normalize_workspace_path(workspace_path)
+        ):
+            return (
+                None,
+                "",
+                "task_claim_worktree_lifecycle_not_exact_terminal",
+            )
+        try:
+            matches = [
+                task
+                for task in self._load_tasks()
+                if self._canonical_ref(task) == canonical_task_cid
+            ]
+        except Exception as exc:
+            return record, "", f"task_source_read_failed:{type(exc).__name__}"
+        if len(matches) != 1:
+            return record, "", "canonical_task_revision_not_unique"
+        if matches[0].task_id != task_id:
+            return record, "", "canonical_task_display_id_mismatch"
+        current_identity = self._identity_for_task(matches[0])
+        if (
+            current_identity.canonical_task_key != canonical_task_key
+            or current_identity.canonical_task_cid != canonical_task_cid
+            or current_identity.board_namespace != board_namespace
+        ):
+            return record, "", "canonical_task_identity_mismatch"
+        status = normalize_status(matches[0].status)
+        if status not in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
+            return record, status, "canonical_task_not_terminal"
+        projected_status = normalize_status(
+            state.task_statuses.get(task_id, "")
+        )
+        if projected_status and projected_status != status:
+            return (
+                record,
+                status,
+                "task_claim_state_projection_status_mismatch",
+            )
+        return record, status, ""
+
+    def _task_claim_release_receipt_path(
+        self,
+        *,
+        canonical_task_cid: str,
+        attempt: int,
+        lease_id: str,
+    ) -> Path:
+        digest = hashlib.sha256(
+            f"{canonical_task_cid}\0{attempt}\0{lease_id}".encode("utf-8")
+        ).hexdigest()[:24]
+        return (
+            self.state_path.parent
+            / IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
+            / f"canonical-task-{digest}-a{attempt}.json"
+        )
+
+    @staticmethod
+    def _load_exact_json_object(path: Path) -> dict[str, Any] | None:
+        """Load a regular JSON object without coercion or duplicate keys."""
+
+        if path.is_symlink() or not path.is_file():
+            return None
+
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        try:
+            payload = json.loads(
+                path.read_text(encoding="utf-8"),
+                object_pairs_hook=unique_object,
+            )
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _released_unfinished_attempt_evidence(
+        self,
+        state: PortalTaskState,
+        *,
+        claim: Mapping[str, Any],
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        display_attempt: int,
+        canonical_attempt: int,
+    ) -> dict[str, Any] | None:
+        """Bind a decremented attempt counter to its exact recovery event.
+
+        ``run_once`` releases an unfinished attempt before clearing stale
+        execution state.  A task claim can therefore still name attempt N
+        while both durable counters correctly name N-1.  Accept that shape
+        only when strict state bytes and one authoritative event history bind
+        the same claim start, task revision, attempt, worktree, and branch.
+        Every other counter mismatch remains fail closed.
+        """
+
+        def exact_int(value: Any) -> int | None:
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+            return None
+
+        if (
+            attempt <= 1
+            or display_attempt != attempt - 1
+            or canonical_attempt != display_attempt
+            or exact_int(claim.get("attempt")) != attempt
+        ):
+            return None
+
+        raw_state = self._load_exact_json_object(self.state_path)
+        if raw_state is None:
+            return None
+        raw_display_attempts = raw_state.get("implementation_attempts")
+        raw_canonical_attempts = raw_state.get(
+            "implementation_attempts_by_cid"
+        )
+        if (
+            not isinstance(raw_display_attempts, dict)
+            or task_id not in raw_display_attempts
+            or exact_int(raw_display_attempts[task_id]) != display_attempt
+            or not isinstance(raw_canonical_attempts, dict)
+            or canonical_task_cid not in raw_canonical_attempts
+            or exact_int(raw_canonical_attempts[canonical_task_cid])
+            != canonical_attempt
+        ):
+            return None
+
+        canonical_task_key = claim.get("canonical_task_key")
+        board_namespace = claim.get("board_namespace")
+        claim_started_at = claim.get("started_at")
+        state_started_at = state.last_implementation_started_at
+        if (
+            not isinstance(canonical_task_key, str)
+            or not canonical_task_key
+            or canonical_task_key
+            != state.last_implementation_task_key
+            or raw_state.get("last_implementation_task_key")
+            != canonical_task_key
+            or not isinstance(board_namespace, str)
+            or not board_namespace
+            or not isinstance(claim_started_at, str)
+            or not claim_started_at
+            or claim_started_at != state_started_at
+            or raw_state.get("last_implementation_started_at")
+            != claim_started_at
+            or raw_state.get("last_implementation_task_id") != task_id
+            or raw_state.get("last_implementation_task_cid")
+            != canonical_task_cid
+        ):
+            return None
+        raw_task_identities = raw_state.get("task_identities")
+        raw_task_identity = (
+            raw_task_identities.get(task_id)
+            if isinstance(raw_task_identities, dict)
+            else None
+        )
+        if (
+            not isinstance(raw_task_identity, dict)
+            or raw_task_identity.get("display_task_id") != task_id
+            or raw_task_identity.get("canonical_task_key")
+            != canonical_task_key
+            or raw_task_identity.get("canonical_task_cid")
+            != canonical_task_cid
+            or raw_task_identity.get("board_namespace")
+            != board_namespace
+        ):
+            return None
+        claim_started = parse_timestamp(claim_started_at)
+        if claim_started is None:
+            return None
+
+        expected_worktree = str(
+            state.last_implementation_worktree_path or ""
+        ).strip()
+        expected_branch = str(
+            state.last_implementation_branch or ""
+        ).strip()
+        if not expected_worktree or not expected_branch:
+            return None
+
+        try:
+            events = self._iter_merge_lifecycle_events()
+        except CursorReplayError:
+            return None
+
+        matches: list[dict[str, Any]] = []
+        for event in events:
+            recovery = event.get("attempt_recovery")
+            if not isinstance(recovery, Mapping):
+                continue
+            event_attempt = exact_int(event.get("attempt"))
+            recovery_attempt = exact_int(recovery.get("attempt"))
+            previous_display = exact_int(
+                recovery.get("previous_display_count")
+            )
+            previous_canonical = exact_int(
+                recovery.get("previous_cid_count")
+            )
+            released_to = exact_int(recovery.get("released_to"))
+            sequence = exact_int(event.get("sequence"))
+            event_id = event.get("event_id")
+            stream_id = event.get("stream_id")
+            snapshot_id = event.get("snapshot_id")
+            recovery_timestamp = event.get("timestamp")
+            recovered_at = (
+                parse_timestamp(recovery_timestamp)
+                if isinstance(recovery_timestamp, str)
+                else None
+            )
+            if (
+                event.get("type")
+                != "implementation_state_recovered"
+                or event.get("reason")
+                != "inflight_process_missing"
+                or event.get("finished_attempt") is not False
+                or event_attempt != attempt
+                or event.get("task_id") != task_id
+                or event.get("canonical_task_key")
+                != canonical_task_key
+                or event.get("canonical_task_cid")
+                != canonical_task_cid
+                or event.get("board_namespace") != board_namespace
+                or not isinstance(event.get("worktree_path"), str)
+                or normalize_workspace_path(
+                    event["worktree_path"]
+                )
+                != normalize_workspace_path(expected_worktree)
+                or event.get("branch") != expected_branch
+                or recovery.get("released") is not True
+                or recovery.get("consumed") is not False
+                or recovery_attempt != attempt
+                or recovery.get("task_id") != task_id
+                or recovery.get("canonical_task_cid")
+                != canonical_task_cid
+                or previous_display != attempt
+                or previous_canonical != attempt
+                or released_to != display_attempt
+                or sequence is None
+                or sequence <= 0
+                or not isinstance(event_id, str)
+                or not event_id.startswith("sha256:")
+                or not isinstance(stream_id, str)
+                or not stream_id
+                or not isinstance(snapshot_id, str)
+                or not snapshot_id
+                or recovered_at is None
+                or recovered_at < claim_started
+            ):
+                continue
+
+            starts = []
+            conflicting_later_events = []
+            for candidate in events:
+                candidate_sequence = exact_int(candidate.get("sequence"))
+                candidate_attempt = exact_int(candidate.get("attempt"))
+                if (
+                    candidate_sequence is None
+                    or candidate_attempt != attempt
+                    or candidate.get("canonical_task_cid")
+                    != canonical_task_cid
+                ):
+                    continue
+                if (
+                    candidate.get("type") == "implementation_started"
+                    and candidate_sequence < sequence
+                    and candidate.get("task_id") == task_id
+                    and candidate.get("canonical_task_key")
+                    == canonical_task_key
+                    and candidate.get("board_namespace")
+                    == board_namespace
+                    and candidate.get("worktree_path")
+                    == expected_worktree
+                    and candidate.get("branch") == expected_branch
+                ):
+                    started_timestamp = candidate.get("timestamp")
+                    started_at = (
+                        parse_timestamp(started_timestamp)
+                        if isinstance(started_timestamp, str)
+                        else None
+                    )
+                    if (
+                        started_at is not None
+                        and claim_started <= started_at <= recovered_at
+                    ):
+                        starts.append(candidate)
+                if (
+                    candidate_sequence > sequence
+                    and candidate.get("type")
+                    in {
+                        "implementation_started",
+                        "implementation_finished",
+                        "implementation_provider_exhausted",
+                        "implementation_skipped",
+                        "implementation_state_recovered",
+                        "implementation_task_claim_released",
+                        "implementation_terminated",
+                        "implementation_timeout",
+                    }
+                ):
+                    conflicting_later_events.append(candidate)
+            if len(starts) != 1 or conflicting_later_events:
+                continue
+            start = starts[0]
+            matches.append(
+                {
+                    "event_id": event_id,
+                    "stream_id": stream_id,
+                    "snapshot_id": snapshot_id,
+                    "sequence": sequence,
+                    "timestamp": recovery_timestamp,
+                    "start_event_id": start["event_id"],
+                    "start_sequence": start["sequence"],
+                    "started_at": start["timestamp"],
+                    "claim_started_at": claim_started_at,
+                    "canonical_task_key": canonical_task_key,
+                    "board_namespace": board_namespace,
+                    "released_from": attempt,
+                    "released_to": released_to,
+                    "worktree_path": expected_worktree,
+                    "branch": expected_branch,
+                }
+            )
+        if len(matches) != 1:
+            return None
+        return matches[0]
+
+    def _reconcile_quiesced_implementation_task_claim(
+        self,
+        state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Release one exact dead claim after terminal lane/task proof."""
+
+        task_id = str(state.last_implementation_task_id or "").strip()
+        canonical_task_cid = str(
+            state.last_implementation_task_cid or ""
+        ).strip()
+        if not task_id or not canonical_task_cid:
+            return {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "no_task_claim_identity",
+            }
+        claim_path = self._implementation_task_claim_path(
+            task_id,
+            canonical_task_cid=canonical_task_cid,
+        )
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": reason,
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "claim_path": str(claim_path),
+                **extra,
+            }
+
+        with serialized_lock_update(claim_path):
+            claim = self._load_exact_json_object(claim_path)
+            if claim is None:
+                if claim_path.exists() or claim_path.is_symlink():
+                    return blocked("task_claim_metadata_unreadable")
+                return {
+                    "reconciled": False,
+                    "blocked": False,
+                    "reason": "no_task_claim",
+                    "task_id": task_id,
+                    "canonical_task_cid": canonical_task_cid,
+                    "claim_path": str(claim_path),
+                }
+
+            active_state = {
+                "implementation_in_progress": bool(
+                    state.implementation_in_progress
+                ),
+                "active_task_id": str(state.active_task_id or ""),
+                "active_task_cid": str(state.active_task_cid or ""),
+                "active_attempt": int(state.active_attempt or 0),
+                "active_worktree_path": str(
+                    state.active_worktree_path or ""
+                ),
+                "active_branch": str(state.active_branch or ""),
+            }
+            if any(active_state.values()):
+                return blocked(
+                    "task_claim_lane_state_not_quiesced",
+                    active_state=active_state,
+                )
+            try:
+                attempt = int(claim.get("attempt") or 0)
+                display_attempt = int(
+                    state.implementation_attempts.get(task_id, 0) or 0
+                )
+                canonical_attempt = int(
+                    state.implementation_attempts_by_cid.get(
+                        canonical_task_cid,
+                        0,
+                    )
+                    or 0
+                )
+                pid = int(claim.get("pid") or 0)
+                shard_count = int(claim.get("task_shard_count") or 0)
+                shard_index = int(claim.get("task_shard_index") or 0)
+            except (TypeError, ValueError):
+                return blocked("task_claim_numeric_binding_invalid")
+
+            lease_id = str(claim.get("lease_id") or "").strip()
+            claim_state_dir = str(claim.get("state_dir") or "").strip()
+            claim_state_path = str(claim.get("state_path") or "").strip()
+            claim_repository_id = str(
+                claim.get("repository_id") or ""
+            ).strip()
+            claim_worktree_root = str(
+                claim.get("worktree_root") or ""
+            ).strip()
+            expected_state_dir = normalize_workspace_path(
+                self.state_path.parent.resolve()
+            )
+            expected_state_path = normalize_workspace_path(
+                self.state_path.resolve()
+            )
+            exact_attempt_counters = (
+                attempt == display_attempt == canonical_attempt
+            )
+            released_attempt_evidence = None
+            if not exact_attempt_counters:
+                released_attempt_evidence = (
+                    self._released_unfinished_attempt_evidence(
+                        state,
+                        claim=claim,
+                        task_id=task_id,
+                        canonical_task_cid=canonical_task_cid,
+                        attempt=attempt,
+                        display_attempt=display_attempt,
+                        canonical_attempt=canonical_attempt,
+                    )
+                )
+            if (
+                str(claim.get("kind") or "")
+                != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+                or str(claim.get("task_id") or "") != task_id
+                or str(claim.get("canonical_task_cid") or "")
+                != canonical_task_cid
+                or attempt <= 0
+                or (
+                    not exact_attempt_counters
+                    and released_attempt_evidence is None
+                )
+                or pid <= 0
+                or not lease_id
+                or not claim_state_dir
+                or normalize_workspace_path(claim_state_dir)
+                != expected_state_dir
+                or not claim_state_path
+                or normalize_workspace_path(claim_state_path)
+                != expected_state_path
+                or not claim_repository_id
+                or claim_repository_id != self.merge_target_repository_id
+                or (
+                    claim_worktree_root
+                    and normalize_workspace_path(claim_worktree_root)
+                    != normalize_workspace_path(self.repo_root)
+                )
+                or shard_count != self.task_shard_count
+                or shard_index != self.task_shard_index
+                or (
+                    state.last_implementation_started_at
+                    and str(claim.get("started_at") or "")
+                    != state.last_implementation_started_at
+                )
+            ):
+                return blocked(
+                    "task_claim_identity_mismatch",
+                    attempt=attempt,
+                    claim_lease_id=lease_id,
+                    claim_state_dir=claim_state_dir,
+                )
+            owner = ProcessBirthIdentity(pid=pid, start_time_ticks=0)
+            liveness = owner_liveness(
+                owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            if liveness is not OwnerLiveness.DEAD:
+                return blocked(
+                    "task_claim_owner_still_active"
+                    if liveness is OwnerLiveness.ALIVE
+                    else "task_claim_owner_liveness_unknown",
+                    owner_pid=pid,
+                    owner_liveness=liveness.value,
+                )
+            protected_fences = (
+                implementation_task_claim_protected_fence_paths(claim)
+            )
+            if protected_fences:
+                return blocked(
+                    "task_claim_protected_fence_present",
+                    protected_fence_paths=list(protected_fences),
+                )
+            record, task_status, authority_reason = (
+                self._terminal_authority_for_quiesced_task_claim(
+                    state,
+                    task_id=task_id,
+                    canonical_task_key=str(
+                        claim.get("canonical_task_key") or ""
+                    ),
+                    canonical_task_cid=canonical_task_cid,
+                    board_namespace=str(
+                        claim.get("board_namespace") or ""
+                    ),
+                    attempt=attempt,
+                )
+            )
+            if record is None or authority_reason:
+                return blocked(
+                    authority_reason,
+                    observed_task_status=task_status,
+                )
+            if (
+                released_attempt_evidence is not None
+                and record.branch
+                != released_attempt_evidence["branch"]
+            ):
+                return blocked(
+                    "task_claim_recovery_lifecycle_branch_mismatch",
+                    lifecycle_branch=record.branch,
+                    recovery_branch=released_attempt_evidence["branch"],
+                )
+
+            claim_id = content_identity(claim)
+            basis = {
+                "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
+                "operation": "release_quiesced_implementation_task_claim",
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": attempt,
+                "task_status": task_status,
+                "claim": {
+                    "path": str(claim_path),
+                    "claim_id": claim_id,
+                    "lease_id": lease_id,
+                    "owner_pid": pid,
+                    "state_dir": expected_state_dir,
+                    "state_path": expected_state_path,
+                    "legacy_worktree_root_missing": not bool(
+                        claim_worktree_root
+                    ),
+                },
+                "worktree_lifecycle": {
+                    "record_id": record.record_id,
+                    "lease_id": record.lease_id,
+                    "fence": record.fence,
+                    "state": record.state.value,
+                    "workspace_path": record.workspace_path,
+                    "terminal_reason": record.terminal_reason,
+                },
+                "task_source_identity": self._task_source_identity_record(),
+            }
+            if released_attempt_evidence is not None:
+                basis["released_unfinished_attempt"] = (
+                    released_attempt_evidence
+                )
+            operation_id = content_identity(basis)
+            receipt_path = self._task_claim_release_receipt_path(
+                canonical_task_cid=canonical_task_cid,
+                attempt=attempt,
+                lease_id=lease_id,
+            )
+            existing_receipt = load_json_dict(receipt_path)
+            if existing_receipt is None and (
+                receipt_path.exists() or receipt_path.is_symlink()
+            ):
+                return blocked(
+                    "task_claim_release_receipt_unreadable",
+                    receipt_path=str(receipt_path),
+                )
+            if existing_receipt is not None and (
+                str(existing_receipt.get("operation_id") or "")
+                != operation_id
+                or str(existing_receipt.get("phase") or "") != "prepared"
+            ):
+                return blocked(
+                    "task_claim_release_receipt_conflict",
+                    receipt_path=str(receipt_path),
+                )
+            prepared_at = (
+                str(existing_receipt.get("prepared_at") or "")
+                if existing_receipt is not None
+                else utc_now()
+            )
+            write_json_atomic(
+                receipt_path,
+                {
+                    **basis,
+                    "operation_id": operation_id,
+                    "phase": "prepared",
+                    "prepared_at": prepared_at,
+                },
+            )
+            current = self._load_exact_json_object(claim_path)
+            if (
+                current is None
+                or content_identity(current) != claim_id
+                or str(current.get("lease_id") or "") != lease_id
+                or str(current.get("canonical_task_cid") or "")
+                != canonical_task_cid
+            ):
+                return blocked(
+                    "task_claim_compare_and_delete_lost",
+                    attempt=attempt,
+                    claim_lease_id=lease_id,
+                    receipt_path=str(receipt_path),
+                )
+            claim_path.unlink()
+
+        released_at = utc_now()
+        receipt_body = {
+            **basis,
+            "operation_id": operation_id,
+            "phase": "released",
+            "prepared_at": prepared_at,
+            "released_at": released_at,
+        }
+        receipt_id = content_identity(receipt_body)
+        write_json_atomic(
+            receipt_path,
+            {**receipt_body, "receipt_id": receipt_id},
+        )
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "task_status": task_status,
+            "claim_path": str(claim_path),
+            "claim_id": claim_id,
+            "claim_lease_id": lease_id,
+            "owner_pid": pid,
+            "state_dir": expected_state_dir,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+            "operation_id": operation_id,
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(receipt_path),
+        }
+        if released_attempt_evidence is not None:
+            result["released_unfinished_attempt"] = (
+                released_attempt_evidence
+            )
+        self._record_event("implementation_task_claim_released", result)
+        return result
+
+    def reconcile_quiesced_implementation_task_claim(self) -> dict[str, Any]:
+        """Reconcile only the repo-wide claim for already-clean lane state."""
+
+        result = self._reconcile_quiesced_implementation_task_claim(
+            PortalTaskState.load(self.state_path)
+        )
+        if result.get("blocked", False):
+            self._record_event(
+                "implementation_task_claim_reconciliation_blocked",
+                result,
+            )
+        return result
+
     def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
@@ -8002,7 +9284,11 @@ class PortalImplementationDaemon:
             return result
 
         task_id = state.active_task_id or state.last_implementation_task_id
-        attempt = int(state.active_attempt or 0)
+        attempt = int(
+            state.active_attempt
+            or state.implementation_attempts.get(task_id, 0)
+            or 0
+        )
         had_active_state = bool(
             state.implementation_in_progress
             or state.active_task_id
@@ -8021,6 +9307,32 @@ class PortalImplementationDaemon:
             state.save(self.state_path)
         else:
             reconciled_at = utc_now()
+
+        task_claim_reconciliation = (
+            self._reconcile_quiesced_implementation_task_claim(state)
+        )
+        if task_claim_reconciliation.get("blocked", False):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "task_claim_reconciliation_blocked",
+                "reconciled_at": reconciled_at,
+                "task_id": task_id,
+                "attempt": attempt,
+                "attempt_recovery": attempt_recovery,
+                "task_claim_reconciliation": task_claim_reconciliation,
+                "protected_path_reconciliation": (
+                    protected_path_reconciliation
+                ),
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
 
         stale_lock_cleared = False
         if lock_path.exists():
@@ -8042,6 +9354,7 @@ class PortalImplementationDaemon:
             "task_id": task_id,
             "attempt": attempt,
             "attempt_recovery": attempt_recovery,
+            "task_claim_reconciliation": task_claim_reconciliation,
             "protected_path_reconciliation": (
                 protected_path_reconciliation
             ),
@@ -8119,7 +9432,67 @@ class PortalImplementationDaemon:
         )
 
     def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
-        return self._task_attempt_count(state, task) + 1
+        current = self._task_attempt_count(state, task)
+        durable = self._durable_protected_recovery_attempt(state, task)
+        if durable is not None:
+            self._scoped_recovery_attempts.pop(task.task_id, None)
+            return durable
+        protected = self._scoped_recovery_attempts.pop(task.task_id, None)
+        if protected is not None and protected == current:
+            return protected
+        return current + 1
+
+    def _durable_protected_recovery_attempt(
+        self,
+        state: PortalTaskState,
+        task: PortalTask,
+    ) -> int | None:
+        """Recover one exact revision/attempt from its durable signed latch."""
+
+        current = self._task_attempt_count(state, task)
+        if current <= 0:
+            return None
+        revision = self._canonical_ref(task)
+        state_latched = self._protected_attempt_latched(
+            state,
+            task_id=task.task_id,
+            attempt=current,
+            task_revision_cid=revision,
+        )
+        event_latch = self._protected_attempt_event_latch(
+            task_id=task.task_id,
+            attempt=current,
+            task_revision_cid=revision,
+        )
+        if not state_latched and event_latch is None:
+            return None
+        key = self._protected_attempt_latch_key(
+            task.task_id,
+            current,
+            revision,
+        )
+        latch = (
+            state.protected_implementation_attempts.get(key, {})
+            if state_latched
+            else event_latch or {}
+        )
+        expected_namespace = task.board_namespace or self.todo_path.name
+        if (
+            not isinstance(latch, Mapping)
+            or latch.get("board_namespace") != expected_namespace
+            or self._task_attempt_has_implementation_finish(
+                task.task_id,
+                current,
+                task_revision_cid=revision,
+                board_namespace=expected_namespace,
+            )
+        ):
+            return None
+        # Strict CAS evidence is required by the runner before adoption.  It
+        # is deliberately not required for attempt selection: missing or
+        # substituted state must fail closed on the same consumed ordinal,
+        # never authorize increment/rollback/replay.
+        return current
 
     def _reset_attempt_budgets_for_completed_retry_repairs(
         self,
@@ -8170,6 +9543,23 @@ class PortalImplementationDaemon:
 
             canonical_task_cids: set[str] = set()
             source_task = tasks_by_id.get(source_task_id)
+            if (
+                source_task is not None
+                and self._durable_protected_recovery_attempt(
+                    state,
+                    source_task,
+                )
+                is not None
+            ):
+                deferred.append(
+                    {
+                        "source_task_id": source_task_id,
+                        "repair_task_id": repair_task_id,
+                        "failure_kind": failure_kind,
+                        "reason": "protected_attempt_latched",
+                    }
+                )
+                continue
             if source_task is not None:
                 canonical_task_cids.add(self._canonical_ref(source_task))
             stored_identity = state.task_identities.get(source_task_id, {})
@@ -8291,6 +9681,582 @@ class PortalImplementationDaemon:
         )
         return released
 
+    def _retry_budget_repair_runtime_revision(self) -> str:
+        """Return one cached source-bound revision for this daemon process."""
+
+        cached = getattr(
+            self,
+            "_retry_budget_repair_runtime_revision_cache",
+            None,
+        )
+        if cached is not None:
+            return str(cached)
+        try:
+            revision = retry_budget_repair_runtime_revision()
+        except OSError as exc:
+            revision = ""
+            self._record_event(
+                "retry_budget_repair_runtime_revision_unavailable",
+                {
+                    "schema": (
+                        RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION
+                    ),
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                },
+            )
+        self._retry_budget_repair_runtime_revision_cache = revision
+        return revision
+
+    def _rearm_attempt_limited_retry_repairs(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one fresh budget to a generated repair per recovery revision.
+
+        A retry-budget repair can itself exhaust the ordinary task-attempt
+        limit.  Leaving it there permanently blocks its source and every
+        downstream task, while exempting it from the limit would create an
+        unbounded provider loop.  Persist a content-bound receipt atomically
+        with the cleared counters so the same runtime revision can rearm a
+        canonical repair at most once.
+
+        This deliberately does *not* clear the source task's attempt counters,
+        release its strategy block, or mark either task complete.  Those
+        authority transitions remain gated on the repair's validated merge and
+        board completion receipt.
+        """
+
+        revision = str(recovery_revision or "").strip()
+        if self.max_task_attempts <= 0 or not revision:
+            return []
+
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        task_identities = {
+            task.task_id: self._identity_for_task(task)
+            for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in task_identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid,
+                [],
+            ).append(task_id)
+
+        rearmed: list[dict[str, Any]] = []
+        queue_changed = False
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+            ):
+                continue
+            source_task_id, failure_kind = retry_budget_repair_source(task)
+            if not source_task_id:
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+
+            identity = task_identities[task.task_id]
+            fingerprint_payload = {
+                "schema": RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior_fingerprints = state.retry_budget_repair_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior_fingerprints:
+                continue
+
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.pop(alias, 0) or 0)
+                for alias in aliases_by_cid.get(
+                    identity.canonical_task_cid,
+                    [task.task_id],
+                )
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.pop(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            queue_changed = (
+                self.task_queue.reset_retry_state(
+                    identity.canonical_task_cid
+                )
+                or queue_changed
+            )
+            prior_fingerprints.append(fingerprint)
+            rearmed.append(
+                {
+                    "repair_task_id": task.task_id,
+                    "source_task_id": source_task_id,
+                    "failure_kind": failure_kind,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": attempt_count,
+                    "previous_display_attempt_counts": (
+                        previous_display_counts
+                    ),
+                    "previous_canonical_attempt_count": (
+                        previous_canonical_count
+                    ),
+                    "recovery_revision": revision,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+
+        if rearmed:
+            state.last_progress_at = utc_now()
+            if queue_changed:
+                self.task_queue.save()
+            state.save(self.state_path)
+            self._record_event(
+                "retry_budget_repair_rearmed",
+                {
+                    "schema": RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION,
+                    "recovery_revision": revision,
+                    "rearmed_count": len(rearmed),
+                    "rearmed": rearmed,
+                },
+            )
+        return rearmed
+
+    def _stale_proposal_replay_recovery_evidence(
+        self,
+        task: PortalTask,
+        *,
+        canonical_task_cid: str,
+    ) -> dict[str, Any] | None:
+        """Prove one ordinary attempt failed only on a same-attempt replay.
+
+        The proof is deliberately event-segment based.  A bare terminal
+        ``stale_proposal_replay`` label is not enough: the same task revision
+        must first have admitted proposal X, started bounded provider rescue,
+        rejected unchanged X solely as stale, preserved the failed candidate,
+        and consumed that exact attempt.  This keeps recovery unavailable for
+        cross-task replays, changed proposal bodies, or mixed security
+        findings.
+        """
+
+        events = list(self._iter_events())
+        task_id = str(task.task_id or "").strip()
+        expected_cid = str(canonical_task_cid or "").strip()
+        if not task_id or not expected_cid:
+            return None
+
+        def event_cid(event: Mapping[str, Any]) -> str:
+            return str(
+                event.get("canonical_task_cid")
+                or event.get("task_cid")
+                or ""
+            ).strip()
+
+        def changed_paths(value: Any) -> tuple[str, ...]:
+            if not isinstance(value, list) or not value:
+                return ()
+            normalized = tuple(
+                sorted(
+                    {
+                        str(path).strip()
+                        for path in value
+                        if isinstance(path, str) and str(path).strip()
+                    }
+                )
+            )
+            if len(normalized) != len(value):
+                return ()
+            return normalized
+
+        finish_index = -1
+        finish: Mapping[str, Any] | None = None
+        for index, event in enumerate(events):
+            if (
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "").strip() == task_id
+            ):
+                finish_index = index
+                finish = event
+        if finish is None or event_cid(finish) != expected_cid:
+            return None
+        if finish.get("attempt_consumed") is not True:
+            return None
+        try:
+            attempt = int(finish.get("attempt") or 0)
+        except (TypeError, ValueError):
+            return None
+        branch = str(finish.get("branch") or "").strip()
+        validation_result = finish.get("validation_result")
+        if (
+            attempt <= 0
+            or not branch
+            or not isinstance(validation_result, Mapping)
+            or str(validation_result.get("reason") or "").strip()
+            != "proposal_gate_failed"
+            or str(validation_result.get("error") or "").strip()
+            != "proposal_validation_failed"
+        ):
+            return None
+        terminal_gate = validation_result.get("proposal_gate")
+        if not isinstance(terminal_gate, Mapping):
+            return None
+        terminal_reasons = {
+            str(reason).strip()
+            for reason in (terminal_gate.get("reason_codes") or ())
+            if str(reason).strip()
+        }
+        proposal_id = str(terminal_gate.get("proposal_id") or "").strip()
+        repository_tree_id = str(
+            terminal_gate.get("repository_tree_id") or ""
+        ).strip()
+        proposal_paths = changed_paths(terminal_gate.get("changed_paths"))
+        if (
+            terminal_reasons != {"stale_proposal_replay"}
+            or not proposal_id
+            or not repository_tree_id
+            or not proposal_paths
+        ):
+            return None
+
+        start_index = -1
+        start_event: Mapping[str, Any] | None = None
+        for index in range(finish_index):
+            event = events[index]
+            if (
+                event.get("type") == "implementation_started"
+                and str(event.get("task_id") or "").strip() == task_id
+                and event_cid(event) == expected_cid
+                and str(event.get("branch") or "").strip() == branch
+            ):
+                try:
+                    event_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if event_attempt == attempt:
+                    start_index = index
+                    start_event = event
+        if (
+            start_event is None
+            or str(start_event.get("baseline_ref") or "").strip()
+            != repository_tree_id
+        ):
+            return None
+
+        signature = (proposal_id, repository_tree_id, proposal_paths)
+
+        def proposal_signature(event: Mapping[str, Any]) -> tuple[Any, ...]:
+            return (
+                str(event.get("proposal_id") or "").strip(),
+                str(event.get("repository_tree_id") or "").strip(),
+                changed_paths(event.get("changed_paths")),
+            )
+
+        accepted_index = -1
+        rescue_index = -1
+        rejected_index = -1
+        preserved_index = -1
+        accepted_event: Mapping[str, Any] | None = None
+        rejected_event: Mapping[str, Any] | None = None
+        preserved_event: Mapping[str, Any] | None = None
+        for index in range(start_index + 1, finish_index):
+            event = events[index]
+            if (
+                str(event.get("task_id") or "").strip() != task_id
+                or event_cid(event) != expected_cid
+            ):
+                continue
+            event_type = str(event.get("type") or "")
+            if (
+                event_type == "implementation_proposal_validated"
+                and event.get("accepted") is True
+                and proposal_signature(event) == signature
+            ):
+                accepted_index = index
+                rescue_index = -1
+                rejected_index = -1
+                preserved_index = -1
+                accepted_event = event
+                rejected_event = None
+                preserved_event = None
+                continue
+            if accepted_index < 0:
+                continue
+            if event_type == "implementation_auto_rescue_provider_started":
+                try:
+                    rescue_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                plan = event.get("plan")
+                plan_reasons = {
+                    str(reason).strip()
+                    for reason in (
+                        plan.get("reason_codes") or ()
+                        if isinstance(plan, Mapping)
+                        else ()
+                    )
+                    if str(reason).strip()
+                }
+                if (
+                    rescue_attempt == attempt
+                    and isinstance(plan, Mapping)
+                    and str(plan.get("action") or "").strip()
+                    == "inline_provider_rescue"
+                    and "validation_command_failed" in plan_reasons
+                ):
+                    rescue_index = index
+                continue
+            if (
+                rescue_index > accepted_index
+                and event_type == "implementation_proposal_rejected"
+                and event.get("accepted") is False
+                and proposal_signature(event) == signature
+            ):
+                reasons = {
+                    str(reason).strip()
+                    for reason in (event.get("reason_codes") or ())
+                    if str(reason).strip()
+                }
+                if reasons == {"stale_proposal_replay"}:
+                    rejected_index = index
+                    rejected_event = event
+                continue
+            if (
+                rejected_index > rescue_index
+                and event_type == "failed_validation_worktree_preserved"
+                and event.get("preserved") is True
+                and str(event.get("branch") or "").strip() == branch
+                and str(event.get("implementation_commit") or "").strip()
+                and str(event.get("rescue_branch") or "").strip()
+            ):
+                try:
+                    preserved_attempt = int(event.get("attempt") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if preserved_attempt == attempt:
+                    preserved_index = index
+                    preserved_event = event
+
+        if not (
+            start_index
+            < accepted_index
+            < rescue_index
+            < rejected_index
+            < preserved_index
+            < finish_index
+            and accepted_event is not None
+            and rejected_event is not None
+            and preserved_event is not None
+        ):
+            return None
+        return {
+            "task_id": task_id,
+            "canonical_task_cid": expected_cid,
+            "attempt": attempt,
+            "branch": branch,
+            "proposal_id": proposal_id,
+            "repository_tree_id": repository_tree_id,
+            "changed_paths": list(proposal_paths),
+            "accepted_event_id": str(
+                accepted_event.get("event_id") or ""
+            ),
+            "rejected_event_id": str(
+                rejected_event.get("event_id") or ""
+            ),
+            "preserved_event_id": str(
+                preserved_event.get("event_id") or ""
+            ),
+            "finished_event_id": str(finish.get("event_id") or ""),
+            "implementation_commit": str(
+                preserved_event.get("implementation_commit") or ""
+            ),
+            "rescue_branch": str(
+                preserved_event.get("rescue_branch") or ""
+            ),
+        }
+
+    def _rearm_attempt_limited_stale_proposal_tasks(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one attempt to an ordinary task stalled by our replay gate.
+
+        The recovery is intentionally narrower than a generic retry reset. It
+        requires a complete same-attempt stale-replay proof, retains every
+        source-revision fingerprint, and restores only one attempt slot.  The
+        latter preserves ``attempt > 1`` so the next run can seed the already
+        admitted, preserved candidate instead of asking a provider to recreate
+        it from scratch.
+        """
+
+        revision = str(recovery_revision or "").strip()
+        if (
+            self.max_task_attempts <= 0
+            or not revision
+            or (self.task_shard_count > 1 and not self.strict_task_sharding)
+        ):
+            return []
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        identities = {
+            task.task_id: self._identity_for_task(task) for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid, []
+            ).append(task_id)
+
+        candidates: list[dict[str, Any]] = []
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+                or is_retry_budget_repair_task(task)
+            ):
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+            identity = identities[task.task_id]
+            evidence = self._stale_proposal_replay_recovery_evidence(
+                task,
+                canonical_task_cid=identity.canonical_task_cid,
+            )
+            if evidence is None:
+                continue
+            fingerprint_payload = {
+                "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior = state.stale_proposal_replay_rearm_receipts.get(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior:
+                continue
+            candidates.append(
+                {
+                    "task": task,
+                    "identity": identity,
+                    "attempt_count": attempt_count,
+                    "evidence": evidence,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+
+        if not candidates:
+            return []
+
+        queue_changed = False
+        for candidate in candidates:
+            queue_changed = (
+                self.task_queue.reset_retry_state(
+                    candidate["identity"].canonical_task_cid
+                )
+                or queue_changed
+            )
+        # Persist the retry-queue reset before consuming the durable receipt.
+        # A crash in between is safe: the unchanged state will retry this
+        # idempotent reset.  The reverse order could strand a task forever.
+        if queue_changed:
+            self.task_queue.save()
+
+        recovery_count = max(0, self.max_task_attempts - 1)
+        rearmed: list[dict[str, Any]] = []
+        for candidate in candidates:
+            task = candidate["task"]
+            identity = candidate["identity"]
+            aliases = aliases_by_cid.get(
+                identity.canonical_task_cid,
+                [task.task_id],
+            )
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.get(alias, 0) or 0)
+                for alias in aliases
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.get(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            for alias in aliases:
+                state.implementation_attempts[alias] = recovery_count
+            state.implementation_attempts_by_cid[
+                identity.canonical_task_cid
+            ] = recovery_count
+            receipts = state.stale_proposal_replay_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            receipts.append(candidate["rearm_fingerprint"])
+            rearmed.append(
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": candidate["attempt_count"],
+                    "restored_attempt_count": recovery_count,
+                    "previous_display_attempt_counts": (
+                        previous_display_counts
+                    ),
+                    "previous_canonical_attempt_count": (
+                        previous_canonical_count
+                    ),
+                    "recovery_revision": revision,
+                    "rearm_fingerprint": candidate["rearm_fingerprint"],
+                    "evidence": candidate["evidence"],
+                }
+            )
+        state.last_progress_at = utc_now()
+        state.save(self.state_path)
+        self._record_event(
+            "ordinary_task_stale_proposal_replay_rearmed",
+            {
+                "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "rearmed_count": len(rearmed),
+                "rearmed": rearmed,
+            },
+        )
+        return rearmed
+
     def _partition_tasks_at_attempt_limit(
         self,
         tasks: Sequence[PortalTask],
@@ -8317,6 +10283,8 @@ class PortalImplementationDaemon:
         limited: list[dict[str, Any]] = []
         for task in tasks:
             attempt_count = self._task_attempt_count(state, task)
+            if self._durable_protected_recovery_attempt(state, task) is not None:
+                exempt.add(task.task_id)
             if (
                 task.task_id not in exempt
                 and resolved_statuses.get(task.task_id) == "ready"
@@ -8355,12 +10323,22 @@ class PortalImplementationDaemon:
         self,
         task_id: str,
         attempt: int,
+        *,
+        task_revision_cid: str = "",
+        board_namespace: str = "",
     ) -> bool:
-        """Return whether a durable finish event exists for task/attempt."""
+        """Return whether a durable finish exists for this exact revision."""
 
         task_id = str(task_id or "").strip()
         attempt_number = int(attempt or 0)
-        if not task_id or attempt_number <= 0:
+        revision = str(task_revision_cid or "").strip()
+        namespace = str(board_namespace or "").strip()
+        if (
+            not task_id
+            or attempt_number <= 0
+            or not revision
+            or not namespace
+        ):
             return False
         for event in self._iter_events():
             if str(event.get("type") or "") != "implementation_finished":
@@ -8369,8 +10347,180 @@ class PortalImplementationDaemon:
                 continue
             if int(event.get("attempt") or 0) != attempt_number:
                 continue
+            event_revision = str(
+                event.get("canonical_task_cid")
+                or event.get("task_revision_cid")
+                or ""
+            ).strip()
+            event_namespace = str(event.get("board_namespace") or "").strip()
+            if event_revision != revision or event_namespace != namespace:
+                continue
             return True
         return False
+
+    @staticmethod
+    def _protected_attempt_latch_key(
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> str:
+        return content_identity(
+            {
+                "task_id": str(task_id or "").strip(),
+                "attempt": int(attempt),
+                "task_revision_cid": str(task_revision_cid or "").strip(),
+            }
+        )
+
+    def _protected_attempt_latched(
+        self,
+        state: PortalTaskState,
+        *,
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> bool:
+        """Return a strict durable latch independent of command/log parsing."""
+
+        task_value = str(task_id or "").strip()
+        attempt_value = int(attempt or 0)
+        revision_value = str(task_revision_cid or "").strip()
+        if not task_value or attempt_value <= 0 or not revision_value:
+            return False
+        key = self._protected_attempt_latch_key(
+            task_value,
+            attempt_value,
+            revision_value,
+        )
+        value = state.protected_implementation_attempts.get(key)
+        if not isinstance(value, Mapping):
+            return False
+        identity = dict(value)
+        latch_id = identity.pop("latch_id", "")
+        return bool(
+            value.get("schema")
+            == (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-implementation-attempt-latch@1"
+            )
+            and value.get("task_id") == task_value
+            and value.get("attempt") == attempt_value
+            and value.get("task_revision_cid") == revision_value
+            and isinstance(value.get("board_namespace"), str)
+            and value.get("board_namespace")
+            and isinstance(value.get("route_id"), str)
+            and value.get("route_id")
+            and isinstance(value.get("invocation_id"), str)
+            and value.get("invocation_id")
+            and isinstance(value.get("logical_attempt_id"), str)
+            and value.get("logical_attempt_id")
+            and isinstance(value.get("worktree_id"), str)
+            and value.get("worktree_id")
+            and isinstance(value.get("provider_attempt_store"), str)
+            and value.get("provider_attempt_store")
+            and isinstance(value.get("provider_attempt_store_identity"), str)
+            and value.get("provider_attempt_store_identity")
+            and latch_id == content_identity(identity)
+        )
+
+    def _protected_attempt_event_latch(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> dict[str, Any] | None:
+        """Recover an immutable latch from the append-only event journal."""
+
+        names = (
+            "schema",
+            "task_id",
+            "attempt",
+            "task_revision_cid",
+            "board_namespace",
+            "route_id",
+            "invocation_id",
+            "logical_attempt_id",
+            "worktree_id",
+            "provider_attempt_store",
+            "provider_attempt_store_identity",
+        )
+        for event in reversed(tuple(self._iter_events())):
+            if (
+                event.get("type") != "protected_implementation_attempt_latched"
+                or event.get("task_id") != task_id
+                or event.get("attempt") != attempt
+                or event.get("task_revision_cid") != task_revision_cid
+            ):
+                continue
+            body = {name: event.get(name) for name in names}
+            record = {**body, "latch_id": event.get("latch_id")}
+            key = self._protected_attempt_latch_key(
+                task_id,
+                attempt,
+                task_revision_cid,
+            )
+            recovered = PortalTaskState(
+                protected_implementation_attempts={key: record}
+            )
+            return (
+                record
+                if self._protected_attempt_latched(
+                    recovered,
+                    task_id=task_id,
+                    attempt=attempt,
+                    task_revision_cid=task_revision_cid,
+                )
+                else None
+            )
+        return None
+
+    def _latch_protected_attempt(
+        self,
+        state: PortalTaskState,
+        route: AgentImplementationRoutePlan,
+    ) -> None:
+        invocation = route.invocation_binding
+        if invocation is None:
+            return
+        body: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-implementation-attempt-latch@1"
+            ),
+            "task_id": invocation.task_id,
+            "attempt": invocation.attempt,
+            "task_revision_cid": invocation.task_revision_cid,
+            "board_namespace": (
+                route.authorization.board_namespace
+                if route.authorization is not None
+                else ""
+            ),
+            "route_id": invocation.route_id,
+            "invocation_id": invocation.invocation_id,
+            "logical_attempt_id": invocation.logical_attempt_id,
+            "worktree_id": invocation.worktree_id,
+            "provider_attempt_store": invocation.provider_attempt_store,
+            "provider_attempt_store_identity": (
+                invocation.provider_attempt_store_identity
+            ),
+        }
+        record = {**body, "latch_id": content_identity(body)}
+        key = self._protected_attempt_latch_key(
+            invocation.task_id,
+            invocation.attempt,
+            invocation.task_revision_cid,
+        )
+        prior = state.protected_implementation_attempts.get(key)
+        if prior is not None and prior != record:
+            raise ImplementationRetryDeferred(
+                "protected attempt latch identity drifted",
+                backoff_seconds=300,
+            )
+        state.protected_implementation_attempts[key] = record
+        state.save(self.state_path)
+        if prior is None:
+            self._record_event("protected_implementation_attempt_latched", record)
 
     def _release_unfinished_active_attempt(
         self,
@@ -8397,10 +10547,6 @@ class PortalImplementationDaemon:
                 "attempt": attempt_number,
                 "task_id": task_id,
             }
-        released_to = max(0, attempt_number - 1)
-        previous_display = int(
-            state.implementation_attempts.get(task_id, 0) or 0
-        )
         identity = state.task_identities.get(task_id, {}) if isinstance(
             state.task_identities, Mapping
         ) else {}
@@ -8409,6 +10555,27 @@ class PortalImplementationDaemon:
             or state.last_implementation_task_cid
             or identity.get("canonical_task_cid")
             or ""
+        )
+        if self._protected_attempt_latched(
+            state,
+            task_id=task_id,
+            attempt=attempt_number,
+            task_revision_cid=task_cid,
+        ) or self._protected_attempt_event_latch(
+            task_id=task_id,
+            attempt=attempt_number,
+            task_revision_cid=task_cid,
+        ) is not None:
+            return {
+                "consumed": True,
+                "released": False,
+                "protected_scoped_attempt": True,
+                "attempt": attempt_number,
+                "task_id": task_id,
+            }
+        released_to = max(0, attempt_number - 1)
+        previous_display = int(
+            state.implementation_attempts.get(task_id, 0) or 0
         )
         previous_cid = int(
             state.implementation_attempts_by_cid.get(task_cid, 0) or 0
@@ -8434,6 +10601,131 @@ class PortalImplementationDaemon:
             "previous_cid_count": previous_cid,
         }
 
+    def _scoped_attempt_recovery_reservation(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        task_revision_cid: str,
+    ) -> tuple[bool, ProviderAttemptReservation | None]:
+        """Detect protected provenance, then independently validate CAS.
+
+        The first result is conservative and only fences historical attempt
+        counter rollback.  The second is strict evidence that may be adopted.
+        A missing, truncated, forged, or substituted protected binding must
+        never fall through to legacy decrement/restore behavior.
+        """
+
+        event_latch = self._protected_attempt_event_latch(
+            task_id=task_id,
+            attempt=attempt,
+            task_revision_cid=task_revision_cid,
+        )
+        try:
+            durable_state = PortalTaskState.load(self.state_path)
+            state_latch = self._protected_attempt_latched(
+                durable_state,
+                task_id=task_id,
+                attempt=attempt,
+                task_revision_cid=task_revision_cid,
+            )
+        except (OSError, TypeError, ValueError):
+            # Recovery authority is derived from the append-only latch/event
+            # and protected command shape before a corrupt mutable projection
+            # can route this attempt into legacy rollback.
+            state_latch = False
+        durable_latch = bool(state_latch or event_latch is not None)
+        for event in reversed(tuple(self._iter_events())):
+            if (
+                str(event.get("type") or "") != "implementation_started"
+                or str(event.get("task_id") or "") != task_id
+                or int(event.get("attempt") or 0) != attempt
+            ):
+                continue
+            command = event.get("command")
+            if not isinstance(command, list) or any(
+                not isinstance(item, str) for item in command
+            ):
+                return durable_latch, None
+            protected_provenance = (
+                "--agent-implementation-route-json" in command
+                or (
+                    "--grok-failure-receipt-nonce" in command
+                    and "--codex-fallback-command-json" in command
+                    and "--canonical-legacy-preflight-route" not in command
+                    and any("gpt-5.6-terra" in item for item in command)
+                    and any('"high"' in item for item in command)
+                )
+            )
+            if not protected_provenance:
+                return durable_latch, None
+            try:
+                flag_index = command.index("--agent-implementation-route-json")
+                raw_binding = command[flag_index + 1]
+
+                def unique(
+                    pairs: Sequence[tuple[str, Any]],
+                ) -> dict[str, Any]:
+                    result: dict[str, Any] = {}
+                    for key, value in pairs:
+                        if key in result:
+                            raise ValueError("duplicate scoped recovery key")
+                        result[key] = value
+                    return result
+
+                binding = json.loads(
+                    raw_binding,
+                    object_pairs_hook=unique,
+                )
+                invocation = (
+                    binding.get("invocation_binding")
+                    if isinstance(binding, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(invocation, Mapping)
+                    or invocation.get("schema")
+                    != (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "provider-fallback-invocation@2"
+                    )
+                    or invocation.get("task_id") != task_id
+                    or invocation.get("attempt") != attempt
+                    or invocation.get("task_revision_cid")
+                    != task_revision_cid
+                ):
+                    return durable_latch, None
+                store = DurableProviderAttemptCAS(
+                    str(invocation.get("provider_attempt_store") or ""),
+                    expected_directory_identity=str(
+                        invocation.get("provider_attempt_store_identity") or ""
+                    ),
+                )
+                reservation = store.read(
+                    str(invocation.get("logical_attempt_id") or "")
+                )
+            except (
+                IndexError,
+                ValueError,
+                json.JSONDecodeError,
+                ProviderAttemptStoreError,
+            ):
+                return True, None
+            if (
+                reservation is not None
+                and reservation.task_id == task_id
+                and reservation.logical_attempt_id
+                == invocation.get("logical_attempt_id")
+                and reservation.state in {
+                    "reserved",
+                    "effect_started",
+                    "terminal",
+                }
+            ):
+                return durable_latch, reservation
+            return True, None
+        return durable_latch, None
+
     def _restore_task_attempt(
         self,
         state: PortalTaskState,
@@ -8442,7 +10734,46 @@ class PortalImplementationDaemon:
     ) -> None:
         """Restore the pre-launch count for a confirmed non-consuming deferral."""
 
+        requested = max(0, int(attempt or 0))
         identity = self._identity_for_task(task)
+        for value in tuple(state.protected_implementation_attempts.values()):
+            if not isinstance(value, Mapping):
+                continue
+            protected_attempt = value.get("attempt")
+            if (
+                isinstance(protected_attempt, int)
+                and not isinstance(protected_attempt, bool)
+                and protected_attempt > requested
+                and value.get("task_revision_cid")
+                == identity.canonical_task_cid
+                and self._protected_attempt_latched(
+                    state,
+                    task_id=task.task_id,
+                    attempt=protected_attempt,
+                    task_revision_cid=identity.canonical_task_cid,
+                )
+            ):
+                return
+        for event in reversed(tuple(self._iter_events())):
+            protected_attempt = event.get("attempt")
+            if (
+                event.get("type")
+                == "protected_implementation_attempt_latched"
+                and event.get("task_id") == task.task_id
+                and event.get("task_revision_cid")
+                == identity.canonical_task_cid
+                and isinstance(protected_attempt, int)
+                and not isinstance(protected_attempt, bool)
+                and protected_attempt > requested
+                and self._protected_attempt_event_latch(
+                    task_id=task.task_id,
+                    attempt=protected_attempt,
+                    task_revision_cid=identity.canonical_task_cid,
+                )
+                is not None
+            ):
+                return
+
         if attempt > 0:
             state.implementation_attempts[task.task_id] = attempt
             state.implementation_attempts_by_cid[identity.canonical_task_cid] = (
@@ -11672,12 +14003,27 @@ class PortalImplementationDaemon:
                 or ""
             )
             recovered_attempt_number = int(previous.active_attempt or 0)
+            recovered_revision = str(
+                previous.active_task_cid
+                or previous.last_implementation_task_cid
+                or ""
+            )
+            recovered_identity = self._task_identity_by_display_id.get(
+                recovered_task_id
+            )
+            recovered_namespace = (
+                recovered_identity.board_namespace
+                if recovered_identity is not None
+                else self.todo_path.name
+            )
             finished_attempt = bool(
                 recovered_task_id
                 and recovered_attempt_number > 0
                 and self._task_attempt_has_implementation_finish(
                     recovered_task_id,
                     recovered_attempt_number,
+                    task_revision_cid=recovered_revision,
+                    board_namespace=recovered_namespace,
                 )
             )
             if finished_attempt:
@@ -11685,15 +14031,52 @@ class PortalImplementationDaemon:
                     recovered_state
                 )
             else:
-                # Process vanished without a finish receipt (often false
-                # liveness / docker restart). Do not leave the durable attempt
-                # counter latched at the unfinished attempt or multi-task
-                # boards exhaust repair budget without ever validating work.
-                recovered_attempt = self._release_unfinished_active_attempt(
-                    recovered_state,
+                (
+                    protected_scoped_attempt,
+                    scoped_reservation,
+                ) = self._scoped_attempt_recovery_reservation(
                     task_id=recovered_task_id,
                     attempt=recovered_attempt_number,
+                    task_revision_cid=str(
+                        previous.active_task_cid
+                        or previous.last_implementation_task_cid
+                        or ""
+                    ),
                 )
+                if protected_scoped_attempt:
+                    # A protected logical attempt is latched exactly once.
+                    # Re-dispatch reuses the same attempt number so the runner
+                    # can adopt/terminalize the CAS state; no display/CID
+                    # counter is decremented, popped, restored, or incremented.
+                    self._scoped_recovery_attempts[recovered_task_id] = (
+                        recovered_attempt_number
+                    )
+                    recovered_attempt = {
+                        "consumed": True,
+                        "released": False,
+                        "protected_scoped_attempt": True,
+                        "cas_evidence_valid": scoped_reservation is not None,
+                        "attempt": recovered_attempt_number,
+                        "task_id": recovered_task_id,
+                        "reservation_id": (
+                            scoped_reservation.reservation_id
+                            if scoped_reservation is not None
+                            else ""
+                        ),
+                        "reservation_state": (
+                            scoped_reservation.state
+                            if scoped_reservation is not None
+                            else "invalid_or_missing"
+                        ),
+                    }
+                else:
+                    # Legacy vanished processes retain the historical retry
+                    # rollback behavior.
+                    recovered_attempt = self._release_unfinished_active_attempt(
+                        recovered_state,
+                        task_id=recovered_task_id,
+                        attempt=recovered_attempt_number,
+                    )
             self._clear_active_execution_state(recovered_state)
             recovered_state.save(self.state_path)
             self._record_event(
@@ -11731,7 +14114,13 @@ class PortalImplementationDaemon:
                 skip_task_ids=merge_skip_task_ids,
                 deprioritized_task_ids=strategy_deprioritized_task_ids,
             )
+            dead_owner_reclaim = self._reclaim_dead_same_lane_worktree_owners()
             merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
+            if isinstance(merged_worktree_cleanup, dict):
+                merged_worktree_cleanup = {
+                    **merged_worktree_cleanup,
+                    "dead_owner_reclaim": dead_owner_reclaim,
+                }
             self._periodic_maintenance()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
@@ -12040,6 +14429,31 @@ class PortalImplementationDaemon:
                     },
                 )
                 selectable_tasks = fallback_tasks
+        recovery_runtime_revision = (
+            ""
+            if self.manual_completion_authority_revalidation_only
+            else self._retry_budget_repair_runtime_revision()
+        )
+        stale_proposal_replay_rearms = (
+            []
+            if self.manual_completion_authority_revalidation_only
+            else self._rearm_attempt_limited_stale_proposal_tasks(
+                previous,
+                selectable_tasks,
+                resolved_statuses,
+                recovery_revision=recovery_runtime_revision,
+            )
+        )
+        retry_budget_repair_rearms = (
+            []
+            if self.manual_completion_authority_revalidation_only
+            else self._rearm_attempt_limited_retry_repairs(
+                previous,
+                selectable_tasks,
+                resolved_statuses,
+                recovery_revision=recovery_runtime_revision,
+            )
+        )
         selectable_tasks, attempt_limited_tasks = self._partition_tasks_at_attempt_limit(
             selectable_tasks,
             resolved_statuses,
@@ -12135,6 +14549,18 @@ class PortalImplementationDaemon:
         state.retry_budget_repair_receipts = dict(
             previous.retry_budget_repair_receipts
         )
+        state.retry_budget_repair_rearm_receipts = {
+            str(key): list(value)
+            for key, value in (
+                previous.retry_budget_repair_rearm_receipts.items()
+            )
+        }
+        state.stale_proposal_replay_rearm_receipts = {
+            str(key): list(value)
+            for key, value in (
+                previous.stale_proposal_replay_rearm_receipts.items()
+            )
+        }
         revision_reset_task_ids: list[str] = []
         for task in tasks:
             previous_identity = previous.task_identities.get(task.task_id, {})
@@ -12350,6 +14776,10 @@ class PortalImplementationDaemon:
                         item["source_task_id"]
                         for item in retry_budget_reset_deferred
                     ],
+                    "retry_budget_rearmed_task_ids": [
+                        item["repair_task_id"]
+                        for item in retry_budget_repair_rearms
+                    ],
                     "released_retry_budget_strategy_block_task_ids": [
                         item["source_task_id"]
                         for item in released_retry_budget_strategy_blocks
@@ -12416,6 +14846,10 @@ class PortalImplementationDaemon:
             ],
             "retry_budget_resets": retry_budget_resets,
             "retry_budget_reset_deferred": retry_budget_reset_deferred,
+            "retry_budget_repair_rearms": retry_budget_repair_rearms,
+            "stale_proposal_replay_rearms": (
+                stale_proposal_replay_rearms
+            ),
             "released_retry_budget_strategy_blocks": (
                 released_retry_budget_strategy_blocks
             ),
@@ -12542,6 +14976,221 @@ class PortalImplementationDaemon:
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
+    def _protected_provider_effect_audit(
+        self,
+        *,
+        command_items: Sequence[str],
+        receipt_text: str,
+        returncode: int | None,
+    ) -> dict[str, Any]:
+        """Validate protected terminal evidence at its durable claim instant."""
+
+        audit: dict[str, Any] = {
+            "exhausted": False,
+            "providers": [],
+            "reason": "",
+        }
+
+        def command_value(flag: str) -> str:
+            try:
+                index = command_items.index(flag)
+            except ValueError:
+                return ""
+            return command_items[index + 1] if index + 1 < len(command_items) else ""
+
+        def unique(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate protected recovery key")
+                result[key] = value
+            return result
+
+        route_raw = command_value("--agent-implementation-route-json")
+        locator_raw = command_value("--agent-implementation-recovery-json")
+        try:
+            if bool(route_raw) == bool(locator_raw):
+                return audit
+            if route_raw:
+                binding = json.loads(route_raw, object_pairs_hook=unique)
+                invocation_locator = (
+                    binding.get("invocation_binding")
+                    if isinstance(binding, Mapping)
+                    else None
+                )
+                if not isinstance(invocation_locator, Mapping):
+                    return audit
+                store_path = invocation_locator.get("provider_attempt_store")
+                store_identity = invocation_locator.get(
+                    "provider_attempt_store_identity"
+                )
+                logical_attempt_id = invocation_locator.get(
+                    "logical_attempt_id"
+                )
+            else:
+                locator = json.loads(locator_raw, object_pairs_hook=unique)
+                if not isinstance(locator, Mapping):
+                    return audit
+                locator_body = {
+                    key: value
+                    for key, value in locator.items()
+                    if key != "locator_id"
+                }
+                locator_encoded = json.dumps(
+                    locator_body,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+                if (
+                    locator.get("schema")
+                    != (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "provider-effect-recovery-locator@1"
+                    )
+                    or locator.get("locator_id")
+                    != "sha256:" + hashlib.sha256(locator_encoded).hexdigest()
+                ):
+                    return audit
+                invocation_locator = locator
+                store_path = locator.get("provider_attempt_store")
+                store_identity = locator.get("provider_attempt_store_identity")
+                logical_attempt_id = locator.get("logical_attempt_id")
+            if any(
+                not isinstance(value, str) or not value
+                for value in (store_path, store_identity, logical_attempt_id)
+            ):
+                return audit
+            store = DurableProviderAttemptCAS(
+                str(store_path),
+                expected_directory_identity=str(store_identity),
+            )
+            terminal = store.read(str(logical_attempt_id))
+            if terminal is None or terminal.state != "terminal":
+                return audit
+            launch_owner_pid = terminal.effect_launch_receipt.get(
+                "effect_owner_pid"
+            )
+            if (
+                isinstance(launch_owner_pid, bool)
+                or not isinstance(launch_owner_pid, int)
+                or launch_owner_pid <= 0
+                or terminal.effect_started_at_ms is None
+            ):
+                return audit
+            context = parse_agent_implementation_effect_authorization_context(
+                terminal.authorization_context,
+                repo_root=self.repo_root,
+                effect_started_at_ms=terminal.effect_started_at_ms,
+                expected_signer_parent_pid=launch_owner_pid,
+                max_age_ms=5 * 60 * 1000,
+            )
+            if context is None or context.route.invocation_binding is None:
+                return audit
+            invocation = context.route.invocation_binding
+            if route_raw:
+                if dict(binding) != context.route.as_binding_dict():
+                    return audit
+            else:
+                exact_locator = {
+                    "task_id": invocation.task_id,
+                    "attempt": invocation.attempt,
+                    "task_revision_cid": invocation.task_revision_cid,
+                    "logical_attempt_id": invocation.logical_attempt_id,
+                    "worktree_id": invocation.worktree_id,
+                    "prompt_cid": invocation.prompt_cid,
+                    "workspace_path": invocation.workspace_path,
+                    "provider_attempt_store": invocation.provider_attempt_store,
+                    "provider_attempt_store_identity": (
+                        invocation.provider_attempt_store_identity
+                    ),
+                }
+                if any(
+                    locator.get(name) != value
+                    for name, value in exact_locator.items()
+                ):
+                    return audit
+            outcome = terminal.terminal_outcome
+            if (
+                returncode is None
+                or terminal.terminal_returncode != returncode
+                or not isinstance(outcome, Mapping)
+                or terminal.logical_attempt_id != invocation.logical_attempt_id
+                or terminal.route_id != context.route.route_id
+                or terminal.task_id != invocation.task_id
+                or terminal.worktree_id != invocation.worktree_id
+                or terminal.decision_id != context.decision.content_id
+                or terminal.reservation_id != outcome.get("reservation_id")
+                or terminal.decision_id != outcome.get("decision_id")
+                or terminal.effect_launch_receipt
+                != outcome.get("effect_launch_receipt")
+                or terminal.effect_adoption_receipt
+                != outcome.get("effect_adoption_receipt")
+                or terminal.quarantine_receipt
+                != outcome.get("effect_quarantine_receipt")
+                or terminal.quarantine_terminalization_receipt
+                != outcome.get(
+                    "effect_quarantine_terminalization_receipt"
+                )
+                or terminal.terminal_returncode
+                != outcome.get("fallback_returncode")
+                or not valid_agent_implementation_route_outcome(
+                    outcome,
+                    receipt=context.failure_receipt,
+                    route=context.route,
+                    runner_returncode=returncode,
+                )
+            ):
+                return audit
+            expected_terminal_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    dict(outcome),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            logged = extract_agent_implementation_route_outcomes(receipt_text)
+            if (
+                terminal.terminal_outcome_id != expected_terminal_id
+                or terminal.terminal_outcome != dict(outcome)
+                or len(logged) != 1
+                or logged[0] != dict(outcome)
+            ):
+                return audit
+        except (
+            IndexError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+            ProviderAttemptStoreError,
+        ):
+            return audit
+        authorization = context.route.authorization
+        audit.update(
+            {
+                "route_outcome": dict(outcome),
+                "route_outcome_id": str(outcome.get("outcome_id") or ""),
+                "quota_probe_receipt": dict(context.failure_receipt),
+                "quota_probe_receipt_id": str(
+                    context.failure_receipt.get("receipt_id") or ""
+                ),
+                "failure_class": str(
+                    context.failure_receipt.get("failure_class") or "unknown"
+                ),
+                "route_authorization": (
+                    authorization.as_dict() if authorization is not None else None
+                ),
+                "invocation_binding_id": invocation.content_id,
+                "accepted_control_plane": invocation.control_plane.as_dict(),
+                "historical_effect_started_at_ms": terminal.effect_started_at_ms,
+            }
+        )
+        return audit
+
     def _provider_capacity_failure_from_log(
         self,
         log_path: Path,
@@ -12549,46 +15198,22 @@ class PortalImplementationDaemon:
         command: Sequence[str] = (),
         returncode: int | None = None,
     ) -> dict[str, Any]:
+        command_items = [str(item) for item in command]
+        protected_command = bool(
+            "--agent-implementation-route-json" in command_items
+            or "--agent-implementation-recovery-json" in command_items
+        )
         try:
-            with log_path.open("rb") as handle:
-                handle.seek(0, os.SEEK_END)
-                size = handle.tell()
-                tail_start = max(
-                    0,
-                    size - PROVIDER_CAPACITY_LOG_TAIL_BYTES,
-                )
-                # Read the preceding byte so the receipt parser can prove
-                # whether the bounded slice begins on an LF-delimited record
-                # boundary.  Never manufacture a trusted line start by
-                # cutting through model-controlled output at the tail limit.
-                read_start = max(0, tail_start - 1)
-                handle.seek(read_start)
-                bounded = handle.read()
-                tail_offset = tail_start - read_start
-                tail = bounded[tail_offset:]
-                text = tail.decode("utf-8", errors="replace")
-                if tail_start == 0 or bounded[:tail_offset] == b"\n":
-                    receipt_tail = tail
-                else:
-                    next_lf = tail.find(b"\n")
-                    receipt_tail = (
-                        tail[next_lf + 1 :]
-                        if next_lf >= 0
-                        else b""
-                    )
-                receipt_text = receipt_tail.decode(
-                    "utf-8",
-                    errors="replace",
-                )
+            text, receipt_text = _stable_owned_log_tail(
+                log_path,
+                PROVIDER_CAPACITY_LOG_TAIL_BYTES,
+                # Legacy logs only drive historical backoff accounting and
+                # were created with the daemon's ambient umask.  Protected
+                # outcome authority is always non-group-writable.
+                reject_group_writable=protected_command,
+            )
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
-        classified = classify_provider_capacity_failure(
-            text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
-        )
-        command_items = [str(item) for item in command]
 
         def command_value(flag: str) -> str:
             try:
@@ -12601,61 +15226,289 @@ class PortalImplementationDaemon:
 
         receipt_nonce = command_value("--grok-failure-receipt-nonce")
         primary_model = command_value("--model")
-        valid_probe_receipt = False
-        if returncode is not None and receipt_nonce and primary_model:
-            for receipt in reversed(
-                extract_grok_failure_receipts(receipt_text)
-            ):
-                if not valid_grok_failure_receipt(
-                    receipt,
-                    nonce=receipt_nonce,
-                    model=primary_model,
-                    returncode=returncode,
+        binding_raw = command_value("--agent-implementation-route-json")
+        protected_latched = False
+        try:
+            current_state = PortalTaskState.load(self.state_path)
+            protected_latched = self._protected_attempt_latched(
+                current_state,
+                task_id=(
+                    current_state.active_task_id
+                    or current_state.last_implementation_task_id
+                ),
+                attempt=current_state.active_attempt,
+                task_revision_cid=(
+                    current_state.active_task_cid
+                    or current_state.last_implementation_task_cid
+                ),
+            )
+        except (OSError, TypeError, ValueError):
+            # A syntactically protected command remains protected even when
+            # its durable projection cannot be decoded.
+            protected_latched = False
+        protected_provenance = bool(protected_command or protected_latched)
+        if protected_provenance:
+            return self._protected_provider_effect_audit(
+                command_items=command_items,
+                receipt_text=receipt_text,
+                returncode=returncode,
+            )
+        if protected_provenance:
+            audit: dict[str, Any] = {
+                "exhausted": False,
+                "providers": [],
+                "reason": "",
+            }
+            # A malformed/truncated protected command is still categorically
+            # protected from legacy provider-capacity reclassification.
+            if returncode is None or not receipt_nonce or not primary_model:
+                return audit
+            observed_now_ms = int(time.time() * 1000)
+            try:
+                def unique_binding(
+                    pairs: Sequence[tuple[str, Any]],
+                ) -> dict[str, Any]:
+                    result: dict[str, Any] = {}
+                    for key, value in pairs:
+                        if key in result:
+                            raise ValueError("duplicate protected route key")
+                        result[key] = value
+                    return result
+
+                binding = json.loads(
+                    binding_raw,
+                    object_pairs_hook=unique_binding,
+                )
+                if not isinstance(binding, dict):
+                    return audit
+                route_plan = resolve_agent_implementation_route_binding(
+                    binding,
+                    repo_root=self.repo_root,
+                    now_ms=observed_now_ms,
+                    max_age_ms=5 * 60 * 1000,
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                return audit
+            valid_receipts = []
+            for receipt in extract_grok_failure_receipts(receipt_text):
+                probe_returncode = receipt.get("probe_returncode")
+                if (
+                    not isinstance(probe_returncode, int)
+                    or isinstance(probe_returncode, bool)
+                    or (
+                        not valid_agent_implementation_failure_receipt(
+                            receipt,
+                            nonce=receipt_nonce,
+                            model=primary_model,
+                            probe_returncode=probe_returncode,
+                            now_ms=observed_now_ms,
+                            max_age_ms=5 * 60 * 1000,
+                        )
+                        if route_plan.invocation_binding is not None
+                        else not valid_grok_failure_receipt(
+                            receipt,
+                            nonce=receipt_nonce,
+                            model=primary_model,
+                            returncode=probe_returncode,
+                        )
+                    )
                 ):
                     continue
-                valid_probe_receipt = True
-                failure_class = str(
-                    receipt.get("failure_class") or "unknown"
+                valid_receipts.append(receipt)
+            valid_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+            def durable_outcome_matches(
+                outcome: Mapping[str, Any],
+                *,
+                receipt: Mapping[str, Any],
+            ) -> bool:
+                invocation = route_plan.invocation_binding
+                if invocation is None:
+                    return False
+                quota_evidence = None
+                if outcome.get("verifier_status") == "confirmed_quota":
+                    quota_raw = outcome.get("quota_evidence")
+                    launch = outcome.get("effect_launch_receipt")
+                    adoption = outcome.get("effect_adoption_receipt")
+                    if not isinstance(quota_raw, Mapping):
+                        return False
+                    owner_receipt = (
+                        adoption
+                        if isinstance(adoption, Mapping) and adoption
+                        else launch
+                    )
+                    expected_signer_parent_pid = (
+                        owner_receipt.get("effect_owner_pid")
+                        if isinstance(owner_receipt, Mapping)
+                        else quota_raw.get("signer_parent_pid")
+                    )
+                    if (
+                        isinstance(expected_signer_parent_pid, bool)
+                        or not isinstance(expected_signer_parent_pid, int)
+                        or expected_signer_parent_pid <= 0
+                    ):
+                        return False
+                    quota_evidence = parse_agent_implementation_quota_evidence(
+                        quota_raw,
+                        failure_receipt=receipt,
+                        invocation_binding=invocation,
+                        now_ms=observed_now_ms,
+                        max_age_ms=5 * 60 * 1000,
+                        expected_signer_parent_pid=(
+                            expected_signer_parent_pid
+                        ),
+                    )
+                    if quota_evidence is None:
+                        return False
+                elif (
+                    outcome.get("quota_evidence")
+                    or outcome.get("quota_evidence_id")
+                ):
+                    return False
+                if outcome.get("decision") == "denied":
+                    return bool(
+                        not outcome.get("reservation_id")
+                        and not outcome.get("effect_launch_receipt")
+                        and not outcome.get("effect_adoption_receipt")
+                        and not outcome.get("effect_quarantine_receipt")
+                        and not outcome.get(
+                            "effect_quarantine_terminalization_receipt"
+                        )
+                    )
+                try:
+                    store = DurableProviderAttemptCAS(
+                        invocation.provider_attempt_store,
+                        expected_directory_identity=(
+                            invocation.provider_attempt_store_identity
+                        ),
+                    )
+                    terminal = store.read(invocation.logical_attempt_id)
+                    expected_terminal_id = "sha256:" + hashlib.sha256(
+                        json.dumps(
+                            dict(outcome),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=True,
+                            allow_nan=False,
+                        ).encode("utf-8")
+                    ).hexdigest()
+                    fresh_decision = decide_agent_implementation_fallback(
+                        route_plan,
+                        repo_root=self.repo_root,
+                        failure_receipt=receipt,
+                        expected_nonce=receipt_nonce,
+                        expected_model=primary_model,
+                        expected_probe_returncode=int(
+                            receipt.get("probe_returncode")
+                        ),
+                        independent_quota_evidence=quota_evidence,
+                        expected_invocation_binding=(
+                            invocation.signed_payload()
+                        ),
+                        now_ms=observed_now_ms,
+                        max_age_ms=5 * 60 * 1000,
+                    )
+                except (OSError, TypeError, ValueError, ProviderAttemptStoreError):
+                    return False
+                return bool(
+                    terminal is not None
+                    and terminal.state == "terminal"
+                    and terminal.logical_attempt_id
+                    == invocation.logical_attempt_id
+                    and terminal.route_id == route_plan.route_id
+                    and terminal.task_id == invocation.task_id
+                    and terminal.worktree_id == invocation.worktree_id
+                    and terminal.reservation_id
+                    == outcome.get("reservation_id")
+                    and terminal.decision_id == outcome.get("decision_id")
+                    and terminal.decision_id == fresh_decision.content_id
+                    and terminal.effect_launch_receipt
+                    == outcome.get("effect_launch_receipt")
+                    and terminal.effect_adoption_receipt
+                    == outcome.get("effect_adoption_receipt")
+                    and terminal.quarantine_receipt
+                    == outcome.get("effect_quarantine_receipt")
+                    and terminal.quarantine_terminalization_receipt
+                    == outcome.get(
+                        "effect_quarantine_terminalization_receipt"
+                    )
+                    and terminal.terminal_returncode
+                    == outcome.get("fallback_returncode")
+                    and terminal.terminal_outcome_id == expected_terminal_id
+                    and terminal.terminal_outcome == dict(outcome)
                 )
-                classified.update(
+
+            for receipt in valid_receipts:
+                if route_plan.invocation_binding is not None:
+                    for outcome in extract_agent_implementation_route_outcomes(
+                        receipt_text
+                    ):
+                        if valid_agent_implementation_route_outcome(
+                            outcome,
+                            receipt=receipt,
+                            route=route_plan,
+                            runner_returncode=returncode,
+                        ) and durable_outcome_matches(
+                            outcome,
+                            receipt=receipt,
+                        ):
+                            valid_pairs.append((receipt, outcome))
+                else:
+                    for outcome in extract_grok_route_outcomes(receipt_text):
+                        if valid_grok_route_outcome(
+                            outcome,
+                            receipt=receipt,
+                            route_plan=route_plan.as_outcome_dict(),
+                            runner_returncode=returncode,
+                        ):
+                            valid_pairs.append((receipt, outcome))
+            # Auth/high fallback is the same logical attempt. Every nonzero
+            # outcome categorically bypasses provider-capacity restoration;
+            # the sole valid terminal pair is retained only as audit evidence.
+            if len(valid_pairs) == 1:
+                receipt, outcome = valid_pairs[0]
+                invocation_binding = route_plan.invocation_binding
+                audit.update(
                     {
-                        "exhausted": True,
-                        "providers": ["grok"],
-                        "reason": "provider_capacity_exhausted",
-                        "failure_class": failure_class,
+                        "route_outcome": dict(outcome),
+                        "route_outcome_id": str(
+                            outcome.get("outcome_id") or ""
+                        ),
                         "quota_probe_receipt": dict(receipt),
                         "quota_probe_receipt_id": str(
                             receipt.get("receipt_id") or ""
                         ),
-                        "quota_probe_evidence_sha256": str(
-                            receipt.get("evidence_sha256") or ""
+                        "failure_class": str(
+                            receipt.get("failure_class") or "unknown"
+                        ),
+                        "route_authorization": (
+                            route_plan.authorization.as_dict()
+                            if route_plan.authorization is not None
+                            else None
+                        ),
+                        "invocation_binding_id": (
+                            invocation_binding.content_id
+                            if invocation_binding is not None
+                            else ""
+                        ),
+                        "accepted_control_plane": (
+                            invocation_binding.control_plane.as_dict()
+                            if invocation_binding is not None
+                            else None
                         ),
                     }
                 )
-                if valid_grok_hard_quota_receipt(
-                    receipt,
-                    nonce=receipt_nonce,
-                    model=primary_model,
-                    returncode=returncode,
-                ):
-                    classified.update(
-                        {
-                            "hard_quota_exhausted_providers": ["grok"],
-                            "hard_quota_evidence_sha256": str(
-                                receipt.get("evidence_sha256") or ""
-                            ),
-                        }
-                    )
-                break
-            if not valid_probe_receipt:
-                # Automatic Grok task output is model-controlled. It may
-                # contain quota-looking text, but only the isolated preflight
-                # receipt can classify that command as provider capacity.
-                return {
-                    "exhausted": False,
-                    "providers": [],
-                    "reason": "",
-                }
+            return audit
+        # Protected nonce-bound routes returned above without invoking this
+        # compatibility classifier.  Legacy, non-route provider commands keep
+        # their existing capacity/backoff accounting; the result never grants
+        # cross-provider fallback authority.
+        classified = classify_provider_capacity_failure(
+            text,
+            provider_labels=_provider_labels_from_implementation_command(
+                command
+            ),
+        )
         if not classified["exhausted"]:
             return classified
         if classified.get("failure_class") == "hard_quota_exhausted":
@@ -14112,6 +16965,9 @@ class PortalImplementationDaemon:
                 else self._build_implementation_command(
                     workspace_path,
                     task=task,
+                    prompt=prompt,
+                    attempt=attempt,
+                    state=state,
                 )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -14180,6 +17036,9 @@ class PortalImplementationDaemon:
                                 task,
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
+                            ),
+                            pass_fds=self._accepted_control_plane_pass_fds(
+                                command
                             ),
                             timeout_seconds=timeout_policy.max_timeout_seconds,
                             progress_timeout_seconds=(
@@ -22366,6 +25225,22 @@ class PortalImplementationDaemon:
                 baseline_ref=resolved_baseline,
                 state=state,
             )
+            if not validation_result.get("passed", False):
+                # Reconciliation path: stage/revalidate only (no second provider
+                # pass). Provider rescue belongs to the primary implement loop.
+                validation_result = self._automatic_implementation_rescue(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                    branch_name=branch_name,
+                    baseline_ref=resolved_baseline,
+                    validation_result=validation_result,
+                    log_path=log_path,
+                    state=state,
+                    command=(),
+                    base_prompt="",
+                    allow_provider_rescue=False,
+                )
             protected_path_violation = (
                 self._implementation_protected_path_violation(
                     task=task,
@@ -22805,6 +25680,9 @@ class PortalImplementationDaemon:
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
+                    prompt=prompt,
+                    attempt=attempt,
+                    state=state,
                 )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -22974,6 +25852,9 @@ class PortalImplementationDaemon:
                                 stdout=log_fh,
                                 input_text=prompt,
                                 env=provider_environment,
+                                pass_fds=self._accepted_control_plane_pass_fds(
+                                    command
+                                ),
                                 timeout_seconds=timeout_policy.max_timeout_seconds,
                                 progress_timeout_seconds=(
                                     timeout_policy.progress_timeout_seconds
@@ -23177,6 +26058,28 @@ class PortalImplementationDaemon:
                                     state=state,
                                 )
                             )
+                            if not validation_result.get("passed", False):
+                                validation_result = (
+                                    self._automatic_implementation_rescue(
+                                        task=task,
+                                        attempt=attempt,
+                                        workspace_path=worktree_path,
+                                        branch_name=branch_name,
+                                        baseline_ref=baseline_ref,
+                                        validation_result=validation_result,
+                                        log_path=log_path,
+                                        state=state,
+                                        command=command,
+                                        base_prompt=prompt,
+                                        allow_provider_rescue=bool(command),
+                                        replayable_consumed_proposal_ids=(
+                                            seed_replayable_proposal_ids
+                                        ),
+                                    )
+                                )
+                                proposal_validation = validation_result.get(
+                                    "proposal_validation"
+                                )
                         if (
                             not deterministic_only
                             and validation_result.get("passed", False)
@@ -25842,12 +28745,14 @@ class PortalImplementationDaemon:
                 workspace_path=worktree_path,
                 branch=branch_name,
                 caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+                expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
             )
         elif phase == "claimed":
             decision = self.worktree_lifecycle.authorize_cleanup(
                 workspace_path=worktree_path,
                 branch=branch_name,
                 caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+                expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
             )
         else:
             return False, "unknown_reuse_authorization_phase"
@@ -26062,13 +28967,10 @@ class PortalImplementationDaemon:
                 if metadata.get(key):
                     blobs.append(str(metadata.get(key)))
         haystack = "\n".join(blobs)
-        known_pin_set = set(known_pins)
         for pin in known_pins:
             if pin in haystack:
                 found.add(pin)
         # PYTHONPATH=src:external/ipfs_accelerate:external/ipfs_kit:…
-        # Only accept paths that match the known monorepo pin set. Free-text
-        # prose such as "no external/untracked checkout" must not invent a pin.
         for match in re.finditer(
             r"(?:^|[\s:=])((?:external|swissknife|hallucinate_app|Mcp-Plus-Plus)"
             r"(?:/[A-Za-z0-9_.\-]+)+)",
@@ -26079,10 +28981,8 @@ class PortalImplementationDaemon:
             parts = relative.split("/")
             if parts[0] in {"external", "swissknife", "hallucinate_app", "Mcp-Plus-Plus"}:
                 if parts[0] == "external" and len(parts) >= 2:
-                    candidate = f"external/{parts[1]}"
-                    if candidate in known_pin_set:
-                        found.add(candidate)
-                elif parts[0] != "external" and parts[0] in known_pin_set:
+                    found.add(f"external/{parts[1]}")
+                elif parts[0] != "external":
                     found.add(parts[0])
         return tuple(
             sorted(
@@ -31242,6 +34142,77 @@ class PortalImplementationDaemon:
         )
         return relative in records
 
+    def _proposal_expected_output_git_location(
+        self,
+        workspace_path: Path,
+        relative: str,
+    ) -> tuple[Path, str, str] | None:
+        """Resolve the verified Git owner for one exact expected output.
+
+        The superproject owns a configured submodule's gitlink, while the child
+        repository owns every strict descendant.  Ignore and index queries for
+        child paths must therefore run in the child repository: applying an
+        unrelated superproject ignore rule can otherwise reject a valid child
+        proposal.  Route only configured, initialized, stage-zero gitlinks;
+        unverifiable managed boundaries fail closed.
+        """
+
+        if not self._repo_relative_path_safe(relative):
+            return None
+        configured_paths = tuple(
+            sorted(
+                {
+                    str(path).strip("/")
+                    for path in self.worktree_submodule_paths
+                    if str(path).strip("/")
+                    and self._repo_relative_path_safe(str(path).strip("/"))
+                },
+                key=lambda path: (-len(PurePosixPath(path).parts), path),
+            )
+        )
+        submodule_path = next(
+            (
+                path
+                for path in configured_paths
+                if relative.startswith(f"{path}/")
+            ),
+            "",
+        )
+        if not submodule_path:
+            # The parent index owns root files and exact gitlink paths.
+            return workspace_path, relative, ""
+
+        child_relative = relative[len(submodule_path) + 1 :]
+        if (
+            not child_relative
+            or not self._repo_relative_path_safe(child_relative)
+            or self._path_crosses_live_symlink(workspace_path, submodule_path)
+        ):
+            return None
+        try:
+            # A configured directory is insufficient authority: it must be the
+            # exact stage-zero gitlink recorded by the superproject.
+            self._proposal_index_gitlink_ref(workspace_path, submodule_path)
+        except (OSError, RuntimeError, UnicodeError, ValueError):
+            return None
+
+        child_root = workspace_path.joinpath(
+            *PurePosixPath(submodule_path).parts
+        )
+        if child_root.is_symlink() or not self._is_git_worktree(child_root):
+            return None
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+            resolved_child_root = child_root.resolve(strict=True)
+            resolved_child_root.relative_to(workspace_root)
+            target = child_root.joinpath(*PurePosixPath(child_relative).parts)
+            target.resolve(
+                strict=target.exists() or target.is_symlink()
+            ).relative_to(resolved_child_root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return child_root, child_relative, submodule_path
+
     @staticmethod
     def _path_crosses_live_symlink(
         workspace_path: Path,
@@ -31270,7 +34241,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         scope_paths: Sequence[str],
     ) -> dict[str, Any]:
-        """Stage exact ignored outputs in their owning Git repository."""
+        """Stage only exact ignored outputs and capture fail-closed evidence."""
 
         expected_paths = self._exact_proposal_expected_output_paths(task)
         predicted_paths = {
@@ -31301,21 +34272,9 @@ class PortalImplementationDaemon:
         all_submodule_paths = tuple(
             sorted({*submodule_paths, *discovered_submodule_paths})
         )
-        ordered_submodule_paths = tuple(
-            sorted(
-                all_submodule_paths,
-                key=lambda value: (-len(value.split("/")), value),
-            )
-        )
-        ordered_configured_submodule_paths = tuple(
-            sorted(
-                set(submodule_paths),
-                key=lambda value: (-len(value.split("/")), value),
-            )
-        )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
-        index_authorities: dict[str, tuple[Path, str]] = {}
+        git_locations: dict[str, tuple[Path, str, str]] = {}
 
         for relative in expected_paths:
             target = workspace_path / relative
@@ -31325,87 +34284,67 @@ class PortalImplementationDaemon:
                 baseline_ref=baseline_ref,
                 relative=relative,
             )
-            submodule_root = next(
-                (
-                    path
-                    for path in ordered_submodule_paths
-                    if relative == path or relative.startswith(f"{path}/")
-                ),
-                "",
+            git_location = self._proposal_expected_output_git_location(
+                workspace_path,
+                relative,
             )
-            configured_submodule_root = next(
-                (
-                    path
-                    for path in ordered_configured_submodule_paths
-                    if relative.startswith(f"{path}/")
-                ),
-                "",
-            )
-            # Ignore and index policy is repository-local. A configured
-            # submodule grants the boundary authority; a discovered nested
-            # gitlink below it identifies the deepest repository that owns the
-            # exact path. Unconfigured submodule boundaries stay fail-closed.
-            owning_submodule_root = ""
-            if configured_submodule_root:
-                candidate_root = (
-                    submodule_root
-                    if submodule_root
-                    and (
-                        submodule_root == configured_submodule_root
-                        or submodule_root.startswith(
-                            f"{configured_submodule_root}/"
-                        )
+            git_owner_valid = git_location is not None
+            if git_location is None:
+                git_root = workspace_path
+                git_relative = relative
+                git_repository = ""
+                indexed = False
+                ignored = False
+                ignore_check_succeeded = False
+            else:
+                git_root, git_relative, git_repository = git_location
+                git_locations[relative] = git_location
+                indexed = self._exact_path_is_indexed(
+                    git_root,
+                    git_relative,
+                )
+                ignored_result = subprocess.run(
+                    [
+                        "git",
+                        "check-ignore",
+                        "--no-index",
+                        "-z",
+                        "--stdin",
+                    ],
+                    cwd=git_root,
+                    input=git_relative.encode(
+                        "utf-8",
+                        errors="surrogateescape",
                     )
-                    else configured_submodule_root
+                    + b"\0",
+                    capture_output=True,
+                    check=False,
                 )
-                if self._is_git_worktree(workspace_path / candidate_root):
-                    owning_submodule_root = candidate_root
-            index_workspace = (
-                workspace_path / owning_submodule_root
-                if owning_submodule_root
-                else workspace_path
-            )
-            index_relative = (
-                relative[len(owning_submodule_root) + 1 :]
-                if owning_submodule_root
-                else relative
-            )
-            index_authorities[relative] = (index_workspace, index_relative)
-            indexed = self._exact_path_is_indexed(
-                index_workspace,
-                index_relative,
-            )
-            ignored_result = subprocess.run(
-                [
-                    "git",
-                    "check-ignore",
-                    "--no-index",
-                    "-z",
-                    "--stdin",
-                ],
-                cwd=index_workspace,
-                input=index_relative.encode(
-                    "utf-8",
-                    errors="surrogateescape",
-                )
-                + b"\0",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
-            ignored = ignored_result.returncode == 0
+                ignored = ignored_result.returncode == 0
+                ignore_check_succeeded = ignored_result.returncode in {0, 1}
             protected = any(
                 self._path_matches_scope(relative, path)
                 for path in protected_paths
             )
             forbidden = any(
                 self._path_matches_scope(relative, path)
-                or self._path_matches_scope(index_relative, path)
+                or self._path_matches_scope(git_relative, path)
                 for path in default_forbidden
             )
             submodule_bound = any(
                 self._path_matches_prefix(relative, path)
                 for path in all_submodule_paths
+            )
+            submodule_root = next(
+                (
+                    path
+                    for path in sorted(
+                        all_submodule_paths,
+                        key=lambda value: (-len(value.split("/")), value),
+                    )
+                    if relative == path or relative.startswith(f"{path}/")
+                ),
+                "",
             )
             submodule_unpopulated = bool(
                 submodule_root
@@ -31451,11 +34390,16 @@ class PortalImplementationDaemon:
                     needs_candidate = False
                 else:
                     issue = EXPECTED_OUTPUT_MISSING
+            elif submodule_bound and (
+                not git_owner_valid or not git_repository
+            ):
+                issue = EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN
+            elif not ignore_check_succeeded:
+                issue = EXPECTED_OUTPUT_FORCE_ADD_FAILED
             elif force_stage_required:
                 if (
                     protected
                     or forbidden
-                    or (submodule_bound and not owning_submodule_root)
                     or symlink_bound
                     or not in_scope
                     or not regular_file
@@ -31470,18 +34414,17 @@ class PortalImplementationDaemon:
                             "add",
                             "--force",
                             "--",
-                            index_relative,
+                            git_relative,
                         ],
-                        cwd=index_workspace,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        cwd=git_root,
+                        capture_output=True,
                         check=False,
                     )
                     force_stage_succeeded = bool(
                         staged.returncode == 0
                         and self._exact_path_is_indexed(
-                            index_workspace,
-                            index_relative,
+                            git_root,
+                            git_relative,
                         )
                     )
                     if not force_stage_succeeded:
@@ -31490,12 +34433,19 @@ class PortalImplementationDaemon:
             checks.append(
                 {
                     "path": relative,
-                    "index_repository": owning_submodule_root or ".",
-                    "index_path": index_relative,
+                    "repository": git_repository or ".",
+                    "tracked_path": git_relative,
+                    # Retain the Wave-2 field names alongside the newer
+                    # declared-output tracking vocabulary.  Both pairs bind
+                    # to the same owning index and repository-local path.
+                    "index_repository": git_repository or ".",
+                    "index_path": git_relative,
                     "exists": exists,
                     "baseline_present": baseline_present,
                     "indexed_before": indexed,
                     "ignored": ignored,
+                    "ignore_check_succeeded": ignore_check_succeeded,
+                    "git_owner_valid": git_owner_valid,
                     "in_scope": in_scope,
                     "protected": protected,
                     "forbidden": forbidden,
@@ -31514,29 +34464,40 @@ class PortalImplementationDaemon:
             )
 
         staged_paths = set(self._staged_worktree_paths(workspace_path))
-        staged_by_repository: dict[Path, set[str]] = {
+        staged_by_git_root: dict[Path, set[str]] = {
             workspace_path: set(staged_paths)
         }
+        for git_root, _git_relative, git_repository in git_locations.values():
+            if git_root not in staged_by_git_root:
+                staged_by_git_root[git_root] = set(
+                    self._staged_worktree_paths(git_root)
+                )
+            if git_repository:
+                staged_paths.update(
+                    f"{git_repository}/{path}"
+                    for path in staged_by_git_root[git_root]
+                )
         for check in checks:
             relative = str(check["path"])
-            index_workspace, index_relative = index_authorities[relative]
-            repository_staged_paths = staged_by_repository.get(index_workspace)
-            if repository_staged_paths is None:
-                repository_staged_paths = set(
-                    self._staged_worktree_paths(index_workspace)
+            git_location = git_locations.get(relative)
+            indexed_after = False
+            if git_location is not None:
+                git_root, git_relative, _git_repository = git_location
+                check["staged"] = (
+                    git_relative in staged_by_git_root.get(git_root, set())
                 )
-                staged_by_repository[index_workspace] = repository_staged_paths
-            check["staged"] = index_relative in repository_staged_paths
-            if check["staged"] and index_workspace != workspace_path:
-                staged_paths.add(relative)
+                indexed_after = self._exact_path_is_indexed(
+                    git_root,
+                    git_relative,
+                )
+            else:
+                check["staged"] = False
+            check["indexed_after"] = indexed_after
             if (
                 check["force_stage_required"]
                 and (
                     not check["staged"]
-                    or not self._exact_path_is_indexed(
-                        index_workspace,
-                        index_relative,
-                    )
+                    or not indexed_after
                 )
                 and not check["issue"]
             ):
@@ -32144,6 +35105,9 @@ class PortalImplementationDaemon:
             protected_paths=tuple(self.implementation_protected_paths),
             allowed_validation_commands=allowed_validation_commands,
             allow_test_weakening=task_owned_test_outputs,
+            allow_validation_config_changes=(
+                task_declares_validation_config_change(task)
+            ),
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
@@ -34681,6 +37645,682 @@ class PortalImplementationDaemon:
         }
         return result
 
+    def _expected_outputs_present_on_disk(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> bool:
+        """True when at least one declared output exists as a regular file/dir."""
+
+        for relative in task_declared_output_paths(task):
+            if not self._repo_relative_path_safe(relative):
+                continue
+            target = workspace_path / relative
+            try:
+                if target.is_symlink():
+                    continue
+                if target.is_file() or target.is_dir():
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _dirty_in_scope_declared_output_paths(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return dirty declared-output paths (modified/untracked) under workspace."""
+
+        scope = tuple(
+            path
+            for path in task_declared_output_paths(task)
+            if self._repo_relative_path_safe(path)
+        )
+        if not scope:
+            return ()
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all", "--", *scope],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            return ()
+        dirty: list[str] = []
+        for line in status.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            path = line[3:].strip()
+            if " -> " in path:
+                path = path.split(" -> ", 1)[1].strip()
+            path = path.strip().replace("\\", "/")
+            if path.startswith("./"):
+                path = path[2:]
+            if path and path not in dirty and self._repo_relative_path_safe(path):
+                dirty.append(path)
+        return tuple(sorted(dirty))
+
+    def _stage_declared_candidate_outputs(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Stage declared outputs that exist on disk into the candidate index.
+
+        Combines force-add of ignored generated evidence with ordinary
+        ``git add`` for dirty declared sources/tests. Protected paths are never
+        force-added.
+        """
+
+        staged: list[str] = []
+        try:
+            ignored_staged = self._stage_declared_ignored_outputs(
+                workspace_path,
+                task,
+            )
+            staged.extend(ignored_staged)
+        except RuntimeError as exc:
+            self._record_event(
+                "implementation_auto_rescue_stage_ignored_failed",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "error": str(exc)[-1000:],
+                },
+            )
+
+        protected_paths = tuple(
+            str(path).strip("/")
+            for path in self.implementation_protected_paths
+            if str(path).strip("/")
+        )
+        candidates: list[str] = []
+        for relative in task_declared_output_paths(task):
+            if not self._repo_relative_path_safe(relative):
+                continue
+            if any(
+                self._path_matches_scope(relative, path)
+                for path in protected_paths
+            ):
+                continue
+            target = workspace_path / relative
+            try:
+                if target.is_symlink():
+                    continue
+                if target.is_file() or target.is_dir():
+                    candidates.append(relative)
+            except OSError:
+                continue
+        dirty = self._dirty_in_scope_declared_output_paths(workspace_path, task)
+        for relative in dirty:
+            if relative not in candidates and self._repo_relative_path_safe(relative):
+                if any(
+                    self._path_matches_scope(relative, path)
+                    for path in protected_paths
+                ):
+                    continue
+                candidates.append(relative)
+
+        for relative in sorted(set(candidates)):
+            if relative in staged:
+                continue
+            add = subprocess.run(
+                ["git", "--literal-pathspecs", "add", "--", relative],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                forced = subprocess.run(
+                    [
+                        "git",
+                        "--literal-pathspecs",
+                        "add",
+                        "--force",
+                        "--",
+                        relative,
+                    ],
+                    cwd=workspace_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if forced.returncode != 0:
+                    continue
+            staged.append(relative)
+
+        if staged:
+            self._record_event(
+                "implementation_declared_candidate_outputs_staged",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "paths": list(dict.fromkeys(staged)),
+                },
+            )
+        return tuple(dict.fromkeys(staged))
+
+    def _run_auto_rescue_materialize_commands(
+        self,
+        *,
+        workspace_path: Path,
+        log_path: Path,
+        commands: Sequence[str],
+        task: PortalTask,
+    ) -> list[dict[str, Any]]:
+        """Run derived materialize/write CLIs inside the implementer workspace."""
+
+        results: list[dict[str, Any]] = []
+        if not commands:
+            return results
+        env = dict(os.environ)
+        # Match common board PYTHONPATH layout for multi-root workspaces.
+        pythonpath_parts = [
+            str(workspace_path / relative)
+            for relative in (
+                "Mcp-Plus-Plus",
+                "external/ipfs_accelerate",
+                "external/ipfs_datasets",
+                "external/ipfs_kit",
+                "swissknife",
+                ".",
+            )
+            if (workspace_path / relative).exists() or relative == "."
+        ]
+        existing = str(env.get("PYTHONPATH") or "").strip()
+        if existing:
+            pythonpath_parts.append(existing)
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+        with log_path.open("a", encoding="utf-8") as log_fh:
+            for raw in commands:
+                command = str(raw or "").strip()
+                if not command:
+                    continue
+                log_fh.write(f"\n[auto-rescue] materialize $ {command}\n")
+                log_fh.flush()
+                try:
+                    completed = subprocess.run(
+                        command,
+                        cwd=workspace_path,
+                        shell=True,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        env=env,
+                        timeout=min(
+                            float(self.implementation_timeout or 600),
+                            900.0,
+                        ),
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    entry = {
+                        "command": command,
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}"[:500],
+                    }
+                    results.append(entry)
+                    log_fh.write(f"[auto-rescue] materialize error: {entry['error']}\n")
+                    continue
+                output = (completed.stdout or "") + (completed.stderr or "")
+                if output:
+                    log_fh.write(output)
+                    if not output.endswith("\n"):
+                        log_fh.write("\n")
+                log_fh.write(
+                    f"[auto-rescue] materialize returncode={completed.returncode}\n"
+                )
+                results.append(
+                    {
+                        "command": command,
+                        "ok": completed.returncode == 0,
+                        "returncode": int(completed.returncode),
+                        "output_tail": output[-1200:],
+                    }
+                )
+                # Prefer the first successful materialize alias.
+                if completed.returncode == 0:
+                    break
+        self._record_event(
+            "implementation_auto_rescue_materialize_commands",
+            {
+                "task_id": task.task_id,
+                "workspace_path": str(workspace_path),
+                "results": results,
+            },
+        )
+        return results
+
+    @staticmethod
+    def _same_attempt_replayable_proposal_ids(
+        validation_result: Mapping[str, Any],
+        *,
+        task_id: str,
+        repository_tree_id: str,
+        seed_proposal_ids: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        """Return exact accepted proposal IDs safe to retry in this attempt.
+
+        Rescue sometimes makes no content change after an admitted proposal's
+        validation command fails.  Re-running the proposal gate must not then
+        reject that identical, in-memory proposal as globally consumed.  The
+        exception is bound to the live accepted result, exact task, and exact
+        repository tree.  A provider edit changes the content-addressed
+        proposal ID and therefore still receives wholly fresh admission.
+        """
+
+        replayable = {
+            str(proposal_id).strip()
+            for proposal_id in seed_proposal_ids
+            if str(proposal_id).strip()
+        }
+        proposal_validation = validation_result.get("proposal_validation")
+        if getattr(proposal_validation, "accepted", None) is not True:
+            return tuple(sorted(replayable))
+        proposal = getattr(proposal_validation, "proposal", None)
+        proposal_id = str(
+            getattr(proposal, "proposal_id", "") or ""
+        ).strip()
+        proposal_task_id = str(
+            getattr(proposal, "task_id", "") or ""
+        ).strip()
+        proposal_tree_id = str(
+            getattr(proposal, "repository_tree_id", "") or ""
+        ).strip()
+        if (
+            proposal_id
+            and proposal_task_id == str(task_id or "").strip()
+            and proposal_tree_id
+            == str(repository_tree_id or "").strip()
+        ):
+            replayable.add(proposal_id)
+        return tuple(sorted(replayable))
+
+    def _automatic_implementation_rescue(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+        branch_name: str,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any] | dict[str, Any],
+        log_path: Path,
+        state: PortalTaskState | None,
+        command: Sequence[str] = (),
+        base_prompt: str = "",
+        allow_provider_rescue: bool = True,
+        replayable_consumed_proposal_ids: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Attempt bounded same-attempt rescue after failure review.
+
+        Order:
+        1. Materialize missing generated artifacts via validate→materialize
+           CLI rewrites, stage, and revalidate.
+        2. Stage declared dirty/ignored outputs and revalidate once.
+        3. If still failing with guide_rescue signal, run one focused
+           provider repair pass on the preserved worktree, then revalidate.
+        """
+
+        from ..validation.implementation_auto_rescue import (
+            AutoRescueAction,
+            build_inline_provider_rescue_prompt,
+            plan_automatic_implementation_rescue,
+        )
+
+        result = dict(validation_result or {})
+        if result.get("passed", False):
+            return result
+        if result.get("auto_rescue") and result.get("auto_rescue_terminal"):
+            return result
+
+        stage_used = False
+        materialize_used = False
+        provider_passes = 0
+        steps: list[dict[str, Any]] = []
+        expected = task_declared_output_paths(task)
+        validation_commands = tuple(getattr(task, "validation", ()) or ())
+
+        for _step in range(3):
+            present = self._expected_outputs_present_on_disk(
+                workspace_path,
+                task,
+            )
+            dirty = self._dirty_in_scope_declared_output_paths(
+                workspace_path,
+                task,
+            )
+            review = result.get("failure_review")
+            missing = ()
+            if isinstance(review, Mapping):
+                missing = tuple(
+                    str(item)
+                    for item in (review.get("missing_expected_outputs") or ())
+                    if str(item).strip()
+                )
+            plan = plan_automatic_implementation_rescue(
+                validation_result=result,
+                expected_outputs=expected,
+                validation_commands=validation_commands,
+                already_auto_rescued=bool(steps),
+                provider_rescue_passes_used=provider_passes,
+                stage_rescue_used=stage_used,
+                materialize_rescue_used=materialize_used,
+                allow_provider_rescue=bool(allow_provider_rescue and command),
+                expected_outputs_present_on_disk=present,
+                dirty_in_scope_paths=dirty,
+                missing_expected_outputs=missing,
+            )
+            steps.append(plan.to_record())
+            if plan.action is AutoRescueAction.NONE:
+                break
+
+            if plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE:
+                materialize_used = True
+                materialize_results = self._run_auto_rescue_materialize_commands(
+                    workspace_path=workspace_path,
+                    log_path=log_path,
+                    commands=plan.materialize_commands,
+                    task=task,
+                )
+                staged_paths = self._stage_declared_candidate_outputs(
+                    workspace_path,
+                    task,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_materialize_and_stage",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "materialize_results": materialize_results,
+                        "staged_paths": list(staged_paths),
+                        "plan": plan.to_record(),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] materialize_and_stage "
+                        f"commands={list(plan.materialize_commands)} "
+                        f"staged={list(staged_paths)}\n"
+                    )
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "materialize_used": materialize_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                    "materialize_results": materialize_results,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_materialize_and_stage_passed"
+                    )
+                    return result
+                continue
+
+            if plan.action is AutoRescueAction.STAGE_AND_REVALIDATE:
+                stage_used = True
+                staged_paths = self._stage_declared_candidate_outputs(
+                    workspace_path,
+                    task,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_stage_and_revalidate",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "staged_paths": list(staged_paths),
+                        "plan": plan.to_record(),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] stage_and_revalidate "
+                        f"paths={list(staged_paths)}\n"
+                    )
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_stage_and_revalidate_passed"
+                    )
+                    return result
+                continue
+
+            if plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE:
+                if not command or not allow_provider_rescue:
+                    break
+                provider_passes += 1
+                rescue_prompt = build_inline_provider_rescue_prompt(
+                    base_prompt=base_prompt,
+                    validation_result=result,
+                    auto_rescue_plan=plan,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_provider_started",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "plan": plan.to_record(),
+                        "failed_commands": list(plan.failed_commands),
+                    },
+                )
+                with log_path.open("a", encoding="utf-8") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] inline_provider_rescue start\n"
+                    )
+                    log_fh.flush()
+                    try:
+                        provider_environment = (
+                            self._implementation_process_environment(
+                                task,
+                                attempt=attempt,
+                                checkpoint_dir=(
+                                    self._ensure_implementation_checkpoint_dir(
+                                        task
+                                    )
+                                ),
+                            )
+                        )
+                        completed = run_process_group_stream(
+                            list(command),
+                            cwd=workspace_path,
+                            stdout=log_fh,
+                            input_text=rescue_prompt,
+                            env=provider_environment,
+                            timeout_seconds=min(
+                                float(self.implementation_timeout),
+                                3600.0,
+                            ),
+                            progress_timeout_seconds=None,
+                            max_timeout_seconds=min(
+                                float(
+                                    getattr(
+                                        self,
+                                        "implementation_max_timeout",
+                                        self.implementation_timeout,
+                                    )
+                                    or self.implementation_timeout
+                                ),
+                                7200.0,
+                            ),
+                            progress_paths=(),
+                            on_progress=None,
+                        )
+                        log_fh.write(
+                            "\n[auto-rescue] inline_provider_rescue "
+                            f"returncode={completed.returncode}\n"
+                        )
+                    except Exception as exc:
+                        log_fh.write(
+                            "\n[auto-rescue] inline_provider_rescue error: "
+                            f"{exc}\n"
+                        )
+                        self._record_event(
+                            "implementation_auto_rescue_provider_failed",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "error": str(exc)[-1000:],
+                            },
+                        )
+                        break
+                self._stage_declared_candidate_outputs(workspace_path, task)
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=(
+                        self._same_attempt_replayable_proposal_ids(
+                            result,
+                            task_id=task.task_id,
+                            repository_tree_id=baseline_ref,
+                            seed_proposal_ids=(
+                                replayable_consumed_proposal_ids
+                            ),
+                        )
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_provider_revalidate_passed"
+                    )
+                    self._record_event(
+                        "implementation_auto_rescue_succeeded",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "last_action": plan.action.value,
+                        },
+                    )
+                    return result
+                break
+
+        result = dict(result)
+        result["auto_rescue"] = {
+            "steps": list(steps),
+            "stage_used": stage_used,
+            "provider_passes": provider_passes,
+            "succeeded": False,
+        }
+        result["auto_rescue_terminal"] = True
+        self._record_event(
+            "implementation_auto_rescue_exhausted",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "steps": list(steps),
+                "stage_used": stage_used,
+                "provider_passes": provider_passes,
+            },
+        )
+        return result
+
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -35101,6 +38741,18 @@ class PortalImplementationDaemon:
                     failure_head = str(
                         summary.get("failure_head") or ""
                     ).strip()
+                    # Non-pytest validators often emit plain JSON/reason codes
+                    # without FAILED lines; keep a compact tail so auto-rescue
+                    # prompts are not evidence-starved.
+                    if not failure_head:
+                        raw_output = str(output or "").strip()
+                        if raw_output:
+                            tail = "\n".join(
+                                line
+                                for line in raw_output.splitlines()[-40:]
+                                if line.strip()
+                            )
+                            failure_head = tail[-1800:]
                     if failure_head and failure_head not in failure_heads:
                         failure_heads.append(failure_head)
                 # Command output belongs in the attempt log, not the durable
@@ -40440,6 +44092,62 @@ class PortalImplementationDaemon:
         self._active_worktree_lifecycle = rebound
         return rebound
 
+    def _worktree_lifecycle_lane_state_dir(self) -> Path:
+        """Lane state directory used as the same-lane reclaim boundary."""
+
+        return self.state_path.parent.resolve()
+
+    def _reclaim_dead_same_lane_worktree_owners(self) -> dict[str, Any]:
+        """Terminalize provably dead same-lane lifecycle claims every pass.
+
+        Startup already reclaims once, but long-running daemons can orphan a
+        claim mid-flight (provider crash, SIGKILL after fence publish). Without
+        continuous reclaim, cleanup stays fenced on ``owner_dead_lease_unexpired``
+        for the full lease window and ready tasks stop dispatching.
+        """
+
+        if not _env_bool(WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV, True):
+            return {"attempted": False, "reason": "disabled"}
+        expected_state_dir = self._worktree_lifecycle_lane_state_dir()
+        try:
+            recovered = self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
+                expected_state_dir=expected_state_dir,
+                reason="periodic_dead_same_lane_owner_reclaim",
+            )
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "recovered_count": 0,
+                "error": f"{type(exc).__name__}: {exc}"[:500],
+                "expected_state_dir": str(expected_state_dir),
+            }
+        result = {
+            "attempted": True,
+            "recovered_count": len(recovered),
+            "expected_state_dir": str(expected_state_dir),
+            "recovered": [
+                {
+                    "task_id": item.task_id,
+                    "attempt": item.attempt,
+                    "workspace_path": item.workspace_path,
+                    "fence": item.fence,
+                    "terminal_reason": item.terminal_reason,
+                }
+                for item in recovered
+            ],
+        }
+        if recovered:
+            self._record_event(
+                "worktree_lifecycle_dead_owners_reclaimed",
+                result,
+            )
+            logger.warning(
+                "Reclaimed %d dead same-lane worktree lifecycle owner(s) for %s",
+                len(recovered),
+                expected_state_dir,
+            )
+        return result
+
     def _authorize_worktree_cleanup(
         self,
         worktree_path: Path | None,
@@ -40464,6 +44172,7 @@ class PortalImplementationDaemon:
             workspace_path=worktree_path,
             branch=branch_name,
             caller_lease_id=lease_id,
+            expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
         )
         payload = decision.to_dict()
         if not decision.allowed:
@@ -41201,6 +44910,12 @@ class PortalImplementationDaemon:
             "ran": True,
             "interval_seconds": self.maintenance_interval_seconds,
         }
+        try:
+            results["dead_owner_reclaim"] = (
+                self._reclaim_dead_same_lane_worktree_owners()
+            )
+        except Exception as exc:
+            results["dead_owner_reclaim"] = {"error": str(exc)}
         try:
             results["stale_worktrees"] = self._cleanup_stale_worktrees()
         except Exception as exc:
@@ -47465,31 +51180,33 @@ class PortalImplementationDaemon:
         return False
 
     def _docker_isolation_active_for_worktree(self, worktree_path: str) -> bool:
-        """Return whether a labeled Grok isolation container mounts worktree."""
+        """Return whether an exact provider-isolation container mounts worktree."""
 
         worktree_path = str(worktree_path or "").strip()
         if not worktree_path:
             return False
-        try:
-            listed = subprocess.run(
-                [
-                    "docker",
-                    "ps",
-                    "--filter",
-                    "label=ipfs_accelerate.grok_isolation=true",
-                    "--format",
-                    "{{.ID}}",
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        if listed.returncode != 0 or not listed.stdout.strip():
-            return False
-        for container_id in listed.stdout.splitlines():
+        container_ids: set[str] = set()
+        for label in IMPLEMENTATION_DOCKER_ISOLATION_LABELS:
+            try:
+                listed = subprocess.run(
+                    [
+                        "docker",
+                        "ps",
+                        "--filter",
+                        f"label={label}",
+                        "--format",
+                        "{{.ID}}",
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if listed.returncode == 0:
+                container_ids.update(listed.stdout.splitlines())
+        for container_id in sorted(container_ids):
             container_id = container_id.strip()
             if not container_id:
                 continue
@@ -47670,6 +51387,12 @@ class PortalImplementationDaemon:
     def _implementation_context_window(self, task: PortalTask) -> int:
         return self._configured_implementation_provider_context_window(task)
 
+    @staticmethod
+    def _ordered_grok_codex_route_configured() -> bool:
+        """Expose the exact sealed route check for launch-time auditing."""
+
+        return _ordered_grok_codex_route_configured()
+
     def _require_primary_provider_readiness(
         self,
         task: PortalTask | None,
@@ -47682,6 +51405,56 @@ class PortalImplementationDaemon:
             "operator-only",
         }:
             return
+        try:
+            route_plan = _configured_agent_implementation_route_plan(
+                Path(self.repo_root)
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"invalid sealed implementation route: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if route_plan and route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                if _grok_cli_available() and _grok_binary():
+                    return
+                raise ImplementationRetryDeferred(
+                    "explicit Grok-only task requires authenticated Grok CLI",
+                    backoff_seconds=300,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if _grok_binary() and shutil.which("codex"):
+                # Authentication is intentionally not a readiness condition
+                # for this exact route. The fixed runner preflight turns a
+                # missing/expired credential into a typed, nonce-bound receipt
+                # before the task prompt and may then enter Terra/high.
+                return
+            raise ImplementationRetryDeferred(
+                "sealed Grok/Codex route requires both pinned provider CLIs",
+                backoff_seconds=300,
+            )
         if self.implementation_command and not declared_provider:
             return
         if (
@@ -47768,11 +51541,494 @@ class PortalImplementationDaemon:
                 )
         return workspace
 
+    def _scoped_provider_attempt_store(self) -> tuple[Path, str]:
+        """Return an external private CAS directory, never a task worktree."""
+
+        configured = os.environ.get(_PROVIDER_ATTEMPT_STORE_ENV, "").strip()
+        if configured:
+            directory = resolve_agent_implementation_private_state_path(configured)
+        else:
+            state_home = Path(
+                os.environ.get("XDG_STATE_HOME", "").strip()
+                or Path.home() / ".local" / "state"
+            )
+            daemon_id = hashlib.sha256(
+                str(self.state_path.expanduser().resolve(strict=False)).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+            directory = resolve_agent_implementation_private_state_path(
+                state_home
+                / "ipfs_accelerate_py"
+                / "provider-attempts"
+                / daemon_id
+            )
+        try:
+            return bind_agent_implementation_attempt_store(
+                directory,
+                create=True,
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                f"scoped provider attempt store is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+
+    def _bind_scoped_provider_invocation(
+        self,
+        route_plan: AgentImplementationRoutePlan,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        prompt: str,
+        attempt: int,
+    ) -> AgentImplementationRoutePlan:
+        """Bind exact live task/context fields to the reviewed scoped route."""
+
+        authorization = route_plan.authorization
+        bounds = (
+            authorization.authority_bounds
+            if authorization is not None
+            else None
+        )
+        if authorization is None or bounds is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback route has no signed authority bounds",
+                backoff_seconds=300,
+            )
+        context = self._last_implementation_context
+        capsule = getattr(context, "capsule", None)
+        if not isinstance(capsule, ContextCapsule):
+            raise ImplementationRetryDeferred(
+                "scoped fallback route requires a compiled context capsule",
+                backoff_seconds=300,
+            )
+        try:
+            baseline = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=workspace_path,
+            ).stdout.strip()
+        except (OSError, RuntimeError) as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback workspace baseline is unavailable",
+                backoff_seconds=300,
+            ) from exc
+        from ..control.profile_authority import (
+            load_local_profile,
+            resolve_local_profile_state_paths,
+            sign_profile_binding,
+        )
+
+        try:
+            profile = load_local_profile(repository_cid=bounds.repository_cid)
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                f"scoped fallback reviewer profile is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if (
+            profile.repository_cid != capsule.repository_id
+            or profile.baseline_commit != bounds.baseline_commit
+            or tuple(profile.effect_bounds) != bounds.effects
+            or profile.budget_cid != capsule.budget.content_id
+            or profile.budget_cid != bounds.budget_cid
+            or profile.resource_cid != bounds.resource_cid
+            or profile.content_id != bounds.authority_cid
+            or profile.route_id != route_plan.route_id
+            or profile.reviewer_identity
+            != authorization.reviewer_identity
+            or profile.reviewer_provider
+            != authorization.reviewer_provider
+            or profile.fallback_provider_id
+            != route_plan.fallback_provider_id
+            or profile.fallback_model_id != route_plan.fallback_model_id
+            or profile.fallback_reasoning_effort
+            != route_plan.fallback_reasoning_effort
+        ):
+            raise ImplementationRetryDeferred(
+                "scoped fallback profile does not exactly match the signed "
+                "repository/baseline/effect/budget/resource/route/reviewer/"
+                "fallback bounds",
+                backoff_seconds=300,
+            )
+        try:
+            profile_directory, lifecycle_directory = (
+                resolve_local_profile_state_paths()
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback profile state paths are unavailable",
+                backoff_seconds=300,
+            ) from exc
+        control_plane = self._scoped_control_plane
+        if control_plane is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback requires the daemon-start generation capsule",
+                backoff_seconds=300,
+            )
+        try:
+            control_plane = build_agent_implementation_control_plane_pin(
+                runner_path=control_plane.runner_path,
+                capsule_root=control_plane.capsule_root,
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback accepted-generation capsule is invalid",
+                backoff_seconds=300,
+            ) from exc
+        if control_plane != self._scoped_control_plane:
+            raise ImplementationRetryDeferred(
+                "scoped fallback accepted-generation capsule drifted",
+                backoff_seconds=300,
+            )
+        sealed_launch = self._scoped_control_plane_launch
+        if sealed_launch is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback sealed generation is unavailable",
+                backoff_seconds=300,
+            )
+        try:
+            sealed_path = verify_agent_implementation_sealed_control_plane(
+                control_plane,
+                sealed_launch.descriptor,
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                "scoped fallback sealed generation drifted",
+                backoff_seconds=300,
+            ) from exc
+        if (
+            sealed_path != sealed_launch.executable_path
+            or sealed_launch.archive_sha256 != control_plane.archive_sha256
+            or sealed_launch.capsule_id != control_plane.capsule_id
+        ):
+            raise ImplementationRetryDeferred(
+                "scoped fallback sealed generation identity drifted",
+                backoff_seconds=300,
+            )
+        attempt_store, attempt_store_identity = (
+            self._scoped_provider_attempt_store()
+        )
+        workspace = workspace_path.expanduser().resolve(strict=True)
+        prompt_cid = "sha256:" + hashlib.sha256(
+            prompt.encode("utf-8")
+        ).hexdigest()
+        task_revision_cid = self._canonical_ref(task)
+        worktree_id = content_identity(
+            {"workspace_path": str(workspace), "baseline_commit": baseline}
+        )
+        identity_body = {
+            "task_id": task.task_id,
+            "task_revision_cid": task_revision_cid,
+            "attempt": int(attempt),
+            "prompt_cid": prompt_cid,
+            "worktree_id": worktree_id,
+            "route_id": route_plan.route_id,
+        }
+        logical_attempt_id = content_identity(identity_body)
+        invocation_id = content_identity(
+            {**identity_body, "logical_attempt_id": logical_attempt_id}
+        )
+        issued_at_ms = int(time.time() * 1000)
+        unsigned = AgentImplementationInvocationBinding(
+            schema=(
+                "ipfs_accelerate_py.agent_supervisor."
+                "provider-fallback-invocation@2"
+            ),
+            invocation_id=invocation_id,
+            logical_attempt_id=logical_attempt_id,
+            task_id=task.task_id,
+            attempt=int(attempt),
+            task_revision_cid=task_revision_cid,
+            prompt_cid=prompt_cid,
+            worktree_id=worktree_id,
+            workspace_path=str(workspace),
+            repository_cid=capsule.repository_id,
+            baseline_commit=baseline,
+            effects=tuple(profile.effect_bounds),
+            scope_cid=content_identity(capsule.scope),
+            budget_cid=capsule.budget.content_id,
+            resource_cid=bounds.resource_cid,
+            authority_cid=profile.content_id,
+            route_id=route_plan.route_id,
+            primary_provider_id=route_plan.primary_provider_id,
+            primary_model_id=route_plan.primary_model_id,
+            fallback_provider_id=route_plan.fallback_provider_id,
+            fallback_model_id=route_plan.fallback_model_id,
+            fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+            fallback_implementer_identity=(
+                route_plan.fallback_implementer_identity
+            ),
+            reviewer_identity=authorization.reviewer_identity,
+            reviewer_provider=authorization.reviewer_provider,
+            profile_id=profile.profile_id,
+            profile_identity_did=profile.identity_did,
+            profile_lifecycle_anchor_id=profile.lifecycle_anchor_id,
+            profile_lifecycle_generation=profile.lifecycle_generation,
+            profile_dir=str(profile_directory),
+            profile_lifecycle_dir=str(lifecycle_directory),
+            issued_at_ms=issued_at_ms,
+            expires_at_ms=issued_at_ms + 5 * 60 * 1000,
+            provider_attempt_store=str(attempt_store),
+            provider_attempt_store_identity=attempt_store_identity,
+            control_plane=control_plane,
+            reviewer_signature="pending",
+        )
+        signature = sign_profile_binding(
+            profile_dir=profile_directory,
+            lifecycle_dir=lifecycle_directory,
+            payload=unsigned.signed_payload(),
+        )["signature"]
+        invocation = replace(unsigned, reviewer_signature=signature)
+        return bind_agent_implementation_route_invocation(
+            route_plan,
+            invocation,
+            repo_root=self.repo_root,
+            workspace=workspace,
+            expected_binding=invocation.signed_payload(),
+            now_ms=issued_at_ms,
+            max_age_ms=5 * 60 * 1000,
+        )
+
+    def _protected_effect_recovery_command(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask | None,
+        prompt: str,
+        attempt: int,
+        state: PortalTaskState | None,
+    ) -> list[str] | None:
+        """Build the sealed non-dispatch entry for one durable CAS effect."""
+
+        if task is None or state is None or not prompt or attempt < 1:
+            return None
+        revision = self._canonical_ref(task)
+        key = self._protected_attempt_latch_key(
+            task.task_id,
+            attempt,
+            revision,
+        )
+        latch = state.protected_implementation_attempts.get(key)
+        if not isinstance(latch, Mapping):
+            latch = self._protected_attempt_event_latch(
+                task_id=task.task_id,
+                attempt=attempt,
+                task_revision_cid=revision,
+            )
+        if not isinstance(latch, Mapping):
+            return None
+        board_namespace = task.board_namespace or self.todo_path.name
+        required_text = (
+            "logical_attempt_id",
+            "worktree_id",
+            "provider_attempt_store",
+            "provider_attempt_store_identity",
+        )
+        if (
+            latch.get("task_id") != task.task_id
+            or latch.get("attempt") != attempt
+            or latch.get("task_revision_cid") != revision
+            or latch.get("board_namespace") != board_namespace
+            or any(
+                not isinstance(latch.get(name), str) or not latch.get(name)
+                for name in required_text
+            )
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery latch identity drifted",
+                backoff_seconds=300,
+            )
+        try:
+            store = DurableProviderAttemptCAS(
+                str(latch["provider_attempt_store"]),
+                expected_directory_identity=str(
+                    latch["provider_attempt_store_identity"]
+                ),
+            )
+            reservation = store.read(str(latch["logical_attempt_id"]))
+        except (OSError, ValueError, ProviderAttemptStoreError) as exc:
+            raise ImplementationRetryDeferred(
+                f"protected effect recovery CAS is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if reservation is None or reservation.state not in {
+            "effect_started",
+            "quarantined",
+            "terminal",
+        }:
+            # A protected latch is categorical: corruption/missing/reserved
+            # state may never fall through to a newly signed provider route.
+            raise ImplementationRetryDeferred(
+                "protected effect recovery is not terminal/adoptable",
+                backoff_seconds=300,
+            )
+        if (
+            reservation.logical_attempt_id != latch["logical_attempt_id"]
+            or reservation.task_id != task.task_id
+            or reservation.worktree_id != latch["worktree_id"]
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery CAS identity drifted",
+                backoff_seconds=300,
+            )
+        launch_owner_pid = reservation.effect_launch_receipt.get(
+            "effect_owner_pid"
+        )
+        if (
+            isinstance(launch_owner_pid, bool)
+            or not isinstance(launch_owner_pid, int)
+            or launch_owner_pid <= 0
+            or reservation.effect_started_at_ms is None
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery launch authority is invalid",
+                backoff_seconds=300,
+            )
+        historical = parse_agent_implementation_effect_authorization_context(
+            reservation.authorization_context,
+            repo_root=workspace_path,
+            effect_started_at_ms=reservation.effect_started_at_ms,
+            expected_signer_parent_pid=launch_owner_pid,
+            max_age_ms=5 * 60 * 1000,
+        )
+        historical_invocation = (
+            historical.route.invocation_binding
+            if historical is not None
+            else None
+        )
+        if (
+            historical_invocation is None
+            or historical_invocation.logical_attempt_id
+            != reservation.logical_attempt_id
+            or historical_invocation.task_id != task.task_id
+            or historical_invocation.task_revision_cid != revision
+            or historical_invocation.attempt != attempt
+            or historical_invocation.worktree_id != reservation.worktree_id
+            or historical.decision.content_id != reservation.decision_id
+        ):
+            raise ImplementationRetryDeferred(
+                "protected effect recovery historical authority is invalid",
+                backoff_seconds=300,
+            )
+        control_plane = historical_invocation.control_plane
+        try:
+            observed_control_plane = build_agent_implementation_control_plane_pin(
+                runner_path=control_plane.runner_path,
+                capsule_root=control_plane.capsule_root,
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"protected effect recovery capsule is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if observed_control_plane != control_plane:
+            raise ImplementationRetryDeferred(
+                "protected effect recovery capsule identity drifted",
+                backoff_seconds=300,
+            )
+        sealed_launch = self._scoped_recovery_control_plane_launches.get(
+            control_plane.capsule_id
+        )
+        if sealed_launch is None:
+            try:
+                sealed_launch = seal_agent_implementation_control_plane_capsule(
+                    control_plane
+                )
+            except (OSError, ValueError) as exc:
+                raise ImplementationRetryDeferred(
+                    f"protected effect recovery capsule could not be sealed: {exc}",
+                    backoff_seconds=300,
+                ) from exc
+            self._scoped_recovery_control_plane_launches[
+                control_plane.capsule_id
+            ] = sealed_launch
+        if sealed_launch is None:
+            raise ImplementationRetryDeferred(
+                "protected effect recovery sealed generation is unavailable",
+                backoff_seconds=300,
+            )
+        try:
+            executable = verify_agent_implementation_sealed_control_plane(
+                control_plane,
+                sealed_launch.descriptor,
+            )
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                f"protected effect recovery sealed generation drifted: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        workspace = workspace_path.expanduser().resolve(strict=True)
+        body: dict[str, object] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "provider-effect-recovery-locator@1"
+            ),
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "task_revision_cid": revision,
+            "board_namespace": board_namespace,
+            "logical_attempt_id": reservation.logical_attempt_id,
+            "worktree_id": reservation.worktree_id,
+            "prompt_cid": "sha256:"
+            + hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "workspace_path": str(workspace),
+            "provider_attempt_store": str(latch["provider_attempt_store"]),
+            "provider_attempt_store_identity": str(
+                latch["provider_attempt_store_identity"]
+            ),
+        }
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        locator = {
+            **body,
+            "locator_id": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+        }
+        return [
+            sys.executable,
+            "-I",
+            executable,
+            "--workspace",
+            str(workspace),
+            "--agent-implementation-recovery-json",
+            json.dumps(locator, sort_keys=True, separators=(",", ":")),
+        ]
+
+    def _accepted_control_plane_pass_fds(
+        self,
+        command: Sequence[str],
+    ) -> tuple[int, ...]:
+        """Return only the sealed archive descriptor named by this command."""
+
+        launches = [
+            self._scoped_control_plane_launch,
+            *self._scoped_recovery_control_plane_launches.values(),
+        ]
+        matches = {
+            int(launch.descriptor)
+            for launch in launches
+            if launch is not None and launch.executable_path in command[:3]
+        }
+        if len(matches) > 1:
+            raise ImplementationRetryDeferred(
+                "accepted control-plane command is ambiguous",
+                backoff_seconds=300,
+            )
+        return tuple(matches)
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
         *,
         task: PortalTask | None = None,
+        prompt: str = "",
+        attempt: int = 0,
+        state: PortalTaskState | None = None,
     ) -> list[str]:
         if self.manual_completion_authority_revalidation_only:
             raise RuntimeError(
@@ -47783,17 +52039,22 @@ class PortalImplementationDaemon:
             workspace_path,
             task=task,
         )
+        recovery_command = self._protected_effect_recovery_command(
+            workspace_path=workspace_path,
+            task=task,
+            prompt=prompt,
+            attempt=attempt,
+            state=state,
+        )
+        if recovery_command is not None:
+            return recovery_command
         declared_provider = self._task_declared_implementation_provider(task)
         if self._task_uses_typed_local_execution(task):
             raise RuntimeError(
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
-        if self.implementation_command and not declared_provider:
-            return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command and not declared_provider:
-            return shlex.split(env_command)
 
         configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
@@ -47808,6 +52069,86 @@ class PortalImplementationDaemon:
                 f"Unsupported implementation provider {provider!r}; "
                 "automatic routing fails closed on unknown values"
             )
+        try:
+            route_plan = _configured_agent_implementation_route_plan(
+                Path(self.repo_root)
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"invalid sealed implementation route: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        if route_plan and route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    enable_codex_fallback=False,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if not _grok_binary():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route requires the pinned Grok CLI",
+                    backoff_seconds=300,
+                )
+            if route_plan.authorization is not None:
+                if task is None or not prompt or attempt < 1:
+                    raise ImplementationRetryDeferred(
+                        "scoped fallback requires task/prompt/attempt equality",
+                        backoff_seconds=300,
+                    )
+                route_plan = self._bind_scoped_provider_invocation(
+                    route_plan,
+                    workspace_path=workspace_path,
+                    task=task,
+                    prompt=prompt,
+                    attempt=attempt,
+                )
+                if state is None:
+                    raise ImplementationRetryDeferred(
+                        "scoped fallback requires a durable attempt latch",
+                        backoff_seconds=300,
+                    )
+                self._latch_protected_attempt(state, route_plan)
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=route_plan.primary_model_id,
+                failure_receipt_nonce=secrets.token_hex(32),
+                allow_auth_unavailable_fallback=True,
+                fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+                route_plan=route_plan,
+                sealed_runner_path=(
+                    self._scoped_control_plane_launch.executable_path
+                    if self._scoped_control_plane_launch is not None
+                    else ""
+                ),
+            )
+        if self.implementation_command and not declared_provider:
+            return shlex.split(self.implementation_command)
+        if env_command and not declared_provider:
+            return shlex.split(env_command)
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
         prefer_grok = provider in {
@@ -47966,10 +52307,14 @@ class PortalImplementationDaemon:
             except Exception:
                 pass
             if auto_selection.decision is AutoProviderDecision.GROK:
+                legacy_route_plan = resolve_agent_implementation_route(
+                    default_route="legacy"
+                )
                 return _grok_cli_command(
                     workspace_path=workspace_path,
                     model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
                     failure_receipt_nonce=secrets.token_hex(32),
+                    route_plan=legacy_route_plan,
                 )
             if auto_selection.decision is AutoProviderDecision.CLAUDE:
                 if not automatic_family_allowed("claude"):
@@ -52692,6 +57037,1454 @@ class PortalImplementationDaemon:
         self._invalidate_event_cache()
 
 
+# ---------------------------------------------------------------------------
+# DatabaseImplementationDaemon@1 / DatabaseTaskAttempt@1 (DQP-018)
+# ---------------------------------------------------------------------------
+# Database-authoritative implementation cutover: claims, attempt phases,
+# provider/effect idempotency, completion, and retry/backoff live in DuckDB.
+# Markdown taskboards and JSON queue/status/events/PID projections are optional
+# non-authoritative projections only.
+
+DATABASE_IMPLEMENTATION_DAEMON_INTERFACE = "DatabaseImplementationDaemon@1"
+DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
+DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-implementation-daemon@1"
+)
+DATABASE_TASK_ATTEMPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
+)
+
+# Ordered execution phases. Crash/restart resumes after the last committed phase.
+ATTEMPT_PHASE_CLAIMED = "claimed"
+ATTEMPT_PHASE_CONTEXT = "context"
+ATTEMPT_PHASE_PROVIDER = "provider"
+ATTEMPT_PHASE_EFFECT = "effect"
+ATTEMPT_PHASE_VALIDATION = "validation"
+ATTEMPT_PHASE_COMPLETE = "complete"
+ATTEMPT_PHASE_FAILED = "failed"
+ATTEMPT_PHASE_BLOCKED = "blocked"
+
+_ATTEMPT_PHASE_ORDER: tuple[str, ...] = (
+    ATTEMPT_PHASE_CLAIMED,
+    ATTEMPT_PHASE_CONTEXT,
+    ATTEMPT_PHASE_PROVIDER,
+    ATTEMPT_PHASE_EFFECT,
+    ATTEMPT_PHASE_VALIDATION,
+    ATTEMPT_PHASE_COMPLETE,
+)
+
+_DATABASE_AUTHORITY_MODES = frozenset(
+    {"embedded", "embedded_exclusive", "quack"}
+)
+_DATABASE_TASK_SOURCE_KINDS = frozenset({"duckdb"})
+
+_DAEMON_EXECUTION_SQL = """
+CREATE TABLE IF NOT EXISTS daemon_execution_metadata (
+    key VARCHAR PRIMARY KEY,
+    value VARCHAR NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS database_task_attempts (
+    attempt_id VARCHAR PRIMARY KEY,
+    claim_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    task_alias VARCHAR NOT NULL DEFAULT '',
+    attempt_number BIGINT NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    fencing_token BIGINT NOT NULL,
+    fence_epoch BIGINT NOT NULL,
+    lease_id VARCHAR NOT NULL DEFAULT '',
+    committed_phase VARCHAR NOT NULL,
+    status VARCHAR NOT NULL,
+    started_at_ms BIGINT NOT NULL,
+    finished_at_ms BIGINT,
+    revision BIGINT NOT NULL DEFAULT 1,
+    body_json VARCHAR NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS database_task_attempts_task_idx
+    ON database_task_attempts(task_cid, attempt_number);
+CREATE INDEX IF NOT EXISTS database_task_attempts_owner_idx
+    ON database_task_attempts(owner_session_id, status);
+CREATE INDEX IF NOT EXISTS database_task_attempts_claim_idx
+    ON database_task_attempts(claim_id);
+
+CREATE TABLE IF NOT EXISTS attempt_phases (
+    attempt_id VARCHAR NOT NULL,
+    phase VARCHAR NOT NULL,
+    committed_at_ms BIGINT NOT NULL,
+    fencing_token BIGINT NOT NULL,
+    fence_epoch BIGINT NOT NULL,
+    revision BIGINT NOT NULL,
+    body_json VARCHAR NOT NULL DEFAULT '{}',
+    PRIMARY KEY (attempt_id, phase)
+);
+
+CREATE TABLE IF NOT EXISTS provider_invocations (
+    invocation_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    idempotency_key VARCHAR NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    recorded_at_ms BIGINT NOT NULL,
+    result_json VARCHAR NOT NULL DEFAULT '{}',
+    UNIQUE (attempt_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS effect_claims (
+    effect_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    effect_key VARCHAR NOT NULL,
+    idempotency_key VARCHAR NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    recorded_at_ms BIGINT NOT NULL,
+    result_json VARCHAR NOT NULL DEFAULT '{}',
+    UNIQUE (attempt_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS daemon_execution_events (
+    event_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL DEFAULT '',
+    task_cid VARCHAR NOT NULL DEFAULT '',
+    event_type VARCHAR NOT NULL,
+    recorded_at_ms BIGINT NOT NULL,
+    body_json VARCHAR NOT NULL DEFAULT '{}'
+);
+"""
+
+
+class DatabaseImplementationDaemonError(RuntimeError):
+    """Fail-closed error for database-authoritative implementation execution."""
+
+
+class DatabaseImplementationAuthorityError(DatabaseImplementationDaemonError):
+    """Raised when a database-authority path would mutate Markdown or file state."""
+
+
+class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
+    """Raised when a claim or phase transition conflicts with durable state."""
+
+
+def _database_daemon_json(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
+
+
+def _database_daemon_load_json(raw: Any) -> dict[str, Any]:
+    if raw is None or raw == "":
+        return {}
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    try:
+        payload = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _database_daemon_now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _database_daemon_new_id(prefix: str) -> str:
+    return f"{prefix}:{secrets.token_hex(12)}"
+
+
+def _phase_rank(phase: str) -> int:
+    try:
+        return _ATTEMPT_PHASE_ORDER.index(str(phase or "").strip())
+    except ValueError:
+        return -1
+
+
+def is_database_authority_mode(
+    *,
+    authority_mode: str = "",
+    task_source_kind: str = "",
+) -> bool:
+    """Return whether the daemon must use database-authoritative execution."""
+
+    mode = str(authority_mode or "").strip().lower().replace("-", "_")
+    kind = str(task_source_kind or "").strip().lower()
+    if mode in _DATABASE_AUTHORITY_MODES:
+        return True
+    if kind in _DATABASE_TASK_SOURCE_KINDS:
+        return True
+    return False
+
+
+@dataclass(frozen=True)
+class DatabaseTaskAttempt:
+    """Durable task attempt under DatabaseTaskAttempt@1.
+
+    Tracks the last committed phase so crash/restart resumes without
+    re-running provider or effect work that already committed.
+    """
+
+    INTERFACE: ClassVar[str] = DATABASE_TASK_ATTEMPT_INTERFACE
+    SCHEMA: ClassVar[str] = DATABASE_TASK_ATTEMPT_SCHEMA
+
+    attempt_id: str
+    claim_id: str
+    task_cid: str
+    attempt_number: int
+    owner_session_id: str
+    fencing_token: int
+    fence_epoch: int
+    committed_phase: str
+    status: str
+    started_at_ms: int
+    task_alias: str = ""
+    lease_id: str = ""
+    finished_at_ms: int | None = None
+    revision: int = 1
+    body: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "attempt_id": self.attempt_id,
+            "claim_id": self.claim_id,
+            "task_cid": self.task_cid,
+            "task_alias": self.task_alias,
+            "attempt_number": int(self.attempt_number),
+            "owner_session_id": self.owner_session_id,
+            "fencing_token": int(self.fencing_token),
+            "fence_epoch": int(self.fence_epoch),
+            "lease_id": self.lease_id,
+            "committed_phase": self.committed_phase,
+            "status": self.status,
+            "started_at_ms": int(self.started_at_ms),
+            "finished_at_ms": self.finished_at_ms,
+            "revision": int(self.revision),
+            "body": dict(self.body),
+        }
+
+    def phase_committed(self, phase: str) -> bool:
+        return _phase_rank(self.committed_phase) >= _phase_rank(phase)
+
+
+class DatabaseImplementationDaemon:
+    """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
+
+    Task selection, claims, attempt phases, provider calls, effect claims,
+    validation intent, completion, retry/backoff, heartbeats, and status are
+    database transitions. Legacy Markdown and JSON queue/status/events/PID
+    projections may be absent and never grant authority.
+    """
+
+    INTERFACE: ClassVar[str] = DATABASE_IMPLEMENTATION_DAEMON_INTERFACE
+    SCHEMA: ClassVar[str] = DATABASE_IMPLEMENTATION_DAEMON_SCHEMA
+
+    def __init__(
+        self,
+        *,
+        database_path: Path | str,
+        coordination_path: Path | str | None = None,
+        execution_path: Path | str | None = None,
+        owner_session_id: str = "",
+        authority_mode: str = "embedded",
+        task_source_kind: str = "duckdb",
+        markdown_path: Path | str | None = None,
+        state_path: Path | str | None = None,
+        strategy_path: Path | str | None = None,
+        events_path: Path | str | None = None,
+        pid_path: Path | str | None = None,
+        queue_path: Path | str | None = None,
+        lease_ms: int = 60_000,
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+        effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        clock_ms: Callable[[], int] | None = None,
+        task_source: Any = None,
+        coordinator: Any = None,
+        install_schema: bool = True,
+    ) -> None:
+        if not is_database_authority_mode(
+            authority_mode=authority_mode,
+            task_source_kind=task_source_kind,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "DatabaseImplementationDaemon requires database authority "
+                f"(authority_mode={authority_mode!r}, "
+                f"task_source_kind={task_source_kind!r})"
+            )
+        self.database_path = Path(database_path).absolute()
+        self.coordination_path = Path(
+            coordination_path
+            if coordination_path is not None
+            else self.database_path.with_name(
+                f"{self.database_path.stem}.coordination.duckdb"
+            )
+        ).absolute()
+        self.execution_path = Path(
+            execution_path
+            if execution_path is not None
+            else self.database_path.with_name(
+                f"{self.database_path.stem}.execution.duckdb"
+            )
+        ).absolute()
+        self.authority_mode = str(authority_mode or "embedded").strip().lower().replace(
+            "-", "_"
+        )
+        self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
+        self.owner_session_id = str(
+            owner_session_id or _database_daemon_new_id("session")
+        ).strip()
+        self.markdown_path = Path(markdown_path).absolute() if markdown_path else None
+        # Optional projections — never required under database authority.
+        self.state_path = Path(state_path).absolute() if state_path else None
+        self.strategy_path = Path(strategy_path).absolute() if strategy_path else None
+        self.events_path = Path(events_path).absolute() if events_path else None
+        self.pid_path = Path(pid_path).absolute() if pid_path else None
+        self.queue_path = Path(queue_path).absolute() if queue_path else None
+        self.lease_ms = int(lease_ms)
+        self._provider_fn = provider_fn
+        self._effect_fn = effect_fn
+        self._validation_fn = validation_fn
+        self._clock_ms = clock_ms or _database_daemon_now_ms
+        self._lock = threading.RLock()
+        self._connection: Any = None
+        self._owns_task_source = task_source is None
+        self._owns_coordinator = coordinator is None
+        self._task_source = task_source
+        self._coordinator = coordinator
+        self._markdown_status_writes = 0
+        self._closed = False
+        if install_schema:
+            self.open()
+
+    # -- lifecycle -----------------------------------------------------------
+
+    def open(self) -> "DatabaseImplementationDaemon":
+        """Open execution store and bind task-source / coordinator adapters."""
+
+        with self._lock:
+            if self._connection is not None:
+                return self
+            from ..task_sources.duckdb_state import open_duckdb_connection
+            from ..merge.database_coordination import open_database_coordinator
+            from ..task_sources.database_task_source import DatabaseTaskSource
+
+            self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+            self._connection = open_duckdb_connection(self.execution_path)
+            for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                self._connection.execute(statement)
+            for key, value in (
+                ("interface", self.INTERFACE),
+                ("schema", self.SCHEMA),
+                ("authority_mode", self.authority_mode),
+            ):
+                self._connection.execute(
+                    """
+                    INSERT OR REPLACE INTO daemon_execution_metadata(key, value)
+                    VALUES (?, ?)
+                    """,
+                    [key, value],
+                )
+            if self._task_source is None:
+                self._task_source = DatabaseTaskSource(
+                    self.database_path,
+                    owner_id=f"database-implementation-daemon:{self.owner_session_id}",
+                    install_schema=True,
+                )
+            if self._coordinator is None:
+                self._coordinator = open_database_coordinator(
+                    self.coordination_path,
+                    clock_ms=self._clock_ms,
+                    default_lease_ms=self.lease_ms,
+                )
+            self._closed = False
+            return self
+
+    def close(self) -> None:
+        with self._lock:
+            if self._owns_coordinator and self._coordinator is not None:
+                close = getattr(self._coordinator, "close", None)
+                if callable(close):
+                    close()
+                self._coordinator = None
+            if self._owns_task_source and self._task_source is not None:
+                close = getattr(self._task_source, "close", None)
+                if callable(close):
+                    close()
+                self._task_source = None
+            if self._connection is not None:
+                close = getattr(self._connection, "close", None)
+                if callable(close):
+                    close()
+            self._connection = None
+            self._closed = True
+
+    def __enter__(self) -> "DatabaseImplementationDaemon":
+        return self.open()
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    @property
+    def task_source(self) -> Any:
+        self.open()
+        return self._task_source
+
+    @property
+    def coordinator(self) -> Any:
+        self.open()
+        return self._coordinator
+
+    @property
+    def markdown_status_write_count(self) -> int:
+        return int(self._markdown_status_writes)
+
+    def projections_required(self) -> bool:
+        """JSON queue/status/events/PID projections are never required."""
+
+        return False
+
+    def _require_connection(self) -> Any:
+        self.open()
+        if self._connection is None:
+            raise DatabaseImplementationDaemonError("execution store is not open")
+        return self._connection
+
+    def _now_ms(self) -> int:
+        return int(self._clock_ms())
+
+    def _record_event(
+        self,
+        event_type: str,
+        *,
+        attempt_id: str = "",
+        task_cid: str = "",
+        body: Mapping[str, Any] | None = None,
+    ) -> None:
+        connection = self._require_connection()
+        connection.execute(
+            """
+            INSERT INTO daemon_execution_events(
+                event_id, attempt_id, task_cid, event_type, recorded_at_ms, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _database_daemon_new_id("event"),
+                attempt_id,
+                task_cid,
+                str(event_type),
+                self._now_ms(),
+                _database_daemon_json(dict(body or {})),
+            ],
+        )
+        # Optional JSONL projection only — never authority.
+        if self.events_path is not None:
+            try:
+                self.events_path.parent.mkdir(parents=True, exist_ok=True)
+                append_jsonl_event(
+                    self.events_path,
+                    event_type,
+                    {
+                        "attempt_id": attempt_id,
+                        "task_cid": task_cid,
+                        **dict(body or {}),
+                    },
+                )
+            except OSError:
+                pass
+
+    # -- materialize / register ---------------------------------------------
+
+    def materialize_population(
+        self,
+        population: Mapping[str, Any],
+        *,
+        repository_tree_id: str = "tree:database-implementation",
+        plan_root_cid: str = "",
+    ) -> Mapping[str, Any]:
+        """Ingest tasks into the intent repository and coordination registry."""
+
+        receipt = self.task_source.materialize(
+            population,
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+        )
+        registered: list[str] = []
+        for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
+            deps = tuple(str(dep) for dep in task.dependencies)
+            self.coordinator.register_task(
+                task_cid=task.task_cid,
+                task_id=task.task_alias or task.task_cid,
+                dependency_task_cids=deps,
+                body={
+                    "task_alias": task.task_alias,
+                    "status": task.status,
+                    "priority": task.priority,
+                },
+            )
+            registered.append(task.task_cid)
+        return MappingProxyType(
+            {
+                "task_source": dict(receipt) if isinstance(receipt, Mapping) else {},
+                "registered_task_cids": list(registered),
+            }
+        )
+
+    def sync_ready_tasks_into_coordination(self) -> list[str]:
+        """Ensure ready tasks from the intent repository are claimable."""
+
+        ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        registered: list[str] = []
+        for task in ready.tasks:
+            status = str(task.status or "").strip().lower()
+            if status in {"completed", "complete", "done", "skipped", "cancelled"}:
+                continue
+            self.coordinator.register_task(
+                task_cid=task.task_cid,
+                task_id=task.task_alias or task.task_cid,
+                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
+                body={"task_alias": task.task_alias, "status": task.status},
+            )
+            registered.append(task.task_cid)
+        return registered
+
+    # -- claim / attempt ----------------------------------------------------
+
+    def claim_next(
+        self,
+        *,
+        exclude_task_cids: Iterable[str] = (),
+        lease_ms: int | None = None,
+    ) -> DatabaseTaskAttempt | None:
+        """Claim one ready task for this session; four sessions never share work."""
+
+        self.sync_ready_tasks_into_coordination()
+        claim = self.coordinator.claim_ready_task(
+            owner_session_id=self.owner_session_id,
+            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+            exclude_task_cids=exclude_task_cids,
+            now_ms=self._now_ms(),
+        )
+        if claim is None:
+            return None
+        task = self.task_source.get(claim.task_cid)
+        task_alias = (
+            str(task.task_alias)
+            if task is not None and getattr(task, "task_alias", None)
+            else claim.task_cid
+        )
+        # Move durable task status through the database only (never Markdown).
+        if task is not None and str(task.status).lower() in {
+            "todo",
+            "ready",
+            "open",
+        }:
+            self._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="in_progress",
+                receipt={
+                    "operation": "database_claim",
+                    "claim_id": claim.claim_id,
+                    "attempt_id": claim.attempt_id,
+                    "owner_session_id": self.owner_session_id,
+                },
+            )
+        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
+        self._record_event(
+            "task_claimed",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body=attempt.to_dict(),
+        )
+        return attempt
+
+    def _insert_attempt_from_claim(
+        self,
+        claim: Any,
+        *,
+        task_alias: str,
+    ) -> DatabaseTaskAttempt:
+        now = self._now_ms()
+        attempt = DatabaseTaskAttempt(
+            attempt_id=str(claim.attempt_id),
+            claim_id=str(claim.claim_id),
+            task_cid=str(claim.task_cid),
+            task_alias=task_alias,
+            attempt_number=int(claim.attempt_number),
+            owner_session_id=str(claim.owner_session_id),
+            fencing_token=int(claim.fencing_token),
+            fence_epoch=int(claim.fence_epoch),
+            lease_id=str(getattr(claim, "lease_id", "") or ""),
+            committed_phase=ATTEMPT_PHASE_CLAIMED,
+            status="running",
+            started_at_ms=int(getattr(claim, "claimed_at_ms", now) or now),
+            revision=1,
+            body={"worktree_id": str(getattr(claim, "worktree_id", "") or "")},
+        )
+        connection = self._require_connection()
+        existing = connection.execute(
+            "SELECT attempt_id FROM database_task_attempts WHERE attempt_id = ?",
+            [attempt.attempt_id],
+        ).fetchone()
+        if existing is not None:
+            stored = self.get_attempt(attempt.attempt_id)
+            if stored is not None:
+                return stored
+        connection.execute(
+            """
+            INSERT INTO database_task_attempts(
+                attempt_id, claim_id, task_cid, task_alias, attempt_number,
+                owner_session_id, fencing_token, fence_epoch, lease_id,
+                committed_phase, status, started_at_ms, finished_at_ms,
+                revision, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+            """,
+            [
+                attempt.attempt_id,
+                attempt.claim_id,
+                attempt.task_cid,
+                attempt.task_alias,
+                int(attempt.attempt_number),
+                attempt.owner_session_id,
+                int(attempt.fencing_token),
+                int(attempt.fence_epoch),
+                attempt.lease_id,
+                attempt.committed_phase,
+                attempt.status,
+                int(attempt.started_at_ms),
+                int(attempt.revision),
+                _database_daemon_json(dict(attempt.body)),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO attempt_phases(
+                attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
+                revision, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                attempt.attempt_id,
+                ATTEMPT_PHASE_CLAIMED,
+                now,
+                int(attempt.fencing_token),
+                int(attempt.fence_epoch),
+                1,
+                "{}",
+            ],
+        )
+        return attempt
+
+    _ATTEMPT_SELECT = (
+        "attempt_id, claim_id, task_cid, task_alias, attempt_number, "
+        "owner_session_id, fencing_token, fence_epoch, lease_id, "
+        "committed_phase, status, started_at_ms, finished_at_ms, revision, body_json"
+    )
+
+    def get_attempt(self, attempt_id: str) -> DatabaseTaskAttempt | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            f"SELECT {self._ATTEMPT_SELECT} FROM database_task_attempts "
+            "WHERE attempt_id = ?",
+            [str(attempt_id)],
+        ).fetchone()
+        if row is None:
+            return None
+        return self._attempt_from_row(row)
+
+    def list_running_attempts(
+        self,
+        *,
+        owner_session_id: str | None = None,
+    ) -> list[DatabaseTaskAttempt]:
+        connection = self._require_connection()
+        owner = str(owner_session_id or self.owner_session_id)
+        rows = connection.execute(
+            f"""
+            SELECT {self._ATTEMPT_SELECT} FROM database_task_attempts
+            WHERE owner_session_id = ? AND status = 'running'
+            ORDER BY started_at_ms, attempt_id
+            """,
+            [owner],
+        ).fetchall()
+        return [self._attempt_from_row(row) for row in rows]
+
+    def _attempt_from_row(self, row: Any) -> DatabaseTaskAttempt:
+        finished = row[12]
+        return DatabaseTaskAttempt(
+            attempt_id=str(row[0] or ""),
+            claim_id=str(row[1] or ""),
+            task_cid=str(row[2] or ""),
+            task_alias=str(row[3] or ""),
+            attempt_number=int(row[4] or 1),
+            owner_session_id=str(row[5] or ""),
+            fencing_token=int(row[6] or 1),
+            fence_epoch=int(row[7] or 1),
+            lease_id=str(row[8] or ""),
+            committed_phase=str(row[9] or ATTEMPT_PHASE_CLAIMED),
+            status=str(row[10] or "running"),
+            started_at_ms=int(row[11] or 0),
+            finished_at_ms=None if finished is None else int(finished),
+            revision=int(row[13] or 1),
+            body=_database_daemon_load_json(row[14]),
+        )
+
+    def commit_phase(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        phase: str,
+        *,
+        body: Mapping[str, Any] | None = None,
+    ) -> DatabaseTaskAttempt:
+        """Commit an attempt phase durably (crash boundary)."""
+
+        phase_text = str(phase or "").strip().lower()
+        if phase_text not in {
+            *_ATTEMPT_PHASE_ORDER,
+            ATTEMPT_PHASE_FAILED,
+            ATTEMPT_PHASE_BLOCKED,
+        }:
+            raise DatabaseImplementationDaemonError(f"unknown attempt phase: {phase!r}")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        if current.status != "running" and phase_text not in {
+            ATTEMPT_PHASE_FAILED,
+            ATTEMPT_PHASE_BLOCKED,
+            ATTEMPT_PHASE_COMPLETE,
+        }:
+            raise DatabaseImplementationConflictError(
+                f"attempt {current.attempt_id} is not running"
+            )
+        if (
+            phase_text in _ATTEMPT_PHASE_ORDER
+            and _phase_rank(phase_text) < _phase_rank(current.committed_phase)
+        ):
+            # Idempotent: already past this phase.
+            return current
+        if (
+            phase_text in _ATTEMPT_PHASE_ORDER
+            and _phase_rank(phase_text) > _phase_rank(current.committed_phase) + 1
+            and phase_text != ATTEMPT_PHASE_COMPLETE
+        ):
+            # Allow COMPLETE from VALIDATION only; otherwise require sequential.
+            expected = _ATTEMPT_PHASE_ORDER[
+                min(
+                    _phase_rank(current.committed_phase) + 1,
+                    len(_ATTEMPT_PHASE_ORDER) - 1,
+                )
+            ]
+            if phase_text != expected and not (
+                phase_text == ATTEMPT_PHASE_COMPLETE
+                and current.committed_phase == ATTEMPT_PHASE_VALIDATION
+            ):
+                raise DatabaseImplementationConflictError(
+                    f"cannot commit phase {phase_text!r} from "
+                    f"{current.committed_phase!r}; expected {expected!r}"
+                )
+        now = self._now_ms()
+        connection = self._require_connection()
+        revision = int(current.revision) + 1
+        status = current.status
+        finished_at: int | None = current.finished_at_ms
+        if phase_text == ATTEMPT_PHASE_COMPLETE:
+            status = "succeeded"
+            finished_at = now
+        elif phase_text == ATTEMPT_PHASE_FAILED:
+            status = "failed"
+            finished_at = now
+        elif phase_text == ATTEMPT_PHASE_BLOCKED:
+            status = "blocked"
+            finished_at = now
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO attempt_phases(
+                attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
+                revision, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                current.attempt_id,
+                phase_text,
+                now,
+                int(current.fencing_token),
+                int(current.fence_epoch),
+                revision,
+                _database_daemon_json(dict(body or {})),
+            ],
+        )
+        connection.execute(
+            """
+            UPDATE database_task_attempts
+            SET committed_phase = ?, status = ?, finished_at_ms = ?, revision = ?
+            WHERE attempt_id = ? AND revision = ?
+            """,
+            [
+                phase_text
+                if phase_text in _ATTEMPT_PHASE_ORDER
+                or phase_text
+                in {ATTEMPT_PHASE_FAILED, ATTEMPT_PHASE_BLOCKED}
+                else current.committed_phase,
+                status,
+                finished_at,
+                revision,
+                current.attempt_id,
+                int(current.revision),
+            ],
+        )
+        updated = self.get_attempt(current.attempt_id)
+        if updated is None:
+            raise DatabaseImplementationDaemonError("attempt disappeared after phase commit")
+        self._record_event(
+            "attempt_phase_committed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"phase": phase_text, "revision": revision, **dict(body or {})},
+        )
+        return updated
+
+    def phase_history(self, attempt_id: str) -> list[dict[str, Any]]:
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT phase, committed_at_ms, fencing_token, fence_epoch, revision, body_json
+            FROM attempt_phases
+            WHERE attempt_id = ?
+            ORDER BY committed_at_ms, phase
+            """,
+            [str(attempt_id)],
+        ).fetchall()
+        history: list[dict[str, Any]] = []
+        for row in rows:
+            if isinstance(row, Mapping):
+                mapping = dict(row)
+            else:
+                mapping = {
+                    "phase": row[0],
+                    "committed_at_ms": row[1],
+                    "fencing_token": row[2],
+                    "fence_epoch": row[3],
+                    "revision": row[4],
+                    "body_json": row[5],
+                }
+            history.append(
+                {
+                    "phase": str(mapping.get("phase") or ""),
+                    "committed_at_ms": int(mapping.get("committed_at_ms") or 0),
+                    "fencing_token": int(mapping.get("fencing_token") or 0),
+                    "fence_epoch": int(mapping.get("fence_epoch") or 0),
+                    "revision": int(mapping.get("revision") or 0),
+                    "body": _database_daemon_load_json(mapping.get("body_json")),
+                }
+            )
+        return history
+
+    # -- provider / effect (idempotent) -------------------------------------
+
+    def provider_invocation_recorded(
+        self,
+        attempt_id: str,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT result_json FROM provider_invocations
+            WHERE attempt_id = ? AND idempotency_key = ?
+            """,
+            [str(attempt_id), str(idempotency_key)],
+        ).fetchone()
+        if row is None:
+            return None
+        raw = row[0] if not isinstance(row, Mapping) else row.get("result_json")
+        return _database_daemon_load_json(raw)
+
+    def effect_claim_recorded(
+        self,
+        attempt_id: str,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT result_json FROM effect_claims
+            WHERE attempt_id = ? AND idempotency_key = ?
+            """,
+            [str(attempt_id), str(idempotency_key)],
+        ).fetchone()
+        if row is None:
+            return None
+        raw = row[0] if not isinstance(row, Mapping) else row.get("result_json")
+        return _database_daemon_load_json(raw)
+
+    def run_provider(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str = "",
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Run provider work once per attempt idempotency key.
+
+        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
+        when a prior committed provider invocation was replayed.
+        """
+
+        key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
+        prior = self.provider_invocation_recorded(
+            attempt.attempt_id, idempotency_key=key
+        )
+        if prior is not None:
+            current = self.get_attempt(attempt.attempt_id) or attempt
+            if not current.phase_committed(ATTEMPT_PHASE_PROVIDER):
+                current = self.commit_phase(
+                    current,
+                    ATTEMPT_PHASE_PROVIDER,
+                    body={"replayed": True, "idempotency_key": key},
+                )
+            return current, prior, True
+        if attempt.phase_committed(ATTEMPT_PHASE_PROVIDER):
+            # Phase committed without a matching key — treat as already done.
+            return attempt, {"status": "already_committed"}, True
+        callback = provider_fn or self._provider_fn
+        if callback is None:
+            result: dict[str, Any] = {
+                "status": "noop",
+                "provider": "database-implementation-daemon",
+                "attempt_id": attempt.attempt_id,
+                "task_cid": attempt.task_cid,
+            }
+        else:
+            result = dict(callback(attempt))
+        connection = self._require_connection()
+        connection.execute(
+            """
+            INSERT INTO provider_invocations(
+                invocation_id, attempt_id, task_cid, idempotency_key,
+                owner_session_id, recorded_at_ms, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _database_daemon_new_id("provider"),
+                attempt.attempt_id,
+                attempt.task_cid,
+                key,
+                self.owner_session_id,
+                self._now_ms(),
+                _database_daemon_json(result),
+            ],
+        )
+        updated = self.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_PROVIDER,
+            body={"idempotency_key": key, "result": result},
+        )
+        self._record_event(
+            "provider_invocation_committed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"idempotency_key": key, "result": result},
+        )
+        return updated, result, False
+
+    def run_effect(
+        self,
+        attempt: DatabaseTaskAttempt,
+        provider_result: Mapping[str, Any],
+        *,
+        idempotency_key: str = "",
+        effect_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Apply effect work once per attempt idempotency key."""
+
+        key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
+        prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
+        if prior is not None:
+            current = self.get_attempt(attempt.attempt_id) or attempt
+            if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
+                current = self.commit_phase(
+                    current,
+                    ATTEMPT_PHASE_EFFECT,
+                    body={"replayed": True, "idempotency_key": key},
+                )
+            return current, prior, True
+        if attempt.phase_committed(ATTEMPT_PHASE_EFFECT):
+            return attempt, {"status": "already_committed"}, True
+        callback = effect_fn or self._effect_fn
+        if callback is None:
+            result: dict[str, Any] = {
+                "status": "noop",
+                "effect": "database-implementation-daemon",
+                "attempt_id": attempt.attempt_id,
+                "task_cid": attempt.task_cid,
+                "provider_result": dict(provider_result),
+            }
+        else:
+            result = dict(callback(attempt, provider_result))
+        connection = self._require_connection()
+        connection.execute(
+            """
+            INSERT INTO effect_claims(
+                effect_id, attempt_id, task_cid, effect_key, idempotency_key,
+                owner_session_id, recorded_at_ms, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _database_daemon_new_id("effect"),
+                attempt.attempt_id,
+                attempt.task_cid,
+                str(result.get("effect_key") or "default"),
+                key,
+                self.owner_session_id,
+                self._now_ms(),
+                _database_daemon_json(result),
+            ],
+        )
+        updated = self.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_EFFECT,
+            body={"idempotency_key": key, "result": result},
+        )
+        self._record_event(
+            "effect_claim_committed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"idempotency_key": key, "result": result},
+        )
+        return updated, result, False
+
+    # -- status / completion (database only) --------------------------------
+
+    def _forbid_markdown_status_write(self, *, operation: str) -> None:
+        self._markdown_status_writes += 1
+        raise DatabaseImplementationAuthorityError(
+            f"refusing Markdown task-status mutation under database authority "
+            f"(operation={operation!r}, authority_mode={self.authority_mode!r})"
+        )
+
+    def write_markdown_task_status(self, *args: Any, **kwargs: Any) -> None:
+        """Explicit Markdown status writes are forbidden under database authority."""
+
+        self._forbid_markdown_status_write(operation="write_markdown_task_status")
+
+    def _cas_task_status_database(
+        self,
+        task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+    ) -> Any:
+        # Never touch Markdown under database authority.
+        if self.markdown_path is not None and self.markdown_path.exists():
+            # Read-only observation is fine; mutation is not.
+            pass
+        cas = getattr(self.task_source, "compare_and_set_status", None) or getattr(
+            self.task_source, "cas_status", None
+        )
+        if not callable(cas):
+            raise DatabaseImplementationDaemonError(
+                "task source does not support compare_and_set_status"
+            )
+        return cas(
+            task_cid,
+            expected_revision=int(expected_revision),
+            status=new_status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def complete_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        evidence_digest: str = "",
+        validation_result: Mapping[str, Any] | None = None,
+    ) -> DatabaseTaskAttempt:
+        """Record validation evidence and complete the task in the database."""
+
+        current = self.get_attempt(attempt.attempt_id) or attempt
+        digest = str(
+            evidence_digest
+            or (validation_result or {}).get("evidence_digest")
+            or f"sha256:{secrets.token_hex(32)}"
+        )
+        self.task_source.record_validation_result(
+            task_cid=current.task_cid,
+            outcome=str((validation_result or {}).get("outcome") or "passed"),
+            evidence_digest=digest,
+            argv=list((validation_result or {}).get("argv") or ["database-validation"]),
+            body=dict(validation_result or {}),
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise KeyError(current.task_cid)
+        if str(task.status).lower() not in {
+            "completed",
+            "complete",
+            "done",
+            "skipped",
+        }:
+            self._cas_task_status_database(
+                current.task_cid,
+                expected_revision=int(task.revision),
+                new_status="completed",
+                receipt={
+                    "operation": "database_complete",
+                    "attempt_id": current.attempt_id,
+                    "claim_id": current.claim_id,
+                    "owner_session_id": self.owner_session_id,
+                    "validation": dict(validation_result or {}),
+                },
+                evidence_digests=[digest],
+            )
+        # Coordination readiness for dependents.
+        self.coordinator.mark_task_complete(
+            current.task_cid,
+            status="succeeded",
+            body={"attempt_id": current.attempt_id},
+            now_ms=self._now_ms(),
+        )
+        # Release the fenced claim when possible.
+        claim = self.coordinator.get_task_claim(current.claim_id)
+        if claim is not None:
+            release = getattr(self.coordinator, "release", None)
+            if callable(release):
+                try:
+                    lease = self.coordinator.get_lease(claim.lease_id)
+                    if lease is not None:
+                        release(lease, reason="attempt_complete")
+                except Exception:
+                    pass
+        updated = self.commit_phase(
+            current,
+            ATTEMPT_PHASE_COMPLETE,
+            body={"evidence_digest": digest},
+        )
+        self._record_event(
+            "attempt_completed",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={"evidence_digest": digest},
+        )
+        return updated
+
+    # -- resume / run_once --------------------------------------------------
+
+    def resume_attempt(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+        effect_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
+        validation_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
+    ) -> dict[str, Any]:
+        """Resume from the last committed phase without duplicating work."""
+
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        if current.status != "running":
+            return {
+                "resumed": False,
+                "reason": f"attempt_{current.status}",
+                "attempt": current.to_dict(),
+                "provider_duplicated": False,
+                "effect_duplicated": False,
+            }
+
+        provider_result: Mapping[str, Any] = {}
+        effect_result: Mapping[str, Any] = {}
+        provider_duplicated = False
+        effect_duplicated = False
+
+        if not current.phase_committed(ATTEMPT_PHASE_CONTEXT):
+            current = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_CONTEXT,
+                body={"resumed": True},
+            )
+
+        if not current.phase_committed(ATTEMPT_PHASE_PROVIDER):
+            current, provider_result, provider_duplicated = self.run_provider(
+                current,
+                provider_fn=provider_fn,
+            )
+        else:
+            prior = self.provider_invocation_recorded(
+                current.attempt_id,
+                idempotency_key=f"provider:{current.attempt_id}",
+            )
+            provider_result = prior or {"status": "already_committed"}
+            provider_duplicated = True
+
+        if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
+            current, effect_result, effect_duplicated = self.run_effect(
+                current,
+                provider_result,
+                effect_fn=effect_fn,
+            )
+        else:
+            prior_effect = self.effect_claim_recorded(
+                current.attempt_id,
+                idempotency_key=f"effect:{current.attempt_id}",
+            )
+            effect_result = prior_effect or {"status": "already_committed"}
+            effect_duplicated = True
+
+        if not current.phase_committed(ATTEMPT_PHASE_VALIDATION):
+            callback = validation_fn or self._validation_fn
+            if callback is None:
+                validation_result: Mapping[str, Any] = {
+                    "outcome": "passed",
+                    "evidence_digest": f"sha256:{secrets.token_hex(32)}",
+                    "argv": ["database-validation"],
+                }
+            else:
+                validation_result = dict(callback(current, effect_result))
+            current = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_VALIDATION,
+                body=dict(validation_result),
+            )
+        else:
+            validation_result = {"outcome": "passed", "replayed": True}
+
+        if not current.phase_committed(ATTEMPT_PHASE_COMPLETE):
+            current = self.complete_attempt(
+                current,
+                validation_result=validation_result,
+            )
+
+        return {
+            "resumed": True,
+            "attempt": current.to_dict(),
+            "provider_result": dict(provider_result),
+            "effect_result": dict(effect_result),
+            "provider_duplicated": bool(provider_duplicated),
+            "effect_duplicated": bool(effect_duplicated),
+            "committed_phase": current.committed_phase,
+            "status": current.status,
+        }
+
+    def run_once(self) -> dict[str, Any]:
+        """One database-authoritative pass: resume inflight or claim new work."""
+
+        # Prefer resume of this session's running attempts (crash recovery).
+        running = self.list_running_attempts()
+        if running:
+            result = self.resume_attempt(running[0])
+            return {
+                "unchanged": False,
+                "write_count": 1,
+                "active_task_id": running[0].task_alias or running[0].task_cid,
+                "implementation_result": result,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+            }
+
+        attempt = self.claim_next()
+        if attempt is None:
+            return {
+                "unchanged": True,
+                "write_count": 0,
+                "active_task_id": "",
+                "selection_idle_reason": "no_ready_tasks",
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+            }
+
+        result = self.resume_attempt(attempt)
+        return {
+            "unchanged": False,
+            "write_count": 1,
+            "active_task_id": attempt.task_alias or attempt.task_cid,
+            "implementation_result": result,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "markdown_status_writes": self._markdown_status_writes,
+            "projections_required": False,
+            "claimed_task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+        }
+
+    def wait_for_wake(self, timeout: float = 0.0) -> None:
+        """Bounded idle wait; database authority uses polling, not FS notify."""
+
+        if timeout and timeout > 0:
+            time.sleep(min(float(timeout), 1.0))
+
+    def close_event_runtime(self) -> None:
+        self.close()
+
+
+def _split_sql_statements(sql_text: str) -> list[str]:
+    statements: list[str] = []
+    for chunk in str(sql_text).split(";"):
+        text = chunk.strip()
+        if text:
+            statements.append(text)
+    return statements
+
+
+def database_program_from_daemon_namespace(
+    args: Any,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> Any | None:
+    """Resolve DatabaseProgramConfig from daemon CLI args and environment."""
+
+    from ..runtime.multi_supervisor_runner import (
+        AUTHORITY_MODE_LEGACY_MARKDOWN,
+        DATABASE_PROGRAM_JSON_ENV,
+        DatabaseProgramConfig,
+        DatabaseProgramConfigError,
+        TASK_SOURCE_LEGACY_MARKDOWN,
+        parse_database_program_config,
+    )
+
+    env = environ if environ is not None else os.environ
+    env_payload = str(env.get(DATABASE_PROGRAM_JSON_ENV, "") or "").strip()
+    env_program = None
+    if env_payload:
+        try:
+            payload = json.loads(env_payload)
+        except json.JSONDecodeError as exc:
+            raise DatabaseProgramConfigError(
+                "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON is not valid JSON"
+            ) from exc
+        env_program = parse_database_program_config(payload)
+
+    authority_mode = str(getattr(args, "authority_mode", "") or "").strip()
+    task_source_kind = str(getattr(args, "task_source_kind", "") or "").strip()
+    explicit_legacy = bool(getattr(args, "explicit_legacy_task_source", False))
+    if not authority_mode:
+        authority_mode = str(
+            env.get("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", "") or ""
+        ).strip()
+    if not task_source_kind:
+        task_source_kind = str(
+            env.get("IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND", "") or ""
+        ).strip()
+
+    if not authority_mode and not task_source_kind and env_program is None:
+        return None
+    if env_program is not None and not authority_mode and not task_source_kind:
+        return env_program
+
+    if not task_source_kind and env_program is not None:
+        task_source_kind = env_program.task_source_kind
+    if not authority_mode and env_program is not None:
+        authority_mode = env_program.authority_mode
+    if not task_source_kind:
+        if authority_mode or explicit_legacy:
+            raise DatabaseProgramConfigError(
+                "task_source_kind is required when authority options are set; "
+                "the implicit legacy-Markdown default is deprecated"
+            )
+        return env_program
+    if not authority_mode:
+        if task_source_kind in {TASK_SOURCE_LEGACY_MARKDOWN, "markdown"}:
+            authority_mode = AUTHORITY_MODE_LEGACY_MARKDOWN
+            explicit_legacy = True
+        elif task_source_kind == "duckdb":
+            authority_mode = "embedded"
+        else:
+            raise DatabaseProgramConfigError(
+                f"cannot infer authority_mode for task_source_kind "
+                f"{task_source_kind!r}"
+            )
+
+    payload = {
+        "authority_mode": authority_mode,
+        "task_source_kind": task_source_kind,
+        "endpoint_secret_handle": str(
+            getattr(args, "endpoint_secret_handle", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "")
+            or (env_program.endpoint_secret_handle if env_program else "")
+        ),
+        "store_id": str(
+            getattr(args, "state_store_id", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "")
+            or (env_program.store_id if env_program else "")
+        ),
+        "store_generation": str(
+            getattr(args, "state_store_generation", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "")
+            or (env_program.store_generation if env_program else "")
+        ),
+        "schema_revision": str(
+            getattr(args, "state_schema_revision", "")
+            or env.get("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "")
+            or (env_program.schema_revision if env_program else "")
+        ),
+        "event_store_path": str(
+            getattr(args, "event_store_path", "")
+            or env.get("IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH", "")
+            or (env_program.event_store_path if env_program else "")
+        ),
+        "runtime_registry_path": str(
+            getattr(args, "runtime_registry_path", "")
+            or env.get("IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", "")
+            or (env_program.runtime_registry_path if env_program else "")
+        ),
+        "worktree_root": str(
+            getattr(args, "worktree_root", "")
+            or (env_program.worktree_root if env_program else "")
+        ),
+        "export_profile": str(
+            getattr(args, "export_profile", "")
+            or env.get("IPFS_ACCELERATE_AGENT_EXPORT_PROFILE", "")
+            or (env_program.export_profile if env_program else "")
+        ),
+        "failover_policy": str(
+            getattr(args, "state_failover_policy", "")
+            or (env_program.failover_policy if env_program else "fail_closed")
+            or "fail_closed"
+        ),
+        "explicit_legacy": bool(
+            explicit_legacy
+            or (env_program.explicit_legacy if env_program else False)
+            or authority_mode == AUTHORITY_MODE_LEGACY_MARKDOWN
+        ),
+    }
+    return DatabaseProgramConfig.from_mapping(payload)
+
+
+def open_database_implementation_daemon(
+    database_path: Path | str,
+    **kwargs: Any,
+) -> DatabaseImplementationDaemon:
+    """Open a :class:`DatabaseImplementationDaemon` on ``database_path``."""
+
+    return DatabaseImplementationDaemon(database_path=database_path, **kwargs).open()
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the portal implementation backlog daemon")
     parser.add_argument("--once", action="store_true", help="Run one backlog pass and exit")
@@ -52711,6 +58504,81 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "existing heading parser; 'markdown' opens a canonical Markdown "
             "task source; 'duckdb' opens the database directly."
         ),
+    )
+    parser.add_argument(
+        "--authority-mode",
+        default="",
+        choices=("", "legacy_markdown", "embedded", "embedded_exclusive", "quack"),
+        help=(
+            "State authority mode. Database modes (embedded/quack) cut the "
+            "daemon over to DatabaseImplementationDaemon@1 execution."
+        ),
+    )
+    parser.add_argument(
+        "--endpoint-secret-handle",
+        default="",
+        help="Opaque Quack/state endpoint secret handle (never a raw token).",
+    )
+    parser.add_argument(
+        "--state-store-id",
+        default="",
+        help="Database store identity for Quack/embedded authority.",
+    )
+    parser.add_argument(
+        "--state-store-generation",
+        default="",
+        help="Database store generation token.",
+    )
+    parser.add_argument(
+        "--state-schema-revision",
+        default="",
+        help="Database schema revision identity.",
+    )
+    parser.add_argument(
+        "--state-failover-policy",
+        default="fail_closed",
+        choices=("fail_closed", "require_explicit_operator"),
+        help="Failover policy; Quack requires fail_closed.",
+    )
+    parser.add_argument(
+        "--event-store-path",
+        default="",
+        help="Optional database event-store path binding.",
+    )
+    parser.add_argument(
+        "--runtime-registry-path",
+        default="",
+        help="Optional daemon runtime-registry path binding.",
+    )
+    parser.add_argument(
+        "--export-profile",
+        default="",
+        help="Optional export profile identity.",
+    )
+    parser.add_argument(
+        "--explicit-legacy-task-source",
+        action="store_true",
+        help="Acknowledge explicit legacy-Markdown authority (not implicit default).",
+    )
+    parser.add_argument(
+        "--database-path",
+        type=Path,
+        default=None,
+        help=(
+            "DuckDB control-plane path for database-authoritative execution. "
+            "When set with --task-source-kind duckdb, JSON projections may be absent."
+        ),
+    )
+    parser.add_argument(
+        "--coordination-path",
+        type=Path,
+        default=None,
+        help="Optional DuckDB path for fenced task claims (defaults beside --database-path).",
+    )
+    parser.add_argument(
+        "--owner-session-id",
+        default="",
+        help="Daemon session identity used for fenced claims.",
     )
     parser.add_argument(
         "--expected-task-source-root",
@@ -53091,67 +58959,122 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
     if args.llm_merge_resolver_timeout_seconds is not None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
-    daemon = PortalImplementationDaemon(
-        todo_path=args.todo_path,
-        task_source=(
-            args.todo_path
-            if args.task_source_kind in {"markdown", "duckdb"}
-            else None
-        ),
-        task_source_kind=(
-            args.task_source_kind
-            if args.task_source_kind in {"markdown", "duckdb"}
-            else ""
-        ),
-        expected_task_source_root_id=args.expected_task_source_root,
-        expected_task_source_repository_root_id=(
-            args.expected_task_source_repository_root
-        ),
-        state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
-        strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
-        events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
-        repo_root=REPO_ROOT,
-        task_header_prefix=args.task_prefix,
-        implement=args.implement,
-        implementation_command=args.implementation_command or None,
-        implementation_timeout=args.implementation_timeout,
-        max_task_attempts=args.max_task_attempts,
-        use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
-        worktree_root=args.worktree_root,
-        merge_target_branch=args.merge_target_branch,
-        merge_queue_dir=args.merge_queue_dir,
-        worktree_submodule_paths=args.worktree_submodule_path or None,
-        implementation_protected_paths=args.implementation_protected_path,
-        manual_completion_authority_task_ids=(
-            args.manual_completion_authority_task_id
-        ),
-        manual_completion_authority_required_task_ids=(
-            args.manual_completion_authority_required_task_id
-        ),
-        manual_completion_authority_epoch_id=(
-            args.manual_completion_authority_epoch_id
-        ),
-        manual_completion_authority_revalidation_only=(
-            args.manual_completion_authority_revalidation_only
-        ),
-        objective_path=args.objective_path,
-        objective_bundle_dir=args.objective_bundle_dir,
-        generated_status_paths=args.generated_status_path,
-        external_reservation_manifest_paths=args.external_reservation_manifest_path,
-        assumed_completed_task_ids=args.assume_completed_task_id,
-        execution_slice_task_ids=args.execution_slice_task_id,
-        execution_slice_task_cids=args.execution_slice_task_cid,
-        llm_merge_resolver_command=args.llm_merge_resolver_command or None,
-        llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
-        merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
-        merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
-        task_shard_count=args.task_shard_count,
-        task_shard_index=args.task_shard_index,
-        strict_task_sharding=args.strict_task_sharding,
-        validation_max_workers=args.validation_max_workers,
-        validation_resource_budget=args.validation_resource_budget,
-        maintenance_interval_seconds=args.maintenance_interval_seconds,
+
+    program = database_program_from_daemon_namespace(args)
+    database_path = getattr(args, "database_path", None)
+    if database_path is None and program is not None and program.store_id:
+        candidate = Path(program.store_id)
+        if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
+            database_path = candidate
+    if database_path is None and str(getattr(args, "todo_path", "") or "").endswith(
+        (".duckdb", ".ddb")
+    ):
+        database_path = Path(args.todo_path)
+
+    use_database_daemon = (
+        program is not None
+        and is_database_authority_mode(
+            authority_mode=program.authority_mode,
+            task_source_kind=program.task_source_kind,
+        )
+        and database_path is not None
+    ) or (
+        database_path is not None
+        and is_database_authority_mode(
+            authority_mode=str(getattr(args, "authority_mode", "") or ""),
+            task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
+        )
     )
+
+    if use_database_daemon:
+        authority_mode = (
+            program.authority_mode
+            if program is not None
+            else str(getattr(args, "authority_mode", "") or "embedded")
+        )
+        task_source_kind = (
+            program.task_source_kind
+            if program is not None
+            else str(getattr(args, "task_source_kind", "") or "duckdb")
+        )
+        daemon: Any = DatabaseImplementationDaemon(
+            database_path=Path(database_path),
+            coordination_path=getattr(args, "coordination_path", None),
+            owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
+            authority_mode=authority_mode or "embedded",
+            task_source_kind=task_source_kind or "duckdb",
+            markdown_path=args.todo_path
+            if str(args.todo_path).endswith(".md")
+            else None,
+            # JSON projections optional under database authority.
+            state_path=None,
+            strategy_path=None,
+            events_path=None,
+            pid_path=None,
+            queue_path=None,
+        )
+    else:
+        daemon = PortalImplementationDaemon(
+            todo_path=args.todo_path,
+            task_source=(
+                args.todo_path
+                if args.task_source_kind in {"markdown", "duckdb"}
+                else None
+            ),
+            task_source_kind=(
+                args.task_source_kind
+                if args.task_source_kind in {"markdown", "duckdb"}
+                else ""
+            ),
+            expected_task_source_root_id=args.expected_task_source_root,
+            expected_task_source_repository_root_id=(
+                args.expected_task_source_repository_root
+            ),
+            state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
+            strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
+            events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
+            repo_root=REPO_ROOT,
+            task_header_prefix=args.task_prefix,
+            implement=args.implement,
+            implementation_command=args.implementation_command or None,
+            implementation_timeout=args.implementation_timeout,
+            max_task_attempts=args.max_task_attempts,
+            use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
+            worktree_root=args.worktree_root,
+            merge_target_branch=args.merge_target_branch,
+            merge_queue_dir=args.merge_queue_dir,
+            worktree_submodule_paths=args.worktree_submodule_path or None,
+            implementation_protected_paths=args.implementation_protected_path,
+            manual_completion_authority_task_ids=(
+                args.manual_completion_authority_task_id
+            ),
+            manual_completion_authority_required_task_ids=(
+                args.manual_completion_authority_required_task_id
+            ),
+            manual_completion_authority_epoch_id=(
+                args.manual_completion_authority_epoch_id
+            ),
+            manual_completion_authority_revalidation_only=(
+                args.manual_completion_authority_revalidation_only
+            ),
+            objective_path=args.objective_path,
+            objective_bundle_dir=args.objective_bundle_dir,
+            generated_status_paths=args.generated_status_path,
+            external_reservation_manifest_paths=args.external_reservation_manifest_path,
+            assumed_completed_task_ids=args.assume_completed_task_id,
+            execution_slice_task_ids=args.execution_slice_task_id,
+            execution_slice_task_cids=args.execution_slice_task_cid,
+            llm_merge_resolver_command=args.llm_merge_resolver_command or None,
+            llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+            merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+            merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
+            validation_max_workers=args.validation_max_workers,
+            validation_resource_budget=args.validation_resource_budget,
+            maintenance_interval_seconds=args.maintenance_interval_seconds,
+        )
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
@@ -53164,17 +59087,29 @@ def main(argv: list[str] | None = None) -> None:
         previous_int = signal.signal(signal.SIGINT, request_stop)
     try:
         if args.reset_manual_completion_authority_renewal_task_id:
-            result = (
-                daemon.reset_manual_completion_authority_renewal_quarantine(
-                    args.reset_manual_completion_authority_renewal_task_id
-                )
+            reset_fn = getattr(
+                daemon, "reset_manual_completion_authority_renewal_quarantine", None
             )
+            if not callable(reset_fn):
+                raise SystemExit(
+                    "manual-completion renewal reset requires legacy "
+                    "PortalImplementationDaemon"
+                )
+            result = reset_fn(args.reset_manual_completion_authority_renewal_task_id)
             print(json.dumps(result, indent=2, sort_keys=True))
             if not result.get("reset"):
                 raise SystemExit(2)
             return
         if args.clear_protected_path_incident:
-            result = daemon.clear_implementation_protected_path_incident(
+            clear_fn = getattr(
+                daemon, "clear_implementation_protected_path_incident", None
+            )
+            if not callable(clear_fn):
+                raise SystemExit(
+                    "protected-path incident clearance requires legacy "
+                    "PortalImplementationDaemon"
+                )
+            result = clear_fn(
                 approved_commits=args.approve_protected_path_commit,
                 operator_note=args.operator_clearance_note,
                 approve_disposed_ephemeral_workspace=(
@@ -53204,14 +59139,73 @@ def main(argv: list[str] | None = None) -> None:
                 last_idle_info_at = now
             if args.once:
                 break
-            daemon.wait_for_wake(timeout=args.interval)
+            wait_for_wake = getattr(daemon, "wait_for_wake", None)
+            if callable(wait_for_wake):
+                wait_for_wake(timeout=args.interval)
+            else:
+                time.sleep(args.interval)
     finally:
         try:
-            daemon.close_event_runtime()
+            close_event_runtime = getattr(daemon, "close_event_runtime", None)
+            if callable(close_event_runtime):
+                close_event_runtime()
+            else:
+                close = getattr(daemon, "close", None)
+                if callable(close):
+                    close()
         finally:
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
+
+
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
+    """Seal the generation that finished importing this daemon module."""
+
+    source_root = Path(__file__).resolve(strict=True).parents[3]
+    head_before, tree_before = (
+        agent_implementation_control_plane_source_generation(source_root)
+    )
+    parent = Path(
+        tempfile.mkdtemp(prefix="asref-imported-control-plane-")
+    )
+    try:
+        pin = materialize_agent_implementation_control_plane_capsule(
+            source_root=source_root,
+            capsule_parent=parent,
+            source_head=head_before,
+            source_tree=tree_before,
+        )
+        launch = seal_agent_implementation_control_plane_capsule(pin)
+        head_after, tree_after = (
+            agent_implementation_control_plane_source_generation(source_root)
+        )
+        if (head_after, tree_after) != (head_before, tree_before):
+            raise ValueError(
+                "accepted control-plane changed while import was sealed"
+            )
+        return pin, launch, parent
+    except Exception:
+        try:
+            shutil.rmtree(parent)
+        except OSError:
+            pass
+        raise
+
+
+try:
+    (
+        _IMPORTED_CONTROL_PLANE_CAPSULE,
+        _IMPORTED_CONTROL_PLANE_LAUNCH,
+        _IMPORTED_CONTROL_PLANE_TEMP_ROOT,
+    ) = _capture_imported_control_plane_generation()
+except (OSError, ValueError, subprocess.SubprocessError):
+    # Dirty development/import trees cannot be used for the protected route.
+    # Its constructor will retry only against the same on-disk generation and
+    # fail closed if no clean exact capsule can be proven.
+    _IMPORTED_CONTROL_PLANE_CAPSULE = None
+    _IMPORTED_CONTROL_PLANE_LAUNCH = None
+    _IMPORTED_CONTROL_PLANE_TEMP_ROOT = None
 
 
 if __name__ == "__main__":

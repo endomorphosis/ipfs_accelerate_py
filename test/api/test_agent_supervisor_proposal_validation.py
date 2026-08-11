@@ -524,6 +524,54 @@ def test_policy_allowance_cannot_widen_immutable_task_owned_scope() -> None:
     )
 
 
+def test_declared_validation_config_authority_allows_additions_only() -> None:
+    before = "[project]\nname = 'fixture'\n"
+    policy = _policy(
+        allowed_paths=("pyproject.toml",),
+        task_owned_paths=("pyproject.toml",),
+        allow_validation_config_changes=True,
+    )
+
+    additive = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=before,
+                after=before + "dependencies = ['duckdb>=1.5,<1.6']\n",
+            )
+        ),
+        policy=policy,
+    )
+    rewritten = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=before,
+                after="[project]\nname = 'renamed'\n",
+            )
+        ),
+        policy=policy,
+    )
+    weakening_addition = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=before,
+                after=before + "[tool.pytest.ini_options]\naddopts = '-k smoke'\n",
+            )
+        ),
+        policy=policy,
+    )
+
+    assert additive.accepted
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        rewritten
+    )
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        weakening_addition
+    )
+
+
 def test_lossy_unsafe_rename_path_cannot_disappear_during_normalization() -> None:
     entry = _entry(
         change_kind=DiffChangeKind.RENAME,

@@ -4351,6 +4351,9 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
         validation_retry_budget=2,
         merge_retry_budget=0,
         implementation_retry_budget=0,
+        validation_task_command_transform=(
+            lambda command: f"env TOOL=1 {command}"
+        ),
     )
 
     assert len(findings) == 1
@@ -4360,7 +4363,11 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
     )
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "Resolve validation retry-budget failure for AUTO-001" in todo_text
-    assert "- Validation: test -f " in todo_text
+    assert (
+        "- Validation: env TOOL=1 pytest tests/test_runtime.py"
+        in todo_text
+    )
+    assert "- Validation: test -f " not in todo_text
     discovery_text = Path(findings[0]["discovery_path"]).read_text(
         encoding="utf-8"
     )

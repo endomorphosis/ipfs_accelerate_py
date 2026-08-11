@@ -13,6 +13,7 @@ state/*
 *model_functionality*
 *.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
+!data/agent_supervisor/prompt_only_self_improvement_v3/convergence/*.json
 .venv-test
 *result.json*
 *benchmark_report*
@@ -151,7 +152,7 @@ err.txt
 *.pid
 nohup.out
 /*.out
-core
+/core
 core.*
 *.core
 .DS_Store
@@ -166,6 +167,7 @@ Thumbs.db
 /data/agent_supervisor/ipfs_kit_runtime_readiness/
 /data/agent_supervisor/ipfs_datasets_logic_family_parser/
 /data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/
+/data/agent_supervisor/prompt_only_self_improvement_v3/live/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
@@ -196,8 +198,14 @@ state/**/*.out
 !docs/architecture/formal_verification_role_aware_deployment_receipt.json
 # Stable IPFS Kit runtime-readiness scheduler policy is a source artifact.
 !config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
+# Stable IPFS Kit kernel-VFS/FUSE scheduler policy is a source artifact.
+!config/agent_supervisor_ipfs_kit_fuse_vfs_scheduler.json
+/data/agent_supervisor/ipfs_kit_fuse_vfs/
 # Stable machine-ingestible supervisor program profile (CPD-000).
 !config/agent_supervisor_control_plane_planner_doctor_v2_scheduler.json
+# Stable machine-ingestible DuckDB + Quack migration bootstrap profile.
+!config/agent_supervisor_duckdb_quack_control_plane_scheduler.json
+!config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json
 # Delegated/manual completion seals for Planner/Doctor program gates.
 !config/agent_supervisor_planner_doctor_attestation.seal.json
 !config/agent_supervisor_planner_doctor_quality_oracle.seal.json

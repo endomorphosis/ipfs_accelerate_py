@@ -1,31 +1,24 @@
 """Automatic implementation-provider selection for the agent supervisor.
 
-This module is the pure ranking / admission surface for ``auto``
-implementation routing.  It reuses:
+This module normalizes non-authoritative backend observations for ``auto``
+implementation routing and adapts the sole router-owned decision from
+:mod:`ipfs_accelerate_py.llm_router`.  It reuses:
 
-* :mod:`entrypoints.capability_resolver` preferred-provider policy
-  (Grok preferred; Grok is the default tie-breaker when multiple backends
-  are healthy);
-* :mod:`ipfs_accelerate_py.llm_router` readiness probes that do **not**
-  charge usage (binary + auth, no generation);
+* :mod:`ipfs_accelerate_py.llm_router` for eligibility, ranking, freshness,
+  authentication/quota/capacity classification, authorization, and final
+  allow/deny via :func:`decide_router_owned_implementation_provider`;
+* readiness probes that do **not** charge usage (binary + auth, no generation);
 * :mod:`cli_provider_balance` for Claude, Gemini, Meta Spark, Mistral, and
-  Copilot readiness plus quota/balance classification;
+  Copilot readiness plus quota/balance *observation* helpers;
 * durable capacity / hard-quota latches already maintained by the
   implementation daemon from classified provider failures;
 * optional :mod:`endpoint_usage.adapters` observations when a caller has
   already normalized provider balance metadata.
 
-Selection rules (fail-closed):
-
-1. Hard filters: not ready, active transient capacity latch, or hard quota
-   exhaustion remove a candidate before ranking.
-2. Soft ranking prefers more headroom / higher preference rank; identical soft
-   scores are broken by the preferred provider (Grok).
-3. Secondary backends (Codex, Claude, Gemini, Copilot, Meta Spark, Mistral)
-   are authorized for *implementation* only when Grok has a durable hard-quota
-   exhaustion latch (or an operator escape hatch).  Transient Grok capacity
-   cooldowns never open a secondary implementer.
-4. Explicit non-``auto`` pins bypass this selector entirely.
+This module must not retain an independent provider/model/trigger/effort
+tuple, preferred-provider rank or tie-break table, authentication/quota
+classifier, freshness rule, authorization branch, or final allow/deny path.
+Explicit non-``auto`` pins bypass this selector entirely.
 """
 
 from __future__ import annotations
@@ -34,7 +27,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping, Sequence
 
-from ipfs_accelerate_py.agent_supervisor.entrypoints.capability_resolver import (
+from ipfs_accelerate_py.agent_supervisor.control.capability_resolver import (
     FALLBACK_PROVIDER,
     PREFERRED_PROVIDER,
     PreferredProviderCapability,
@@ -65,16 +58,6 @@ AUTO_OBSERVED_PROVIDERS: tuple[str, ...] = (
     MISTRAL_PROVIDER_ID,
     FALLBACK_PROVIDER,
 )
-
-# Preference rank: lower is better.  Grok is always first when eligible.
-_PROVIDER_PREFERENCE_RANK: dict[str, int] = {
-    PREFERRED_PROVIDER: 0,
-    **{
-        provider: index + 1
-        for index, provider in enumerate(SECONDARY_IMPLEMENTATION_PREFERENCE)
-    },
-}
-
 
 class AutoProviderDecision(str, Enum):
     """Closed set of auto-route outcomes."""
@@ -320,32 +303,6 @@ def merge_usage_observation(
     )
 
 
-def _soft_rank_key(observation: BackendObservation) -> tuple[int, int, int]:
-    """Lower is better (for ascending sort).
-
-    Order: preference rank (Grok=0), inverted headroom, residual name.
-    """
-
-    rank = _PROVIDER_PREFERENCE_RANK.get(observation.provider_id, 100)
-    headroom = (
-        int(observation.request_headroom)
-        if observation.request_headroom is not None
-        else 0
-    )
-    return (rank, -headroom, observation.provider_id)
-
-
-def _best_secondary(eligible: Sequence[BackendObservation]) -> BackendObservation | None:
-    secondaries = [
-        item
-        for item in eligible
-        if item.provider_id in SECONDARY_IMPLEMENTATION_PREFERENCE
-    ]
-    if not secondaries:
-        return None
-    return sorted(secondaries, key=_soft_rank_key)[0]
-
-
 def select_implementation_provider(
     observations: Sequence[BackendObservation],
     *,
@@ -354,6 +311,10 @@ def select_implementation_provider(
     allow_codex_without_grok_quota: bool = False,
 ) -> AutoProviderSelection:
     """Select the implementation backend from frozen observations.
+
+    Observation normalization stays local; eligibility, ranking, freshness,
+    classification, authorization, and final allow/deny are owned solely by
+    :func:`ipfs_accelerate_py.llm_router.decide_router_owned_implementation_provider`.
 
     Parameters
     ----------
@@ -366,102 +327,68 @@ def select_implementation_provider(
         false so secondaries open only after Grok hard-quota evidence.
     """
 
+    from ipfs_accelerate_py.llm_router import (
+        ROUTER_OWNED_COMPATIBILITY_LEGACY_AUTO,
+        LegacyAutoProviderCompatibilityAdapter,
+        RouterOwnedProviderObservation,
+        decide_router_owned_implementation_provider,
+    )
+
     # Back-compat alias used by older call sites / tests.
     allow_secondary = bool(
         allow_secondary_without_grok_quota or allow_codex_without_grok_quota
     )
 
     obs = tuple(observations)
-    by_id = {item.provider_id: item for item in obs}
-    grok = by_id.get(PREFERRED_PROVIDER)
-
-    if global_capacity_latched:
-        return AutoProviderSelection(
-            decision=AutoProviderDecision.BACKOFF,
-            selected_provider="",
-            reason_codes=(AutoProviderReason.GLOBAL_CAPACITY.value,),
-            observations=obs,
-            retry_at=next((item.retry_at for item in obs if item.retry_at), ""),
+    router_observations = tuple(
+        RouterOwnedProviderObservation(
+            provider_id=item.provider_id,
+            ready=item.ready,
+            authenticated=item.authenticated,
+            binary_available=item.binary_available,
+            hard_quota_exhausted=item.hard_quota_exhausted,
+            capacity_latched=item.capacity_latched,
+            request_headroom=item.request_headroom,
+            retry_at=item.retry_at,
+            source=item.source,
+            reason_codes=item.reason_codes,
         )
-
-    eligible = [item for item in obs if item.eligible]
-    other_eligible = [
-        item for item in eligible if item.provider_id != PREFERRED_PROVIDER
-    ]
-
-    # Grok ready → always preferred (explicit tie-break when others ready).
-    if grok is not None and grok.eligible:
-        reasons = [AutoProviderReason.PREFERRED_READY.value]
-        if other_eligible:
-            reasons.append(AutoProviderReason.TIE_BREAK_PREFERRED.value)
-        return AutoProviderSelection(
-            decision=AutoProviderDecision.GROK,
-            selected_provider=PREFERRED_PROVIDER,
-            reason_codes=tuple(reasons),
-            observations=obs,
-        )
-
-    # Transient Grok capacity: backoff; never open secondaries without hard quota.
-    if (
-        grok is not None
-        and grok.capacity_latched
-        and not grok.hard_quota_exhausted
-    ):
-        return AutoProviderSelection(
-            decision=AutoProviderDecision.BACKOFF,
-            selected_provider="",
-            reason_codes=(
-                AutoProviderReason.PREFERRED_TRANSIENT_CAPACITY.value,
-            ),
-            observations=obs,
-            retry_at=grok.retry_at,
-        )
-
-    # Durable Grok hard-quota exhaustion authorizes secondary implementers.
-    if grok is not None and grok.hard_quota_exhausted:
-        secondary = _best_secondary(eligible)
-        if secondary is not None:
-            return AutoProviderSelection(
-                decision=_decision_for_provider(secondary.provider_id),
-                selected_provider=secondary.provider_id,
-                reason_codes=(
-                    AutoProviderReason.FALLBACK_AFTER_QUOTA.value,
-                    AutoProviderReason.SECONDARY_AFTER_QUOTA.value,
-                ),
-                observations=obs,
-                retry_at=grok.retry_at,
-            )
-
-    # Optional escape hatch (tests / operator) — off by default.
-    if allow_secondary:
-        secondary = _best_secondary(eligible)
-        if secondary is not None:
-            return AutoProviderSelection(
-                decision=_decision_for_provider(secondary.provider_id),
-                selected_provider=secondary.provider_id,
-                reason_codes=(AutoProviderReason.FALLBACK_AFTER_QUOTA.value,),
-                observations=obs,
-                retry_at=secondary.retry_at,
-            )
-
-    reasons: list[str] = [AutoProviderReason.NO_ELIGIBLE.value]
-    if grok is not None and not grok.eligible:
-        reasons.append(AutoProviderReason.PREFERRED_NOT_READY.value)
-    if not any(
-        item.eligible and item.provider_id in SECONDARY_IMPLEMENTATION_PREFERENCE
         for item in obs
-    ):
-        reasons.append(AutoProviderReason.SECONDARY_NOT_READY.value)
-        reasons.append(AutoProviderReason.FALLBACK_NOT_READY.value)
+    )
+    decision = decide_router_owned_implementation_provider(
+        router_observations,
+        preferred_provider=PREFERRED_PROVIDER,
+        fallback_provider=FALLBACK_PROVIDER,
+        secondary_providers=SECONDARY_IMPLEMENTATION_PREFERENCE,
+        global_capacity_latched=global_capacity_latched,
+        allow_secondary_without_preferred_quota=allow_secondary,
+        compatibility_mode=ROUTER_OWNED_COMPATIBILITY_LEGACY_AUTO,
+    )
+    adapted = LegacyAutoProviderCompatibilityAdapter.to_selection_fields(decision)
+    selected_provider = str(adapted["selected_provider"] or "")
+    mapped_decision = str(adapted["decision"] or "unavailable")
+    if mapped_decision == "backoff":
+        auto_decision = AutoProviderDecision.BACKOFF
+    elif mapped_decision == "unavailable" or not selected_provider:
+        auto_decision = AutoProviderDecision.UNAVAILABLE
+    else:
+        auto_decision = _decision_for_provider(selected_provider)
     return AutoProviderSelection(
-        decision=AutoProviderDecision.UNAVAILABLE,
-        selected_provider="",
-        reason_codes=tuple(dict.fromkeys(reasons)),
-        observations=obs,
-        retry_at=(
-            (grok.retry_at if grok is not None else "")
-            or next((item.retry_at for item in obs if item.retry_at), "")
+        decision=auto_decision,
+        selected_provider=selected_provider,
+        preferred_provider=str(
+            adapted.get("preferred_provider") or PREFERRED_PROVIDER
         ),
+        fallback_provider=str(
+            adapted.get("fallback_provider") or FALLBACK_PROVIDER
+        ),
+        secondary_providers=tuple(
+            adapted.get("secondary_providers")
+            or SECONDARY_IMPLEMENTATION_PREFERENCE
+        ),
+        reason_codes=tuple(adapted.get("reason_codes") or ()),
+        observations=obs,
+        retry_at=str(adapted.get("retry_at") or ""),
     )
 
 

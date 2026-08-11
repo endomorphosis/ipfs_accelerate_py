@@ -1,0 +1,52 @@
+{
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "created_at": "2026-08-10T02:46:27Z",
+  "denials": {
+    "codex_or_openai_reviewer_allowed": false,
+    "generation_identity_substitution_allowed": false,
+    "pre_l_effect_allowed": false,
+    "receipt_selected_reload_authority_allowed": false,
+    "self_review_allowed": false
+  },
+  "generation": {
+    "generation_id": "sha256:86727dc67ba0bde9678fa8cdcc3f813f9fd4927a6fe2d30a266152561aef76c1",
+    "generation_number": 1
+  },
+  "phase": "post-L",
+  "process_birth": {
+    "effect_started_at": "2026-08-10T02:46:27Z",
+    "process_started_at": "2026-08-10T02:46:27Z",
+    "runtime_effect_started": true
+  },
+  "reload_authorization": {
+    "head": "36c5d9d76c3c60c02f212c806b9bbb557bfbc115",
+    "path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+    "phase": "L",
+    "sha256": "sha256:8c885efd128385f200aa55388724efd4dbf2c461003b387b6bcc88660283924f",
+    "tree": "ac1e91defe273d45fb2920c4e7b000171fad29fc"
+  },
+  "review": {
+    "algorithm": "Ed25519",
+    "fallback_authorization_id": "sha256:dfbcb29e1b624b345b263857ba750404b8287f3a869b317efdadc363250a9301",
+    "fallback_authorization_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "implementer_identity": "codex:provider-attempt-generation-birth",
+    "implementer_provider": "codex",
+    "lifecycle_anchor_digest": "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239",
+    "lifecycle_anchor_id": "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8",
+    "lifecycle_generation": 1,
+    "lifecycle_root_identity_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+    "lifecycle_root_pin_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "lifecycle_root_pin_sha256": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+    "lifecycle_witness_id": "sha256:c0ff822e398493bd35e054b8bdbe8ed3b6d94bcbb04521241e1b1a48bc3cd65b",
+    "lifecycle_witness_nonce": "z3Y5bP4zbgLAgGHWV0sKhzXCKJ8CAMNt",
+    "lifecycle_witness_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "lifecycle_witness_sha256": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+    "profile_content_id": "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec",
+    "profile_id": "78d545927196b5dad4c2c76b461927ec",
+    "reviewer_identity": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "reviewer_provider": "local_operator",
+    "signature": "ed25519:Jsk_4Ci-S2xwsK-_DoMCVaaUk0W1BZ-m8lHtycE-aF-W3bL9NGNO1G2hNdcjZEBLFweQteM4y5_zh4736k3lCg",
+    "signed_at": "2026-08-10T02:46:27Z"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.provider-attempt-generation-birth@1"
+}
