@@ -11543,6 +11543,66 @@ class PortalImplementationDaemon:
         ):
             raise ValueError("merge-integrated receipt Git binding is stale")
 
+    def _find_two_parent_integrating_merge(
+        self,
+        *,
+        candidate_commit: str,
+        target_branch: str,
+        preferred_merge_commit: str = "",
+    ) -> dict[str, Any] | None:
+        """Locate the exact two-parent merge that introduced ``candidate_commit``.
+
+        Returns ``{"merge_commit": sha, "parents": [merge, first, second]}`` or
+        ``None`` when no qualifying merge is on the target branch history.
+        """
+
+        candidate = str(candidate_commit or "").strip().lower()
+        preferred = str(preferred_merge_commit or "").strip().lower()
+        if not candidate or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", candidate):
+            return None
+
+        def _parents_of(commit: str) -> list[str] | None:
+            result = self._run_git(
+                ["rev-list", "--parents", "-n", "1", commit],
+                cwd=self.repo_root,
+            )
+            fields = result.stdout.strip().lower().split()
+            if (
+                result.returncode != 0
+                or len(fields) != 3
+                or fields[0] != commit.lower()
+                or fields[2] != candidate
+            ):
+                return None
+            return fields
+
+        # Prefer an explicit merge commit from the merge callback when valid.
+        if preferred and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", preferred):
+            fields = _parents_of(preferred)
+            if fields is not None:
+                return {"merge_commit": preferred, "parents": fields}
+
+        # Walk merges on the ancestry path from the candidate to the live tip.
+        listed = self._run_git(
+            [
+                "rev-list",
+                "--merges",
+                "--ancestry-path",
+                f"{candidate}..{target_branch}",
+            ],
+            cwd=self.repo_root,
+        )
+        if listed.returncode != 0:
+            return None
+        for merge in listed.stdout.split():
+            merge_id = merge.strip().lower()
+            if not merge_id:
+                continue
+            fields = _parents_of(merge_id)
+            if fields is not None:
+                return {"merge_commit": merge_id, "parents": fields}
+        return None
+
     def _merge_integrated_receipt(
         self,
         request: Any,
@@ -12022,17 +12082,32 @@ class PortalImplementationDaemon:
                 ["rev-parse", target_branch],
                 cwd=self.repo_root,
             ).stdout.strip()
+            integrating = self._find_two_parent_integrating_merge(
+                candidate_commit=implementation_commit,
+                target_branch=target_branch,
+                preferred_merge_commit=str(
+                    result.get("merge_commit") or target_commit or ""
+                ),
+            )
+            # Prefer the exact two-parent merge that introduced the candidate so
+            # completion evidence can bind when the tip later advanced past it.
+            merge_commit = (
+                str(integrating["merge_commit"])
+                if integrating is not None
+                else target_commit
+            )
             result.update(
                 {
                     "merged": True,
                     "returncode": 0,
                     "reason": "implementation_commit_already_merged",
-                    "merge_commit": target_commit,
+                    "merge_commit": merge_commit,
                     "post_callback_ancestry_reconciliation": {
                         "promoted": True,
                         "implementation_commit": implementation_commit,
                         "target_branch": target_branch,
                         "target_commit": target_commit,
+                        "integrating_merge_commit": merge_commit,
                         "previous_reason": previous_reason,
                     },
                 }
