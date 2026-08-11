@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
@@ -280,6 +281,19 @@ EXPECTED_WAVES = (
     ("IVP-020",),
     ("IVP-019",),
 )
+
+LINT_REPAIR_SCOPE = (
+    "ipfs_accelerate_py/agent_supervisor/verification",
+    "benchmarks/agent_supervisor/incremental_verification.py",
+    "test/benchmarks/test_incremental_verification_planner_benchmark.py",
+    "test/api/test_agent_supervisor_verification_*.py",
+    "test/api/test_agent_supervisor_incremental_verification_*.py",
+)
+LINT_SUPPRESSION_RE = re.compile(
+    r"(?:#\s*(?:noqa\b|ruff:\s*noqa\b)|\b(?:per-file-ignores|extend-ignore)\b)",
+    re.IGNORECASE,
+)
+MAX_LINT_DIFF_BYTES = 4_000_000
 
 PROTECTED_PATHS = {
     ".gitignore",
@@ -855,11 +869,15 @@ def _validate_nested_capability_seams(errors: list[str]) -> None:
         "from ipfs_kit_py.mcp_server.mcplusplus.coordination_storage import "
         "ArtifactIntegrityError, ArtifactNotFound, DurableCoordinationStore\n"
         "from ipfs_datasets_py.knowledge_graphs.adapters.code_evidence import "
-        "CodeEvidenceCorpusAdapter, impact_from_index, normalize_impact_index\n"
+        "CodeEvidenceAuthority, CodeEvidenceCorpusAdapter, impact_from_index, "
+        "normalize_impact_index\n"
         "from ipfs_datasets_py.logic.backends.process import BoundedToolRunner\n"
         "assert all((ArtifactIntegrityError, ArtifactNotFound, "
-        "DurableCoordinationStore, CodeEvidenceCorpusAdapter, impact_from_index, "
-        "normalize_impact_index, BoundedToolRunner))"
+        "DurableCoordinationStore, CodeEvidenceAuthority, "
+        "CodeEvidenceCorpusAdapter, impact_from_index, normalize_impact_index, "
+        "BoundedToolRunner))\n"
+        "assert CodeEvidenceCorpusAdapter.OPERATIONAL_AUTHORITY is False\n"
+        "assert CodeEvidenceCorpusAdapter.COMPATIBILITY_ONLY is True"
     )
     environment = {
         "PATH": "/usr/bin:/bin",
@@ -891,6 +909,119 @@ def _validate_nested_capability_seams(errors: list[str]) -> None:
             "pinned capability leaf probe rejected: "
             + (result.stderr.strip()[-1000:] or f"exit {result.returncode}")
         )
+
+
+def _lint_scope_matches(path: str) -> bool:
+    normalized = str(path).strip().replace("\\", "/")
+    for pattern in LINT_REPAIR_SCOPE:
+        if any(character in pattern for character in "*?["):
+            if fnmatch.fnmatchcase(normalized, pattern):
+                return True
+            continue
+        if normalized == pattern or normalized.startswith(pattern.rstrip("/") + "/"):
+            return True
+    return False
+
+
+def validate_no_new_lint_suppressions(
+    repo_root: Path = REPO_ROOT,
+) -> dict[str, object]:
+    """Reject new lint-suppression directives in the IVP release surface."""
+
+    errors: list[str] = []
+    findings: list[dict[str, object]] = []
+    pathspecs = [
+        f":(glob){value}" if any(char in value for char in "*?[") else value
+        for value in LINT_REPAIR_SCOPE
+    ]
+    try:
+        diff_result = subprocess.run(
+            ("git", "diff", "--no-ext-diff", "--unified=0", "HEAD", "--", *pathspecs),
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(f"lint suppression diff unavailable: {type(exc).__name__}")
+        diff_result = None
+    if diff_result is not None:
+        if diff_result.returncode != 0:
+            errors.append(
+                "lint suppression diff rejected: "
+                + (diff_result.stderr.strip()[-1000:] or f"exit {diff_result.returncode}")
+            )
+        elif len(diff_result.stdout.encode("utf-8")) > MAX_LINT_DIFF_BYTES:
+            errors.append("lint suppression diff exceeds the reviewed byte bound")
+        else:
+            current_path = ""
+            for line_number, line in enumerate(diff_result.stdout.splitlines(), start=1):
+                if line.startswith("+++ b/"):
+                    current_path = line[6:]
+                    continue
+                if (
+                    line.startswith("+")
+                    and not line.startswith("+++")
+                    and LINT_SUPPRESSION_RE.search(line[1:])
+                ):
+                    findings.append(
+                        {
+                            "path": current_path,
+                            "diff_line": line_number,
+                            "text": line[1:][:240],
+                        }
+                    )
+
+    try:
+        untracked_result = subprocess.run(
+            ("git", "ls-files", "--others", "--exclude-standard", "-z"),
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            timeout=30.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(f"untracked lint scan unavailable: {type(exc).__name__}")
+        untracked_result = None
+    if untracked_result is not None:
+        if untracked_result.returncode != 0:
+            errors.append("untracked lint scan rejected")
+        else:
+            for raw_path in untracked_result.stdout.split(b"\0"):
+                if not raw_path:
+                    continue
+                path = raw_path.decode("utf-8", errors="surrogateescape")
+                if not _lint_scope_matches(path):
+                    continue
+                candidate = repo_root / path
+                try:
+                    if candidate.stat().st_size > MAX_LINT_DIFF_BYTES:
+                        errors.append(f"untracked lint file exceeds byte bound: {path}")
+                        continue
+                    text = candidate.read_text(encoding="utf-8")
+                except (OSError, UnicodeError) as exc:
+                    errors.append(f"untracked lint file unreadable: {path}: {type(exc).__name__}")
+                    continue
+                for line_number, line in enumerate(text.splitlines(), start=1):
+                    if LINT_SUPPRESSION_RE.search(line):
+                        findings.append(
+                            {
+                                "path": path,
+                                "line": line_number,
+                                "text": line[:240],
+                            }
+                        )
+
+    if findings:
+        errors.append("new lint-suppression directives are forbidden")
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/ivp-lint-suppression-check@1",
+        "valid": not errors and not findings,
+        "errors": errors,
+        "findings": findings[:128],
+        "checked_scope": list(LINT_REPAIR_SCOPE),
+    }
 
 
 def validate() -> dict[str, object]:
@@ -929,11 +1060,15 @@ def validate() -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check-all", action="store_true")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--check-all", action="store_true")
+    group.add_argument("--check-no-new-lint-suppressions", action="store_true")
     args = parser.parse_args()
-    if not args.check_all:
-        parser.error("--check-all is required")
-    report = validate()
+    report = (
+        validate_no_new_lint_suppressions()
+        if args.check_no_new_lint_suppressions
+        else validate()
+    )
     print(json.dumps(report, sort_keys=True, separators=(",", ":")))
     return 0 if report["valid"] is True else 1
 

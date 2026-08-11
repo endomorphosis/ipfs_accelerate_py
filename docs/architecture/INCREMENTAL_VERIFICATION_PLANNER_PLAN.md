@@ -232,6 +232,14 @@ not modify the nested repository. Capability checks target the exact leaf
 module and symbol: a top-level namespace-package import alone is not evidence
 that the dependency is operational.
 
+At the pinned revision, `CodeEvidenceCorpusAdapter` is explicitly
+compatibility-only (`OPERATIONAL_AUTHORITY=False`, `COMPATIBILITY_ONLY=True`).
+It may supply bounded fixture/mapping evidence but never live semantic-index
+authority. The newer DuckDB-backed `CodeEvidenceAuthority` is capability-
+probed as the live upstream seam; adopting it as verification authority still
+requires a separate narrow adapter and exact authority receipt rather than an
+availability check.
+
 ### 5.2 `ipfs_kit_py`
 
 `IpfsKitVerificationReceiptStore` adapts immutable byte put/get and a
@@ -261,6 +269,11 @@ bound local protocol, with an optional public Iroh manifest bridge only when
 that exact capability is operational. Workers may inspect but not modify the
 nested repository. Exact leaf-module and symbol probing is required because an
 empty namespace-package import must never be treated as availability.
+
+The pinned kit revision also exposes `proof_certificate_store`, but that is a
+transport/storage seam only. A stored or signed certificate is not evidence of
+test execution unless its issuer and exact execution binding are independently
+trusted; it does not replace the receipt cache or production-admission rules.
 
 The supervisor initializes both exact gitlinks for read-only inspection.
 Source-tree integration validation explicitly uses
