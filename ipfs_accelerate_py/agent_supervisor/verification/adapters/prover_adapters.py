@@ -1014,7 +1014,7 @@ def source_contains_incomplete_or_unsafe_proof(source: str) -> tuple[bool, str]:
         # containing sorry, admit_lean_proof_text rejects incomplete proofs.
         if "sorry" in text.lower() or "admit" in text.lower():
             return True, "incomplete_proof_sorry_or_admit"
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # noqa: BLE001, S110 pragma: no cover - defensive
         pass
     return False, ""
 
@@ -2495,15 +2495,14 @@ class ExistingProofAssistantAdapter:
             if extra_reasons:
                 reasons = _unique_reasons((*extra_reasons, *reasons))
 
+        # Fence conclusive formal material on non-execution terminals.
         if status in {
             TerminalStatus.TIMEOUT,
             TerminalStatus.UNAVAILABLE,
             TerminalStatus.CANCELLED,
-        }:
-            # Fence conclusive formal material on non-execution terminals.
-            if not using_existing_evidence:
-                formal = None
-                attempt = None
+        } and not using_existing_evidence:
+            formal = None
+            attempt = None
 
         # Model drafts / sorry cannot keep a PROVED projection from direct exec.
         if (

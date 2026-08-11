@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO
 
 from ..core.multiformats_identity import cid_for_bytes
 from ..runtime.resource_scheduler import (
@@ -871,11 +871,10 @@ def _resolve_executable(executable: str) -> tuple[str | None, str | None]:
         return None, "executable_missing"
     if not resolved.is_file():
         return None, "executable_not_file"
-    if not os.access(resolved, os.X_OK):
-        # Still allow non-executable scripts only when the platform would; treat
-        # lack of execute bit as unavailable for fail-closed hermetic runs.
-        if os.name == "posix":
-            return None, "executable_not_executable"
+    # Still allow non-executable scripts only when the platform would; treat
+    # lack of execute bit as unavailable for fail-closed hermetic runs.
+    if not os.access(resolved, os.X_OK) and os.name == "posix":
+        return None, "executable_not_executable"
     return str(resolved), None
 
 
@@ -1010,14 +1009,14 @@ def fence_process_tree(
                 require_gone=require_gone,
                 owned_process_group_id=int(pid) if os.name == "posix" else None,
             )
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
 
     pid = getattr(process, "pid", None)
     if pid is None:
         try:
             process.kill()
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
         return True
 
@@ -1035,12 +1034,12 @@ def fence_process_tree(
         try:
             if process.poll() is not None:
                 break
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
         time.sleep(0.02)
     try:
         process.wait(timeout=0.05)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
     if require_gone and pid_alive(root_pid):
         try:
@@ -1243,8 +1242,8 @@ class VerificationProcessRunner:
                     publication_allowed=False,
                 )
 
-            stdout_file = tempfile.TemporaryFile(mode="w+b")
-            stderr_file = tempfile.TemporaryFile(mode="w+b")
+            stdout_file = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115
+            stderr_file = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115
             spawn_kwargs = _spawn_kwargs()
             # Shell is always False — never accept override via factory kwargs alone.
             spawn_kwargs["shell"] = False
@@ -1307,7 +1306,7 @@ class VerificationProcessRunner:
                     )
                     try:
                         exit_code = process.poll()
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         exit_code = None
                     break
                 now = self._clock()
@@ -1323,7 +1322,7 @@ class VerificationProcessRunner:
                     )
                     try:
                         exit_code = process.poll()
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         exit_code = None
                     break
                 remaining = deadline - now
@@ -1427,7 +1426,7 @@ class VerificationProcessRunner:
             if lease is not None:
                 try:
                     self._scheduler.release(lease, reason="verification_process_complete")
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass
 
     # -- lease helpers -----------------------------------------------------
