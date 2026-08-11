@@ -123,7 +123,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-003 Implement immutable receipt storage and generation-CAS indexes
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
