@@ -33,6 +33,7 @@ from .contracts import (
     VerificationReceiptKind,
     VerificationSummary,
     aggregate_terminal_status,
+    build_verification_commitment,
 )
 
 __all__ = [
@@ -62,4 +63,5 @@ __all__ = [
     "VerificationReceiptKind",
     "VerificationSummary",
     "aggregate_terminal_status",
+    "build_verification_commitment",
 ]
