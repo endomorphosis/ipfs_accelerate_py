@@ -383,7 +383,7 @@ Closeout:           ASE3-014
 
 ## ASE3-014 Materialize canonical v3 evidence and stage reversible cutover
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
