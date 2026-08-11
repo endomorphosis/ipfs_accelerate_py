@@ -1592,7 +1592,7 @@ worktree. The four initial tasks own disjoint files.
 
 ## LFP2-053 Close objective gap: Seal the Wave-2 release and predecessor chain
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
