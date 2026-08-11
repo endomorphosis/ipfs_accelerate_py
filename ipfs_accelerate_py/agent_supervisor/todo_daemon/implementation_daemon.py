@@ -2675,6 +2675,53 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def task_declares_validation_config_change(task: PortalTask) -> bool:
+    """Return whether an exact task output owns a validation-config path.
+
+    Validation configuration remains fail-closed by default.  Only an exact
+    path declared in Outputs or Predicted files grants this authority;
+    directories, globs, and provider-suggested paths do not.
+    """
+
+    from ..validation.proposal_validation import _VALIDATION_CONFIG_PATHS
+
+    predicted = str(
+        (task.metadata or {}).get("predicted files")
+        or (task.metadata or {}).get("predicted_files")
+        or ""
+    )
+    declared_paths = tuple(
+        dict.fromkeys(
+            [
+                *task_declared_output_paths(task),
+                *(
+                    part.strip()
+                    for part in predicted.split(",")
+                    if part.strip()
+                ),
+            ]
+        )
+    )
+    for path in declared_paths:
+        if (
+            not path
+            or path.endswith("/")
+            or any(character in path for character in "*?[]{}")
+        ):
+            continue
+        if any(
+            path == config_path
+            or (
+                config_path.endswith("/")
+                and path.startswith(config_path)
+                and len(path) > len(config_path)
+            )
+            for config_path in _VALIDATION_CONFIG_PATHS
+        ):
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class ImplementationTimeoutPolicy:
     """One task's bounded implementation lease and progress-idle deadline."""
@@ -31099,6 +31146,9 @@ class PortalImplementationDaemon:
             submodule_paths=submodule_paths,
             protected_paths=tuple(self.implementation_protected_paths),
             allowed_validation_commands=allowed_validation_commands,
+            allow_validation_config_changes=(
+                task_declares_validation_config_change(task)
+            ),
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
