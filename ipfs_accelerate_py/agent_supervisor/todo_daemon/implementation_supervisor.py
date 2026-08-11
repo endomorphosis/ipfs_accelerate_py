@@ -6634,6 +6634,9 @@ class PortalImplementationSupervisor:
             generated_status_paths=self.config.generated_dirty_repair_paths,
             llm_merge_resolver_command=self.config.llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+            task_shard_count=self.config.task_shard_count,
+            task_shard_index=self.config.task_shard_index,
+            strict_task_sharding=self.config.strict_task_sharding,
         )
 
     @staticmethod
