@@ -11529,13 +11529,21 @@ class PortalImplementationDaemon:
             ["rev-parse", self.resolved_merge_target_branch],
             cwd=self.repo_root,
         ).stdout.strip().lower()
+        # Tip may advance after the integrating two-parent merge (for example an
+        # operator permit-preflight fix).  Keep the exact integrating merge as
+        # authority so long as it remains an ancestor of the live target.
+        merge_on_target = live_target == receipt.merge_commit or (
+            self._git_ref_is_ancestor(
+                receipt.merge_commit, self.resolved_merge_target_branch
+            )
+        )
         if (
             parent_result.returncode != 0
             or tuple(parent_fields) != (
                 receipt.merge_commit,
                 *receipt.merge_parents,
             )
-            or live_target != receipt.merge_commit
+            or not merge_on_target
             or self._candidate_repository_tree(receipt.candidate_commit).lower()
             != receipt.candidate_tree
             or self._candidate_repository_tree(receipt.merge_commit).lower()
