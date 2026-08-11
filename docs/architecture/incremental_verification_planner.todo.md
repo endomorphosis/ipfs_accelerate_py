@@ -309,7 +309,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-009 Implement semantic affected-check and test selection
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
