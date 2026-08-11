@@ -98,6 +98,15 @@ from ..runtime.event_log import (
     repair_jsonl_event_log,
     unique_backup_path,
 )
+from ..runtime.multi_supervisor_runner import (
+    AUTHORITY_MODE_LEGACY_MARKDOWN,
+    DATABASE_PROGRAM_JSON_ENV,
+    FAILOVER_FAIL_CLOSED,
+    TASK_SOURCE_LEGACY_MARKDOWN,
+    DatabaseProgramConfig,
+    DatabaseProgramConfigError,
+    provider_subprocess_environment,
+)
 from ..runtime.resource_scheduler import evaluate_capacity_drift
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from .core import ManagedDaemonSpec, terminate_pid_tree
@@ -1239,8 +1248,106 @@ def expand_supervisor_scheduler_config_args(
     return [*defaults, *remaining], Path(str(profile["_config_path"]))
 
 
-def _managed_daemon_child_environment() -> dict[str, str]:
-    """Keep a source-checkout supervisor's daemon on the same package code."""
+def database_program_from_cli_namespace(
+    args: Any,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> DatabaseProgramConfig | None:
+    """Build a database program selection from parsed supervisor CLI args/env."""
+
+    environment = os.environ if environ is None else environ
+    env_payload = str(environment.get(DATABASE_PROGRAM_JSON_ENV, "") or "").strip()
+    env_program: DatabaseProgramConfig | None = None
+    if env_payload:
+        try:
+            parsed = json.loads(env_payload)
+        except json.JSONDecodeError as exc:
+            raise DatabaseProgramConfigError(
+                "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON is not valid JSON"
+            ) from exc
+        if not isinstance(parsed, Mapping):
+            raise DatabaseProgramConfigError(
+                "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON must be an object"
+            )
+        env_program = DatabaseProgramConfig.from_mapping(parsed)
+
+    authority_mode = str(getattr(args, "authority_mode", "") or "").strip()
+    task_source_kind = str(getattr(args, "task_source_kind", "") or "").strip()
+    explicit_legacy = bool(getattr(args, "explicit_legacy_task_source", False))
+    if not authority_mode and not task_source_kind and env_program is None:
+        return None
+    if env_program is not None and not authority_mode and not task_source_kind:
+        return env_program
+
+    if not task_source_kind and env_program is not None:
+        task_source_kind = env_program.task_source_kind
+    if not authority_mode and env_program is not None:
+        authority_mode = env_program.authority_mode
+    if not task_source_kind:
+        if authority_mode or explicit_legacy:
+            raise DatabaseProgramConfigError(
+                "task_source_kind is required when authority options are set; "
+                "the implicit legacy-Markdown default is deprecated"
+            )
+        return env_program
+    if not authority_mode:
+        if task_source_kind in {TASK_SOURCE_LEGACY_MARKDOWN, "markdown"}:
+            authority_mode = AUTHORITY_MODE_LEGACY_MARKDOWN
+            explicit_legacy = True
+        elif task_source_kind == "duckdb":
+            authority_mode = "embedded"
+        else:
+            raise DatabaseProgramConfigError(
+                "cannot infer authority_mode for task_source_kind "
+                f"{task_source_kind!r}"
+            )
+
+    payload = {
+        "authority_mode": authority_mode,
+        "task_source_kind": task_source_kind,
+        "endpoint_secret_handle": str(
+            getattr(args, "endpoint_secret_handle", "") or ""
+        ).strip()
+        or (env_program.endpoint_secret_handle if env_program else ""),
+        "store_id": str(getattr(args, "state_store_id", "") or "").strip()
+        or (env_program.store_id if env_program else ""),
+        "store_generation": str(
+            getattr(args, "state_store_generation", "") or ""
+        ).strip()
+        or (env_program.store_generation if env_program else ""),
+        "schema_revision": str(
+            getattr(args, "state_schema_revision", "") or ""
+        ).strip()
+        or (env_program.schema_revision if env_program else ""),
+        "event_store_path": str(
+            getattr(args, "event_store_path", "") or ""
+        ).strip()
+        or (env_program.event_store_path if env_program else ""),
+        "runtime_registry_path": str(
+            getattr(args, "runtime_registry_path", "") or ""
+        ).strip()
+        or (env_program.runtime_registry_path if env_program else ""),
+        # --worktree-root is already resolved by the supervisor and may be
+        # absolute. It is not the database program's repository-relative root.
+        "worktree_root": "",
+        "export_profile": str(getattr(args, "export_profile", "") or "").strip()
+        or (env_program.export_profile if env_program else ""),
+        "failover_policy": str(
+            getattr(args, "state_failover_policy", "") or ""
+        ).strip()
+        or (env_program.failover_policy if env_program else FAILOVER_FAIL_CLOSED),
+        "explicit_legacy": explicit_legacy
+        or bool(env_program.explicit_legacy if env_program else False)
+        or authority_mode == AUTHORITY_MODE_LEGACY_MARKDOWN,
+    }
+    return DatabaseProgramConfig.from_mapping(payload)
+
+
+def _managed_daemon_child_environment(
+    *,
+    database_program: DatabaseProgramConfig | None = None,
+) -> dict[str, str]:
+    """Keep source code and explicit state authority bound in daemon children."""
 
     entries: list[str] = []
     source_root = Path(__file__).resolve().parents[3]
@@ -1261,7 +1368,27 @@ def _managed_daemon_child_environment() -> dict[str, str]:
         if entry
     )
     pythonpath = os.pathsep.join(dict.fromkeys(entries))
-    return {"PYTHONPATH": pythonpath} if pythonpath else {}
+    environment = (
+        dict(database_program.environment())
+        if database_program is not None
+        else {}
+    )
+    if pythonpath:
+        environment["PYTHONPATH"] = pythonpath
+    return environment
+
+
+def provider_environment_without_state_credentials(
+    environment: Mapping[str, str] | None = None,
+    *,
+    database_program: DatabaseProgramConfig | None = None,
+) -> dict[str, str]:
+    """Return an implementation-provider environment without state secrets."""
+
+    return provider_subprocess_environment(
+        environment,
+        program=database_program,
+    )
 
 
 def _normalize_disposition_token(value: Any) -> str:
@@ -1787,6 +1914,7 @@ class PortalSupervisorConfig:
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
+    database_program: DatabaseProgramConfig | None = None
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -4171,7 +4299,9 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
-        child_env = _managed_daemon_child_environment()
+        child_env = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+        )
         child_env.update(
             {
                 SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
@@ -13655,7 +13785,11 @@ class PortalImplementationSupervisor:
             child_env["PATH"] = "/usr/bin:/bin"
             pass_fds = (self.config.accepted_control_plane_descriptor,)
         else:
-            child_env.update(_managed_daemon_child_environment())
+            child_env.update(
+                _managed_daemon_child_environment(
+                    database_program=self.config.database_program,
+                )
+            )
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
@@ -14090,6 +14224,12 @@ class PortalImplementationSupervisor:
                 str(max(0, int(self.config.max_task_attempts))),
             ]
         )
+        if self.config.database_program is not None:
+            program = self.config.database_program
+            program.assert_quack_not_demoted(
+                candidate_mode=program.authority_mode,
+            )
+            command.extend(program.daemon_cli_args())
         if self.config.validation_max_workers is not None:
             command.extend(
                 [
@@ -14232,6 +14372,17 @@ class PortalImplementationSupervisor:
                 argv=command,
             )
         return command
+
+    def provider_subprocess_environment(
+        self,
+        environment: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Return a provider environment without state-authority credentials."""
+
+        return provider_environment_without_state_credentials(
+            environment,
+            database_program=self.config.database_program,
+        )
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
@@ -15108,6 +15259,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("docs/211_SERVICE_NAVIGATION_PORTAL_TODO.md"),
         help="Machine-readable markdown backlog",
+    )
+    parser.add_argument(
+        "--task-source-kind",
+        choices=("", "legacy-markdown", "markdown", "duckdb"),
+        default="",
+        help="Explicit task-source storage contract forwarded to the managed daemon.",
+    )
+    parser.add_argument(
+        "--authority-mode",
+        choices=("", "legacy_markdown", "embedded", "embedded_exclusive", "quack"),
+        default="",
+        help="Explicit state-authority mode forwarded to the managed daemon.",
+    )
+    parser.add_argument(
+        "--endpoint-secret-handle",
+        default="",
+        help="Opaque state endpoint secret handle; raw credentials are forbidden.",
+    )
+    parser.add_argument("--state-store-id", default="")
+    parser.add_argument("--state-store-generation", default="")
+    parser.add_argument("--state-schema-revision", default="")
+    parser.add_argument(
+        "--state-failover-policy",
+        choices=("fail_closed", "require_explicit_operator"),
+        default="fail_closed",
+    )
+    parser.add_argument("--event-store-path", default="")
+    parser.add_argument("--runtime-registry-path", default="")
+    parser.add_argument("--export-profile", default="")
+    parser.add_argument(
+        "--explicit-legacy-task-source",
+        action="store_true",
+        help="Acknowledge explicit legacy-Markdown authority.",
     )
     parser.add_argument(
         "--state-dir",
@@ -16019,6 +16203,7 @@ def supervisor_config_from_args(
     )
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
+    database_program = database_program_from_cli_namespace(args)
     return PortalSupervisorConfig(
         todo_path=effective_todo_path,
         state_path=effective_state_path,
@@ -16033,6 +16218,7 @@ def supervisor_config_from_args(
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
+        database_program=database_program,
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,

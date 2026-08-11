@@ -57713,9 +57713,11 @@ def database_program_from_daemon_namespace(
             or env.get("IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", "")
             or (env_program.runtime_registry_path if env_program else "")
         ),
+        # The daemon's --worktree-root is an operational filesystem path and
+        # configured-board resolves it to an absolute path. It is distinct
+        # from DatabaseProgramConfig's repository-relative program field.
         "worktree_root": str(
-            getattr(args, "worktree_root", "")
-            or (env_program.worktree_root if env_program else "")
+            env_program.worktree_root if env_program else ""
         ),
         "export_profile": str(
             getattr(args, "export_profile", "")
