@@ -247,7 +247,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-007 Implement Z3 and existing proof-assistant verification adapters
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
