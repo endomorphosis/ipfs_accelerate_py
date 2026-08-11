@@ -38,8 +38,8 @@ empty for every task because it is not a configured-board dispatch input.
 - Track: planning
 - Depends on:
 - Goal id: IVP-G000
-- Outputs: .gitignore, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md, docs/architecture/incremental_verification_planner.objectives.md, docs/architecture/incremental_verification_planner.todo.md, config/agent_supervisor_incremental_verification_planner_scheduler.json, scripts/validate_incremental_verification_planner_board.py
-- Validation: python scripts/validate_incremental_verification_planner_board.py --check-all
+- Outputs: .gitignore, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md, docs/architecture/incremental_verification_planner.objectives.md, docs/architecture/incremental_verification_planner.todo.md, config/agent_supervisor_incremental_verification_planner_scheduler.json, scripts/validate_incremental_verification_planner_board.py, scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py
+- Validation: python3 scripts/validate_incremental_verification_planner_board.py --check-all
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/controls
 - Parallel lane: contracts
@@ -47,11 +47,11 @@ empty for every task because it is not a configured-board dispatch input.
 - Resource stage: planning
 - Estimated tokens: 0
 - Implementation timeout seconds: 300
-- Predicted files: .gitignore, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md, docs/architecture/incremental_verification_planner.objectives.md, docs/architecture/incremental_verification_planner.todo.md, config/agent_supervisor_incremental_verification_planner_scheduler.json, scripts/validate_incremental_verification_planner_board.py
-- Interfaces: configured_board_scheduler, goal_heap, markdown_taskboard
+- Predicted files: .gitignore, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md, docs/architecture/incremental_verification_planner.objectives.md, docs/architecture/incremental_verification_planner.todo.md, config/agent_supervisor_incremental_verification_planner_scheduler.json, scripts/validate_incremental_verification_planner_board.py, scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py
+- Interfaces: incremental_verification_planner_scheduler, goal_heap, markdown_taskboard
 - Allow concurrent with:
 - Conflict policy: Planning/control files are operator-owned and protected from implementation workers.
-- Preconditions: Clean isolated branch contains the six tracked control files and passes fail-closed preflight.
+- Preconditions: Clean isolated branch contains the seven tracked control files and passes fail-closed preflight.
 - Effects: Authorizes only the fixed IVP task DAG after explicit launch with --implement.
 - Evidence subset: ivp/planning-controls@1
 - Symbolic first: true
@@ -70,7 +70,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-000
 - Goal id: IVP-G010
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/contracts.py, ipfs_accelerate_py/agent_supervisor/verification/__init__.py, test/api/test_agent_supervisor_verification_contracts.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/contracts
 - Parallel lane: contracts
@@ -101,7 +101,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001
 - Goal id: IVP-G020
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py, test/api/test_agent_supervisor_verification_datasets_adapter.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_datasets_adapter.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_datasets_adapter.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/boundaries
 - Parallel lane: boundaries
@@ -132,7 +132,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001
 - Goal id: IVP-G020
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/receipt_store.py, test/api/test_agent_supervisor_verification_receipt_store.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_receipt_store.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_receipt_store.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/boundaries
 - Parallel lane: boundaries
@@ -163,7 +163,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001
 - Goal id: IVP-G020
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/process_runner.py, test/api/test_agent_supervisor_verification_process_runner.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_process_runner.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_process_runner.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/boundaries
 - Parallel lane: boundaries
@@ -194,7 +194,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001, IVP-004
 - Goal id: IVP-G040
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/adapters/pytest_adapter.py, test/api/test_agent_supervisor_pytest_verification_adapter.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_pytest_verification_adapter.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_pytest_verification_adapter.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/checks
 - Parallel lane: adapters
@@ -225,7 +225,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001, IVP-004
 - Goal id: IVP-G040
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/adapters/mypy_adapter.py, test/api/test_agent_supervisor_mypy_verification_adapter.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_mypy_verification_adapter.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_mypy_verification_adapter.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/checks
 - Parallel lane: adapters
@@ -256,7 +256,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001, IVP-002, IVP-004
 - Goal id: IVP-G040
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/adapters/prover_adapters.py, test/api/test_agent_supervisor_prover_verification_adapters.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_prover_verification_adapters.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_prover_verification_adapters.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/checks
 - Parallel lane: adapters
@@ -287,7 +287,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001, IVP-003
 - Goal id: IVP-G030
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py, test/api/test_agent_supervisor_verification_receipt_cache.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_receipt_cache.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_receipt_cache.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/cache
 - Parallel lane: cache
@@ -318,7 +318,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001, IVP-002
 - Goal id: IVP-G050
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/selection.py, test/api/test_agent_supervisor_verification_selection.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_selection.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_selection.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/planner
 - Parallel lane: selection
@@ -349,7 +349,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-002, IVP-008, IVP-009
 - Goal id: IVP-G050
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/planner.py, test/api/test_agent_supervisor_incremental_verification_planner.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_planner.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_planner.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/planner
 - Parallel lane: selection
@@ -380,7 +380,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-005
 - Goal id: IVP-G060
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py, test/api/test_agent_supervisor_verification_counterexamples.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_counterexamples.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_counterexamples.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/diagnostics
 - Parallel lane: diagnostics
@@ -411,7 +411,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001
 - Goal id: IVP-G070
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/model_route.py, test/api/test_agent_supervisor_verification_model_route.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_model_route.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_model_route.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/routing
 - Parallel lane: routing
@@ -442,7 +442,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-001
 - Goal id: IVP-G060
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/bundle.py, test/api/test_agent_supervisor_verification_bundle.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_bundle.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_bundle.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/diagnostics
 - Parallel lane: diagnostics
@@ -473,7 +473,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-005, IVP-006, IVP-007, IVP-008, IVP-010, IVP-011, IVP-012, IVP-013
 - Goal id: IVP-G080
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/executor.py, test/api/test_agent_supervisor_verification_executor.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_executor.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_executor.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/execution
 - Parallel lane: orchestration
@@ -504,7 +504,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-009, IVP-014
 - Goal id: IVP-G090
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/evaluation.py, test/fixtures/incremental_verification, test/api/test_agent_supervisor_verification_selection_evaluation.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_selection_evaluation.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_selection_evaluation.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/evaluation
 - Parallel lane: evaluation
@@ -535,7 +535,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-012, IVP-013, IVP-014, IVP-015
 - Goal id: IVP-G090
 - Outputs: test/api/test_agent_supervisor_incremental_verification_conformance.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_conformance.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_conformance.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/evaluation
 - Parallel lane: evaluation
@@ -566,7 +566,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-015
 - Goal id: IVP-G090
 - Outputs: benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, artifacts/agent_supervisor/incremental_verification/benchmark.json
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python benchmarks/agent_supervisor/incremental_verification.py --output artifacts/agent_supervisor/incremental_verification/benchmark.json; env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/benchmarks/test_incremental_verification_planner_benchmark.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 benchmarks/agent_supervisor/incremental_verification.py --output artifacts/agent_supervisor/incremental_verification/benchmark.json; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/benchmarks/test_incremental_verification_planner_benchmark.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/evaluation
 - Parallel lane: evaluation
@@ -597,7 +597,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-017
 - Goal id: IVP-G100
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/README.md, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, test/api/test_agent_supervisor_incremental_verification_report.py
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_report.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_report.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/release
 - Parallel lane: release
@@ -628,7 +628,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Depends on: IVP-016, IVP-017, IVP-018
 - Goal id: IVP-G100
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
-- Validation: env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_model_route.py test/api/test_agent_supervisor_verification_bundle.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/api/test_agent_supervisor_incremental_verification_report.py test/benchmarks/test_incremental_verification_planner_benchmark.py; env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m pytest -q --timeout=300 test/api/test_agent_supervisor_test_execution_identity.py test/api/test_proof_reuse_invalidation_mutations.py test/api/test_proof_reuse_security_concurrency.py test/api/test_agent_supervisor_formal_verification_cache.py test/api/test_agent_supervisor_validation_scheduler.py test/api/test_agent_supervisor_process_tree_fencing.py test/api/test_agent_supervisor_resource_scheduler.py; env PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_model_route.py test/api/test_agent_supervisor_verification_bundle.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/api/test_agent_supervisor_incremental_verification_report.py test/benchmarks/test_incremental_verification_planner_benchmark.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_test_execution_identity.py test/api/test_proof_reuse_invalidation_mutations.py test/api/test_proof_reuse_security_concurrency.py test/api/test_agent_supervisor_formal_verification_cache.py test/api/test_agent_supervisor_validation_scheduler.py test/api/test_agent_supervisor_process_tree_fencing.py test/api/test_agent_supervisor_resource_scheduler.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/release
 - Parallel lane: release

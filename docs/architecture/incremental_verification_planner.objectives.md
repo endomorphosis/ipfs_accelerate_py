@@ -44,7 +44,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification, test/api/test_agent_supervisor_incremental_verification_conformance.py, benchmarks/agent_supervisor/incremental_verification.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
 - Interfaces: create_verification_plan, choose_model_route, build_verification_commitment
-- Validation: python -m pytest -q test/api/test_agent_supervisor_incremental_verification_conformance.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_incremental_verification_conformance.py
 - Acceptance: Every required receipt mutation fails closed; controlled selection has zero false negatives; unavailable, timeout, stale, and simulated results remain non-passes; provider selection remains separate; the benchmark and limitations are honest.
 - Gap task: IVP-019
 - Refinement: Children own disjoint contracts, adapters, cache, selection, routing, orchestration, and evidence before the terminal fan-in.
@@ -70,7 +70,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/contracts.py, test/api/test_agent_supervisor_verification_contracts.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/contracts.py, ipfs_accelerate_py/agent_supervisor/verification/__init__.py, test/api/test_agent_supervisor_verification_contracts.py
 - Interfaces: VerificationReceiptKey, VerificationPlan, VerificationBundle, VerificationSummary, CacheReuseDecision, ModelRouteDecision, VerificationCommitment
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_contracts.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py
 - Acceptance: Canonical immutable round-trips; exact key mutation vectors; terminal statuses cannot be widened; timeout, unavailable, and simulated are never accepting; no secrets or witnesses serialize.
 - Gap task: IVP-001
 - Refinement: Reuse canonical identity helpers and explicitly bridge existing test/proof receipts without making a second trust root.
@@ -96,7 +96,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/receipt_store.py, ipfs_accelerate_py/agent_supervisor/verification/process_runner.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/receipt_store.py, ipfs_accelerate_py/agent_supervisor/verification/process_runner.py
 - Interfaces: DatasetsVerificationInputAdapter, VerificationReceiptStore, IpfsKitVerificationReceiptStore, HermeticVerificationReceiptStore, VerificationProcessRunner
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py
 - Acceptance: Missing upstream schemas/capabilities are typed unavailable; immutable bytes are CID-verified; CAS prevents lost updates; commands are argv-only and cancellation kills descendants.
 - Gap task: IVP-002, IVP-003, IVP-004
 - Refinement: The four requested datasets classes are not present at planning revision, so structural adaptation is narrow and must fail closed until upstream canonical types land.
@@ -122,7 +122,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py, test/api/test_agent_supervisor_verification_receipt_cache.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py, test/api/test_agent_supervisor_verification_receipt_cache.py
 - Interfaces: VerificationReceiptCache, lookup, admit, tombstone, replay, collect_gc_metadata
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_receipt_cache.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_receipt_cache.py
 - Acceptance: Exact key and embedded CID are revalidated on every hit; unrelated edits preserve old immutable history but a changed full-tree key rejects cross-tree reuse; every identity change invalidates; CAS conflicts merge/retry without overwriting peers.
 - Gap task: IVP-008
 - Refinement: Build on the stable store protocol after canonical key and store tasks complete.
@@ -148,7 +148,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/adapters
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/adapters, test/api/test_agent_supervisor_verification_adapters.py
 - Interfaces: PytestVerificationAdapter, MypyVerificationAdapter, Z3VerificationAdapter, ExistingProofAssistantAdapter
-- Validation: python -m pytest -q test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py
 - Acceptance: All adapters persist bounded artifacts and canonical receipts; missing tools are unavailable; Z3 unknown stays unknown; only registry-admitted operational kernels may prove.
 - Gap task: IVP-005, IVP-006, IVP-007
 - Refinement: Adapter tasks are independent after the shared process runner exists.
@@ -174,7 +174,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/selection.py, ipfs_accelerate_py/agent_supervisor/verification/planner.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/selection.py, ipfs_accelerate_py/agent_supervisor/verification/planner.py, test/api/test_agent_supervisor_incremental_verification_planner.py
 - Interfaces: select_affected_verification, create_verification_plan, IncrementalVerificationPlanner
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py
 - Acceptance: Relevant changes invalidate and select; unrelated changes avoid semantic over-selection but changed full-tree identity still rejects old-receipt admission; environment/lock/tool changes invalidate; opaque or uncovered impact requires broader/full suite; non-reproducibility requires review.
 - Gap task: IVP-009, IVP-010
 - Refinement: Selection remains pure/deterministic; plan creation joins it with exact cache decisions and policy.
@@ -200,7 +200,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py, ipfs_accelerate_py/agent_supervisor/verification/bundle.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py, ipfs_accelerate_py/agent_supervisor/verification/bundle.py
 - Interfaces: minimize_counterexample, build_verification_summary, build_verification_commitment
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_bundle.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_bundle.py
 - Acceptance: Failed selected tests yield lease-rerun compact reproductions; commitment changes with any required membership/content change while input permutation is invariant; aggregation cannot upgrade a leaf; non-ZK and signature trust caveats are serialized.
 - Gap task: IVP-011, IVP-013
 - Refinement: Counterexample and bundle tasks may proceed independently against canonical contracts.
@@ -226,7 +226,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/model_route.py, test/api/test_agent_supervisor_verification_model_route.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/model_route.py, test/api/test_agent_supervisor_verification_model_route.py
 - Interfaces: ModelRoutePlanner, choose_model_route
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_model_route.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_model_route.py
 - Acceptance: Exact localized work selects small when not mechanical; broad/opaque or failed-smaller work selects frontier; provider-neutral availability cannot downgrade the required tier; pending full-suite, unavailable required tier, or unresolved high-risk authority/reproducibility selects human review; no provider identifier appears.
 - Gap task: IVP-012
 - Refinement: Decision precedence is table-driven, bounded, deterministic, and independently testable.
@@ -252,7 +252,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/executor.py, test/api/test_agent_supervisor_verification_executor.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/executor.py, test/api/test_agent_supervisor_verification_executor.py
 - Interfaces: VerificationExecutor, execute_verification_plan
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_executor.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_executor.py
 - Acceptance: Reused and executed receipts are distinguishable; dependencies and deadlines hold; timeout/unavailable/cancelled/simulated cannot pass; failures carry minimized counterexamples; acceptance exactly matches current required leaves.
 - Gap task: IVP-014
 - Refinement: Single integration task follows all collaborating surfaces to avoid parallel cross-file rewrites.
@@ -278,7 +278,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/evaluation.py, test/api/test_agent_supervisor_incremental_verification_conformance.py, benchmarks/agent_supervisor/incremental_verification.py, artifacts/agent_supervisor/incremental_verification/benchmark.json
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/evaluation.py, test/fixtures/incremental_verification, test/api/test_agent_supervisor_incremental_verification_conformance.py, benchmarks/agent_supervisor/incremental_verification.py, artifacts/agent_supervisor/incremental_verification/benchmark.json
 - Interfaces: compare_selected_with_full_suite, run_incremental_verification_benchmark
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/benchmarks/test_incremental_verification_planner_benchmark.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/benchmarks/test_incremental_verification_planner_benchmark.py
 - Acceptance: Ground-truth controlled false negatives and false positives plus full-suite outcome discrepancies are measured separately; the hard conformance gate requires zero controlled false negatives and all 18 behaviors, while benchmark/report evidence still lands when red; timing is sampled rather than deterministic; missing upstream semantic-capsule fixtures or real provers are typed not_measured/unavailable, never fabricated.
 - Gap task: IVP-015, IVP-016, IVP-017
 - Refinement: Differential methodology precedes two independent children: the consolidated hard adversarial suite and an always-reporting benchmark evidence path.
@@ -304,7 +304,7 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/README.md, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, ipfs_accelerate_py/agent_supervisor/verification/__init__.py
 - Predicted files: ipfs_accelerate_py/agent_supervisor/verification/README.md, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, test/api/test_agent_supervisor_incremental_verification_report.py, ipfs_accelerate_py/agent_supervisor/verification/__init__.py
 - Interfaces: package public exports, final report
-- Validation: python -m pytest -q test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_incremental_verification_conformance.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_incremental_verification_conformance.py
 - Acceptance: Clean target branch; required APIs and types exported; full report contains modules/adapters/schemas/key/invalidation/tests/proofs/hits/routes/counterexamples/commitment/limitations; ZK work remains external and subsequent to trusted ordinary receipts.
 - Gap task: IVP-018, IVP-019
 - Refinement: Documentation may draft after benchmark; terminal fan-in owns exports and integrated corrections.

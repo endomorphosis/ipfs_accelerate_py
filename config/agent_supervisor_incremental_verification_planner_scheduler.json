@@ -7,10 +7,10 @@
   "task_prefix": "IVP-",
   "goal_prefix": "IVP-G",
   "board_namespace": "incremental-verification-planner-v1",
-  "merge_target_branch": "agent/incremental-verification-planner-v1",
+  "merge_target_branch": "integration/incremental-verification-planner-main-20260811",
   "source_binding": {
-    "accelerator_required_ancestor": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
-    "accelerator_required_branch": "agent/incremental-verification-planner-v1",
+    "accelerator_required_ancestor": "c1e33e8f443253e106c464d7c5b5c341c3095876",
+    "accelerator_required_branch": "integration/incremental-verification-planner-main-20260811",
     "bootstrap_task_source": "legacy-markdown",
     "ipfs_kit_submodule_path": "ipfs_kit_py",
     "ipfs_kit_planning_revision": "e164bb21c7a73b722a83aea7623e5677391bce54",
@@ -64,7 +64,8 @@
     "docs/architecture/incremental_verification_planner.objectives.md",
     "docs/architecture/incremental_verification_planner.todo.md",
     "config/agent_supervisor_incremental_verification_planner_scheduler.json",
-    "scripts/validate_incremental_verification_planner_board.py"
+    "scripts/validate_incremental_verification_planner_board.py",
+    "scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/incremental_verification_planner",

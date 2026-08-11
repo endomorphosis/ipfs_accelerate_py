@@ -611,7 +611,7 @@ localized fixture and at least 20% of measured localized fixtures.
 
 The board is designed for the repository's implementation supervisor:
 
-- isolated control worktree on `agent/incremental-verification-planner-v1`;
+- isolated control worktree on `integration/incremental-verification-planner-main-20260811`, based on the merged PR #176 revision;
 - 3 strict deterministic shards and isolated worker worktrees;
 - one serialized merge queue targeting that branch;
 - planning files protected from implementation-agent edits;
@@ -619,7 +619,9 @@ The board is designed for the repository's implementation supervisor:
 - 15-minute no-log stall detection, 20-minute stale heartbeat, and bounded
   automatic supervisor restarts;
 - no automatic objective/codebase refill for this sealed scope;
-- master exits only from a fresh terminal task projection for every shard.
+- the bounded master drains only after the IVP lifecycle watcher observes a
+  fresh terminal task projection for every shard; the operator monitor still
+  audits progress, blockers, and exact process-tree cleanup.
 
 Implementation workers use the runtime's reviewed ordered route: Grok 4.5 is
 primary and Codex GPT-5.6 Terra at high reasoning is the quota-only fallback.

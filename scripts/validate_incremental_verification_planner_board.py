@@ -35,8 +35,8 @@ SCHEDULER_PATH = (
 )
 
 BOARD_NAMESPACE = "incremental-verification-planner-v1"
-BRANCH = "agent/incremental-verification-planner-v1"
-BASE_REVISION = "8881344bb2162f3f8d82f22d8348bc0ac7536f95"
+BRANCH = "integration/incremental-verification-planner-main-20260811"
+BASE_REVISION = "c1e33e8f443253e106c464d7c5b5c341c3095876"
 TASK_IDS = tuple(f"IVP-{index:03d}" for index in range(20))
 GOAL_IDS = (
     "IVP-G000",
@@ -286,6 +286,7 @@ PROTECTED_PATHS = {
     "docs/architecture/incremental_verification_planner.todo.md",
     "config/agent_supervisor_incremental_verification_planner_scheduler.json",
     "scripts/validate_incremental_verification_planner_board.py",
+    "scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py",
 }
 
 
@@ -611,7 +612,7 @@ def _validate_tasks(text: str, scheduler: Mapping[str, object], errors: list[str
             validation_text = str(task.metadata.get("validation") or "")
             if "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:." not in validation_text:
                 errors.append(f"{task.task_id} validation lacks exact nested package roots")
-            if "python -m pytest" in validation_text and "--timeout=" not in validation_text:
+            if "python3 -m pytest" in validation_text and "--timeout=" not in validation_text:
                 errors.append(f"{task.task_id} pytest validation lacks a per-test timeout")
 
     for task_id, dependencies in edges.items():
@@ -718,7 +719,7 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
         errors.append("scheduler must expose the two exact read-only adapter gitlinks")
     protected = scheduler.get("protected_paths")
     if not isinstance(protected, list) or set(map(str, protected)) != PROTECTED_PATHS:
-        errors.append("scheduler protected paths differ from the six control artifacts")
+        errors.append("scheduler protected paths differ from the seven control artifacts")
     runtime = scheduler.get("runtime_paths")
     expected_root = "data/agent_supervisor/incremental_verification_planner"
     if not isinstance(runtime, Mapping) or runtime.get("root") != expected_root:
