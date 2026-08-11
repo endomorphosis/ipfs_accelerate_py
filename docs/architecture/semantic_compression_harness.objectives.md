@@ -6,10 +6,11 @@ The executable projection is
 `## SCH-`. The reviewed design is
 `docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md`.
 
-Implementation is launch-gated: `SCH-000` must pin and validate the unresolved
-final repaired `ipfs_datasets_py` semantic-state/Merkle/capsule and
-`ipfs_kit_py` generation-bearing durable-root commits before any other task is
-eligible.
+Implementation is launch-gated: `SCH-000` must pin and validate the two
+unresolved final repaired `ipfs_datasets_py` incremental-index and
+semantic-state/Merkle/capsule commits, and validate the already-pinned
+`ipfs_kit_py` generation-bearing durable-root commit
+`05ba9375923cd5fb52e2c9c18b98b530d57d077f`, before any other task is eligible.
 
 ## Goal tree
 
@@ -67,14 +68,14 @@ SCH-G000  Complete local Python semantic-compression loop
 - Priority: P0
 - Track: execution
 - Bundle: sch/execution
-- Goal: Admit datasets-owned confidence-preserving capsules, select sufficient tests/proofs, pack minimum-sufficient context through the existing ContextCompiler/ProductionContextSlice, route work by assurance, and execute through existing resource/provider/lease mechanisms.
+- Goal: Admit datasets-owned confidence-preserving capsules and datasets-owned test/proof selections, pack minimum-sufficient context through the existing ContextCompiler/ProductionContextSlice, route work by assurance, and project the sealed selection into existing validation/proof execution mechanisms.
 - Evidence: sch/scheduling-contracts@1, sch/scheduling-adapter@1, sch/context-pack@1, sch/model-routing@1, sch/verification-runner@1
 - Acceptance criteria: sch/scheduling-contracts@1; sch/scheduling-adapter@1; sch/context-pack@1; sch/model-routing@1; sch/verification-runner@1
-- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling.py, ipfs_accelerate_py/agent_supervisor/semantic_state/capsules.py, ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py, ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py, ipfs_accelerate_py/agent_supervisor/semantic_state/test_selection.py, ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling.py, ipfs_accelerate_py/agent_supervisor/semantic_state/capsules.py, ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py, ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py, ipfs_accelerate_py/agent_supervisor/semantic_state/selection_execution.py, ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py
 - Validation: python3.12 -m pytest -q test/api/semantic_state/test_scheduling.py test/api/semantic_state/test_context_pack.py test/api/semantic_state/test_routing.py test/api/semantic_state/test_verification.py
-- Acceptance: Exact/conservative capsules substitute only when valid, heuristic/opaque/stale facts retrieve raw source, selected tests have auditable paths and full-suite fallback, unavailable providers/provers are typed, and simulation never becomes production evidence.
+- Acceptance: Exact/conservative capsules substitute only when valid, heuristic/opaque/stale facts retrieve raw source, the datasets selection retains auditable paths and full-suite fallback while accelerate performs no graph reselection, unavailable providers/provers are typed, and simulation never becomes production evidence.
 - Gap task: SCH-004, SCH-005, SCH-006, SCH-007, SCH-008
-- Refinement: Reuse ContextCompiler, ProductionContextSlice, ResourceScheduler, ProviderExecutionGateway, WorktreeLifecycleStore, LeaseCoordinator, ValidationScheduler.run_staged, ProofScheduler, and event log; do not make PersistentTaskQueue authoritative.
+- Refinement: Reuse storage-neutral datasets `SemanticStateView`/`open_semantic_state`, previous/current datasets selection, ContextCompiler, ProductionContextSlice, ResourceScheduler, ProviderExecutionGateway, WorktreeLifecycleStore, LeaseCoordinator, ValidationScheduler.run_staged, ProofScheduler, and event log; do not make PersistentTaskQueue authoritative or add a second selector.
 
 ## SCH-G030 Isolated patch acceptance, receipts, and root commit
 

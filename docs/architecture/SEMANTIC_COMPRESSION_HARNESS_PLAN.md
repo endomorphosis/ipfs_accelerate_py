@@ -22,27 +22,31 @@ The inspected `ipfs_accelerate_py` baseline is commit
 `ea11293bb996f052d620eae989f5377a956764b1`. The MCP++ wire authority inspected
 is `Mcp-Plus-Plus` commit `dc3164653a48d059ae9812078359daeafb451c07`.
 
-The pre-integration `ipfs_kit_py` checkout inspected while writing this plan was
-`69091bf8f11a3ef1fb0e04e11a6d8a4c87f3fa78`; this is evidence only, not the
-phase-two dependency pin. The reviewed phase-one `ipfs_datasets_py` baseline was
-`a2f5400b7cb89c8481819379a1b7b9959fe81d45`; its completed semantic-index commit
-is also not assumed here.
+The repaired `ipfs_kit_py` generation-bearing durable-root authority is pinned
+at commit `05ba9375923cd5fb52e2c9c18b98b530d57d077f`. The reviewed phase-one
+`ipfs_datasets_py` baseline was
+`a2f5400b7cb89c8481819379a1b7b9959fe81d45`; neither the final repaired
+incremental-index closeout nor the final semantic-state/Merkle/capsule closeout
+is assumed here.
 
 `SCH-000` must be completed manually before any implementation supervisor is
-launched. It must replace the two unresolved values below with exact 40-hex
-commits after the repaired `ipfs_datasets_py` semantic-state/Merkle/capsule
-closeout and the repaired `ipfs_kit_py` versioned state-root/CAS closeout:
+launched. The kit authority is already pinned, but both datasets values must
+remain unresolved until their respective repaired closeouts supply exact
+40-hex commits:
 
 ```text
-IPFS_DATASETS_SEMANTIC_STATE_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT
-IPFS_KIT_DURABLE_ROOT_COMMIT        = UNRESOLVED_FINAL_REPAIRED_COMMIT
+IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT
+IPFS_DATASETS_SEMANTIC_STATE_COMMIT              = UNRESOLVED_FINAL_REPAIRED_COMMIT
+IPFS_KIT_DURABLE_ROOT_COMMIT                     = 05ba9375923cd5fb52e2c9c18b98b530d57d077f
 ```
 
-The gate fails closed if either value is unresolved, is not a commit reachable
-from the intended repository, or does not pass its producer's contract tests.
-The dependency seal also records the exact accelerate baseline and MCP++ wire
-commit, repository origins, interface/schema fingerprints, and Python 3.12
-toolchain. A deterministic seal validator must check those values; `git
+The gate fails closed if either datasets value is unresolved, or if any pin is
+not a commit reachable from the intended repository or does not pass its
+producer's contract tests.
+The dependency seal records all four repository origins and all five commit
+authorities (accelerate, MCP++, datasets ISI, datasets semantic state, and kit),
+plus interface/schema fingerprints and the Python 3.12 toolchain. A
+deterministic seal validator must check those values; `git
 rev-parse` alone is not validation. Workers may not infer a pin from a mutable
 branch, current checkout, editable install, submodule pointer, or ambient
 `PYTHONPATH` ordering.
@@ -123,7 +127,7 @@ ipfs_accelerate_py/agent_supervisor/semantic_state/
     capsules.py
     context_pack.py
     routing.py
-    test_selection.py
+    selection_execution.py
     verification.py
     receipts.py
     worktree.py
@@ -155,7 +159,7 @@ SemanticStateProvider ------------------------------+
   state + Merkle DAG + capsules + delta             |
   + invalidation + exact tree-bound source          |
       |                                              |
-      +--> CapsuleAdmission --> TestSelector         |
+      +--> CapsuleAdmission --> DatasetsSelection   |
       |           |                 |                |
       +-----------+--> ContextPacker                 |
                           |                           |
@@ -189,10 +193,10 @@ are rejected. At minimum:
 - `Availability`: `available`, `unavailable`;
 - `UnavailableResult`: operation, provider/adapter ID, stable reason code,
   retryable flag, and bounded diagnostic text;
-- `SemanticCapsuleRef`: the datasets-owned capsule CID, stable symbol ID,
-  version/source CIDs, confidence, validity bindings, and raw-source
-  requirement; authoritative semantic facts remain in the referenced datasets
-  capsule;
+- `SemanticCapsuleRef`: an admission-only reference containing the
+  datasets-owned capsule CID, producing semantic-state-root CID, stable symbol
+  ID, version/source CIDs, confidence, validity bindings, and raw-source
+  requirement; it never copies authoritative semantic facts from the capsule;
 - `ContextPack`: objective, exact raw target/surrounding/test code, dependency
   capsules, obligations/counterexamples/delta/interfaces/assumptions,
   exclusions, token accounting, risk, route, and escalation recommendation;
@@ -200,8 +204,10 @@ are rejected. At minimum:
   `medium_model`, `frontier_model`, or `human_review_required`;
 - `PatchProposal`: provider identity, mode, base tree/root, unified diff bytes
   CID, declared paths, and generation result;
-- `TestSelection`: selected node IDs, reasons, fallbacks, known coverage,
-  unresolved edges, and selection CID;
+- `TestSelectionRef`: the datasets-owned selection CID plus its previous
+  semantic-state-root CID (or `None`) and current semantic-state-root CID; the
+  selected node IDs, proof IDs, reason paths, fallback, universe, and coverage
+  facts remain solely in the referenced datasets `TestSelection`;
 - `VerificationReceipt`: exact tree/config/dependency/policy/interface/root
   bindings, command identity, selected nodes, exit result, output artifact CIDs,
   simulation flag, freshness, and acceptance eligibility;
@@ -232,20 +238,43 @@ class SemanticStateProvider(Protocol):
     def explain_symbol(self, repository_state, symbol_id): ...
     def explain_impact(self, repository_state, changed_symbol_ids): ...
     def watch_repository(self, repo_path, callback, *, debounce_ms): ...
-    def compile_semantic_capsule(self, repository_state, symbol_id): ...
-    def read_source_blob(self, repository_state, path, *, expected_source_cid): ...
-    def read_source_span(self, repository_state, symbol_id): ...
+    def build_semantic_state(self, semantic_index, *, environment_bindings=(), previous_bundle=None): ...
+    def verify_semantic_state_bundle(self, bundle): ...
+    def open_semantic_state(self, root_cid, get_block) -> SemanticStateView: ...
+    def compile_semantic_capsule(self, semantic_index, symbol_id, *, relevant_bindings): ...
+    def assess_capsule_freshness(self, capsule, *, current_state, invalidation=None): ...
+    def read_required_source(self, semantic_index, symbol_id, *, expected_producer_state_cid): ...
+    def extend_semantic_invalidation(
+        self, previous_index, current_index, delta, plan, previous_state, current_state
+    ): ...
+    def select_tests_and_proofs(
+        self,
+        previous_state: SemanticStateView | None,
+        current_state: SemanticStateView,
+        invalidation,
+        *,
+        policy,
+        explicit_rules=(),
+    ): ...
+    def compare_test_selection_oracle(
+        self, selection, *, baseline_full, selected_run, candidate_full, authored_oracle=None
+    ): ...
 ```
 
-The adapter validates returned state/Merkle/capsule/version CIDs and closed confidence
-values (`exact`, `conservative`, `heuristic`, `opaque`). It does not reach into
-the semantic-index implementation to recover facts absent from its public
-records. Missing capabilities produce `UnavailableResult`, never empty/exact
-state. Git/tree or deterministic filesystem snapshots remain authoritative;
-watch notifications never become mutations or state. Source retrieval reads the
-exact scanned Git tree/blob and verifies the expected source CID. Reading the
-current filesystem after a scan is forbidden; a source race produces typed
-staleness and a rescan request.
+The adapter validates returned state/Merkle/capsule/version/selection CIDs and
+closed confidence values (`exact`, `conservative`, `heuristic`, `opaque`).
+`open_semantic_state` receives only an injected `get_block(cid) -> bytes`
+function and yields a verified, read-only, storage-neutral `SemanticStateView`;
+no put, CAS, WAL, provider, or network behavior enters the datasets package.
+Selection always supplies the previous view (when one exists), current view,
+and producer invalidation so deletion and rename evidence is not discarded.
+The adapter does not reach into the semantic-index implementation to recover
+facts absent from its public records. Missing capabilities produce
+`UnavailableResult`, never empty/exact state. Git/tree or deterministic
+filesystem snapshots remain authoritative; watch notifications never become
+mutations or state. Source retrieval reads the exact scanned Git tree/blob and
+verifies the expected source CID. Reading the current filesystem after a scan
+is forbidden; a source race produces typed staleness and a rescan request.
 
 The harness consumes the scanner's modules, imports, symbols, signatures,
 annotations, decorators, exceptions, state reads/writes, calls, inheritance,
@@ -311,29 +340,33 @@ implements these explicit rules:
 The output is always a sorted obligation set. No task automatically rewrites an
 arbitrary caller, adapter, or schema consumer.
 
-## 10. Test and proof selection
+## 10. Datasets-owned test/proof selection and execution projection
 
-`test_selection.py` seeds selection with changed/deleted/renamed symbols and
-explicit user rules, then follows bounded typed edges for:
+Test/proof selection remains datasets semantic authority. Through SCH-002 the
+harness calls the sealed `select_tests_and_proofs(previous_state,
+current_state, invalidation, *, policy, explicit_rules=())`, stores the returned
+datasets `TestSelection`, and carries only a `TestSelectionRef` in harness wire
+records. The previous/current root bindings are mandatory so deleted and
+renamed-symbol evidence cannot be lost.
 
-- direct `tested_by` relations;
-- imports and statically resolved caller/callee dependencies;
-- fixture and `usefixtures` dependencies;
-- schema/serialization and configuration dependencies;
-- generated-file and proof-obligation bindings.
-
-Each selected pytest node carries an auditable shortest reason path. Ambiguous
-or unresolved edges are visible. The selector supports an unconditional
-full-suite fallback and an assurance policy that requires it for opaque changes,
-unknown config/plugin effects, global dependency changes, or insufficient
-coverage.
+`selection_execution.py` verifies and dereferences that selection, then maps
+its already-selected pytest node IDs and proof IDs to bounded
+`ValidationScheduler.run_staged` and `ProofScheduler` commands. It also enforces
+the producer's `none`/`full_pytest`/`full_proofs`/`both` fallback directive and
+explicit harness assurance policy. It never traverses semantic edges, chooses a
+second affected set, calls `run_impact_selected`, imports/collects target tests,
+guesses node IDs, or weakens a producer fallback. The producer-owned reason
+paths, ambiguity, unresolved obligations, universe, and coverage facts remain
+available through the referenced selection rather than being copied into a
+competing harness contract.
 
 `compare-full-suite` runs selected tests and then the same fixture's full suite
-as an oracle. A false negative is any full-suite failure attributable to the
-mutation that was absent from the selected run. The controlled fixture release
-gate requires zero false negatives and reports precision, recall, fallback rate,
-and selected/full test counts without redefining an unaffected passing test as a
-true positive.
+as an oracle, then supplies normalized run facts and the referenced producer
+selection to datasets `compare_test_selection_oracle`. A false negative is any
+full-suite failure attributable to the mutation that was absent from the
+selected run. The controlled fixture release gate requires zero false negatives
+and reports precision, recall, fallback rate, and selected/full test counts
+without redefining an unaffected passing test as a true positive.
 
 Proof execution is optional and capability-probed. An unavailable prover yields
 a typed unavailable obligation/receipt; it is never reported as a passed proof.

@@ -10,11 +10,11 @@ Protected companion artifacts:
 
 These control documents are reviewed inputs and may be changed only by the
 operator while sealing `SCH-000`; implementation workers must not edit them.
-`SCH-000` is deliberately open. Do not launch implementation lanes until the
-explicit unresolved placeholders have been replaced by exact final repaired
-`ipfs_datasets_py` semantic-state/Merkle/capsule and `ipfs_kit_py` durable-root
-commit pins, the deterministic seal validator passes, and the task is manually
-marked complete.
+`SCH-000` is deliberately open. Do not launch implementation lanes until both
+explicit datasets placeholders have been replaced by the exact final repaired
+incremental-index and semantic-state/Merkle/capsule commits, the already-pinned
+`ipfs_kit_py` durable-root commit is validated, the deterministic seal validator
+passes, and the task is manually marked complete.
 
 Implementation is focused in
 `ipfs_accelerate_py.agent_supervisor.semantic_state`. Workers consume the pinned
@@ -27,8 +27,9 @@ They must also reuse `ContextCompiler`, `ProductionContextSlice`, strict
 proposal validation, `ValidationScheduler.run_staged`, `ProofScheduler`, and
 the shared managed-worktree lifecycle. They must not use `PersistentTaskQueue`
 as authority, the legacy mock hardware or inference coordinator,
-`compute_artifact_cid` for new artifacts, `run_impact_selected` as a second
-test selector, or a silent simulation/fallback path in production.
+`compute_artifact_cid` for new artifacts, graph traversal/reselection or
+`run_impact_selected` as a second test selector, or a silent
+simulation/fallback path in production.
 
 ## Parallel waves
 
@@ -68,9 +69,9 @@ A9  SCH-018
 - Predicted symbols: SemanticStateDependencySeal
 - Interfaces: SemanticStateDependencySeal@1
 - Conflict policy: Operator-only launch gate. No implementation worker may infer, update, merge, or bypass dependency pins or edit the protected control files.
-- Preconditions: Accelerate baseline is `ea11293bb996f052d620eae989f5377a956764b1`; MCP++ authority is `dc3164653a48d059ae9812078359daeafb451c07`; the exact final repaired datasets semantic-state/Merkle/capsule commit and final repaired kit generation-bearing durable-root commit have been supplied by their closeouts. Until then `IPFS_DATASETS_SEMANTIC_STATE_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` and `IPFS_KIT_DURABLE_ROOT_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` remain fail-closed.
-- Effects: Replaces both unresolved placeholders with exact reachable 40-hex commits; records all four repository origins/commits, interface and schema fingerprints, Python 3.12/toolchain, and producer test commands; rejects ambient editable/PYTHONPATH substitution; runs real producer contract tests and seals their outputs for every downstream worker.
-- Acceptance: The validator rejects unresolved, mutable, unreachable, dirty, origin-mismatched, fingerprint-incompatible, non-Python-3.12, or failing dependencies. Datasets proves real Git-tree scan -> resolved graph -> symbol-node Merkle DAG -> delta -> invalidation and exposes capsule plus tree-bound source-blob/span retrieval without injected edges. Kit exposes direct lazy `DurableCoordinationStore` plus generation-bearing read-root/expected-token-CAS/recover. The board is acyclic and only then is SCH-000 marked complete.
+- Preconditions: Accelerate baseline is `ea11293bb996f052d620eae989f5377a956764b1`; MCP++ authority is `dc3164653a48d059ae9812078359daeafb451c07`; final kit generation-bearing durable-root authority is `05ba9375923cd5fb52e2c9c18b98b530d57d077f`; the exact final repaired datasets incremental-semantic-index and semantic-state/Merkle/capsule commits have not yet both been supplied. Until those separate closeouts arrive, `IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` and `IPFS_DATASETS_SEMANTIC_STATE_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` remain fail-closed; workers must not infer either value from ancestry or a mutable branch.
+- Effects: Replaces only the two unresolved datasets placeholders with their exact reachable 40-hex commits, retains and validates the exact kit commit, and records all four repository origins and all five commit authorities, interface and schema fingerprints, Python 3.12/toolchain, and producer test commands; rejects ambient editable/PYTHONPATH substitution; runs real producer contract tests and seals their outputs for every downstream worker.
+- Acceptance: The validator rejects unresolved, mutable, unreachable, dirty, origin-mismatched, fingerprint-incompatible, non-Python-3.12, or failing dependencies. Datasets separately proves the real Git-tree scan -> resolved graph -> delta -> invalidation path and the storage-neutral semantic-state bundle/view -> symbol-node Merkle DAG -> capsule/source -> previous/current selection path without injected edges. Kit exposes direct lazy `DurableCoordinationStore` plus generation-bearing read-root/expected-token-CAS/recover. The board is acyclic and only then is SCH-000 marked complete.
 
 ## SCH-001 Implement MCP++ wire codec and interface descriptor
 
@@ -92,11 +93,11 @@ A9  SCH-018
 - LLM context budget bytes: 294912
 - Plan context: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md sections 3, 6, and 13
 - Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py, ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py, ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/semantic-state-harness.interface.json, test/api/semantic_state/test_wire.py
-- Predicted symbols: Availability, UnavailableResult, HarnessMode, WorkKind, SemanticCapsuleRef, ContextPack, ModelRoute, PatchProposal, TestSelection, VerificationReceipt, HarnessResult, RootRef, SemanticStateRootManifest, SemanticStateWireCodec, semantic_state_interface_descriptor
+- Predicted symbols: Availability, UnavailableResult, HarnessMode, WorkKind, SemanticCapsuleRef, ContextPack, ModelRoute, PatchProposal, TestSelectionRef, VerificationReceipt, HarnessResult, RootRef, SemanticStateRootManifest, SemanticStateWireCodec, semantic_state_interface_descriptor
 - Interfaces: SemanticStateHarnessContracts@1, SemanticStateRootManifest@1, SemanticStateMcpWire@1
 - Conflict policy: MCP++ Profile A/B/F at the sealed commit is wire authority. Use `canonicalize_artifact` plus `kubo_cid.cid_for_bytes`; never use `compute_artifact_cid` pseudo-CIDs, copy CID code, mutate MCP server transport, or recompute datasets identities.
 - Preconditions: SCH-000 sealed exact commits and MCP++ conformance inputs.
-- Effects: Defines closed deterministic harness records, the accepted root-manifest and generation-bearing root-reference contracts, a Profile A descriptor, Profile B request/result envelopes, Profile F event nodes, strict decoding, bounded errors, and Kubo-compatible CIDv1 vectors. `SemanticCapsuleRef` references the sealed datasets capsule instead of duplicating semantic facts.
+- Effects: Defines closed deterministic harness records, the accepted root-manifest and generation-bearing root-reference contracts, a Profile A descriptor, Profile B request/result envelopes, Profile F event nodes, strict decoding, bounded errors, and Kubo-compatible CIDv1 vectors. `SemanticCapsuleRef` is admission/reference metadata only. `TestSelectionRef` contains only the sealed datasets selection CID plus previous/current semantic-state-root CIDs; neither record duplicates producer semantic facts, selected nodes, reason paths, universe, or fallback authority.
 - Acceptance: Equivalent payloads have identical canonical bytes and real CIDv1; unknown fields/enums or forged CIDs fail closed; semantic-state CIDs remain opaque verified references; every accepted manifest transitively names graph/capsule/delta/obligation/selection/receipt and environment bindings; operational fields cannot alter its CID; descriptor/interface changes have detectable CIDs; ordinary imports perform no I/O.
 
 ## SCH-002 Implement the pinned datasets semantic-state adapter
@@ -117,14 +118,14 @@ A9  SCH-018
 - Provider role: codex-implement
 - Context budget tokens: 34000
 - LLM context budget bytes: 278528
-- Plan context: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md sections 1, 3, 7, and 9
+- Plan context: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md sections 1, 3, 7, 9, and 10
 - Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py, test/api/semantic_state/test_datasets_adapter.py
-- Predicted symbols: SemanticStateProvider, IpfsDatasetsSemanticStateProvider, SemanticStateCapability, SemanticStateUnavailable, SourceBlobStale, load_semantic_state_provider
-- Interfaces: SemanticStateProvider@1, IncrementalSemanticIndexModels@sealed, SymbolMerkleDAG@sealed, SemanticCapsule@sealed, TreeBoundSource@sealed
+- Predicted symbols: SemanticStateProvider, IpfsDatasetsSemanticStateProvider, SemanticStateCapability, SemanticStateUnavailable, SourceBlobStale, SemanticStateView, load_semantic_state_provider
+- Interfaces: SemanticStateProvider@1, IncrementalSemanticIndexModels@sealed, SemanticStateView@sealed, SymbolMerkleDAG@sealed, SemanticCapsule@sealed, TestSelection@sealed, TreeBoundSource@sealed
 - Conflict policy: Lazy-load only the sealed public semantic-state surface. Do not parse target AST, reconstruct symbol IDs/edges/deltas/Merkle nodes/capsule facts, read post-scan filesystem bytes as authoritative, import target repositories, claim complete Python semantics, or accept an ambient incompatible package.
-- Preconditions: Sealed datasets commit passes its repaired semantic-state tests and exposes scan_repository, diff_repository_states, calculate_invalidation, explain_symbol, explain_impact, watch_repository, symbol-Merkle materialization, compile_semantic_capsule, read_source_blob, and read_source_span.
-- Effects: Capability-checks contract fingerprints and schema/extractor/capsule versions, invokes canonical Git/tree scans, validates state/Merkle/capsule/delta/invalidation CIDs and four confidence values, retrieves exact source only from the scanned tree with expected-CID verification, and converts missing/stale capability into typed unavailability.
-- Acceptance: Clean and incremental scans, Merkle nodes, and capsules round-trip without identity translation; all required scanner facts and typed relations survive the adapter; watcher events trigger scans but never become state; mismatched commit/schema/CID fails closed; a filesystem mutation after scan yields `SourceBlobStale` or a rescan rather than mixed source; every opaque/invalid state remains visible and requires raw source.
+- Preconditions: The separately sealed datasets ISI and semantic-state commits pass their repaired producer tests and expose the exact phase-one operations plus `build_semantic_state`, `verify_semantic_state_bundle`, storage-neutral `open_semantic_state(root_cid, get_block) -> SemanticStateView`, capsule/freshness/tree-bound source operations, environment invalidation, `select_tests_and_proofs(previous_state, current_state, invalidation, *, policy, explicit_rules=())`, and pure oracle comparison.
+- Effects: Capability-checks contract fingerprints and schema/extractor/capsule/selection versions, invokes canonical Git/tree scans, opens verified read-only semantic views using an injected `get_block(cid) -> bytes` reader, validates state/Merkle/capsule/delta/invalidation/selection CIDs and four confidence values, always passes previous/current views into selection so delete/rename evidence survives, retrieves exact source only from the scanned tree with expected-CID verification, and converts missing/stale capability into typed unavailability.
+- Acceptance: Clean and incremental scans, Merkle nodes, capsules, and datasets selections round-trip without identity translation; an in-memory bundle reader and sealed durable reader expose equivalent `SemanticStateView` results without granting datasets put/CAS/WAL/network authority; all required scanner facts and typed relations survive the adapter; watcher events trigger scans but never become state; mismatched commit/schema/CID/root bindings fail closed; a filesystem mutation after scan yields `SourceBlobStale` or a rescan rather than mixed source; every opaque/invalid state remains visible and requires raw source.
 
 ## SCH-003 Implement the narrow kit durable-root adapter
 
@@ -261,7 +262,7 @@ A9  SCH-018
 - Effects: Selects deterministic_only/small_local_model/medium_model/frontier_model/human_review_required, capability-checks injected providers, supplies the invoker to SCH-005, and applies a fail-closed promotion gate to its gateway result. Any `llm_router.generate_text` call explicitly sets `allow_local_fallback=False` and `allow_cross_provider_fallback=False` and verifies the effective provider.
 - Acceptance: Route decision is deterministic and explained; `human_review_required` halts before provider dispatch/root publication; high-risk/opaque/oversized/failed cases escalate; missing provider is typed unavailable and nonzero. Production requires ENFORCE mode, AVAILABLE coordination, real coordinator and invoker, verified attribution, matching provider, and a non-simulated reservation; rejects `sim:`/`degraded:`, OFF/SIMULATED/DEGRADED, fallback reasons, and unadmitted replay; development simulation can never verify or commit.
 
-## SCH-008 Select and execute static checks, pytest tests, and provers
+## SCH-008 Adapt the sealed selection and execute checks, tests, and provers
 
 - Status: todo
 - Completion: auto
@@ -269,8 +270,8 @@ A9  SCH-018
 - Track: verification
 - Depends on: SCH-002, SCH-004, SCH-005
 - Goal id: SCH-G020
-- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/test_selection.py, ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py, test/api/semantic_state/test_test_selection.py, test/api/semantic_state/test_verification.py
-- Validation: python3.12 -m pytest -q test/api/semantic_state/test_test_selection.py test/api/semantic_state/test_verification.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/selection_execution.py, ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py, test/api/semantic_state/test_selection_execution.py, test/api/semantic_state/test_verification.py
+- Validation: python3.12 -m pytest -q test/api/semantic_state/test_selection_execution.py test/api/semantic_state/test_verification.py
 - Board namespace: semantic-compression-harness-v1
 - Bundle: sch/verification
 - Parallel lane: sch-verification
@@ -280,13 +281,13 @@ A9  SCH-018
 - Context budget tokens: 40000
 - LLM context budget bytes: 327680
 - Plan context: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md sections 9, 10, and 12
-- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/test_selection.py, ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py, test/api/semantic_state/test_test_selection.py, test/api/semantic_state/test_verification.py
-- Predicted symbols: TestSelector, SelectionPolicy, VerificationRunner, StaticCheckResult, PytestResult, ProverResult, FullSuiteComparison, select_tests, compare_full_suite
-- Interfaces: TestSelection@1, SemanticVerification@1
-- Conflict policy: Reuse `validation_commands`, `validation_runtime`, `ValidationScheduler.run_staged`/`schedule_staged_validations`, `ProofScheduler`, formal capability records, and existing test-execution receipts. The semantic selector is authority: do not call `run_impact_selected`, add a subprocess/test/proof scheduler, import targets for collection, guess dynamic pytest/plugin behavior as exact, report unavailable provers as passing, or disable full-suite fallback.
-- Preconditions: Scheduling adapter is cancellation/fence safe and semantic graph/test facts are supplied through SCH-002 at runtime.
-- Effects: Selects tests from direct/import/caller/fixture/schema/config/generated/proof edges plus user rules, records reason paths, converts the selected nodes into explicit bounded commands, runs static/pytest stages through `ValidationScheduler.run_staged`, runs proofs through `ProofScheduler`, references existing execution receipts, and optionally/mandatorily runs the full-suite oracle by assurance policy.
-- Acceptance: Direct known dependents are all selected; ambiguity and opaque/config/dependency changes trigger visible fallback; commands bind exact tree/config/toolchain; timeouts/cancellation are typed; controlled comparison metrics define false negatives correctly and support 100 percent recall.
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/selection_execution.py, ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py, test/api/semantic_state/test_selection_execution.py, test/api/semantic_state/test_verification.py
+- Predicted symbols: SelectionExecutionAdapter, VerificationRunner, StaticCheckResult, PytestResult, ProverResult, FullSuiteComparison, materialize_selection_commands, compare_full_suite
+- Interfaces: TestSelectionRef@1, TestSelection@sealed, SemanticVerification@1
+- Conflict policy: Reuse `validation_commands`, `validation_runtime`, `ValidationScheduler.run_staged`/`schedule_staged_validations`, `ProofScheduler`, formal capability records, and existing test-execution receipts. The sealed datasets `TestSelection` is the only semantic selection authority: do not traverse or re-resolve its graph, choose a second affected set, call `run_impact_selected`, add a subprocess/test/proof scheduler, import targets for collection, guess node IDs or dynamic pytest/plugin behavior, report unavailable provers as passing, or weaken its full-suite fallback.
+- Preconditions: Scheduling adapter is cancellation/fence safe and SCH-002 supplies a verified datasets selection bound to the previous/current `SemanticStateView` roots and producer invalidation.
+- Effects: Verifies the `TestSelectionRef` against its datasets selection block and both semantic root bindings; converts only its already-selected pytest/proof IDs into explicit bounded commands; applies its `none`/`full_pytest`/`full_proofs`/`both` fallback plus explicit harness assurance policy; runs static/pytest stages through `ValidationScheduler.run_staged`, proofs through `ProofScheduler`, references existing execution receipts, and supplies normalized selected/full results to the datasets oracle comparison.
+- Acceptance: No accelerate graph traversal or reselection occurs; command provenance retains producer reason paths and selection/root CIDs; producer ambiguity/opaque/config/dependency fallback cannot be weakened; commands bind exact tree/config/toolchain; timeouts/cancellation are typed; controlled producer-oracle metrics define false negatives correctly and support 100 percent recall.
 
 ## SCH-009 Emit MCP++ receipts and enforce freshness admission
 
