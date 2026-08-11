@@ -3,17 +3,20 @@
 Acceptance coverage:
 
 * UI state cannot synthesize authorization
-* browser content cannot select host paths or commands
+* browser content cannot select host paths, commands, or credentials
 * sensitive changes require contract verification or human review
 * missing/invalid authority evidence rejects safely
-* mapping inputs are closed and strictly typed (unknown keys / non-bool booleans)
-* browser envelopes cannot disguise path/command/credential selectors
+* mapping inputs are closed and strictly typed before coercion
+* identifiers and digests accept only nonempty canonical strings
+* collection fields accept only declared JSON array/object types
+* strings, mappings, numbers, booleans, and null never become collections
+* caller policy_decision_id/policy_fresh have no authority without bound evidence
+* browser envelopes reject path/command/credential selectors under nesting,
+  placement, casing, URI encoding, and alternate spelling
 * claim-derived change kinds and computed decisions override acceptance input
 * authority evidence has nonempty identity and is current + action-bound
 * a scope declaration alone is never host authority
-
-Also exercises host-boundary, forbidden-path, stale-policy, and
-exact-confirmation doctrine used by later patch-scope gates.
+* explicit rejecting vectors for every prior false-green input
 """
 
 from __future__ import annotations
@@ -50,6 +53,54 @@ from ipfs_accelerate_py.agent_supervisor.gui_optimizer.authority import (
 )
 
 
+def _bound_contract(
+    *,
+    action_id: str,
+    argument_digest: str,
+    evidence_id: str = "contract-1",
+) -> AuthorityEvidence:
+    return AuthorityEvidence(
+        kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
+        valid=True,
+        evidence_id=evidence_id,
+        binds_action_id=action_id,
+        binds_argument_digest=argument_digest,
+    )
+
+
+def _bound_human(
+    *,
+    action_id: str,
+    argument_digest: str,
+    evidence_id: str = "review-1",
+) -> AuthorityEvidence:
+    return AuthorityEvidence(
+        kind=AuthorityEvidenceKind.HUMAN_REVIEW,
+        valid=True,
+        evidence_id=evidence_id,
+        binds_action_id=action_id,
+        binds_argument_digest=argument_digest,
+    )
+
+
+def _bound_host_policy(
+    *,
+    action_id: str,
+    argument_digest: str,
+    policy_decision_id: str = "policy-fresh",
+    evidence_id: str = "host-reeval-1",
+) -> AuthorityEvidence:
+    return AuthorityEvidence(
+        kind=AuthorityEvidenceKind.HOST_POLICY_REEVALUATION,
+        valid=True,
+        evidence_id=evidence_id,
+        binds_action_id=action_id,
+        binds_argument_digest=argument_digest,
+        policy_decision_id=policy_decision_id,
+        policy_fresh=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Package surface
 # ---------------------------------------------------------------------------
@@ -63,6 +114,10 @@ def test_package_exports_authority_interfaces() -> None:
     assert "swissknife/web/js/apps/" in DEFAULT_ALLOWED_ROOTS
     assert "host_path" in FORBIDDEN_BROWSER_PAYLOAD_KEYS
     assert "process_command" in FORBIDDEN_BROWSER_PAYLOAD_KEYS
+    assert "host_file_path" in FORBIDDEN_BROWSER_PAYLOAD_KEYS
+    assert "cwd" in FORBIDDEN_BROWSER_PAYLOAD_KEYS
+    assert "cmd" in FORBIDDEN_BROWSER_PAYLOAD_KEYS
+    assert "credential" in FORBIDDEN_BROWSER_PAYLOAD_KEYS
 
 
 def test_default_security_authority_is_fail_closed_wrapper() -> None:
@@ -124,6 +179,8 @@ def test_absolute_or_traversal_paths_reject(path: str) -> None:
 
 def test_forbidden_path_segments_reject() -> None:
     authority = GuiPatchAuthority()
+    # Forbidden segment doctrine (node_modules/vendor/archive); path is not a
+    # live import root — companion relocation lives under test fixtures.
     decision = authority.evaluate_path(
         "swissknife/web/js/apps/node_modules/evil/index.js"
     )
@@ -467,11 +524,14 @@ def test_invalid_authority_evidence_rejects_safely() -> None:
     decision = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="dispatch_task",
+            intended_argument_digest="args:1",
             evidence=(
                 AuthorityEvidence(
                     kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
                     valid=False,
                     evidence_id="broken-receipt",
+                    binds_action_id="dispatch_task",
+                    binds_argument_digest="args:1",
                 ),
             ),
         )
@@ -488,8 +548,7 @@ def test_sensitive_changes_require_contract_or_human_review() -> None:
     needs_review = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="edit_binding",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:bind",
             change_kinds=(ForbiddenChangeKind.UNVERIFIED_ACTION_BINDING,),
         )
     )
@@ -502,15 +561,12 @@ def test_sensitive_changes_require_contract_or_human_review() -> None:
     with_contract = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="edit_binding",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:bind",
             change_kinds=(ForbiddenChangeKind.UNVERIFIED_ACTION_BINDING,),
             evidence=(
-                AuthorityEvidence(
-                    kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
-                    valid=True,
-                    evidence_id="contract-1",
-                    binds_action_id="edit_binding",
+                _bound_contract(
+                    action_id="edit_binding",
+                    argument_digest="args:bind",
                 ),
             ),
         )
@@ -520,15 +576,13 @@ def test_sensitive_changes_require_contract_or_human_review() -> None:
     credentials = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="rotate_secret",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:secret",
             change_kinds=(ForbiddenChangeKind.CREDENTIALS,),
             evidence=(
-                AuthorityEvidence(
-                    kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
-                    valid=True,
+                _bound_contract(
+                    action_id="rotate_secret",
+                    argument_digest="args:secret",
                     evidence_id="contract-2",
-                    binds_action_id="rotate_secret",
                 ),
             ),
         )
@@ -542,15 +596,12 @@ def test_sensitive_changes_require_contract_or_human_review() -> None:
     with_human = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="rotate_secret",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:secret",
             change_kinds=(ForbiddenChangeKind.CREDENTIALS,),
             evidence=(
-                AuthorityEvidence(
-                    kind=AuthorityEvidenceKind.HUMAN_REVIEW,
-                    valid=True,
-                    evidence_id="review-1",
-                    binds_action_id="rotate_secret",
+                _bound_human(
+                    action_id="rotate_secret",
+                    argument_digest="args:secret",
                 ),
             ),
         )
@@ -563,9 +614,13 @@ def test_accessibility_and_security_regressions_block_acceptance() -> None:
     a11y = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="style_tweak",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:style",
             accessibility_regression=True,
+            evidence=(
+                _bound_contract(
+                    action_id="style_tweak", argument_digest="args:style"
+                ),
+            ),
         )
     )
     assert a11y.rejected
@@ -576,9 +631,13 @@ def test_accessibility_and_security_regressions_block_acceptance() -> None:
     security = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="style_tweak",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:style",
             security_regression=True,
+            evidence=(
+                _bound_contract(
+                    action_id="style_tweak", argument_digest="args:style"
+                ),
+            ),
         )
     )
     assert security.rejected
@@ -600,14 +659,10 @@ def test_fresh_host_policy_evidence_allows_acceptance() -> None:
             policy_decision_id="policy-fresh",
             policy_fresh=True,
             evidence=(
-                AuthorityEvidence(
-                    kind=AuthorityEvidenceKind.HOST_POLICY_REEVALUATION,
-                    valid=True,
-                    evidence_id="host-reeval-1",
-                    binds_action_id="dispatch_task",
-                    binds_argument_digest="args:1",
+                _bound_host_policy(
+                    action_id="dispatch_task",
+                    argument_digest="args:1",
                     policy_decision_id="policy-fresh",
-                    policy_fresh=True,
                 ),
             ),
         )
@@ -635,8 +690,12 @@ def test_combined_authority_rejects_host_path_before_acceptance() -> None:
         ),
         acceptance=AcceptanceAuthorityRequest(
             intended_action_id="dispatch_task",
-            policy_decision_id="policy-ok",
-            policy_fresh=True,
+            intended_argument_digest="args:1",
+            evidence=(
+                _bound_host_policy(
+                    action_id="dispatch_task", argument_digest="args:1"
+                ),
+            ),
         ),
     )
     assert decision.rejected
@@ -662,13 +721,18 @@ def test_combined_authority_allows_clean_proposal() -> None:
         },
         acceptance={
             "intended_action_id": "rerender_preserve_focus",
+            "intended_argument_digest": "args:rerender",
             "policy_decision_id": "policy-ok",
             "policy_fresh": True,
             "evidence": [
                 {
-                    "kind": "scope_declaration",
+                    "kind": "host_policy_reevaluation",
                     "valid": True,
-                    "evidence_id": "scope-1",
+                    "evidence_id": "host-1",
+                    "binds_action_id": "rerender_preserve_focus",
+                    "binds_argument_digest": "args:rerender",
+                    "policy_decision_id": "policy-ok",
+                    "policy_fresh": True,
                 }
             ],
         },
@@ -687,8 +751,16 @@ def test_combined_authority_surfaces_sensitive_patch_review() -> None:
         ],
         acceptance={
             "intended_action_id": "weaken_confirm",
-            "policy_decision_id": "policy-ok",
-            "policy_fresh": True,
+            "intended_argument_digest": "args:w",
+            "evidence": [
+                {
+                    "kind": "contract_verification",
+                    "valid": True,
+                    "evidence_id": "contract-w",
+                    "binds_action_id": "weaken_confirm",
+                    "binds_argument_digest": "args:w",
+                }
+            ],
         },
     )
     assert decision.requires_human_review
@@ -815,7 +887,9 @@ def test_unknown_mapping_keys_reject() -> None:
         ),
     ],
 )
-def test_disguised_browser_selectors_reject(payload: dict, reason: AuthorityReasonCode) -> None:
+def test_disguised_browser_selectors_reject(
+    payload: dict, reason: AuthorityReasonCode
+) -> None:
     policy = GuiHostBoundaryPolicy()
     decision = policy.evaluate(BrowserHostInput(payload=payload))
     assert decision.rejected
@@ -827,6 +901,7 @@ def test_scope_declaration_alone_is_never_host_authority() -> None:
     decision = acceptance.evaluate(
         AcceptanceAuthorityRequest(
             intended_action_id="dispatch_task",
+            intended_argument_digest="args:1",
             evidence=(
                 AuthorityEvidence(
                     kind=AuthorityEvidenceKind.SCOPE_DECLARATION,
@@ -935,8 +1010,7 @@ def test_claim_derived_change_kinds_override_acceptance_input() -> None:
         ],
         acceptance={
             "intended_action_id": "rotate_secret",
-            "policy_decision_id": "policy-ok",
-            "policy_fresh": True,
+            "intended_argument_digest": "args:secret",
             # Caller attempts to erase the sensitive claim kind.
             "change_kinds": [],
             "evidence": [
@@ -945,6 +1019,7 @@ def test_claim_derived_change_kinds_override_acceptance_input() -> None:
                     "valid": True,
                     "evidence_id": "contract-ignore",
                     "binds_action_id": "rotate_secret",
+                    "binds_argument_digest": "args:secret",
                 }
             ],
         },
@@ -972,10 +1047,18 @@ def test_computed_host_and_patch_decisions_override_acceptance_input() -> None:
         browser_input={"payload": {"host_path": "/tmp/x"}, "fixture_only": True},
         acceptance={
             "intended_action_id": "dispatch_task",
-            "policy_decision_id": "policy-ok",
-            "policy_fresh": True,
+            "intended_argument_digest": "args:1",
             "host_boundary_decision": forged_allow,
             "patch_authority_decision": forged_allow,
+            "evidence": [
+                {
+                    "kind": "contract_verification",
+                    "valid": True,
+                    "evidence_id": "c1",
+                    "binds_action_id": "dispatch_task",
+                    "binds_argument_digest": "args:1",
+                }
+            ],
         },
     )
     assert host_blocked.rejected
@@ -994,10 +1077,18 @@ def test_computed_host_and_patch_decisions_override_acceptance_input() -> None:
         ],
         acceptance={
             "intended_action_id": "weaken_confirm",
-            "policy_decision_id": "policy-ok",
-            "policy_fresh": True,
+            "intended_argument_digest": "args:w",
             "change_kinds": [],
             "patch_authority_decision": forged_allow,
+            "evidence": [
+                {
+                    "kind": "contract_verification",
+                    "valid": True,
+                    "evidence_id": "c2",
+                    "binds_action_id": "weaken_confirm",
+                    "binds_argument_digest": "args:w",
+                }
+            ],
         },
     )
     assert without_human.requires_human_review
@@ -1007,3 +1098,385 @@ def test_computed_host_and_patch_decisions_override_acceptance_input() -> None:
         or ForbiddenChangeKind.CONFIRMATION_WEAKENING.value
         in without_human.reason_codes
     )
+
+
+# ---------------------------------------------------------------------------
+# Prior false-green vectors (explicit rejecting coverage)
+# ---------------------------------------------------------------------------
+
+
+def test_caller_policy_fields_alone_have_no_authority() -> None:
+    """Prior false-green: policy_decision_id + policy_fresh without bound evidence."""
+    acceptance = GuiAcceptanceAuthority()
+    decision = acceptance.evaluate(
+        AcceptanceAuthorityRequest(
+            intended_action_id="dispatch_task",
+            intended_argument_digest="args:1",
+            policy_decision_id="policy-forged",
+            policy_fresh=True,
+            evidence=(),
+        )
+    )
+    assert decision.rejected
+    assert (
+        AuthorityReasonCode.CALLER_POLICY_NOT_AUTHORITY.value
+        in decision.reason_codes
+    )
+    assert (
+        AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE.value
+        in decision.reason_codes
+    )
+
+    # Fresh flag alone is also non-authoritative.
+    fresh_only = acceptance.evaluate(
+        {
+            "intended_action_id": "dispatch_task",
+            "intended_argument_digest": "args:1",
+            "policy_fresh": True,
+        }
+    )
+    assert fresh_only.rejected
+    assert (
+        AuthorityReasonCode.CALLER_POLICY_NOT_AUTHORITY.value
+        in fresh_only.reason_codes
+        or AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE.value
+        in fresh_only.reason_codes
+    )
+
+
+def test_caller_policy_with_scope_only_still_rejects() -> None:
+    """Prior false-green: scope + caller policy looked like host authority."""
+    acceptance = GuiAcceptanceAuthority()
+    decision = acceptance.evaluate(
+        {
+            "intended_action_id": "dispatch_task",
+            "intended_argument_digest": "args:1",
+            "policy_decision_id": "policy-ok",
+            "policy_fresh": True,
+            "evidence": [
+                {
+                    "kind": "scope_declaration",
+                    "valid": True,
+                    "evidence_id": "scope-1",
+                }
+            ],
+        }
+    )
+    assert decision.rejected
+    assert (
+        AuthorityReasonCode.SCOPE_DECLARATION_NOT_AUTHORITY.value
+        in decision.reason_codes
+        or AuthorityReasonCode.CALLER_POLICY_NOT_AUTHORITY.value
+        in decision.reason_codes
+        or AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE.value
+        in decision.reason_codes
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        (
+            "change_kinds",
+            "credentials",
+            AuthorityReasonCode.INVALID_COLLECTION_TYPE,
+        ),
+        (
+            "change_kinds",
+            {"kind": "credentials"},
+            AuthorityReasonCode.INVALID_COLLECTION_TYPE,
+        ),
+        ("change_kinds", 1, AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+        ("change_kinds", True, AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+        ("change_kinds", None, AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+        ("evidence", "contract", AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+        (
+            "evidence",
+            {"kind": "contract_verification"},
+            AuthorityReasonCode.INVALID_COLLECTION_TYPE,
+        ),
+        ("evidence", 0, AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+        ("evidence", False, AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+        ("evidence", None, AuthorityReasonCode.INVALID_COLLECTION_TYPE),
+    ],
+)
+def test_collection_fields_reject_scalar_mapping_and_null_coercion(
+    field: str, value: object, reason: AuthorityReasonCode
+) -> None:
+    """Prior false-green: strings/mappings/numbers/bools/null became collections."""
+    payload: dict = {
+        "intended_action_id": "dispatch_task",
+        "intended_argument_digest": "args:1",
+    }
+    payload[field] = value
+    with pytest.raises(GuiAuthorityError) as exc:
+        GuiAcceptanceAuthority().evaluate(payload)
+    assert exc.value.reason_code == reason.value
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("selected_host_paths", "/tmp/x"),
+        ("selected_host_paths", {"path": "/tmp/x"}),
+        ("selected_host_paths", 1),
+        ("selected_host_paths", True),
+        ("selected_host_paths", None),
+        ("selected_commands", "rm -rf /"),
+        ("selected_commands", {"cmd": "rm"}),
+        ("selected_executables", "bash"),
+        ("payload", "not-an-object"),
+        ("payload", ["/tmp/x"]),
+        ("payload", None),
+    ],
+)
+def test_browser_collection_fields_reject_non_array_object_types(
+    field: str, value: object
+) -> None:
+    payload: dict = {"fixture_only": True}
+    payload[field] = value
+    with pytest.raises(GuiAuthorityError) as exc:
+        GuiHostBoundaryPolicy().evaluate(payload)
+    assert (
+        exc.value.reason_code
+        == AuthorityReasonCode.INVALID_COLLECTION_TYPE.value
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("intended_action_id", 123),
+        ("intended_action_id", True),
+        ("intended_argument_digest", 99),
+        ("intended_argument_digest", False),
+        ("policy_decision_id", 1),
+        ("confirmation_action_id", 0),
+        ("confirmation_argument_digest", 3.14),
+        ("evidence_id", 42),
+        ("binds_action_id", 7),
+        ("binds_argument_digest", 8),
+    ],
+)
+def test_identifier_and_digest_fields_reject_non_strings(
+    field: str, value: object
+) -> None:
+    """Prior false-green: numbers/bools coerced into identifier/digest strings."""
+    if field in {"evidence_id", "binds_action_id", "binds_argument_digest"}:
+        payload = {
+            "intended_action_id": "dispatch_task",
+            "intended_argument_digest": "args:1",
+            "evidence": [
+                {
+                    "kind": "contract_verification",
+                    "valid": True,
+                    "evidence_id": "ok" if field != "evidence_id" else value,
+                    "binds_action_id": (
+                        "dispatch_task" if field != "binds_action_id" else value
+                    ),
+                    "binds_argument_digest": (
+                        "args:1" if field != "binds_argument_digest" else value
+                    ),
+                }
+            ],
+        }
+    else:
+        payload = {
+            "intended_action_id": (
+                "dispatch_task" if field != "intended_action_id" else value
+            ),
+            "intended_argument_digest": (
+                "args:1" if field != "intended_argument_digest" else value
+            ),
+            field: value,
+        }
+    with pytest.raises(GuiAuthorityError) as exc:
+        GuiAcceptanceAuthority().evaluate(payload)
+    assert (
+        exc.value.reason_code
+        == AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value
+    )
+
+
+def test_empty_and_noncanonical_argument_digests_reject() -> None:
+    """Prior false-green: empty/noncanonical digests still authorized."""
+    acceptance = GuiAcceptanceAuthority()
+
+    # Empty intended digest cannot satisfy binding for authorizing evidence.
+    empty_intended = acceptance.evaluate(
+        AcceptanceAuthorityRequest(
+            intended_action_id="dispatch_task",
+            intended_argument_digest="",
+            evidence=(
+                AuthorityEvidence(
+                    kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
+                    valid=True,
+                    evidence_id="c-empty",
+                    binds_action_id="dispatch_task",
+                    binds_argument_digest="args:1",
+                ),
+            ),
+        )
+    )
+    assert empty_intended.rejected
+    assert (
+        AuthorityReasonCode.EMPTY_ARGUMENT_DIGEST.value
+        in empty_intended.reason_codes
+        or AuthorityReasonCode.EVIDENCE_BINDING_MISMATCH.value
+        in empty_intended.reason_codes
+        or AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE.value
+        in empty_intended.reason_codes
+    )
+
+    # Empty binds_argument_digest cannot authorize.
+    empty_bind = acceptance.evaluate(
+        AcceptanceAuthorityRequest(
+            intended_action_id="dispatch_task",
+            intended_argument_digest="args:1",
+            evidence=(
+                AuthorityEvidence(
+                    kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
+                    valid=True,
+                    evidence_id="c-empty-bind",
+                    binds_action_id="dispatch_task",
+                    binds_argument_digest="",
+                ),
+            ),
+        )
+    )
+    assert empty_bind.rejected
+
+    # Noncanonical (leading/trailing whitespace) digests reject at parse time.
+    with pytest.raises(GuiAuthorityError) as noncanon_exc:
+        AcceptanceAuthorityRequest(
+            intended_action_id="dispatch_task",
+            intended_argument_digest=" args:1",
+        )
+    assert (
+        noncanon_exc.value.reason_code
+        == AuthorityReasonCode.NONCANONICAL_ARGUMENT_DIGEST.value
+    )
+
+    with pytest.raises(GuiAuthorityError) as noncanon_bind:
+        AuthorityEvidence(
+            kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
+            valid=True,
+            evidence_id="c-nc",
+            binds_action_id="dispatch_task",
+            binds_argument_digest="args:1 ",
+        )
+    assert (
+        noncanon_bind.value.reason_code
+        == AuthorityReasonCode.NONCANONICAL_ARGUMENT_DIGEST.value
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [
+        (
+            {"hostFilePath": "/tmp/x"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        (
+            {"workingDirectory": "/home/op"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        ({"cwd": "/var"}, AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN),
+        (
+            {"fileUri": "file:///etc/passwd"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        (
+            {"hostFilesystemPath": "/opt/data"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        ({"cmd": "bash"}, AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN),
+        (
+            {"credential": "secret-token"},
+            AuthorityReasonCode.BROWSER_CREDENTIAL_FORBIDDEN,
+        ),
+        # Nested placement
+        (
+            {"tool": {"opts": {"hostFilePath": "/tmp/x"}}},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        (
+            {"items": [{"cwd": "/tmp"}]},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        # URI encoding / alternate separators
+        (
+            {"host%5Fpath": "/tmp/x"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        (
+            {"host%2Dpath": "/tmp/x"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        (
+            {"working%20directory": "/tmp"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+        (
+            {"process%5Fcommand": "rm -rf /"},
+            AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN,
+        ),
+        (
+            {"api%5Fkey": "k"},
+            AuthorityReasonCode.BROWSER_CREDENTIAL_FORBIDDEN,
+        ),
+        # Double-encoded selector
+        (
+            {"host%252Fpath": "/tmp/x"},
+            AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
+        ),
+    ],
+)
+def test_alternate_and_uri_encoded_browser_selectors_reject(
+    payload: dict, reason: AuthorityReasonCode
+) -> None:
+    """Prior false-green: alternate spellings and URI encoding bypassed filters."""
+    policy = GuiHostBoundaryPolicy()
+    decision = policy.evaluate(BrowserHostInput(payload=payload))
+    assert decision.rejected, payload
+    assert reason.value in decision.reason_codes
+
+
+def test_claim_change_kinds_string_scalar_rejects() -> None:
+    """Prior false-green: change_kinds string coerced to a one-item collection."""
+    with pytest.raises(GuiAuthorityError) as exc:
+        GuiPatchAuthority().evaluate_claims(
+            [
+                {
+                    "path": "swissknife/web/js/apps/agent-supervisor.js",
+                    "change_kinds": "credentials",
+                }
+            ]
+        )
+    assert (
+        exc.value.reason_code
+        == AuthorityReasonCode.INVALID_COLLECTION_TYPE.value
+    )
+
+
+def test_unbound_contract_evidence_does_not_authorize_sensitive_change() -> None:
+    """Prior false-green: unbound contract receipt auto-accepted sensitive edits."""
+    acceptance = GuiAcceptanceAuthority()
+    decision = acceptance.evaluate(
+        AcceptanceAuthorityRequest(
+            intended_action_id="edit_binding",
+            intended_argument_digest="args:bind",
+            change_kinds=(ForbiddenChangeKind.UNVERIFIED_ACTION_BINDING,),
+            evidence=(
+                AuthorityEvidence(
+                    kind=AuthorityEvidenceKind.CONTRACT_VERIFICATION,
+                    valid=True,
+                    evidence_id="unbound-contract",
+                    # Missing action/digest binding.
+                ),
+            ),
+        )
+    )
+    assert decision.requires_human_review or decision.rejected
+    assert not decision.allowed
