@@ -11776,6 +11776,7 @@ class PortalImplementationDaemon:
         }
         from ..code_evidence_graph import (
             PostMergeEvidenceReceipt,
+            _post_merge_observed_at,
             assemble_post_merge_evidence,
         )
 
@@ -11784,6 +11785,29 @@ class PortalImplementationDaemon:
         # hours old after operator recovery / tip rewrites; reusing its absolute
         # freshness_deadline causes false stale_evidence rejections even when
         # the validation digests and trees still bind exactly.
+        #
+        # Nested evidence keeps its original observed_at.  reason-code checks
+        # require (now - observed_at) <= (deadline - assembled), so the horizon
+        # must cover the age of the oldest sealed nested timestamp — a fixed
+        # one-hour window is too short after multi-hour operator recovery.
+        oldest_observed = now
+        for record in (
+            evidence_input["validation_report"],
+            evidence_input["validation_receipt"],
+            *evidence_input["semantic_checks"],
+            *evidence_input["protocol_checks"],
+            *evidence_input["legal_logic_obligations"],
+            *evidence_input["theorem_obligations"],
+            *evidence_input["proof_receipts"],
+            *evidence_input["criterion_coverage"],
+        ):
+            if not isinstance(record, Mapping):
+                continue
+            observed = _post_merge_observed_at(record)
+            if observed is not None and observed < oldest_observed:
+                oldest_observed = observed
+        evidence_age = now - oldest_observed if oldest_observed < now else timedelta(0)
+        freshness_horizon = max(timedelta(hours=1), evidence_age + timedelta(minutes=30))
         receipt = assemble_post_merge_evidence(
             repository_id=integrated.repository_id,
             task_id=task.task_id,
@@ -11805,7 +11829,7 @@ class PortalImplementationDaemon:
             merged_tree_records=evidence_input["merged_tree_records"],
             assembled_at=now,
             verified_at=now,
-            freshness_deadline=now + timedelta(hours=1),
+            freshness_deadline=now + freshness_horizon,
         )
         restored = PostMergeEvidenceReceipt.from_dict(receipt.to_dict())
         if restored != receipt or not receipt.accepted:
