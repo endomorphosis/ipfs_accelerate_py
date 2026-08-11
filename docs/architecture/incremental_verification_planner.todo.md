@@ -216,7 +216,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-006 Implement the mypy verification adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
