@@ -538,7 +538,7 @@ class SelectionPolicy:
         }
 
     @classmethod
-    def from_value(cls, value: Any | None) -> "SelectionPolicy":
+    def from_value(cls, value: Any | None) -> SelectionPolicy:
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -658,7 +658,7 @@ class VerificationCatalog:
         }
 
     @classmethod
-    def from_value(cls, value: Any | None) -> "VerificationCatalog":
+    def from_value(cls, value: Any | None) -> VerificationCatalog:
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -867,7 +867,7 @@ class AffectedVerificationSelection:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AffectedVerificationSelection":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AffectedVerificationSelection:
         if not isinstance(payload, Mapping):
             raise SelectionError("selection payload must be a mapping")
         mode = payload.get("fallback_mode", FallbackMode.EXACT.value)
@@ -1846,10 +1846,7 @@ __all__ = [
     "AFFECTED_CHECK_SELECTOR_INTERFACE",
     "AFFECTED_VERIFICATION_SELECTION_INTERFACE",
     "AFFECTED_VERIFICATION_SELECTION_SCHEMA",
-    "AffectedCheckSelector",
-    "AffectedVerificationSelection",
     "DEFAULT_MAX_REASON_CHAIN",
-    "FallbackMode",
     "REASON_BROADER_REQUIRED",
     "REASON_CONFIG_EDGE",
     "REASON_CONFLICTING_CRITICAL",
@@ -1877,12 +1874,15 @@ __all__ = [
     "REASON_VALIDATION_MAPPING_INCOMPLETE",
     "SELECTION_EVIDENCE",
     "SELECTION_POLICY_SCHEMA",
+    "VERIFICATION_CATALOG_SCHEMA",
+    "AffectedCheckSelector",
+    "AffectedVerificationSelection",
+    "FallbackMode",
+    "SelectionBoundsError",
     "SelectionDisposition",
     "SelectionEdge",
     "SelectionError",
-    "SelectionBoundsError",
     "SelectionPolicy",
-    "VERIFICATION_CATALOG_SCHEMA",
     "VerificationCatalog",
     "compute_dependency_cone",
     "create_affected_check_selector",

@@ -63,12 +63,11 @@ from .contracts import (
 from .datasets_adapter import (
     ContextPackView,
     DatasetsVerificationInputAdapter,
-    InputKind,
     InvalidationPlanView,
     RepositoryStateView,
     create_datasets_verification_input_adapter,
 )
-from .receipt_cache import VerificationReceiptCache, classify_candidate
+from .receipt_cache import VerificationReceiptCache
 from .selection import (
     AffectedVerificationSelection,
     SelectionPolicy,
@@ -407,7 +406,7 @@ class CheckToolSpec:
             object.__setattr__(
                 self,
                 "tool_version_probe_output_bytes",
-                f"{self.tool_name} {self.tool_version}\n".encode("utf-8"),
+                f"{self.tool_name} {self.tool_version}\n".encode(),
             )
         if self.tool_identity is None:
             sha = "sha256:" + hashlib.sha256(self.tool_executable_bytes).hexdigest()
@@ -2373,17 +2372,9 @@ __all__ = [
     "DEFAULT_MAX_EXECUTION_TIME_MS",
     "DEFAULT_STEP_TIMEOUT_MS",
     "IDENTITY_BINDING_SCHEMA",
-    "IncrementalVerificationPlanner",
-    "IdentityBinding",
     "PATCH_DELTA_SCHEMA",
     "PLANNER_EVIDENCE",
     "PLANNER_POLICY_SCHEMA",
-    "PatchDelta",
-    "PlannerBoundsError",
-    "PlannerError",
-    "PlannerIdentityError",
-    "PlannerPolicy",
-    "CheckToolSpec",
     "REASON_CROSS_TREE_REJECTED",
     "REASON_ENVIRONMENT_MISMATCH",
     "REASON_LOCK_MISMATCH",
@@ -2398,6 +2389,14 @@ __all__ = [
     "REASON_UNBOUND_SANDBOX",
     "VERIFICATION_PLANNER_INTERFACE",
     "VERIFICATION_PLANNER_SCHEMA",
+    "CheckToolSpec",
+    "IdentityBinding",
+    "IncrementalVerificationPlanner",
+    "PatchDelta",
+    "PlannerBoundsError",
+    "PlannerError",
+    "PlannerIdentityError",
+    "PlannerPolicy",
     "compile_check_receipt_key",
     "create_incremental_verification_planner",
     "create_verification_plan",

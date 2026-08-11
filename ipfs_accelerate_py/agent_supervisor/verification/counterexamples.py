@@ -433,10 +433,8 @@ class MinimizationQuality:
                 self, "guarantee", MinimizationGuarantee(str(guarantee))
             )
         score = float(self.score)
-        if score < 0.0:
-            score = 0.0
-        if score > 1.0:
-            score = 1.0
+        score = max(score, 0.0)
+        score = min(score, 1.0)
         object.__setattr__(self, "score", score)
         object.__setattr__(
             self,
@@ -952,8 +950,7 @@ def minimize_source_spans(
             continue
         if start < 1:
             continue
-        if end < start:
-            end = start
+        end = max(end, start)
         artifact_cid = str(span.get("artifact_cid") or "").strip()
         if not artifact_cid:
             artifact_cid = content_identity(
@@ -1903,9 +1900,9 @@ def _quality_score(
 __all__ = [
     "ALGORITHM_VERSION",
     "COUNTEREXAMPLE_EVIDENCE",
+    "COUNTEREXAMPLE_MINIMIZATION_RESULT_SCHEMA",
     "COUNTEREXAMPLE_MINIMIZER_INTERFACE",
     "COUNTEREXAMPLE_MINIMIZER_SCHEMA",
-    "COUNTEREXAMPLE_MINIMIZATION_RESULT_SCHEMA",
     "FAILURE_IDENTITY_SCHEMA",
     "MINIMIZATION_QUALITY_SCHEMA",
     "CounterexampleMinimizationError",

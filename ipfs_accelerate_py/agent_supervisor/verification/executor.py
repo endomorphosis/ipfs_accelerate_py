@@ -53,7 +53,6 @@ from .bundle import (
     build_verification_summary,
 )
 from .contracts import (
-    CacheReuseDecision,
     CacheReuseDisposition,
     CounterexampleReceipt,
     DirectExecutionObservation,
@@ -73,12 +72,11 @@ from .contracts import (
     VerificationReceiptKey,
     VerificationReceiptKind,
     VerificationSummary,
-    aggregate_terminal_status,
 )
 from .counterexamples import minimize_counterexample
 from .model_route import (
-    default_inventory,
     decide_model_route,
+    default_inventory,
     derive_model_route_facts,
     policy_cid_for,
 )
@@ -2120,16 +2118,16 @@ def create_verification_executor(
 
 
 __all__ = [
-    "CheckRunOutcome",
-    "CheckRunner",
     "EXECUTION_BUNDLE_EVIDENCE",
     "EXECUTION_RESULT_SCHEMA",
+    "VERIFICATION_EXECUTOR_INTERFACE",
+    "VERIFICATION_EXECUTOR_SCHEMA",
+    "CheckRunOutcome",
+    "CheckRunner",
     "IdentityRevalidation",
     "ObservedPlanIdentities",
     "ResourceRejection",
     "ResourceRejectionKind",
-    "VERIFICATION_EXECUTOR_INTERFACE",
-    "VERIFICATION_EXECUTOR_SCHEMA",
     "VerificationExecutionResult",
     "VerificationExecutor",
     "VerificationExecutorError",

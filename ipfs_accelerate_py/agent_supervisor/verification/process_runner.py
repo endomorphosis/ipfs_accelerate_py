@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO
 
 from ..core.multiformats_identity import cid_for_bytes
 from ..runtime.resource_scheduler import (

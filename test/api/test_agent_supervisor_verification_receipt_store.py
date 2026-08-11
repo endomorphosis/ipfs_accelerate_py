@@ -40,7 +40,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     raw_cid,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

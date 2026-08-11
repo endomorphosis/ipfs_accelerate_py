@@ -23,9 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
-    DiagnosticValueState,
     MAX_COUNTEREXAMPLE_BYTES,
     CounterexampleReceipt,
+    DiagnosticValueState,
     TerminalStatus,
     TestReceipt,
     TypeCheckReceipt,
@@ -59,7 +59,6 @@ from test.api.test_agent_supervisor_verification_contracts import (
     _key,
     _observation,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
