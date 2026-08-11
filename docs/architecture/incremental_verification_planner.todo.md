@@ -340,7 +340,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-010 Implement create_verification_plan and planner policy
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
