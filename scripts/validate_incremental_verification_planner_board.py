@@ -615,10 +615,16 @@ def _validate_tasks(text: str, scheduler: Mapping[str, object], errors: list[str
                 errors.append(
                     f"{task.task_id} validation uses unavailable unversioned python"
                 )
-            if "/usr/bin/python3" not in validation_text:
+            if re.search(r"(?:^|;\s*)env\s+PYTHONPATH=", validation_text):
                 errors.append(
-                    f"{task.task_id} validation lacks the sealed Python executable"
+                    f"{task.task_id} validation bypasses guarded Python with env"
                 )
+            if "/usr/bin/python3" in validation_text:
+                errors.append(
+                    f"{task.task_id} validation bypasses guarded Python by path"
+                )
+            if "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3" not in validation_text:
+                errors.append(f"{task.task_id} validation lacks guarded Python syntax")
             if "python3 -m pytest" in validation_text and "--timeout=" not in validation_text:
                 errors.append(f"{task.task_id} pytest validation lacks a per-test timeout")
 
