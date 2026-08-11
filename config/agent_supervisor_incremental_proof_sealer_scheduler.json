@@ -1,0 +1,176 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.incremental_proof_sealer.scheduler_config@1",
+  "taskboard_path": "docs/architecture/incremental_proof_sealer.todo.md",
+  "objectives_path": "docs/architecture/incremental_proof_sealer.objectives.md",
+  "plan_path": "docs/architecture/INCREMENTAL_PROOF_SEALER_PLAN.md",
+  "validator_path": "scripts/validate_incremental_proof_sealer_board.py",
+  "task_prefix": "## IPS-",
+  "goal_prefix": "IPS-G",
+  "board_namespace": "incremental-proof-sealer-v1",
+  "merge_target_branch": "agent/incremental-proof-sealer-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
+    "accelerator_required_branch": "agent/incremental-proof-sealer-v1",
+    "accelerator_planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
+    "bootstrap_task_source": "legacy-markdown",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 57,
+    "completed_task_ids": ["IPS-000"],
+    "ready_task_ids": ["IPS-001", "IPS-002", "IPS-003"],
+    "blocked_task_ids": [],
+    "terminal_task_id": "IPS-056",
+    "goal_count": 14,
+    "root_goal_id": "IPS-G000"
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 45,
+  "check_interval_seconds": 20,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 12,
+  "max_task_attempts": 5,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 14400,
+  "implementation_log_stall_seconds": 1200,
+  "validation_max_workers": 3,
+  "worktree_submodule_paths": ["ipfs_datasets_py", "ipfs_kit_py"],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/INCREMENTAL_PROOF_SEALER_PLAN.md",
+    "docs/architecture/incremental_proof_sealer.objectives.md",
+    "docs/architecture/incremental_proof_sealer.todo.md",
+    "config/agent_supervisor_incremental_proof_sealer_scheduler.json",
+    "scripts/validate_incremental_proof_sealer_board.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/incremental_proof_sealer",
+    "state": "data/agent_supervisor/incremental_proof_sealer/state",
+    "worktrees": "data/agent_supervisor/incremental_proof_sealer/worktrees",
+    "merge_queue": "data/agent_supervisor/incremental_proof_sealer/merge-queue",
+    "logs": "data/agent_supervisor/incremental_proof_sealer/logs",
+    "evidence": "data/agent_supervisor/incremental_proof_sealer/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "ips-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": ["IPS-003"],
+      "initial_focus": "kit-storage-wal-and-merkle-inventory"
+    },
+    {
+      "index": 1,
+      "name": "ips-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": ["IPS-002"],
+      "initial_focus": "datasets-zk-and-identity-inventory"
+    },
+    {
+      "index": 2,
+      "name": "ips-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": ["IPS-001"],
+      "initial_focus": "accelerate-proof-and-scheduler-inventory"
+    }
+  ],
+  "task_groups": {
+    "IPS-G010": ["IPS-000", "IPS-001", "IPS-002", "IPS-003", "IPS-004"],
+    "IPS-G020": ["IPS-005", "IPS-006", "IPS-007", "IPS-008", "IPS-009", "IPS-010", "IPS-011", "IPS-012"],
+    "IPS-G030": ["IPS-013", "IPS-014", "IPS-015", "IPS-016", "IPS-017"],
+    "IPS-G040": ["IPS-018", "IPS-019", "IPS-020", "IPS-021", "IPS-022"],
+    "IPS-G050": ["IPS-023", "IPS-024", "IPS-025", "IPS-026", "IPS-027"],
+    "IPS-G060": ["IPS-028", "IPS-029", "IPS-030", "IPS-031"],
+    "IPS-G070": ["IPS-032", "IPS-033", "IPS-034", "IPS-035", "IPS-036", "IPS-037"],
+    "IPS-G080": ["IPS-038", "IPS-039", "IPS-040", "IPS-041", "IPS-042"],
+    "IPS-G090": ["IPS-043", "IPS-044"],
+    "IPS-G100": ["IPS-045", "IPS-046", "IPS-047"],
+    "IPS-G110": ["IPS-048", "IPS-049", "IPS-050", "IPS-051"],
+    "IPS-G120": ["IPS-052", "IPS-053", "IPS-054"],
+    "IPS-G130": ["IPS-055", "IPS-056"]
+  },
+  "provider": {
+    "provider_id": "codex",
+    "model_id": "gpt-5.6-terra",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "execution_policy": {
+    "automatic_dependency_installation_allowed": false,
+    "automatic_proving_key_generation_allowed": false,
+    "automatic_key_download_allowed": false,
+    "ordinary_import_may_touch_network_process_user_state_or_keys": false,
+    "shell_string_execution_allowed": false,
+    "explicit_argv_and_bounded_output_required": true,
+    "process_tree_termination_required": true,
+    "live_ipfs_daemon_required_for_unit_tests": false,
+    "legacy_mock_hardware_or_simulated_proof_success_allowed": false
+  },
+  "authority_policy": {
+    "datasets_is_manifest_identity_and_invalidation_authority": true,
+    "kit_is_storage_index_forest_wal_and_cas_authority": true,
+    "accelerate_is_prover_scheduler_planner_aggregation_and_measurement_authority": true,
+    "cache_candidate_is_verification_authority": false,
+    "proof_must_be_verified_before_admission": true,
+    "unknown_proof_system_is_rejected": true,
+    "verification_key_is_content_addressed_and_allowlisted": true,
+    "caller_selected_verification_key_is_authority": false,
+    "simulated_unit_may_satisfy_production_seal": false,
+    "receipt_aggregation_proves_test_execution": false,
+    "direct_execution_claim_requires_direct_execution_proof": true
+  },
+  "aggregation_policy": {
+    "recursive_verification_requires_existing_operational_backend_probe": true,
+    "unsupported_recursion_disposition": "merkle_manifest_integrity_and_completeness_only",
+    "bounded_fan_in": true,
+    "child_identity_count_order_duplicate_status_repository_and_environment_binding_required": true
+  },
+  "checkpoint_policy": {
+    "first_seal_full": true,
+    "full_on_schema_canonicalization_dependency_graph_environment_policy_circuit_or_key_change": true,
+    "full_on_cache_corruption": true,
+    "periodic_full_checkpoint_configurable": true,
+    "release_tag_full_checkpoint_configurable": true,
+    "reuse_ratio_and_chain_depth_thresholds_configurable": true,
+    "chain_compaction_preserves_history_and_retention": true
+  },
+  "benchmark_policy": {
+    "sequential_commit_count": 40,
+    "full_and_incremental_compared_per_commit": true,
+    "observed_and_estimated_metrics_are_distinguished": true,
+    "simulated_work_is_not_reported_as_proving_compute": true,
+    "targets_are_not_reported_as_results": true
+  },
+  "completion_policy": {
+    "terminal_task_id": "IPS-056",
+    "all_task_and_goal_dependencies_terminal_required": true,
+    "current_tree_evidence_required": true,
+    "stale_partial_simulated_skipped_unknown_unavailable_timeout_invalid_or_cancelled_evidence_satisfies_release": false,
+    "all_required_negative_and_crash_cases_pass": true,
+    "deterministic_seal_roots_required": true,
+    "concurrent_stale_writer_acceptance_floor": 0,
+    "stale_or_mismatched_proof_acceptance_floor": 0,
+    "honest_unmet_target_reporting_required": true,
+    "final_report_and_migration_guidance_required": true
+  }
+}
