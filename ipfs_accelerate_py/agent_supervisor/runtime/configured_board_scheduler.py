@@ -2371,10 +2371,14 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
-    # Always emit an explicit task-source/authority selection so the managed
-    # daemon never relies on its deprecated implicit legacy-Markdown default.
+    # Explicit database-program selections are supervisor inputs.  The
+    # fallback legacy-Markdown program, however, is a daemon-only compatibility
+    # projection: implementation_supervisor does not accept the database CLI
+    # flags and already launches the daemon with its closed legacy-Markdown
+    # default.  Passing those daemon-only flags through the supervisor creates
+    # an immediate argparse/restart loop before any task can run.
     program = board.resolved_database_program()
-    program_args = program.cli_args()
+    program_args = program.cli_args() if board.database_program is not None else []
     skip_next = False
     for item in program_args:
         if skip_next:
