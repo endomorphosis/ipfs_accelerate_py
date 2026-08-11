@@ -98,6 +98,10 @@ from ..runtime.event_log import (
     repair_jsonl_event_log,
     unique_backup_path,
 )
+from ..runtime.multi_supervisor_runner import (
+    DatabaseProgramConfig,
+    provider_subprocess_environment,
+)
 from ..runtime.resource_scheduler import evaluate_capacity_drift
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from .core import ManagedDaemonSpec, terminate_pid_tree
@@ -113,6 +117,7 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     consume_stale_active_attempt,
+    database_program_from_daemon_namespace,
     implementation_task_claim_protected_fence_paths,
     load_json_dict,
     normalize_focus_tracks,
@@ -1239,8 +1244,16 @@ def expand_supervisor_scheduler_config_args(
     return [*defaults, *remaining], Path(str(profile["_config_path"]))
 
 
-def _managed_daemon_child_environment() -> dict[str, str]:
-    """Keep a source-checkout supervisor's daemon on the same package code."""
+def _managed_daemon_child_environment(
+    *,
+    database_program: DatabaseProgramConfig | None = None,
+) -> dict[str, str]:
+    """Keep a source-checkout supervisor's daemon on the same package code.
+
+    When a database program is selected, non-secret authority bindings are
+    injected so the managed daemon never loses Quack/store selection. Raw
+    state credentials are never synthesized here.
+    """
 
     entries: list[str] = []
     source_root = Path(__file__).resolve().parents[3]
@@ -1261,7 +1274,37 @@ def _managed_daemon_child_environment() -> dict[str, str]:
         if entry
     )
     pythonpath = os.pathsep.join(dict.fromkeys(entries))
-    return {"PYTHONPATH": pythonpath} if pythonpath else {}
+    env: dict[str, str] = {}
+    if pythonpath:
+        env["PYTHONPATH"] = pythonpath
+    if database_program is not None:
+        env.update(database_program.environment())
+    return env
+
+
+def database_program_from_cli_namespace(
+    args: Any,
+) -> DatabaseProgramConfig | None:
+    """Resolve program authority without duplicating the worktree path field."""
+
+    if getattr(args, "worktree_root", None) is None:
+        return database_program_from_daemon_namespace(args)
+    values = vars(args).copy()
+    values["worktree_root"] = ""
+    return database_program_from_daemon_namespace(argparse.Namespace(**values))
+
+
+def provider_environment_without_state_credentials(
+    environment: Mapping[str, str] | None = None,
+    *,
+    database_program: DatabaseProgramConfig | None = None,
+) -> dict[str, str]:
+    """Return an environment safe for implementation-provider subprocesses."""
+
+    return provider_subprocess_environment(
+        environment,
+        program=database_program,
+    )
 
 
 def _normalize_disposition_token(value: Any) -> str:
@@ -1813,6 +1856,9 @@ class PortalSupervisorConfig:
     # Optional sealed scheduler profile path.  When set, each supervisor
     # pass may run delegated operator completion for seal-gated manuals.
     scheduler_config_path: Path | None = None
+    # Explicit DuckDB/Quack program selection propagated from configured-board
+    # / multi-runner. Never silently demotes Quack to local file authority.
+    database_program: DatabaseProgramConfig | None = None
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
@@ -4171,7 +4217,9 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
-        child_env = _managed_daemon_child_environment()
+        child_env = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+        )
         child_env.update(
             {
                 SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
@@ -13655,7 +13703,11 @@ class PortalImplementationSupervisor:
             child_env["PATH"] = "/usr/bin:/bin"
             pass_fds = (self.config.accepted_control_plane_descriptor,)
         else:
-            child_env.update(_managed_daemon_child_environment())
+            child_env.update(
+                _managed_daemon_child_environment(
+                    database_program=self.config.database_program,
+                )
+            )
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
@@ -14217,6 +14269,20 @@ class PortalImplementationSupervisor:
                 command.extend(["--execution-slice-task-id", str(task_id)])
         for task_cid in self.config.execution_slice_task_cids:
             command.extend(["--execution-slice-task-cid", str(task_cid)])
+        if self.config.database_program is not None:
+            program = self.config.database_program
+            if (
+                self.config.plan_bound_dispatch
+                and program.authority_mode != "legacy_markdown"
+            ):
+                raise PlanBoundDispatchError(
+                    "plan-bound database authority is not sealed into the "
+                    "daemon control-plane contract"
+                )
+            program.assert_quack_not_demoted(
+                candidate_mode=program.authority_mode
+            )
+            command.extend(program.daemon_cli_args())
         if self.config.plan_bound_dispatch:
             command.append("--once")
             from ..runtime.multi_supervisor_runner import (
@@ -14238,6 +14304,17 @@ class PortalImplementationSupervisor:
                 argv=command,
             )
         return command
+
+    def provider_subprocess_environment(
+        self,
+        environment: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Return provider environment without state-authority credentials."""
+
+        return provider_environment_without_state_credentials(
+            environment,
+            database_program=self.config.database_program,
+        )
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
@@ -15114,6 +15191,86 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("docs/211_SERVICE_NAVIGATION_PORTAL_TODO.md"),
         help="Machine-readable markdown backlog",
+    )
+    parser.add_argument(
+        "--task-source-kind",
+        choices=("legacy-markdown", "markdown", "duckdb"),
+        default="",
+        help=(
+            "Explicit task-source storage contract forwarded to the managed "
+            "daemon. Required for database programs; the daemon's implicit "
+            "legacy-Markdown default is deprecated."
+        ),
+    )
+    parser.add_argument(
+        "--authority-mode",
+        choices=(
+            "quack",
+            "embedded",
+            "embedded_exclusive",
+            "legacy_markdown",
+        ),
+        default="",
+        help=(
+            "Explicit state authority mode. Quack never silently becomes "
+            "local DuckDB or file authority."
+        ),
+    )
+    parser.add_argument(
+        "--endpoint-secret-handle",
+        default="",
+        help=(
+            "Opaque secret handle for the Quack/state endpoint "
+            "(env://, vault://, handle:, or secret-handle:). Raw tokens are "
+            "rejected."
+        ),
+    )
+    parser.add_argument(
+        "--state-store-id",
+        default="",
+        help="Control-plane store identity (for example control.duckdb).",
+    )
+    parser.add_argument(
+        "--state-store-generation",
+        default="",
+        help="Pinned store generation for the selected control plane.",
+    )
+    parser.add_argument(
+        "--state-schema-revision",
+        default="",
+        help="Pinned schema revision for the selected control plane.",
+    )
+    parser.add_argument(
+        "--event-store-path",
+        default="",
+        help="Repository-relative event store path when configured.",
+    )
+    parser.add_argument(
+        "--runtime-registry-path",
+        default="",
+        help="Repository-relative daemon/runtime registry path when configured.",
+    )
+    parser.add_argument(
+        "--export-profile",
+        default="",
+        help="Named export profile for non-authoritative projections.",
+    )
+    parser.add_argument(
+        "--state-failover-policy",
+        choices=("fail_closed", "require_explicit_operator"),
+        default="",
+        help=(
+            "Failover policy for state authority. Quack requires fail_closed; "
+            "automatic local DuckDB/file fallback is forbidden."
+        ),
+    )
+    parser.add_argument(
+        "--explicit-legacy-task-source",
+        action="store_true",
+        help=(
+            "Mark legacy Markdown task-source selection as intentional. "
+            "Required when authority-mode is legacy_markdown."
+        ),
     )
     parser.add_argument(
         "--state-dir",
@@ -16025,6 +16182,7 @@ def supervisor_config_from_args(
     )
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
+    database_program = database_program_from_cli_namespace(args)
     return PortalSupervisorConfig(
         todo_path=effective_todo_path,
         state_path=effective_state_path,
@@ -16086,6 +16244,7 @@ def supervisor_config_from_args(
             )
         ),
         scheduler_config_path=effective_scheduler_config,
+        database_program=database_program,
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,

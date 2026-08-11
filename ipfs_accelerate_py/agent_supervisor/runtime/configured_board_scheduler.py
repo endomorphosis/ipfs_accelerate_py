@@ -2586,6 +2586,9 @@ def configured_board_launch_plan(
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
+    program = board.resolved_database_program()
+    if board.database_program is not None:
+        environment.update(program.environment())
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -2613,6 +2616,8 @@ def configured_board_launch_plan(
         ),
         "argv": runner_args,
         "environment": environment,
+        "database_program": program.redacted_dict(),
+        "database_program_interface": DATABASE_PROGRAM_CONFIG_INTERFACE,
         "runtime_root": str(runtime_root),
         "master_pid_path": str(
             state_dir / "configured-board-master.pid"

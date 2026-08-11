@@ -705,6 +705,47 @@ def _common_args(plan: dict[str, object]) -> list[str]:
     ]
 
 
+def test_legacy_board_common_args_round_trip_through_supervisor(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+    common = scheduler_module.configured_board_common_args(
+        board,
+        implement=False,
+    )
+    assert common.count("--task-source-kind") == 1
+    assert common[common.index("--task-source-kind") + 1] == "legacy-markdown"
+
+    args = supervisor_module.parse_args(
+        [
+            *common,
+            "--once",
+            "--state-dir",
+            str(repo / "data/configured-board/state/lane-0"),
+            "--state-prefix",
+            "test_lane_0",
+        ]
+    )
+    config = supervisor_module.supervisor_config_from_args(
+        args,
+        repo_root=repo,
+    )
+    expected = multi_runner_module.DatabaseProgramConfig.explicit_legacy_markdown()
+    assert config.database_program == expected
+
+    supervisor = supervisor_module.PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+    assert command.count("--task-source-kind") == 1
+    selector = command.index("--task-source-kind")
+    assert command[selector + 1] == "legacy-markdown"
+    child_env = supervisor.build_supervisor_loop_config().child_env
+    restored = multi_runner_module.DatabaseProgramConfig.from_mapping(
+        json.loads(child_env[multi_runner_module.DATABASE_PROGRAM_JSON_ENV])
+    )
+    assert restored == expected
+
+
 def _fenced_plan_children(
     tmp_path: Path,
 ) -> tuple[
