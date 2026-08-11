@@ -787,8 +787,21 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
     if not isinstance(provider, Mapping):
         errors.append("scheduler provider must be an object")
     else:
-        if provider.get("provider_id") != "codex" or provider.get("model_id") != "gpt-5.6-terra":
-            errors.append("scheduler implementation provider/model differs")
+        expected_provider_route = {
+            "primary_provider_id": "grok_cli",
+            "primary_model_id": "grok-4.5",
+            "fallback_provider_id": "codex",
+            "fallback_model_id": "gpt-5.6-terra",
+            "fallback_trigger": "primary_quota_exhausted",
+            "fallback_reasoning_effort": "high",
+        }
+        observed_provider_route = {
+            field: provider.get(field) for field in expected_provider_route
+        }
+        if observed_provider_route != expected_provider_route:
+            errors.append("scheduler ordered implementation provider route differs")
+        if "provider_id" in provider or "model_id" in provider:
+            errors.append("scheduler must not mix legacy and ordered provider fields")
         if provider.get("max_concurrency") != 3:
             errors.append("scheduler provider concurrency must equal lane count")
         if provider.get("secrets_from_environment_only") is not True:

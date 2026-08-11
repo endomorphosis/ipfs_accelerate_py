@@ -621,6 +621,12 @@ The board is designed for the repository's implementation supervisor:
 - no automatic objective/codebase refill for this sealed scope;
 - master exits only from a fresh terminal task projection for every shard.
 
+Implementation workers use the runtime's reviewed ordered route: Grok 4.5 is
+primary and Codex GPT-5.6 Terra at high reasoning is the quota-only fallback.
+That sealed implementation-provider route is operational control-plane policy;
+it is separate from, and gives no authority to, the provider-neutral
+`ModelRouteDecision` implemented and verified by this program.
+
 The configured launcher disables goal-completion reconciliation. Objective
 statuses are planning lineage, not runtime terminality; `task_groups` and goal
 evidence criteria are validator/report projections. After task drain, operator
