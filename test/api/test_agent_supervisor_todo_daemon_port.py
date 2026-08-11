@@ -15674,12 +15674,33 @@ def test_release_unfinished_active_attempt_rolls_back_process_missing_counter(
     assert state.implementation_attempts["ACCEL-001"] == 3
     assert state.implementation_attempts_by_cid["cid-1"] == 3
     assert daemon._repair_budget_exhausted_backoff_seconds() >= 900
-    assert daemon._task_attempt_has_implementation_finish("ACCEL-001", 1) is False
+    assert (
+        daemon._task_attempt_has_implementation_finish(
+            "ACCEL-001",
+            1,
+            task_revision_cid="cid-1",
+            board_namespace="todo.md",
+        )
+        is False
+    )
     daemon._record_event(
         "implementation_finished",
-        {"task_id": "ACCEL-001", "attempt": 1},
+        {
+            "task_id": "ACCEL-001",
+            "attempt": 1,
+            "canonical_task_cid": "cid-1",
+            "board_namespace": "todo.md",
+        },
     )
-    assert daemon._task_attempt_has_implementation_finish("ACCEL-001", 1) is True
+    assert (
+        daemon._task_attempt_has_implementation_finish(
+            "ACCEL-001",
+            1,
+            task_revision_cid="cid-1",
+            board_namespace="todo.md",
+        )
+        is True
+    )
 
 
 def test_retry_deferral_does_not_overwrite_newer_active_projection(

@@ -24,6 +24,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType, SimpleNamespace
 from typing import Any, ClassVar, Final
 
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
@@ -1572,9 +1573,596 @@ def resolve_platform_state_and_runs(
     return state, run_resolution
 
 
+# ---------------------------------------------------------------------------
+# Database-backed state authority resolution (DQP-030 / DatabaseStateResolver@1)
+# ---------------------------------------------------------------------------
+#
+# Platform state roots remain outside the checkout (ASE-006). This resolver
+# layers closed StateAuthorityMode policy so MD/JSON/JSONL/PID/status
+# projections cannot change scheduling/lifecycle under Quack authority, server
+# failure never falls back to files, and legacy import stays explicit.
+
+DATABASE_STATE_RESOLVER_INTERFACE: Final = "DatabaseStateResolver@1"
+DATABASE_STATE_RESOLVER_REQUIREMENT_ID: Final = (
+    "agent_supervisor.entrypoints.database_state_resolver.v1"
+)
+DATABASE_STATE_EVIDENCE_SCHEMA: Final = (
+    f"{SCHEMA_PREFIX}/database-state-evidence@1"
+)
+DATABASE_STATE_RESOLUTION_SCHEMA: Final = (
+    f"{SCHEMA_PREFIX}/database-state-resolution@1"
+)
+
+
+class DatabaseServerStatus(str, Enum):
+    """Observed Quack/database server status for authority resolution."""
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    RECOVERY_REQUIRED = "recovery_required"
+
+
+class DatabaseStateResolverError(StateResolverError):
+    """Database authority mode resolution failed closed."""
+
+
+def _import_state_authority() -> Any:
+    """Lazy import to keep entrypoint cold-load free of task-source side effects."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
+        AuthorityAvailability,
+        EXPORT_AUTHORITY_CLASS_VALUE,
+        EXPORT_NON_AUTHORITY_MARKER,
+        ImplicitLegacyImportError,
+        ScheduleAuthorityDecision,
+        StateAuthorityMode,
+        StateAuthorityModeError,
+        StateAuthorityUnavailableError,
+        attach_export_non_authority_marker,
+        evaluate_projection_authority,
+        evaluate_schedule_authority,
+        export_non_authority_marker,
+        file_watch_enabled_for_mode,
+        is_quack_authority_mode,
+        parse_state_authority_mode,
+        projection_mutation_affects_schedule,
+        require_explicit_legacy_import,
+        state_authority_mode_policy,
+        transition_state_authority_mode,
+    )
+
+    return SimpleNamespace(
+        AuthorityAvailability=AuthorityAvailability,
+        EXPORT_AUTHORITY_CLASS_VALUE=EXPORT_AUTHORITY_CLASS_VALUE,
+        EXPORT_NON_AUTHORITY_MARKER=EXPORT_NON_AUTHORITY_MARKER,
+        ImplicitLegacyImportError=ImplicitLegacyImportError,
+        ScheduleAuthorityDecision=ScheduleAuthorityDecision,
+        StateAuthorityMode=StateAuthorityMode,
+        StateAuthorityModeError=StateAuthorityModeError,
+        StateAuthorityUnavailableError=StateAuthorityUnavailableError,
+        attach_export_non_authority_marker=attach_export_non_authority_marker,
+        evaluate_projection_authority=evaluate_projection_authority,
+        evaluate_schedule_authority=evaluate_schedule_authority,
+        export_non_authority_marker=export_non_authority_marker,
+        file_watch_enabled_for_mode=file_watch_enabled_for_mode,
+        is_quack_authority_mode=is_quack_authority_mode,
+        parse_state_authority_mode=parse_state_authority_mode,
+        projection_mutation_affects_schedule=projection_mutation_affects_schedule,
+        require_explicit_legacy_import=require_explicit_legacy_import,
+        state_authority_mode_policy=state_authority_mode_policy,
+        transition_state_authority_mode=transition_state_authority_mode,
+    )
+
+
+@dataclass(frozen=True)
+class DatabaseStateEvidence:
+    """Frozen evidence for database-authority state resolution.
+
+    File projections (MD/JSON/JSONL/PID/status) may be supplied to prove they
+    cannot influence the result under Quack authority. Prompt text is excluded
+    from content identity.
+    """
+
+    SCHEMA: ClassVar[str] = DATABASE_STATE_EVIDENCE_SCHEMA
+
+    repository_id: str
+    repository_root: str
+    authority_mode: str
+    server_status: DatabaseServerStatus | str = DatabaseServerStatus.AVAILABLE
+    database_schedule: Mapping[str, Any] | None = None
+    database_lifecycle: Mapping[str, Any] | None = None
+    file_projections: Mapping[str, Any] | None = None
+    explicit_legacy_import: bool = False
+    export_requested: bool = False
+    checkout_id: str = ""
+    board_namespace: str = ""
+    isolation: WorktreeIsolationMode = WorktreeIsolationMode.SHARED_REPOSITORY
+    platform_state_home: str = ""
+    home_directory: str | None = None
+    environ: Mapping[str, str] | None = None
+    prompt_text: str = ""
+    store_id: str = ""
+    database_uuid: str = ""
+    generation: int = 0
+    schema_revision: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "repository_id",
+            _require_nonempty(self.repository_id, "repository_id"),
+        )
+        object.__setattr__(
+            self,
+            "repository_root",
+            _absolute_posix_path(self.repository_root, "repository_root"),
+        )
+        mode_text = str(self.authority_mode or "").strip()
+        if not mode_text:
+            raise DatabaseStateResolverError(
+                "authority_mode is required; no implicit legacy default exists"
+            )
+        object.__setattr__(self, "authority_mode", mode_text.lower().replace("-", "_"))
+
+        status = self.server_status
+        if not isinstance(status, DatabaseServerStatus):
+            try:
+                status = DatabaseServerStatus(
+                    str(status or "").strip().lower().replace("-", "_")
+                )
+            except ValueError as exc:
+                raise DatabaseStateResolverError(
+                    f"unknown database server status {self.server_status!r}"
+                ) from exc
+        object.__setattr__(self, "server_status", status)
+
+        for name in ("database_schedule", "database_lifecycle", "file_projections"):
+            raw = getattr(self, name)
+            if raw is None:
+                object.__setattr__(self, name, None)
+            elif isinstance(raw, Mapping):
+                object.__setattr__(
+                    self,
+                    name,
+                    MappingProxyType({str(k): v for k, v in raw.items()}),
+                )
+            else:
+                raise DatabaseStateResolverError(f"{name} must be a mapping when set")
+
+        if not isinstance(self.explicit_legacy_import, bool):
+            raise DatabaseStateResolverError(
+                "explicit_legacy_import must be a boolean"
+            )
+        if not isinstance(self.export_requested, bool):
+            raise DatabaseStateResolverError("export_requested must be a boolean")
+        object.__setattr__(self, "checkout_id", str(self.checkout_id or "").strip())
+        board = str(self.board_namespace or "").strip().lower()
+        if board and not _TOKEN_RE.fullmatch(board):
+            raise DatabaseStateResolverError("board_namespace must be a closed token")
+        object.__setattr__(self, "board_namespace", board)
+
+        isolation = self.isolation
+        if not isinstance(isolation, WorktreeIsolationMode):
+            try:
+                isolation = WorktreeIsolationMode(str(isolation).strip().lower())
+            except ValueError as exc:
+                raise DatabaseStateResolverError(
+                    f"unknown worktree isolation mode {self.isolation!r}"
+                ) from exc
+        object.__setattr__(self, "isolation", isolation)
+
+        if self.platform_state_home:
+            object.__setattr__(
+                self,
+                "platform_state_home",
+                _absolute_posix_path(self.platform_state_home, "platform_state_home"),
+            )
+        else:
+            object.__setattr__(self, "platform_state_home", "")
+        if self.home_directory is not None:
+            object.__setattr__(
+                self,
+                "home_directory",
+                _absolute_posix_path(self.home_directory, "home_directory"),
+            )
+        object.__setattr__(self, "prompt_text", str(self.prompt_text or ""))
+        if self.environ is not None and not isinstance(self.environ, Mapping):
+            raise DatabaseStateResolverError("environ must be a mapping when provided")
+        object.__setattr__(self, "store_id", str(self.store_id or "").strip())
+        object.__setattr__(
+            self, "database_uuid", str(self.database_uuid or "").strip()
+        )
+        for name in ("generation", "schema_revision"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise DatabaseStateResolverError(f"{name} must be a non-negative int")
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "repository_id": self.repository_id,
+            "repository_root": self.repository_root,
+            "authority_mode": self.authority_mode,
+            "server_status": self.server_status.value,
+            "database_schedule": dict(self.database_schedule or {}),
+            "database_lifecycle": dict(self.database_lifecycle or {}),
+            "file_projections": dict(self.file_projections or {}),
+            "explicit_legacy_import": self.explicit_legacy_import,
+            "export_requested": self.export_requested,
+            "checkout_id": self.checkout_id,
+            "board_namespace": self.board_namespace,
+            "isolation": self.isolation.value,
+            "platform_state_home": self.platform_state_home,
+            "home_directory": self.home_directory or "",
+            "store_id": self.store_id,
+            "database_uuid": self.database_uuid,
+            "generation": int(self.generation),
+            "schema_revision": int(self.schema_revision),
+        }
+
+
+@dataclass(frozen=True)
+class DatabaseStateResolution:
+    """Resolved database-authority state, schedule, and export labeling."""
+
+    SCHEMA: ClassVar[str] = DATABASE_STATE_RESOLUTION_SCHEMA
+    INTERFACE: ClassVar[str] = DATABASE_STATE_RESOLVER_INTERFACE
+
+    authority_mode: str
+    server_status: DatabaseServerStatus
+    availability: str
+    recovery_required: bool
+    disposition: ResolutionDisposition
+    state_root: str
+    run_namespace: str
+    repository_id: str
+    scheduling_source: str
+    lifecycle_source: str
+    schedule: Mapping[str, Any]
+    lifecycle: Mapping[str, Any]
+    file_projections_ignored: bool
+    file_watch_enabled: bool
+    file_write_enabled: bool
+    used_file_fallback: bool
+    projections_authoritative: bool
+    export_authority_class: str
+    export_non_authority_marker: str
+    export_payload: Mapping[str, Any]
+    reason_codes: tuple[str, ...]
+    evidence_cid: str
+    mode_policy: Mapping[str, Any]
+    platform_state: Mapping[str, Any]
+    schedule_decision: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "authority_mode", _require_nonempty(self.authority_mode, "authority_mode")
+        )
+        if not isinstance(self.server_status, DatabaseServerStatus):
+            raise DatabaseStateResolverError(
+                "server_status must be a DatabaseServerStatus"
+            )
+        object.__setattr__(
+            self, "availability", _require_nonempty(self.availability, "availability")
+        )
+        object.__setattr__(
+            self, "recovery_required", bool(self.recovery_required)
+        )
+        if not isinstance(self.disposition, ResolutionDisposition):
+            raise DatabaseStateResolverError(
+                "disposition must be a ResolutionDisposition"
+            )
+        object.__setattr__(
+            self, "state_root", _absolute_posix_path(self.state_root, "state_root")
+        )
+        object.__setattr__(
+            self, "run_namespace", _token(self.run_namespace, "run_namespace")
+        )
+        object.__setattr__(
+            self,
+            "repository_id",
+            _require_nonempty(self.repository_id, "repository_id"),
+        )
+        object.__setattr__(self, "schedule", MappingProxyType(dict(self.schedule)))
+        object.__setattr__(self, "lifecycle", MappingProxyType(dict(self.lifecycle)))
+        object.__setattr__(
+            self, "export_payload", MappingProxyType(dict(self.export_payload))
+        )
+        object.__setattr__(
+            self, "mode_policy", MappingProxyType(dict(self.mode_policy))
+        )
+        object.__setattr__(
+            self, "platform_state", MappingProxyType(dict(self.platform_state))
+        )
+        object.__setattr__(
+            self,
+            "schedule_decision",
+            MappingProxyType(dict(self.schedule_decision)),
+        )
+        object.__setattr__(
+            self, "reason_codes", tuple(str(item) for item in self.reason_codes)
+        )
+        object.__setattr__(
+            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
+        )
+        if self.used_file_fallback:
+            raise DatabaseStateResolverError(
+                "database state resolution cannot record file fallback"
+            )
+        if self.projections_authoritative:
+            raise DatabaseStateResolverError(
+                "legacy projections cannot be authoritative under DatabaseStateResolver"
+            )
+        if self.export_authority_class == "authoritative":
+            raise DatabaseStateResolverError(
+                "export authority class cannot be authoritative"
+            )
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "requirement_id": DATABASE_STATE_RESOLVER_REQUIREMENT_ID,
+            "authority_mode": self.authority_mode,
+            "server_status": self.server_status.value,
+            "availability": self.availability,
+            "recovery_required": self.recovery_required,
+            "disposition": self.disposition.value,
+            "state_root": self.state_root,
+            "run_namespace": self.run_namespace,
+            "repository_id": self.repository_id,
+            "scheduling_source": self.scheduling_source,
+            "lifecycle_source": self.lifecycle_source,
+            "schedule": dict(self.schedule),
+            "lifecycle": dict(self.lifecycle),
+            "file_projections_ignored": self.file_projections_ignored,
+            "file_watch_enabled": self.file_watch_enabled,
+            "file_write_enabled": self.file_write_enabled,
+            "used_file_fallback": self.used_file_fallback,
+            "projections_authoritative": self.projections_authoritative,
+            "export_authority_class": self.export_authority_class,
+            "export_non_authority_marker": self.export_non_authority_marker,
+            "export_payload": dict(self.export_payload),
+            "reason_codes": list(self.reason_codes),
+            "evidence_cid": self.evidence_cid,
+            "mode_policy": dict(self.mode_policy),
+            "platform_state": dict(self.platform_state),
+            "schedule_decision": dict(self.schedule_decision),
+        }
+
+
+class DatabaseStateResolver:
+    """Resolve supervisor state under closed StateAuthorityMode policy.
+
+    Interface: ``DatabaseStateResolver@1``.
+
+    Under Quack authority, changing or deleting MD/JSON/JSONL/PID/status
+    projections cannot change scheduling or lifecycle. Server failure returns
+    unavailable/recovery-required rather than file fallback. Legacy import
+    cannot run implicitly. Exports always carry the non-authority marker.
+    """
+
+    INTERFACE: ClassVar[str] = DATABASE_STATE_RESOLVER_INTERFACE
+    REQUIREMENT_ID: ClassVar[str] = DATABASE_STATE_RESOLVER_REQUIREMENT_ID
+
+    def resolve(self, evidence: DatabaseStateEvidence) -> DatabaseStateResolution:
+        if not isinstance(evidence, DatabaseStateEvidence):
+            raise DatabaseStateResolverError(
+                "evidence must be DatabaseStateEvidence"
+            )
+        auth = _import_state_authority()
+        try:
+            mode = auth.parse_state_authority_mode(evidence.authority_mode)
+        except auth.StateAuthorityModeError as exc:
+            raise DatabaseStateResolverError(str(exc)) from exc
+        policy = auth.state_authority_mode_policy(mode)
+        evidence_cid = evidence.content_id
+        reasons: list[str] = [
+            f"mode:{mode.value}",
+            f"server_status:{evidence.server_status.value}",
+            "legacy_projections_non_authoritative",
+        ]
+
+        # Platform state root remains path-only and outside the checkout.
+        platform = resolve_state(
+            StateResolutionEvidence(
+                repository_id=evidence.repository_id,
+                repository_root=evidence.repository_root,
+                checkout_id=evidence.checkout_id,
+                board_namespace=evidence.board_namespace,
+                isolation=evidence.isolation,
+                platform_state_home=evidence.platform_state_home,
+                home_directory=evidence.home_directory,
+                environ=evidence.environ,
+                prompt_text=evidence.prompt_text,
+            )
+        )
+        reasons.extend(f"platform:{code}" for code in platform.reason_codes)
+
+        # Classify every observed legacy projection as non-authoritative.
+        projections = dict(evidence.file_projections or {})
+        for kind in sorted({str(key) for key in projections} | {"markdown", "json", "jsonl", "pid", "status"}):
+            decision = auth.evaluate_projection_authority(mode, kind)
+            if decision.authoritative or decision.influences_scheduling:
+                raise DatabaseStateResolverError(
+                    f"projection {kind!r} must not influence scheduling under {mode.value}"
+                )
+            reasons.append(f"projection_deauthorized:{kind}")
+
+        server_available = (
+            evidence.server_status is DatabaseServerStatus.AVAILABLE
+        )
+        recovery_flag = (
+            evidence.server_status is DatabaseServerStatus.RECOVERY_REQUIRED
+            or evidence.server_status is DatabaseServerStatus.UNAVAILABLE
+        )
+
+        try:
+            if mode is auth.StateAuthorityMode.LEGACY_IMPORT:
+                auth.require_explicit_legacy_import(
+                    mode, explicit=evidence.explicit_legacy_import
+                )
+            schedule_decision = auth.evaluate_schedule_authority(
+                mode,
+                database_schedule=dict(evidence.database_schedule or {}),
+                database_lifecycle=dict(evidence.database_lifecycle or {}),
+                file_projections=projections,
+                server_available=server_available,
+                recovery_required=recovery_flag,
+                explicit_legacy_import=evidence.explicit_legacy_import,
+                raise_on_unavailable=False,
+            )
+        except auth.ImplicitLegacyImportError as exc:
+            raise DatabaseStateResolverError(str(exc)) from exc
+        except auth.StateAuthorityModeError as exc:
+            raise DatabaseStateResolverError(str(exc)) from exc
+
+        reasons.extend(schedule_decision.reason_codes)
+
+        # Prove projection mutation invariance under Quack authority.
+        if policy.quack_authority and server_available:
+            tampered = {
+                **projections,
+                "markdown": {"status": "completed", "tampered": True},
+                "json": {"tasks": []},
+                "jsonl": [],
+                "pid": {"pid": 1, "alive": True},
+                "status": {"phase": "forged"},
+            }
+            deleted: dict[str, Any] = {}
+            if auth.projection_mutation_affects_schedule(
+                mode,
+                before_projections=projections,
+                after_projections=tampered,
+                database_schedule=dict(evidence.database_schedule or {}),
+                database_lifecycle=dict(evidence.database_lifecycle or {}),
+                server_available=True,
+            ) or auth.projection_mutation_affects_schedule(
+                mode,
+                before_projections=projections,
+                after_projections=deleted,
+                database_schedule=dict(evidence.database_schedule or {}),
+                database_lifecycle=dict(evidence.database_lifecycle or {}),
+                server_available=True,
+            ):
+                raise DatabaseStateResolverError(
+                    "Quack authority invariant violated: projection mutation "
+                    "changed schedule or lifecycle"
+                )
+            reasons.append("projection_mutation_invariant_holds")
+
+        availability = str(schedule_decision.availability.value)
+        recovery_required = bool(schedule_decision.recovery_required)
+        if recovery_required or not server_available:
+            disposition = ResolutionDisposition.UNAVAILABLE
+            reasons.append("file_fallback_refused")
+        elif mode is auth.StateAuthorityMode.EXPORT_ONLY:
+            disposition = ResolutionDisposition.DEFAULTED
+        else:
+            disposition = ResolutionDisposition.UNIQUE
+
+        export_payload = auth.attach_export_non_authority_marker(
+            {
+                "mode": mode.value,
+                "store_id": evidence.store_id,
+                "database_uuid": evidence.database_uuid,
+                "generation": int(evidence.generation),
+                "schema_revision": int(evidence.schema_revision),
+                "schedule": dict(schedule_decision.schedule),
+                "lifecycle": dict(schedule_decision.lifecycle),
+                "export_requested": evidence.export_requested,
+            }
+        )
+        if not isinstance(export_payload, Mapping):
+            raise DatabaseStateResolverError("export payload must be a mapping")
+        reasons.append("export_non_authority_marker_attached")
+
+        if schedule_decision.used_file_fallback:
+            raise DatabaseStateResolverError(
+                "file fallback is forbidden under DatabaseStateResolver"
+            )
+
+        return DatabaseStateResolution(
+            authority_mode=mode.value,
+            server_status=evidence.server_status,
+            availability=availability,
+            recovery_required=recovery_required,
+            disposition=disposition,
+            state_root=platform.state_root,
+            run_namespace=platform.run_namespace,
+            repository_id=platform.repository_id,
+            scheduling_source=schedule_decision.scheduling_source.value,
+            lifecycle_source=schedule_decision.lifecycle_source.value,
+            schedule=dict(schedule_decision.schedule),
+            lifecycle=dict(schedule_decision.lifecycle),
+            file_projections_ignored=bool(
+                schedule_decision.file_projections_ignored
+            ),
+            file_watch_enabled=bool(auth.file_watch_enabled_for_mode(mode)),
+            file_write_enabled=bool(schedule_decision.file_write_enabled),
+            used_file_fallback=False,
+            projections_authoritative=False,
+            export_authority_class=auth.EXPORT_AUTHORITY_CLASS_VALUE,
+            export_non_authority_marker=auth.export_non_authority_marker(),
+            export_payload=dict(export_payload),
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            evidence_cid=evidence_cid,
+            mode_policy=policy.to_dict(),
+            platform_state=platform.to_dict(),
+            schedule_decision=schedule_decision.to_dict(),
+        )
+
+    def transition(
+        self,
+        from_mode: str,
+        to_mode: str,
+        *,
+        reason: str = "",
+        rollback: bool = False,
+    ) -> Mapping[str, Any]:
+        """Explicit mode transition / rollback receipt (history preserved)."""
+
+        auth = _import_state_authority()
+        try:
+            receipt = auth.transition_state_authority_mode(
+                from_mode,
+                to_mode,
+                reason=reason,
+                rollback=rollback,
+            )
+        except Exception as exc:
+            raise DatabaseStateResolverError(str(exc)) from exc
+        return receipt.to_dict()
+
+
+def resolve_database_state(
+    evidence: DatabaseStateEvidence,
+) -> DatabaseStateResolution:
+    """Module-level convenience wrapper around :class:`DatabaseStateResolver`."""
+
+    return DatabaseStateResolver().resolve(evidence)
+
+
 __all__ = [
     "ADOPTABLE_HEALTH",
     "ADOPTABLE_RUN_STATES",
+    "DATABASE_STATE_EVIDENCE_SCHEMA",
+    "DATABASE_STATE_RESOLUTION_SCHEMA",
+    "DATABASE_STATE_RESOLVER_INTERFACE",
+    "DATABASE_STATE_RESOLVER_REQUIREMENT_ID",
+    "DatabaseServerStatus",
+    "DatabaseStateEvidence",
+    "DatabaseStateResolution",
+    "DatabaseStateResolver",
+    "DatabaseStateResolverError",
     "PLATFORM_COMPONENT",
     "PLATFORM_PRODUCT",
     "PLATFORM_STATE_ENV",
@@ -1602,6 +2190,7 @@ __all__ = [
     "default_platform_state_home",
     "derive_run_namespace",
     "repository_state_root",
+    "resolve_database_state",
     "resolve_platform_state_and_runs",
     "resolve_run_candidates",
     "resolve_state",

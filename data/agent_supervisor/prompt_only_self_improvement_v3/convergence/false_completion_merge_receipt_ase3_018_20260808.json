@@ -1,0 +1,216 @@
+{
+  "acceptance_pending": false,
+  "accepted": true,
+  "callback_owned_integration": true,
+  "canonical_task_id": "task/v1/41631410491d94bd633af78124dd465116481a1aa39b417597a1b14a3924210f",
+  "commit_sha": "23bf69ff8517de100f5cd4918e479af3667ec70a",
+  "distributed_publication_admission": {
+    "admitted": true,
+    "distributed": false,
+    "request_id": "1786206639381819446-1010193-ca1ee43c8485",
+    "schema": "ipfs_accelerate_py/agent-supervisor/distributed-lane-admission@1",
+    "status": "local"
+  },
+  "finished_at": 1786206640.470668,
+  "integrated": true,
+  "merge_commit": "733e63333f992477d091449319869e23912d4f9c",
+  "merge_result": {
+    "attempted": true,
+    "branch": "implementation/ase3-018-41631410491d-attempt-1-1786206060",
+    "cleanup_result": {
+      "branch": "implementation/ase3-018-41631410491d-attempt-1-1786206060",
+      "cleaned": true,
+      "deleted_branch": true,
+      "finished_at": "2026-08-08T16:30:40.213418+00:00",
+      "lifecycle_finalize": {
+        "finalized": false,
+        "reason": "no_lifecycle_record"
+      },
+      "removed_worktree": false,
+      "started_at": "2026-08-08T16:30:40.204698+00:00",
+      "submodule_cleanup": [],
+      "worktree_path": ""
+    },
+    "command": [
+      "git",
+      "merge",
+      "--no-ff",
+      "--no-edit",
+      "implementation/ase3-018-41631410491d-attempt-1-1786206060"
+    ],
+    "deterministic_conflict_repair": [],
+    "finished_at": "2026-08-08T16:30:39.990689+00:00",
+    "generated_submodule_reconciliation": [],
+    "identical_untracked_paths": [],
+    "integration_commit_proof": {
+      "implementation_commit": "23bf69ff8517de100f5cd4918e479af3667ec70a",
+      "integration_commit": "518830810013fde1b13599591146356001aa774a",
+      "integration_ref": "518830810013fde1b13599591146356001aa774a",
+      "passed": true,
+      "reasons": [],
+      "target_branch": "agent/prompt-self-improvement-v3"
+    },
+    "main_worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3",
+    "merge_commit": "518830810013fde1b13599591146356001aa774a",
+    "merged": true,
+    "merged_gitlink_recording": {
+      "attempted": false,
+      "committed": false,
+      "ok": true,
+      "reason": "no_matching_merged_root_gitlinks"
+    },
+    "post_merge_declared_output_invariant": {
+      "checks": [
+        {
+          "exists": true,
+          "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+          "reason": "declared_output_tracked",
+          "repository": ".",
+          "repository_ref": "518830810013fde1b13599591146356001aa774a",
+          "task_id": "ASE3-018",
+          "tracked": true,
+          "tracked_path": "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py"
+        },
+        {
+          "exists": true,
+          "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+          "reason": "declared_output_tracked",
+          "repository": ".",
+          "repository_ref": "518830810013fde1b13599591146356001aa774a",
+          "task_id": "ASE3-018",
+          "tracked": true,
+          "tracked_path": "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py"
+        },
+        {
+          "exists": true,
+          "path": "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+          "reason": "declared_output_tracked",
+          "repository": ".",
+          "repository_ref": "518830810013fde1b13599591146356001aa774a",
+          "task_id": "ASE3-018",
+          "tracked": true,
+          "tracked_path": "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py"
+        }
+      ],
+      "missing_outputs": [],
+      "mode": "repository_tree",
+      "passed": true,
+      "reason": "declared_outputs_tracked",
+      "repository_ref": "518830810013fde1b13599591146356001aa774a",
+      "task_ids": [
+        "ASE3-018"
+      ],
+      "unsafe_outputs": [],
+      "untracked_outputs": []
+    },
+    "resolved_generated_conflicts": [],
+    "restored_generated_dirty_overlap": [],
+    "returncode": 0,
+    "shared_worktree_path_scrub": {
+      "ok": true,
+      "paths": [],
+      "scrubbed": false
+    },
+    "started_at": "2026-08-08T16:30:39.619488+00:00",
+    "stderr": "",
+    "stdout": "Merge made by the 'ort' strategy.\n .../entrypoints/context_adapters.py                | 354 ++++++++++++++++-----\n .../entrypoints/inference_runtime.py               | 332 ++++++++++++++-----\n ...nt_supervisor_prompt_v3_resolution_hardening.py |  92 ++++++\n 3 files changed, 622 insertions(+), 156 deletions(-)\n create mode 100644 test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py\n",
+    "submodule_failure_rollback": {},
+    "submodule_merge_results": [],
+    "target_branch": "agent/prompt-self-improvement-v3",
+    "todo_update_result": {
+      "already_completed_task_ids": [],
+      "commit_result": {
+        "commit": "733e63333f992477d091449319869e23912d4f9c",
+        "committed": true,
+        "path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+        "repo": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3",
+        "status": "M docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+      },
+      "completion_callback_evidence": {
+        "evidence_id": "baguqeeraxlyfvg4wv7qkltkgjgo2xwjbp726tzrwpmme2aegqtja3jt7y3jq",
+        "expectation_id": "baguqeerax2b5yj74hj2o7o7gxnc3xyuwlje63aiolo77iazwclce4nfnxv6a",
+        "members": [
+          {
+            "completion_receipt": {
+              "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+              "canonical_task_cid": "baguqeeraifrriecjdwkl2yz266asjxkgkeleqgq2uonuc5mxugyuuojeeehq",
+              "canonical_task_key": "task/v1/41631410491d94bd633af78124dd465116481a1aa39b417597a1b14a3924210f",
+              "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+              "status": "succeeded",
+              "task_id": "ASE3-018"
+            },
+            "expected_status": "completed",
+            "task_id": "ASE3-018"
+          }
+        ],
+        "schema": "ipfs_accelerate_py.agent_supervisor.completion-callback-evidence@1",
+        "succeeded": true
+      },
+      "completion_publication": {
+        "decision_receipt_id": "",
+        "intent_id": "baguqeeraoev3fttc2teknzzshkypg53upmn5bl6wxytjyxwr476knkimsg5a",
+        "published": true,
+        "queue_task_cid": "baguqeeraifrriecjdwkl2yz266asjxkgkeleqgq2uonuc5mxugyuuojeeehq",
+        "sink_id": "baguqeeraskppvzaeifdnd3eqkbmm5sfov2cznldwqdqbfoihmd5bl3hrwkkq"
+      },
+      "completion_reason": "single_task",
+      "completion_receipts": [
+        {
+          "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+          "canonical_task_cid": "baguqeeraifrriecjdwkl2yz266asjxkgkeleqgq2uonuc5mxugyuuojeeehq",
+          "canonical_task_key": "task/v1/41631410491d94bd633af78124dd465116481a1aa39b417597a1b14a3924210f",
+          "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+          "status": "succeeded",
+          "task_id": "ASE3-018"
+        }
+      ],
+      "durable": true,
+      "inserted_status_task_ids": [],
+      "missing_status_task_ids": [],
+      "missing_task_ids": [],
+      "path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md",
+      "protected_board_postcondition": {
+        "checked": true,
+        "clean": true,
+        "commit_reason": "",
+        "dirty_paths": [],
+        "release_proof": {
+          "clean": true,
+          "guard_id": "baguqeera2qcxcondtjbytwnkesvp4yht4quhqz53qyiqa2whedvrrpwk52lq",
+          "histories": [
+            {
+              "after_head": "733e63333f992477d091449319869e23912d4f9c",
+              "before_head": "518830810013fde1b13599591146356001aa774a",
+              "commits": [
+                {
+                  "author_email": "implementation-daemon@example.invalid",
+                  "commit": "733e63333f992477d091449319869e23912d4f9c",
+                  "subject": "ASE3-018: mark todo completed"
+                }
+              ],
+              "repository": ".",
+              "target": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+            }
+          ],
+          "reason": "protected_outputs_trusted_history",
+          "trusted": true
+        },
+        "trusted": true
+      },
+      "task_id": "ASE3-018",
+      "updated": true,
+      "updated_checkbox_task_ids": [],
+      "updated_task_ids": [
+        "ASE3-018"
+      ]
+    },
+    "used_ephemeral_main_worktree": false
+  },
+  "merged": true,
+  "request_id": "1786206639381819446-1010193-ca1ee43c8485",
+  "started_at": 1786206639.5697465,
+  "status": "merged",
+  "target_branch": "agent/prompt-self-improvement-v3",
+  "target_commit": "733e63333f992477d091449319869e23912d4f9c",
+  "task_id": "ASE3-018"
+}

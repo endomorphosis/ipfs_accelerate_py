@@ -1,8 +1,8 @@
 """Fail-closed provider failure classification for supervisor routing.
 
-Hard-quota authority comes only from a fixed, isolated, no-tools probe that
-runs before the task model is dispatched. Task stdout/stderr is never fallback
-authority.
+Provider-failure findings come only from a fixed, isolated, no-tools probe
+that runs before the task model is dispatched. Hard-quota findings still need
+independent confirmation. Task stdout/stderr is never fallback authority.
 """
 
 from __future__ import annotations
@@ -13,81 +13,42 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-GROK_FAILURE_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.grok-failure-receipt@2"
+from ...llm_router import (
+    _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA,
+    _AGENT_IMPLEMENTATION_FAILURE_SOURCE,
+    _AGENT_IMPLEMENTATION_PROBE_CONTRACT,
+    _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID,
+    _AGENT_IMPLEMENTATION_PROBE_PROMPT,
+    AGENT_IMPLEMENTATION_GROK_NOT_SIGNED_IN_GUIDANCE,
+    build_agent_implementation_failure_receipt,
+    classify_agent_implementation_failure,
+    valid_agent_implementation_failure_receipt,
+)
+
+GROK_FAILURE_RECEIPT_SCHEMA = _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA
 GROK_FAILURE_RECEIPT_PREFIX = "IPFS_ACCELERATE_GROK_FAILURE_RECEIPT="
+GROK_ROUTE_OUTCOME_SCHEMA = "ipfs_accelerate_py.agent_supervisor.grok-route-outcome@1"
+GROK_ROUTE_OUTCOME_PREFIX = "IPFS_ACCELERATE_GROK_ROUTE_OUTCOME="
 MAX_GROK_FAILURE_EVIDENCE_BYTES = 128 * 1024
-GROK_QUOTA_PROBE_SOURCE = "isolated_no_tools_pre_dispatch_probe"
-GROK_QUOTA_PROBE_PROMPT = "This is a provider-capacity preflight. Reply with exactly OK."
+GROK_QUOTA_PROBE_SOURCE = _AGENT_IMPLEMENTATION_FAILURE_SOURCE
+GROK_QUOTA_PROBE_PROMPT = _AGENT_IMPLEMENTATION_PROBE_PROMPT
 GROK_QUOTA_PROBE_TIMEOUT_SECONDS = 60
-GROK_QUOTA_PROBE_CONTRACT = {
-    "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
-    "model": "grok-4.5",
-    "mode": "chat",
-    "max_turns": 1,
-    "permission_mode": "dontAsk",
-    "tools": "",
-    "no_plan": True,
-    "no_subagents": True,
-    "disable_web_search": True,
-    "no_memory": True,
-    "isolated_workspace": True,
-    "task_context": False,
-    "prompt": GROK_QUOTA_PROBE_PROMPT,
-    "timeout_seconds": GROK_QUOTA_PROBE_TIMEOUT_SECONDS,
-}
-GROK_QUOTA_PROBE_CONTRACT_ID = (
-    "sha256:"
-    + hashlib.sha256(
-        json.dumps(
-            GROK_QUOTA_PROBE_CONTRACT,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-    ).hexdigest()
+GROK_NOT_SIGNED_IN_GUIDANCE = (
+    AGENT_IMPLEMENTATION_GROK_NOT_SIGNED_IN_GUIDANCE
 )
-
-_HARD_QUOTA_PATTERN = re.compile(
-    r"(?:"
-    r"(?:grok(?:\s+build)?|xai)[^\r\n]{0,200}(?:"
-    r"\b402\b|insufficient[_ ]quota|quota[_ ]exceeded|quota exhausted|"
-    r"balance exhausted|usage balance exhausted)|"
-    r"(?:\b402\b|insufficient[_ ]quota|quota[_ ]exceeded|quota exhausted|"
-    r"balance exhausted|usage balance exhausted)[^\r\n]{0,200}"
-    r"(?:grok(?:\s+build)?|xai)|"
-    r"status\s+402|out of credits|usage balance exhausted|"
-    r"over (?:your )?spending limit"
-    r")",
-    re.IGNORECASE,
-)
-_RATE_LIMIT_PATTERN = re.compile(
-    r"(?:\b429\b|rate[_ -]?limit(?:ed|s|_exceeded)?|too many requests|"
-    r"resource[_ -]?exhausted|overloaded)",
-    re.IGNORECASE,
-)
-_AUTH_PATTERN = re.compile(
-    r"(?:\b401\b|\b403\b|not signed in|not authenticated|authentication "
-    r"failed|invalid api key|unauthorized|forbidden)",
-    re.IGNORECASE,
-)
-_INVALID_REQUEST_PATTERN = re.compile(
-    r"(?:\b400\b|invalid model|model not found|bad request|invalid argument)",
-    re.IGNORECASE,
-)
-_TRANSPORT_PATTERN = re.compile(
-    r"(?:tls|certificate|connection (?:refused|reset)|dns|name resolution|"
-    r"network unreachable|timed? out|timeout)",
-    re.IGNORECASE,
-)
+GROK_QUOTA_PROBE_CONTRACT = _AGENT_IMPLEMENTATION_PROBE_CONTRACT
+GROK_QUOTA_PROBE_CONTRACT_ID = _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
 
 
-def _bounded_text(value: str) -> str:
-    encoded = str(value or "").encode("utf-8", errors="replace")
-    return encoded[-MAX_GROK_FAILURE_EVIDENCE_BYTES:].decode(
-        "utf-8",
-        errors="replace",
-    )
+def _reject_duplicate_record_keys(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate runner record key")
+        value[key] = item
+    return value
 
 
 def _bounded_record_text(value: str) -> str:
@@ -112,34 +73,12 @@ def _bounded_record_text(value: str) -> str:
 
 
 def classify_grok_stderr(stderr_text: str) -> dict[str, str]:
-    """Classify bounded probe stderr without retaining raw provider output.
+    """Compatibility alias for the canonical router-owned classifier."""
 
-    Any authentication, request, rate-limit, or transport signal dominates a
-    quota-looking fragment. Mixed or ambiguous failures therefore cannot grant
-    cross-provider authority.
-    """
-
-    text = _bounded_text(stderr_text)
-    classes = (
-        ("authentication", _AUTH_PATTERN),
-        ("invalid_request", _INVALID_REQUEST_PATTERN),
-        ("rate_limited", _RATE_LIMIT_PATTERN),
-        ("transport", _TRANSPORT_PATTERN),
-        ("hard_quota_exhausted", _HARD_QUOTA_PATTERN),
+    return classify_agent_implementation_failure(
+        stderr_text,
+        max_evidence_bytes=MAX_GROK_FAILURE_EVIDENCE_BYTES,
     )
-    for failure_class, pattern in classes:
-        match = pattern.search(text)
-        if match is None:
-            continue
-        normalized = " ".join(match.group(0).lower().split())
-        return {
-            "failure_class": failure_class,
-            "evidence_sha256": ("sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()),
-        }
-    return {
-        "failure_class": "unknown",
-        "evidence_sha256": ("sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()),
-    }
 
 
 def build_grok_failure_receipt(
@@ -149,28 +88,64 @@ def build_grok_failure_receipt(
     model: str,
     probe_returncode: int,
     primary_dispatched: bool = False,
+    evidence_size: int | None = None,
+    evidence_overflow: bool | None = None,
 ) -> dict[str, Any]:
     """Build a content-addressed receipt for the isolated quota preflight."""
 
-    classified = classify_grok_stderr(probe_stderr_text)
-    receipt = {
-        "schema": GROK_FAILURE_RECEIPT_SCHEMA,
-        "source": GROK_QUOTA_PROBE_SOURCE,
-        "probe_contract_id": GROK_QUOTA_PROBE_CONTRACT_ID,
-        "nonce": str(nonce),
-        "primary_provider": "grok",
-        "primary_model": str(model),
-        "primary_dispatched": bool(primary_dispatched),
-        "probe_returncode": int(probe_returncode),
-        **classified,
+    return build_agent_implementation_failure_receipt(
+        probe_stderr_text=probe_stderr_text,
+        nonce=nonce,
+        model=model,
+        probe_returncode=probe_returncode,
+        primary_dispatched=primary_dispatched,
+        evidence_size=evidence_size,
+        evidence_overflow=evidence_overflow,
+    )
+
+
+def render_grok_failure_receipt(receipt: Mapping[str, Any]) -> str:
+    return GROK_FAILURE_RECEIPT_PREFIX + json.dumps(
+        dict(receipt),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def build_grok_route_outcome(
+    *,
+    receipt: Mapping[str, Any],
+    route_plan: Mapping[str, Any],
+    decision: str,
+    verifier_status: str,
+    fallback_dispatched: bool,
+    fallback_returncode: int | None,
+    quota_evidence_id: str = "",
+) -> dict[str, Any]:
+    """Bind the runner's terminal route decision to one preflight receipt."""
+
+    outcome = {
+        "schema": GROK_ROUTE_OUTCOME_SCHEMA,
+        "source": "grok_cli_runner",
+        "nonce": str(receipt.get("nonce") or ""),
+        "primary_model": str(receipt.get("primary_model") or ""),
+        "probe_returncode": receipt.get("probe_returncode"),
+        "preflight_receipt_id": str(receipt.get("receipt_id") or ""),
+        "failure_class": str(receipt.get("failure_class") or ""),
+        "route_plan": dict(route_plan),
+        "quota_evidence_id": str(quota_evidence_id or ""),
+        "decision": str(decision),
+        "verifier_status": str(verifier_status),
+        "fallback_dispatched": bool(fallback_dispatched),
+        "fallback_returncode": fallback_returncode,
     }
-    receipt["receipt_id"] = _grok_failure_receipt_identity(receipt)
-    return receipt
+    outcome["outcome_id"] = _grok_route_outcome_identity(outcome)
+    return outcome
 
 
-def _grok_failure_receipt_identity(receipt: Mapping[str, Any]) -> str:
-    body = dict(receipt)
-    body.pop("receipt_id", None)
+def _grok_route_outcome_identity(outcome: Mapping[str, Any]) -> str:
+    body = dict(outcome)
+    body.pop("outcome_id", None)
     encoded = json.dumps(
         body,
         sort_keys=True,
@@ -181,12 +156,120 @@ def _grok_failure_receipt_identity(receipt: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def render_grok_failure_receipt(receipt: Mapping[str, Any]) -> str:
-    return GROK_FAILURE_RECEIPT_PREFIX + json.dumps(
-        dict(receipt),
+def render_grok_route_outcome(outcome: Mapping[str, Any]) -> str:
+    return GROK_ROUTE_OUTCOME_PREFIX + json.dumps(
+        dict(outcome),
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def extract_grok_route_outcomes(text: str) -> tuple[dict[str, Any], ...]:
+    """Extract bounded terminal route records from a combined daemon log."""
+
+    outcomes: list[dict[str, Any]] = []
+    for line in _bounded_record_text(text).split("\n"):
+        if not line.startswith(GROK_ROUTE_OUTCOME_PREFIX):
+            continue
+        raw = line[len(GROK_ROUTE_OUTCOME_PREFIX) :]
+        if "\r" in raw or len(raw.encode("utf-8")) > 4096:
+            continue
+        try:
+            value = json.loads(
+                raw,
+                object_pairs_hook=_reject_duplicate_record_keys,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(value, dict):
+            outcomes.append(value)
+    return tuple(outcomes[-4:])
+
+
+def valid_grok_route_outcome(
+    outcome: Mapping[str, Any],
+    *,
+    receipt: Mapping[str, Any],
+    route_plan: Mapping[str, Any],
+    runner_returncode: int,
+) -> bool:
+    """Validate a terminal decision and its exact preflight/exit binding."""
+
+    expected_fields = {
+        "schema",
+        "source",
+        "nonce",
+        "primary_model",
+        "probe_returncode",
+        "preflight_receipt_id",
+        "failure_class",
+        "route_plan",
+        "quota_evidence_id",
+        "decision",
+        "verifier_status",
+        "fallback_dispatched",
+        "fallback_returncode",
+        "outcome_id",
+    }
+    decision = outcome.get("decision")
+    verifier_status = outcome.get("verifier_status")
+    fallback_returncode = outcome.get("fallback_returncode")
+    common_valid = bool(
+        set(outcome) == expected_fields
+        and outcome.get("schema") == GROK_ROUTE_OUTCOME_SCHEMA
+        and outcome.get("source") == "grok_cli_runner"
+        and outcome.get("nonce") == receipt.get("nonce")
+        and outcome.get("primary_model") == receipt.get("primary_model")
+        and outcome.get("probe_returncode") == receipt.get("probe_returncode")
+        and outcome.get("preflight_receipt_id") == receipt.get("receipt_id")
+        and outcome.get("failure_class") == receipt.get("failure_class")
+        and outcome.get("route_plan") == dict(route_plan)
+        and (
+            outcome.get("quota_evidence_id") == ""
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(outcome.get("quota_evidence_id") or ""),
+            )
+            is not None
+        )
+        and verifier_status
+        in {
+            "not_run",
+            "not_required_exact_auth",
+            "confirmed_quota",
+            "not_confirmed",
+        }
+        and isinstance(outcome.get("fallback_dispatched"), bool)
+        and outcome.get("outcome_id") == _grok_route_outcome_identity(outcome)
+    )
+    if not common_valid:
+        return False
+    if (
+        verifier_status == "confirmed_quota"
+        and not outcome.get("quota_evidence_id")
+    ) or (
+        verifier_status != "confirmed_quota"
+        and outcome.get("quota_evidence_id")
+    ):
+        return False
+    if decision == "denied":
+        return bool(
+            outcome.get("fallback_dispatched") is False
+            and fallback_returncode is None
+            and runner_returncode == receipt.get("probe_returncode")
+        )
+    if decision == "fallback_succeeded":
+        return bool(
+            outcome.get("fallback_dispatched") is True
+            and fallback_returncode == runner_returncode == 0
+        )
+    if decision == "fallback_failed":
+        return bool(
+            isinstance(fallback_returncode, int)
+            and not isinstance(fallback_returncode, bool)
+            and fallback_returncode == runner_returncode != 0
+        )
+    return False
 
 
 def extract_grok_failure_receipts(text: str) -> tuple[dict[str, Any], ...]:
@@ -205,8 +288,11 @@ def extract_grok_failure_receipts(text: str) -> tuple[dict[str, Any], ...]:
         if len(raw.encode("utf-8")) > 4096:
             continue
         try:
-            value = json.loads(raw)
-        except json.JSONDecodeError:
+            value = json.loads(
+                raw,
+                object_pairs_hook=_reject_duplicate_record_keys,
+            )
+        except (json.JSONDecodeError, ValueError):
             continue
         if isinstance(value, dict):
             receipts.append(value)
@@ -242,53 +328,19 @@ def valid_grok_failure_receipt(
 ) -> bool:
     """Validate any isolated pre-dispatch probe outcome receipt."""
 
-    expected_fields = {
-        "schema",
-        "source",
-        "probe_contract_id",
-        "nonce",
-        "primary_provider",
-        "primary_model",
-        "primary_dispatched",
-        "probe_returncode",
-        "failure_class",
-        "evidence_sha256",
-        "receipt_id",
-    }
-    observed_returncode = receipt.get("probe_returncode")
-    return bool(
-        set(receipt) == expected_fields
-        and receipt.get("schema") == GROK_FAILURE_RECEIPT_SCHEMA
-        and receipt.get("source") == GROK_QUOTA_PROBE_SOURCE
-        and receipt.get("probe_contract_id") == GROK_QUOTA_PROBE_CONTRACT_ID
-        and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
-        and receipt.get("nonce") == nonce
-        and receipt.get("primary_provider") == "grok"
-        and receipt.get("primary_model") == model == "grok-4.5"
-        and receipt.get("primary_dispatched") is False
-        and receipt.get("failure_class")
-        in {
-            "hard_quota_exhausted",
-            "authentication",
-            "invalid_request",
-            "rate_limited",
-            "transport",
-            "unknown",
-        }
-        and re.fullmatch(
-            r"sha256:[0-9a-f]{64}",
-            str(receipt.get("evidence_sha256") or ""),
-        )
-        and isinstance(observed_returncode, int)
-        and not isinstance(observed_returncode, bool)
-        and observed_returncode == returncode != 0
-        and receipt.get("receipt_id") == _grok_failure_receipt_identity(receipt)
+    return valid_agent_implementation_failure_receipt(
+        receipt,
+        nonce=nonce,
+        model=model,
+        probe_returncode=returncode,
     )
 
 
 __all__ = [
     "GROK_FAILURE_RECEIPT_PREFIX",
     "GROK_FAILURE_RECEIPT_SCHEMA",
+    "GROK_ROUTE_OUTCOME_PREFIX",
+    "GROK_ROUTE_OUTCOME_SCHEMA",
     "GROK_QUOTA_PROBE_CONTRACT_ID",
     "GROK_QUOTA_PROBE_CONTRACT",
     "GROK_QUOTA_PROBE_PROMPT",
@@ -296,9 +348,13 @@ __all__ = [
     "GROK_QUOTA_PROBE_TIMEOUT_SECONDS",
     "MAX_GROK_FAILURE_EVIDENCE_BYTES",
     "build_grok_failure_receipt",
+    "build_grok_route_outcome",
     "classify_grok_stderr",
     "extract_grok_failure_receipts",
+    "extract_grok_route_outcomes",
     "render_grok_failure_receipt",
+    "render_grok_route_outcome",
     "valid_grok_failure_receipt",
     "valid_grok_hard_quota_receipt",
+    "valid_grok_route_outcome",
 ]

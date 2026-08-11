@@ -32,9 +32,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runne
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import checkout_lock_owner_is_active
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
     PortalTaskState,
     default_llm_merge_resolver_command,
     parse_args,
+    task_declares_validation_config_change,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
@@ -46,6 +48,36 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     split_validation_commands,
 )
 from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
+
+
+def test_validation_config_authority_requires_declared_task_output() -> None:
+    base = {
+        "task_id": "DQP-005",
+        "title": "schema",
+        "status": "todo",
+        "completion": "automatic",
+        "priority": "P0",
+        "track": "schema",
+    }
+
+    assert task_declares_validation_config_change(
+        PortalTask(**base, outputs=["pyproject.toml"])
+    )
+    assert task_declares_validation_config_change(
+        PortalTask(
+            **base,
+            metadata={"predicted files": ".github/workflows/validate.yml"},
+        )
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=["src/schema.py"])
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=[".github/workflows/"])
+    )
+    assert not task_declares_validation_config_change(
+        PortalTask(**base, outputs=["*.toml"])
+    )
 
 
 def test_validation_command_helpers_unwrap_markdown_inline_code():

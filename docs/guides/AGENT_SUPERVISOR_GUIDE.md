@@ -107,9 +107,9 @@ default route is deliberately narrower than a general provider cascade:
 | Primary model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | Exact `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
-| Quota-only fallback | runtime-owned; not an operator model override | Exact `gpt-5.6-terra`, reasoning `medium` |
+| Quota-only fallback | runtime-owned closed route | Exact `gpt-5.6-terra`; reviewed reasoning is `medium` (default) or explicitly sealed `high` |
 | Direct Codex model | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | `gpt-5.6-terra`; affects explicit `codex` / `openai` selection only |
-| Direct Codex reasoning | `IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT` | `medium`; affects explicit `codex` / `openai` selection only |
+| Codex reasoning | `IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT` | `medium` by default; `high` is accepted only by the closed Terra quota route or explicit `codex` / `openai` selection |
 
 Example `implementation.env` for a runtime directory:
 
@@ -119,7 +119,8 @@ export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN="${HOME}/.local/bin/grok"
 
-# Optional direct-Codex defaults; these do not control the quota fallback.
+# Optional Codex defaults. The reasoning effort is also sealed into the
+# quota-only Terra route when the configured-board policy explicitly sets it.
 # export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
 # export IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=medium
 ```
@@ -132,8 +133,9 @@ Notes:
 - The runner's typed receipt, reserved exit status, stdout, and model output
   are untrusted quota candidates. Only the daemon's independently signed,
   invocation/task/account/pool-bound verifier may authorize the associated
-  fresh retry. That retry is pinned to `gpt-5.6-terra` with `medium` reasoning;
-  general Codex model/reasoning overrides cannot redefine it.
+  fresh retry. That retry is pinned to `gpt-5.6-terra` with the scheduler-sealed
+  `medium` or `high` reasoning effort; arbitrary models and other efforts cannot
+  redefine it.
 - The legacy in-runner `auto` path runs Grok in a capability-restricted outer
   container; explicit Grok selection may use the native custom sandbox where
   it is enforceable. Only the active worktree and Grok's ephemeral state are
@@ -156,7 +158,8 @@ Notes:
   availability-based `auto`, it persists independently verified quota authority,
   defers and releases the Grok attempt, and selects direct Codex only for the
   associated retry in a fresh fenced worktree. That retry is pinned to
-  `gpt-5.6-terra` with `medium` reasoning and never cascades to Copilot. Missing
+  `gpt-5.6-terra` with the sealed `medium` or `high` reasoning effort and never
+  cascades to Copilot. Missing
   Grok auth/binary, generic errors, timeouts, malformed output, policy
   rejection, and validation failure do not authorize fallback. Once the quota
   authority expires, Grok becomes primary again. The hyphenated policy name

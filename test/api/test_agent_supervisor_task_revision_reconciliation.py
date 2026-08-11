@@ -47,6 +47,7 @@ def test_revised_task_ignores_prior_revision_merge_and_finish_history(
         "type": "implementation_finished",
         "task_id": current.task_id,
         "canonical_task_cid": prior_cid,
+        "board_namespace": "todo.md",
         "attempt": 1,
         "implementation_commit": "a" * 40,
         "returncode": 0,
@@ -85,7 +86,8 @@ def test_revised_task_ignores_prior_revision_merge_and_finish_history(
         daemon._task_attempt_has_implementation_finish(
             current.task_id,
             1,
-            canonical_task_cid=current_cid,
+            task_revision_cid=current_cid,
+            board_namespace="todo.md",
         )
         is False
     )
@@ -125,7 +127,8 @@ def test_revised_task_ignores_prior_revision_merge_and_finish_history(
     assert daemon._task_attempt_has_implementation_finish(
         current.task_id,
         1,
-        canonical_task_cid=current_cid,
+        task_revision_cid=current_cid,
+        board_namespace="todo.md",
     )
 
     contradictory_event = {
@@ -353,15 +356,19 @@ def test_finish_receipt_requires_the_expected_task_revision(tmp_path):
         {
             "task_id": "ACCEL-001",
             "canonical_task_cid": "baguqeera-prior-revision",
+            "board_namespace": "todo.md",
             "attempt": 1,
         },
     )
     assert daemon._task_attempt_has_implementation_finish(
         "ACCEL-001",
         1,
+        task_revision_cid="baguqeera-prior-revision",
+        board_namespace="todo.md",
     )
     assert not daemon._task_attempt_has_implementation_finish(
         "ACCEL-001",
         1,
-        canonical_task_cid="baguqeera-current-revision",
+        task_revision_cid="baguqeera-current-revision",
+        board_namespace="todo.md",
     )

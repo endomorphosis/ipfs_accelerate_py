@@ -30,16 +30,20 @@ _MERGE_RESOLVER_MODULES = frozenset(
         "ipfs_accelerate_py.agent_supervisor.llm_router_merge_resolver",
     }
 )
-_AGENT_WORKER_MODULES = frozenset(
-    {
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-    }
-)
 _MERGE_RESOLVER_SCRIPTS = frozenset(
     {
         "llm_merge_resolver_fallback.py",
         "llm_router_merge_resolver.py",
     }
+)
+_PYTHON_AGENT_WORKER_MODULES = _MERGE_RESOLVER_MODULES | frozenset(
+    {
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
+    }
+)
+_PYTHON_AGENT_WORKER_SCRIPTS = _MERGE_RESOLVER_SCRIPTS | frozenset(
+    {"grok_cli_runner.py"}
 )
 
 DEFAULT_WORKTREE_PHASES = frozenset(
@@ -228,13 +232,12 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         if token == "-m":
             return (
                 index + 1 < len(tokens)
-                and tokens[index + 1].lower()
-                in (_MERGE_RESOLVER_MODULES | _AGENT_WORKER_MODULES)
+                and tokens[index + 1].lower() in _PYTHON_AGENT_WORKER_MODULES
             )
         if token.startswith("-"):
             index += 1
             continue
-        return os.path.basename(token).lower() in _MERGE_RESOLVER_SCRIPTS
+        return os.path.basename(token).lower() in _PYTHON_AGENT_WORKER_SCRIPTS
     return False
 
 
