@@ -1,13 +1,17 @@
-# Incremental Verification Planner — Release Report (IVP-018)
+# Incremental Verification Planner — Release Report (IVP-018 / IVP-019)
 
-**Status:** honest draft report for IVP-G100 / IVP-018  
+**Status:** terminal release report for IVP-G100 (documentation IVP-018 + public
+export fan-in IVP-019)  
 **Package:** `ipfs_accelerate_py.agent_supervisor.verification`  
 **Board namespace:** `incremental-verification-planner-v1`  
-**Evidence:** `ivp/documentation@1`, `ivp/release-report@1`  
+**Evidence:** `ivp/documentation@1`, `ivp/release-report@1`, `ivp/public-api@1`,
+`ivp/final-validation@1`  
 **Depends on:** IVP-017 benchmark evidence (`ivp/benchmark@1`)  
 **Authority:** this report is **not** production-authoritative; it documents
 landed contracts, operations, and measured evidence without upgrading any
-receipt status.
+receipt status. No stale, simulated, timeout, unavailable, unknown,
+not_modeled, invalid, cancelled, or pending full-suite receipt is accepted as
+production success.
 
 This report binds the documentation and the current-tree benchmark artifact to
 the repository tree, controlled corpus, policy, effective environment, command
@@ -21,11 +25,13 @@ missing required sections.
 
 The following JSON binding is the authoritative report↔benchmark identity
 surface for IVP-018. Values must match a fresh benchmark run for the same
-`tree_id`.
+`tree_id`. IVP-019 rebinds this surface to the terminal fan-in tree and records
+public-export / full-suite observations without changing the binding schema
+or `task_id` (validator surface remains `IVP-018`).
 
 ```json
 {
-  "benchmark_content_id": "baguqeeraiu7dzdw2daf4rsm3o4vwfxflgqmctu7wdelpatbngsw2jkepxnua",
+  "benchmark_content_id": "baguqeerah6577y5hjqcvubcd3c7qcwixfig3ijxorw5bwd5qqe5cvdmcbqiq",
   "benchmark_evidence": "ivp/benchmark@1",
   "benchmark_schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@1",
   "command_identities": {
@@ -97,7 +103,7 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
     "zero_stale_simulated_accepted": "met"
   },
   "task_id": "IVP-018",
-  "tree_id": "889773d2fcde2ed0242141b529f1abb9a21e1ff0"
+  "tree_id": "8dbf80bbdaa2208e0b7b2c4b2594a29f2d56fdeb"
 }
 ```
 
@@ -133,7 +139,7 @@ The incremental-verification subsystem lives under
 | `bundle.py` | `build_verification_bundle`, `build_verification_summary`, `build_verification_commitment` |
 | `executor.py` | `execute_verification_plan` orchestration |
 | `evaluation.py` | Controlled-fixture differential selected-vs-full evaluation |
-| `__init__.py` | Side-effect-free package boundary (final public export freeze is IVP-019) |
+| `__init__.py` | **IVP-019 frozen public export surface** — all names in `__all__` resolve lazily via `__getattr__` |
 
 Supporting evidence harnesses (outside the package, consumed by this report):
 
@@ -253,11 +259,17 @@ From the current-tree benchmark (`measurement_status` aggregate **red**):
 | Static checks executed | 0 (`not_measured` on controlled catalogs) |
 | Type checks executed | 0 |
 | Proof obligations executed | 0 |
-| Real provers on PATH (z3/lean/coqc/isabelle) | none — typed `unavailable` / `not_measured` |
+| Real provers on PATH | `z3` and `lean` available (measured); `coqc` / `isabelle` typed `unavailable` / `not_measured` |
 
 Proof and static execution remain typed `not_measured` on the controlled
 semantic-capsule corpus when catalogs are empty; missing real provers are never
-fabricated into passes.
+fabricated into passes. Available provers without catalog obligations still do
+not mint production proof success.
+
+The single controlled false negative is fixture `seeded-false-negative`
+(ground truth / full-suite oracle:
+`tests/test_mod.py::test_deliberately_fails`). It is recorded as **red**, not
+suppressed.
 
 ---
 
@@ -320,6 +332,11 @@ ContextPack consumption — never full raw logs.
   none is observed
 - Route: `small_local_model` with `localized_exact_counterexample`
 
+Corpus aggregate counterexample context on this tree: 5361 bytes / 1347
+estimator tokens (bound 8192). Estimator-bound token savings total: 19834 under
+`ivp-estimator/utf8-bytes-div4@1` v1.0.0 against compared artifact bounds
+(raw log 262144 B / counterexample 8192 B).
+
 Lease-rerun minimization (IVP-011) produces `CounterexampleReceipt` records
 that bind selector, tree, and diagnostic digests without private witnesses.
 
@@ -369,15 +386,23 @@ after canonical sorting. Benchmark target `deterministic_commitments`: **met**.
   provider/vendor selection inside route policy are forbidden.
 - Controlled corpus static/proof catalogs are empty → static/proof execution is
   honestly `not_measured`.
-- Real provers (z3, lean, coqc, isabelle) were **unavailable** on the measurement
-  host; absence is typed, never treated as success.
+- On this measurement host: `z3` and `lean` probed available; `coqc` and
+  `isabelle` were **unavailable** (typed, never treated as success).
 - Wall-time metrics are observational samples with tolerance; they do not
   create correctness authority.
 - Token savings are estimator-bound (`utf8-bytes-div4@1`), not a production
   billing meter.
-- Package public-export freeze and terminal fan-in remain **IVP-019**.
-- Hard zero false-negative conformance is owned by IVP-016/IVP-019; this report
-  records red measurements without suppressing them.
+- Controlled corpus still records **one** seeded false negative
+  (`seeded-false-negative`); aggregate measurement status remains **red**.
+  This is measured honestly and is not promoted to production success.
+- Ruff on the declared IVP-019 package/tests path is **green** after fan-in
+  static rescue (import organization, unused imports, collapsible-if cleanup,
+  intentional hermetic `except Exception` / try-except-pass boundaries marked
+  `# noqa: BLE001,S110`, long-lived `TemporaryFile` fds marked `# noqa: SIM115`,
+  and `# ruff: noqa: N999` on package `__init__.py` for worktree path noise).
+- Resource-scheduler leased-lane tests could not prove full process-tree
+  fencing on this host (5 failures); dedicated process-tree fencing tests
+  pass. Outside IVP-019 edit scope — recorded, not force-greened.
 
 ---
 
@@ -390,12 +415,16 @@ after canonical sorting. Benchmark target `deterministic_commitments`: **met**.
 | `old_key_historical_preservation` | met (hard) | Old immutable receipts remain under old keys |
 | `metrics_complete` | met | Typed measurements always emitted |
 | `small_route_localized_distribution` | met | ≥1 and ≥20% of localized measured fixtures |
-| `zero_controlled_false_negatives` | **red** | corpus total FN = 1 (`seeded-false-negative` style control); hard only in IVP-016/IVP-019 |
+| `zero_controlled_false_negatives` | **red** | corpus total FN = 1 (`seeded-false-negative`); recorded honestly; not claimed as production success |
 | `incompatible_cross_tree_unaffected_reuse` | **unmet** (explicit) | Exact full-tree binding forbids incompatible cross-tree reuse; reason `exact_full_tree_binding_forbids_incompatible_cross_tree_reuse` |
 
 **Incompatible cross-tree reuse is an intentional unmet target**, not a silent
 failure. Historical preservation under the original key holds; the new tree
 cannot reuse the old receipt as production evidence.
+
+Exact full-tree binding forbids incompatible cross-tree reuse. No timeout,
+unavailable, unknown, not_modeled, invalid, cancelled, stale, simulated, or
+pending full-suite receipt is accepted as production success.
 
 ---
 
@@ -437,20 +466,162 @@ historical pass, or structural validation creates verification authority.
 
 ---
 
-## 14. Evidence and honesty statement
+## 14. IVP-019 public export freeze (`ivp/public-api@1`)
 
-- Benchmark evidence schema: `ivp/benchmark@1` (artifact
-  `artifacts/agent_supervisor/incremental_verification/benchmark.json` when
-  regenerated for the current tree).
-- Documentation evidence: `ivp/documentation@1`.
-- Release report evidence: `ivp/release-report@1`.
-- Aggregate measurement status on this tree: **red** (one controlled false
-  negative recorded; hard gate deferred to IVP-016/IVP-019).
-- This report does not assert target success from favourable performance
-  metrics. Performance and route distribution are reported without changing
-  status semantics.
+Package root `ipfs_accelerate_py.agent_supervisor.verification` freezes a
+lazy, side-effect-free public surface:
+
+**Required public names (lazy via `__getattr__`):**
+
+- `create_verification_plan`
+- `choose_model_route`
+- `build_verification_commitment`
+- `VerificationReceiptCache`
+- `IncrementalVerificationPlanner`
+- `ModelRoutePlanner`
+
+**Also frozen (lazy):** contract types (`TerminalStatus`, receipts, plan,
+bundle, summary, commitment, identity compiler, …),
+`execute_verification_plan` / `VerificationExecutor`,
+`build_verification_bundle` / `build_verification_summary`,
+`production_eligible`, and related production helpers listed in package
+`__all__`.
+
+Properties measured on this tree:
+
+- Cold `import ipfs_accelerate_py.agent_supervisor.verification` loads only the
+  package `__init__` (no planner/cache/adapter modules).
+- First attribute access resolves the owning submodule and caches the object.
+- Package exports preserve `is` identity with the submodule definitions.
+- Evidence label: `PUBLIC_API_EVIDENCE = "ivp/public-api@1"`.
+- Interface label: `IncrementalVerificationPublicApi@1`.
+
+Example (lazy package root imports — preferred after IVP-019):
+
+```python
+from ipfs_accelerate_py.agent_supervisor.verification import (
+    create_verification_plan,
+    choose_model_route,
+    build_verification_commitment,
+    IncrementalVerificationPlanner,
+    ModelRoutePlanner,
+    VerificationReceiptCache,
+)
+```
+
+Submodule imports remain valid and side-effect free.
 
 ---
 
-*End of IVP-018 release report draft. IVP-019 freezes public exports and runs
-the terminal release fan-in against the full focused suite.*
+## 15. IVP-019 terminal fan-in validation (`ivp/final-validation@1`)
+
+Measured on tree `8dbf80bbdaa2208e0b7b2c4b2594a29f2d56fdeb` with
+`PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:.` and pytest `--timeout=300`.
+
+### 15.1 Focused verification matrix (suite 1) — **green**
+
+Command: the full IVP-019 focused list (contracts through report + benchmark).
+
+| Observation | Result |
+| --- | --- |
+| Final measured run | **496 passed**, 1 warning, 41.88s, exit 0 |
+| Conformance matrix (18 required cases) | proven |
+| Report validator vs fresh benchmark | green (current `tree_id` + binding) |
+| Production doctrine in suite | no stale / simulated / timeout / unavailable / unknown / not_modeled / invalid / cancelled / pending full-suite receipt accepted as production success |
+
+Preconditions applied for hermetic local measurement (not product scope changes):
+
+- Generated gitignored corpus via `test/fixtures/incremental_verification/build_corpus.py`
+- Rebound checked-in benchmark artifact to the current tree so identity tests
+  bind HEAD (content id
+  `baguqeerah6577y5hjqcvubcd3c7qcwixfig3ijxorw5bwd5qqe5cvdmcbqiq`)
+
+### 15.2 Declared regression suite (suite 2) — **partial**
+
+| File | Result |
+| --- | --- |
+| `test_agent_supervisor_test_execution_identity.py` | **24 passed** |
+| `test_proof_reuse_invalidation_mutations.py` | **34 passed** |
+| `test_proof_reuse_security_concurrency.py` | **14 passed** |
+| `test_agent_supervisor_formal_verification_cache.py` | **22 passed** |
+| `test_agent_supervisor_validation_scheduler.py` | **45 passed** |
+| `test_agent_supervisor_process_tree_fencing.py` | **3 passed** |
+| `test_agent_supervisor_resource_scheduler.py` | **43 passed, 5 failed** |
+
+Aggregate suite 2: **185 passed, 5 failed** (exit 1) across three retries.
+All five failures are the same host-side class:
+
+```text
+RuntimeError: could not prove process tree <pid> fully fenced
+```
+
+raised from `ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py` during
+resource-scheduler leased-lane / dynamic-scheduler tests. Dedicated
+process-tree fencing tests pass. These resource failures are **outside IVP-019
+allowed edit paths** (fan-in may not expand into merge/resource runtime to
+force-green them). They are recorded as an unmet host/runtime residual, not as
+verification-receipt production success.
+
+### 15.3 Ruff — **green**
+
+Command (declared IVP-019 validation path):
+
+```text
+PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check \
+  ipfs_accelerate_py/agent_supervisor/verification \
+  benchmarks/agent_supervisor/incremental_verification.py \
+  test/benchmarks/test_incremental_verification_planner_benchmark.py \
+  test/api/test_agent_supervisor_verification_*.py \
+  test/api/test_agent_supervisor_incremental_verification_*.py
+```
+
+Result: **All checks passed** (exit 0). Fan-in static rescue corrected integrated
+lint failures under the verification package, adapters, benchmark harness, and
+declared test globs. Intentional fail-closed exception boundaries keep
+`# noqa: BLE001` / `# noqa: S110`; package `__init__.py` carries
+`# ruff: noqa: N999` for worktree-directory module-name noise only.
+
+### 15.4 Fan-in residual summary
+
+| Gate | Status |
+| --- | --- |
+| Lazy required public names | **met** |
+| Focused IVP matrix | **met** (496 passed) |
+| Identity / proof-reuse / formal-cache / validation / process-tree regressions | **met** |
+| Resource-scheduler regressions | **unmet** (5 fencing-proof failures on host) |
+| Ruff on new `__init__.py` | **met** |
+| Ruff full declared package/tests | **met** |
+| Benchmark measurement status | **red** (1 controlled FN; honest) |
+| Production non-accepting statuses never success | **met** (doctrine + suite evidence) |
+
+---
+
+## 16. Evidence and honesty statement
+
+- Benchmark evidence schema: `ivp/benchmark@1` (artifact
+  `artifacts/agent_supervisor/incremental_verification/benchmark.json`
+  rebound to tree `8dbf80bbdaa2208e0b7b2c4b2594a29f2d56fdeb`, content id
+  `baguqeerah6577y5hjqcvubcd3c7qcwixfig3ijxorw5bwd5qqe5cvdmcbqiq`).
+- Documentation evidence: `ivp/documentation@1`.
+- Release report evidence: `ivp/release-report@1`.
+- Public API evidence: `ivp/public-api@1`.
+- Final validation evidence: `ivp/final-validation@1`.
+- Aggregate measurement status on this tree: **red** (one controlled false
+  negative recorded; not claimed as production success).
+- Resource-scheduler residual: 5 process-tree fencing-proof failures remain on
+  this host; they are not reclassified as verification success and are not
+  hidden.
+- This report does not assert target success from favourable performance
+  metrics. Performance and route distribution are reported without changing
+  status semantics.
+- **Production acceptance doctrine (hard):** a cache hit, provider claim,
+  signature, CID string, historical pass, structural validation, timeout,
+  unavailable tool, simulated result, unknown / not_modeled / invalid /
+  cancelled / stale status, or pending full-suite obligation never
+  manufactures current verification authority or production success.
+
+---
+
+*End of IVP-018/IVP-019 release report. Public exports are frozen; terminal
+fan-in records measured red measurement status and host residuals honestly
+without promoting non-accepting receipts.*

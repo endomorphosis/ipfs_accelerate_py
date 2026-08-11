@@ -1,6 +1,6 @@
 {
   "authoritative": false,
-  "benchmark_duration_ms": 118,
+  "benchmark_duration_ms": 2633,
   "cases": [
     {
       "change_kind": "config_edge",
@@ -2167,12 +2167,12 @@
       "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
       "metrics_digest": "baguqeeralpl6umixxwvdhbeqeeoya7ogh2iitepabzjmgjbd4zkksn4w3viq",
       "policy_id": "policy:ivp-incremental-verification-benchmark@1",
-      "tree_id": "fd673b41f60f60a293626c8ea41e71165a7dfc51"
+      "tree_id": "8dbf80bbdaa2208e0b7b2c4b2594a29f2d56fdeb"
     },
-    "commitment_cid": "baguqeerartqvnkudx4krvikljk2fi44s5e6j7dqbfia2i5pgwysynzzy4p7a",
+    "commitment_cid": "baguqeeranjkg3iwxr2u766skghafpyanqbkw6cqkfoc6tzauxevphyjmr2oa",
     "deterministic": true
   },
-  "content_id": "baguqeerauulhf3rp57brluxm5gdvnlpckg6trrpkxryuhi42bfxyj64bwneq",
+  "content_id": "baguqeerah6577y5hjqcvubcd3c7qcwixfig3ijxorw5bwd5qqe5cvdmcbqiq",
   "corpus": {
     "case_count": 20,
     "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
@@ -2183,7 +2183,7 @@
     "measured_count": 15,
     "measurement_status": "measured",
     "not_measured_count": 2,
-    "path": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-c3ce19eb7978-ad0ce25a7572/test/fixtures/incremental_verification/corpus_manifest.json",
+    "path": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-b870212b98b9-a6c0b54ab009/test/fixtures/incremental_verification/corpus_manifest.json",
     "present": true,
     "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-selection-corpus@1",
     "selection_measurement_status": "measured",
@@ -2198,12 +2198,12 @@
     "target": "unaffected_cross_tree_reuse"
   },
   "effective_environment": {
-    "cwd": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-c3ce19eb7978-ad0ce25a7572",
+    "cwd": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-b870212b98b9-a6c0b54ab009",
     "env_markers": {
-      "CI": "",
+      "CI": "true",
       "GITHUB_ACTIONS": ""
     },
-    "executable": "/usr/bin/python3.12",
+    "executable": "/usr/bin/python3",
     "machine": "aarch64",
     "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
     "processor": "aarch64",
@@ -2299,8 +2299,8 @@
       "label": "estimated",
       "paired_cache": {
         "basis": "paired_cold_hot",
-        "cold_lookup_ms": 0.364661,
-        "hot_lookup_ms": 13.15158,
+        "cold_lookup_ms": 0.360068,
+        "hot_lookup_ms": 14.84639,
         "label": "paired",
         "sample_count": 1,
         "saved_ms": 0.0
@@ -2322,8 +2322,11 @@
       "note": "controlled corpus catalogs empty static/proof sets; real prover availability is probed separately",
       "proof_obligations_executed": 0,
       "provers": {
-        "any_real_prover": false,
-        "available": [],
+        "any_real_prover": true,
+        "available": [
+          "lean",
+          "z3"
+        ],
         "missing_typed": "unavailable",
         "probes": {
           "coqc": {
@@ -2343,27 +2346,25 @@
             "version": null
           },
           "lean": {
-            "measurement_status": "not_measured",
+            "measurement_status": "measured",
             "name": "lean",
-            "path": null,
-            "reason": "executable_not_on_path",
-            "status": "unavailable",
-            "version": null
+            "path": "/home/barberb/.elan/bin/lean",
+            "reason": "probed",
+            "status": "available",
+            "version": "Lean (version 4.33.0, aarch64-unknown-linux-gnu, commit d8b18978322de05a8f3dba51ef03cf5461676c17, Release)"
           },
           "z3": {
-            "measurement_status": "not_measured",
+            "measurement_status": "measured",
             "name": "z3",
-            "path": null,
-            "reason": "executable_not_on_path",
-            "status": "unavailable",
-            "version": null
+            "path": "/home/barberb/.local/bin/z3",
+            "reason": "probed",
+            "status": "available",
+            "version": "Z3 version 4.16.0 - 64 bit"
           }
         },
         "unavailable": [
           "coqc",
-          "isabelle",
-          "lean",
-          "z3"
+          "isabelle"
         ]
       },
       "static_checks_executed": 0,
@@ -2387,19 +2388,19 @@
       "tokens_saved_total": 19834
     },
     "wall_samples": {
-      "max_ms": 1.341776,
-      "mean_ms": 1.296079,
-      "median_ms": 1.285312,
-      "min_ms": 1.274399,
-      "p95_ms": 1.341776,
+      "max_ms": 1.337153,
+      "mean_ms": 1.290726,
+      "median_ms": 1.280431,
+      "min_ms": 1.26904,
+      "p95_ms": 1.337153,
       "role": "observational",
       "sample_count": 5,
       "samples_ms": [
-        1.274399,
-        1.276719,
-        1.285312,
-        1.302191,
-        1.341776
+        1.26904,
+        1.269552,
+        1.280431,
+        1.297456,
+        1.337153
       ],
       "tolerance_ms": 1.0,
       "tolerance_ratio": 0.35
@@ -2413,8 +2414,11 @@
     "zero_stale_simulated_acceptance_hard": true
   },
   "provers": {
-    "any_real_prover": false,
-    "available": [],
+    "any_real_prover": true,
+    "available": [
+      "lean",
+      "z3"
+    ],
     "missing_typed": "unavailable",
     "probes": {
       "coqc": {
@@ -2434,30 +2438,28 @@
         "version": null
       },
       "lean": {
-        "measurement_status": "not_measured",
+        "measurement_status": "measured",
         "name": "lean",
-        "path": null,
-        "reason": "executable_not_on_path",
-        "status": "unavailable",
-        "version": null
+        "path": "/home/barberb/.elan/bin/lean",
+        "reason": "probed",
+        "status": "available",
+        "version": "Lean (version 4.33.0, aarch64-unknown-linux-gnu, commit d8b18978322de05a8f3dba51ef03cf5461676c17, Release)"
       },
       "z3": {
-        "measurement_status": "not_measured",
+        "measurement_status": "measured",
         "name": "z3",
-        "path": null,
-        "reason": "executable_not_on_path",
-        "status": "unavailable",
-        "version": null
+        "path": "/home/barberb/.local/bin/z3",
+        "reason": "probed",
+        "status": "available",
+        "version": "Z3 version 4.16.0 - 64 bit"
       }
     },
     "unavailable": [
       "coqc",
-      "isabelle",
-      "lean",
-      "z3"
+      "isabelle"
     ]
   },
-  "repository_root": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-c3ce19eb7978-ad0ce25a7572",
+  "repository_root": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-b870212b98b9-a6c0b54ab009",
   "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@1",
   "selection_summary": {
     "authoritative": false,
@@ -2550,6 +2552,6 @@
     }
   },
   "task_id": "IVP-017",
-  "tree_id": "fd673b41f60f60a293626c8ea41e71165a7dfc51",
+  "tree_id": "8dbf80bbdaa2208e0b7b2c4b2594a29f2d56fdeb",
   "zero_stale_simulated_accepted": true
 }

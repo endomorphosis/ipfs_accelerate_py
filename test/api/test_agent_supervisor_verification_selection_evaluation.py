@@ -23,7 +23,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -52,10 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
     ControlledSemanticFixture,
     EvaluationSnapshotIdentity,
     MeasurementStatus,
-    ObservedTestOutcome,
     SuiteMode,
-    SuiteObservation,
-    SuiteRunStatus,
     TestSelectionEvaluation,
     compare_selected_with_full_suite,
     default_fixture_root,
@@ -66,10 +62,8 @@ from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
     make_suite_observation,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.selection import (
-    FallbackMode,
     select_affected_verification,
 )
-
 
 # ---------------------------------------------------------------------------
 # Paths / constants
@@ -855,7 +849,7 @@ def test_real_mini_repo_selected_versus_full_suite(tmp_path: Path) -> None:
                 "disposition": "exact",
             },
         ),
-        catalog={"tests": list(sorted(full_outcomes))},
+        catalog={"tests": sorted(full_outcomes)},
         policy={"critical_uncertainty_requires_full_suite": False},
         forced_selected_tests=(node_fn,),
         selected_observation=selected_obs,
