@@ -185,7 +185,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-005 Implement the pytest verification adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
