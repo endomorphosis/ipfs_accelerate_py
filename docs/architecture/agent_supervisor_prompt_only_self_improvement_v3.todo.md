@@ -335,7 +335,7 @@ Closeout:           ASE3-014
 
 ## ASE3-012 Prove cross-transport, security, compatibility, and crash conformance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
