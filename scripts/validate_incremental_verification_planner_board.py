@@ -37,7 +37,7 @@ SCHEDULER_PATH = (
 BOARD_NAMESPACE = "incremental-verification-planner-v1"
 BRANCH = "integration/incremental-verification-planner-main-20260811"
 BASE_REVISION = "c1e33e8f443253e106c464d7c5b5c341c3095876"
-TASK_IDS = tuple(f"IVP-{index:03d}" for index in range(20))
+TASK_IDS = tuple(f"IVP-{index:03d}" for index in range(21))
 GOAL_IDS = (
     "IVP-G000",
     "IVP-G010",
@@ -84,7 +84,8 @@ EXPECTED_DEPENDENCIES = {
     "IVP-016": ("IVP-012", "IVP-013", "IVP-014", "IVP-015"),
     "IVP-017": ("IVP-015",),
     "IVP-018": ("IVP-017",),
-    "IVP-019": ("IVP-016", "IVP-017", "IVP-018"),
+    "IVP-019": ("IVP-016", "IVP-017", "IVP-018", "IVP-020"),
+    "IVP-020": ("IVP-016", "IVP-017", "IVP-018"),
 }
 
 EXPECTED_GROUPS = {
@@ -97,7 +98,7 @@ EXPECTED_GROUPS = {
     "IVP-G070": ("IVP-012",),
     "IVP-G080": ("IVP-014",),
     "IVP-G090": ("IVP-015", "IVP-016", "IVP-017"),
-    "IVP-G100": ("IVP-018", "IVP-019"),
+    "IVP-G100": ("IVP-018", "IVP-020", "IVP-019"),
 }
 
 EXPECTED_GOAL_DEPENDENCIES = {
@@ -276,6 +277,7 @@ EXPECTED_WAVES = (
     ("IVP-015",),
     ("IVP-016", "IVP-017"),
     ("IVP-018",),
+    ("IVP-020",),
     ("IVP-019",),
 )
 
@@ -694,11 +696,11 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
         expected_gitlinks = {
             "ipfs_kit": (
                 "ipfs_kit_py",
-                "e164bb21c7a73b722a83aea7623e5677391bce54",
+                "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
             ),
             "ipfs_datasets": (
                 "ipfs_datasets_py",
-                "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
+                "6cd037c7738f44904add46391537588e67f6f238",
             ),
         }
         for prefix, (path, revision) in expected_gitlinks.items():
@@ -774,7 +776,7 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
             errors.append("scheduler task_groups differ from the reviewed goal projection")
     projection = scheduler.get("initial_projection")
     expected_projection = {
-        "task_count": 20,
+        "task_count": 21,
         "completed_task_ids": list(INITIAL_COMPLETED),
         "ready_task_ids": list(INITIAL_READY),
         "blocked_task_ids": [],

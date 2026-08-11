@@ -13,9 +13,9 @@
     "accelerator_required_branch": "integration/incremental-verification-planner-main-20260811",
     "bootstrap_task_source": "legacy-markdown",
     "ipfs_kit_submodule_path": "ipfs_kit_py",
-    "ipfs_kit_planning_revision": "e164bb21c7a73b722a83aea7623e5677391bce54",
+    "ipfs_kit_planning_revision": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
     "ipfs_datasets_submodule_path": "ipfs_datasets_py",
-    "ipfs_datasets_planning_revision": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
+    "ipfs_datasets_planning_revision": "6cd037c7738f44904add46391537588e67f6f238",
     "require_initialized_gitlinks": true,
     "require_superproject_gitlink_equals_nested_head": true,
     "require_clean_nested_worktree_at_task_start": true,
@@ -24,7 +24,7 @@
     "planning_revision_is_runtime_completion_evidence": false
   },
   "initial_projection": {
-    "task_count": 20,
+    "task_count": 21,
     "completed_task_ids": [
       "IVP-000"
     ],
@@ -139,6 +139,7 @@
     ],
     "IVP-G100": [
       "IVP-018",
+      "IVP-020",
       "IVP-019"
     ]
   },

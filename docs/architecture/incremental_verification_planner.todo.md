@@ -625,7 +625,7 @@ empty for every task because it is not a configured-board dispatch input.
 - Review only: false
 - Priority: P0
 - Track: release
-- Depends on: IVP-016, IVP-017, IVP-018
+- Depends on: IVP-016, IVP-017, IVP-018, IVP-020
 - Goal id: IVP-G100
 - Outputs: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
 - Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_model_route.py test/api/test_agent_supervisor_verification_bundle.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/api/test_agent_supervisor_incremental_verification_report.py test/benchmarks/test_incremental_verification_planner_benchmark.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_test_execution_identity.py test/api/test_proof_reuse_invalidation_mutations.py test/api/test_proof_reuse_security_concurrency.py test/api/test_agent_supervisor_formal_verification_cache.py test/api/test_agent_supervisor_validation_scheduler.py test/api/test_agent_supervisor_process_tree_fencing.py test/api/test_agent_supervisor_resource_scheduler.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
@@ -651,11 +651,30 @@ empty for every task because it is not a configured-board dispatch input.
 ## IVP-020 Resolve validation retry-budget failure for IVP-019
 
 - Status: todo
-- Completion: manual
-- Priority: P1
-- Track: ops
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
 - Depends on: IVP-016, IVP-017, IVP-018
-- Outputs: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, data/agent_supervisor/incremental_verification_planner/state/discovery
+- Goal id: IVP-G100
+- Outputs: ipfs_accelerate_py/agent_supervisor/verification, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, test/api/test_agent_supervisor_verification_bundle.py, test/api/test_agent_supervisor_verification_contracts.py, test/api/test_agent_supervisor_verification_counterexamples.py, test/api/test_agent_supervisor_verification_datasets_adapter.py, test/api/test_agent_supervisor_verification_executor.py, test/api/test_agent_supervisor_verification_model_route.py, test/api/test_agent_supervisor_verification_process_runner.py, test/api/test_agent_supervisor_verification_receipt_cache.py, test/api/test_agent_supervisor_verification_receipt_store.py, test/api/test_agent_supervisor_verification_selection.py, test/api/test_agent_supervisor_verification_selection_evaluation.py, test/api/test_agent_supervisor_incremental_verification_conformance.py, test/api/test_agent_supervisor_incremental_verification_planner.py, test/api/test_agent_supervisor_incremental_verification_report.py, test/api/test_agent_supervisor_incremental_verification_scheduler.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
 - Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
-
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in IVP-019. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/state/discovery/2026-08-11-ivp-020-ivp-019-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release IVP-019 from strategy blocked_tasks.
+- Board namespace: incremental-verification-planner-v1
+- Bundle: agent-supervisor/incremental-verification/release-repair
+- Parallel lane: release-repair
+- Resource class: cpu-small
+- Resource stage: release
+- Estimated tokens: 24000
+- Implementation timeout seconds: 5400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/verification, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, test/api/test_agent_supervisor_verification_bundle.py, test/api/test_agent_supervisor_verification_contracts.py, test/api/test_agent_supervisor_verification_counterexamples.py, test/api/test_agent_supervisor_verification_datasets_adapter.py, test/api/test_agent_supervisor_verification_executor.py, test/api/test_agent_supervisor_verification_model_route.py, test/api/test_agent_supervisor_verification_process_runner.py, test/api/test_agent_supervisor_verification_receipt_cache.py, test/api/test_agent_supervisor_verification_receipt_store.py, test/api/test_agent_supervisor_verification_selection.py, test/api/test_agent_supervisor_verification_selection_evaluation.py, test/api/test_agent_supervisor_incremental_verification_conformance.py, test/api/test_agent_supervisor_incremental_verification_planner.py, test/api/test_agent_supervisor_incremental_verification_report.py, test/api/test_agent_supervisor_incremental_verification_scheduler.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
+- Interfaces: ruff validation repair, retry-budget reset receipt
+- Allow concurrent with:
+- Conflict policy: Make semantics-preserving lint corrections only; do not weaken tests, receipt authority, status rules, or final-report claims.
+- Preconditions: IVP-019 exhausted its validation budget solely on the declared Ruff gate; persisted discovery evidence identifies the remaining lint debt.
+- Effects: Produces a tracked, scope-admitted Ruff repair and an authoritative completion receipt that resets IVP-019's retry budget.
+- Evidence subset: ivp/final-validation@1, ivp/retry-budget-repair@1
+- Symbolic first: true
+- LLM context budget bytes: 230000
+- Acceptance: The exact declared Ruff command passes without ignores or rule weakening; the repair merge is clean and marks IVP-020 completed so every lane releases IVP-019 from strategy blocked_tasks before terminal fan-in reruns.
+- Embedding query: IVP-019 retry budget ruff lint release repair verification package tests benchmark

@@ -306,8 +306,8 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Interfaces: package public exports, final report
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_incremental_verification_conformance.py
 - Acceptance: Clean target branch; required APIs and types exported; full report contains modules/adapters/schemas/key/invalidation/tests/proofs/hits/routes/counterexamples/commitment/limitations; ZK work remains external and subsequent to trusted ordinary receipts.
-- Gap task: IVP-018, IVP-019
-- Refinement: Documentation may draft after benchmark; terminal fan-in owns exports and integrated corrections.
+- Gap task: IVP-018, IVP-020, IVP-019
+- Refinement: Documentation may draft after benchmark; the sealed IVP-020 repair owns inherited Ruff debt, and terminal fan-in owns exports and integrated corrections after that receipt lands.
 - Embedding query: incremental verification public API final report receipt cache model route ZK aggregator next step
 - AST query: Verify all new imports, package exports, focused tests, and regressions against the final tree.
 - Conflict policy: Do not mark targets met without current evidence or expand scope during release cleanup.

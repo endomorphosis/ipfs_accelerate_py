@@ -224,7 +224,7 @@ semantic edges, guess CIDs, inspect arbitrary object internals, or make the
 base accelerator import depend eagerly on datasets.
 
 The reviewed gitlink is
-`ipfs_datasets_py@bd2ff6245ebe476fc744d45c7c66235c92b0e19c`. Workers may
+`ipfs_datasets_py@6cd037c7738f44904add46391537588e67f6f238`. Workers may
 inspect its public
 `ipfs_datasets_py.knowledge_graphs.adapters.code_evidence.CodeEvidenceCorpusAdapter`
 and `ipfs_datasets_py.logic.backends.process.BoundedToolRunner` seams, but may
@@ -253,7 +253,7 @@ for unit/concurrency tests. An index writer must retry from a freshly read root
 after a CAS conflict; it may never overwrite the other writer's entries.
 
 The reviewed gitlink is
-`ipfs_kit_py@e164bb21c7a73b722a83aea7623e5677391bce54`. Immutable storage
+`ipfs_kit_py@5a7a2df8181cfdc33bc19be09989df7ff83f2d4e`. Immutable storage
 adapts the public
 `ipfs_kit_py.mcp_server.mcplusplus.coordination_storage.DurableCoordinationStore`
 put/get/recover/CID operations. Current-head CAS is a separate generation-
@@ -513,7 +513,7 @@ predicted-file/resource claims.
 | routing | provider-neutral model route | IVP-012 |
 | orchestration | execute plan and bundle results | IVP-014 |
 | evaluation | differential fixtures, conformance, benchmark | IVP-015–IVP-017 |
-| release | docs/report/public surface | IVP-018, IVP-019 |
+| release | docs/report/public surface and bounded lint repair | IVP-018, IVP-020, IVP-019 |
 
 Actual strict shard assignment is:
 
@@ -521,7 +521,7 @@ Actual strict shard assignment is:
 - shard 1: IVP-000, IVP-005, IVP-008, IVP-009, IVP-010, IVP-013,
   IVP-014, IVP-016, IVP-019;
 - shard 2: IVP-002, IVP-003, IVP-006, IVP-007, IVP-012, IVP-015,
-  IVP-017, IVP-018.
+  IVP-017, IVP-018, IVP-020.
 
 ### 12.2 Waves
 
@@ -536,11 +536,14 @@ Actual strict shard assignment is:
 | 6 | IVP-015 | integrated executor and selection |
 | 7 | IVP-016, IVP-017 | hard conformance and benchmark evidence independently |
 | 8 | IVP-018 | benchmark/report evidence even if hard conformance is red |
-| 9 | IVP-019 | conformance, benchmark, report, and full release gate |
+| 9 | IVP-020 | bounded repair of inherited Ruff debt after retry-budget exhaustion |
+| 10 | IVP-019 | conformance, benchmark, report, and full release gate |
 
 Tasks have disjoint predicted files wherever possible. IVP-001 owns only the
-minimal lazy package stub needed for focused contract imports; IVP-019 alone
-freezes the complete public export surface and performs cross-module fan-in.
+minimal lazy package stub needed for focused contract imports. IVP-020 is a
+sealed, semantics-preserving recovery step for the exact Ruff surface exposed
+by terminal validation; IVP-019 alone freezes the complete public export
+surface and performs cross-module fan-in after that repair receipt lands.
 
 ## 13. Required test matrix
 
