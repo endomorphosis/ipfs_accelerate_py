@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 from collections import defaultdict, deque
@@ -47,6 +48,14 @@ GOAL_IDS = ("IPS-G000",) + tuple(
 INITIAL_COMPLETED = frozenset({"IPS-000"})
 INITIAL_READY = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TERMINAL_TASK = "IPS-056"
+ARTIFACT_CHECK_TASKS = (
+    "IPS-001",
+    "IPS-002",
+    "IPS-003",
+    "IPS-053",
+    "IPS-054",
+    "IPS-055",
+)
 
 EXPECTED_TASK_GROUPS: Mapping[str, tuple[str, ...]] = {
     "IPS-G010": tuple(f"IPS-{index:03d}" for index in range(0, 5)),
@@ -575,6 +584,33 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
             if not fields.get(field, "").strip():
                 errors.append(f"{task_id} metadata field {field!r} may not be empty")
 
+        validation = fields.get("validation", "")
+        try:
+            validation_argv = shlex.split(validation)
+        except ValueError as exc:
+            errors.append(f"{task_id} validation command does not parse: {exc}")
+            validation_argv = []
+        if validation_argv:
+            executable = validation_argv[0].replace("\\", "/").rsplit("/", 1)[-1]
+            if executable in {
+                "bash",
+                "cmd",
+                "dash",
+                "fish",
+                "ksh",
+                "powershell",
+                "pwsh",
+                "sh",
+                "zsh",
+            }:
+                errors.append(f"{task_id} validation uses a forbidden shell")
+            if (
+                len(validation_argv) >= 2
+                and executable in {"node", "perl", "python", "python3", "ruby"}
+                and validation_argv[1] in {"-c", "-e", "--eval"}
+            ):
+                errors.append(f"{task_id} validation uses forbidden dynamic eval")
+
         predicted_files = fields.get("predicted files", "")
         predicted_submodules: list[str] = []
         if re.search(
@@ -934,6 +970,140 @@ def validate(*, check_all: bool) -> dict[str, Any]:
     }
 
 
+def _artifact_json(relative: str, errors: list[str]) -> Mapping[str, Any]:
+    """Load one task-owned JSON artifact without importing project code."""
+
+    payload = _load_json(REPO_ROOT / relative, errors)
+    if not isinstance(payload, Mapping):
+        errors.append(f"artifact must contain a JSON object: {relative}")
+        return {}
+    return payload
+
+
+def _require_nonempty_file(relative: str, errors: list[str]) -> str:
+    path = REPO_ROOT / relative
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        errors.append(f"cannot read artifact {relative}: {type(exc).__name__}")
+        return ""
+    if not text.strip():
+        errors.append(f"artifact is empty: {relative}")
+    return text
+
+
+def validate_artifact(task_id: str) -> dict[str, Any]:
+    """Validate the six data/document tasks that cannot use inline eval.
+
+    The implementation supervisor deliberately rejects ``python -c`` and
+    other dynamic-eval validation commands.  These bounded, standard-library
+    checks retain the reviewed assertions as a normal executable entry point.
+    """
+
+    task_id = str(task_id or "").strip().upper()
+    errors: list[str] = []
+    inventory_specs = {
+        "IPS-001": (
+            "docs/architecture/incremental_proof_sealer_inventory/accelerate.json",
+            ACCELERATE_REVISION,
+        ),
+        "IPS-002": (
+            "ipfs_datasets_py/docs/architecture/incremental_proof_sealer_inventory.json",
+            DATASETS_REVISION,
+        ),
+        "IPS-003": (
+            "ipfs_kit_py/docs/architecture/incremental_proof_sealer_inventory.json",
+            KIT_REVISION,
+        ),
+    }
+    if task_id in inventory_specs:
+        relative, revision = inventory_specs[task_id]
+        payload = _artifact_json(relative, errors)
+        if payload.get("repository_commit") != revision:
+            errors.append(f"{task_id} repository_commit does not match {revision}")
+        baseline = payload.get("baseline")
+        if not isinstance(baseline, Mapping):
+            errors.append(f"{task_id} baseline must be an object")
+        else:
+            exit_code = baseline.get("exit_code")
+            if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+                errors.append(f"{task_id} baseline.exit_code must be an integer")
+            if not baseline.get("command"):
+                errors.append(f"{task_id} baseline.command must be non-empty")
+        classifications = payload.get("classifications")
+        if not isinstance(classifications, (list, dict)) or not classifications:
+            errors.append(f"{task_id} classifications must be non-empty")
+    elif task_id == "IPS-053":
+        payload = _artifact_json(
+            "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json",
+            errors,
+        )
+        if not payload.get("schema_version"):
+            errors.append("IPS-053 schema_version must be non-empty")
+        transitions = payload.get("transitions")
+        if not isinstance(transitions, list) or len(transitions) != 40:
+            errors.append("IPS-053 transitions must contain exactly 40 rows")
+        elif any(
+            not isinstance(row, Mapping)
+            or row.get("measurement_provenance")
+            not in {"measured", "estimated", "mixed"}
+            for row in transitions
+        ):
+            errors.append("IPS-053 transition provenance is incomplete or invalid")
+        if not payload.get("source_revisions"):
+            errors.append("IPS-053 source_revisions must be non-empty")
+        _require_nonempty_file(
+            "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv",
+            errors,
+        )
+    elif task_id == "IPS-054":
+        payload = _artifact_json(
+            "artifacts/agent_supervisor/incremental_proof_sealer/summary.json",
+            errors,
+        )
+        if payload.get("transition_count") != 40:
+            errors.append("IPS-054 transition_count must equal 40")
+        for field in ("average_reuse_rate", "average_compute_reduction"):
+            if field not in payload:
+                errors.append(f"IPS-054 is missing {field}")
+        for field in ("best_case", "worst_case", "target_assessment"):
+            if not payload.get(field):
+                errors.append(f"IPS-054 {field} must be non-empty")
+        _require_nonempty_file(
+            "docs/architecture/INCREMENTAL_PROOF_SEALER_BENCHMARK.md",
+            errors,
+        )
+    elif task_id == "IPS-055":
+        trust = _require_nonempty_file(
+            "docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_MODEL.md",
+            errors,
+        )
+        migration = _require_nonempty_file(
+            "docs/architecture/INCREMENTAL_PROOF_SEALER_MIGRATION.md",
+            errors,
+        )
+        for term in (
+            "Integrity commitment",
+            "Signed execution receipt",
+            "Receipt-aggregation ZK proof",
+            "Direct execution proof",
+            "Incremental or recursive commit seal",
+        ):
+            if term not in trust:
+                errors.append(f"IPS-055 trust model is missing {term!r}")
+        for term in ("accept", "reverify", "reject", "simulated"):
+            if term not in migration:
+                errors.append(f"IPS-055 migration guide is missing {term!r}")
+    else:
+        errors.append(f"unsupported artifact check task: {task_id}")
+
+    return {
+        "valid": not errors,
+        "check_artifact": task_id,
+        "errors": errors,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Validate the IncrementalProofSealer fixed supervisor board"
@@ -943,8 +1113,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also verify bound Git ancestry, gitlinks, and clean tracked controls",
     )
+    parser.add_argument(
+        "--check-artifact",
+        choices=ARTIFACT_CHECK_TASKS,
+        help="run a bounded non-eval validation for one data/document task",
+    )
     args = parser.parse_args(argv)
-    result = validate(check_all=args.check_all)
+    if args.check_all and args.check_artifact:
+        parser.error("--check-all and --check-artifact are mutually exclusive")
+    result = (
+        validate_artifact(args.check_artifact)
+        if args.check_artifact
+        else validate(check_all=args.check_all)
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["valid"] else 1
 

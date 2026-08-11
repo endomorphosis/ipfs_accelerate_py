@@ -37766,9 +37766,19 @@ class PortalImplementationDaemon:
         for relative in sorted(set(candidates)):
             if relative in staged:
                 continue
+            git_location = self._proposal_expected_output_git_location(
+                workspace_path,
+                relative,
+            )
+            if git_location is None:
+                # Expected-output ownership could not be established.  Do not
+                # let rescue staging fall back to an ancestor repository: that
+                # could turn an unverifiable managed boundary into authority.
+                continue
+            git_root, git_relative, _git_repository = git_location
             add = subprocess.run(
-                ["git", "--literal-pathspecs", "add", "--", relative],
-                cwd=workspace_path,
+                ["git", "--literal-pathspecs", "add", "--", git_relative],
+                cwd=git_root,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -37781,9 +37791,9 @@ class PortalImplementationDaemon:
                         "add",
                         "--force",
                         "--",
-                        relative,
+                        git_relative,
                     ],
-                    cwd=workspace_path,
+                    cwd=git_root,
                     text=True,
                     capture_output=True,
                     check=False,

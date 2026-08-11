@@ -63,7 +63,7 @@ Global invariants for every task:
 - Depends on: IPS-000
 - Goal id: IPS-G010
 - Outputs: docs/architecture/incremental_proof_sealer_inventory/accelerate.json, docs/architecture/incremental_proof_sealer_inventory/accelerate.md
-- Validation: python -c "import json,pathlib; d=json.loads(pathlib.Path('docs/architecture/incremental_proof_sealer_inventory/accelerate.json').read_text()); assert d['repository_commit']=='8881344bb2162f3f8d82f22d8348bc0ac7536f95'; assert isinstance(d['baseline']['exit_code'],int) and d['baseline']['command'] and d['classifications']"
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-001
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/baseline
 - Parallel lane: baseline-accelerate
@@ -94,7 +94,7 @@ Global invariants for every task:
 - Depends on: IPS-000
 - Goal id: IPS-G010
 - Outputs: ipfs_datasets_py/docs/architecture/incremental_proof_sealer_inventory.json, ipfs_datasets_py/docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md
-- Validation: python -c "import json,pathlib; d=json.loads(pathlib.Path('ipfs_datasets_py/docs/architecture/incremental_proof_sealer_inventory.json').read_text()); assert d['repository_commit']=='bd2ff6245ebe476fc744d45c7c66235c92b0e19c'; assert isinstance(d['baseline']['exit_code'],int) and d['baseline']['command'] and d['classifications']"
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-002
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/baseline
 - Parallel lane: baseline-datasets
@@ -125,7 +125,7 @@ Global invariants for every task:
 - Depends on: IPS-000
 - Goal id: IPS-G010
 - Outputs: ipfs_kit_py/docs/architecture/incremental_proof_sealer_inventory.json, ipfs_kit_py/docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md
-- Validation: python -c "import json,pathlib; d=json.loads(pathlib.Path('ipfs_kit_py/docs/architecture/incremental_proof_sealer_inventory.json').read_text()); assert d['repository_commit']=='5a7a2df8181cfdc33bc19be09989df7ff83f2d4e'; assert isinstance(d['baseline']['exit_code'],int) and d['baseline']['command'] and d['classifications']"
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-003
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/baseline
 - Parallel lane: baseline-kit
@@ -1675,7 +1675,7 @@ Global invariants for every task:
 - Depends on: IPS-052
 - Goal id: IPS-G120
 - Outputs: artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json, artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv
-- Validation: python -c "import json,pathlib; p=pathlib.Path('artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json'); d=json.loads(p.read_text()); assert d['schema_version']; assert len(d['transitions'])==40; assert all(x['measurement_provenance'] in {'measured','estimated','mixed'} for x in d['transitions']); assert d['source_revisions']"
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-053
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/benchmark
 - Parallel lane: accelerate
@@ -1706,7 +1706,7 @@ Global invariants for every task:
 - Depends on: IPS-053
 - Goal id: IPS-G120
 - Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_BENCHMARK.md, artifacts/agent_supervisor/incremental_proof_sealer/summary.json
-- Validation: python -c "import json,pathlib; d=json.loads(pathlib.Path('artifacts/agent_supervisor/incremental_proof_sealer/summary.json').read_text()); assert d['transition_count']==40; assert 'average_reuse_rate' in d and 'average_compute_reduction' in d; assert d['best_case'] and d['worst_case'] and 'target_assessment' in d; assert pathlib.Path('docs/architecture/INCREMENTAL_PROOF_SEALER_BENCHMARK.md').is_file()"
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-054
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/benchmark
 - Parallel lane: accelerate
@@ -1737,7 +1737,7 @@ Global invariants for every task:
 - Depends on: IPS-044, IPS-051, IPS-054
 - Goal id: IPS-G130
 - Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_MODEL.md, docs/architecture/INCREMENTAL_PROOF_SEALER_MIGRATION.md
-- Validation: python -c "import pathlib; t=pathlib.Path('docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_MODEL.md').read_text(); m=pathlib.Path('docs/architecture/INCREMENTAL_PROOF_SEALER_MIGRATION.md').read_text(); assert all(x in t for x in ['Integrity commitment','Signed execution receipt','Receipt-aggregation ZK proof','Direct execution proof','Incremental or recursive commit seal']); assert all(x in m for x in ['accept','reverify','reject','simulated'])"
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-055
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/release
 - Parallel lane: accelerate

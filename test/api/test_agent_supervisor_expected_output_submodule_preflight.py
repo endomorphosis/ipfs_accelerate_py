@@ -291,3 +291,56 @@ def test_protected_or_symlinked_nested_output_remains_fail_closed(
     assert symlinked["regular_file"] is False
     assert symlinked["issue"] == "expected_output_force_add_forbidden"
     assert _git(child, "diff", "--cached", "--name-only") == ""
+
+
+def test_auto_rescue_stages_only_declared_output_in_child_index(
+    tmp_path: Path,
+) -> None:
+    parent, child, _baseline = _seed_parent_with_submodule(tmp_path)
+    output = "deps/child/reports/result.json"
+    report = child / "reports" / "result.json"
+    report.parent.mkdir()
+    report.write_text('{"accepted": true}\n', encoding="utf-8")
+    child_unrelated = child / "reports" / "unrelated.txt"
+    child_unrelated.write_text("leave untracked\n", encoding="utf-8")
+    parent_unrelated = parent / "unrelated.txt"
+    parent_unrelated.write_text("leave untracked\n", encoding="utf-8")
+
+    staged = _daemon(parent, tmp_path)._stage_declared_candidate_outputs(
+        parent,
+        _task(output),
+    )
+
+    assert staged == (output,)
+    assert _git(child, "diff", "--cached", "--name-only") == (
+        "reports/result.json"
+    )
+    assert _git(parent, "diff", "--cached", "--name-only") == ""
+    assert _git(child, "status", "--porcelain", "--", "reports/unrelated.txt") == (
+        "?? reports/unrelated.txt"
+    )
+    assert _git(parent, "status", "--porcelain", "--", "unrelated.txt") == (
+        "?? unrelated.txt"
+    )
+
+
+def test_auto_rescue_does_not_stage_unmanaged_submodule_output(
+    tmp_path: Path,
+) -> None:
+    parent, child, _baseline = _seed_parent_with_submodule(tmp_path)
+    output = "deps/child/reports/result.json"
+    report = child / "reports" / "result.json"
+    report.parent.mkdir()
+    report.write_text('{"accepted": false}\n', encoding="utf-8")
+
+    staged = _daemon(
+        parent,
+        tmp_path,
+        configured=False,
+    )._stage_declared_candidate_outputs(parent, _task(output))
+
+    assert staged == ()
+    assert _git(child, "diff", "--cached", "--name-only") == ""
+    assert _git(child, "status", "--porcelain", "--", "reports/result.json") == (
+        "?? reports/result.json"
+    )
