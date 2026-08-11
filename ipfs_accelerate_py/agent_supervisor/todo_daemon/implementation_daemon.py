@@ -161,7 +161,11 @@ from ..validation.validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
-from .worktrees import WorktreeLease, WorktreePool
+from .worktrees import (
+    WorktreeLease,
+    WorktreePool,
+    python_identifier_worktree_basename,
+)
 
 REPO_ROOT = Path.cwd()
 
@@ -16781,7 +16785,13 @@ class PortalImplementationDaemon:
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
         attempt_stamp = int(time.time())
-        worktree_path = self.worktree_root / f"{execution_id}-attempt-{attempt}-{attempt_stamp}"
+        worktree_path = self.worktree_root / python_identifier_worktree_basename(
+            "workspace",
+            execution_id,
+            "attempt",
+            attempt,
+            attempt_stamp,
+        )
         branch_name = f"implementation/{execution_id}-attempt-{attempt}-{attempt_stamp}"
         baseline_ref = ""
         implementation_commit = ""
@@ -27573,7 +27583,13 @@ class PortalImplementationDaemon:
         merge_root.mkdir(parents=True, exist_ok=True)
         safe_target = self._safe_ref_path_fragment(target_branch)
         safe_branch = self._safe_ref_path_fragment(branch_name)
-        workspace = merge_root / f"{safe_target}-{safe_branch}-{os.getpid()}-{int(time.time())}"
+        workspace = merge_root / python_identifier_worktree_basename(
+            "main_merge",
+            safe_target,
+            safe_branch,
+            os.getpid(),
+            int(time.time()),
+        )
         self._run_git(["worktree", "add", str(workspace), target_branch], cwd=self.repo_root)
         return {
             "available": True,
@@ -30027,7 +30043,11 @@ class PortalImplementationDaemon:
                 f"{submodule_branch}\0{time.time_ns()}"
             ).encode("utf-8", errors="surrogateescape")
         ).hexdigest()[:20]
-        workspace = worktree_root / f"{digest}-{os.getpid()}"
+        workspace = worktree_root / python_identifier_worktree_basename(
+            "submodule_target",
+            digest,
+            os.getpid(),
+        )
         add = subprocess.run(
             ["git", "worktree", "add", "--detach", str(workspace), target_base_commit],
             cwd=source,
@@ -30252,7 +30272,12 @@ class PortalImplementationDaemon:
         recovery_root = self._submodule_recovery_worktree_root()
         recovery_root.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256(f"{relative}\0{ours}\0{theirs}".encode()).hexdigest()[:16]
-        workspace = recovery_root / f"{digest}-{os.getpid()}-{time.time_ns()}"
+        workspace = recovery_root / python_identifier_worktree_basename(
+            "submodule_recovery",
+            digest,
+            os.getpid(),
+            time.time_ns(),
+        )
         add = subprocess.run(
             ["git", "worktree", "add", "--detach", str(workspace), ours],
             cwd=source,
