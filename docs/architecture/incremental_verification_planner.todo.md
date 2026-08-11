@@ -464,7 +464,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-014 Execute verification plans and recompute acceptance
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
