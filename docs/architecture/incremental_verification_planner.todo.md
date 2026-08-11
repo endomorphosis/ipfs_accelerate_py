@@ -647,3 +647,15 @@ empty for every task because it is not a configured-board dispatch input.
 - LLM context budget bytes: 230000
 - Acceptance: Required public names import lazily; focused test matrix and the declared existing identity/proof-reuse/formal-cache/validation/process-tree/resource regressions pass; ruff passes for new package/tests; target branch has no unmanaged changes; final report truthfully records measured results/limitations and no stale, simulated, timeout, unavailable, unknown, not_modeled, invalid, cancelled, or pending full-suite receipt is accepted as production success.
 - Embedding query: terminal release fan in public incremental verification APIs full tests ruff report clean branch
+
+## IVP-020 Resolve validation retry-budget failure for IVP-019
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: IVP-016, IVP-017, IVP-018
+- Outputs: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, data/agent_supervisor/incremental_verification_planner/state/discovery
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
+
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in IVP-019. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/state/discovery/2026-08-11-ivp-020-ivp-019-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release IVP-019 from strategy blocked_tasks.
