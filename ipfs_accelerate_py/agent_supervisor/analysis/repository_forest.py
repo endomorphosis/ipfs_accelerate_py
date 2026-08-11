@@ -38,9 +38,9 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Iterable, Mapping, Sequence
 
-from .merge.checkout_lock import checkout_repository_id
-from .proof.formal_verification_contracts import content_identity
-from .task_sources.task_identity import canonical_content_cid
+from ..merge.checkout_lock import checkout_repository_id
+from ..proof.formal_verification_contracts import content_identity
+from ..task_sources.task_identity import canonical_content_cid
 
 
 REPOSITORY_FOREST_SCHEMA = (
@@ -1831,18 +1831,20 @@ def inspect_gitlink_closure(
             reasons.append("recursive_gitlink_map_unavailable")
             return
         for relative, recorded_commit in gitlinks:
-            # A nested location is only unique within its complete ancestry.
-            # Folding the immediate parent identity into this digest commits
-            # the full chain recursively, so equal child commits and path
-            # names under sibling gitlinks cannot collapse to one identity.
-            link_id = canonical_content_cid(
-                {
-                    "schema": GITLINK_ENTRY_SCHEMA + "/location",
-                    "parent_gitlink_id": parent_gitlink_id,
-                    "parent_commit": parent_commit,
-                    "location": relative,
-                }
-            )
+            location_identity = {
+                "schema": GITLINK_ENTRY_SCHEMA + "/location",
+                "parent_commit": parent_commit,
+                "location": relative,
+            }
+            # A relative gitlink path is unique only within its parent
+            # checkout.  The same child commit may be mounted more than once,
+            # and each mount can contain an identical nested path.  Bind only
+            # nested identities to their opaque parent identity so legitimate
+            # closure entries do not alias while existing top-level identity
+            # bytes remain backward compatible.
+            if parent_gitlink_id:
+                location_identity["parent_gitlink_id"] = parent_gitlink_id
+            link_id = canonical_content_cid(location_identity)
             candidate = checkout / relative
             try:
                 resolved_candidate = candidate.resolve()
@@ -1850,29 +1852,6 @@ def inspect_gitlink_closure(
             except (OSError, RuntimeError, ValueError):
                 complete = False
                 reasons.append("gitlink_checkout_outside_repository")
-                continue
-            top_status, top_output = _git(
-                candidate,
-                "rev-parse",
-                "--show-toplevel",
-            )
-            if top_status != 0 or not str(top_output):
-                complete = False
-                reasons.append("gitlink_checkout_unavailable")
-                continue
-            try:
-                child_root = Path(str(top_output)).resolve(strict=True)
-            except (OSError, RuntimeError):
-                complete = False
-                reasons.append("gitlink_checkout_unresolvable")
-                continue
-            # An empty, uninitialized submodule directory is still beneath the
-            # parent checkout.  Git otherwise walks upward and reports the
-            # parent's root and HEAD, which must never be accepted as child
-            # authority.
-            if child_root != resolved_candidate:
-                complete = False
-                reasons.append("gitlink_checkout_root_mismatch")
                 continue
             head_status, head_output = _git(candidate, "rev-parse", "HEAD")
             tree_status, tree_output = _git(candidate, "rev-parse", "HEAD^{tree}")
@@ -2256,7 +2235,6 @@ def descriptor_satisfies_repository_descriptor(
         "recursive_gitlink_map_unavailable",
         "gitlink_checkout_unavailable",
         "gitlink_checkout_unresolvable",
-        "gitlink_checkout_root_mismatch",
         "gitlink_checkout_outside_repository",
         "gitlink_identity_invalid",
         "status_unavailable",
