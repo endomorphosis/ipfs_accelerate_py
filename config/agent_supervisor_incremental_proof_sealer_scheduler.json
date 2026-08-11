@@ -4,6 +4,9 @@
   "objectives_path": "docs/architecture/incremental_proof_sealer.objectives.md",
   "plan_path": "docs/architecture/INCREMENTAL_PROOF_SEALER_PLAN.md",
   "validator_path": "scripts/validate_incremental_proof_sealer_board.py",
+  "baseline_capture_script": "scripts/capture_incremental_proof_sealer_baselines.py",
+  "baseline_suite_registry": "config/incremental_proof_sealer_baseline_suite_registry.json",
+  "baseline_suite_registry_digest": "sha256:a15c27f0971495a221e851bc5191cf16302aca5fc4043d93b4eae8b93f86b909",
   "task_prefix": "## IPS-",
   "goal_prefix": "IPS-G",
   "board_namespace": "incremental-proof-sealer-v1",
@@ -48,7 +51,7 @@
   "implementation_retry_budget": 4,
   "validation_retry_budget": 4,
   "merge_retry_budget": 4,
-  "implementation_timeout_seconds": 7200,
+  "implementation_timeout_seconds": 10800,
   "implementation_max_timeout_seconds": 14400,
   "implementation_log_stall_seconds": 1200,
   "validation_max_workers": 3,
@@ -59,8 +62,11 @@
     "docs/architecture/incremental_proof_sealer.objectives.md",
     "docs/architecture/incremental_proof_sealer.todo.md",
     "config/agent_supervisor_incremental_proof_sealer_scheduler.json",
-    "scripts/validate_incremental_proof_sealer_board.py"
+    "config/incremental_proof_sealer_baseline_suite_registry.json",
+    "scripts/validate_incremental_proof_sealer_board.py",
+    "scripts/capture_incremental_proof_sealer_baselines.py"
   ],
+  "operator_baseline_receipts": {},
   "runtime_paths": {
     "root": "data/agent_supervisor/incremental_proof_sealer",
     "state": "data/agent_supervisor/incremental_proof_sealer/state",

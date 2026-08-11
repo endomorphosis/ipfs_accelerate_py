@@ -64,13 +64,13 @@ IPS-G000  IncrementalProofSealer release
 - Parallel lane: baseline
 - Resource class: cpu-medium
 - Goal: Inspect exact bound commits, executable proof/storage/scheduler code and focused tests in all three repositories before implementation, and classify every proof/receipt path by what it actually establishes.
-- Evidence: ips/accelerate-inventory@1, ips/datasets-inventory@1, ips/kit-inventory@1, ips/trust-matrix@1
-- Acceptance criteria: exact revisions; real/simulated/mock/structural classification; trusted setup/key assumptions; baseline commands/results; direct-execution versus receipt-consistency distinction; existing authority map
+- Evidence: ips/accelerate-inventory@2, ips/datasets-inventory@2, ips/kit-inventory@2, ips/trust-matrix@2
+- Acceptance criteria: exact revisions; real/simulated/mock/structural classification; trusted setup/key assumptions; fixed operator-captured pytest receipts referenced without copied provider outcomes; direct-execution versus receipt-consistency distinction; existing authority map
 - Outputs: docs/architecture/incremental_proof_sealer_inventory, docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_BASELINE.md
 - Validation: python scripts/validate_incremental_proof_sealer_board.py --check-all
-- Acceptance: No implementation task is ready before the three inventories and synthesis are complete; pre-existing failures remain explicit.
+- Acceptance: No implementation task is ready before the three reference-only inventories and closed trust synthesis are complete; pre-existing failures remain explicit, and the inventory agents neither execute pytest nor turn operator process observations into cryptographic execution claims.
 - Gap task: IPS-001, IPS-002, IPS-003, IPS-004
-- Refinement: Run repository inventories in parallel, then synthesize one reviewed cross-repository boundary/trust record.
+- Refinement: Capture all fixed baseline suites once under operator control, run the three read-only inventories in parallel against exact protected receipt references, then synthesize one reviewed cross-repository boundary/trust record.
 - Conflict policy: Read executable code and run existing focused tests; do not install dependencies, build/download keys, or rely on documentation claims alone.
 
 ## IPS-G020 Canonical proof-unit, manifest, identity, and cache-key contracts
@@ -214,7 +214,7 @@ IPS-G000  IncrementalProofSealer release
 - Evidence: ips/full-seal@1, ips/delta-seal@1, ips/atomic-transition@1, ips/seal-verification@1, ips/compaction@1
 - Acceptance criteria: exact parent/branch/revision binding; complete required set; added/removed/reused/replaced correctness; CAS publication; chain retention
 - Outputs: ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py, ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/verification.py
-- Validation: python -m pytest -q test/api/incremental_sealing/test_seals.py test/api/incremental_sealing/test_compaction.py
+- Validation: python -m pytest -q test/api/incremental_sealing/test_full_checkpoint.py test/api/incremental_sealing/test_delta_seal.py test/api/incremental_sealing/test_atomic_sealer.py test/api/incremental_sealing/test_verification.py test/api/incremental_sealing/test_compaction.py
 - Acceptance: Wrong parent/replay, missing invalidation, stale aggregate, and lost unaffected leaf fail; compaction verifies complete history and preserves retained evidence.
 - Gap task: IPS-038, IPS-039, IPS-040, IPS-041, IPS-042
 - Refinement: Full and delta construction land separately before atomic workflow, public verification/explanation, and compaction.
@@ -319,8 +319,8 @@ IPS-G000  IncrementalProofSealer release
 - Evidence: ips/trust-model@1, ips/migration-guide@1, ips/final-report@1, ips/final-validation@1
 - Acceptance criteria: exact commits/systems/test classifications/modules/rules/results; direct versus signed versus integrity claims; remaining production gaps; clean nested commits and gitlinks
 - Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_MODEL.md, docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md
-- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-all && python -m pytest -q test/api/incremental_sealing ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing ipfs_kit_py/tests/proof_seal_store
-- Acceptance: All focused tests and tamper/recovery gates pass, benchmark/report evidence is current, and no final sentence overstates what the selected proof systems establish.
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --run-release-validation
+- Acceptance: The three new incremental-sealing suites and all tamper/recovery gates pass; each protected existing suite is green or baseline-compatible-or-improved, with every retained non-green baseline issue named rather than hidden; secret-scanned benchmark/report evidence is current; and no final sentence overstates what the selected proof systems establish.
 - Gap task: IPS-055, IPS-056
 - Refinement: Documentation follows measured behavior; terminal fan-in may only repair demonstrated integration/regression gaps.
 - Conflict policy: Do not claim repository correctness, proven pytest execution, or direct computation from receipt aggregation or integrity commitments.

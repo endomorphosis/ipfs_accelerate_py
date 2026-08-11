@@ -201,6 +201,7 @@ state/**/*.out
 !config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
 # Stable IncrementalProofSealer scheduler policy is a source artifact.
 !config/agent_supervisor_incremental_proof_sealer_scheduler.json
+!config/incremental_proof_sealer_baseline_suite_registry.json
 # Stable IPFS Kit kernel-VFS/FUSE scheduler policy is a source artifact.
 !config/agent_supervisor_ipfs_kit_fuse_vfs_scheduler.json
 /data/agent_supervisor/ipfs_kit_fuse_vfs/
@@ -221,4 +222,24 @@ state/**/*.out
 !docs/architecture/formal_verification_authoritative_vendor_release.json
 !docs/architecture/formal_verification_post_remediation_delta.json
 !docs/architecture/formal_verification_production_authorization_replacement_receipt.json
+
+# Stable IncrementalProofSealer evidence: the three operator receipts, their
+# bounded public transcripts, and the exact named supervisor deliverables below.
+!/artifacts/
+!/artifacts/agent_supervisor/
+!/artifacts/agent_supervisor/incremental_proof_sealer/
+!/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/
+/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/*
+!/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json
+!/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/datasets.json
+!/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/kit.json
+!/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/
+/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/*
+!/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/*.log
+/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/
+!/artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json
+!/artifacts/agent_supervisor/incremental_proof_sealer/summary.json
+!/artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json
+!/artifacts/agent_supervisor/incremental_proof_sealer/release_validation.log
+/artifacts/agent_supervisor/incremental_proof_sealer/release-work/
 !docs/architecture/formal_verification_g213_terminal_evidence.json

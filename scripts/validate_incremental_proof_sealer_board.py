@@ -1,25 +1,35 @@
-#!/usr/bin/env python3
 """Cheap, fail-closed validator for the IncrementalProofSealer board.
 
-The validator deliberately uses only the Python standard library.  It checks
-the reviewed control-plane contract; it does not import project packages, run
-proof backends, install dependencies, or mutate any repository.
+The validator deliberately uses only the Python standard library.  Ordinary
+check modes are read-only and do not import project packages, run proof
+backends, install dependencies, or mutate a repository.  Two explicit runner
+modes execute fixed benchmark/release argv and publish only their declared
+artifacts.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
+import math
+import os
 import re
+import selectors
 import shlex
+import shutil
+import signal
+import stat
 import subprocess
 import sys
+import time
 from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = (
@@ -40,6 +50,16 @@ BRANCH = "agent/incremental-proof-sealer-v1"
 ACCELERATE_REVISION = "8881344bb2162f3f8d82f22d8348bc0ac7536f95"
 DATASETS_REVISION = "bd2ff6245ebe476fc744d45c7c66235c92b0e19c"
 KIT_REVISION = "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e"
+PLANNING_TREES = {
+    "accelerate": "25b334babbf93e9891178c04b9169ddd8fd89f3c",
+    "datasets": "ec59c4527dd442e6318c24a79a9f4ad80b4548a9",
+    "kit": "55e8dd7139658e23ba0f278e70a28b118f0aee3f",
+}
+REPOSITORY_PATHS = {
+    "accelerate": Path("."),
+    "datasets": Path("ipfs_datasets_py"),
+    "kit": Path("ipfs_kit_py"),
+}
 
 TASK_IDS = tuple(f"IPS-{index:03d}" for index in range(57))
 GOAL_IDS = ("IPS-G000",) + tuple(
@@ -52,13 +72,150 @@ ARTIFACT_CHECK_TASKS = (
     "IPS-001",
     "IPS-002",
     "IPS-003",
+    "IPS-004",
     "IPS-053",
     "IPS-054",
     "IPS-055",
+    "IPS-056",
 )
 
+BASELINE_RECEIPT_ROOT = (
+    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts"
+)
+BASELINE_LOG_ROOT = f"{BASELINE_RECEIPT_ROOT}/logs"
+BASELINE_RECEIPT_SCHEMA = "incremental-proof-sealer-baseline-receipt@4"
+BASELINE_OPERATOR_ORIGIN = "operator_capture"
+BASELINE_ENVIRONMENT_POLICY = "incremental-proof-sealer-controlled-offline-pytest@2"
+BASELINE_IGNORED_INPUT_POLICY = "incremental-proof-sealer-clean-materialized-trees@1"
+BASELINE_GIT_ENVIRONMENT_POLICY = "incremental-proof-sealer-fixed-git-environment@1"
+BASELINE_MAX_RECEIPT_BYTES = 2 * 1024 * 1024
+BASELINE_MAX_LOG_BYTES = 64 * 1024 * 1024
+BASELINE_MAX_REGISTRY_BYTES = 256 * 1024
+BASELINE_DEFAULT_OBSERVATION = (
+    "Current controlled-offline pytest observation; historical counts are not "
+    "reconstructed or claimed."
+)
+BASELINE_CORE_15_OBSERVATION = (
+    "New current controlled-offline 15-path pytest observation; it does not "
+    "reconstruct or claim the historical 257-result slice."
+)
+BASELINE_ENVIRONMENT_KEYS = frozenset(
+    {
+        "CARGO_NET_OFFLINE",
+        "COLUMNS",
+        "GIT_TERMINAL_PROMPT",
+        "HF_DATASETS_OFFLINE",
+        "HF_HUB_OFFLINE",
+        "HOME",
+        "HYPOTHESIS_STORAGE_DIRECTORY",
+        "IPFS_ACCEL_AUTO_INSTALL",
+        "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS",
+        "IPFS_DATASETS_ENABLE_GROTH16",
+        "IPFS_DATASETS_PY_AUTO_GROTH16_BUILD",
+        "IPFS_DATASETS_RUN_GROTH16_EVM",
+        "IPFS_DATASETS_RUN_PROVEKIT_TESTS",
+        "IPFS_OFFLINE",
+        "IPFS_PATH",
+        "IPFS_TEST_PROOF_REUSE_MODE",
+        "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL",
+        "LANG",
+        "LC_ALL",
+        "NO_COLOR",
+        "PATH",
+        "PIP_DISABLE_PIP_VERSION_CHECK",
+        "PIP_NO_INDEX",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONHASHSEED",
+        "PYTHONPYCACHEPREFIX",
+        "PYTHONPATH",
+        "PYTEST_ADDOPTS",
+        "TERM",
+        "TMPDIR",
+        "TRANSFORMERS_OFFLINE",
+        "TZ",
+    }
+)
+BASELINE_OUTCOME_FIELDS = (
+    "passed",
+    "failed",
+    "errors",
+    "skipped",
+    "deselected",
+    "xfailed",
+    "xpassed",
+    "selected",
+)
+BASELINE_RECEIPT_SPECS: Mapping[str, Mapping[str, Any]] = {
+    "IPS-001": {
+        "repository": "accelerate",
+        "revision": ACCELERATE_REVISION,
+        "receipt": f"{BASELINE_RECEIPT_ROOT}/accelerate.json",
+        "inventory": (
+            "docs/architecture/incremental_proof_sealer_inventory/accelerate.json"
+        ),
+        "report": (
+            "docs/architecture/incremental_proof_sealer_inventory/accelerate.md"
+        ),
+        "command_ids": (
+            "accelerate-proof-focused-core-15",
+            "accelerate-proof-focused-wide-36",
+            "accelerate-proof-reuse-migration",
+            "accelerate-proof-reuse-cross-repo",
+        ),
+        "cwd": ".",
+        "timeouts": (300, 600, 600, 300),
+    },
+    "IPS-002": {
+        "repository": "datasets",
+        "revision": DATASETS_REVISION,
+        "receipt": f"{BASELINE_RECEIPT_ROOT}/datasets.json",
+        "inventory": (
+            "ipfs_datasets_py/docs/architecture/"
+            "incremental_proof_sealer_inventory.json"
+        ),
+        "report": (
+            "ipfs_datasets_py/docs/architecture/"
+            "INCREMENTAL_PROOF_SEALER_INVENTORY.md"
+        ),
+        "command_ids": (
+            "datasets-zkp-focused-current",
+            "datasets-zkp-unit-wide-current",
+            "datasets-proof-cache-adapters",
+            "datasets-zkp-broad-safe-current",
+        ),
+        "cwd": "ipfs_datasets_py",
+        "timeouts": (600, 600, 300, 600),
+    },
+    "IPS-003": {
+        "repository": "kit",
+        "revision": KIT_REVISION,
+        "receipt": f"{BASELINE_RECEIPT_ROOT}/kit.json",
+        "inventory": (
+            "ipfs_kit_py/docs/architecture/"
+            "incremental_proof_sealer_inventory.json"
+        ),
+        "report": (
+            "ipfs_kit_py/docs/architecture/"
+            "INCREMENTAL_PROOF_SEALER_INVENTORY.md"
+        ),
+        "command_ids": (
+            "kit-proof-certificate",
+            "kit-reuse-capabilities",
+            "kit-profile-d",
+            "kit-coordination",
+            "kit-modern-wal",
+            "kit-proof-reuse-bootstrap",
+            "kit-agent-receipts",
+            "kit-iroh-release",
+            "kit-release-receipt",
+        ),
+        "cwd": "ipfs_kit_py",
+        "timeouts": (120, 120, 120, 120, 300, 300, 120, 120, 120),
+    },
+}
+
 EXPECTED_TASK_GROUPS: Mapping[str, tuple[str, ...]] = {
-    "IPS-G010": tuple(f"IPS-{index:03d}" for index in range(0, 5)),
+    "IPS-G010": tuple(f"IPS-{index:03d}" for index in range(5)),
     "IPS-G020": tuple(f"IPS-{index:03d}" for index in range(5, 13)),
     "IPS-G030": tuple(f"IPS-{index:03d}" for index in range(13, 18)),
     "IPS-G040": tuple(f"IPS-{index:03d}" for index in range(18, 23)),
@@ -137,6 +294,219 @@ CONTROL_PATHS = (
     "docs/architecture/incremental_proof_sealer.todo.md",
     "scripts/validate_incremental_proof_sealer_board.py",
 )
+BASELINE_CAPTURE_SCRIPT = "scripts/capture_incremental_proof_sealer_baselines.py"
+BASELINE_SUITE_REGISTRY = "config/incremental_proof_sealer_baseline_suite_registry.json"
+BASELINE_SUITE_REGISTRY_SCHEMA = "incremental-proof-sealer-reviewed-suite-registry@1"
+BASELINE_SUITE_REGISTRY_DIGEST = (
+    "sha256:a15c27f0971495a221e851bc5191cf16302aca5fc4043d93b4eae8b93f86b909"
+)
+BASELINE_SYNTHESIS_SCHEMA = "incremental-proof-sealer-trust-baseline@2"
+BASELINE_SYNTHESIS_JSON = (
+    "docs/architecture/incremental_proof_sealer_inventory/matrix.json"
+)
+BASELINE_SYNTHESIS_REPORT = (
+    "docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_BASELINE.md"
+)
+BASE_PROTECTED_PATHS = CONTROL_PATHS + (
+    BASELINE_CAPTURE_SCRIPT,
+    BASELINE_SUITE_REGISTRY,
+)
+
+BENCHMARK_SCHEMA = "incremental-proof-sealer-benchmark-results@2"
+BENCHMARK_ID = "incremental-proof-sealer-40-transition@1"
+BENCHMARK_SEED = 20260811
+BENCHMARK_TRANSITION_COUNT = 40
+BENCHMARK_JSON = "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json"
+BENCHMARK_CSV = "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv"
+BENCHMARK_CLI = "benchmarks/agent_supervisor/incremental_proof_sealer.py"
+BENCHMARK_MAX_ARTIFACT_BYTES = 1024 * 1024
+BENCHMARK_VALIDATION_ARGV = (
+    "python",
+    "scripts/validate_incremental_proof_sealer_board.py",
+    "--run-benchmark",
+)
+MATERIALIZATION_REQUEST_SCHEMA = "incremental-proof-sealer-materialization-request@1"
+BENCHMARK_REQUEST_JSON = (
+    b'{"schema_version":"incremental-proof-sealer-materialization-request@1",'
+    b'"task_id":"IPS-053"}\n'
+)
+BENCHMARK_REQUEST_CSV = b"incremental-proof-sealer-materialization-request@1,IPS-053\n"
+BENCHMARK_SCENARIOS = (
+    "initial repository",
+    "localized private source edit",
+    "unrelated documentation",
+    "one test-source edit",
+    "one fixture edit",
+    "unrelated module edit",
+    "public-interface edit",
+    "dependent module edit",
+    "selected test addition",
+    "authorized test deletion",
+    "relevant configuration edit",
+    "ordinary documentation",
+    "dependency-lock class upgrade",
+    "localized source edit",
+    "two independent module edits",
+    "branch A edit",
+    "branch B edit from prior accepted parent",
+    "merge A/B",
+    "rollback of source bytes",
+    "property-test edit",
+    "periodic N-commit checkpoint",
+    "documentation-only",
+    "circuit version change",
+    "localized source edit",
+    "verification-key change",
+    "test-selector change",
+    "network-policy change",
+    "environment trust-policy change",
+    "integration fixture edit",
+    "requirement policy change",
+    "periodic checkpoint",
+    "integration-test addition",
+    "proof schema/canonicalization change",
+    "checked-specification document edit",
+    "ordinary documentation edit",
+    "injected cache corruption detection",
+    "two independent modules",
+    "wrong-parent attempt then valid",
+    "merge plus unaffected reuse",
+    "release tag/compaction",
+)
+BENCHMARK_FULL_TRANSITIONS = frozenset({0, 12, 20, 22, 24, 27, 30, 32, 35, 39})
+BENCHMARK_CONDITIONAL_FULL_TRANSITIONS = frozenset({17, 29, 38})
+BENCHMARK_METRICS = (
+    "leaf_proving_seconds",
+    "aggregation_seconds",
+    "prover_cpu_seconds",
+    "prover_gpu_seconds",
+    "peak_memory_bytes",
+    "proof_size_bytes",
+    "seal_size_bytes",
+    "storage_growth_bytes",
+    "seal_verification_seconds",
+    "wall_clock_seconds",
+    "full_proof_cost",
+    "incremental_proof_cost",
+)
+BENCHMARK_CSV_FIELDS = (
+    "index",
+    "scenario",
+    "seal_status",
+    "measurement_provenance",
+    "required_units",
+    "reused_units",
+    "invalidated_units",
+    "added_units",
+    "removed_units",
+    "newly_proved_units",
+    "cache_hit_rate",
+    *BENCHMARK_METRICS,
+    "compute_saved_percent",
+    "chain_depth",
+    "fallback_reason",
+    "deterministic_roots_match",
+    "simulated_required_units",
+)
+BENCHMARK_SUMMARY_SCHEMA = "incremental-proof-sealer-benchmark-summary@1"
+BENCHMARK_SUMMARY_JSON = (
+    "artifacts/agent_supervisor/incremental_proof_sealer/summary.json"
+)
+BENCHMARK_REPORT = "docs/architecture/INCREMENTAL_PROOF_SEALER_BENCHMARK.md"
+
+TRUST_BASELINE_AUTHORITIES = {
+    "proof_unit_manifest_identity": "ipfs_datasets_py",
+    "proof_object_cache_forest_wal_cas": "ipfs_kit_py",
+    "prover_scheduler_aggregation_planner_metrics": "ipfs_accelerate_py",
+}
+TRUST_BASELINE_PROOF_CLASS_DECISIONS = {
+    "integrity_commitment": "integrity_only",
+    "signed_execution_receipt": "trusted_signer_assertion_not_direct_execution",
+    "receipt_aggregation_zk_proof": "receipt_completeness_not_test_execution",
+    "direct_execution_proof": "declared_computation_only",
+    "incremental_commit_seal": "parent_bound_verified_leaf_transition",
+}
+TRUST_BASELINE_AGGREGATION_DECISION = {
+    "mode": "merkle_manifest_aggregation",
+    "recursive_self_verification_supported": False,
+    "child_proofs_individually_verified": True,
+    "test_execution_directly_proven": False,
+}
+TRUST_BASELINE_BACKEND_DECISIONS = {
+    "existing_recursive_backend": "unsupported",
+    "groth16": "bounded_declared_computation_only",
+    "provekit": "optional_capability_unavailable_is_typed",
+    "simulated": "production_seal_forbidden",
+    "unknown": "rejected",
+}
+TRUST_BASELINE_NONCLAIMS = (
+    "entire_repository_proven_correct",
+    "pytest_execution_cryptographically_proven",
+    "semantically_correct_change",
+    "recursive_proof_verification_available",
+)
+
+RELEASE_VALIDATION_SCHEMA = "incremental-proof-sealer-release-validation@2"
+RELEASE_VALIDATION_JSON = (
+    "artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json"
+)
+RELEASE_VALIDATION_LOG = (
+    "artifacts/agent_supervisor/incremental_proof_sealer/release_validation.log"
+)
+RELEASE_WORK_ROOT = "artifacts/agent_supervisor/incremental_proof_sealer/release-work"
+RELEASE_REPORT = "docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md"
+RELEASE_RUNNER_ID = "protected-board-release-validation-runner@1"
+RELEASE_ENVIRONMENT_POLICY = "incremental-proof-sealer-current-tree-offline-pytest@1"
+RELEASE_PUBLIC_LOG_POLICY = "public-full-log-secret-scan@1"
+RELEASE_FIXED_EXECUTABLE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+RELEASE_MAX_LOG_BYTES = 6 * 1024 * 1024
+RELEASE_MAX_REPORT_BYTES = 1024 * 1024
+RELEASE_PROCESS_MAX_OUTPUT_BYTES = 256 * 1024
+RELEASE_VALIDATION_ARGV = (
+    "python",
+    "scripts/validate_incremental_proof_sealer_board.py",
+    "--run-release-validation",
+)
+RELEASE_REQUEST_JSON = (
+    b'{"schema_version":"incremental-proof-sealer-materialization-request@1",'
+    b'"task_id":"IPS-056"}\n'
+)
+RELEASE_REQUEST_LOG = b"incremental-proof-sealer-materialization-request@1 IPS-056\n"
+RELEASE_REPORT_REQUEST_MARKER = "<!-- IPS-056 RELEASE EVIDENCE: MATERIALIZE ONCE -->"
+BENCHMARK_PROPOSAL_ENVELOPE = {
+    "schema": "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1",
+    "paths": [BENCHMARK_JSON, BENCHMARK_CSV],
+    "max_file_bytes": 2_000_000,
+    "max_patch_bytes": 4_000_000,
+    "max_output_bytes": 8_000_000,
+}
+RELEASE_PROPOSAL_ENVELOPE = {
+    "schema": "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1",
+    "paths": [RELEASE_REPORT, RELEASE_VALIDATION_JSON, RELEASE_VALIDATION_LOG],
+    "max_file_bytes": 7_000_000,
+    "max_patch_bytes": 12_000_000,
+    "max_output_bytes": 20_000_000,
+}
+RELEASE_NEW_SUITES = (
+    (
+        "accelerate-incremental-sealing",
+        ".",
+        "test/api/incremental_sealing",
+        1200,
+    ),
+    (
+        "datasets-incremental-sealing",
+        "ipfs_datasets_py",
+        "tests/unit/logic/zkp/incremental_sealing",
+        1200,
+    ),
+    (
+        "kit-proof-seal-store",
+        "ipfs_kit_py",
+        "tests/proof_seal_store",
+        1200,
+    ),
+)
 
 REQUIRED_PLAN_CONCEPTS = (
     "IntegrityCommitment",
@@ -174,6 +544,13 @@ REQUIRED_PLAN_CONCEPTS = (
     "manifest aggregation",
     "bounded fan-in",
     "chain compaction",
+    "render-pins",
+    "--check-bootstrap",
+    "incremental-proof-sealer-trust-baseline@2",
+    "incremental-proof-sealer-benchmark-results@2",
+    "--run-benchmark",
+    "incremental-proof-sealer-release-validation@2",
+    "--run-release-validation",
 )
 REQUIRED_CLI_TERMS = (
     "`full`",
@@ -250,8 +627,23 @@ def _reject_nonfinite(value: str) -> None:
 
 def _load_json(path: Path, errors: list[str]) -> dict[str, Any]:
     try:
+        relative = path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        errors.append(f"refusing to load JSON outside repository: {path}")
+        return {}
+    retained = _secure_read_repo_file(
+        relative,
+        required_parent=str(Path(relative).parent),
+        label=f"JSON input {relative}",
+        maximum_bytes=BASELINE_MAX_RECEIPT_BYTES,
+        bound_label="two-MiB",
+        errors=errors,
+    )
+    if retained is None:
+        return {}
+    try:
         result = json.loads(
-            path.read_text(encoding="utf-8"),
+            retained[0].decode("utf-8"),
             object_pairs_hook=_reject_duplicate_pairs,
             parse_constant=_reject_nonfinite,
         )
@@ -326,6 +718,44 @@ def _as_int(value: str) -> int | None:
         return None
 
 
+def _validation_argv(
+    owner_id: str,
+    value: str,
+    errors: list[str],
+) -> list[str]:
+    """Parse one direct-exec validation command and reject shell syntax."""
+
+    if re.search(r"[;&|<>`]", value) or "$(" in value:
+        errors.append(f"{owner_id} validation contains a forbidden shell control operator")
+    try:
+        argv = shlex.split(value)
+    except ValueError as exc:
+        errors.append(f"{owner_id} validation command does not parse: {exc}")
+        return []
+    if not argv:
+        return argv
+    executable = argv[0].replace("\\", "/").rsplit("/", 1)[-1]
+    if executable in {
+        "bash",
+        "cmd",
+        "dash",
+        "fish",
+        "ksh",
+        "powershell",
+        "pwsh",
+        "sh",
+        "zsh",
+    }:
+        errors.append(f"{owner_id} validation uses a forbidden shell")
+    if (
+        len(argv) >= 2
+        and executable in {"node", "perl", "python", "python3", "ruby"}
+        and argv[1] in {"-c", "-e", "--eval"}
+    ):
+        errors.append(f"{owner_id} validation uses forbidden dynamic eval")
+    return argv
+
+
 def _cycle_nodes(graph: Mapping[str, Iterable[str]]) -> set[str]:
     """Return nodes participating in, or downstream from, a dependency cycle."""
 
@@ -377,13 +807,33 @@ def _ancestors(node: str, dependencies: Mapping[str, set[str]]) -> set[str]:
     return reached
 
 
+def _fixed_git_environment() -> dict[str, str]:
+    # Revision, cleanliness, and diff decisions are trust boundaries.  Do not
+    # let caller-supplied GIT_DIR/GIT_INDEX_FILE/object alternates or user Git
+    # configuration redirect those decisions.
+    return {
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME": "/nonexistent",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
+
 def _git(
-    *args: str, cwd: Path = REPO_ROOT, timeout: float = 3.0
+    *args: str, cwd: Path | None = None, timeout: float = 3.0
 ) -> subprocess.CompletedProcess[str]:
+    if cwd is None:
+        cwd = REPO_ROOT
     try:
         return subprocess.run(
             ("git", *args),
             cwd=cwd,
+            env=_fixed_git_environment(),
+            stdin=subprocess.DEVNULL,
             text=True,
             capture_output=True,
             check=False,
@@ -395,6 +845,897 @@ def _git(
         )
 
 
+def _git_stdout(
+    cwd: Path,
+    errors: list[str],
+    label: str,
+    *args: str,
+) -> str:
+    result = _git(*args, cwd=cwd)
+    if result.returncode != 0:
+        errors.append(f"{label} failed: {result.stderr.strip() or result.returncode}")
+        return ""
+    return result.stdout.strip()
+
+
+NESTED_INVENTORY_OUTPUTS: Mapping[str, frozenset[str]] = {
+    "ipfs_datasets_py": frozenset(
+        {
+            "docs/architecture/incremental_proof_sealer_inventory.json",
+            "docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md",
+        }
+    ),
+    "ipfs_kit_py": frozenset(
+        {
+            "docs/architecture/incremental_proof_sealer_inventory.json",
+            "docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md",
+        }
+    ),
+}
+ACCELERATE_INVENTORY_OUTPUTS = frozenset(
+    {
+        "docs/architecture/incremental_proof_sealer_inventory/accelerate.json",
+        "docs/architecture/incremental_proof_sealer_inventory/accelerate.md",
+    }
+)
+POST_CAPTURE_PIN_CONFIG_PATH = (
+    "config/agent_supervisor_incremental_proof_sealer_scheduler.json"
+)
+CURRENT_SENSITIVE_SCAN_MAX_ENTRIES = 200_000
+
+
+def _is_explicit_irrelevant_ignored_root(repository: str, relative: str) -> bool:
+    path = Path(relative)
+    if path.name.casefold() in {
+        ".hypothesis",
+        ".pytest_cache",
+        ".ruff_cache",
+        "__pycache__",
+    }:
+        return True
+    if repository == "accelerate" and relative in {
+        "data/agent_supervisor",
+        f"{BASELINE_RECEIPT_ROOT}/work",
+        RELEASE_WORK_ROOT,
+    }:
+        return True
+    return repository == "datasets" and relative == "workspace/test-logs"
+
+
+def _is_allowed_ignored_container(repository: str, relative: str) -> bool:
+    """Allow fixed directory scaffolding while still scanning every descendant."""
+
+    if repository == "accelerate" and relative in {
+        "artifacts",
+        "artifacts/agent_supervisor",
+        "artifacts/agent_supervisor/incremental_proof_sealer",
+        BASELINE_RECEIPT_ROOT,
+        BASELINE_LOG_ROOT,
+    }:
+        return True
+    return (repository, relative) in {
+        ("datasets", ".benchmarks"),
+        ("datasets", "bin"),
+        ("datasets", "bin/.deps"),
+        ("datasets", "bin/.deps/npm"),
+        ("datasets", "bin/.deps/npm/bin"),
+        ("kit", ".cache"),
+        ("kit", ".cache/ipfs-repo"),
+    }
+
+
+def _git_ignored_paths(
+    repository_root: Path,
+    paths: Iterable[str],
+    repository: str,
+    errors: list[str],
+) -> set[str]:
+    ordered = sorted(set(paths))
+    if not ordered:
+        return set()
+    payload = b"".join(os.fsencode(path) + b"\0" for path in ordered)
+    try:
+        result = subprocess.run(
+            ("git", "check-ignore", "-z", "--stdin"),
+            cwd=repository_root,
+            env=_fixed_git_environment(),
+            input=payload,
+            capture_output=True,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(
+            f"cannot classify {repository} ignored paths: {type(exc).__name__}"
+        )
+        return set(ordered)
+    if result.returncode not in {0, 1}:
+        errors.append(
+            f"cannot classify {repository} ignored paths: "
+            f"{result.stderr.decode('utf-8', 'replace').strip() or result.returncode}"
+        )
+        return set(ordered)
+    return {
+        os.fsdecode(raw)
+        for raw in result.stdout.split(b"\0")
+        if raw
+    }
+
+
+def _validate_current_trust_sensitive_ignored_inputs(errors: list[str]) -> None:
+    """Deny current ignored inputs outside explicitly irrelevant cache roots."""
+
+    for repository, relative_root in REPOSITORY_PATHS.items():
+        repository_root = (REPO_ROOT / relative_root).resolve()
+        visited = 0
+        candidates: list[str] = []
+        try:
+            for current_root, directory_names, file_names in os.walk(
+                repository_root, topdown=True, followlinks=False
+            ):
+                current = Path(current_root)
+                relative_current = current.relative_to(repository_root)
+                pruned: list[str] = []
+                for name in directory_names:
+                    relative = (relative_current / name).as_posix()
+                    if name == ".git":
+                        continue
+                    if repository == "accelerate" and relative in {
+                        "ipfs_datasets_py",
+                        "ipfs_kit_py",
+                    }:
+                        continue
+                    child = repository_root / relative
+                    try:
+                        child_info = child.lstat()
+                    except OSError as exc:
+                        errors.append(
+                            f"cannot inspect {repository} current path {relative}: "
+                            f"{type(exc).__name__}"
+                        )
+                        continue
+                    if _is_explicit_irrelevant_ignored_root(repository, relative):
+                        if stat.S_ISDIR(child_info.st_mode) and not stat.S_ISLNK(
+                            child_info.st_mode
+                        ):
+                            continue
+                        candidates.append(relative)
+                        continue
+                    pruned.append(name)
+                    visited += 1
+                    if not _is_allowed_ignored_container(repository, relative):
+                        candidates.append(relative)
+                directory_names[:] = pruned
+                for name in file_names:
+                    relative = (relative_current / name).as_posix()
+                    visited += 1
+                    candidates.append(relative)
+                if visited > CURRENT_SENSITIVE_SCAN_MAX_ENTRIES:
+                    errors.append(
+                        f"{repository} current sensitive-input scan exceeded its bound"
+                    )
+                    break
+        except (OSError, ValueError) as exc:
+            errors.append(
+                f"cannot scan {repository} current trust-sensitive inputs: "
+                f"{type(exc).__name__}"
+            )
+            continue
+        for relative in sorted(
+            _git_ignored_paths(repository_root, candidates, repository, errors)
+        ):
+            candidate = repository_root / relative
+            try:
+                info = candidate.lstat()
+            except OSError as exc:
+                errors.append(
+                    f"cannot inspect {repository} current sensitive path {relative}: "
+                    f"{type(exc).__name__}"
+                )
+                continue
+            kind = (
+                "symlink"
+                if stat.S_ISLNK(info.st_mode)
+                else "regular"
+                if stat.S_ISREG(info.st_mode)
+                else "directory"
+                if stat.S_ISDIR(info.st_mode)
+                else "special"
+            )
+            errors.append(
+                f"{repository} current checkout contains undeclared ignored "
+                f"{kind} input: {relative}"
+            )
+
+
+def _git_json_at_revision(
+    revision: str,
+    relative: str,
+    errors: list[str],
+    label: str,
+) -> dict[str, Any]:
+    raw = _git_stdout(
+        REPO_ROOT, errors, label, "show", f"{revision}:{relative}"
+    )
+    if not raw:
+        return {}
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_nonfinite,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        errors.append(f"{label} is not duplicate-free JSON: {exc}")
+        return {}
+    if not isinstance(value, dict):
+        errors.append(f"{label} must be an object")
+        return {}
+    return value
+
+
+def _validate_post_capture_scheduler_delta(
+    source_revision: str,
+    parent_revision: str,
+    errors: list[str],
+) -> None:
+    before = _git_json_at_revision(
+        source_revision,
+        POST_CAPTURE_PIN_CONFIG_PATH,
+        errors,
+        "captured scheduler config",
+    )
+    after = _git_json_at_revision(
+        parent_revision,
+        POST_CAPTURE_PIN_CONFIG_PATH,
+        errors,
+        "inventory-parent scheduler config",
+    )
+    if not before or not after:
+        return
+    before_mutable = {
+        "operator_baseline_receipts": before.pop("operator_baseline_receipts", None),
+        "protected_paths": before.pop("protected_paths", None),
+    }
+    after_mutable = {
+        "operator_baseline_receipts": after.pop("operator_baseline_receipts", None),
+        "protected_paths": after.pop("protected_paths", None),
+    }
+    if before != after:
+        errors.append(
+            "post-capture scheduler change is not limited to receipt pins/protected paths"
+        )
+    if before_mutable["operator_baseline_receipts"] not in ({}, None):
+        errors.append("captured scheduler already contained nonempty receipt pins")
+    if set(before_mutable["protected_paths"] or ()) != set(BASE_PROTECTED_PATHS):
+        errors.append("captured scheduler protected paths were not the pre-capture base")
+    if not isinstance(after_mutable["operator_baseline_receipts"], Mapping):
+        errors.append("inventory-parent scheduler lacks receipt pins")
+
+
+def _validate_nested_gitlink_inventory_delta(
+    *,
+    submodule: str,
+    source_revision: str,
+    parent_revision: str,
+    errors: list[str],
+    enforce_current_checkout: bool = True,
+) -> None:
+    nested = REPO_ROOT / submodule
+    old_revision = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"resolve captured {submodule} gitlink",
+        "rev-parse",
+        f"{source_revision}:{submodule}",
+    )
+    new_revision = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"resolve parent {submodule} gitlink",
+        "rev-parse",
+        f"{parent_revision}:{submodule}",
+    )
+    if not (_HEX_40.fullmatch(old_revision) and _HEX_40.fullmatch(new_revision)):
+        return
+    if _git("merge-base", "--is-ancestor", old_revision, new_revision, cwd=nested).returncode != 0:
+        errors.append(f"{submodule} inventory revision is not descended from captured gitlink")
+        return
+    history = _git_stdout(
+        nested,
+        errors,
+        f"enumerate {submodule} inventory committed DAG",
+        "rev-list",
+        "--reverse",
+        "--topo-order",
+        f"{old_revision}..{new_revision}",
+        "--",
+    )
+    first_parent_commits = set(
+        _git_stdout(
+            nested,
+            errors,
+            f"enumerate {submodule} inventory first-parent publications",
+            "rev-list",
+            "--first-parent",
+            "--reverse",
+            f"{old_revision}..{new_revision}",
+            "--",
+        ).splitlines()
+    )
+    publication_count = 0
+    for commit in (line for line in history.splitlines() if line):
+        parents = _git_stdout(
+            nested,
+            errors,
+            f"resolve {submodule} inventory commit parents",
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            commit,
+        ).split()[1:]
+        if not parents:
+            errors.append(f"{submodule} inventory commit {commit} has no parent")
+            continue
+        for merge_parent in parents[1:]:
+            if (
+                _git(
+                    "merge-base",
+                    "--is-ancestor",
+                    old_revision,
+                    merge_parent,
+                    cwd=nested,
+                ).returncode
+                != 0
+            ):
+                errors.append(
+                    f"{submodule} inventory merge {commit} has an unrelated parent"
+                )
+        commit_paths = {
+            line
+            for line in _git_stdout(
+                nested,
+                errors,
+                f"inspect {submodule} inventory commit {commit}",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                parents[0],
+                commit,
+                "--",
+            ).splitlines()
+            if line
+        }
+        if commit_paths and commit_paths != set(NESTED_INVENTORY_OUTPUTS[submodule]):
+            errors.append(
+                f"{submodule} inventory commit {commit} is not the exact two-output "
+                f"transaction: {sorted(commit_paths)}"
+            )
+        if commit in first_parent_commits and commit_paths:
+            publication_count += 1
+    if publication_count > 1:
+        errors.append(f"{submodule} inventory outputs were rewritten after first publication")
+    changed = _git_stdout(
+        nested,
+        errors,
+        f"inspect {submodule} inventory-only delta",
+        "diff",
+        "--name-only",
+        "--no-renames",
+        old_revision,
+        new_revision,
+        "--",
+    )
+    changed_paths = frozenset(line for line in changed.splitlines() if line)
+    unexpected = changed_paths - NESTED_INVENTORY_OUTPUTS[submodule]
+    if unexpected:
+        errors.append(
+            f"{submodule} gitlink delta contains non-inventory paths: {sorted(unexpected)}"
+        )
+    if enforce_current_checkout:
+        nested_head = _git_stdout(
+            nested, errors, f"resolve current {submodule} HEAD", "rev-parse", "HEAD"
+        )
+        if nested_head != new_revision:
+            errors.append(f"{submodule} checkout HEAD does not equal the parent gitlink")
+
+
+def _git_text_at_revision(
+    revision: str, relative: str, errors: list[str], label: str
+) -> str:
+    result = _git("show", f"{revision}:{relative}")
+    if result.returncode != 0:
+        errors.append(f"cannot read {label} at {revision}: {result.stderr.strip()}")
+        return ""
+    return result.stdout
+
+
+def _task_output_exists_at_control_revision(revision: str, relative: str) -> bool:
+    repository = REPO_ROOT
+    object_revision = revision
+    object_relative = relative
+    for prefix in ("ipfs_datasets_py", "ipfs_kit_py"):
+        marker = prefix + "/"
+        if relative.startswith(marker):
+            gitlink = _git("rev-parse", f"{revision}:{prefix}")
+            if gitlink.returncode != 0:
+                return False
+            repository = REPO_ROOT / prefix
+            object_revision = gitlink.stdout.strip()
+            object_relative = relative[len(marker):]
+            break
+    entry = _git(
+        "ls-tree",
+        object_revision,
+        "--",
+        object_relative,
+        cwd=repository,
+    )
+    if entry.returncode != 0:
+        return False
+    match = re.fullmatch(
+        r"(?P<mode>100644|100755) blob [0-9a-f]{40}\t.+\n?",
+        entry.stdout,
+    )
+    return match is not None
+
+
+def _validate_taskboard_status_transition(
+    captured_revision: str,
+    current_revision: str,
+    errors: list[str],
+) -> None:
+    """Replay every newly reachable board commit and admit only daemon completions."""
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    first_parent_text = _git_stdout(
+        REPO_ROOT,
+        errors,
+        "enumerate runtime taskboard first-parent history",
+        "rev-list",
+        "--first-parent",
+        "--reverse",
+        f"{captured_revision}..{current_revision}",
+        "--",
+        relative,
+    )
+    first_parent_commits = [line for line in first_parent_text.splitlines() if line]
+    all_text = _git_stdout(
+        REPO_ROOT,
+        errors,
+        "enumerate all newly reachable taskboard commits",
+        "rev-list",
+        "--reverse",
+        f"{captured_revision}..{current_revision}",
+        "--",
+        relative,
+    )
+    all_commits = [line for line in all_text.splitlines() if line]
+    side_commits = set(all_commits) - set(first_parent_commits)
+    if side_commits:
+        errors.append(
+            "runtime taskboard was modified on an untrusted merged side branch: "
+            f"{sorted(side_commits)}"
+        )
+    if not first_parent_commits:
+        errors.append("runtime taskboard changed without a completion commit")
+        return
+    for commit in first_parent_commits:
+        parent = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve parent of runtime taskboard commit {commit}",
+            "rev-parse",
+            f"{commit}^1",
+        )
+        if not _HEX_40.fullmatch(parent):
+            continue
+        _validate_taskboard_status_commit(parent, commit, errors)
+
+
+def _validate_taskboard_status_commit(
+    parent_revision: str,
+    current_revision: str,
+    errors: list[str],
+) -> set[str]:
+    """Validate one exact daemon-owned, board-only completion transaction."""
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    commit_line = _git("rev-list", "--parents", "-n", "1", current_revision)
+    commit_tokens = (
+        commit_line.stdout.strip().split() if commit_line.returncode == 0 else []
+    )
+    if commit_tokens != [current_revision, parent_revision]:
+        errors.append("runtime taskboard completion must be a one-parent daemon commit")
+    changed = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"inspect runtime taskboard commit {current_revision}",
+        "diff",
+        "--name-only",
+        "--no-renames",
+        parent_revision,
+        current_revision,
+        "--",
+    )
+    changed_paths = {line for line in changed.splitlines() if line}
+    if changed_paths != {relative}:
+        errors.append(
+            "runtime taskboard completion commit must change only the protected "
+            f"taskboard; got {sorted(changed_paths)}"
+        )
+    metadata = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"inspect runtime taskboard commit envelope {current_revision}",
+        "show",
+        "-s",
+        "--format=%s%x00%ae",
+        current_revision,
+    )
+    subject, separator, author_email = metadata.partition("\x00")
+    subject_match = re.fullmatch(r"(IPS-\d{3}): mark todo completed", subject)
+    if not separator or author_email != "implementation-daemon@example.invalid":
+        errors.append("runtime taskboard commit lacks the Implementation Daemon envelope")
+
+    before_text = _git_text_at_revision(
+        parent_revision, relative, errors, "parent taskboard"
+    )
+    after_text = _git_text_at_revision(
+        current_revision, relative, errors, "current taskboard"
+    )
+    if not before_text or not after_text:
+        return set()
+    before_order = re.findall(r"^## (IPS-\d{3})\s+", before_text, re.MULTILINE)
+    after_order = re.findall(r"^## (IPS-\d{3})\s+", after_text, re.MULTILINE)
+    if before_order != after_order or before_order != list(TASK_IDS):
+        errors.append("runtime taskboard transition changed task IDs or ordering")
+        return set()
+    patch = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"inspect exact runtime taskboard bytes for {current_revision}",
+        "diff",
+        "--unified=0",
+        "--no-ext-diff",
+        parent_revision,
+        current_revision,
+        "--",
+        relative,
+    )
+    removed_statuses: list[str] = []
+    added_statuses = 0
+    for line in patch.splitlines():
+        if not line or line.startswith(("diff ", "index ", "--- ", "+++ ", "@@ ")):
+            continue
+        if line.startswith("-- Status: "):
+            status = line.removeprefix("-- Status: ")
+            if status not in {"todo", "in_progress"}:
+                errors.append(
+                    f"runtime taskboard removed an unrecognized status line {line!r}"
+                )
+            removed_statuses.append(status)
+        elif line == "+- Status: completed":
+            added_statuses += 1
+        elif line.startswith(("+", "-")):
+            errors.append(
+                "runtime taskboard commit changed bytes other than exact Status values: "
+                f"{line[:160]!r}"
+            )
+    before_records = _parse_markdown_records(
+        before_text,
+        re.compile(r"^## (IPS-\d{3})\s+([^\n]+)$", re.MULTILINE),
+        "captured runtime task",
+        errors,
+    )
+    after_records = _parse_markdown_records(
+        after_text,
+        re.compile(r"^## (IPS-\d{3})\s+([^\n]+)$", re.MULTILINE),
+        "current runtime task",
+        errors,
+    )
+    transitioned: set[str] = set()
+    for task_id in TASK_IDS:
+        before = before_records.get(task_id)
+        after = after_records.get(task_id)
+        if before is None or after is None:
+            continue
+        if before["title"] != after["title"]:
+            errors.append(f"runtime taskboard changed immutable title for {task_id}")
+        before_fields = dict(before["fields"])
+        after_fields = dict(after["fields"])
+        before_status = before_fields.pop("status", "").casefold()
+        after_status = after_fields.pop("status", "").casefold()
+        if before_fields != after_fields:
+            errors.append(f"runtime taskboard changed immutable metadata for {task_id}")
+        if before_status == after_status:
+            continue
+        if before_status not in {"todo", "in_progress"} or after_status != "completed":
+            errors.append(
+                f"runtime taskboard has non-monotonic status transition for {task_id}: "
+                f"{before_status!r}->{after_status!r}"
+            )
+            continue
+        transitioned.add(task_id)
+        dependencies = set(_ids(after["fields"].get("depends on", ""), r"IPS-\d{3}"))
+        incomplete = {
+            dependency
+            for dependency in dependencies
+            if after_records.get(dependency, {}).get("fields", {}).get("status", "").casefold()
+            != "completed"
+        }
+        if incomplete:
+            errors.append(
+                f"runtime taskboard completed {task_id} before dependencies "
+                f"{sorted(incomplete)}"
+            )
+        for output in _declared_output_paths(
+            after["fields"].get("predicted files", "")
+        ):
+            if not _task_output_exists_at_control_revision(current_revision, output):
+                errors.append(
+                    f"runtime taskboard completed {task_id} without output {output}"
+                )
+    if not transitioned:
+        errors.append("runtime taskboard changed without a completed task transition")
+    if len(removed_statuses) != len(transitioned) or added_statuses != len(transitioned):
+        errors.append("runtime taskboard Status-line patch does not match transitioned tasks")
+    if subject_match is None or subject_match.group(1) not in transitioned:
+        errors.append(
+            "runtime taskboard commit subject does not name one transitioned task"
+        )
+    return transitioned
+
+
+def _validate_accelerate_control_transition(
+    *,
+    task_id: str,
+    captured_revision: str,
+    current_revision: str,
+    configured_receipts: Mapping[str, Any],
+    errors: list[str],
+    enforce_current_nested: bool = True,
+) -> None:
+    """Replay the full committed DAG after capture and admit closed transactions."""
+
+    protected_evidence: set[str] = set()
+    for pin in configured_receipts.values():
+        if not isinstance(pin, Mapping):
+            continue
+        protected_evidence.update(
+            path
+            for path in pin.get("retained_log_paths", [])
+            if isinstance(path, str)
+        )
+        receipt_path = pin.get("path")
+        if isinstance(receipt_path, str):
+            protected_evidence.add(receipt_path)
+    taskboard_relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    ancestry = _git(
+        "merge-base", "--is-ancestor", captured_revision, current_revision
+    )
+    if ancestry.returncode != 0:
+        errors.append(f"{task_id} current control revision is not descended from capture")
+        return
+    history = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"enumerate {task_id} tested-to-current committed DAG",
+        "rev-list",
+        "--reverse",
+        "--topo-order",
+        f"{captured_revision}..{current_revision}",
+        "--",
+    )
+    first_parent_commits = set(
+        _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"enumerate {task_id} target first-parent history",
+            "rev-list",
+            "--first-parent",
+            "--reverse",
+            f"{captured_revision}..{current_revision}",
+            "--",
+        ).splitlines()
+    )
+    operator_paths = {POST_CAPTURE_PIN_CONFIG_PATH} | protected_evidence
+    inventory_paths = set(ACCELERATE_INVENTORY_OUTPUTS)
+    nested_paths = set(NESTED_INVENTORY_OUTPUTS)
+    operator_publications = 0
+    accelerate_inventory_publications = 0
+    nested_publications: dict[str, int] = defaultdict(int)
+    for commit in (line for line in history.splitlines() if line):
+        parents_text = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve parents for committed transition {commit}",
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            commit,
+        )
+        parent_tokens = parents_text.split()[1:]
+        if not parent_tokens:
+            errors.append(f"{task_id} committed transition {commit} has no parent")
+            continue
+        first_parent = parent_tokens[0]
+        for merge_parent in parent_tokens[1:]:
+            if (
+                _git("merge-base", "--is-ancestor", captured_revision, merge_parent)
+                .returncode
+                != 0
+            ):
+                errors.append(
+                    f"{task_id} merge {commit} admits a parent outside captured lineage"
+                )
+        changed = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"inspect committed transition {commit}",
+            "diff",
+            "--name-only",
+            "--no-renames",
+            first_parent,
+            commit,
+            "--",
+        )
+        changed_paths = {line for line in changed.splitlines() if line}
+        if not changed_paths:
+            continue
+        if changed_paths <= operator_paths:
+            if POST_CAPTURE_PIN_CONFIG_PATH not in changed_paths:
+                errors.append(
+                    f"{task_id} operator evidence commit {commit} lacks the pinned scheduler"
+                )
+            _validate_post_capture_scheduler_delta(first_parent, commit, errors)
+            if commit in first_parent_commits:
+                operator_publications += 1
+            continue
+        if changed_paths == inventory_paths:
+            if commit in first_parent_commits:
+                accelerate_inventory_publications += 1
+            continue
+        if changed_paths == {taskboard_relative}:
+            _validate_taskboard_status_commit(first_parent, commit, errors)
+            continue
+        if len(changed_paths) == 1 and changed_paths <= nested_paths:
+            submodule = next(iter(changed_paths))
+            _validate_nested_gitlink_inventory_delta(
+                submodule=submodule,
+                source_revision=first_parent,
+                parent_revision=commit,
+                errors=errors,
+                enforce_current_checkout=False,
+            )
+            if commit in first_parent_commits:
+                nested_publications[submodule] += 1
+            continue
+        errors.append(
+            f"{task_id} committed transition {commit} contains relevance-changing "
+            f"or mixed-transaction paths: {sorted(changed_paths)}"
+        )
+    if operator_publications > 1:
+        errors.append(f"{task_id} operator evidence was rewritten after pin publication")
+    if accelerate_inventory_publications > 1:
+        errors.append(f"{task_id} accelerate inventory was rewritten after publication")
+    for submodule, count in nested_publications.items():
+        if count > 1:
+            errors.append(f"{task_id} {submodule} gitlink was republished after inventory")
+
+
+def _validate_inventory_source_relevance(
+    *,
+    task_id: str,
+    spec: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+    parent_revision: str,
+    configured_receipts: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    _validate_current_trust_sensitive_ignored_inputs(errors)
+    repository = str(spec["repository"])
+    repository_root = REPO_ROOT / REPOSITORY_PATHS[repository]
+    current_head = _git_stdout(
+        repository_root,
+        errors,
+        f"resolve {task_id} task-owned HEAD",
+        "rev-parse",
+        "HEAD",
+    )
+    if parent_revision != current_head:
+        errors.append(
+            f"{task_id} inventory_worktree_parent_revision does not equal current task-owned HEAD"
+        )
+    captured_revision = receipt.get("source_revision")
+    if not isinstance(captured_revision, str) or not _HEX_40.fullmatch(captured_revision):
+        return
+    if repository in {"datasets", "kit"}:
+        if current_head != captured_revision:
+            errors.append(
+                f"{task_id} initial nested inventory HEAD differs from captured tested revision"
+            )
+        control_captured_revision = receipt.get("execution_head")
+        control_current_revision = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve {task_id} current control HEAD",
+            "rev-parse",
+            "HEAD",
+        )
+    else:
+        control_captured_revision = captured_revision
+        control_current_revision = current_head
+    if (
+        isinstance(control_captured_revision, str)
+        and _HEX_40.fullmatch(control_captured_revision)
+        and _HEX_40.fullmatch(control_current_revision)
+    ):
+        _validate_accelerate_control_transition(
+            task_id=task_id,
+            captured_revision=control_captured_revision,
+            current_revision=control_current_revision,
+            configured_receipts=configured_receipts,
+            errors=errors,
+        )
+    else:
+        errors.append(f"{task_id} lacks an exact captured/current control revision")
+
+    if repository != "accelerate":
+        control_status = _git(
+            "status", "--porcelain=v1", "--untracked-files=all", cwd=REPO_ROOT
+        )
+        if control_status.returncode != 0:
+            errors.append(f"inspect {task_id} control worktree failed")
+        else:
+            dirty_paths = {
+                line[3:].split(" -> ", 1)[-1]
+                for line in control_status.stdout.splitlines()
+                if len(line) >= 4
+            }
+            allowed_nested_output = REPOSITORY_PATHS[repository].as_posix()
+            unexpected_control_dirty = dirty_paths - {allowed_nested_output}
+            if unexpected_control_dirty:
+                errors.append(
+                    f"{task_id} control worktree has uncommitted relevance-changing "
+                    f"paths: {sorted(unexpected_control_dirty)}"
+                )
+
+    status_result = _git(
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        cwd=repository_root,
+    )
+    if status_result.returncode != 0:
+        errors.append(f"inspect {task_id} inventory worktree outputs failed")
+        status = ""
+    else:
+        status = status_result.stdout
+    if repository == "accelerate":
+        expected_outputs = {str(spec["inventory"]), str(spec["report"])}
+    else:
+        expected_outputs = {
+            str(Path(str(spec[field])).relative_to(REPOSITORY_PATHS[repository]))
+            for field in ("inventory", "report")
+        }
+    dirty_paths: set[str] = set()
+    for line in status.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        dirty_paths.add(path)
+    unexpected_dirty = dirty_paths - expected_outputs
+    if unexpected_dirty:
+        errors.append(
+            f"{task_id} worktree contains undeclared dirty paths: {sorted(unexpected_dirty)}"
+        )
+
+
 def _check_equal(
     actual: Any, expected: Any, name: str, errors: list[str]
 ) -> None:
@@ -402,12 +1743,35 @@ def _check_equal(
         errors.append(f"{name} must be {expected!r}; got {actual!r}")
 
 
-def _validate_config(config: dict[str, Any], errors: list[str]) -> None:
+def _validate_config(
+    config: dict[str, Any], errors: list[str], *, bootstrap: bool = False
+) -> None:
+    try:
+        ignore_text = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        errors.append(f"cannot read protected .gitignore: {type(exc).__name__}")
+        ignore_text = ""
+    release_work_rule = f"/{RELEASE_WORK_ROOT}/"
+    if ignore_text.splitlines().count(release_work_rule) != 1:
+        errors.append(".gitignore must contain the one exact anchored release-work rule")
+    reviewed_registry = _reviewed_suite_registry(errors)
     _check_equal(config.get("board_namespace"), BOARD_NAMESPACE, "board_namespace", errors)
     _check_equal(config.get("merge_target_branch"), BRANCH, "merge_target_branch", errors)
     _check_equal(config.get("task_prefix"), "## IPS-", "task_prefix", errors)
     _check_equal(config.get("goal_prefix"), "IPS-G", "goal_prefix", errors)
     _check_equal(config.get("max_lanes"), 3, "max_lanes", errors)
+    _check_equal(
+        config.get("implementation_timeout_seconds"),
+        10800,
+        "implementation_timeout_seconds",
+        errors,
+    )
+    _check_equal(
+        config.get("implementation_max_timeout_seconds"),
+        14400,
+        "implementation_max_timeout_seconds",
+        errors,
+    )
     _check_equal(config.get("strict_task_sharding"), True, "strict_task_sharding", errors)
     _check_equal(
         config.get("exit_when_all_tracks_terminal"),
@@ -426,13 +1790,156 @@ def _validate_config(config: dict[str, Any], errors: list[str]) -> None:
         errors,
     )
     _check_equal(
-        set(config.get("protected_paths", ()))
-        if isinstance(config.get("protected_paths"), list)
-        else config.get("protected_paths"),
-        set(CONTROL_PATHS),
+        config.get("baseline_capture_script"),
+        BASELINE_CAPTURE_SCRIPT,
+        "baseline_capture_script",
+        errors,
+    )
+    _check_equal(
+        config.get("baseline_suite_registry"),
+        BASELINE_SUITE_REGISTRY,
+        "baseline_suite_registry",
+        errors,
+    )
+    _check_equal(
+        config.get("baseline_suite_registry_digest"),
+        BASELINE_SUITE_REGISTRY_DIGEST,
+        "baseline_suite_registry_digest",
+        errors,
+    )
+    receipt_pins = config.get("operator_baseline_receipts")
+    pinned_artifact_paths: set[str] = set()
+    if not isinstance(receipt_pins, Mapping):
+        errors.append("operator_baseline_receipts must be a protected task-id map")
+    elif bootstrap:
+        if receipt_pins != {}:
+            errors.append("bootstrap operator_baseline_receipts must be exactly empty")
+    else:
+        _check_equal(
+            set(receipt_pins),
+            set(BASELINE_RECEIPT_SPECS),
+            "operator_baseline_receipts task ids",
+            errors,
+        )
+        for task_id, spec in BASELINE_RECEIPT_SPECS.items():
+            pin = receipt_pins.get(task_id)
+            if not isinstance(pin, Mapping):
+                errors.append(f"operator_baseline_receipts.{task_id} must be an object")
+                continue
+            _closed_keys(
+                pin,
+                (
+                    "path",
+                    "receipt_digest",
+                    "planning_revision",
+                    "source_revision",
+                    "source_tree",
+                    "required_command_ids",
+                    "suite_definition_digests",
+                    "retained_log_paths",
+                ),
+                f"operator_baseline_receipts.{task_id}",
+                errors,
+            )
+            _check_equal(
+                pin.get("path"),
+                spec["receipt"],
+                f"operator_baseline_receipts.{task_id}.path",
+                errors,
+            )
+            pinned_artifact_paths.add(str(spec["receipt"]))
+            retained_log_paths = pin.get("retained_log_paths")
+            if (
+                not isinstance(retained_log_paths, list)
+                or len(retained_log_paths) != len(spec["command_ids"])
+                or any(not isinstance(path, str) for path in retained_log_paths)
+                or len(set(retained_log_paths)) != len(retained_log_paths)
+            ):
+                errors.append(
+                    f"operator_baseline_receipts.{task_id}.retained_log_paths must "
+                    "be a unique ordered path for each command"
+                )
+            else:
+                for command_id, path in zip(
+                    spec["command_ids"], retained_log_paths, strict=True
+                ):
+                    if Path(path).parent.as_posix() != BASELINE_LOG_ROOT:
+                        errors.append(
+                            f"operator_baseline_receipts.{task_id}.retained_log_paths "
+                            "contains a path outside the fixed log root"
+                        )
+                    if not Path(path).name.startswith(f"{command_id}-"):
+                        errors.append(
+                            f"operator_baseline_receipts.{task_id}.retained_log_paths "
+                            f"does not bind {command_id}"
+                        )
+                    pinned_artifact_paths.add(path)
+            _check_equal(
+                pin.get("required_command_ids"),
+                list(spec["command_ids"]),
+                f"operator_baseline_receipts.{task_id}.required_command_ids",
+                errors,
+            )
+            _check_equal(
+                pin.get("planning_revision"),
+                spec["revision"],
+                f"operator_baseline_receipts.{task_id}.planning_revision",
+                errors,
+            )
+            for field in ("source_revision", "source_tree"):
+                value = pin.get(field)
+                if not isinstance(value, str) or not _HEX_40.fullmatch(value):
+                    errors.append(
+                        f"operator_baseline_receipts.{task_id}.{field} must be a Git id"
+                    )
+            suite_digests = pin.get("suite_definition_digests")
+            if not isinstance(suite_digests, Mapping) or set(suite_digests) != set(
+                spec["command_ids"]
+            ):
+                errors.append(
+                    f"operator_baseline_receipts.{task_id}.suite_definition_digests "
+                    "must exactly cover required commands"
+                )
+            else:
+                expected_suite_digests = {
+                    command_id: reviewed_registry.get(command_id, {}).get(
+                        "suite_definition_digest"
+                    )
+                    for command_id in spec["command_ids"]
+                }
+                if suite_digests != expected_suite_digests:
+                    errors.append(
+                        f"operator_baseline_receipts.{task_id}.suite_definition_digests "
+                        "does not match the protected reviewed registry"
+                    )
+                for command_id in spec["command_ids"]:
+                    _sha256_value(
+                        suite_digests.get(command_id),
+                        (
+                            f"operator_baseline_receipts.{task_id}."
+                            f"suite_definition_digests.{command_id}"
+                        ),
+                        errors,
+                    )
+            _sha256_value(
+                pin.get("receipt_digest"),
+                f"operator_baseline_receipts.{task_id}.receipt_digest",
+                errors,
+            )
+    protected_paths = config.get("protected_paths")
+    expected_protected_paths = set(BASE_PROTECTED_PATHS) | pinned_artifact_paths
+    _check_equal(
+        set(protected_paths) if isinstance(protected_paths, list) else protected_paths,
+        expected_protected_paths,
         "protected_paths",
         errors,
     )
+    if isinstance(protected_paths, list) and BASELINE_RECEIPT_ROOT in protected_paths:
+        errors.append("protected_paths may not contain the launch-invalid receipt directory")
+    if isinstance(protected_paths, list) and len(protected_paths) != len(
+        set(protected_paths)
+    ):
+        errors.append("protected_paths must be a unique exact-file list")
     validation_workers = config.get("validation_max_workers")
     if not isinstance(validation_workers, int) or validation_workers <= 0:
         errors.append("validation_max_workers must be a positive integer")
@@ -458,7 +1965,7 @@ def _validate_config(config: dict[str, Any], errors: list[str]) -> None:
     _check_equal(config.get("plan_path"), str(PLAN_PATH.relative_to(REPO_ROOT)), "plan_path", errors)
     _check_equal(
         config.get("validator_path"),
-        str(Path(__file__).resolve().relative_to(REPO_ROOT)),
+        "scripts/validate_incremental_proof_sealer_board.py",
         "validator_path",
         errors,
     )
@@ -571,6 +2078,8 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
         errors.append(f"unexpected task heading: {task_id}")
 
     dependencies: dict[str, set[str]] = {}
+    concurrency: dict[str, set[str]] = {}
+    writer_submodules: dict[str, set[str]] = {}
     for task_id in TASK_IDS:
         record = records.get(task_id)
         if record is None:
@@ -584,34 +2093,136 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
             if not fields.get(field, "").strip():
                 errors.append(f"{task_id} metadata field {field!r} may not be empty")
 
-        validation = fields.get("validation", "")
-        try:
-            validation_argv = shlex.split(validation)
-        except ValueError as exc:
-            errors.append(f"{task_id} validation command does not parse: {exc}")
-            validation_argv = []
-        if validation_argv:
-            executable = validation_argv[0].replace("\\", "/").rsplit("/", 1)[-1]
-            if executable in {
-                "bash",
-                "cmd",
-                "dash",
-                "fish",
-                "ksh",
-                "powershell",
-                "pwsh",
-                "sh",
-                "zsh",
-            }:
-                errors.append(f"{task_id} validation uses a forbidden shell")
-            if (
-                len(validation_argv) >= 2
-                and executable in {"node", "perl", "python", "python3", "ruby"}
-                and validation_argv[1] in {"-c", "-e", "--eval"}
+        if task_id in BASELINE_RECEIPT_SPECS:
+            spec = BASELINE_RECEIPT_SPECS[task_id]
+            inputs = fields.get("inputs", "")
+            effects = fields.get("effects", "")
+            acceptance = fields.get("acceptance", "")
+            conflict = fields.get("conflict policy", "")
+            for term in (
+                str(spec["receipt"]),
+                "protected scheduler digest pin",
             ):
-                errors.append(f"{task_id} validation uses forbidden dynamic eval")
+                if term not in inputs:
+                    errors.append(f"{task_id} Inputs omits protected term {term!r}")
+            for command_id in spec["command_ids"]:
+                if command_id not in acceptance:
+                    errors.append(
+                        f"{task_id} Acceptance omits required command id {command_id!r}"
+                    )
+            for term in (
+                "reference-only",
+                "operator_capture",
+                "process_observed_only",
+                "pytest_execution_not_cryptographically_proven",
+                "planning_revision",
+                "inventory_worktree_parent_revision",
+                "static",
+            ):
+                if term.casefold() not in acceptance.casefold():
+                    errors.append(f"{task_id} Acceptance omits provenance term {term!r}")
+            if "separately captured operator pytest receipt" not in effects:
+                errors.append(f"{task_id} Effects must distinguish operator capture")
+            for term in ("no shell authority", "must not run pytest", "two declared"):
+                if term not in conflict:
+                    errors.append(f"{task_id} Conflict policy omits {term!r}")
+        if task_id in {"IPS-045", "IPS-046", "IPS-048"}:
+            mutation_contract = " ".join(
+                (fields.get("effects", ""), fields.get("acceptance", ""))
+            ).casefold()
+            for term in (
+                "selector",
+                "fixture",
+                "configuration",
+                "network policy",
+                "policy",
+                "lock",
+                "tool",
+                "schema",
+                "canonicalization",
+                "checked-spec",
+            ):
+                if term not in mutation_contract:
+                    errors.append(f"{task_id} mutation contract omits {term!r}")
+
+        validation = fields.get("validation", "")
+        validation_argv = _validation_argv(task_id, validation, errors)
+        if task_id == "IPS-004" and validation_argv != [
+            "python",
+            "scripts/validate_incremental_proof_sealer_board.py",
+            "--check-artifact",
+            "IPS-004",
+        ]:
+            errors.append("IPS-004 must use its candidate synthesis artifact gate")
+        if task_id == "IPS-000" and validation_argv != [
+            "python",
+            "scripts/validate_incremental_proof_sealer_board.py",
+            "--check-bootstrap",
+        ]:
+            errors.append("IPS-000 must use the pristine empty-pin bootstrap gate")
+        if task_id == "IPS-053" and validation_argv != list(
+            BENCHMARK_VALIDATION_ARGV
+        ):
+            errors.append("IPS-053 must use the protected convergent benchmark ensure gate")
+        if task_id == "IPS-053":
+            benchmark_contract = " ".join(
+                (fields.get("effects", ""), fields.get("acceptance", ""))
+            )
+            for term in (
+                MATERIALIZATION_REQUEST_SCHEMA,
+                "stabilization",
+                "read-only",
+                "partial",
+            ):
+                if term not in benchmark_contract:
+                    errors.append(f"IPS-053 convergence contract omits {term!r}")
+        if task_id == TERMINAL_TASK and validation_argv != list(
+            RELEASE_VALIDATION_ARGV
+        ):
+            errors.append("IPS-056 must use the protected convergent release ensure gate")
+        if task_id == TERMINAL_TASK:
+            release_contract = " ".join(
+                (fields.get("effects", ""), fields.get("acceptance", ""))
+            ).casefold()
+            for term in (
+                "baseline-compatible-or-improved",
+                "baseline_compatible_non_green",
+                "three new",
+                "secret",
+                "live `ipfs`",
+                "process-tree termination",
+                MATERIALIZATION_REQUEST_SCHEMA,
+                RELEASE_REPORT_REQUEST_MARKER.casefold(),
+                "stabilization",
+                "read-only",
+            ):
+                if term not in release_contract:
+                    errors.append(f"IPS-056 release contract omits {term!r}")
 
         predicted_files = fields.get("predicted files", "")
+        if task_id != "IPS-000" and fields.get("outputs", "") != predicted_files:
+            errors.append(f"{task_id} Outputs must exactly equal Predicted files")
+        expected_envelope = {
+            "IPS-053": BENCHMARK_PROPOSAL_ENVELOPE,
+            "IPS-056": RELEASE_PROPOSAL_ENVELOPE,
+        }.get(task_id)
+        raw_envelope = fields.get("proposal artifact envelope", "")
+        if expected_envelope is not None:
+            try:
+                parsed_envelope = json.loads(
+                    raw_envelope,
+                    object_pairs_hook=_reject_duplicate_pairs,
+                    parse_constant=_reject_nonfinite,
+                )
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                errors.append(f"{task_id} proposal artifact envelope is invalid: {exc}")
+                parsed_envelope = None
+            if parsed_envelope != expected_envelope:
+                errors.append(f"{task_id} proposal artifact envelope is not exact")
+            if raw_envelope != _canonical_json_bytes(expected_envelope).decode("utf-8"):
+                errors.append(f"{task_id} proposal artifact envelope is not canonical")
+        elif raw_envelope:
+            errors.append(f"{task_id} has an unreviewed proposal artifact envelope")
         predicted_submodules: list[str] = []
         if re.search(
             r"(?:^|[,\s])ipfs_datasets_py(?:/|[,\s]|$)", predicted_files
@@ -683,6 +2294,7 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
         concurrent = set(
             _ids(fields.get("allow concurrent with", ""), r"IPS-\d{3}")
         )
+        concurrency[task_id] = concurrent & expected_ids
         unknown_concurrent = concurrent - expected_ids
         if unknown_concurrent:
             errors.append(
@@ -690,10 +2302,35 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
             )
         if task_id in concurrent:
             errors.append(f"{task_id} lists itself as a concurrency peer")
+        writer_submodules[task_id] = set(predicted_submodules)
 
     cycles = _cycle_nodes(dependencies)
     if cycles:
         errors.append(f"task dependency graph is cyclic: {sorted(cycles)}")
+
+    ancestors = {
+        task_id: _ancestors(task_id, dependencies) for task_id in TASK_IDS
+    }
+    for task_id in TASK_IDS:
+        for peer in sorted(concurrency.get(task_id, set())):
+            if task_id not in concurrency.get(peer, set()):
+                errors.append(
+                    f"{task_id} concurrency peer {peer} is not declared symmetrically"
+                )
+            if peer in ancestors[task_id] or task_id in ancestors[peer]:
+                errors.append(
+                    f"{task_id} concurrency peer {peer} is an ancestor or descendant"
+                )
+    for index, task_id in enumerate(TASK_IDS):
+        for peer in TASK_IDS[index + 1 :]:
+            shared = writer_submodules.get(task_id, set()) & writer_submodules.get(
+                peer, set()
+            )
+            if shared and peer not in ancestors[task_id] and task_id not in ancestors[peer]:
+                errors.append(
+                    f"same-submodule writers {task_id} and {peer} are unordered for "
+                    f"{sorted(shared)}"
+                )
 
     initially_ready = {
         task_id
@@ -757,6 +2394,13 @@ def _validate_goals(text: str, errors: list[str]) -> None:
         for field in ("goal", "evidence", "outputs", "validation", "acceptance", "conflict policy"):
             if not fields.get(field, "").strip():
                 errors.append(f"{goal_id} metadata field {field!r} may not be empty")
+        validation_argv = _validation_argv(
+            goal_id, fields.get("validation", ""), errors
+        )
+        if goal_id == "IPS-G130" and validation_argv != list(
+            RELEASE_VALIDATION_ARGV
+        ):
+            errors.append("IPS-G130 Validation must use the read-only release artifact gate")
         if fields.get("status", "").casefold() not in {
             "active",
             "provisionally_complete",
@@ -800,6 +2444,159 @@ def _validate_goals(text: str, errors: list[str]) -> None:
     cycles = _cycle_nodes(dependencies)
     if cycles:
         errors.append(f"goal dependency graph is cyclic: {sorted(cycles)}")
+
+
+def _declared_output_paths(value: str) -> set[str]:
+    return {
+        item.strip().rstrip("/")
+        for item in value.split(",")
+        if item.strip() and item.strip().casefold() != "none"
+    }
+
+
+def _validation_local_paths(
+    record_id: str, validation: str, errors: list[str]
+) -> set[str]:
+    paths: set[str] = set()
+    for token in _validation_argv(record_id, validation, errors):
+        candidate = token.split("::", 1)[0]
+        if candidate.startswith("-") or candidate in {"python", "pytest"}:
+            continue
+        if "/" not in candidate and not candidate.endswith(
+            (".py", ".json", ".md", ".csv", ".log")
+        ):
+            continue
+        path = Path(candidate)
+        if (
+            path.is_absolute()
+            or "\\" in candidate
+            or any(part in {"", ".", ".."} for part in path.parts)
+        ):
+            errors.append(f"{record_id} validation path is not canonical: {token!r}")
+            continue
+        paths.add(path.as_posix().rstrip("/"))
+    return paths
+
+
+def _validation_path_existed_at_bootstrap(relative: str) -> bool:
+    if relative in BASE_PROTECTED_PATHS:
+        return True
+    revision = ACCELERATE_REVISION
+    repository_relative = relative
+    root = REPO_ROOT
+    for prefix, candidate_revision in (
+        ("ipfs_datasets_py/", DATASETS_REVISION),
+        ("ipfs_kit_py/", KIT_REVISION),
+    ):
+        if relative.startswith(prefix):
+            revision = candidate_revision
+            repository_relative = relative[len(prefix) :]
+            root = REPO_ROOT / prefix.rstrip("/")
+            break
+    if not repository_relative:
+        return False
+    result = _git(
+        "cat-file",
+        "-e",
+        f"{revision}:{repository_relative}",
+        cwd=root,
+    )
+    return result.returncode == 0
+
+
+def _path_is_available(relative: str, produced: set[str]) -> bool:
+    if _validation_path_existed_at_bootstrap(relative):
+        return True
+    return any(
+        relative == output
+        or relative.startswith(output + "/")
+        or output.startswith(relative + "/")
+        for output in produced
+    )
+
+
+def _validate_validation_path_closure(
+    task_text: str,
+    goal_text: str,
+    task_dependencies: Mapping[str, set[str]],
+    errors: list[str],
+) -> None:
+    """Reject validation argv that name paths no predecessor is required to create."""
+
+    task_records = _parse_markdown_records(
+        task_text,
+        re.compile(r"^## (IPS-\d{3})\s+([^\n]+)$", re.MULTILINE),
+        "task validation closure",
+        errors,
+    )
+    goal_records = _parse_markdown_records(
+        goal_text,
+        re.compile(r"^## (IPS-G\d{3})\s+([^\n]+)$", re.MULTILINE),
+        "goal validation closure",
+        errors,
+    )
+    task_outputs = {
+        task_id: _declared_output_paths(record["fields"].get("predicted files", ""))
+        for task_id, record in task_records.items()
+    }
+    task_ancestors = {
+        task_id: _ancestors(task_id, dict(task_dependencies)) | {task_id}
+        for task_id in TASK_IDS
+    }
+    for task_id, record in task_records.items():
+        produced = set().union(
+            *(task_outputs.get(ancestor, set()) for ancestor in task_ancestors[task_id])
+        )
+        for relative in sorted(
+            _validation_local_paths(
+                task_id, record["fields"].get("validation", ""), errors
+            )
+        ):
+            if not _path_is_available(relative, produced):
+                errors.append(
+                    f"{task_id} validation path is neither bootstrap-present nor "
+                    f"dependency-produced: {relative}"
+                )
+
+    goal_dependencies = {
+        goal_id: set(
+            _ids(
+                goal_records.get(goal_id, {}).get("fields", {}).get("depends on", ""),
+                r"IPS-G\d{3}",
+            )
+        )
+        for goal_id in GOAL_IDS
+    }
+    for goal_id, record in goal_records.items():
+        if goal_id == "IPS-G000":
+            closure_tasks = set(TASK_IDS)
+        else:
+            closure_goals = _ancestors(goal_id, goal_dependencies) | {goal_id}
+            closure_tasks = set()
+            for closure_goal in closure_goals:
+                goal_record = goal_records.get(closure_goal, {})
+                closure_tasks.update(
+                    _ids(
+                        goal_record.get("fields", {}).get("gap task", ""),
+                        r"IPS-\d{3}",
+                    )
+                )
+            closure_tasks = set().union(
+                *(task_ancestors.get(task_id, {task_id}) for task_id in closure_tasks)
+            )
+        produced = set().union(
+            *(task_outputs.get(task_id, set()) for task_id in closure_tasks)
+        )
+        for relative in sorted(
+            _validation_local_paths(
+                goal_id, record["fields"].get("validation", ""), errors
+            )
+        ):
+            if not _path_is_available(relative, produced):
+                errors.append(
+                    f"{goal_id} validation path is neither bootstrap-present nor "
+                    f"dependency-produced: {relative}"
+                )
 
 
 def _require_terms(
@@ -870,6 +2667,7 @@ def _check_git_result(
 
 
 def _validate_git_state(config: dict[str, Any], errors: list[str]) -> None:
+    _validate_current_trust_sensitive_ignored_inputs(errors)
     branch = _check_git_result(
         _git("branch", "--show-current"), "resolve control branch", errors
     )
@@ -922,20 +2720,24 @@ def _validate_git_state(config: dict[str, Any], errors: list[str]) -> None:
         if dirty:
             errors.append(f"{relative} nested worktree is dirty: {dirty.splitlines()[:8]}")
 
-    for relative in CONTROL_PATHS:
+    protected_paths = config.get("protected_paths")
+    if not isinstance(protected_paths, list):
+        errors.append("cannot inspect protected Git state without protected_paths")
+        protected_paths = list(BASE_PROTECTED_PATHS)
+    for relative in protected_paths:
         tracked = _git("ls-files", "--error-unmatch", "--", relative)
         if tracked.returncode != 0:
-            errors.append(f"control file is not tracked: {relative}")
+            errors.append(f"protected operator input is not tracked: {relative}")
     status = _check_git_result(
-        _git("status", "--porcelain=v1", "--", *CONTROL_PATHS),
-        "inspect control-file cleanliness",
+        _git("status", "--porcelain=v1", "--", *protected_paths),
+        "inspect protected operator-input cleanliness",
         errors,
     )
     if status:
-        errors.append(f"control files are dirty: {status.splitlines()}")
+        errors.append(f"protected operator inputs are dirty: {status.splitlines()}")
 
 
-def validate(*, check_all: bool) -> dict[str, Any]:
+def validate(*, check_all: bool, check_terminal: bool = False) -> dict[str, Any]:
     errors: list[str] = []
     config = _load_json(CONFIG_PATH, errors)
     task_text = _read(TASKBOARD_PATH, errors)
@@ -945,14 +2747,31 @@ def validate(*, check_all: bool) -> dict[str, Any]:
     _validate_config(config, errors)
     dependencies = _validate_tasks(task_text, config, errors)
     _validate_goals(goal_text, errors)
+    _validate_validation_path_closure(task_text, goal_text, dependencies, errors)
     _validate_plan(plan_text, config, errors)
     if check_all:
+        _validate_no_capture_lock(errors)
         _validate_git_state(config, errors)
+        configured = config.get("operator_baseline_receipts")
+        if isinstance(configured, Mapping) and set(configured) == set(
+            BASELINE_RECEIPT_SPECS
+        ):
+            receipts = _validate_operator_baseline_bundle(
+                config, errors, enforce_current_sources=False
+            )
+            synthesis_valid = _validated_baseline_synthesis(config, receipts, errors)
+            if check_terminal and not synthesis_valid:
+                errors.append(
+                    "terminal validation requires the committed, bound IPS-004 synthesis"
+                )
+            if not synthesis_valid and not check_terminal:
+                _validate_current_baseline_sources(configured, receipts, errors)
 
     edge_count = sum(len(value) for value in dependencies.values())
     return {
         "valid": not errors,
         "check_all": check_all,
+        "check_terminal": check_terminal,
         "errors": errors,
         "counts": {
             "tasks_expected": len(TASK_IDS),
@@ -970,30 +2789,4344 @@ def validate(*, check_all: bool) -> dict[str, Any]:
     }
 
 
-def _artifact_json(relative: str, errors: list[str]) -> Mapping[str, Any]:
+def _validate_no_capture_lock(errors: list[str]) -> None:
+    current = REPO_ROOT
+    try:
+        for part in Path(BASELINE_RECEIPT_ROOT).parts:
+            current = current / part
+            info = current.lstat()
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append("operator baseline receipt root has an unsafe path component")
+                return
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        errors.append(f"cannot inspect operator capture lock: {type(exc).__name__}")
+        return
+    try:
+        (current / ".capture.lock").lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        errors.append(f"cannot inspect operator capture lock: {type(exc).__name__}")
+        return
+    errors.append(
+        "operator baseline evidence is ambiguous while stale .capture.lock exists"
+    )
+
+
+def _validate_bootstrap_receipt_root(errors: list[str]) -> None:
+    root = REPO_ROOT / BASELINE_RECEIPT_ROOT
+    if not os.path.lexists(root):
+        return
+    try:
+        current = REPO_ROOT
+        for part in Path(BASELINE_RECEIPT_ROOT).parts:
+            current = current / part
+            info = current.lstat()
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append("bootstrap baseline receipt root has an unsafe path component")
+                return
+        with os.scandir(root) as root_entries:
+            entries = sorted(root_entries, key=lambda entry: entry.name)
+        allowed = {"logs", "work"}
+        for entry in entries:
+            if entry.name not in allowed:
+                errors.append(
+                    f"bootstrap baseline receipt root contains unexpected entry {entry.name!r}"
+                )
+                continue
+            if not entry.is_dir(follow_symlinks=False):
+                errors.append(
+                    f"bootstrap {BASELINE_RECEIPT_ROOT}/{entry.name} is not a safe empty directory"
+                )
+                continue
+            with os.scandir(entry.path) as children:
+                if next(children, None) is not None:
+                    errors.append(
+                        f"bootstrap {BASELINE_RECEIPT_ROOT}/{entry.name} must contain zero "
+                        "pre-capture entries"
+                    )
+    except OSError as exc:
+        errors.append(
+            f"bootstrap cannot inspect baseline receipt root: {type(exc).__name__}"
+        )
+
+
+def validate_bootstrap() -> dict[str, Any]:
+    """Validate committed pre-capture infrastructure with exact empty pins."""
+
+    errors: list[str] = []
+    config = _load_json(CONFIG_PATH, errors)
+    task_text = _read(TASKBOARD_PATH, errors)
+    goal_text = _read(OBJECTIVES_PATH, errors)
+    plan_text = _read(PLAN_PATH, errors)
+    _validate_config(config, errors, bootstrap=True)
+    dependencies = _validate_tasks(task_text, config, errors)
+    _validate_goals(goal_text, errors)
+    _validate_validation_path_closure(task_text, goal_text, dependencies, errors)
+    _validate_plan(plan_text, config, errors)
+    _validate_git_state(config, errors)
+    outer_status = _git("status", "--porcelain=v1", "--untracked-files=all")
+    if outer_status.returncode != 0:
+        errors.append("bootstrap could not inspect the full control worktree")
+    elif outer_status.stdout.strip():
+        errors.append(
+            f"bootstrap control worktree is not pristine: {outer_status.stdout.splitlines()[:12]}"
+        )
+    _validate_bootstrap_receipt_root(errors)
+    return {
+        "valid": not errors,
+        "check_bootstrap": True,
+        "errors": errors,
+        "counts": {
+            "tasks_expected": len(TASK_IDS),
+            "task_dependency_edges": sum(len(value) for value in dependencies.values()),
+            "goals_expected": len(GOAL_IDS),
+            "errors": len(errors),
+        },
+    }
+
+
+def _artifact_json(
+    relative: str,
+    errors: list[str],
+    *,
+    maximum_bytes: int = BASELINE_MAX_RECEIPT_BYTES,
+    bound_label: str = "two-MiB",
+) -> Mapping[str, Any]:
     """Load one task-owned JSON artifact without importing project code."""
 
-    payload = _load_json(REPO_ROOT / relative, errors)
+    retained = _secure_read_repo_file(
+        relative,
+        required_parent=Path(relative).parent.as_posix(),
+        label=f"artifact JSON {relative}",
+        maximum_bytes=maximum_bytes,
+        bound_label=bound_label,
+        errors=errors,
+    )
+    if retained is None:
+        return {}
+    try:
+        payload = json.loads(
+            retained[0].decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_nonfinite,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        errors.append(f"artifact JSON is invalid: {relative}: {exc}")
+        return {}
     if not isinstance(payload, Mapping):
         errors.append(f"artifact must contain a JSON object: {relative}")
         return {}
     return payload
 
 
-def _require_nonempty_file(relative: str, errors: list[str]) -> str:
-    path = REPO_ROOT / relative
+def _require_nonempty_file(
+    relative: str,
+    errors: list[str],
+    *,
+    maximum_bytes: int = BASELINE_MAX_LOG_BYTES,
+    bound_label: str = "64-MiB",
+) -> str:
+    retained = _secure_read_repo_file(
+        relative,
+        required_parent=str(Path(relative).parent),
+        label=f"artifact {relative}",
+        maximum_bytes=maximum_bytes,
+        bound_label=bound_label,
+        errors=errors,
+    )
+    if retained is None:
+        return ""
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        errors.append(f"cannot read artifact {relative}: {type(exc).__name__}")
+        text = retained[0].decode("utf-8")
+    except UnicodeError:
+        errors.append(f"artifact is not UTF-8 text: {relative}")
         return ""
     if not text.strip():
         errors.append(f"artifact is empty: {relative}")
     return text
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+_PYTEST_SUMMARY_COUNT = re.compile(
+    r"(?<![\w])(?P<count>\d+)\s+"
+    r"(?P<label>passed|failed|errors?|skipped|deselected|xfailed|xpassed)\b"
+)
+_PYTEST_NONPASS = re.compile(
+    r"^(?P<status>FAILED|ERROR|SKIPPED|XFAIL|XPASS)\s+"
+    r"(?:(?:\[\d+\])\s+)?(?P<body>.+?)\s*$"
+)
+_PYTEST_ITEM_OUTCOME = re.compile(
+    r"^(?P<node>\S.*?::\S.*?)\s+"
+    r"(?P<status>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)(?:\s|$)"
+)
+_PYTEST_COLLECTION_ERROR = re.compile(r"^ERROR collecting (?P<node>\S.*)$")
+_PYTEST_SKIPPED_SUMMARY = re.compile(
+    r"^SKIPPED\s+(?:\[\d+\]\s+)?(?P<node>\S+?:\d+)(?::\s+.*)?$"
+)
+_PYTEST_SESSION_HEADER = re.compile(
+    r"^platform\s+.+?\s+--\s+Python\s+(?P<python>[0-9.]+),\s+"
+    r"pytest-(?P<pytest>[0-9.]+)",
+    re.MULTILINE,
+)
+_PYTEST_SUMMARY_DURATION = re.compile(r"\bin\s+\d+(?:\.\d+)?s\b")
+_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+_HEX_40 = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    """Return the one receipt-canonical JSON representation."""
+
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _validate_ignored_sensitive_inputs(
+    value: Any,
+    label: str,
+    errors: list[str],
+) -> None:
+    if not isinstance(value, Mapping):
+        errors.append(f"{label}.ignored_sensitive_inputs must be an object")
+        return
+    _closed_keys(
+        value,
+        ("policy_id", "repositories"),
+        f"{label}.ignored_sensitive_inputs",
+        errors,
+    )
+    if value.get("policy_id") != BASELINE_IGNORED_INPUT_POLICY:
+        errors.append(f"{label}.ignored_sensitive_inputs policy is not reviewed")
+    repositories = value.get("repositories")
+    if not isinstance(repositories, Mapping):
+        errors.append(f"{label}.ignored_sensitive_inputs.repositories must be an object")
+        repositories = {}
+    _closed_keys(
+        repositories,
+        REPOSITORY_PATHS,
+        f"{label}.ignored_sensitive_inputs.repositories",
+        errors,
+    )
+    for repository in REPOSITORY_PATHS:
+        recorded = repositories.get(repository)
+        if not isinstance(recorded, Mapping):
+            errors.append(
+                f"{label}.ignored_sensitive_inputs.repositories.{repository} must be an object"
+            )
+            recorded = {}
+        _closed_keys(
+            recorded,
+            ("count", "digest"),
+            f"{label}.ignored_sensitive_inputs.repositories.{repository}",
+            errors,
+        )
+        count = recorded.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            errors.append(
+                f"{label}.ignored_sensitive_inputs.repositories.{repository}.count "
+                "must be a nonnegative integer"
+            )
+        _sha256_value(
+            recorded.get("digest"),
+            f"{label}.ignored_sensitive_inputs.repositories.{repository}.digest",
+            errors,
+        )
+        expected_empty = {
+            "count": 0,
+            "digest": "sha256:"
+            + hashlib.sha256(_canonical_json_bytes([])).hexdigest(),
+        }
+        if recorded != expected_empty:
+            errors.append(
+                f"{label}.ignored_sensitive_inputs.repositories.{repository} "
+                "is not the captured zero-input binding"
+            )
+
+
+def _reviewed_suite_registry(errors: list[str]) -> dict[str, dict[str, Any]]:
+    """Parse the closed protected registry strictly, without executing code."""
+
+    retained = _secure_read_repo_file(
+        BASELINE_SUITE_REGISTRY,
+        required_parent="config",
+        label="protected baseline suite registry",
+        maximum_bytes=BASELINE_MAX_REGISTRY_BYTES,
+        bound_label="256-KiB",
+        errors=errors,
+    )
+    if retained is None:
+        return {}
+    raw, retained_digest = retained
+    if f"sha256:{retained_digest}" != BASELINE_SUITE_REGISTRY_DIGEST:
+        errors.append("protected baseline registry digest differs from the reviewed pin")
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_nonfinite,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        errors.append(f"protected baseline registry is not duplicate-free JSON: {exc}")
+        return {}
+    if raw != _canonical_json_bytes(payload) + b"\n":
+        errors.append("protected baseline registry is not canonical JSON")
+    if not isinstance(payload, Mapping) or set(payload) != {
+        "schema_version",
+        "environment_policy_id",
+        "repositories",
+    }:
+        errors.append("protected baseline registry has an unknown top-level schema")
+        return {}
+    if payload.get("schema_version") != BASELINE_SUITE_REGISTRY_SCHEMA:
+        errors.append("protected baseline registry schema drifted")
+    if payload.get("environment_policy_id") != BASELINE_ENVIRONMENT_POLICY:
+        errors.append("protected baseline registry environment policy drifted")
+    repositories = payload.get("repositories")
+    if not isinstance(repositories, Mapping) or set(repositories) != {
+        "accelerate",
+        "datasets",
+        "kit",
+    }:
+        errors.append("protected baseline registry repository set drifted")
+        return {}
+    reviewed: dict[str, dict[str, Any]] = {}
+    for task_spec in BASELINE_RECEIPT_SPECS.values():
+        repository = str(task_spec["repository"])
+        suites = repositories.get(repository)
+        if not isinstance(suites, list):
+            errors.append(f"protected baseline registry {repository} suites must be an array")
+            continue
+        actual_ids = [
+            suite.get("id") if isinstance(suite, Mapping) else None for suite in suites
+        ]
+        if actual_ids != list(task_spec["command_ids"]):
+            errors.append(
+                f"protected baseline registry {repository} ordered suite ids drifted"
+            )
+        for index, expected_id in enumerate(task_spec["command_ids"]):
+            if index >= len(suites) or not isinstance(suites[index], Mapping):
+                continue
+            suite = dict(suites[index])
+            _closed_keys(
+                suite,
+                (
+                    "id",
+                    "repository",
+                    "cwd",
+                    "argv_template",
+                    "environment_policy_id",
+                    "timeout_seconds",
+                    "observation_note",
+                ),
+                f"protected suite {expected_id}",
+                errors,
+            )
+            if suite.get("id") != expected_id:
+                errors.append(f"protected suite index {index} does not bind {expected_id}")
+            if suite.get("repository") != repository:
+                errors.append(f"protected suite {expected_id} repository drifted")
+            if suite.get("cwd") != task_spec["cwd"]:
+                errors.append(f"protected suite {expected_id} cwd drifted")
+            if suite.get("timeout_seconds") != task_spec["timeouts"][index]:
+                errors.append(f"protected suite {expected_id} timeout drifted")
+            if suite.get("environment_policy_id") != BASELINE_ENVIRONMENT_POLICY:
+                errors.append(f"protected suite {expected_id} environment policy drifted")
+            expected_note = (
+                BASELINE_CORE_15_OBSERVATION
+                if expected_id == "accelerate-proof-focused-core-15"
+                else BASELINE_DEFAULT_OBSERVATION
+            )
+            if suite.get("observation_note") != expected_note:
+                errors.append(f"protected suite {expected_id} observation nonclaim drifted")
+            template = suite.get("argv_template")
+            if (
+                not isinstance(template, list)
+                or len(template) < 12
+                or any(not isinstance(item, str) or not item for item in template)
+            ):
+                errors.append(f"protected suite {expected_id} argv template is invalid")
+                continue
+            if template[:7] != [
+                "{python}",
+                "-m",
+                "pytest",
+                "-vv",
+                "-ra",
+                "--tb=line",
+                "--color=no",
+            ]:
+                errors.append(f"protected suite {expected_id} pytest prefix drifted")
+            for required in (
+                "--trace-config",
+                "-o",
+                "cache_dir={cache_dir}",
+                "--basetemp={basetemp}",
+            ):
+                if template.count(required) != 1:
+                    errors.append(f"protected suite {expected_id} omits {required!r}")
+            if any(
+                token in {"-c", "--co", "--collect-only", "no:cacheprovider"}
+                or "http://" in token
+                or "https://" in token
+                for token in template
+            ):
+                errors.append(f"protected suite {expected_id} contains unsafe argv")
+            canonical_digest = "sha256:" + hashlib.sha256(
+                _canonical_json_bytes(suite)
+            ).hexdigest()
+            suite["suite_definition_digest"] = canonical_digest
+            reviewed[expected_id] = suite
+    return reviewed
+
+
+def _expected_controlled_environment(
+    *,
+    workspace_relative: str,
+    pytest_module_path: str,
+) -> dict[str, str]:
+    workspace = (REPO_ROOT / workspace_relative).resolve()
+    pytest_path = Path(pytest_module_path).resolve()
+    try:
+        site_packages = pytest_path.parents[1]
+    except IndexError:
+        site_packages = pytest_path.parent
+    workspace_parts = Path(workspace_relative).parts
+    work_prefix = (*Path(BASELINE_RECEIPT_ROOT).parts, "work")
+    capture_id = (
+        workspace_parts[len(work_prefix)]
+        if workspace_parts[: len(work_prefix)] == work_prefix
+        and len(workspace_parts) >= len(work_prefix) + 2
+        else "invalid-capture"
+    )
+    source_root = REPO_ROOT.joinpath(*work_prefix, capture_id, "source")
+    python_path = os.pathsep.join(
+        str(path.resolve())
+        for path in (
+            source_root,
+            source_root / "ipfs_datasets_py",
+            source_root / "ipfs_kit_py",
+            site_packages,
+        )
+    )
+    return {
+        "CARGO_NET_OFFLINE": "true",
+        "COLUMNS": "120",
+        "GIT_TERMINAL_PROMPT": "0",
+        "HF_DATASETS_OFFLINE": "1",
+        "HF_HUB_OFFLINE": "1",
+        "HOME": str(workspace / "home"),
+        "HYPOTHESIS_STORAGE_DIRECTORY": str(workspace / "hypothesis"),
+        "IPFS_ACCEL_AUTO_INSTALL": "0",
+        "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+        "IPFS_DATASETS_ENABLE_GROTH16": "0",
+        "IPFS_DATASETS_PY_AUTO_GROTH16_BUILD": "0",
+        "IPFS_DATASETS_RUN_GROTH16_EVM": "0",
+        "IPFS_DATASETS_RUN_PROVEKIT_TESTS": "0",
+        "IPFS_OFFLINE": "1",
+        "IPFS_PATH": str(workspace / "ipfs-repo"),
+        "IPFS_TEST_PROOF_REUSE_MODE": "off",
+        "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "NO_COLOR": "1",
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "PIP_NO_INDEX": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
+        "PYTHONPATH": python_path,
+        "PYTEST_ADDOPTS": "",
+        "TERM": "dumb",
+        "TMPDIR": str(workspace / "tmp"),
+        "TRANSFORMERS_OFFLINE": "1",
+        "TZ": "UTC",
+    }
+
+
+def _looks_patterned_digest(hex_digest: str) -> bool:
+    """Reject conspicuous placeholder digests even before content rehashing."""
+
+    if len(set(hex_digest)) < 8:
+        return True
+    for period in range(1, 17):
+        if len(hex_digest) % period == 0:
+            fragment = hex_digest[:period]
+            if fragment * (len(hex_digest) // period) == hex_digest:
+                return True
+    patterned = (
+        "0123456789abcdef" * 4,
+        "fedcba9876543210" * 4,
+        "00112233445566778899aabbccddeeff" * 2,
+        "deadbeef" * 8,
+    )
+    return hex_digest in patterned
+
+
+def _sha256_value(
+    value: Any,
+    label: str,
+    errors: list[str],
+) -> str | None:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        errors.append(f"{label} must use the sha256:<64 lowercase hex> form")
+        return None
+    hex_digest = value[7:]
+    if not _HEX_64.fullmatch(hex_digest):
+        errors.append(f"{label} is not a canonical lowercase SHA-256 digest")
+        return None
+    if _looks_patterned_digest(hex_digest):
+        errors.append(f"{label} is a conspicuously patterned placeholder digest")
+        return None
+    return hex_digest
+
+
+def _secure_read_repo_file(
+    relative: Any,
+    *,
+    required_parent: str,
+    label: str,
+    maximum_bytes: int,
+    bound_label: str,
+    errors: list[str],
+) -> tuple[bytes, str] | None:
+    """Open through no-follow dirfds, bound the read, and verify stable identity."""
+
+    if not isinstance(relative, str) or not relative:
+        errors.append(f"{label} must be a non-empty repository-relative path")
+        return None
+    candidate = Path(relative)
+    if (
+        candidate.is_absolute()
+        or "\\" in relative
+        or candidate.as_posix() != relative
+        or ".." in candidate.parts
+        or relative.startswith("./")
+    ):
+        errors.append(f"{label} is not a canonical repository-relative path")
+        return None
+    parent = Path(required_parent)
+    if candidate.parent != parent:
+        errors.append(f"{label} must be directly beneath {required_parent}")
+        return None
+    try:
+        root = REPO_ROOT.resolve(strict=True)
+    except OSError as exc:
+        errors.append(f"cannot resolve repository root for {label}: {type(exc).__name__}")
+        return None
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    parent_fd: int | None = None
+    file_fd: int | None = None
+    try:
+        parent_fd = os.open(root, directory_flags)
+        for part in candidate.parts[:-1]:
+            next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = next_fd
+        file_fd = os.open(candidate.parts[-1], file_flags, dir_fd=parent_fd)
+        before = os.fstat(file_fd)
+        if not stat.S_ISREG(before.st_mode):
+            errors.append(f"{label} must name a retained regular non-symlink file")
+            return None
+        if before.st_size > maximum_bytes:
+            errors.append(f"{label} exceeds the fixed {bound_label} bound")
+            return None
+        raw = bytearray()
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(file_fd, min(1024 * 1024, maximum_bytes + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+            digest.update(chunk)
+            if len(raw) > maximum_bytes:
+                errors.append(f"{label} exceeds the fixed {bound_label} bound")
+                return None
+        after = os.fstat(file_fd)
+        identity_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_mode,
+            before.st_size,
+        )
+        identity_after = (
+            after.st_dev,
+            after.st_ino,
+            after.st_mode,
+            after.st_size,
+        )
+        if identity_before != identity_after or len(raw) != after.st_size:
+            errors.append(f"{label} changed while it was read")
+            return None
+        path_after = os.stat(
+            candidate.parts[-1], dir_fd=parent_fd, follow_symlinks=False
+        )
+        if identity_after != (
+            path_after.st_dev,
+            path_after.st_ino,
+            path_after.st_mode,
+            path_after.st_size,
+        ):
+            errors.append(f"{label} path identity changed while it was read")
+            return None
+        return bytes(raw), digest.hexdigest()
+    except OSError as exc:
+        errors.append(
+            f"cannot safely read {label}; a symlink or unsafe component may be present: "
+            f"{type(exc).__name__}"
+        )
+        return None
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if parent_fd is not None:
+            os.close(parent_fd)
+
+
+def _parse_timestamp(value: Any, label: str, errors: list[str]) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label} must be a non-empty ISO-8601 timestamp")
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        errors.append(f"{label} is not an ISO-8601 timestamp")
+        return None
+    if parsed.tzinfo is None:
+        errors.append(f"{label} must include a UTC offset")
+        return None
+    return parsed
+
+
+def _summary_counts(summary_line: str) -> dict[str, int]:
+    counts = {
+        field: 0
+        for field in BASELINE_OUTCOME_FIELDS
+        if field not in {"selected", "collected_count"}
+    }
+    for match in _PYTEST_SUMMARY_COUNT.finditer(summary_line):
+        label = match.group("label")
+        key = "errors" if label in {"error", "errors"} else label
+        counts[key] += int(match.group("count"))
+    counts["selected"] = sum(
+        counts[field]
+        for field in ("passed", "failed", "errors", "skipped", "xfailed", "xpassed")
+    )
+    return counts
+
+
+def _collection_count(log_text: str) -> int | None:
+    matches = re.findall(
+        r"(?i)\bcollected\s+(\d+)\s+items?\b",
+        log_text,
+    )
+    return int(matches[-1]) if matches else None
+
+
+def _collection_complete(log_text: str) -> bool:
+    """Distinguish collected test items from module-level collection skips."""
+
+    collected = _collection_count(log_text)
+    if collected is None or any(
+        _PYTEST_COLLECTION_ERROR.match(line.strip())
+        for line in log_text.splitlines()
+    ):
+        return False
+    return not any(
+        item["status"] == "skipped" and "::" not in item["node_id"]
+        for item in _nonpass_nodes(log_text)
+    )
+
+
+def _nonpass_nodes(log_text: str) -> list[dict[str, str]]:
+    """Reparse pytest's retained short-summary node records."""
+
+    lines = log_text.splitlines()
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    status_names = {
+        "FAILED": "failed",
+        "ERROR": "error",
+        "SKIPPED": "skipped",
+        "XFAIL": "xfailed",
+        "XPASS": "xpassed",
+    }
+    for raw_line in lines:
+        detail = _ANSI_ESCAPE.sub("", raw_line).strip()
+        item_match = _PYTEST_ITEM_OUTCOME.match(detail)
+        collection_match = _PYTEST_COLLECTION_ERROR.match(detail)
+        summary_match = _PYTEST_NONPASS.fullmatch(detail)
+        skipped_match = _PYTEST_SKIPPED_SUMMARY.fullmatch(detail)
+        if item_match is not None:
+            raw_status = item_match.group("status")
+            if raw_status == "PASSED":
+                continue
+            node_id = item_match.group("node").strip()
+        elif collection_match is not None:
+            raw_status = "ERROR"
+            node_id = f"collecting {collection_match.group('node')}"
+        elif skipped_match is not None:
+            raw_status = "SKIPPED"
+            node_id = skipped_match.group("node")
+            if any(
+                existing["status"] == "skipped"
+                and "::" in existing["node_id"]
+                and node_id.startswith(existing["node_id"].split("::", 1)[0] + ":")
+                for existing in result
+            ):
+                continue
+        elif summary_match is not None and summary_match.group("status") != "SKIPPED":
+            raw_status = summary_match.group("status")
+            node_id = summary_match.group("body").split(" - ", 1)[0].strip()
+        else:
+            continue
+        item = {
+            "status": status_names[raw_status],
+            "node_id": node_id,
+            "detail": detail,
+        }
+        identity = (item["status"], item["node_id"])
+        if identity not in seen:
+            seen.add(identity)
+            result.append(item)
+    return result
+
+
+def _closed_keys(
+    value: Mapping[str, Any],
+    expected: Iterable[str],
+    label: str,
+    errors: list[str],
+) -> None:
+    expected_keys = set(expected)
+    actual_keys = set(value)
+    for key in sorted(expected_keys - actual_keys):
+        errors.append(f"{label} is missing field {key!r}")
+    for key in sorted(actual_keys - expected_keys):
+        errors.append(f"{label} has undeclared field {key!r}")
+
+
+def _relative_directory(value: Any, label: str, errors: list[str]) -> Path | None:
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label} must be a non-empty relative directory")
+        return None
+    candidate = Path(value)
+    if (
+        candidate.is_absolute()
+        or "\\" in value
+        or candidate.as_posix() != value
+        or ".." in candidate.parts
+        or value.startswith("./")
+    ):
+        errors.append(f"{label} is not a canonical repository-relative directory")
+        return None
+    path = REPO_ROOT / candidate
+    try:
+        if path.is_symlink() or not path.is_dir():
+            errors.append(f"{label} does not name a retained repository directory")
+            return None
+        if not path.resolve().is_relative_to(REPO_ROOT.resolve()):
+            errors.append(f"{label} resolves outside the repository")
+            return None
+    except OSError as exc:
+        errors.append(f"cannot inspect {label}: {type(exc).__name__}")
+        return None
+    return path
+
+
+def _validate_baseline_command(
+    command: Mapping[str, Any],
+    *,
+    expected_id: str,
+    expected_cwd: str,
+    expected_timeout: int,
+    expected_suite: Mapping[str, Any],
+    capture_id: str,
+    receipt_label: str,
+    seen_logs: set[str],
+    errors: list[str],
+) -> None:
+    label = f"{receipt_label}.commands[{expected_id}]"
+    _closed_keys(
+        command,
+        (
+            "id",
+            "evidence_type",
+            "suite_definition_digest",
+            "command_digest",
+            "argv",
+            "cwd",
+            "workspace_relative_path",
+            "python",
+            "pytest",
+            "environment",
+            "started_at",
+            "finished_at",
+            "duration_ns",
+            "timeout_seconds",
+            "exit_code",
+            "capture_status",
+            "collected_count",
+            "collection_complete",
+            "outcome_counts",
+            "non_pass_nodes",
+            "summary_line",
+            "parse_error",
+            "log",
+            "assurance",
+        ),
+        label,
+        errors,
+    )
+    if command.get("id") != expected_id:
+        errors.append(f"{label}.id must equal {expected_id!r}")
+    if command.get("evidence_type") != "pytest_execution_observation":
+        errors.append(
+            f"{label}.evidence_type must equal 'pytest_execution_observation'"
+        )
+    _sha256_value(command.get("suite_definition_digest"), f"{label}.suite_definition_digest", errors)
+    if command.get("suite_definition_digest") != expected_suite.get(
+        "suite_definition_digest"
+    ):
+        errors.append(f"{label}.suite_definition_digest differs from reviewed registry")
+    declared_command_digest = _sha256_value(
+        command.get("command_digest"), f"{label}.command_digest", errors
+    )
+
+    argv = command.get("argv")
+    if (
+        not isinstance(argv, list)
+        or not argv
+        or any(not isinstance(item, str) or not item for item in argv)
+    ):
+        errors.append(f"{label}.argv must be a non-empty string array")
+        argv = []
+    if argv:
+        executable_name = Path(argv[0]).name.casefold()
+        if executable_name in {
+            "bash",
+            "cmd",
+            "dash",
+            "fish",
+            "ksh",
+            "powershell",
+            "pwsh",
+            "sh",
+            "zsh",
+        }:
+            errors.append(f"{label}.argv may not invoke a shell")
+        if len(argv) < 3 or argv[1:3] != ["-m", "pytest"]:
+            errors.append(f"{label}.argv must invoke the measured pytest module")
+        if any(item in {"-c", "--collect-only", "--co"} for item in argv[1:]):
+            errors.append(f"{label}.argv contains a non-execution or dynamic-eval flag")
+
+    _relative_directory(command.get("cwd"), f"{label}.cwd", errors)
+    if command.get("cwd") != expected_cwd:
+        errors.append(f"{label}.cwd does not match the fixed suite repository")
+    workspace_relative = command.get("workspace_relative_path")
+    expected_workspace_prefix = f"{BASELINE_RECEIPT_ROOT}/work/{capture_id}/{expected_id}"
+    if workspace_relative != expected_workspace_prefix:
+        errors.append(f"{label}.workspace_relative_path is not the fixed capture workspace")
+    else:
+        workspace = (REPO_ROOT / expected_workspace_prefix).resolve()
+        expected_basetemp = f"--basetemp={workspace / 'pytest'}"
+        expected_cache = f"cache_dir={workspace / 'pytest-cache'}"
+        for token in (
+            "-vv",
+            "-ra",
+            "--tb=line",
+            "--color=no",
+            "--trace-config",
+            "-o",
+            expected_cache,
+            expected_basetemp,
+        ):
+            if token not in argv:
+                errors.append(f"{label}.argv omits fixed hermetic token {token!r}")
+        if "-p" in argv and "no:cacheprovider" in argv:
+            errors.append(f"{label}.argv disables the required cacheprovider")
+    python_info = command.get("python")
+    if not isinstance(python_info, Mapping):
+        errors.append(f"{label}.python must be an object")
+        python_info = {}
+    else:
+        _closed_keys(
+            python_info,
+            ("executable", "implementation", "version"),
+            f"{label}.python",
+            errors,
+        )
+    python_executable = python_info.get("executable")
+    if not isinstance(python_executable, str) or not Path(python_executable).is_absolute():
+        errors.append(f"{label}.python.executable must be an absolute path")
+    elif argv and argv[0] != python_executable:
+        errors.append(f"{label}.argv[0] does not match python.executable")
+    if python_info.get("implementation") != "CPython":
+        errors.append(f"{label}.python.implementation must equal 'CPython'")
+    if not isinstance(python_info.get("version"), str) or not python_info.get("version"):
+        errors.append(f"{label}.python.version must be a concrete version")
+
+    pytest_info = command.get("pytest")
+    if not isinstance(pytest_info, Mapping):
+        errors.append(f"{label}.pytest must be an object")
+        pytest_info = {}
+    else:
+        _closed_keys(
+            pytest_info,
+            ("version", "module_path", "autoload_plugins"),
+            f"{label}.pytest",
+            errors,
+        )
+    if not isinstance(pytest_info.get("version"), str) or not pytest_info.get("version"):
+        errors.append(f"{label}.pytest.version must be concrete")
+    module_path = pytest_info.get("module_path")
+    if not isinstance(module_path, str) or not Path(module_path).is_absolute():
+        errors.append(f"{label}.pytest.module_path must be an absolute path")
+    autoload_plugins = pytest_info.get("autoload_plugins")
+    if not isinstance(autoload_plugins, list):
+        errors.append(f"{label}.pytest.autoload_plugins must be an ordered array")
+    else:
+        seen_plugins: set[tuple[str, str]] = set()
+        plugin_identities: list[tuple[str, str]] = []
+        for index, plugin in enumerate(autoload_plugins):
+            if not isinstance(plugin, Mapping):
+                errors.append(f"{label}.pytest.autoload_plugins[{index}] must be an object")
+                continue
+            _closed_keys(
+                plugin,
+                ("name", "value", "distribution", "version"),
+                f"{label}.pytest.autoload_plugins[{index}]",
+                errors,
+            )
+            if any(
+                not isinstance(plugin.get(field), str) or not plugin.get(field)
+                for field in ("name", "value")
+            ) or any(
+                plugin.get(field) is not None
+                and (not isinstance(plugin.get(field), str) or not plugin.get(field))
+                for field in ("distribution", "version")
+            ):
+                errors.append(
+                    f"{label}.pytest.autoload_plugins[{index}] has empty metadata"
+                )
+            identity = (str(plugin.get("name")), str(plugin.get("value")))
+            plugin_identities.append(identity)
+            if identity in seen_plugins:
+                errors.append(f"{label}.pytest.autoload_plugins repeats {identity!r}")
+            seen_plugins.add(identity)
+        if plugin_identities != sorted(plugin_identities):
+            errors.append(f"{label}.pytest.autoload_plugins is not deterministic")
+
+    environment = command.get("environment")
+    if not isinstance(environment, Mapping):
+        errors.append(f"{label}.environment must be an object")
+        environment = {}
+    else:
+        _closed_keys(
+            environment,
+            ("policy_id", "variables"),
+            f"{label}.environment",
+            errors,
+        )
+    if environment.get("policy_id") != BASELINE_ENVIRONMENT_POLICY:
+        errors.append(
+            f"{label}.environment.policy_id must equal {BASELINE_ENVIRONMENT_POLICY!r}"
+        )
+    variables = environment.get("variables")
+    if not isinstance(variables, Mapping) or any(
+        not isinstance(key, str) or not isinstance(item, str)
+        for key, item in (variables.items() if isinstance(variables, Mapping) else ())
+    ):
+        errors.append(f"{label}.environment.variables must be a string map")
+    elif set(variables) != BASELINE_ENVIRONMENT_KEYS:
+        errors.append(f"{label}.environment.variables is not the closed hermetic set")
+    elif workspace_relative == expected_workspace_prefix:
+        workspace = (REPO_ROOT / expected_workspace_prefix).resolve()
+        if variables.get("HOME") != str(workspace / "home"):
+            errors.append(f"{label}.environment HOME is not capture-local")
+        if variables.get("TMPDIR") != str(workspace / "tmp"):
+            errors.append(f"{label}.environment TMPDIR is not capture-local")
+        if variables.get("PYTHONPYCACHEPREFIX") != str(workspace / "pycache"):
+            errors.append(
+                f"{label}.environment PYTHONPYCACHEPREFIX is not capture-local"
+            )
+        if variables.get("HYPOTHESIS_STORAGE_DIRECTORY") != str(
+            workspace / "hypothesis"
+        ):
+            errors.append(
+                f"{label}.environment HYPOTHESIS_STORAGE_DIRECTORY is not capture-local"
+            )
+        for offline_key in (
+            "CARGO_NET_OFFLINE",
+            "HF_DATASETS_OFFLINE",
+            "HF_HUB_OFFLINE",
+            "IPFS_OFFLINE",
+            "PIP_NO_INDEX",
+            "TRANSFORMERS_OFFLINE",
+        ):
+            if variables.get(offline_key) not in {"1", "true"}:
+                errors.append(f"{label}.environment {offline_key} is not offline")
+    if (
+        isinstance(workspace_relative, str)
+        and isinstance(python_executable, str)
+        and isinstance(module_path, str)
+    ):
+        workspace = (REPO_ROOT / workspace_relative).resolve()
+        template = expected_suite.get("argv_template")
+        if isinstance(template, list):
+            expected_argv = [
+                token.replace("{python}", python_executable)
+                .replace("{basetemp}", str(workspace / "pytest"))
+                .replace("{cache_dir}", str(workspace / "pytest-cache"))
+                for token in template
+            ]
+            if argv != expected_argv:
+                errors.append(f"{label}.argv differs from the protected reviewed suite")
+        expected_variables = _expected_controlled_environment(
+            workspace_relative=workspace_relative,
+            pytest_module_path=module_path,
+        )
+        if variables != expected_variables:
+            errors.append(f"{label}.environment differs from the controlled policy")
+    if argv and isinstance(environment, Mapping):
+        command_preimage = {
+            "id": expected_id,
+            "argv": argv,
+            "cwd": command.get("cwd"),
+            "environment": environment,
+        }
+        actual_command_digest = hashlib.sha256(
+            _canonical_json_bytes(command_preimage)
+        ).hexdigest()
+        if declared_command_digest is not None and declared_command_digest != actual_command_digest:
+            errors.append(f"{label}.command_digest does not match canonical command content")
+
+    started = _parse_timestamp(command.get("started_at"), f"{label}.started_at", errors)
+    finished = _parse_timestamp(command.get("finished_at"), f"{label}.finished_at", errors)
+    duration_ns = command.get("duration_ns")
+    if isinstance(duration_ns, bool) or not isinstance(duration_ns, int) or duration_ns <= 0:
+        errors.append(f"{label}.duration_ns must be a positive measured integer")
+    if started is not None and finished is not None and finished <= started:
+        errors.append(f"{label}.finished_at must be later than started_at")
+    if started is not None and finished is not None and isinstance(duration_ns, int):
+        wall_ns = int((finished - started).total_seconds() * 1_000_000_000)
+        if abs(wall_ns - duration_ns) > 5_000_000_000:
+            errors.append(f"{label}.duration_ns disagrees with UTC timestamps")
+    timeout_seconds = command.get("timeout_seconds")
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, int)
+        or timeout_seconds <= 0
+    ):
+        errors.append(f"{label}.timeout_seconds must be a positive bounded integer")
+    elif timeout_seconds != expected_timeout:
+        errors.append(f"{label}.timeout_seconds does not match the fixed suite")
+    exit_code = command.get("exit_code")
+    if (
+        isinstance(exit_code, bool)
+        or not isinstance(exit_code, int)
+        or exit_code not in range(5)
+    ):
+        errors.append(f"{label}.exit_code must be a closed pytest exit code")
+    if command.get("capture_status") != "completed":
+        errors.append(f"{label}.capture_status is not an admissible completed run")
+
+    counts = command.get("outcome_counts")
+    if not isinstance(counts, Mapping):
+        errors.append(f"{label}.outcome_counts must be an object")
+        counts = {}
+    else:
+        _closed_keys(counts, BASELINE_OUTCOME_FIELDS, f"{label}.outcome_counts", errors)
+    for field in BASELINE_OUTCOME_FIELDS:
+        value = counts.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            errors.append(f"{label}.outcome_counts.{field} must be a nonnegative integer")
+    selected_formula = sum(
+        counts.get(field, 0)
+        for field in ("passed", "failed", "errors", "skipped", "xfailed", "xpassed")
+        if isinstance(counts.get(field, 0), int)
+        and not isinstance(counts.get(field, 0), bool)
+    )
+    if counts.get("selected") != selected_formula:
+        errors.append(f"{label}.outcome_counts.selected violates the closed formula")
+    if selected_formula == 0:
+        errors.append(f"{label} is zero-count evidence, not an executed pytest baseline")
+    if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+        blocking = counts.get("failed", 0) + counts.get("errors", 0)
+        if exit_code == 0 and blocking:
+            errors.append(f"{label} reports blocking outcomes with a zero exit code")
+        if exit_code == 1 and not blocking:
+            errors.append(f"{label} has a nonzero exit code without failed/error outcomes")
+
+    collected_count = command.get("collected_count")
+    collection_complete = command.get("collection_complete")
+    if (
+        collected_count is not None
+        and (isinstance(collected_count, bool) or not isinstance(collected_count, int) or collected_count < 0)
+    ):
+        errors.append(f"{label}.collected_count must be null or a nonnegative integer")
+    if not isinstance(collection_complete, bool):
+        errors.append(f"{label}.collection_complete must be boolean")
+    deselected_count = counts.get("deselected")
+    if (
+        collection_complete is True
+        and isinstance(collected_count, int)
+        and not isinstance(collected_count, bool)
+        and isinstance(deselected_count, int)
+        and not isinstance(deselected_count, bool)
+        and collected_count != selected_formula + deselected_count
+    ):
+        errors.append(f"{label}.collection and outcome counts disagree")
+    if command.get("parse_error") is not None:
+        errors.append(f"{label}.parse_error must be null for admissible evidence")
+
+    expected_assurance = {
+        "process_observed": True,
+        "test_execution_cryptographically_proven": False,
+        "cryptographic_proof": False,
+        "signature": None,
+        "network_isolation_enforced": False,
+        "offline_controls_requested": True,
+        "pytest_plugin_allowlist_enforced": False,
+        "public_log_witness_policy": "public-full-log-secret-scan@1",
+        "inherited_secrets_forwarded": False,
+        "remaining_trust": [
+            "Host socket access is not isolated; fixed offline controls are requested and trusted.",
+            "Installed pytest11 plugins are recorded but not allowlisted.",
+            "Selected tests and subprocesses are trusted not to bypass fixed controls.",
+        ],
+        "claim": "Observed output from the fixed pytest subprocess only.",
+    }
+    if command.get("assurance") != expected_assurance:
+        errors.append(f"{label}.assurance overstates or changes the process-only claim")
+
+    log = command.get("log")
+    if not isinstance(log, Mapping):
+        errors.append(f"{label}.log must be an object")
+        log = {}
+    else:
+        _closed_keys(log, ("relative_path", "sha256", "bytes"), f"{label}.log", errors)
+    log_relative = log.get("relative_path")
+    retained_log = _secure_read_repo_file(
+        log_relative,
+        required_parent=BASELINE_LOG_ROOT,
+        label=f"{label}.log.relative_path",
+        maximum_bytes=BASELINE_MAX_LOG_BYTES,
+        bound_label="64-MiB",
+        errors=errors,
+    )
+    if isinstance(log_relative, str):
+        if log_relative in seen_logs:
+            errors.append(f"{label} repeats retained log path {log_relative!r}")
+        seen_logs.add(log_relative)
+        expected_log_relative = f"{BASELINE_LOG_ROOT}/{expected_id}-{capture_id}.log"
+        if log_relative != expected_log_relative:
+            errors.append(f"{label}.log path does not bind the command and capture ids")
+    declared_log_digest = _sha256_value(log.get("sha256"), f"{label}.log.sha256", errors)
+    log_bytes = log.get("bytes")
+    if isinstance(log_bytes, bool) or not isinstance(log_bytes, int) or log_bytes <= 0:
+        errors.append(f"{label}.log.bytes must be a positive integer")
+
+    if retained_log is None:
+        return
+    raw_log, actual_digest = retained_log
+    if isinstance(log_bytes, int) and not isinstance(log_bytes, bool) and len(raw_log) != log_bytes:
+        errors.append(f"{label}.log.bytes does not match the full retained log")
+    if declared_log_digest is not None and actual_digest != declared_log_digest:
+        errors.append(f"{label}.log.sha256 does not match the full retained log")
+    try:
+        log_text = raw_log.decode("utf-8")
+    except UnicodeDecodeError:
+        errors.append(f"{label}.log is not canonical UTF-8")
+        return
+    stripped_log = _ANSI_ESCAPE.sub("", log_text)
+    header = _PYTEST_SESSION_HEADER.search(stripped_log)
+    if header is None or "test session starts" not in stripped_log:
+        errors.append(f"{label}.log lacks a concrete pytest session header")
+    else:
+        python_version = python_info.get("version")
+        pytest_version = pytest_info.get("version")
+        if not isinstance(python_version, str) or not python_version.startswith(
+            header.group("python")
+        ):
+            errors.append(f"{label}.python.version disagrees with the retained log")
+        if pytest_version != header.group("pytest"):
+            errors.append(f"{label}.pytest.version disagrees with the retained log")
+    summary_line = command.get("summary_line")
+    if not isinstance(summary_line, str) or not summary_line.strip():
+        errors.append(f"{label}.summary_line must be a non-empty parsed line")
+        return
+    if summary_line != _ANSI_ESCAPE.sub("", summary_line).strip():
+        errors.append(f"{label}.summary_line must be stripped and ANSI-free")
+    matching_summary_lines = [
+        line.strip()
+        for line in stripped_log.splitlines()
+        if line.strip() == summary_line
+    ]
+    if len(matching_summary_lines) != 1:
+        errors.append(f"{label}.summary_line must occur exactly once in its retained log")
+    retained_nonempty_lines = [
+        line.strip() for line in stripped_log.splitlines() if line.strip()
+    ]
+    if not retained_nonempty_lines or retained_nonempty_lines[-1] != summary_line:
+        errors.append(f"{label}.summary_line must be the final retained output line")
+    if not _PYTEST_SUMMARY_DURATION.search(summary_line):
+        errors.append(f"{label}.summary_line lacks a measured pytest duration")
+    parsed_counts = _summary_counts(summary_line)
+    if not any(parsed_counts.values()):
+        errors.append(f"{label}.summary_line has no parseable pytest outcomes")
+    for field, parsed_value in parsed_counts.items():
+        if counts.get(field) != parsed_value:
+            errors.append(
+                f"{label}.outcome_counts.{field} does not match the retained summary"
+            )
+    parsed_collected = _collection_count(stripped_log)
+    if parsed_collected != collected_count:
+        errors.append(
+            f"{label}.collected_count does not match the retained log"
+        )
+    parsed_collection_complete = _collection_complete(stripped_log)
+    if collection_complete != parsed_collection_complete:
+        errors.append(f"{label}.collection_complete does not match the retained log")
+    declared_nonpass = command.get("non_pass_nodes")
+    if not isinstance(declared_nonpass, list):
+        errors.append(f"{label}.non_pass_nodes must be an array")
+    else:
+        for index, item in enumerate(declared_nonpass):
+            if not isinstance(item, Mapping):
+                errors.append(f"{label}.non_pass_nodes[{index}] must be an object")
+                continue
+            _closed_keys(
+                item,
+                ("status", "node_id", "detail"),
+                f"{label}.non_pass_nodes[{index}]",
+                errors,
+            )
+            if item.get("status") not in {"failed", "error", "skipped", "xfailed", "xpassed"}:
+                errors.append(f"{label}.non_pass_nodes[{index}].status is invalid")
+            if not isinstance(item.get("node_id"), str) or not item.get("node_id"):
+                errors.append(f"{label}.non_pass_nodes[{index}].node_id is empty")
+            if not isinstance(item.get("detail"), str) or not item.get("detail"):
+                errors.append(f"{label}.non_pass_nodes[{index}].detail is empty")
+        if declared_nonpass != _nonpass_nodes(stripped_log):
+            errors.append(f"{label}.non_pass_nodes do not exactly reparse from the retained log")
+
+
+def _validate_baseline_receipt(
+    task_id: str,
+    spec: Mapping[str, Any],
+    errors: list[str],
+) -> Mapping[str, Any]:
+    receipt_relative = str(spec["receipt"])
+    retained_receipt = _secure_read_repo_file(
+        receipt_relative,
+        required_parent=BASELINE_RECEIPT_ROOT,
+        label=f"{task_id} operator baseline receipt path",
+        maximum_bytes=BASELINE_MAX_RECEIPT_BYTES,
+        bound_label="two-MiB",
+        errors=errors,
+    )
+    label = f"{task_id} operator baseline receipt"
+    receipt: Mapping[str, Any] = {}
+    if retained_receipt is not None:
+        raw_receipt, _ = retained_receipt
+        try:
+            decoded = json.loads(
+                raw_receipt.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_pairs,
+                parse_constant=_reject_nonfinite,
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            errors.append(f"{label} is not canonical duplicate-free JSON: {exc}")
+        else:
+            if not isinstance(decoded, Mapping):
+                errors.append(f"{label} must be one JSON object")
+            else:
+                receipt = decoded
+        expected_receipt_bytes = _canonical_json_bytes(receipt) + b"\n"
+        if raw_receipt != expected_receipt_bytes:
+            errors.append(f"{label} file bytes are not the canonical JSON encoding")
+    _closed_keys(
+        receipt,
+        (
+            "schema_version",
+            "operator_origin",
+            "repository",
+            "task_id",
+            "capture_id",
+            "captured_at",
+            "required_command_ids",
+            "planning_revision",
+            "planning_tree",
+            "source_revision",
+            "source_tree",
+            "execution_head",
+            "execution_tree",
+            "source_revisions",
+            "source_trees",
+            "source_clean_before",
+            "source_clean_after",
+            "ignored_sensitive_inputs",
+            "git_environment_policy_id",
+            "commands",
+            "assurance",
+            "receipt_digest",
+        ),
+        label,
+        errors,
+    )
+    if receipt.get("schema_version") != BASELINE_RECEIPT_SCHEMA:
+        errors.append(f"{label}.schema_version is not the reviewed schema")
+    if receipt.get("repository") != spec["repository"]:
+        errors.append(f"{label}.repository does not match its fixed receipt path")
+    if receipt.get("task_id") != task_id:
+        errors.append(f"{label}.task_id does not match the inventory task")
+    capture_id = receipt.get("capture_id")
+    if not isinstance(capture_id, str) or not re.fullmatch(
+        r"\d{8}T\d{6}\.\d{6}Z-\d+", capture_id
+    ):
+        errors.append(f"{label}.capture_id is not the fixed capture identifier form")
+        capture_id = "invalid-capture-id"
+    if receipt.get("planning_revision") != spec["revision"]:
+        errors.append(f"{label}.planning_revision does not match the exact bound revision")
+    if receipt.get("planning_tree") != PLANNING_TREES[spec["repository"]]:
+        errors.append(f"{label}.planning_tree does not match the reviewed source tree")
+
+    planning_revisions = {
+        "accelerate": ACCELERATE_REVISION,
+        "datasets": DATASETS_REVISION,
+        "kit": KIT_REVISION,
+    }
+    source_revisions = receipt.get("source_revisions")
+    source_trees = receipt.get("source_trees")
+    if not isinstance(source_revisions, Mapping) or set(source_revisions) != set(planning_revisions):
+        errors.append(f"{label}.source_revisions must exactly bind all repositories")
+        source_revisions = {}
+    if not isinstance(source_trees, Mapping) or set(source_trees) != set(planning_revisions):
+        errors.append(f"{label}.source_trees must exactly bind all repositories")
+        source_trees = {}
+    for repository, planning_revision in planning_revisions.items():
+        tested_revision = source_revisions.get(repository)
+        tested_tree = source_trees.get(repository)
+        if not isinstance(tested_revision, str) or not _HEX_40.fullmatch(tested_revision):
+            errors.append(f"{label}.source_revisions.{repository} is not a Git commit")
+            continue
+        if not isinstance(tested_tree, str) or not _HEX_40.fullmatch(tested_tree):
+            errors.append(f"{label}.source_trees.{repository} is not a Git tree")
+            continue
+        repository_root = REPO_ROOT / REPOSITORY_PATHS[repository]
+        ancestry = _git(
+            "merge-base",
+            "--is-ancestor",
+            planning_revision,
+            tested_revision,
+            cwd=repository_root,
+        )
+        if ancestry.returncode != 0:
+            errors.append(
+                f"{label}.source_revisions.{repository} does not descend from planning"
+            )
+        resolved_tree = _git("rev-parse", f"{tested_revision}^{{tree}}", cwd=repository_root)
+        if resolved_tree.returncode != 0 or resolved_tree.stdout.strip() != tested_tree:
+            errors.append(f"{label}.source_trees.{repository} mismatches its commit")
+    tested_control_revision = source_revisions.get("accelerate")
+    if isinstance(tested_control_revision, str) and _HEX_40.fullmatch(
+        tested_control_revision
+    ):
+        for nested_repository, nested_path in (
+            ("datasets", "ipfs_datasets_py"),
+            ("kit", "ipfs_kit_py"),
+        ):
+            captured_gitlink = _git(
+                "rev-parse",
+                f"{tested_control_revision}:{nested_path}",
+                cwd=REPO_ROOT,
+            )
+            if (
+                captured_gitlink.returncode != 0
+                or captured_gitlink.stdout.strip()
+                != source_revisions.get(nested_repository)
+            ):
+                errors.append(
+                    f"{label}.source_revisions.{nested_repository} does not match "
+                    "the captured control gitlink"
+                )
+    repository_name = str(spec["repository"])
+    if receipt.get("source_revision") != source_revisions.get(repository_name):
+        errors.append(f"{label}.source_revision does not match its tested repository map")
+    if receipt.get("source_tree") != source_trees.get(repository_name):
+        errors.append(f"{label}.source_tree does not match its tested repository map")
+    if receipt.get("execution_head") != source_revisions.get("accelerate"):
+        errors.append(f"{label}.execution_head does not match the tested control repository")
+    if receipt.get("execution_tree") != source_trees.get("accelerate"):
+        errors.append(f"{label}.execution_tree does not match the tested control repository")
+    expected_clean = {repository: True for repository in planning_revisions}
+    if receipt.get("source_clean_before") != expected_clean:
+        errors.append(f"{label}.source_clean_before is not an exact all-clean map")
+    if receipt.get("source_clean_after") != expected_clean:
+        errors.append(f"{label}.source_clean_after is not an exact all-clean map")
+    _validate_ignored_sensitive_inputs(
+        receipt.get("ignored_sensitive_inputs"),
+        label,
+        errors,
+    )
+    if receipt.get("git_environment_policy_id") != BASELINE_GIT_ENVIRONMENT_POLICY:
+        errors.append(f"{label}.git_environment_policy_id is not reviewed")
+    _parse_timestamp(receipt.get("captured_at"), f"{label}.captured_at", errors)
+    if receipt.get("operator_origin") != BASELINE_OPERATOR_ORIGIN:
+        errors.append(f"{label}.operator_origin must identify the operator capture")
+
+    expected_ids = list(spec["command_ids"])
+    reviewed_registry = _reviewed_suite_registry(errors)
+    if receipt.get("required_command_ids") != expected_ids:
+        errors.append(f"{label}.required_command_ids is not the fixed ordered command set")
+    commands = receipt.get("commands")
+    if not isinstance(commands, list):
+        errors.append(f"{label}.commands must be an ordered array")
+        commands = []
+    actual_ids = [
+        command.get("id") if isinstance(command, Mapping) else None
+        for command in commands
+    ]
+    if actual_ids != expected_ids:
+        errors.append(f"{label}.commands does not exactly cover the fixed ordered command set")
+    seen_logs: set[str] = set()
+    for index, expected_id in enumerate(expected_ids):
+        command = commands[index] if index < len(commands) else None
+        if not isinstance(command, Mapping):
+            errors.append(f"{label}.commands[{index}] must be an object")
+            continue
+        _validate_baseline_command(
+            command,
+            expected_id=expected_id,
+            expected_cwd=str(spec["cwd"]),
+            expected_timeout=int(spec["timeouts"][index]),
+            expected_suite=reviewed_registry.get(expected_id, {}),
+            capture_id=capture_id,
+            receipt_label=label,
+            seen_logs=seen_logs,
+            errors=errors,
+        )
+
+    expected_assurance = {
+        "process_observed": True,
+        "test_execution_cryptographically_proven": False,
+        "cryptographic_proof": False,
+        "signature": None,
+        "network_isolation_enforced": False,
+        "offline_controls_requested": True,
+        "pytest_plugin_allowlist_enforced": False,
+        "public_log_witness_policy": "public-full-log-secret-scan@1",
+        "inherited_secrets_forwarded": False,
+        "remaining_trust": [
+            "Host socket access is not isolated; fixed offline controls are requested and trusted.",
+            "Installed pytest11 plugins are recorded but not allowlisted.",
+            "Selected tests and subprocesses are trusted not to bypass fixed controls.",
+        ],
+        "claim": "Integrity-protected observations of fixed pytest subprocesses only.",
+    }
+    if receipt.get("assurance") != expected_assurance:
+        errors.append(f"{label}.assurance overstates or changes the process-only claim")
+
+    receipt_digest = receipt.get("receipt_digest")
+    declared_digest = _sha256_value(receipt_digest, f"{label}.receipt_digest", errors)
+    digest_preimage = dict(receipt)
+    digest_preimage.pop("receipt_digest", None)
+    actual_digest = hashlib.sha256(_canonical_json_bytes(digest_preimage)).hexdigest()
+    if declared_digest is not None and declared_digest != actual_digest:
+        errors.append(f"{label}.receipt_digest does not match canonical receipt content")
+    return receipt
+
+
+def _expected_receipt_pin(
+    spec: Mapping[str, Any], receipt: Mapping[str, Any]
+) -> dict[str, Any]:
+    commands = receipt.get("commands")
+    if not isinstance(commands, list):
+        commands = []
+    return {
+        "path": spec["receipt"],
+        "receipt_digest": receipt.get("receipt_digest"),
+        "planning_revision": spec["revision"],
+        "source_revision": receipt.get("source_revision"),
+        "source_tree": receipt.get("source_tree"),
+        "required_command_ids": list(spec["command_ids"]),
+        "suite_definition_digests": {
+            command.get("id"): command.get("suite_definition_digest")
+            for command in commands
+            if isinstance(command, Mapping) and isinstance(command.get("id"), str)
+        },
+        "retained_log_paths": [
+            command.get("log", {}).get("relative_path")
+            for command in commands
+            if isinstance(command, Mapping)
+            and isinstance(command.get("log"), Mapping)
+        ],
+    }
+
+
+def _validate_operator_baseline_bundle(
+    config: Mapping[str, Any],
+    errors: list[str],
+    *,
+    enforce_current_sources: bool,
+) -> dict[str, Mapping[str, Any]]:
+    """Validate the complete protected operator bundle before supervisor work."""
+
+    configured = config.get("operator_baseline_receipts")
+    if not isinstance(configured, Mapping) or set(configured) != set(
+        BASELINE_RECEIPT_SPECS
+    ):
+        return {}
+    receipts: dict[str, Mapping[str, Any]] = {}
+    for task_id, spec in BASELINE_RECEIPT_SPECS.items():
+        receipt = _validate_baseline_receipt(
+            task_id,
+            spec,
+            errors,
+        )
+        receipts[task_id] = receipt
+        if configured.get(task_id) != _expected_receipt_pin(spec, receipt):
+            errors.append(f"{task_id} protected operator receipt pin is not exact")
+    source_maps = [receipt.get("source_revisions") for receipt in receipts.values()]
+    if not source_maps or any(source_map != source_maps[0] for source_map in source_maps[1:]):
+        errors.append("operator baseline receipts do not share one exact source revision map")
+    ignored_bindings = [
+        receipt.get("ignored_sensitive_inputs") for receipt in receipts.values()
+    ]
+    if not ignored_bindings or any(
+        binding != ignored_bindings[0] for binding in ignored_bindings[1:]
+    ):
+        errors.append("operator baseline receipts do not share one ignored-input binding")
+    capture_ids = [receipt.get("capture_id") for receipt in receipts.values()]
+    if not capture_ids or any(capture_id != capture_ids[0] for capture_id in capture_ids[1:]):
+        errors.append("operator baseline receipts do not share one exact capture id")
+    toolchain_contexts: list[list[tuple[Any, Any]]] = []
+    for receipt in receipts.values():
+        commands = receipt.get("commands")
+        if not isinstance(commands, list):
+            toolchain_contexts.append([])
+            continue
+        toolchain_contexts.append(
+            [
+                (command.get("python"), command.get("pytest"))
+                for command in commands
+                if isinstance(command, Mapping)
+            ]
+        )
+    flattened_contexts = [
+        context
+        for repository_context in toolchain_contexts
+        for context in repository_context
+    ]
+    if flattened_contexts and any(
+        context != flattened_contexts[0] for context in flattened_contexts[1:]
+    ):
+        errors.append("operator baseline receipts do not share one exact pytest toolchain")
+    if enforce_current_sources and receipts:
+        _validate_current_baseline_sources(configured, receipts, errors)
+    return receipts
+
+
+def _validate_current_baseline_sources(
+    configured: Mapping[str, Any],
+    receipts: Mapping[str, Mapping[str, Any]],
+    errors: list[str],
+) -> None:
+    first = receipts.get("IPS-001") or next(iter(receipts.values()), {})
+    control_captured = first.get("execution_head")
+    control_current = _git_stdout(
+        REPO_ROOT, errors, "resolve preflight control HEAD", "rev-parse", "HEAD"
+    )
+    if isinstance(control_captured, str) and _HEX_40.fullmatch(control_captured):
+        _validate_accelerate_control_transition(
+            task_id="preflight",
+            captured_revision=control_captured,
+            current_revision=control_current,
+            configured_receipts=configured,
+            errors=errors,
+        )
+    else:
+        errors.append("preflight receipts lack an exact captured control revision")
+    control_status = _git(
+        "status", "--porcelain=v1", "--untracked-files=all", cwd=REPO_ROOT
+    )
+    if control_status.returncode != 0:
+        errors.append("cannot inspect preflight control worktree")
+    else:
+        dirty_paths: set[str] = set()
+        for line in control_status.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            relative = line[3:].split(" -> ", 1)[-1]
+            dirty_paths.add(relative)
+        unexpected_dirty = dirty_paths - {
+            BASELINE_SYNTHESIS_JSON,
+            BASELINE_SYNTHESIS_REPORT,
+        }
+        if unexpected_dirty:
+            errors.append(
+                "preflight control worktree contains relevance-changing dirty paths: "
+                f"{sorted(unexpected_dirty)}"
+            )
+
+    source_revisions = first.get("source_revisions")
+    if not isinstance(source_revisions, Mapping):
+        return
+    for repository, gitlink_path in (
+        ("datasets", "ipfs_datasets_py"),
+        ("kit", "ipfs_kit_py"),
+    ):
+        captured = source_revisions.get(repository)
+        repository_root = REPO_ROOT / REPOSITORY_PATHS[repository]
+        current = _git_stdout(
+            repository_root,
+            errors,
+            f"resolve preflight {repository} HEAD",
+            "rev-parse",
+            "HEAD",
+        )
+        if not isinstance(captured, str) or not _HEX_40.fullmatch(captured):
+            errors.append(f"preflight receipt lacks captured {repository} revision")
+            continue
+        ancestry = _git(
+            "merge-base", "--is-ancestor", captured, current, cwd=repository_root
+        )
+        if ancestry.returncode != 0:
+            errors.append(f"preflight {repository} HEAD does not descend from capture")
+        changed = _git_stdout(
+            repository_root,
+            errors,
+            f"inspect preflight {repository} inventory delta",
+            "diff",
+            "--name-only",
+            "--no-renames",
+            captured,
+            current,
+            "--",
+        )
+        allowed = NESTED_INVENTORY_OUTPUTS[gitlink_path]
+        unexpected = {line for line in changed.splitlines() if line} - allowed
+        if unexpected:
+            errors.append(
+                f"preflight {repository} delta contains relevance-changing paths: "
+                f"{sorted(unexpected)}"
+            )
+        gitlink = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve preflight {repository} gitlink",
+            "rev-parse",
+            f"HEAD:{gitlink_path}",
+        )
+        if gitlink != current:
+            errors.append(f"preflight {repository} HEAD does not equal current gitlink")
+
+
+def _validate_historical_synthesis_transition(
+    config: Mapping[str, Any],
+    receipts: Mapping[str, Mapping[str, Any]],
+    parent: str,
+    errors: list[str],
+) -> None:
+    """Revalidate capture-to-IPS-004 history without requiring current HEAD equality."""
+
+    configured = config.get("operator_baseline_receipts")
+    if not isinstance(configured, Mapping):
+        errors.append("IPS-004 historical transition lacks protected receipt pins")
+        return
+    first = receipts.get("IPS-001") or next(iter(receipts.values()), {})
+    captured = first.get("execution_head")
+    if not isinstance(captured, str) or not _HEX_40.fullmatch(captured):
+        errors.append("IPS-004 historical transition lacks a captured control revision")
+        return
+    if _git("merge-base", "--is-ancestor", captured, parent).returncode != 0:
+        errors.append("IPS-004 synthesis parent does not descend from capture")
+        return
+    _validate_accelerate_control_transition(
+        task_id="IPS-004 historical synthesis",
+        captured_revision=captured,
+        current_revision=parent,
+        configured_receipts=configured,
+        errors=errors,
+        enforce_current_nested=False,
+    )
+    evidence_paths: set[str] = set()
+    for pin in configured.values():
+        if not isinstance(pin, Mapping):
+            continue
+        path = pin.get("path")
+        if isinstance(path, str):
+            evidence_paths.add(path)
+        logs = pin.get("retained_log_paths")
+        if isinstance(logs, list):
+            evidence_paths.update(path for path in logs if isinstance(path, str))
+    for relative in sorted(evidence_paths):
+        parent_object = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve IPS-004 parent evidence {relative}",
+            "rev-parse",
+            f"{parent}:{relative}",
+        )
+        current_object = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve current protected evidence {relative}",
+            "rev-parse",
+            f"HEAD:{relative}",
+        )
+        if parent_object and current_object and parent_object != current_object:
+            errors.append(
+                f"IPS-004 synthesis parent evidence differs from current protected {relative}"
+            )
+
+
+def _validated_baseline_synthesis(
+    config: Mapping[str, Any],
+    receipts: Mapping[str, Mapping[str, Any]],
+    errors: list[str],
+    *,
+    candidate: bool = False,
+) -> bool:
+    """Validate IPS-004 as a task candidate or a committed lineage milestone."""
+
+    matrix_path = REPO_ROOT / BASELINE_SYNTHESIS_JSON
+    report_path = REPO_ROOT / BASELINE_SYNTHESIS_REPORT
+    present = (os.path.lexists(matrix_path), os.path.lexists(report_path))
+    if present == (False, False):
+        if candidate:
+            errors.append("IPS-004 candidate synthesis artifacts are missing")
+        return False
+    local: list[str] = []
+    if not all(present):
+        errors.append("IPS-004 baseline synthesis artifacts are only partially present")
+        return False
+    if not candidate:
+        tracked = tuple(
+            _git("ls-files", "--error-unmatch", "--", relative).returncode == 0
+            for relative in (BASELINE_SYNTHESIS_JSON, BASELINE_SYNTHESIS_REPORT)
+        )
+        if tracked == (False, False):
+            return False
+        if not all(tracked):
+            local.append("IPS-004 baseline synthesis artifacts are only partially tracked")
+            errors.extend(local)
+            return False
+        dirty = _git(
+            "status",
+            "--porcelain=v1",
+            "--",
+            BASELINE_SYNTHESIS_JSON,
+            BASELINE_SYNTHESIS_REPORT,
+        )
+        if dirty.returncode != 0 or dirty.stdout.strip():
+            local.append("IPS-004 synthesis artifacts are not clean committed evidence")
+            errors.extend(local)
+            return False
+    retained_matrix = _secure_read_repo_file(
+        BASELINE_SYNTHESIS_JSON,
+        required_parent=str(Path(BASELINE_SYNTHESIS_JSON).parent),
+        label="IPS-004 trust baseline matrix",
+        maximum_bytes=BASELINE_MAX_RECEIPT_BYTES,
+        bound_label="two-MiB",
+        errors=local,
+    )
+    retained_report = _secure_read_repo_file(
+        BASELINE_SYNTHESIS_REPORT,
+        required_parent=str(Path(BASELINE_SYNTHESIS_REPORT).parent),
+        label="IPS-004 trust baseline report",
+        maximum_bytes=BASELINE_MAX_RECEIPT_BYTES,
+        bound_label="two-MiB",
+        errors=local,
+    )
+    if retained_matrix is None or retained_report is None:
+        errors.extend(local)
+        return False
+    raw_matrix, _ = retained_matrix
+    raw_report, _ = retained_report
+    try:
+        matrix = json.loads(
+            raw_matrix.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_nonfinite,
+        )
+        report = raw_report.decode("utf-8")
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        local.append(f"IPS-004 baseline synthesis is not canonical UTF-8 JSON/text: {exc}")
+        errors.extend(local)
+        return False
+    if not isinstance(matrix, Mapping):
+        local.append("IPS-004 trust baseline matrix must be one object")
+        errors.extend(local)
+        return False
+    if raw_matrix != _canonical_json_bytes(matrix) + b"\n":
+        local.append("IPS-004 trust baseline matrix is not canonical JSON")
+    _closed_keys(
+        matrix,
+        (
+            "schema_version",
+            "synthesis_worktree_parent_revision",
+            "baseline_receipts",
+            "inventory_artifacts",
+            "repository_authorities",
+            "proof_class_decisions",
+            "aggregation_decision",
+            "backend_decisions",
+            "trust_nonclaims",
+        ),
+        "IPS-004 trust baseline matrix",
+        local,
+    )
+    if matrix.get("schema_version") != BASELINE_SYNTHESIS_SCHEMA:
+        local.append("IPS-004 trust baseline matrix schema is not reviewed")
+    configured = config.get("operator_baseline_receipts")
+    if matrix.get("baseline_receipts") != configured:
+        local.append("IPS-004 trust baseline does not bind the exact operator receipt pins")
+    if matrix.get("repository_authorities") != TRUST_BASELINE_AUTHORITIES:
+        local.append("IPS-004 repository authority decisions are not exact")
+    if matrix.get("proof_class_decisions") != TRUST_BASELINE_PROOF_CLASS_DECISIONS:
+        local.append("IPS-004 proof-class decisions are not exact")
+    if matrix.get("aggregation_decision") != TRUST_BASELINE_AGGREGATION_DECISION:
+        local.append("IPS-004 aggregation decision is not exact")
+    if matrix.get("backend_decisions") != TRUST_BASELINE_BACKEND_DECISIONS:
+        local.append("IPS-004 backend decisions are not exact")
+    if matrix.get("trust_nonclaims") != list(TRUST_BASELINE_NONCLAIMS):
+        local.append("IPS-004 trust nonclaims are not exact and ordered")
+    parent = matrix.get("synthesis_worktree_parent_revision")
+    if not isinstance(parent, str) or not _HEX_40.fullmatch(parent):
+        local.append("IPS-004 synthesis_worktree_parent_revision is not a commit")
+        parent = ""
+    if parent and not candidate:
+        _validate_historical_synthesis_transition(config, receipts, parent, local)
+    inventory_artifacts = matrix.get("inventory_artifacts")
+    if not isinstance(inventory_artifacts, Mapping) or set(inventory_artifacts) != set(
+        BASELINE_RECEIPT_SPECS
+    ):
+        local.append("IPS-004 inventory_artifacts must exactly bind IPS-001/002/003")
+        inventory_artifacts = {}
+    for task_id, spec in BASELINE_RECEIPT_SPECS.items():
+        item = inventory_artifacts.get(task_id)
+        if not isinstance(item, Mapping):
+            local.append(f"IPS-004 inventory_artifacts.{task_id} must be an object")
+            continue
+        _closed_keys(
+            item,
+            ("inventory", "report", "completion_revision"),
+            f"IPS-004 inventory_artifacts.{task_id}",
+            local,
+        )
+        if item.get("inventory") != spec["inventory"] or item.get("report") != spec["report"]:
+            local.append(f"IPS-004 inventory_artifacts.{task_id} paths drifted")
+        completion = item.get("completion_revision")
+        if not isinstance(completion, str) or not _HEX_40.fullmatch(completion):
+            local.append(f"IPS-004 inventory_artifacts.{task_id} completion is not a commit")
+            continue
+        repository = str(spec["repository"])
+        repository_root = REPO_ROOT / REPOSITORY_PATHS[repository]
+        relative_outputs: list[str] = []
+        for field in ("inventory", "report"):
+            relative = Path(str(spec[field]))
+            if repository != "accelerate":
+                relative = relative.relative_to(REPOSITORY_PATHS[repository])
+            relative_outputs.append(relative.as_posix())
+            if _git("cat-file", "-e", f"{completion}:{relative.as_posix()}", cwd=repository_root).returncode != 0:
+                local.append(
+                    f"IPS-004 {task_id} completion does not contain {relative.as_posix()}"
+                )
+            if parent:
+                parent_reference = (
+                    f"{parent}:{relative.as_posix()}"
+                    if repository == "accelerate"
+                    else f"{completion}:{relative.as_posix()}"
+                )
+                completion_object = _git_stdout(
+                    repository_root,
+                    local,
+                    f"resolve IPS-004 {task_id} completion object {relative}",
+                    "rev-parse",
+                    f"{completion}:{relative.as_posix()}",
+                )
+                parent_object = _git_stdout(
+                    repository_root,
+                    local,
+                    f"resolve IPS-004 {task_id} consumed object {relative}",
+                    "rev-parse",
+                    parent_reference,
+                )
+                if completion_object and parent_object and completion_object != parent_object:
+                    local.append(
+                        f"IPS-004 {task_id} consumed inventory differs from its named completion"
+                    )
+        completion_parent = _git_stdout(
+            repository_root,
+            local,
+            f"resolve IPS-004 {task_id} completion parent",
+            "rev-parse",
+            f"{completion}^1",
+        )
+        changed = _git_stdout(
+            repository_root,
+            local,
+            f"inspect IPS-004 {task_id} completion paths",
+            "diff",
+            "--name-only",
+            "--no-renames",
+            completion_parent,
+            completion,
+            "--",
+        )
+        if {line for line in changed.splitlines() if line} != set(relative_outputs):
+            local.append(f"IPS-004 {task_id} completion is not inventory-output-only")
+        if parent:
+            if repository == "accelerate":
+                if _git(
+                    "merge-base",
+                    "--is-ancestor",
+                    completion,
+                    parent,
+                    cwd=repository_root,
+                ).returncode != 0:
+                    local.append("IPS-004 accelerate inventory completion is not in its parent")
+            else:
+                gitlink = _git_stdout(
+                    REPO_ROOT,
+                    local,
+                    f"resolve IPS-004 {repository} inventory gitlink",
+                    "rev-parse",
+                    f"{parent}:{REPOSITORY_PATHS[repository].as_posix()}",
+                )
+                if gitlink != completion:
+                    local.append(f"IPS-004 {repository} completion does not match its gitlink")
+    if candidate:
+        current_parent = _git_stdout(
+            REPO_ROOT,
+            local,
+            "resolve IPS-004 candidate parent",
+            "rev-parse",
+            "HEAD",
+        )
+        if parent and current_parent != parent:
+            local.append("IPS-004 candidate does not bind its current task parent")
+    else:
+        commits = [
+            _git_stdout(
+                REPO_ROOT,
+                local,
+                f"resolve committed {relative}",
+                "log",
+                "-1",
+                "--format=%H",
+                "--",
+                relative,
+            )
+            for relative in (BASELINE_SYNTHESIS_JSON, BASELINE_SYNTHESIS_REPORT)
+        ]
+        if not commits[0] or commits[0] != commits[1]:
+            local.append("IPS-004 synthesis artifacts were not committed together")
+        elif parent:
+            actual_parent = _git_stdout(
+                REPO_ROOT,
+                local,
+                "resolve IPS-004 synthesis commit parent",
+                "rev-parse",
+                f"{commits[0]}^",
+            )
+            if actual_parent != parent:
+                local.append("IPS-004 synthesis commit does not bind its declared parent")
+            if _git("merge-base", "--is-ancestor", commits[0], "HEAD").returncode != 0:
+                local.append("IPS-004 synthesis commit is not in the current lineage")
+    for task_id, receipt in receipts.items():
+        for term in (
+            task_id,
+            str(receipt.get("receipt_digest", "")),
+            str(BASELINE_RECEIPT_SPECS[task_id]["receipt"]),
+            "pytest_execution_not_cryptographically_proven",
+        ):
+            if term not in report:
+                local.append(f"IPS-004 trust baseline report omits {term!r}")
+    report_decisions: list[tuple[str, Any]] = [
+        *TRUST_BASELINE_AUTHORITIES.items(),
+        *TRUST_BASELINE_PROOF_CLASS_DECISIONS.items(),
+        *TRUST_BASELINE_AGGREGATION_DECISION.items(),
+        *TRUST_BASELINE_BACKEND_DECISIONS.items(),
+    ]
+    for key, value in report_decisions:
+        rendered = str(value).lower() if isinstance(value, bool) else str(value)
+        if key not in report or rendered not in report:
+            local.append(
+                f"IPS-004 trust baseline report omits decision {key}={rendered}"
+            )
+    for nonclaim in TRUST_BASELINE_NONCLAIMS:
+        if nonclaim not in report:
+            local.append(f"IPS-004 trust baseline report omits nonclaim {nonclaim!r}")
+    errors.extend(local)
+    return not local
+
+
+def _walk_mappings(value: Any) -> Iterable[Mapping[str, Any]]:
+    if isinstance(value, Mapping):
+        yield value
+        for child in value.values():
+            yield from _walk_mappings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_mappings(child)
+
+
+def _normalized_field_name(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).casefold())
+
+
+_COPIED_EVIDENCE_ALIASES = frozenset(
+    {
+        "argv",
+        "baselinecommand",
+        "baselinecommands",
+        "baselinecounts",
+        "baselinelog",
+        "baselineresult",
+        "baselineresults",
+        "collectedcount",
+        "commandargv",
+        "commanddigest",
+        "commandline",
+        "durationns",
+        "executedargv",
+        "executedcommand",
+        "exitcode",
+        "failedcount",
+        "failurecount",
+        "logbytes",
+        "logdigest",
+        "logsha256",
+        "nonpassnodes",
+        "observedcounts",
+        "outcomecounts",
+        "passcount",
+        "passedcount",
+        "pytestcommand",
+        "pytestcounts",
+        "pytestresult",
+        "pytestresults",
+        "resultcounts",
+        "retainedlog",
+        "retainedtranscript",
+        "selectedcount",
+        "skipcount",
+        "skippedcount",
+        "stderr",
+        "stdout",
+        "summaryline",
+        "testcounts",
+        "testresult",
+        "testresults",
+        "transcript",
+        "xfailedcount",
+        "xpassedcount",
+    }
+)
+
+
+def _validate_reference_only_inventory_namespace(
+    task_id: str,
+    payload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    """Reject provider-owned shadows of protected operator execution evidence."""
+
+    execution_sentence = re.compile(
+        r"(?:\b\d+\s+(?:passed|failed|errors?|skipped|deselected|xfailed|xpassed)\b|"
+        r"\b(?:pytest|tests?|test\s+cases|execution|suite|run)\b.{0,48}?\b"
+        r"(?:passed|failed|succeeded|successful|verified|green|red|ok)\b|"
+        r"\b(?:passed|failed|succeeded|successful|verified|green|red|ok)\b"
+        r".{0,32}?\b(?:pytest|tests?|cases?|execution|suite|run)\b)",
+        re.IGNORECASE,
+    )
+    claim_values = {
+        "pass",
+        "passed",
+        "success",
+        "successful",
+        "succeeded",
+        "green",
+        "verified",
+    }
+    claim_field_terms = ("execution", "outcome", "result", "run", "status", "test", "verification")
+
+    def visit(value: Any, path: tuple[str, ...]) -> None:
+        if isinstance(value, Mapping):
+            for raw_key, child in value.items():
+                key = str(raw_key)
+                normalized = _normalized_field_name(key)
+                child_path = (*path, key)
+                normalized_path = _normalized_field_name(".".join(child_path))
+                if path == () and key == "baseline_evidence":
+                    continue
+                if normalized in _COPIED_EVIDENCE_ALIASES:
+                    errors.append(
+                        f"{task_id} inventory copies protected evidence through "
+                        f"{'.'.join(child_path)!r}"
+                    )
+                if (
+                    isinstance(child, (bool, int, float))
+                    and any(
+                        term in normalized
+                        or term in normalized_path
+                        for term in ("execution", "test", "pytest", "case", "suite", "run")
+                    )
+                    and any(
+                        term in normalized
+                        or term in normalized_path
+                        for term in (
+                            "fail",
+                            "green",
+                            "ok",
+                            "outcome",
+                            "pass",
+                            "red",
+                            "result",
+                            "status",
+                            "success",
+                        )
+                    )
+                ):
+                    errors.append(
+                        f"{task_id} inventory asserts a provider-owned numeric execution "
+                        f"outcome at {'.'.join(child_path)!r}"
+                    )
+                if (
+                    isinstance(child, bool)
+                    and child
+                    and any(term in normalized for term in ("passed", "succeeded", "successful"))
+                ):
+                    errors.append(
+                        f"{task_id} inventory asserts provider-owned execution success at "
+                        f"{'.'.join(child_path)!r}"
+                    )
+                if isinstance(child, str):
+                    folded = child.strip().casefold()
+                    if execution_sentence.search(child):
+                        errors.append(
+                            f"{task_id} inventory asserts provider-owned execution outcomes at "
+                            f"{'.'.join(child_path)!r}"
+                        )
+                    if folded in claim_values and any(
+                        term in normalized_path for term in claim_field_terms
+                    ):
+                        errors.append(
+                            f"{task_id} inventory asserts provider-owned success status at "
+                            f"{'.'.join(child_path)!r}"
+                        )
+                visit(child, child_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, (*path, str(index)))
+        elif isinstance(value, str) and execution_sentence.search(value):
+            errors.append(
+                f"{task_id} inventory contains provider-owned execution outcome prose at "
+                f"{'.'.join(path)!r}"
+            )
+
+    visit(payload, ())
+
+
+def _validate_inventory_provenance(
+    task_id: str,
+    payload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    forbidden_tokens = (
+        "pending-local-run",
+        "plan-derived",
+        "plan_derived",
+        "copied-from-plan",
+        "copied_from_plan",
+        "placeholder-result",
+        "placeholder_result",
+        "synthetic-success",
+        "synthetic_success",
+        "declared-for-rerun",
+        "declared_for_rerun",
+    )
+    helper_keys = {
+        "helper_output",
+        "helper_outputs",
+        "baseline_helper_output",
+        "baseline_helper_outputs",
+        "generated_baseline_helper",
+        "undeclared_outputs",
+    }
+    origin_keys = {
+        "basis",
+        "classification_method",
+        "evidence_basis",
+        "evidence_origin",
+        "evidence_source",
+        "measurement_provenance",
+        "method",
+        "inspection_mode",
+        "origin",
+        "provenance",
+    }
+    result_keys = {
+        "execution_status",
+        "outcome",
+        "result",
+        "status",
+        "terminal_status",
+        "verification_status",
+    }
+    for mapping in _walk_mappings(payload):
+        normalized_keys = {str(key).casefold() for key in mapping}
+        copied_outcomes = normalized_keys & set(BASELINE_OUTCOME_FIELDS)
+        if copied_outcomes:
+            errors.append(
+                f"{task_id} inventory copies protected outcome fields: "
+                f"{sorted(copied_outcomes)}"
+            )
+        undeclared = normalized_keys & helper_keys
+        if undeclared:
+            errors.append(f"{task_id} inventory declares forbidden helper outputs: {sorted(undeclared)}")
+        for key, value in mapping.items():
+            if not isinstance(value, str):
+                continue
+            lowered = value.casefold()
+            if any(token in lowered for token in forbidden_tokens):
+                errors.append(f"{task_id} inventory contains non-executable placeholder provenance")
+                break
+            key_name = str(key).casefold()
+            if key_name.endswith(("sha256", "_hash", "_digest")):
+                possible = value[7:] if value.startswith("sha256:") else value
+                if _HEX_64.fullmatch(possible) and _looks_patterned_digest(possible):
+                    errors.append(f"{task_id} inventory contains a patterned fake hash")
+                if key_name in {
+                    "canonical_sha256",
+                    "log_digest",
+                    "output_digest",
+                    "receipt_digest",
+                    "sha256",
+                } and _sha256_value(value, f"{task_id} inventory {key_name}", errors) is None:
+                    break
+        origins = " ".join(
+            str(mapping[key]).casefold()
+            for key in mapping
+            if str(key).casefold() in origin_keys
+        )
+        results = " ".join(
+            str(mapping[key]).casefold()
+            for key in mapping
+            if str(key).casefold() in result_keys
+        )
+        all_text = " ".join(str(item).casefold() for item in mapping.values())
+        outcome_claim = re.search(
+            r"\b(?:\d+\s+)?(?:pass(?:ed)?|fail(?:ed)?|errors?|success|verified|valid)\b",
+            f"{results} {all_text}",
+        )
+        if "static" in origins and outcome_claim:
+            errors.append(f"{task_id} inventory treats static inspection as an execution result")
+        if "plan" in origins and outcome_claim:
+            errors.append(f"{task_id} inventory treats plan-derived prose as execution evidence")
+        if outcome_claim and any(
+            isinstance(item, str)
+            and item.casefold() in {"plan", "planning_document", "planning_prose"}
+            for item in mapping.values()
+        ):
+            errors.append(f"{task_id} inventory treats plan-derived prose as execution evidence")
+
+
+def _nonnegative_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and value >= 0
+    )
+
+
+def _finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _close_number(actual: Any, expected: float, *, tolerance: float = 1e-9) -> bool:
+    return _nonnegative_number(actual) and abs(float(actual) - expected) <= tolerance * max(
+        1.0, abs(expected)
+    )
+
+
+def _close_signed_number(actual: Any, expected: float, *, tolerance: float = 1e-9) -> bool:
+    return _finite_number(actual) and abs(float(actual) - expected) <= tolerance * max(
+        1.0, abs(expected)
+    )
+
+
+def _current_repository_bindings(
+    errors: list[str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    revisions: dict[str, str] = {}
+    trees: dict[str, str] = {}
+    for repository, relative in REPOSITORY_PATHS.items():
+        root = REPO_ROOT / relative
+        revision = _git_stdout(
+            root, errors, f"resolve current {repository} release revision", "rev-parse", "HEAD"
+        )
+        tree = _git_stdout(
+            root, errors, f"resolve current {repository} release tree", "rev-parse", "HEAD^{tree}"
+        )
+        if _HEX_40.fullmatch(revision):
+            revisions[repository] = revision
+        if _HEX_40.fullmatch(tree):
+            trees[repository] = tree
+    return revisions, trees
+
+
+def _benchmark_workload_argv() -> list[str]:
+    return [
+        sys.executable,
+        BENCHMARK_CLI,
+        "--seed",
+        str(BENCHMARK_SEED),
+        "--transitions",
+        str(BENCHMARK_TRANSITION_COUNT),
+        "--json-output",
+        BENCHMARK_JSON,
+        "--csv-output",
+        BENCHMARK_CSV,
+    ]
+
+
+def _benchmark_expected_provenance(metric_provenance: Mapping[str, Any]) -> str:
+    values = set(metric_provenance.values())
+    if values == {"measured"}:
+        return "measured"
+    if values == {"estimated"}:
+        return "estimated"
+    return "mixed"
+
+
+def _validate_benchmark_row(
+    row: Any,
+    index: int,
+    errors: list[str],
+) -> None:
+    label = f"IPS-053 transition {index:02d}"
+    if not isinstance(row, Mapping):
+        errors.append(f"{label} must be an object")
+        return
+    expected_keys = (
+        "index",
+        "scenario",
+        "repository_revision",
+        "parent_seal",
+        "seal_status",
+        "required_units",
+        "reused_units",
+        "invalidated_units",
+        "added_units",
+        "removed_units",
+        "newly_proved_units",
+        "unit_count_provenance",
+        "cache_hit_rate",
+        *BENCHMARK_METRICS,
+        "metric_provenance",
+        "measurement_provenance",
+        "compute_saved_percent",
+        "chain_depth",
+        "fallback_reason",
+        "full_seal_root",
+        "incremental_seal_root",
+        "deterministic_roots_match",
+        "simulated_required_units",
+        "rejected_attempts",
+    )
+    _closed_keys(row, expected_keys, label, errors)
+    if row.get("index") != index or row.get("scenario") != BENCHMARK_SCENARIOS[index]:
+        errors.append(f"{label} does not match the fixed ordered workload")
+    if not isinstance(row.get("repository_revision"), str) or not _HEX_40.fullmatch(
+        str(row.get("repository_revision", ""))
+    ):
+        errors.append(f"{label}.repository_revision must be a concrete Git revision")
+    if index == 0:
+        if row.get("parent_seal") is not None:
+            errors.append(f"{label}.parent_seal must be null for the initial checkpoint")
+    elif _sha256_value(row.get("parent_seal"), f"{label}.parent_seal", errors) is None:
+        pass
+    expected_status = "sealed_full" if index in BENCHMARK_FULL_TRANSITIONS else "sealed_incremental"
+    actual_status = row.get("seal_status")
+    if index in BENCHMARK_CONDITIONAL_FULL_TRANSITIONS:
+        if actual_status not in {"sealed_full", "sealed_incremental"}:
+            errors.append(f"{label}.seal_status must be an honest full/incremental decision")
+    elif actual_status != expected_status:
+        errors.append(f"{label}.seal_status must be {expected_status}")
+    counts: dict[str, int] = {}
+    for field in (
+        "required_units",
+        "reused_units",
+        "invalidated_units",
+        "added_units",
+        "removed_units",
+        "newly_proved_units",
+        "chain_depth",
+        "simulated_required_units",
+    ):
+        value = row.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            errors.append(f"{label}.{field} must be a nonnegative integer")
+        else:
+            counts[field] = value
+    if row.get("unit_count_provenance") != "observed_planner_output":
+        errors.append(f"{label}.unit_count_provenance is not reviewed")
+    if counts.get("newly_proved_units") != (
+        counts.get("invalidated_units", -1) + counts.get("added_units", -1)
+    ):
+        errors.append(f"{label} newly-proved arithmetic is inconsistent")
+    if counts.get("required_units") != (
+        counts.get("reused_units", -1) + counts.get("newly_proved_units", -1)
+    ):
+        errors.append(f"{label} required-unit arithmetic is inconsistent")
+    required = counts.get("required_units")
+    reused = counts.get("reused_units")
+    expected_hit = 0.0 if required == 0 else float(reused or 0) / required if required else 0.0
+    if not _close_number(row.get("cache_hit_rate"), expected_hit):
+        errors.append(f"{label}.cache_hit_rate is not derived from unit counts")
+    provenance = row.get("metric_provenance")
+    if not isinstance(provenance, Mapping):
+        errors.append(f"{label}.metric_provenance must be an object")
+        provenance = {}
+    _closed_keys(provenance, BENCHMARK_METRICS, f"{label}.metric_provenance", errors)
+    for metric in BENCHMARK_METRICS:
+        source = provenance.get(metric)
+        value = row.get(metric)
+        if source not in {"measured", "estimated", "unavailable"}:
+            errors.append(f"{label}.{metric} provenance is invalid")
+        if source == "unavailable":
+            if value is not None:
+                errors.append(f"{label}.{metric} must be null when unavailable")
+        elif not _nonnegative_number(value):
+            errors.append(f"{label}.{metric} must be a nonnegative number")
+    if row.get("measurement_provenance") != _benchmark_expected_provenance(provenance):
+        errors.append(f"{label}.measurement_provenance does not summarize metric provenance")
+    full_cost = row.get("full_proof_cost")
+    incremental_cost = row.get("incremental_proof_cost")
+    savings = row.get("compute_saved_percent")
+    if _nonnegative_number(full_cost) and _nonnegative_number(incremental_cost):
+        expected_savings = (
+            0.0
+            if float(full_cost) == 0
+            else (float(full_cost) - float(incremental_cost)) / float(full_cost) * 100.0
+        )
+        if not _close_signed_number(savings, expected_savings):
+            errors.append(f"{label}.compute_saved_percent arithmetic is inconsistent")
+    elif savings is not None:
+        errors.append(f"{label}.compute_saved_percent must be null when costs are unavailable")
+    fallback = row.get("fallback_reason")
+    if actual_status == "sealed_full":
+        if not isinstance(fallback, str) or not fallback.strip():
+            errors.append(f"{label}.fallback_reason must explain the full checkpoint")
+    elif fallback is not None:
+        errors.append(f"{label}.fallback_reason must be null for an incremental seal")
+    full_root = _sha256_value(row.get("full_seal_root"), f"{label}.full_seal_root", errors)
+    incremental_root = _sha256_value(
+        row.get("incremental_seal_root"), f"{label}.incremental_seal_root", errors
+    )
+    if row.get("deterministic_roots_match") is not True or (
+        full_root is not None and incremental_root is not None and full_root != incremental_root
+    ):
+        errors.append(f"{label} full and incremental deterministic roots do not match")
+    if counts.get("simulated_required_units", 0) != 0:
+        errors.append(f"{label} treats simulated required evidence as production-sealed")
+    attempts = row.get("rejected_attempts")
+    expected_attempts = (
+        [{"kind": "wrong_parent", "terminal_status": "stale_parent"}]
+        if index == 37
+        else []
+    )
+    if attempts != expected_attempts:
+        errors.append(f"{label}.rejected_attempts does not match the fixed workload")
+
+
+def _validate_benchmark_csv(
+    text: str,
+    transitions: list[Any],
+    errors: list[str],
+) -> None:
+    try:
+        reader = csv.DictReader(io.StringIO(text), strict=True)
+        rows = list(reader)
+    except (csv.Error, UnicodeError) as exc:
+        errors.append(f"IPS-053 benchmark CSV cannot be parsed: {exc}")
+        return
+    if reader.fieldnames != list(BENCHMARK_CSV_FIELDS):
+        errors.append("IPS-053 benchmark CSV header is not the exact reviewed projection")
+        return
+    if len(rows) != BENCHMARK_TRANSITION_COUNT:
+        errors.append("IPS-053 benchmark CSV must contain exactly 40 data rows")
+        return
+    for index, (csv_row, json_row) in enumerate(zip(rows, transitions)):
+        if not isinstance(json_row, Mapping):
+            continue
+        for field in BENCHMARK_CSV_FIELDS:
+            actual = csv_row.get(field, "")
+            expected = json_row.get(field)
+            if expected is None:
+                matches = actual == ""
+            elif isinstance(expected, bool):
+                matches = actual == str(expected).lower()
+            elif isinstance(expected, int):
+                matches = actual == str(expected)
+            elif isinstance(expected, float):
+                try:
+                    matches = float(actual) == expected
+                except ValueError:
+                    matches = False
+            else:
+                matches = actual == str(expected)
+            if not matches:
+                errors.append(
+                    f"IPS-053 benchmark CSV row {index:02d} field {field} drifts from JSON"
+                )
+
+
+def _validate_parent_bound_output_lifecycle(
+    *,
+    label: str,
+    completion_task_id: str,
+    parent_revision: Any,
+    source_revisions: Any,
+    source_trees: Any,
+    completion_outputs: set[str],
+    errors: list[str],
+) -> None:
+    if not isinstance(parent_revision, str) or not _HEX_40.fullmatch(parent_revision):
+        errors.append(f"{label} worktree parent revision is not a Git commit")
+        return
+    if not isinstance(source_revisions, Mapping) or set(source_revisions) != set(
+        REPOSITORY_PATHS
+    ):
+        errors.append(f"{label} source_revisions must bind all three repositories")
+        return
+    if not isinstance(source_trees, Mapping) or set(source_trees) != set(
+        REPOSITORY_PATHS
+    ):
+        errors.append(f"{label} source_trees must bind all three repositories")
+        return
+    if source_revisions.get("accelerate") != parent_revision:
+        errors.append(f"{label} source revision does not equal its worktree parent")
+    for repository, relative in REPOSITORY_PATHS.items():
+        revision = source_revisions.get(repository)
+        tree = source_trees.get(repository)
+        if not isinstance(revision, str) or not _HEX_40.fullmatch(revision):
+            errors.append(f"{label} source_revisions.{repository} is not a Git commit")
+            continue
+        if not isinstance(tree, str) or not _HEX_40.fullmatch(tree):
+            errors.append(f"{label} source_trees.{repository} is not a Git tree")
+            continue
+        resolved = _git("rev-parse", f"{revision}^{{tree}}", cwd=REPO_ROOT / relative)
+        if resolved.returncode != 0 or resolved.stdout.strip() != tree:
+            errors.append(f"{label} source_trees.{repository} mismatches its commit")
+
+    current_revisions, current_trees = _current_repository_bindings(errors)
+    for repository in ("datasets", "kit"):
+        if (
+            current_revisions.get(repository) != source_revisions.get(repository)
+            or current_trees.get(repository) != source_trees.get(repository)
+        ):
+            errors.append(f"{label} nested {repository} source binding changed")
+    current = current_revisions.get("accelerate")
+    if current == parent_revision:
+        if current_trees.get("accelerate") != source_trees.get("accelerate"):
+            errors.append(f"{label} candidate source tree changed before validation")
+        return
+    if not isinstance(current, str) or not _HEX_40.fullmatch(current):
+        errors.append(f"{label} current completion revision is unavailable")
+        return
+    current_line = _git("rev-list", "--parents", "-n", "1", current)
+    current_tokens = (
+        current_line.stdout.strip().split() if current_line.returncode == 0 else []
+    )
+    if current_tokens == [current, parent_revision]:
+        candidate_changed = _git(
+            "diff",
+            "--name-only",
+            "--no-renames",
+            parent_revision,
+            current,
+            "--",
+        )
+        candidate_paths = {
+            line for line in candidate_changed.stdout.splitlines() if line
+        }
+        if (
+            candidate_changed.returncode != 0
+            or candidate_paths != completion_outputs
+        ):
+            errors.append(
+                f"{label} committed candidate must change exactly "
+                f"{sorted(completion_outputs)}; got {sorted(candidate_paths)}"
+            )
+        dirty = _git(
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            *sorted(completion_outputs),
+        )
+        if dirty.returncode != 0 or dirty.stdout.strip():
+            errors.append(f"{label} committed candidate evidence has later mutation")
+        return
+    history = _git_stdout(
+        REPO_ROOT,
+        errors,
+        f"enumerate {label} first-parent publication history",
+        "rev-list",
+        "--first-parent",
+        "--reverse",
+        f"{parent_revision}..{current}",
+        "--",
+    ).splitlines()
+    if not history:
+        errors.append(f"{label} has no publication commit after its worktree parent")
+        return
+    integration_index: int | None = None
+    integration = ""
+    integration_parent = ""
+    candidate = ""
+    for index, commit in enumerate(history):
+        parent_line = _git("rev-list", "--parents", "-n", "1", commit)
+        tokens = (
+            parent_line.stdout.strip().split()
+            if parent_line.returncode == 0
+            else []
+        )
+        if len(tokens) != 3:
+            continue
+        possible_candidate = tokens[2]
+        candidate_line = _git(
+            "rev-list", "--parents", "-n", "1", possible_candidate
+        )
+        candidate_tokens = (
+            candidate_line.stdout.strip().split()
+            if candidate_line.returncode == 0
+            else []
+        )
+        if candidate_tokens == [possible_candidate, parent_revision]:
+            integration_index = index
+            integration = commit
+            integration_parent = tokens[1]
+            candidate = possible_candidate
+            break
+    if integration_index is None:
+        errors.append(
+            f"{label} publication must be one no-ff merge of an exact candidate child"
+        )
+        return
+    if (
+        _git(
+            "merge-base", "--is-ancestor", parent_revision, integration_parent
+        ).returncode
+        != 0
+    ):
+        errors.append(f"{label} integration first parent left its bound lineage")
+    prefix_artifact_drift = _git(
+        "diff",
+        "--quiet",
+        parent_revision,
+        integration_parent,
+        "--",
+        *sorted(completion_outputs),
+    )
+    if prefix_artifact_drift.returncode != 0:
+        errors.append(f"{label} evidence paths changed before their integration merge")
+    candidate_changed = _git(
+        "diff",
+        "--name-only",
+        "--no-renames",
+        parent_revision,
+        candidate,
+        "--",
+    )
+    candidate_paths = {
+        line for line in candidate_changed.stdout.splitlines() if line
+    }
+    if candidate_changed.returncode != 0 or candidate_paths != completion_outputs:
+        errors.append(
+            f"{label} candidate must change exactly {sorted(completion_outputs)}; "
+            f"got {sorted(candidate_paths)}"
+        )
+    changed = _git(
+        "diff",
+        "--name-only",
+        "--no-renames",
+        integration_parent,
+        integration,
+        "--",
+    )
+    changed_paths = {line for line in changed.stdout.splitlines() if line}
+    if changed.returncode != 0 or changed_paths != completion_outputs:
+        errors.append(
+            f"{label} integration must change exactly {sorted(completion_outputs)}; "
+            f"got {sorted(changed_paths)}"
+        )
+    candidate_projection = _git(
+        "diff", "--quiet", candidate, integration, "--", *sorted(completion_outputs)
+    )
+    if candidate_projection.returncode != 0:
+        errors.append(f"{label} merged evidence differs from its reviewed candidate bytes")
+    completion_seen = False
+    for descendant in history[integration_index + 1 :]:
+        descendant_parent = _git_stdout(
+            REPO_ROOT,
+            errors,
+            f"resolve {label} descendant parent",
+            "rev-parse",
+            f"{descendant}^1",
+        )
+        if not _HEX_40.fullmatch(descendant_parent):
+            continue
+        descendant_paths = {
+            line
+            for line in _git_stdout(
+                REPO_ROOT,
+                errors,
+                f"inspect {label} descendant {descendant}",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                descendant_parent,
+                descendant,
+                "--",
+            ).splitlines()
+            if line
+        }
+        if "docs/architecture/incremental_proof_sealer.todo.md" not in descendant_paths:
+            # Another authorized lane may integrate between this task's merge
+            # and the serialized daemon status publication. The phase-aware
+            # full board gate audits that commit; this lifecycle gate only
+            # binds the retained evidence and its own completion transaction.
+            continue
+        transitioned = _validate_taskboard_status_commit(
+            descendant_parent, descendant, errors
+        )
+        if completion_task_id in transitioned:
+            # The task's integration is already the first-parent ancestor at
+            # this point; the status commit may follow other admitted status
+            # publications serialized by the daemon.
+            completion_seen = True
+    if not completion_seen:
+        errors.append(
+            f"{label} publication lineage lacks the daemon completion for "
+            f"{completion_task_id}"
+        )
+    artifact_drift = _git(
+        "diff", "--quiet", integration, current, "--", *sorted(completion_outputs)
+    )
+    if artifact_drift.returncode != 0:
+        errors.append(f"{label} evidence changed after its integration merge")
+    dirty = _git(
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--",
+        *sorted(completion_outputs),
+    )
+    if dirty.returncode != 0 or dirty.stdout.strip():
+        errors.append(f"{label} committed evidence has later staged/worktree mutation")
+
+
+def _validate_benchmark_artifacts(
+    errors: list[str],
+) -> tuple[Mapping[str, Any], str]:
+    payload = _artifact_json(
+        BENCHMARK_JSON,
+        errors,
+        maximum_bytes=BENCHMARK_MAX_ARTIFACT_BYTES,
+        bound_label="one-MiB",
+    )
+    _closed_keys(
+        payload,
+        (
+            "schema_version",
+            "benchmark_id",
+            "seed",
+            "transition_count",
+            "benchmark_worktree_parent_revision",
+            "source_revisions",
+            "source_trees",
+            "execution_context",
+            "capabilities",
+            "transitions",
+        ),
+        "IPS-053 benchmark",
+        errors,
+    )
+    if payload.get("schema_version") != BENCHMARK_SCHEMA:
+        errors.append("IPS-053 benchmark schema is not reviewed")
+    if payload.get("benchmark_id") != BENCHMARK_ID:
+        errors.append("IPS-053 benchmark_id is not reviewed")
+    if payload.get("seed") != BENCHMARK_SEED or payload.get("transition_count") != 40:
+        errors.append("IPS-053 benchmark seed/transition count is not fixed")
+    _validate_parent_bound_output_lifecycle(
+        label="IPS-053 benchmark",
+        completion_task_id="IPS-053",
+        parent_revision=payload.get("benchmark_worktree_parent_revision"),
+        source_revisions=payload.get("source_revisions"),
+        source_trees=payload.get("source_trees"),
+        completion_outputs={BENCHMARK_JSON, BENCHMARK_CSV},
+        errors=errors,
+    )
+    context = payload.get("execution_context")
+    expected_context = {
+        "runner_id": "protected-board-benchmark-runner@1",
+        "argv": _benchmark_workload_argv(),
+        "process_observed": True,
+        "test_execution_cryptographically_proven": False,
+        "claim": "benchmark_process_observed_metrics_retain_per_metric_provenance",
+    }
+    if context != expected_context:
+        errors.append("IPS-053 execution_context is not the exact protected runner contract")
+    capabilities = payload.get("capabilities")
+    if not isinstance(capabilities, Mapping):
+        errors.append("IPS-053 capabilities must be an object")
+    else:
+        _closed_keys(
+            capabilities,
+            ("real_prover_available", "recursive_verification_available", "gpu_available", "notes"),
+            "IPS-053 capabilities",
+            errors,
+        )
+        for field in ("real_prover_available", "recursive_verification_available", "gpu_available"):
+            if not isinstance(capabilities.get(field), bool):
+                errors.append(f"IPS-053 capabilities.{field} must be boolean")
+        if not isinstance(capabilities.get("notes"), str) or not capabilities.get("notes", "").strip():
+            errors.append("IPS-053 capabilities.notes must state capability limits")
+    transitions = payload.get("transitions")
+    if not isinstance(transitions, list) or len(transitions) != BENCHMARK_TRANSITION_COUNT:
+        errors.append("IPS-053 transitions must contain exactly 40 rows")
+        transitions = []
+    for index, row in enumerate(transitions):
+        _validate_benchmark_row(row, index, errors)
+    benchmark_retained = _secure_read_repo_file(
+        BENCHMARK_JSON,
+        required_parent=str(Path(BENCHMARK_JSON).parent),
+        label="IPS-053 benchmark JSON",
+        maximum_bytes=BENCHMARK_MAX_ARTIFACT_BYTES,
+        bound_label="one-MiB",
+        errors=errors,
+    )
+    benchmark_digest = ""
+    if benchmark_retained is not None:
+        raw, digest = benchmark_retained
+        benchmark_digest = f"sha256:{digest}"
+        if raw != _canonical_json_bytes(payload) + b"\n":
+            errors.append("IPS-053 benchmark JSON must be canonical with one final newline")
+    csv_text = _require_nonempty_file(
+        BENCHMARK_CSV,
+        errors,
+        maximum_bytes=BENCHMARK_MAX_ARTIFACT_BYTES,
+        bound_label="one-MiB",
+    )
+    if transitions and csv_text:
+        _validate_benchmark_csv(csv_text, transitions, errors)
+    return payload, benchmark_digest
+
+
+def _combined_provenance(values: Iterable[str]) -> str:
+    sources = set(values)
+    if sources == {"measured"}:
+        return "measured"
+    if sources == {"estimated"}:
+        return "estimated"
+    return "mixed"
+
+
+def _average(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _derived_benchmark_summary(
+    benchmark: Mapping[str, Any], benchmark_digest: str
+) -> dict[str, Any]:
+    transitions = [row for row in benchmark.get("transitions", []) if isinstance(row, Mapping)]
+    provenance_values = [str(row.get("measurement_provenance")) for row in transitions]
+    measurement_counts = {
+        name: provenance_values.count(name) for name in ("measured", "estimated", "mixed")
+    }
+    reuse_values = [float(row["cache_hit_rate"]) * 100.0 for row in transitions]
+    saving_rows = [
+        row for row in transitions if _finite_number(row.get("compute_saved_percent"))
+    ]
+    saving_values = [float(row["compute_saved_percent"]) for row in saving_rows]
+    average_provenance = _combined_provenance(provenance_values)
+    best = (
+        max(saving_rows, key=lambda row: float(row["compute_saved_percent"]))
+        if saving_rows
+        else None
+    )
+    worst = (
+        min(saving_rows, key=lambda row: float(row["compute_saved_percent"]))
+        if saving_rows
+        else None
+    )
+
+    def target(indices: tuple[int, ...], threshold: float, field: str) -> dict[str, Any]:
+        selected = [transitions[index] for index in indices]
+        values = [
+            float(row[field]) * (100.0 if field == "cache_hit_rate" else 1.0)
+            for row in selected
+            if (
+                _finite_number(row.get(field))
+                if field == "compute_saved_percent"
+                else _nonnegative_number(row.get(field))
+            )
+        ]
+        actual = _average(values)
+        return {
+            "target_percent": threshold,
+            "actual_percent": actual,
+            "met": actual is not None and actual >= threshold,
+            "provenance": _combined_provenance(
+                str(row.get("measurement_provenance")) for row in selected
+            ),
+            "transition_indices": list(indices),
+        }
+
+    metric_summary: dict[str, Any] = {}
+    for metric in (
+        "proof_size_bytes",
+        "seal_size_bytes",
+        "seal_verification_seconds",
+        "storage_growth_bytes",
+        "prover_cpu_seconds",
+        "prover_gpu_seconds",
+        "peak_memory_bytes",
+    ):
+        available = [row for row in transitions if _nonnegative_number(row.get(metric))]
+        values = [float(row[metric]) for row in available]
+        sources = [str(row["metric_provenance"].get(metric)) for row in transitions]
+        metric_summary[metric] = {
+            "available_rows": len(available),
+            "measured_rows": sources.count("measured"),
+            "estimated_rows": sources.count("estimated"),
+            "unavailable_rows": sources.count("unavailable"),
+            "minimum": min(values) if values else None,
+            "maximum": max(values) if values else None,
+            "mean": _average(values),
+        }
+    return {
+        "schema_version": BENCHMARK_SUMMARY_SCHEMA,
+        "benchmark_digest": benchmark_digest,
+        "transition_count": BENCHMARK_TRANSITION_COUNT,
+        "measurement_counts": measurement_counts,
+        "average_reuse_rate": {
+            "value_percent": _average(reuse_values),
+            "weighting": "unweighted_transition_mean",
+            "provenance": average_provenance,
+        },
+        "average_compute_reduction": {
+            "value_percent": _average(saving_values),
+            "weighting": "unweighted_available_transition_mean",
+            "provenance": _combined_provenance(
+                str(row.get("measurement_provenance")) for row in saving_rows
+            ),
+        },
+        "best_case": (
+            {
+                "transition_index": best["index"],
+                "scenario": best["scenario"],
+                "compute_saved_percent": best["compute_saved_percent"],
+                "provenance": best["measurement_provenance"],
+            }
+            if best is not None
+            else {
+                "transition_index": None,
+                "scenario": None,
+                "compute_saved_percent": None,
+                "provenance": "unavailable",
+            }
+        ),
+        "worst_case": (
+            {
+                "transition_index": worst["index"],
+                "scenario": worst["scenario"],
+                "compute_saved_percent": worst["compute_saved_percent"],
+                "provenance": worst["measurement_provenance"],
+            }
+            if worst is not None
+            else {
+                "transition_index": None,
+                "scenario": None,
+                "compute_saved_percent": None,
+                "provenance": "unavailable",
+            }
+        ),
+        "fallback_transition_indices": [
+            int(row["index"])
+            for row in transitions
+            if row.get("seal_status") == "sealed_full"
+        ],
+        "target_assessment": {
+            "localized_reuse_70_percent": target((1, 5, 13, 23, 36), 70.0, "cache_hit_rate"),
+            "mixed_compute_reduction_50_percent": target(
+                tuple(range(BENCHMARK_TRANSITION_COUNT)), 50.0, "compute_saved_percent"
+            ),
+            "documentation_compute_reduction_80_percent": target(
+                (2, 11, 21, 34), 80.0, "compute_saved_percent"
+            ),
+        },
+        "metric_summary": metric_summary,
+    }
+
+
+def _validate_benchmark_summary(errors: list[str]) -> None:
+    benchmark_errors: list[str] = []
+    benchmark, benchmark_digest = _validate_benchmark_artifacts(benchmark_errors)
+    errors.extend(f"IPS-054 prerequisite: {item}" for item in benchmark_errors)
+    payload = _artifact_json(BENCHMARK_SUMMARY_JSON, errors)
+    _closed_keys(
+        payload,
+        (
+            "schema_version",
+            "benchmark_digest",
+            "transition_count",
+            "measurement_counts",
+            "average_reuse_rate",
+            "average_compute_reduction",
+            "best_case",
+            "worst_case",
+            "fallback_transition_indices",
+            "target_assessment",
+            "metric_summary",
+            "limitations",
+        ),
+        "IPS-054 benchmark summary",
+        errors,
+    )
+    if benchmark and len(benchmark.get("transitions", [])) == BENCHMARK_TRANSITION_COUNT:
+        expected = _derived_benchmark_summary(benchmark, benchmark_digest)
+        for field, value in expected.items():
+            if payload.get(field) != value:
+                errors.append(f"IPS-054 {field} does not derive exactly from benchmark.json")
+    limitations = payload.get("limitations")
+    if (
+        not isinstance(limitations, list)
+        or not limitations
+        or any(not isinstance(item, str) or not item.strip() for item in limitations)
+    ):
+        errors.append("IPS-054 limitations must be a non-empty string list")
+    report = _require_nonempty_file(BENCHMARK_REPORT, errors)
+    required_terms = (
+        benchmark_digest,
+        BENCHMARK_SUMMARY_SCHEMA,
+        "measured",
+        "estimated",
+        "unavailable",
+        "targets are not facts",
+        "receipt aggregation does not prove test execution",
+        "simulated required units cannot satisfy a production seal",
+        "localized_reuse_70_percent",
+        "mixed_compute_reduction_50_percent",
+        "documentation_compute_reduction_80_percent",
+        "proof_size_bytes",
+        "seal_verification_seconds",
+        "storage_growth_bytes",
+        "prover_cpu_seconds",
+        "prover_gpu_seconds",
+        "peak_memory_bytes",
+    )
+    folded = report.casefold()
+    for term in required_terms:
+        if term and term.casefold() not in folded:
+            errors.append(f"IPS-054 benchmark report omits {term!r}")
+
+
+def _validate_trust_and_migration_docs(errors: list[str]) -> None:
+    trust = _require_nonempty_file(
+        "docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_MODEL.md", errors
+    )
+    migration = _require_nonempty_file(
+        "docs/architecture/INCREMENTAL_PROOF_SEALER_MIGRATION.md", errors
+    )
+    trust_terms = (
+        "integrity commitment",
+        "exact bytes",
+        "does not establish correct execution",
+        "signed execution receipt",
+        "trusted signer assertion",
+        "signature verification",
+        "receipt-aggregation zk proof",
+        "does not prove the underlying tests ran",
+        "direct execution proof",
+        "declared deterministic computation",
+        "incremental or recursive commit seal",
+        "accepted parent",
+        "public inputs",
+        "private inputs",
+        "sensitive witness",
+        "child signatures are not verified inside the circuit",
+        "test execution is not directly proven",
+        "manifest aggregation, not recursive proof verification",
+        "trusted setup origin",
+        "test-only keys",
+        "content-addressed verification keys",
+        "allowlist",
+        "no proof key is silently generated",
+        "unknown proof systems are rejected",
+        "no arbitrary circuit or executable",
+        "proofs are verified before cache admission",
+        "canonicalization change requires a full checkpoint",
+        "circuit change requires a full checkpoint",
+        "verification-key change requires a full checkpoint",
+        "cache corruption requires a full checkpoint",
+        "compare-and-swap",
+        "wal",
+        "ambiguous external prover outcome is not success",
+        "remaining work before production use",
+    )
+    migration_terms = (
+        "accept",
+        "adapt",
+        "reverify",
+        "reject",
+        "simulated",
+        "integrity-only",
+        "signed receipt",
+        "direct execution",
+        "no assurance upgrade",
+        "verification-key allowlist",
+        "proof verification before cache admission",
+        "schema change",
+        "canonicalization change",
+        "full checkpoint",
+        "staged migration",
+        "rollback",
+        "unknown legacy proof system",
+        "sensitive witness",
+        "test-only key",
+    )
+    for term in trust_terms:
+        if term not in trust.casefold():
+            errors.append(f"IPS-055 trust model is missing {term!r}")
+    for term in migration_terms:
+        if term not in migration.casefold():
+            errors.append(f"IPS-055 migration guide is missing {term!r}")
+    disallowed = (
+        "the entire repository was proven correct",
+        "all pytest execution was proven in zero knowledge",
+        "the code change is semantically correct",
+    )
+    for phrase in disallowed:
+        if phrase in trust.casefold() or phrase in migration.casefold():
+            errors.append(f"IPS-055 documentation contains disallowed claim {phrase!r}")
+
+
+def _release_environment(workspace: Path) -> dict[str, str]:
+    python_path = os.pathsep.join(
+        str((REPO_ROOT / relative).resolve())
+        for relative in (Path("."), Path("ipfs_datasets_py"), Path("ipfs_kit_py"))
+    )
+    environment = {
+        **_fixed_git_environment(),
+        "CARGO_NET_OFFLINE": "true",
+        "HF_DATASETS_OFFLINE": "1",
+        "HF_HUB_OFFLINE": "1",
+        "HOME": str(workspace / "home"),
+        "HYPOTHESIS_STORAGE_DIRECTORY": str(workspace / "hypothesis"),
+        "IPFS_ACCEL_AUTO_INSTALL": "0",
+        "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+        "IPFS_DATASETS_ENABLE_GROTH16": "0",
+        "IPFS_DATASETS_PY_AUTO_GROTH16_BUILD": "0",
+        "IPFS_DATASETS_RUN_GROTH16_EVM": "0",
+        "IPFS_DATASETS_RUN_PROVEKIT_TESTS": "0",
+        "IPFS_OFFLINE": "1",
+        "IPFS_PATH": str(workspace / "ipfs-repo"),
+        "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL": "0",
+        "IPFS_TEST_PROOF_REUSE_MODE": "off",
+        "NO_COLOR": "1",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "PIP_NO_INDEX": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
+        "PYTHONPATH": python_path,
+        "PYTEST_ADDOPTS": "",
+        "PATH": RELEASE_FIXED_EXECUTABLE_PATH,
+        "TERM": "dumb",
+        "TMPDIR": str(workspace / "tmp"),
+        "TRANSFORMERS_OFFLINE": "1",
+        "TZ": "UTC",
+    }
+    for child in (
+        "home",
+        "hypothesis",
+        "ipfs-repo",
+        "pycache",
+        "tmp",
+        "pytest-cache",
+        "pytest-tmp",
+    ):
+        (workspace / child).mkdir(parents=True, exist_ok=True)
+    return environment
+
+
+def _validate_release_ipfs_preflight(errors: list[str]) -> None:
+    """Never let the reviewed kit suites discover and launch a real IPFS binary."""
+
+    resolved = shutil.which("ipfs", path=RELEASE_FIXED_EXECUTABLE_PATH)
+    if resolved is not None:
+        errors.append(f"release runner refused because fixed PATH resolves ipfs at {resolved}")
+
+
+_RELEASE_SECRET_PATTERNS: tuple[tuple[str, re.Pattern[bytes]], ...] = (
+    ("private-key", re.compile(rb"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")),
+    ("github-token", re.compile(rb"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
+    ("aws-access-key", re.compile(rb"\bAKIA[A-Z0-9]{16}\b")),
+    (
+        "jwt",
+        re.compile(
+            rb"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"
+        ),
+    ),
+    (
+        "named-secret",
+        re.compile(
+            rb"(?i)\b(?:api[_-]?key|authorization|password|secret|token)\b"
+            rb"\s*(?:=|:)\s*['\"]?[A-Za-z0-9_./+~-]{20,}"
+        ),
+    ),
+)
+
+
+def _validate_release_public_log(raw: bytes, errors: list[str]) -> None:
+    try:
+        raw.decode("utf-8")
+    except UnicodeError:
+        errors.append("IPS-056 retained public log must be strict UTF-8 text")
+        return
+    if b"\x00" in raw:
+        errors.append("IPS-056 retained public log may not contain NUL bytes")
+        return
+    for label, pattern in _RELEASE_SECRET_PATTERNS:
+        if pattern.search(raw):
+            errors.append(f"IPS-056 retained public log refused by secret scan: {label}")
+            return
+
+
+def _release_baseline_observations(errors: list[str]) -> dict[str, dict[str, Any]]:
+    config = _load_json(CONFIG_PATH, errors)
+    receipts = _validate_operator_baseline_bundle(
+        config,
+        errors,
+        enforce_current_sources=False,
+    )
+    observations: dict[str, dict[str, Any]] = {}
+    for receipt in receipts.values():
+        commands = receipt.get("commands")
+        if not isinstance(commands, list):
+            continue
+        for command in commands:
+            if not isinstance(command, Mapping) or not isinstance(command.get("id"), str):
+                continue
+            command_id = str(command["id"])
+            if command_id in observations:
+                errors.append(f"release baseline repeats command id {command_id}")
+                continue
+            observations[command_id] = {
+                "receipt_digest": receipt.get("receipt_digest"),
+                "capture_status": command.get("capture_status"),
+                "exit_code": command.get("exit_code"),
+                "collected_count": command.get("collected_count"),
+                "collection_complete": command.get("collection_complete"),
+                "outcome_counts": command.get("outcome_counts"),
+                "non_pass_nodes": command.get("non_pass_nodes"),
+            }
+    return observations
+
+
+def _release_acceptance_status(
+    spec: Mapping[str, Any], observation: Mapping[str, Any]
+) -> str:
+    """Classify a release observation without turning an inherited red into green."""
+
+    status = observation.get("capture_status")
+    exit_code = observation.get("exit_code")
+    counts = observation.get("outcome_counts")
+    current_nonpass = observation.get("non_pass_nodes")
+    complete = observation.get("collection_complete")
+    if (
+        status != "completed"
+        or not isinstance(exit_code, int)
+        or isinstance(exit_code, bool)
+        or not isinstance(counts, Mapping)
+        or not isinstance(current_nonpass, list)
+        or not isinstance(complete, bool)
+    ):
+        return "regressed"
+    if any(
+        isinstance(counts.get(field), bool)
+        or not isinstance(counts.get(field), int)
+        or counts.get(field, -1) < 0
+        for field in BASELINE_OUTCOME_FIELDS
+    ):
+        return "regressed"
+    if counts.get("selected", 0) <= 0:
+        return "regressed"
+    collected_count = observation.get("collected_count")
+    if complete and (
+        isinstance(collected_count, bool)
+        or not isinstance(collected_count, int)
+        or collected_count != counts["selected"] + counts["deselected"]
+    ):
+        return "regressed"
+
+    if spec.get("suite_origin") == "incremental_proof_sealer_current_tree_suite":
+        if (
+            exit_code == 0
+            and complete
+            and counts.get("selected", 0) > 0
+            and not any(
+                counts.get(field, 0)
+                for field in (
+                    "failed",
+                    "errors",
+                    "xpassed",
+                    "skipped",
+                    "xfailed",
+                    "deselected",
+                )
+            )
+        ):
+            return "green"
+        return "regressed"
+
+    baseline = spec.get("baseline_observation")
+    if not isinstance(baseline, Mapping):
+        return "regressed"
+    baseline_counts = baseline.get("outcome_counts")
+    baseline_nonpass = baseline.get("non_pass_nodes")
+    baseline_complete = baseline.get("collection_complete")
+    baseline_exit = baseline.get("exit_code")
+    if (
+        baseline.get("capture_status") != "completed"
+        or not isinstance(baseline_counts, Mapping)
+        or not isinstance(baseline_nonpass, list)
+        or not isinstance(baseline_complete, bool)
+        or not isinstance(baseline_exit, int)
+        or isinstance(baseline_exit, bool)
+    ):
+        return "regressed"
+    if any(
+        isinstance(baseline_counts.get(field), bool)
+        or not isinstance(baseline_counts.get(field), int)
+        or baseline_counts.get(field, -1) < 0
+        for field in BASELINE_OUTCOME_FIELDS
+    ):
+        return "regressed"
+
+    if counts.get("passed", -1) < baseline_counts.get("passed", 0):
+        return "regressed"
+    for field in (
+        "failed",
+        "errors",
+        "xpassed",
+        "skipped",
+        "xfailed",
+        "deselected",
+    ):
+        if counts.get(field, -1) > baseline_counts.get(field, 0):
+            return "regressed"
+    baseline_nodes = {
+        (item.get("status"), item.get("node_id"))
+        for item in baseline_nonpass
+        if isinstance(item, Mapping)
+    }
+    current_nodes = {
+        (item.get("status"), item.get("node_id"))
+        for item in current_nonpass
+        if isinstance(item, Mapping)
+    }
+    if len(current_nodes) != len(current_nonpass) or not current_nodes <= baseline_nodes:
+        return "regressed"
+    if baseline_complete:
+        if not complete:
+            return "regressed"
+    elif not complete and (
+        observation.get("collected_count") != baseline.get("collected_count")
+        or counts != baseline_counts
+        or current_nonpass != baseline_nonpass
+        or exit_code != baseline_exit
+    ):
+        return "regressed"
+    if baseline_exit == 0 and exit_code != 0:
+        return "regressed"
+
+    non_green = (
+        exit_code != 0
+        or not complete
+        or any(
+            counts.get(field, 0)
+            for field in (
+                "failed",
+                "errors",
+                "xpassed",
+                "skipped",
+                "xfailed",
+                "deselected",
+            )
+        )
+    )
+    return "baseline_compatible_non_green" if non_green else "green"
+
+
+def _release_suite_specs(errors: list[str]) -> list[dict[str, Any]]:
+    registry = _reviewed_suite_registry(errors)
+    baseline_observations = _release_baseline_observations(errors)
+    specs: list[dict[str, Any]] = []
+    work_root = REPO_ROOT / RELEASE_WORK_ROOT
+    for task_id in BASELINE_RECEIPT_SPECS:
+        for command_id in BASELINE_RECEIPT_SPECS[task_id]["command_ids"]:
+            suite = registry.get(str(command_id))
+            if not isinstance(suite, Mapping):
+                errors.append(f"release suite registry is missing {command_id}")
+                continue
+            workspace = work_root / str(command_id)
+            substitutions = {
+                "{python}": sys.executable,
+                "{cache_dir}": str(workspace / "pytest-cache"),
+                "{basetemp}": str(workspace / "pytest-tmp"),
+            }
+            argv = []
+            for token in suite.get("argv_template", []):
+                rendered = str(token)
+                for placeholder, replacement in substitutions.items():
+                    rendered = rendered.replace(placeholder, replacement)
+                argv.append(rendered)
+            specs.append(
+                {
+                    "id": command_id,
+                    "suite_origin": "reviewed_existing_zk_suite",
+                    "cwd": str(suite.get("cwd")),
+                    "argv": argv,
+                    "timeout_seconds": int(suite.get("timeout_seconds", 0)),
+                    "baseline_observation": baseline_observations.get(str(command_id)),
+                }
+            )
+    for command_id, cwd, test_path, timeout_seconds in RELEASE_NEW_SUITES:
+        workspace = work_root / command_id
+        specs.append(
+            {
+                "id": command_id,
+                "suite_origin": "incremental_proof_sealer_current_tree_suite",
+                "cwd": cwd,
+                "argv": [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-vv",
+                    "-ra",
+                    "--tb=line",
+                    "--color=no",
+                    "--trace-config",
+                    "-o",
+                    f"cache_dir={workspace / 'pytest-cache'}",
+                    f"--basetemp={workspace / 'pytest-tmp'}",
+                    test_path,
+                ],
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+    ids = [str(spec["id"]) for spec in specs]
+    if len(ids) != 20 or len(set(ids)) != 20:
+        errors.append("release runner must bind exactly 17 existing and 3 new suites")
+    return specs
+
+
+def _release_assurance() -> dict[str, Any]:
+    return {
+        "process_observed": True,
+        "test_execution_cryptographically_proven": False,
+        "cryptographic_proof": None,
+        "signature": None,
+        "public_log_witness_policy": RELEASE_PUBLIC_LOG_POLICY,
+        "sensitive_witness_data_logged": False,
+        "claim": "pytest_process_outputs_observed_only_not_a_proof_of_test_execution",
+    }
+
+
+def _validate_release_log_slice(
+    command: Mapping[str, Any],
+    raw_log: bytes,
+    expected_offset: int,
+    label: str,
+    errors: list[str],
+) -> tuple[bytes, int]:
+    offset = command.get("log_offset")
+    size = command.get("log_bytes")
+    if offset != expected_offset or not isinstance(size, int) or isinstance(size, bool) or size < 0:
+        errors.append(f"{label} log slice is not contiguous and bounded")
+        return b"", expected_offset
+    end = offset + size
+    if end > len(raw_log):
+        errors.append(f"{label} log slice exceeds the retained release log")
+        return b"", expected_offset
+    retained = raw_log[offset:end]
+    expected_digest = "sha256:" + hashlib.sha256(retained).hexdigest()
+    if command.get("log_sha256") != expected_digest:
+        errors.append(f"{label} log slice digest does not match retained bytes")
+    return retained, end
+
+
+def _validate_release_validation(errors: list[str]) -> None:
+    retained_receipt = _secure_read_repo_file(
+        RELEASE_VALIDATION_JSON,
+        required_parent=str(Path(RELEASE_VALIDATION_JSON).parent),
+        label="IPS-056 release validation receipt",
+        maximum_bytes=BASELINE_MAX_RECEIPT_BYTES,
+        bound_label="two-MiB",
+        errors=errors,
+    )
+    retained_log = _secure_read_repo_file(
+        RELEASE_VALIDATION_LOG,
+        required_parent=str(Path(RELEASE_VALIDATION_LOG).parent),
+        label="IPS-056 retained release log",
+        maximum_bytes=RELEASE_MAX_LOG_BYTES,
+        bound_label="six-MiB",
+        errors=errors,
+    )
+    if retained_receipt is None or retained_log is None:
+        return
+    raw_receipt, _ = retained_receipt
+    raw_log, log_digest = retained_log
+    _validate_release_public_log(raw_log, errors)
+    try:
+        receipt = json.loads(
+            raw_receipt.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_nonfinite,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        errors.append(f"IPS-056 release validation receipt is invalid JSON: {exc}")
+        return
+    if not isinstance(receipt, Mapping):
+        errors.append("IPS-056 release validation receipt must be an object")
+        return
+    _closed_keys(
+        receipt,
+        (
+            "schema_version",
+            "runner_id",
+            "validation_worktree_parent_revision",
+            "source_revisions",
+            "source_trees",
+            "environment_policy_id",
+            "terminal_gate",
+            "pytest_commands",
+            "retained_log",
+            "assurance",
+            "receipt_digest",
+        ),
+        "IPS-056 release validation receipt",
+        errors,
+    )
+    if receipt.get("schema_version") != RELEASE_VALIDATION_SCHEMA:
+        errors.append("IPS-056 release validation schema is not reviewed")
+    if receipt.get("runner_id") != RELEASE_RUNNER_ID:
+        errors.append("IPS-056 release validation runner is not protected")
+    if receipt.get("environment_policy_id") != RELEASE_ENVIRONMENT_POLICY:
+        errors.append("IPS-056 release environment policy is not reviewed")
+    declared_digest = receipt.get("receipt_digest")
+    body = dict(receipt)
+    body.pop("receipt_digest", None)
+    expected_digest = "sha256:" + hashlib.sha256(_canonical_json_bytes(body)).hexdigest()
+    if declared_digest != expected_digest:
+        errors.append("IPS-056 release receipt digest does not match canonical content")
+    if raw_receipt != _canonical_json_bytes(receipt) + b"\n":
+        errors.append("IPS-056 release receipt is not canonical JSON")
+    _validate_parent_bound_output_lifecycle(
+        label="IPS-056 release evidence",
+        completion_task_id="IPS-056",
+        parent_revision=receipt.get("validation_worktree_parent_revision"),
+        source_revisions=receipt.get("source_revisions"),
+        source_trees=receipt.get("source_trees"),
+        completion_outputs={RELEASE_REPORT, RELEASE_VALIDATION_JSON, RELEASE_VALIDATION_LOG},
+        errors=errors,
+    )
+    revisions_value = receipt.get("source_revisions")
+    revisions = dict(revisions_value) if isinstance(revisions_value, Mapping) else {}
+    if receipt.get("assurance") != _release_assurance():
+        errors.append("IPS-056 release receipt assurance overstates process observation")
+    log_ref = receipt.get("retained_log")
+    expected_log_ref = {
+        "path": RELEASE_VALIDATION_LOG,
+        "bytes": len(raw_log),
+        "sha256": f"sha256:{log_digest}",
+    }
+    if log_ref != expected_log_ref:
+        errors.append("IPS-056 retained_log binding does not match full retained bytes")
+    offset = 0
+    terminal = receipt.get("terminal_gate")
+    if not isinstance(terminal, Mapping):
+        errors.append("IPS-056 terminal_gate must be an object")
+        terminal = {}
+    _closed_keys(
+        terminal,
+        (
+            "id",
+            "argv",
+            "cwd",
+            "timeout_seconds",
+            "duration_ns",
+            "capture_status",
+            "exit_code",
+            "log_offset",
+            "log_bytes",
+            "log_sha256",
+        ),
+        "IPS-056 terminal_gate",
+        errors,
+    )
+    expected_terminal_argv = [
+        sys.executable,
+        "scripts/validate_incremental_proof_sealer_board.py",
+        "--check-terminal",
+    ]
+    if terminal.get("id") != "terminal-board-gate" or terminal.get("argv") != expected_terminal_argv:
+        errors.append("IPS-056 terminal gate argv is not exact")
+    if terminal.get("cwd") != "." or terminal.get("timeout_seconds") != 120:
+        errors.append("IPS-056 terminal gate cwd/timeout drifted")
+    if terminal.get("capture_status") != "completed" or terminal.get("exit_code") != 0:
+        errors.append("IPS-056 terminal structural gate was not observed successful")
+    if not isinstance(terminal.get("duration_ns"), int) or terminal.get("duration_ns", 0) <= 0:
+        errors.append("IPS-056 terminal gate duration must be measured")
+    _, offset = _validate_release_log_slice(terminal, raw_log, offset, "IPS-056 terminal gate", errors)
+    expected_suites = _release_suite_specs(errors)
+    commands = receipt.get("pytest_commands")
+    if not isinstance(commands, list) or len(commands) != len(expected_suites):
+        errors.append("IPS-056 pytest_commands must exactly cover 17 existing and 3 new suites")
+        commands = []
+    baseline_non_green_ids: list[str] = []
+    for index, expected_suite in enumerate(expected_suites):
+        if index >= len(commands) or not isinstance(commands[index], Mapping):
+            errors.append(f"IPS-056 release suite {expected_suite['id']} is missing")
+            continue
+        command = commands[index]
+        label = f"IPS-056 release suite {expected_suite['id']}"
+        _closed_keys(
+            command,
+            (
+                "id",
+                "suite_origin",
+                "argv",
+                "cwd",
+                "timeout_seconds",
+                "duration_ns",
+                "capture_status",
+                "exit_code",
+                "collected_count",
+                "collection_complete",
+                "outcome_counts",
+                "non_pass_nodes",
+                "summary_line",
+                "log_offset",
+                "log_bytes",
+                "log_sha256",
+                "assurance",
+                "acceptance_status",
+            ),
+            label,
+            errors,
+        )
+        for field in ("id", "suite_origin", "argv", "cwd", "timeout_seconds"):
+            if command.get(field) != expected_suite[field]:
+                errors.append(f"{label}.{field} drifts from the fixed runner suite")
+        if not isinstance(command.get("duration_ns"), int) or command.get("duration_ns", 0) <= 0:
+            errors.append(f"{label}.duration_ns must be measured")
+        retained, offset = _validate_release_log_slice(command, raw_log, offset, label, errors)
+        text = _ANSI_ESCAPE.sub("", retained.decode("utf-8", "replace"))
+        summary = command.get("summary_line")
+        nonempty = [line.strip() for line in text.splitlines() if line.strip()]
+        if not isinstance(summary, str) or not nonempty or nonempty[-1] != summary:
+            errors.append(f"{label}.summary_line is not the final retained output line")
+            parsed = {field: 0 for field in BASELINE_OUTCOME_FIELDS}
+        else:
+            parsed = _summary_counts(summary)
+        if command.get("outcome_counts") != parsed:
+            errors.append(f"{label}.outcome_counts do not parse from retained output")
+        collected = _collection_count(text)
+        complete = _collection_complete(text)
+        if command.get("collected_count") != collected or command.get("collection_complete") != complete:
+            errors.append(f"{label} collection metadata does not parse from retained output")
+        if command.get("non_pass_nodes") != _nonpass_nodes(text):
+            errors.append(f"{label}.non_pass_nodes do not parse from retained output")
+        if command.get("assurance") != "process_observed_only":
+            errors.append(f"{label}.assurance must not claim cryptographic execution proof")
+        acceptance_status = _release_acceptance_status(expected_suite, command)
+        if command.get("acceptance_status") != acceptance_status:
+            errors.append(f"{label}.acceptance_status does not derive from protected evidence")
+        if acceptance_status == "regressed":
+            errors.append(f"{label} regressed relative to its protected acceptance policy")
+        elif acceptance_status == "baseline_compatible_non_green":
+            baseline_non_green_ids.append(str(expected_suite["id"]))
+    if offset != len(raw_log):
+        errors.append("IPS-056 release log contains unbound trailing or missing bytes")
+    report = _require_nonempty_file(
+        RELEASE_REPORT,
+        errors,
+        maximum_bytes=RELEASE_MAX_REPORT_BYTES,
+        bound_label="one-MiB",
+    )
+    if RELEASE_REPORT_REQUEST_MARKER in report:
+        errors.append("IPS-056 completed report retains its materialization request marker")
+    folded = report.casefold()
+    required_report_terms = (
+        RELEASE_VALIDATION_SCHEMA,
+        str(declared_digest or ""),
+        *revisions.values(),
+        "existing zk systems",
+        "real proving",
+        "simulated",
+        "structural validation",
+        "direct execution proof",
+        "proof-unit granularity",
+        "complete cache key",
+        "invalidation rules",
+        "full-proof fallback",
+        "merkle manifest aggregation",
+        "40-transition benchmark",
+        "average proof reuse rate",
+        "average proving-compute reduction",
+        "best incremental case",
+        "worst incremental case",
+        "proof size",
+        "seal size",
+        "verification latency",
+        "storage overhead",
+        "crash-recovery results",
+        "tamper-test results",
+        "trusted signed receipts",
+        "integrity commitments",
+        "remaining work before production use",
+        RELEASE_PUBLIC_LOG_POLICY,
+        "live ipfs was refused before release suite execution",
+        "three new incremental-sealing suites require fully green execution",
+        "pytest process outputs were observed but test execution was not cryptographically proven",
+        "repository verification was decomposed into content-addressed proof units",
+        "stale or simulated evidence",
+    )
+    for term in required_report_terms:
+        if term and term.casefold() not in folded:
+            errors.append(f"IPS-056 final report omits {term!r}")
+    for command_id in baseline_non_green_ids:
+        if command_id.casefold() not in folded:
+            errors.append(
+                f"IPS-056 final report omits remaining baseline issue {command_id!r}"
+            )
+    if baseline_non_green_ids and "baseline_compatible_non_green" not in folded:
+        errors.append(
+            "IPS-056 final report must label retained baseline issues "
+            "baseline_compatible_non_green"
+        )
+
+
+def _process_group_exists(process_group: int) -> bool:
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _terminate_process_group(
+    process: subprocess.Popen[bytes], process_group: int
+) -> None:
+    """Terminate every descendant in the runner-owned session, even after parent exit."""
+
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        if process.poll() is None:
+            process.terminate()
+    deadline = time.monotonic() + 2
+    while _process_group_exists(process_group) and time.monotonic() < deadline:
+        if process.poll() is None:
+            try:
+                process.wait(timeout=min(0.05, max(0.001, deadline - time.monotonic())))
+            except subprocess.TimeoutExpired:
+                pass
+        else:
+            time.sleep(0.01)
+    if not _process_group_exists(process_group):
+        return
+    try:
+        os.killpg(process_group, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        if process.poll() is None:
+            process.kill()
+    if process.poll() is None:
+        process.wait(timeout=2)
+
+
+def _run_observed_process(
+    argv: list[str],
+    *,
+    cwd: Path,
+    environment: Mapping[str, str],
+    timeout_seconds: int,
+    maximum_output_bytes: int = RELEASE_PROCESS_MAX_OUTPUT_BYTES,
+) -> tuple[str, int | None, int, bytes]:
+    started = time.monotonic_ns()
+    process: subprocess.Popen[bytes] | None = None
+    output = bytearray()
+    try:
+        process = subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=dict(environment),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        assert process.stdout is not None
+        process_group = process.pid
+        try:
+            observed_process_group = os.getpgid(process.pid)
+        except ProcessLookupError:
+            observed_process_group = process_group
+        if observed_process_group != process_group:
+            raise OSError("observed process does not own its dedicated process group")
+        os.set_blocking(process.stdout.fileno(), False)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        deadline = time.monotonic() + timeout_seconds
+        status = "completed"
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                status = "timed_out"
+                break
+            events = selector.select(min(0.25, remaining))
+            if not events and process.poll() is not None:
+                # Poll once more for buffered pipe bytes before treating EOF.
+                events = selector.select(0)
+                if not events:
+                    break
+            for key, _ in events:
+                try:
+                    chunk = os.read(key.fd, 64 * 1024)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                remaining_capacity = maximum_output_bytes - len(output)
+                output.extend(chunk[: max(0, remaining_capacity)])
+                if len(chunk) > remaining_capacity:
+                    status = "output_limit"
+                    break
+            if status != "completed":
+                break
+        selector.close()
+        if status != "completed":
+            _terminate_process_group(process, process_group)
+        if process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                status = "timed_out"
+                _terminate_process_group(process, process_group)
+            else:
+                try:
+                    process.wait(timeout=remaining)
+                except subprocess.TimeoutExpired:
+                    status = "timed_out"
+                    _terminate_process_group(process, process_group)
+        parent_exit_code = process.returncode
+        if status == "completed" and _process_group_exists(process_group):
+            # A successful parent may have left a child behind after closing the
+            # inherited output pipe.  Kill that residual group without rewriting
+            # the already-observed parent return code.
+            _terminate_process_group(process, process_group)
+        exit_code = parent_exit_code if status == "completed" else None
+    except OSError as exc:
+        status = "launch_failed"
+        exit_code = None
+        output = bytearray(f"{type(exc).__name__}: {exc}\n".encode("utf-8", "replace"))
+    finally:
+        if process is not None and _process_group_exists(process.pid):
+            _terminate_process_group(process, process.pid)
+    return status, exit_code, max(1, time.monotonic_ns() - started), bytes(output)
+
+
+def _atomic_write_artifact(relative: str, raw: bytes) -> None:
+    path = REPO_ROOT / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if os.path.lexists(path) and path.is_symlink():
+        raise OSError(f"refusing to replace symlink output {relative}")
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}-{time.monotonic_ns()}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(temporary, flags, 0o600)
+    try:
+        offset = 0
+        while offset < len(raw):
+            offset += os.write(descriptor, raw[offset:])
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.replace(temporary, path)
+
+
+def _materialization_request_state(
+    expected: Mapping[str, bytes],
+    *,
+    label: str,
+    errors: list[str],
+) -> str:
+    """Classify a declared bundle as absent, requested, complete-candidate, or invalid."""
+
+    present = {relative: os.path.lexists(REPO_ROOT / relative) for relative in expected}
+    if not any(present.values()):
+        return "absent"
+    if not all(present.values()):
+        errors.append(f"{label} output bundle is partial")
+        return "invalid"
+    request_errors: list[str] = []
+    for relative, exact in expected.items():
+        retained = _secure_read_repo_file(
+            relative,
+            required_parent=Path(relative).parent.as_posix(),
+            label=f"{label} request {relative}",
+            maximum_bytes=max(4096, len(exact)),
+            bound_label="4-KiB request",
+            errors=request_errors,
+        )
+        if retained is None or retained[0] != exact:
+            request_errors.append(f"{label} request bytes drifted for {relative}")
+    if not request_errors:
+        return "requested"
+    return "complete-candidate"
+
+
+def _consume_materialization_request(
+    expected: Mapping[str, bytes], label: str, errors: list[str]
+) -> bool:
+    """Remove only an already byte-validated, exact declared request bundle."""
+
+    for relative, exact in expected.items():
+        retained = _secure_read_repo_file(
+            relative,
+            required_parent=Path(relative).parent.as_posix(),
+            label=f"{label} request {relative}",
+            maximum_bytes=max(4096, len(exact)),
+            bound_label="4-KiB request",
+            errors=errors,
+        )
+        if retained is None or retained[0] != exact:
+            errors.append(f"{label} refuses a noncanonical request at {relative}")
+    if errors:
+        return False
+    for relative in expected:
+        try:
+            (REPO_ROOT / relative).unlink()
+        except OSError as exc:
+            errors.append(
+                f"{label} cannot consume request {relative}: {type(exc).__name__}"
+            )
+            return False
+    return True
+
+
+def _clean_release_work_root(errors: list[str]) -> None:
+    """Remove only the fixed ignored transient runner workspace, without following links."""
+
+    relative = Path(RELEASE_WORK_ROOT)
+    current = REPO_ROOT
+    try:
+        for part in relative.parts[:-1]:
+            current /= part
+            if not os.path.lexists(current):
+                return
+            info = current.lstat()
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append("release-work has an unsafe ancestor")
+                return
+        target = REPO_ROOT / relative
+        if not os.path.lexists(target):
+            return
+        info = target.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            errors.append("release-work must be a regular non-symlink directory")
+            return
+        shutil.rmtree(target)
+    except OSError as exc:
+        errors.append(f"cannot clean fixed release-work directory: {type(exc).__name__}")
+
+
+def _release_report_has_exact_request(errors: list[str]) -> bool:
+    retained = _secure_read_repo_file(
+        RELEASE_REPORT,
+        required_parent=Path(RELEASE_REPORT).parent.as_posix(),
+        label="IPS-056 report request",
+        maximum_bytes=RELEASE_MAX_REPORT_BYTES,
+        bound_label="one-MiB",
+        errors=errors,
+    )
+    if retained is None:
+        return False
+    try:
+        text = retained[0].decode("utf-8")
+    except UnicodeError:
+        errors.append("IPS-056 report request is not UTF-8")
+        return False
+    if text.count(RELEASE_REPORT_REQUEST_MARKER) != 1:
+        errors.append("IPS-056 report must contain exactly one release-evidence request marker")
+        return False
+    return True
+
+
+def _materialize_release_report_binding(
+    receipt: Mapping[str, Any], errors: list[str]
+) -> None:
+    """Replace only the closed report marker with the freshly observed binding."""
+
+    retained = _secure_read_repo_file(
+        RELEASE_REPORT,
+        required_parent=Path(RELEASE_REPORT).parent.as_posix(),
+        label="IPS-056 report materialization request",
+        maximum_bytes=RELEASE_MAX_REPORT_BYTES,
+        bound_label="one-MiB",
+        errors=errors,
+    )
+    if retained is None:
+        return
+    try:
+        text = retained[0].decode("utf-8")
+    except UnicodeError:
+        errors.append("IPS-056 report materialization request is not UTF-8")
+        return
+    if text.count(RELEASE_REPORT_REQUEST_MARKER) != 1:
+        errors.append("IPS-056 report request marker is missing or duplicated")
+        return
+    revisions = receipt.get("source_revisions")
+    if not isinstance(revisions, Mapping) or set(revisions) != set(REPOSITORY_PATHS):
+        errors.append("IPS-056 report cannot bind an incomplete source revision map")
+        return
+    digest = receipt.get("receipt_digest")
+    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+        errors.append("IPS-056 report cannot bind an invalid receipt digest")
+        return
+    retained_baseline_ids = [
+        str(command.get("id"))
+        for command in receipt.get("pytest_commands", ())
+        if isinstance(command, Mapping)
+        and command.get("acceptance_status") == "baseline_compatible_non_green"
+    ]
+    retained_baseline_value = ",".join(retained_baseline_ids) or "none"
+    replacement = "\n".join(
+        (
+            "<!-- IPS-056 RELEASE EVIDENCE (materialized by protected runner)",
+            f"receipt_digest: {digest}",
+            f"accelerate_revision: {revisions['accelerate']}",
+            f"datasets_revision: {revisions['datasets']}",
+            f"kit_revision: {revisions['kit']}",
+            f"baseline_compatible_non_green: {retained_baseline_value}",
+            "-->",
+        )
+    )
+    _atomic_write_artifact(
+        RELEASE_REPORT,
+        text.replace(RELEASE_REPORT_REQUEST_MARKER, replacement).encode("utf-8"),
+    )
+
+
+def run_benchmark_validation() -> dict[str, Any]:
+    """Convergently ensure fixed benchmark evidence, then validate read-only."""
+
+    errors: list[str] = []
+    requests = {
+        BENCHMARK_JSON: BENCHMARK_REQUEST_JSON,
+        BENCHMARK_CSV: BENCHMARK_REQUEST_CSV,
+    }
+    request_state = _materialization_request_state(
+        requests, label="IPS-053 benchmark", errors=errors
+    )
+    if request_state == "complete-candidate":
+        checked = validate_artifact("IPS-053")
+        if checked["valid"]:
+            return {
+                "valid": True,
+                "runner": "benchmark",
+                "materialization": "already_complete_read_only",
+                "errors": [],
+            }
+        return {
+            "valid": False,
+            "runner": "benchmark",
+            "materialization": "invalid_preexisting_bundle",
+            "errors": list(checked["errors"]),
+        }
+    if request_state == "invalid":
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    if request_state == "absent":
+        errors.append("IPS-053 benchmark exact two-file materialization request is absent")
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    cli = REPO_ROOT / BENCHMARK_CLI
+    if not cli.is_file() or cli.is_symlink():
+        errors.append("protected benchmark runner cannot find a regular IPS-052 CLI")
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    if not _consume_materialization_request(
+        requests, "IPS-053 benchmark", errors
+    ):
+        return {"valid": False, "runner": "benchmark", "errors": errors}
+    _clean_release_work_root(errors)
+    workspace = REPO_ROOT / RELEASE_WORK_ROOT / "benchmark"
+    environment = _release_environment(workspace)
+    status, exit_code, duration_ns, output = _run_observed_process(
+        _benchmark_workload_argv(),
+        cwd=REPO_ROOT,
+        environment=environment,
+        timeout_seconds=10_200,
+    )
+    if status != "completed" or exit_code != 0:
+        errors.append(
+            f"fixed benchmark process did not complete successfully: {status}/{exit_code}"
+        )
+        diagnostic = output.decode("utf-8", "replace")[-4000:]
+        if diagnostic:
+            errors.append(f"benchmark diagnostic tail: {diagnostic}")
+    if not errors:
+        checked = validate_artifact("IPS-053")
+        errors.extend(str(item) for item in checked["errors"])
+    _clean_release_work_root(errors)
+    return {
+        "valid": not errors,
+        "runner": "benchmark",
+        "materialization": "materialized_once",
+        "process": {
+            "argv": _benchmark_workload_argv(),
+            "capture_status": status,
+            "exit_code": exit_code,
+            "duration_ns": duration_ns,
+        },
+        "errors": errors,
+    }
+
+
+def _pytest_observation(
+    spec: Mapping[str, Any],
+    *,
+    offset: int,
+    output: bytes,
+    status: str,
+    exit_code: int | None,
+    duration_ns: int,
+) -> dict[str, Any]:
+    text = _ANSI_ESCAPE.sub("", output.decode("utf-8", "replace"))
+    nonempty = [line.strip() for line in text.splitlines() if line.strip()]
+    summary = nonempty[-1] if nonempty else ""
+    observation = {
+        key: spec.get(key)
+        for key in ("id", "suite_origin", "argv", "cwd", "timeout_seconds")
+    }
+    observation.update({
+        "duration_ns": duration_ns,
+        "capture_status": status,
+        "exit_code": exit_code,
+        "collected_count": _collection_count(text),
+        "collection_complete": _collection_complete(text),
+        "outcome_counts": _summary_counts(summary),
+        "non_pass_nodes": _nonpass_nodes(text),
+        "summary_line": summary,
+        "log_offset": offset,
+        "log_bytes": len(output),
+        "log_sha256": "sha256:" + hashlib.sha256(output).hexdigest(),
+        "assurance": "process_observed_only",
+    })
+    observation["acceptance_status"] = _release_acceptance_status(spec, observation)
+    return observation
+
+
+def run_release_validation() -> dict[str, Any]:
+    """Convergently ensure release observations, then validate read-only."""
+
+    errors: list[str] = []
+    requests = {
+        RELEASE_VALIDATION_JSON: RELEASE_REQUEST_JSON,
+        RELEASE_VALIDATION_LOG: RELEASE_REQUEST_LOG,
+    }
+    request_state = _materialization_request_state(
+        requests, label="IPS-056 release", errors=errors
+    )
+    if request_state == "complete-candidate":
+        checked = validate_artifact("IPS-056")
+        if checked["valid"]:
+            return {
+                "valid": True,
+                "runner": "release",
+                "materialization": "already_complete_read_only",
+                "errors": [],
+            }
+        return {
+            "valid": False,
+            "runner": "release",
+            "materialization": "invalid_preexisting_bundle",
+            "errors": list(checked["errors"]),
+        }
+    if request_state == "invalid":
+        return {"valid": False, "runner": "release", "errors": errors}
+    if request_state == "absent":
+        errors.append("IPS-056 release exact JSON/log materialization request is absent")
+        return {"valid": False, "runner": "release", "errors": errors}
+    if not _release_report_has_exact_request(errors):
+        return {"valid": False, "runner": "release", "errors": errors}
+    if not _consume_materialization_request(
+        requests, "IPS-056 release", errors
+    ):
+        return {"valid": False, "runner": "release", "errors": errors}
+    _clean_release_work_root(errors)
+    revisions_before, trees_before = _current_repository_bindings(errors)
+    specs = _release_suite_specs(errors)
+    _validate_release_ipfs_preflight(errors)
+    if errors:
+        _clean_release_work_root(errors)
+        return {"valid": False, "runner": "release", "errors": errors}
+    work_root = (
+        REPO_ROOT / RELEASE_WORK_ROOT
+    )
+    combined = bytearray()
+    terminal_argv = [
+        sys.executable,
+        "scripts/validate_incremental_proof_sealer_board.py",
+        "--check-terminal",
+    ]
+    terminal_status, terminal_exit, terminal_duration, terminal_output = _run_observed_process(
+        terminal_argv,
+        cwd=REPO_ROOT,
+        environment=_release_environment(work_root / "terminal-board-gate"),
+        timeout_seconds=120,
+    )
+    terminal = {
+        "id": "terminal-board-gate",
+        "argv": terminal_argv,
+        "cwd": ".",
+        "timeout_seconds": 120,
+        "duration_ns": terminal_duration,
+        "capture_status": terminal_status,
+        "exit_code": terminal_exit,
+        "log_offset": 0,
+        "log_bytes": len(terminal_output),
+        "log_sha256": "sha256:" + hashlib.sha256(terminal_output).hexdigest(),
+    }
+    combined.extend(terminal_output)
+    commands: list[dict[str, Any]] = []
+    for spec in specs:
+        workspace = work_root / str(spec["id"])
+        status, exit_code, duration_ns, output = _run_observed_process(
+            list(spec["argv"]),
+            cwd=REPO_ROOT / str(spec["cwd"]),
+            environment=_release_environment(workspace),
+            timeout_seconds=int(spec["timeout_seconds"]),
+        )
+        commands.append(
+            _pytest_observation(
+                spec,
+                offset=len(combined),
+                output=output,
+                status=status,
+                exit_code=exit_code,
+                duration_ns=duration_ns,
+            )
+        )
+        combined.extend(output)
+    revisions_after, trees_after = _current_repository_bindings(errors)
+    if revisions_after != revisions_before or trees_after != trees_before:
+        errors.append("source revisions or trees changed during release validation")
+    body: dict[str, Any] = {
+        "schema_version": RELEASE_VALIDATION_SCHEMA,
+        "runner_id": RELEASE_RUNNER_ID,
+        "validation_worktree_parent_revision": revisions_before.get("accelerate"),
+        "source_revisions": revisions_before,
+        "source_trees": trees_before,
+        "environment_policy_id": RELEASE_ENVIRONMENT_POLICY,
+        "terminal_gate": terminal,
+        "pytest_commands": commands,
+        "retained_log": {
+            "path": RELEASE_VALIDATION_LOG,
+            "bytes": len(combined),
+            "sha256": "sha256:" + hashlib.sha256(combined).hexdigest(),
+        },
+        "assurance": _release_assurance(),
+    }
+    body["receipt_digest"] = "sha256:" + hashlib.sha256(
+        _canonical_json_bytes(body)
+    ).hexdigest()
+    canonical_receipt = _canonical_json_bytes(body) + b"\n"
+    retained_report = _secure_read_repo_file(
+        RELEASE_REPORT,
+        required_parent=Path(RELEASE_REPORT).parent.as_posix(),
+        label="IPS-056 report before evidence binding",
+        maximum_bytes=RELEASE_MAX_REPORT_BYTES,
+        bound_label="one-MiB",
+        errors=errors,
+    )
+    if len(combined) > RELEASE_MAX_LOG_BYTES:
+        errors.append("IPS-056 combined retained log exceeds the fixed six-MiB bound")
+    if len(canonical_receipt) > BASELINE_MAX_RECEIPT_BYTES:
+        errors.append("IPS-056 release receipt exceeds the fixed two-MiB bound")
+    if retained_report is not None:
+        projected_report_bytes = (
+            len(retained_report[0])
+            - len(RELEASE_REPORT_REQUEST_MARKER.encode("utf-8"))
+            + 1024
+        )
+        if projected_report_bytes > RELEASE_MAX_REPORT_BYTES:
+            errors.append("IPS-056 materialized report would exceed the one-MiB bound")
+        if len(combined) + len(canonical_receipt) + projected_report_bytes > 12_000_000:
+            errors.append("IPS-056 declared evidence exceeds its 12-MiB patch envelope")
+    _validate_release_public_log(bytes(combined), errors)
+    if not errors:
+        try:
+            _atomic_write_artifact(RELEASE_VALIDATION_LOG, bytes(combined))
+            _atomic_write_artifact(RELEASE_VALIDATION_JSON, canonical_receipt)
+            _materialize_release_report_binding(body, errors)
+        except OSError as exc:
+            errors.append(f"cannot publish release validation artifacts: {type(exc).__name__}")
+    if not errors:
+        checked = validate_artifact("IPS-056")
+        errors.extend(str(item) for item in checked["errors"])
+    _clean_release_work_root(errors)
+    return {
+        "valid": not errors,
+        "runner": "release",
+        "materialization": "materialized_once",
+        "receipt_digest": body.get("receipt_digest"),
+        "errors": errors,
+    }
 def validate_artifact(task_id: str) -> dict[str, Any]:
-    """Validate the six data/document tasks that cannot use inline eval.
+    """Validate the bounded data/document tasks that cannot use inline eval.
 
     The implementation supervisor deliberately rejects ``python -c`` and
     other dynamic-eval validation commands.  These bounded, standard-library
@@ -1002,46 +7135,133 @@ def validate_artifact(task_id: str) -> dict[str, Any]:
 
     task_id = str(task_id or "").strip().upper()
     errors: list[str] = []
-    inventory_specs = {
-        "IPS-001": (
-            "docs/architecture/incremental_proof_sealer_inventory/accelerate.json",
-            ACCELERATE_REVISION,
-        ),
-        "IPS-002": (
-            "ipfs_datasets_py/docs/architecture/incremental_proof_sealer_inventory.json",
-            DATASETS_REVISION,
-        ),
-        "IPS-003": (
-            "ipfs_kit_py/docs/architecture/incremental_proof_sealer_inventory.json",
-            KIT_REVISION,
-        ),
-    }
-    if task_id in inventory_specs:
-        relative, revision = inventory_specs[task_id]
+    _validate_no_capture_lock(errors)
+    if task_id in BASELINE_RECEIPT_SPECS:
+        spec = BASELINE_RECEIPT_SPECS[task_id]
+        relative = str(spec["inventory"])
+        revision = str(spec["revision"])
+        receipt = _validate_baseline_receipt(task_id, spec, errors)
+        config = _load_json(CONFIG_PATH, errors)
+        _validate_config(config, errors)
+        configured_receipts = config.get("operator_baseline_receipts")
+        configured_pin = (
+            configured_receipts.get(task_id)
+            if isinstance(configured_receipts, Mapping)
+            else None
+        )
+        if not isinstance(configured_pin, Mapping):
+            errors.append(f"{task_id} has no protected operator receipt pin")
+            configured_pin = {}
+        expected_pin = _expected_receipt_pin(spec, receipt)
+        if configured_pin != expected_pin:
+            errors.append(f"{task_id} protected operator receipt pin is not exact")
+
         payload = _artifact_json(relative, errors)
         serialized = json.dumps(payload, sort_keys=True)
-        if payload.get("repository_commit") != revision:
-            errors.append(f"{task_id} repository_commit does not match {revision}")
-        baseline = payload.get("baseline")
-        if not isinstance(baseline, Mapping):
-            errors.append(f"{task_id} baseline must be an object")
+        forbidden_self_commit_fields = {
+            "completioncommit",
+            "finalrevision",
+            "finaltaskcommit",
+            "inventorycommit",
+            "outputcommit",
+            "taskcommit",
+        }
+        embedded_self_commits = {
+            str(key)
+            for key in payload
+            if _normalized_field_name(key) in forbidden_self_commit_fields
+        }
+        if embedded_self_commits:
+            errors.append(
+                f"{task_id} inventory may not self-embed a future completion commit: "
+                f"{sorted(embedded_self_commits)}"
+            )
+        if payload.get("planning_revision") != revision:
+            errors.append(f"{task_id} planning_revision does not match {revision}")
+        parent_revision = payload.get("inventory_worktree_parent_revision")
+        if not isinstance(parent_revision, str) or not _HEX_40.fullmatch(parent_revision):
+            errors.append(
+                f"{task_id} inventory_worktree_parent_revision must be a concrete commit"
+            )
         else:
-            exit_code = baseline.get("exit_code")
-            if isinstance(exit_code, bool) or not isinstance(exit_code, int):
-                errors.append(f"{task_id} baseline.exit_code must be an integer")
-            if not baseline.get("command"):
-                errors.append(f"{task_id} baseline.command must be non-empty")
-            if baseline.get("results_populated") is False:
-                errors.append(f"{task_id} baseline results are still a placeholder")
-            if "pending-local-run" in serialized.casefold():
-                errors.append(f"{task_id} baseline contains pending-local-run")
-            outcome_fields = ("passed", "failed", "errors", "skipped", "deselected")
-            outcomes = [baseline.get(field) for field in outcome_fields]
-            if all(
-                isinstance(value, int) and not isinstance(value, bool)
-                for value in outcomes
-            ) and sum(outcomes) == 0:
-                errors.append(f"{task_id} baseline contains a zero-count success")
+            inventory_repository = REPO_ROOT / REPOSITORY_PATHS[str(spec["repository"])]
+            source_revision = receipt.get("source_revision")
+            parent_tree = _git(
+                "rev-parse", f"{parent_revision}^{{tree}}", cwd=inventory_repository
+            )
+            if parent_tree.returncode != 0:
+                errors.append(f"{task_id} inventory_worktree_parent_revision is unknown")
+            if isinstance(source_revision, str):
+                ancestry = _git(
+                    "merge-base",
+                    "--is-ancestor",
+                    source_revision,
+                    parent_revision,
+                    cwd=inventory_repository,
+                )
+                if ancestry.returncode != 0:
+                    errors.append(
+                        f"{task_id} inventory parent does not descend from tested source"
+                    )
+            _validate_inventory_source_relevance(
+                task_id=task_id,
+                spec=spec,
+                receipt=receipt,
+                parent_revision=parent_revision,
+                configured_receipts=(
+                    configured_receipts
+                    if isinstance(configured_receipts, Mapping)
+                    else {}
+                ),
+                errors=errors,
+            )
+        if "repository_commit" in payload and payload.get("repository_commit") != revision:
+            errors.append(f"{task_id} repository_commit conflicts with planning_revision")
+
+        baseline_evidence = payload.get("baseline_evidence")
+        expected_baseline_evidence = {
+            "path": spec["receipt"],
+            "receipt_digest": receipt.get("receipt_digest"),
+            "required_command_ids": list(spec["command_ids"]),
+            "evidence_origin": BASELINE_OPERATOR_ORIGIN,
+            "assurance": "process_observed_only",
+            "nonclaim": "pytest_execution_not_cryptographically_proven",
+        }
+        if baseline_evidence != expected_baseline_evidence:
+            errors.append(
+                f"{task_id} baseline_evidence must be the exact reference-only operator projection"
+            )
+        for forbidden in (
+            "baseline",
+            "baselines",
+            "baseline_commands",
+            "baseline_results",
+            "commands",
+            "outcome_counts",
+            "non_pass_nodes",
+            "pytest_results",
+        ):
+            if forbidden in payload:
+                errors.append(f"{task_id} may not copy operator evidence into {forbidden!r}")
+        for mapping in _walk_mappings(payload):
+            mapping_keys = {str(key).casefold() for key in mapping}
+            copied_fields = mapping_keys & {
+                "argv",
+                "capture_status",
+                "duration_ns",
+                "exit_code",
+                "non_pass_nodes",
+                "outcome_counts",
+                "summary_line",
+            }
+            if copied_fields:
+                errors.append(
+                    f"{task_id} copies protected command evidence fields: {sorted(copied_fields)}"
+                )
+                break
+        _validate_inventory_provenance(task_id, payload, errors)
+        _validate_reference_only_inventory_namespace(task_id, payload, errors)
+
         classifications = payload.get("classifications")
         if not isinstance(classifications, (list, dict)) or not classifications:
             errors.append(f"{task_id} classifications must be non-empty")
@@ -1086,67 +7306,79 @@ def validate_artifact(task_id: str) -> dict[str, Any]:
         for term in required_terms[task_id]:
             if term not in serialized:
                 errors.append(f"{task_id} inventory is missing required surface {term}")
-    elif task_id == "IPS-053":
-        payload = _artifact_json(
-            "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json",
-            errors,
-        )
-        if not payload.get("schema_version"):
-            errors.append("IPS-053 schema_version must be non-empty")
-        transitions = payload.get("transitions")
-        if not isinstance(transitions, list) or len(transitions) != 40:
-            errors.append("IPS-053 transitions must contain exactly 40 rows")
-        elif any(
-            not isinstance(row, Mapping)
-            or row.get("measurement_provenance")
-            not in {"measured", "estimated", "mixed"}
-            for row in transitions
-        ):
-            errors.append("IPS-053 transition provenance is incomplete or invalid")
-        if not payload.get("source_revisions"):
-            errors.append("IPS-053 source_revisions must be non-empty")
-        _require_nonempty_file(
-            "artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv",
-            errors,
-        )
-    elif task_id == "IPS-054":
-        payload = _artifact_json(
-            "artifacts/agent_supervisor/incremental_proof_sealer/summary.json",
-            errors,
-        )
-        if payload.get("transition_count") != 40:
-            errors.append("IPS-054 transition_count must equal 40")
-        for field in ("average_reuse_rate", "average_compute_reduction"):
-            if field not in payload:
-                errors.append(f"IPS-054 is missing {field}")
-        for field in ("best_case", "worst_case", "target_assessment"):
-            if not payload.get(field):
-                errors.append(f"IPS-054 {field} must be non-empty")
-        _require_nonempty_file(
-            "docs/architecture/INCREMENTAL_PROOF_SEALER_BENCHMARK.md",
-            errors,
-        )
-    elif task_id == "IPS-055":
-        trust = _require_nonempty_file(
-            "docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_MODEL.md",
-            errors,
-        )
-        migration = _require_nonempty_file(
-            "docs/architecture/INCREMENTAL_PROOF_SEALER_MIGRATION.md",
-            errors,
-        )
+        report = _require_nonempty_file(str(spec["report"]), errors)
         for term in (
-            "Integrity commitment",
-            "Signed execution receipt",
-            "Receipt-aggregation ZK proof",
-            "Direct execution proof",
-            "Incremental or recursive commit seal",
+            str(spec["receipt"]),
+            str(receipt.get("receipt_digest", "")),
+            *tuple(str(command_id) for command_id in spec["command_ids"]),
+            "process_observed_only",
+            "pytest_execution_not_cryptographically_proven",
         ):
-            if term not in trust:
-                errors.append(f"IPS-055 trust model is missing {term!r}")
-        for term in ("accept", "reverify", "reject", "simulated"):
-            if term not in migration:
-                errors.append(f"IPS-055 migration guide is missing {term!r}")
+            if term and term not in report:
+                errors.append(f"{task_id} Markdown inventory omits baseline reference {term!r}")
+        report_folded = report.casefold()
+        if re.search(
+            r"\b\d+\s+(?:passed|failed|errors?|skipped|deselected|xfailed|xpassed)\b",
+            report_folded,
+        ):
+            errors.append(f"{task_id} Markdown inventory copies protected pytest counts")
+        if re.search(
+            r"\b(?:pytest|tests?|test\s+cases|execution|suite|run)\b.{0,48}?\b"
+            r"(?:passed|failed|succeeded|successful|verified|green|red|ok)\b|"
+            r"\b(?:passed|failed|succeeded|successful|verified|green|red|ok)\b"
+            r".{0,32}?\b(?:pytest|tests?|cases?|execution|suite|run)\b",
+            report_folded,
+        ):
+            errors.append(f"{task_id} Markdown inventory restates operator outcomes")
+        if re.search(
+            r"\b(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine)\s+"
+            r"(?:passed|failed|successful|green|red|ok)\s+(?:pytest\s+)?(?:tests?|cases?)\b",
+            report_folded,
+        ):
+            errors.append(f"{task_id} Markdown inventory copies provider-owned outcome counts")
+        if re.search(
+            r"\b(?:(?:passed|failed|error|skipped|selected|xfailed|xpassed)[_-]?count|"
+            r"retained[_-]?transcript|command[_-]?line|pytest[_-]?result)\b",
+            report_folded,
+        ):
+            errors.append(f"{task_id} Markdown inventory copies protected evidence aliases")
+        if any(
+            token in report_folded
+            for token in (
+                "pending-local-run",
+                "plan-derived",
+                "plan_derived",
+                "declared-for-rerun",
+                "declared_for_rerun",
+            )
+        ):
+            errors.append(f"{task_id} Markdown inventory contains placeholder provenance")
+        for candidate in re.findall(r"(?:sha256:)?([0-9a-f]{64})", report_folded):
+            if _looks_patterned_digest(candidate):
+                errors.append(f"{task_id} Markdown inventory contains a patterned fake hash")
+    elif task_id == "IPS-004":
+        config = _load_json(CONFIG_PATH, errors)
+        _validate_config(config, errors)
+        receipts = _validate_operator_baseline_bundle(
+            config,
+            errors,
+            enforce_current_sources=True,
+        )
+        if set(receipts) == set(BASELINE_RECEIPT_SPECS):
+            _validated_baseline_synthesis(
+                config,
+                receipts,
+                errors,
+                candidate=True,
+            )
+    elif task_id == "IPS-053":
+        _validate_benchmark_artifacts(errors)
+    elif task_id == "IPS-054":
+        _validate_benchmark_summary(errors)
+    elif task_id == "IPS-055":
+        _validate_trust_and_migration_docs(errors)
+    elif task_id == "IPS-056":
+        _validate_release_validation(errors)
     else:
         errors.append(f"unsupported artifact check task: {task_id}")
 
@@ -1159,26 +7391,65 @@ def validate_artifact(task_id: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate the IncrementalProofSealer fixed supervisor board"
+        description=(
+            "Validate the IncrementalProofSealer fixed supervisor board; no flag "
+            "runs the same phase-aware full gate as --check-all"
+        )
     )
     parser.add_argument(
         "--check-all",
         action="store_true",
-        help="also verify bound Git ancestry, gitlinks, and clean tracked controls",
+        help="verify the current preflight baseline or its committed IPS-004 milestone",
+    )
+    parser.add_argument(
+        "--check-bootstrap",
+        action="store_true",
+        help="verify pristine committed pre-capture controls with exact empty pins",
+    )
+    parser.add_argument(
+        "--check-terminal",
+        action="store_true",
+        help="verify terminal structure and the historical committed IPS-004 milestone",
     )
     parser.add_argument(
         "--check-artifact",
         choices=ARTIFACT_CHECK_TASKS,
         help="run a bounded non-eval validation for one data/document task",
     )
-    args = parser.parse_args(argv)
-    if args.check_all and args.check_artifact:
-        parser.error("--check-all and --check-artifact are mutually exclusive")
-    result = (
-        validate_artifact(args.check_artifact)
-        if args.check_artifact
-        else validate(check_all=args.check_all)
+    parser.add_argument(
+        "--run-benchmark",
+        action="store_true",
+        help="run the fixed 40-transition benchmark argv and validate JSON/CSV",
     )
+    parser.add_argument(
+        "--run-release-validation",
+        action="store_true",
+        help="observe the fixed current-tree terminal/pytest suite and validate release artifacts",
+    )
+    args = parser.parse_args(argv)
+    modes = (
+        args.check_all,
+        args.check_bootstrap,
+        args.check_terminal,
+        args.check_artifact,
+        args.run_benchmark,
+        args.run_release_validation,
+    )
+    if sum(bool(item) for item in modes) > 1:
+        parser.error("validation, artifact, benchmark, and release modes are mutually exclusive")
+    if args.check_artifact:
+        result = validate_artifact(args.check_artifact)
+    elif args.check_bootstrap:
+        result = validate_bootstrap()
+    elif args.run_benchmark:
+        result = run_benchmark_validation()
+    elif args.run_release_validation:
+        result = run_release_validation()
+    else:
+        result = validate(
+            check_all=True,
+            check_terminal=args.check_terminal,
+        )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["valid"] else 1
 

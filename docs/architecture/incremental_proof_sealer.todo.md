@@ -20,6 +20,23 @@ Global invariants for every task:
   dirty/detached nested completion are forbidden.
 - Protected plan, objective, board, scheduler, validator, and `.gitignore`
   files are operator-owned and may not be edited by implementation workers.
+- The operator-owned baseline capture script, canonical receipts, and retained
+  pytest logs are protected inputs. The no-shell inventory providers consume
+  those receipts; they do not execute pytest, regenerate evidence, or claim
+  that static source inspection is an executed test result.
+- The one-shot operator capture uses the closed 17-suite registry and clean
+  materialized trees for all three repositories at one capture ID. Its `@4`
+  receipts bind a fixed non-inherited Git environment and process observation
+  only; current task gates deny undeclared ignored inputs outside explicit
+  redirected cache roots.
+- Bootstrap order is fixed: commit all empty-pin infrastructure; run
+  `python scripts/capture_incremental_proof_sealer_baselines.py capture --repository all`;
+  run `python scripts/capture_incremental_proof_sealer_baselines.py render-pins`;
+  have the operator apply exactly that read-only
+  projection to scheduler pins/protected paths; run
+  `python scripts/capture_incremental_proof_sealer_baselines.py validate-only --repository all`;
+  commit the evidence/pins; then run no-argument/`--check-all` preflight.
+  Providers never capture, pin, or rewrite operator evidence.
 
 ## IPS-000 Freeze the reviewed source binding and supervisor projection
 
@@ -32,7 +49,7 @@ Global invariants for every task:
 - Depends on:
 - Goal id: IPS-G010
 - Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_PLAN.md, docs/architecture/incremental_proof_sealer.objectives.md, docs/architecture/incremental_proof_sealer.todo.md, config/agent_supervisor_incremental_proof_sealer_scheduler.json
-- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-all
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-bootstrap
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/baseline
 - Parallel lane: operator
@@ -74,13 +91,14 @@ Global invariants for every task:
 - Predicted files: docs/architecture/incremental_proof_sealer_inventory/accelerate.json, docs/architecture/incremental_proof_sealer_inventory/accelerate.md
 - Submodules: none
 - Interfaces: executable proof inventory
-- Allow concurrent with: IPS-002, IPS-003
-- Conflict policy: Read and test only existing bound code; no installs, downloads, builds, key creation, or source changes outside inventory evidence.
+- Inputs: config/incremental_proof_sealer_baseline_suite_registry.json, artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json, its receipt-declared retained logs, the protected scheduler digest pin, and read-only accelerate source at the bound planning lineage
+- Allow concurrent with:
+- Conflict policy: Read only existing bound code and protected operator evidence; the provider has no shell authority and must not run pytest, regenerate/edit receipts or logs, install, download, build, create keys, or write outside the two declared inventory outputs.
 - Preconditions: Exact accelerate planning revision is checked out cleanly.
-- Effects: Records every Groth16/ProveKit/ZK/formal/simulated adapter, scheduler/resource/cancel path, receipt/cache/seal/CLI path, key assumption, and focused test result.
-- Evidence subset: ips/accelerate-inventory@1
+- Effects: Records every Groth16/ProveKit/ZK/formal/simulated adapter, scheduler/resource/cancel path, receipt/cache/seal/CLI path, and key assumption from static inspection, while adding only a reference to the separately captured operator pytest receipt.
+- Evidence subset: ips/accelerate-inventory@2
 - Symbolic first: true
-- Acceptance: Record the planning revision and exact descendant task HEAD separately. Each baseline command has its interpreter, working directory, execution time/duration, exit code, selected/pass/fail/error/skip/deselect counts, output digest, and exact non-pass nodes; no placeholder or plan-derived result is current evidence. Every proof/attestation backend and store, real-Groth16 fixture, runtime/v4 publication path, kernel/prover/fallback path, metric/benchmark/evidence store, doctor/MCP cache, manual/release seal, CID/canonicalization/Merkle path, scheduler, and focused test is classified. Unsigned TestPassReceipt/ProofReceipt values are not called signed, cache admission is not receipt aggregation, and direct-execution/recursion/setup claims are tied to executable evidence.
+- Acceptance: Record `planning_revision` and `inventory_worktree_parent_revision`, with the latter exactly equal to the current accelerate task-parent HEAD; the final task commit is supplied by the supervisor completion receipt and is not self-embedded. The captured tested revision may advance to that parent only through the semantic scheduler receipt-pin/protected-path projection, the exact pinned receipt/log files, already-merged declared inventory documents/gitlinks whose nested deltas are inventory-document-only, and exact Implementation Daemon board-only commits of the form `<IPS-ID>: mark todo completed`. Each admitted board commit is replayed chronologically, changes only canonical `Status` bytes monotonically to `completed`, names a transitioned task, and has dependencies and outputs present at that commit. Any other plan, objectives, taskboard, validator, capture script, closed suite registry, `.gitignore`, source, test, dependency, or scheduler change rejects and requires recapture. This gate covers committed history and current-tree integrity; it does not prove read-only execution isolation against transient uncommitted edits. `baseline_evidence` is the exact reference-only projection `{path, receipt_digest, required_command_ids, evidence_origin=operator_capture, assurance=process_observed_only, nonclaim=pytest_execution_not_cryptographically_proven}` for `accelerate-proof-focused-core-15`, `accelerate-proof-focused-wide-36`, `accelerate-proof-reuse-migration`, and `accelerate-proof-reuse-cross-repo`; no command/result/count/log/transcript alias or execution-success claim is permitted elsewhere. The validator parses the protected closed JSON suite registry without executing it, independently recomputes exact suite preimages/digests, argv and controlled-offline environment, and checks pinned canonical receipt/log/count/non-pass evidence. Static inspection reports `surfaces_found`, never pass/fail; placeholders, plan-derived counts, patterned hashes, undeclared helpers, and extra outputs reject. Every proof/attestation backend and store, real-Groth16 fixture, runtime/v4 publication path, kernel/prover/fallback path, metric/benchmark/evidence store, doctor/MCP cache, manual/release seal, CID/canonicalization/Merkle path, scheduler, and focused test is classified. Unsigned TestPassReceipt/ProofReceipt values are not called signed, cache admission is not receipt aggregation, and direct-execution/recursion/setup claims are tied to executable evidence.
 - Embedding query: accelerate zero knowledge provekit groth16 proof scheduler receipt real simulated test baseline
 
 ## IPS-002 Inventory datasets ZK, identity, manifest, dependency, and baseline paths
@@ -105,13 +123,14 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/docs/architecture/incremental_proof_sealer_inventory.json, ipfs_datasets_py/docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md
 - Submodules: ipfs_datasets_py
 - Interfaces: executable proof and identity inventory
-- Allow concurrent with: IPS-001, IPS-003
-- Conflict policy: Documentation evidence only; do not build the Rust backend, provision keys, auto-install, or trust archived claims.
+- Inputs: config/incremental_proof_sealer_baseline_suite_registry.json, artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/datasets.json, its receipt-declared retained logs, the protected scheduler digest pin, and read-only datasets source at the bound planning lineage
+- Allow concurrent with:
+- Conflict policy: Documentation inventory only from read-only code and protected operator evidence; the provider has no shell authority and must not run pytest, regenerate/edit receipts or logs, build the Rust backend, provision keys, auto-install, trust archived claims, or write outside the two declared inventory outputs.
 - Preconditions: Exact datasets planning revision is initialized and clean.
-- Effects: Records ZK backends/circuits/keys/statements, proof/test receipts, caches, canonicalization/CID/Merkle paths, real/simulated tests, and ownership candidates.
-- Evidence subset: ips/datasets-inventory@1
+- Effects: Records ZK backends/circuits/keys/statements, proof/test receipts, caches, canonicalization/CID/Merkle paths, real/simulated test surfaces, and ownership candidates from static inspection, while adding only a reference to the separately captured operator pytest receipt.
+- Evidence subset: ips/datasets-inventory@2
 - Symbolic first: true
-- Acceptance: No `pending-local-run`, zero-count synthetic success, undeclared helper, or plan-derived count may pass as a current baseline. Record each command's interpreter, working directory, duration, exit code, complete outcome counts, output digest, and exact non-pass nodes. Inventory CEC, TDFOL, F-logic, Event-DAG v3, ProveKit FFI, wallet/PDF simulated paths, all proof caches, setup/key-generation and exact key identity/provenance surfaces, and individual focused tests with valid repository-relative paths. Test-execution certificates without signature verification are not signed receipts; TestPassStatementV1 is not an implemented ZK circuit; callback attestation is structural unless a real backend ran; Groth16 v2's bounded computation-proof axis is distinct from pytest-execution proof; absent v3 artifacts and the reduced-field digest binding are explicit.
+- Acceptance: Record `planning_revision` and `inventory_worktree_parent_revision`; for this initial nested inventory the latter and current datasets HEAD must both equal the captured tested revision, while the final task commit comes from supervisor completion evidence. Outer committed-history relevance admits only the exact operator bundle/inventory transactions and chronologically replayed, board-only Implementation Daemon `<IPS-ID>: mark todo completed` commits whose sole byte changes are monotonic canonical `Status` values with dependencies and outputs already present; every other taskboard/control/source change rejects. This is committed-history and current-tree integrity, not proof of isolation from transient uncommitted edits. `baseline_evidence` is the exact reference-only operator projection for `datasets-zkp-focused-current`, `datasets-zkp-unit-wide-current`, `datasets-proof-cache-adapters`, and `datasets-zkp-broad-safe-current`, with fixed path/digest/IDs plus `evidence_origin=operator_capture`, `assurance=process_observed_only`, and `nonclaim=pytest_execution_not_cryptographically_proven`; no copied command/result/count/log/transcript alias or execution-success claim is permitted elsewhere. The validator binds the protected reviewed registry and independently recomputes suite/argv/environment/digest/log/count/non-pass evidence. Static scans report `surfaces_found`, never pass/fail. Placeholder, plan-derived, patterned, missing/swapped/duplicate-suite, helper, stale-source, or extra-output evidence rejects. Inventory CEC, TDFOL, F-logic, Event-DAG v3, ProveKit FFI, wallet/PDF simulated paths, all proof caches, setup/key-generation and exact key identity/provenance surfaces, and individual focused tests with valid repository-relative paths. Test-execution certificates without signature verification are not signed receipts; TestPassStatementV1 is not an implemented ZK circuit; callback attestation is structural unless a real backend ran; Groth16 v2's bounded computation-proof axis is distinct from pytest-execution proof; absent v3 artifacts and the reduced-field digest binding are explicit.
 - Embedding query: datasets zkp groth16 canonicalization cid merkle proof cache receipt tests real simulated
 
 ## IPS-003 Inventory kit proof storage, CID, Merkle, WAL, CAS, and baseline paths
@@ -136,13 +155,14 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/docs/architecture/incremental_proof_sealer_inventory.json, ipfs_kit_py/docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md
 - Submodules: ipfs_kit_py
 - Interfaces: executable storage and durability inventory
-- Allow concurrent with: IPS-001, IPS-002
-- Conflict policy: Documentation evidence only; explicit temporary roots; no IPFS daemon, auto-install, proof setup, or use of pseudo-CID/legacy WAL as authority.
+- Inputs: config/incremental_proof_sealer_baseline_suite_registry.json, artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/kit.json, its receipt-declared retained logs, the protected scheduler digest pin, and read-only kit source at the bound planning lineage
+- Allow concurrent with:
+- Conflict policy: Documentation inventory only from read-only code and protected operator evidence; the provider has no shell authority and must not run pytest, regenerate/edit receipts or logs, start IPFS, auto-install, perform proof setup, use pseudo-CID/legacy WAL as authority, or write outside the two declared inventory outputs.
 - Preconditions: Exact kit planning revision is initialized and clean.
-- Effects: Records strict/pseudo CID paths, proof transport, receipts, Merkle helpers, modern/legacy WAL, CAS candidates, corruption/recovery behavior, and focused baseline results.
-- Evidence subset: ips/kit-inventory@1
+- Effects: Records strict/pseudo CID paths, proof transport, receipts, Merkle helpers, modern/legacy WAL, CAS candidates, and corruption/recovery behavior from static inspection, while adding only a reference to the separately captured operator pytest receipt.
+- Evidence subset: ips/kit-inventory@2
 - Symbolic first: true
-- Acceptance: Bind separate executed commands to their own interpreter, layout, duration, exit code, pass/fail/error/skip counts, output digest, and exact non-pass nodes; never attach aggregate counts to a command that aborts at collection or call plan-derived evidence a rerun. Include Profile-D policy, MCP++ artifact receipts, Iroh/KITA and joined release receipts, install_lotus opt-in proving-parameter downloads, every focused test, and explicit mock/simulated counts. Planned-but-absent proof_seal_store is not counted as current structure. Every path is correctly labeled integrity/structural/mock/real, unsigned receipts remain unsigned, and direct-execution/recursion/key-download status is explicit.
+- Acceptance: Record `planning_revision` and `inventory_worktree_parent_revision`; for this initial nested inventory the latter and current kit HEAD must both equal the captured tested revision, while the final task commit comes from supervisor completion evidence. Outer committed-history relevance admits only the exact operator bundle/inventory transactions and chronologically replayed, board-only Implementation Daemon `<IPS-ID>: mark todo completed` commits whose sole byte changes are monotonic canonical `Status` values with dependencies and outputs already present; every other taskboard/control/source change rejects. This is committed-history and current-tree integrity, not proof of isolation from transient uncommitted edits. `baseline_evidence` is the exact reference-only operator projection for `kit-proof-certificate`, `kit-reuse-capabilities`, `kit-profile-d`, `kit-coordination`, `kit-modern-wal`, `kit-proof-reuse-bootstrap`, `kit-agent-receipts`, `kit-iroh-release`, and `kit-release-receipt`, with fixed path/digest/IDs plus `evidence_origin=operator_capture`, `assurance=process_observed_only`, and `nonclaim=pytest_execution_not_cryptographically_proven`; no copied command/result/count/log/transcript alias or execution-success claim is allowed elsewhere. The protected validator binds the reviewed registry and independently checks each suite preimage, exact argv/environment, receipt/log/count/non-pass evidence, and source relevance; it rejects combined counts under an aborting command, missing/swapped/duplicate suites, copied plan numbers, static-as-passed, patterned hashes, helpers, stale sources, and extra outputs. Include Profile-D policy, MCP++ artifact receipts, Iroh/KITA and joined release receipts, install_lotus opt-in proving-parameter downloads, every focused test, and explicit mock/simulated classifications. Planned-but-absent proof_seal_store is not counted as current structure. Every path is correctly labeled integrity/structural/mock/real, unsigned receipts remain unsigned, and direct-execution/recursion/key-download status is explicit.
 - Embedding query: kit proof certificate store merkle wal compare and swap corruption receipt baseline
 
 ## IPS-004 Synthesize the cross-repository trust matrix and implementation boundary
@@ -156,7 +176,7 @@ Global invariants for every task:
 - Depends on: IPS-001, IPS-002, IPS-003
 - Goal id: IPS-G010
 - Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_TRUST_BASELINE.md, docs/architecture/incremental_proof_sealer_inventory/matrix.json
-- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-all
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-004
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/baseline
 - Parallel lane: integration
@@ -170,10 +190,10 @@ Global invariants for every task:
 - Allow concurrent with:
 - Conflict policy: Synthesize executable evidence only; do not claim recursion, direct execution, signatures, or trusted setup without current tests.
 - Preconditions: All three inventory receipts are current for the exact source binding.
-- Effects: Freezes canonical reuse/nonreuse decisions, real/mock/structural/direct classifications, chosen integration primitives, pre-existing blockers, and the no-competing-authority map.
+- Effects: Freezes canonical reuse/nonreuse decisions, real/mock/structural/direct classifications, the datasets/kit/accelerate authority split, proof-class claim boundaries, manifest-versus-recursive aggregation, backend capability/fallback decisions, pre-existing blockers, and explicit trust nonclaims.
 - Evidence subset: ips/trust-matrix@1
 - Symbolic first: true
-- Acceptance: Every later implementation task can cite one exact semantic/storage/execution authority; unsupported recursion defaults to manifest aggregation and baseline failures are not hidden.
+- Acceptance: Every later implementation task can cite one exact semantic/storage/execution authority; unsupported recursion defaults to Merkle manifest aggregation and baseline failures are not hidden. The canonical `matrix.json` uses `incremental-proof-sealer-trust-baseline@2` with the closed keys `schema_version`, `synthesis_worktree_parent_revision`, `baseline_receipts`, `inventory_artifacts`, `repository_authorities`, `proof_class_decisions`, `aggregation_decision`, `backend_decisions`, and `trust_nonclaims`. It assigns proof-unit/manifest/identity to datasets, immutable cache/forest/WAL/CAS to kit, and prover/scheduler/planner/metrics to accelerate. It distinguishes integrity-only, trusted-signer receipt, receipt-completeness aggregation, declared direct computation, and parent-bound leaf-transition claims; records recursion unsupported and `merkle_manifest_aggregation`; rejects unknown/simulated production evidence; and states that repository correctness, pytest execution proof, semantic change correctness, and recursive proof verification are not established. `synthesis_worktree_parent_revision` equals the candidate task worktree HEAD, `baseline_receipts` equals the protected three-pin scheduler map, and each IPS-001/002/003 inventory artifact binds its exact inventory/report paths and inventory-output-only completion revision. The task-specific gate validates both proposed outputs and their current source relevance before supervisor completion; after merge, preflight recognizes the milestone only when both outputs were committed together directly after the declared parent. The Markdown repeats every exact matrix decision, task ID, receipt path/digest, and `pytest_execution_not_cryptographically_proven`. This immutable milestone lets later supervisor restarts treat the still-intrinsically-validated operator observations as historical rather than requiring implementation HEADs to equal the captured source state.
 - Embedding query: cross repository proof trust matrix ownership executable evidence
 
 ## IPS-005 Define closed proof evidence classes, modes, kinds, and statuses
@@ -198,7 +218,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/evidence.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_evidence.py
 - Submodules: ipfs_datasets_py
 - Interfaces: IntegrityCommitment, SignedExecutionReceipt, ReceiptAggregationZkProof, DirectExecutionProof, IncrementalCommitSeal, ProofMode, ProofUnitKind, ProofTerminalStatus, SealStatus
-- Allow concurrent with: IPS-007, IPS-018, IPS-029
+- Allow concurrent with:
 - Conflict policy: One datasets authority; no generic ZK boolean; closed unknown rejection; simulated is never production accepting.
 - Preconditions: Trust baseline identifies existing adapters and wire contracts.
 - Effects: Adds strict finite discriminated records and precise establishes/does-not-establish semantics.
@@ -229,7 +249,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/proof_unit.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_proof_unit.py
 - Submodules: ipfs_datasets_py
 - Interfaces: ProofUnit
-- Allow concurrent with: IPS-007, IPS-029
+- Allow concurrent with:
 - Conflict policy: Include every normative field plus cache/graph context; typed absence only; no secrets or nondeterministic timestamp in identity.
 - Preconditions: Closed evidence enums are stable.
 - Effects: Defines immutable ProofUnit@1 validation, canonical serialization, and mode/status invariants.
@@ -260,7 +280,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/identity.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_identity.py
 - Submodules: ipfs_datasets_py
 - Interfaces: RepositoryState, SourceArtifactIdentity, SourceSymbolIdentity, TestSelectorIdentity, canonical_cid
-- Allow concurrent with: IPS-005, IPS-018, IPS-029
+- Allow concurrent with:
 - Conflict policy: Reuse the strict datasets canonical CID provider; reject pseudo-CIDs, path ambiguity, floats, cycles, duplicate map keys, and nondeterministic metadata.
 - Preconditions: Trust baseline selects the existing canonicalization/CID primitive.
 - Effects: Produces version-bound deterministic identities and known vectors for clean trees, dirty overlays, revisions, artifacts, symbols, tests, and properties.
@@ -291,7 +311,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/cache_key.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_cache_key.py
 - Submodules: ipfs_datasets_py
 - Interfaces: ProofCacheKey, build_proof_cache_key
-- Allow concurrent with: IPS-009, IPS-010, IPS-013, IPS-018, IPS-029
+- Allow concurrent with:
 - Conflict policy: Target-file equality is insufficient; every normative statement/source/dependency/environment/lock/fixture/tool/circuit/key/config/network/schema/canonicalization/selector/policy field is mandatory.
 - Preconditions: ProofUnit and identity codecs are stable.
 - Effects: Adds strict key construction and single-field mutation vectors.
@@ -322,7 +342,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/manifest.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_manifest.py
 - Submodules: ipfs_datasets_py
 - Interfaces: VerificationPolicy, VerificationRequirementManifest, RequiredUnitDescriptor, UnitRemovalAuthorization
-- Allow concurrent with: IPS-008, IPS-010, IPS-013, IPS-018, IPS-029
+- Allow concurrent with:
 - Conflict policy: Exact sorted required set; duplicate/reordered input rejected; deleted required units need current-policy authorization.
 - Preconditions: Evidence/unit/identity contracts are stable.
 - Effects: Defines required-set completeness, selector/policy/environment/version binding, removal records, and periodic checkpoint controls.
@@ -353,7 +373,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/statements.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_statements.py
 - Submodules: ipfs_datasets_py
 - Interfaces: CanonicalProofStatement, DirectExecutionStatement, ReceiptAggregationStatement, ForestTransitionStatement
-- Allow concurrent with: IPS-008, IPS-009, IPS-013, IPS-018, IPS-029
+- Allow concurrent with:
 - Conflict policy: Claims bind exact program/circuit/inputs/outputs and state what remains trusted; witness bytes never enter public artifacts.
 - Preconditions: Evidence/unit/identity contracts are stable.
 - Effects: Adds domain-separated canonical statements for each evidence class and explicit public/private input descriptors.
@@ -381,10 +401,10 @@ Global invariants for every task:
 - Resource stage: implementation
 - Estimated tokens: 18000
 - Implementation timeout seconds: 3600
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/forest_codec.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_forest_codec.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/forest_codec.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_forest_codec.py, ipfs_datasets_py/tests/fixtures/incremental_proof_sealer/forest_vectors.json
 - Submodules: ipfs_datasets_py
 - Interfaces: ProofForestLeaf, CategoryRoot, RepositoryProofRoot, compute_category_root, compute_repository_root
-- Allow concurrent with: IPS-013, IPS-014, IPS-015, IPS-019, IPS-020, IPS-021
+- Allow concurrent with:
 - Conflict policy: Domain-separated exact encoding; canonical ID-byte order; explicit empty/unary/binary nodes; reject duplicates and reordered caller input.
 - Preconditions: Manifest and statement identities are stable.
 - Effects: Freezes portable known vectors for every category and repository-root field.
@@ -412,10 +432,10 @@ Global invariants for every task:
 - Resource stage: integration
 - Estimated tokens: 15000
 - Implementation timeout seconds: 3600
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/__init__.py, ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/migration.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/__init__.py, ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/migration.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_migration.py
 - Submodules: ipfs_datasets_py
 - Interfaces: public datasets incremental sealing contracts, classify_legacy_receipt
-- Allow concurrent with: IPS-014, IPS-015, IPS-019, IPS-020, IPS-021
+- Allow concurrent with:
 - Conflict policy: Legacy receipts retain their actual integrity/signed/simulated/direct meaning; no schema adapter upgrades assurance.
 - Preconditions: Canonical datasets contracts and vectors pass.
 - Effects: Adds lazy public exports and explicit accept/adapt/reject migration results for existing ZK/test/proof receipts.
@@ -446,7 +466,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/dependency_graph.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_dependency_graph.py
 - Submodules: ipfs_datasets_py
 - Interfaces: ProofDependencyGraph, ProofDependencyEdge, DependencyEdgeType, compute_dependency_root
-- Allow concurrent with: IPS-019, IPS-029
+- Allow concurrent with:
 - Conflict policy: Store prerequisite -> dependent direction and content-addressed reasons; reject unknown edges, duplicate contradictions, cycles where illegal, and truncated roots.
 - Preconditions: Canonical datasets public contracts pass.
 - Effects: Adds typed artifact/symbol/unit nodes, deterministic adjacency, transitive prerequisite roots, forward invalidation traversal, and explanation paths.
@@ -477,7 +497,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/discovery.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_discovery.py
 - Submodules: ipfs_datasets_py
 - Interfaces: build_verification_requirement_manifest, build_proof_dependency_graph, ProofUnitSelector
-- Allow concurrent with: IPS-020, IPS-030
+- Allow concurrent with:
 - Conflict policy: Deterministic bounded source/test/property discovery; incomplete import/coverage frontier is explicit and broadens selection.
 - Preconditions: Dependency graph and canonical manifest contracts pass.
 - Effects: Selects proof units at module/symbol, exact pytest node/parameter, property/obligation, direct computation, and release-invariant granularity.
@@ -508,7 +528,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/repository_diff.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_repository_diff.py
 - Submodules: ipfs_datasets_py
 - Interfaces: RepositoryDiff, ChangedArtifact, ChangeClass, diff_repository_states
-- Allow concurrent with: IPS-021, IPS-031
+- Allow concurrent with:
 - Conflict policy: Bind the exact diff algorithm/version and all Git parents; unknown/ambiguous changes force broad invalidation or full fallback.
 - Preconditions: Repository identities, selection, and graph semantics pass.
 - Effects: Classifies source implementation/interface, test, add/delete, fixture, lock, configuration, circuit, key, selector, policy, network, canonicalization, environment, and documentation changes.
@@ -539,7 +559,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/invalidation.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_invalidation.py
 - Submodules: ipfs_datasets_py
 - Interfaces: compute_invalidation_closure, classify_full_fallback, explain_invalidation
-- Allow concurrent with: IPS-022, IPS-032
+- Allow concurrent with:
 - Conflict policy: Traverse prerequisite -> dependent; unchanged file alone never authorizes reuse; unknown closure broadens or falls back full.
 - Preconditions: Exact key, manifest, dependency graph, discovery, and complete diff pass.
 - Effects: Implements every normative invalidation and checkpoint-trigger rule plus deterministic reason/path records.
@@ -570,7 +590,7 @@ Global invariants for every task:
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/__init__.py, ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing/test_conformance.py
 - Submodules: ipfs_datasets_py
 - Interfaces: build_repository_state, build_verification_requirement_manifest, build_proof_dependency_graph, compute_proof_cache_key, diff_repository_states, compute_invalidation_closure, explain_invalidation
-- Allow concurrent with: IPS-023, IPS-033
+- Allow concurrent with:
 - Conflict policy: Correct only demonstrated datasets contract gaps; no persistence, scheduling, or assurance upgrade.
 - Preconditions: All datasets contract/graph/diff/invalidation tasks pass.
 - Effects: Runs known vectors and positive/negative rule matrix and freezes the narrow public semantic API.
@@ -601,7 +621,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/contracts.py, ipfs_kit_py/ipfs_kit_py/proof_seal_store/__init__.py, ipfs_kit_py/tests/proof_seal_store/test_contracts.py
 - Submodules: ipfs_kit_py
 - Interfaces: ProofSealStore, ArtifactKind, ArtifactReference, CacheCandidate, CurrentSealPointer, SealTransitionRecord
-- Allow concurrent with: IPS-005, IPS-028
+- Allow concurrent with:
 - Conflict policy: Storage types carry bytes/CIDs and canonical opaque records only; kit never decides proof validity; public proving-key/witness artifacts rejected.
 - Preconditions: Trust matrix selects strict CID and modern WAL primitives.
 - Effects: Defines bounded local/IPFS retrieval, candidate index, forest, WAL, CAS, and recovery protocol boundaries without importing datasets on cold import.
@@ -632,7 +652,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/local_store.py, ipfs_kit_py/tests/proof_seal_store/test_local_store.py
 - Submodules: ipfs_kit_py
 - Interfaces: HermeticProofSealStore, put_immutable, get_verified_bytes
-- Allow concurrent with: IPS-006, IPS-028
+- Allow concurrent with:
 - Conflict policy: Explicit root only; strict CID/readback rehash, fsync file and parent, symlink/path/size fencing; no default user state or daemon.
 - Preconditions: Store contracts pass.
 - Effects: Persists immutable closed-kind blobs atomically and detects corruption/substitution on every read.
@@ -663,7 +683,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/ipfs_transport.py, ipfs_kit_py/tests/proof_seal_store/test_ipfs_transport.py
 - Submodules: ipfs_kit_py
 - Interfaces: IpfsProofArtifactTransport, replicate_public_artifact, fetch_public_artifact
-- Allow concurrent with: IPS-007, IPS-029
+- Allow concurrent with:
 - Conflict policy: Injected client only; public artifact allowlist; bounded bytes/time; rehash response; proving keys/witnesses forbidden; network absence typed unavailable.
 - Preconditions: Hermetic local store passes.
 - Effects: Adds optional replication/retrieval without making IPFS a unit-test or import requirement.
@@ -694,7 +714,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/cache_index.py, ipfs_kit_py/tests/proof_seal_store/test_cache_index.py
 - Submodules: ipfs_kit_py
 - Interfaces: ProofCacheIndex, CandidateAdmissionRecord, lookup_candidate, record_verified_admission, tombstone
-- Allow concurrent with: IPS-009, IPS-030
+- Allow concurrent with:
 - Conflict policy: Index is a hint; only accelerate-issued verified admission records may be indexed; every lookup returns a candidate requiring fresh verification.
 - Preconditions: Complete cache key and local/optional transport contracts pass.
 - Effects: Adds exact-key indexing, atomic updates, quarantine, tombstones, corruption rebuild, and poisoning detection.
@@ -725,7 +745,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/forest.py, ipfs_kit_py/tests/proof_seal_store/test_forest.py
 - Submodules: ipfs_kit_py
 - Interfaces: ProofForestStore, persist_forest, update_forest_branches, verify_unaffected_leaves
-- Allow concurrent with: IPS-010, IPS-031
+- Allow concurrent with:
 - Conflict policy: Consume datasets codec/vectors; do not invent ordering/hash semantics; reject duplicate/reordered/lost leaves and old-root reuse.
 - Preconditions: Canonical forest vectors and cache-index storage pass.
 - Effects: Stores immutable nodes/category roots and incrementally recomputes changed paths with equality witnesses for unaffected leaves.
@@ -756,7 +776,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/pointer.py, ipfs_kit_py/tests/proof_seal_store/test_pointer_cas.py
 - Submodules: ipfs_kit_py
 - Interfaces: CurrentSealRepository, compare_and_swap_current_seal
-- Allow concurrent with: IPS-013, IPS-032
+- Allow concurrent with:
 - Conflict policy: Namespace repository and branch; bind generation/expected parent seal/root; stale writer never overwrites current.
 - Preconditions: Immutable forest storage passes.
 - Effects: Adds durable pointer reads and expected-parent CAS with concurrent-process fencing.
@@ -787,7 +807,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/wal.py, ipfs_kit_py/tests/proof_seal_store/test_wal.py
 - Submodules: ipfs_kit_py
 - Interfaces: SealTransitionWal, begin_transition, record_phase, commit_transition, abort_transition
-- Allow concurrent with: IPS-014, IPS-033
+- Allow concurrent with:
 - Conflict policy: Build on modern core/wal committed-only semantics; durable intent precedes effects; immutable CIDs bind every phase.
 - Preconditions: Local store, forest, and pointer CAS pass.
 - Effects: Journals proof start/result, receipt, forest, aggregate, seal, CAS, and cleanup phases with injection hooks.
@@ -818,7 +838,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/recovery.py, ipfs_kit_py/tests/proof_seal_store/test_recovery.py
 - Submodules: ipfs_kit_py
 - Interfaces: recover_seal_transitions, RecoveryDisposition
-- Allow concurrent with: IPS-015, IPS-034
+- Allow concurrent with:
 - Conflict policy: Never infer external prover success; verify durable artifacts or require reproof/repair; recovery is idempotent.
 - Preconditions: WAL phase model passes.
 - Effects: Produces resume/replay/verify-existing/discard-uncommitted/repair/full-reproof dispositions for every phase.
@@ -849,7 +869,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/tests/proof_seal_store/test_crash_matrix.py, ipfs_kit_py/tests/proof_seal_store/test_concurrency.py, ipfs_kit_py/tests/proof_seal_store/test_corruption.py
 - Submodules: ipfs_kit_py
 - Interfaces: kit durability conformance
-- Allow concurrent with: IPS-016, IPS-035
+- Allow concurrent with:
 - Conflict policy: Fault injection only; do not weaken durability or accept ambiguous artifacts to make tests pass.
 - Preconditions: Store/index/forest/CAS/WAL/recovery focused tests pass.
 - Effects: Injects every required transition failure plus corrupt blob/index/WAL/pointer, stale writers, replay, and optional transport ambiguity.
@@ -880,7 +900,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/ipfs_kit_py/proof_seal_store/__init__.py, ipfs_kit_py/docs/architecture/INCREMENTAL_PROOF_SEAL_STORE.md, ipfs_kit_py/tests/proof_seal_store/test_migration.py
 - Submodules: ipfs_kit_py
 - Interfaces: public ProofSealStore adapter
-- Allow concurrent with: IPS-017, IPS-036
+- Allow concurrent with:
 - Conflict policy: Existing proof_certificate_store remains integrity transport or delegates narrowly; kit docs cannot claim proof/execution/reuse authority.
 - Preconditions: Kit conformance and datasets public schemas pass.
 - Effects: Freezes lazy adapter exports, legacy blob migration, canonical record interop, and precise durability/trust documentation.
@@ -911,7 +931,7 @@ Global invariants for every task:
 - Predicted files: ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/admission.py, test/api/incremental_sealing/test_admission.py
 - Submodules: none
 - Interfaces: EvidenceVerifier, AdmissionDecision, verify_for_admission
-- Allow concurrent with: IPS-018
+- Allow concurrent with:
 - Conflict policy: Accelerate alone decides proof admission; hashes, receipts, structural checks, and simulations retain their declared assurance class and never become direct-execution evidence.
 - Preconditions: The executable trust matrix identifies each existing backend and receipt path.
 - Effects: Verifies evidence according to its closed class, returns typed establishes/does-not-establish claims, and requires successful verification before a cache-admission record can be issued.
@@ -942,7 +962,7 @@ Global invariants for every task:
 - Predicted files: ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/backends.py, test/api/incremental_sealing/test_backends.py
 - Submodules: none
 - Interfaces: ProofBackendCapability, BackendCapabilityRegistry, probe_backend_capability
-- Allow concurrent with: IPS-019
+- Allow concurrent with:
 - Conflict policy: Capability is executable evidence, not a documentation flag; absent or inconclusive recursive self-verification selects Merkleized manifest aggregation.
 - Preconditions: Evidence admission rules and the trust baseline pass.
 - Effects: Records operational prove/verify, signature, direct-computation, aggregation, recursive-verification, resource, timeout, and cancellation capabilities without installation or setup side effects.
@@ -973,7 +993,7 @@ Global invariants for every task:
 - Predicted files: ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/trust.py, test/api/incremental_sealing/test_trust.py
 - Submodules: none
 - Interfaces: TrustedProofPolicy, VerificationKeyRegistry, SignerTrustRegistry, ProvingKeyHandle
-- Allow concurrent with: IPS-020
+- Allow concurrent with:
 - Conflict policy: Policy configuration, not an untrusted caller or model, selects content-addressed keys/signers/circuits; proving-key bytes are private handles and never public API data.
 - Preconditions: Datasets evidence/migration contracts and backend capabilities pass.
 - Effects: Binds allowlisted verification-key CIDs, setup origin, production/test-only designation, circuit compatibility, signer scope, revocation epoch, and nonexportable proving-key references.
@@ -1004,7 +1024,7 @@ Global invariants for every task:
 - Predicted files: ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/provers.py, test/api/incremental_sealing/test_provers.py
 - Submodules: none
 - Interfaces: IncrementalProofBackendAdapter, ProverInvocation, VerificationInvocation, ProverOutcome
-- Allow concurrent with: IPS-021
+- Allow concurrent with:
 - Conflict policy: Adapters invoke only statically registered programs/circuits and approved key handles; no arbitrary executable/path, implicit network, setup generation, or mock proof success.
 - Preconditions: Backend capabilities and trust registries pass.
 - Effects: Wraps existing real prover/verifier paths with committed inputs, bounded output, structured timeout/cancellation/unavailable outcomes, proof-byte verification, and witness-safe logging.
@@ -1441,10 +1461,10 @@ Global invariants for every task:
 - Allow concurrent with:
 - Conflict policy: This task solely owns fixture generation and checked-in fixture metadata; fake/simulated evidence is labeled and exists only to test rejection or nonproduction plumbing.
 - Preconditions: Seal lifecycle and compaction contracts define the fixture wire format.
-- Effects: Generates tiny byte-stable repositories, source/test/fixture/config/lock/circuit/key/policy histories, graph/manifests, branches, merge, rollback, corruption seeds, and independent-module changes without relying on wall time or host environment.
+- Effects: Generates tiny byte-stable repositories with separate source implementation/public-interface, test selector/source/add/delete, fixture, relevant configuration, network policy, verification policy, dependency lock, tool/prover version, circuit/key, proof-schema, canonicalization, checked-specification document, ordinary-documentation, graph/manifest, branch, merge, rollback, corruption, and independent-module mutations without relying on wall time or host environment.
 - Evidence subset: ips/fixture-corpus@1
 - Symbolic first: true
-- Acceptance: Two clean generations are byte-identical; every required scenario has explicit parents/change class/expected units; no fixture silently models simulated proving as production success.
+- Acceptance: Two clean generations are byte-identical; selector, fixture, configuration, network-policy, policy, lock, tool, schema, canonicalization, checked-spec, source/test/circuit/key/documentation/branch/merge/rollback scenarios each have explicit parents, changed-artifact provenance, expected direct/transitive unit closure, aggregate effect, and full-fallback decision; no fixture silently models simulated proving as production success.
 - Embedding query: deterministic fixture repository history proof graph source test fixture lock circuit branch merge rollback
 
 ## IPS-046 Cover the complete positive invalidation and reuse matrix
@@ -1472,10 +1492,10 @@ Global invariants for every task:
 - Allow concurrent with:
 - Conflict policy: This task solely owns the positive matrix and may correct only demonstrated product defects; unrelated units must not be broadly invalidated merely to pass.
 - Preconditions: Deterministic fixture history reproduces exactly.
-- Effects: Tests independent source, public interface, test edit/delete/add, fixture, dependency lock, configuration, circuit, verification key, documentation-only, two-module, and unrelated-edit reuse behavior.
+- Effects: Tests independent source, public interface, test source/selector/delete/add, fixture, dependency lock, relevant configuration, network policy, verification policy, tool/prover version, circuit, verification key, proof schema, canonicalization, checked-specification document, ordinary documentation, two-module, and unrelated-edit reuse behavior.
 - Evidence subset: ips/invalidation-positive@1
 - Symbolic first: true
-- Acceptance: Expected invalidated/reused/added/removed/fallback sets match exactly; deleted tests require authorization, added selected tests are proven, documentation-only reuse remains valid, and roots repeat deterministically.
+- Acceptance: Expected invalidated/reused/added/removed/fallback sets and reason-labeled dependency closure match exactly for selector, fixture, configuration, network policy, policy, lock, tool, schema, canonicalization, checked-spec, source/test/circuit/key/documentation mutations; deleted tests require authorization, added selected tests are proven, ordinary documentation reuse remains valid, checked specifications invalidate their consumers, trust/schema/canonicalization/key/circuit changes force full proof where required, and roots repeat deterministically.
 - Embedding query: positive invalidation source interface test add delete fixture dependency config circuit key docs reuse
 
 ## IPS-047 Cover full/delta lifecycle, branches, merge, rollback, and compaction
@@ -1534,10 +1554,10 @@ Global invariants for every task:
 - Allow concurrent with:
 - Conflict policy: This task solely owns cache/manifest/forest tamper cases; product fixes must preserve exact cache keys, completeness, ordering, and unaffected leaves rather than weaken assertions.
 - Preconditions: Positive seal lifecycle passes on the same deterministic corpus.
-- Effects: Mutates source root, environment, selector, dependency closure, manifest membership/order, aggregate binding, parent, required replacements, duplicate leaves, unaffected leaves, and cached object/index bytes one field at a time.
+- Effects: Mutates source root, environment, test selector, fixture, relevant configuration, network policy, verification policy, dependency lock, tool/prover version, proof schema, canonicalization version, checked-specification binding, dependency closure, manifest membership/order, aggregate binding, parent, required replacements, duplicate leaves, unaffected leaves, and cached object/index bytes one field at a time.
 - Evidence subset: ips/cache-tamper@1, ips/forest-tamper@1
 - Symbolic first: true
-- Acceptance: Different source/environment/selector/dependency roots, unauthorized deleted test, changed manifest with old aggregate, wrong parent, missing invalidated unit, missing unaffected leaf, duplicate/reordered leaf, corruption, and poisoning all reject with typed reasons.
+- Acceptance: Different source/environment/selector/fixture/config/network-policy/policy/lock/tool/schema/canonicalization/checked-spec/dependency roots, unauthorized deleted test, changed manifest with old aggregate, wrong parent, missing invalidated unit, missing unaffected leaf, duplicate/reordered leaf, corruption, and poisoning all reject with typed reasons; no complete-key component can be omitted to regain reuse.
 - Embedding query: negative cache context source environment selector dependency manifest aggregate parent forest poisoning
 
 ## IPS-049 Reject cryptographic, signature, key, circuit, and claim tampering
@@ -1562,7 +1582,7 @@ Global invariants for every task:
 - Predicted files: test/api/incremental_sealing/test_crypto_trust_negative.py
 - Submodules: none
 - Interfaces: proof, public-input, receipt-signature, key/circuit, and assurance-claim negative conformance
-- Allow concurrent with: IPS-050
+- Allow concurrent with:
 - Conflict policy: This task solely owns crypto/trust negatives; backend unavailability is typed/skipped only where explicitly optional, never converted into a passing cryptographic assertion.
 - Preconditions: Cache/forest tamper matrix and configured real verifier test vectors pass.
 - Effects: Substitutes verification/proving key IDs, circuit versions, public inputs, proof bytes, receipt signatures/signers, proof-system IDs, test-only designations, and direct-versus-receipt claim tags.
@@ -1579,7 +1599,7 @@ Global invariants for every task:
 - Review only: false
 - Priority: P0
 - Track: adversarial-crash-recovery
-- Depends on: IPS-047, IPS-026
+- Depends on: IPS-047, IPS-026, IPS-044
 - Goal id: IPS-G110
 - Outputs: ipfs_kit_py/tests/proof_seal_store/test_incremental_sealer_recovery_integration.py
 - Validation: python -m pytest -q ipfs_kit_py/tests/proof_seal_store/test_incremental_sealer_recovery_integration.py
@@ -1593,7 +1613,7 @@ Global invariants for every task:
 - Predicted files: ipfs_kit_py/tests/proof_seal_store/test_incremental_sealer_recovery_integration.py
 - Submodules: ipfs_kit_py
 - Interfaces: joined sealer/store seven-boundary recovery conformance
-- Allow concurrent with: IPS-049
+- Allow concurrent with:
 - Conflict policy: This task solely owns the joined kit recovery fixture; it extends rather than rewrites IPS-026 durability semantics and never guesses that an ambiguous external prover succeeded.
 - Preconditions: Positive seal lifecycle and kit crash/recovery conformance pass.
 - Effects: Injects before proof execution; after proof before receipt; after receipt before forest; after forest before aggregate; after aggregate before seal; after seal before CAS; and after CAS before cleanup.
@@ -1675,7 +1695,7 @@ Global invariants for every task:
 - Depends on: IPS-052
 - Goal id: IPS-G120
 - Outputs: artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json, artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv
-- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-artifact IPS-053
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --run-benchmark
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/benchmark
 - Parallel lane: accelerate
@@ -1684,15 +1704,16 @@ Global invariants for every task:
 - Estimated tokens: 15000
 - Implementation timeout seconds: 10800
 - Predicted files: artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json, artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv
+- Proposal artifact envelope: {"max_file_bytes":2000000,"max_output_bytes":8000000,"max_patch_bytes":4000000,"paths":["artifacts/agent_supervisor/incremental_proof_sealer/benchmark.json","artifacts/agent_supervisor/incremental_proof_sealer/benchmark.csv"],"schema":"ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"}
 - Submodules: none
-- Interfaces: benchmark.json@1, benchmark.csv@1
+- Interfaces: benchmark.json@2, benchmark.csv@1
 - Allow concurrent with:
 - Conflict policy: This task solely owns raw benchmark artifacts; record failures and missing counters honestly, keep host/revision/config/backend provenance, and never hand-edit savings to meet targets.
 - Preconditions: Forty-transition benchmark code and conformance test pass.
-- Effects: Runs the controlled workload, captures per-transition and aggregate full/incremental observations or declared estimates, and persists exact command/environment/source/config capability metadata.
+- Effects: Because the sealed provider has no process authority, it writes the two declared result paths as the exact closed materialization requests `{"schema_version":"incremental-proof-sealer-materialization-request@1","task_id":"IPS-053"}` plus newline and `incremental-proof-sealer-materialization-request@1,IPS-053` plus newline. The protected `--run-benchmark` Validation is a convergent ensure operation: only with exactly both request files it consumes those markers, invokes the checked-in IPS-052 CLI with fixed seed `20260811`, exactly 40 transitions, and the exact JSON/CSV paths, then independently validates the closed result schema, ordered workload, parent-bound source revisions/trees, unit arithmetic, per-metric measured/estimated/unavailable provenance, fallback/status rules, deterministic roots, wrong-parent rejection, exact CSV projection, and the one-MiB-per-file bound within the reviewed proposal envelope. An absent request does not start work. The supervisor stabilization invocation recognizes the complete valid bundle and performs read-only validation without executing or rewriting, yielding identical hashes. Partial bundles, unknown pre-existing bytes, or invalid completed bundles fail closed. Candidate validation requires `benchmark_worktree_parent_revision` to equal current HEAD; IPS-054 later accepts the exact no-ff output merge followed by tightly validated daemon status-only descendants, with unchanged JSON/CSV evidence and no source/config/test mutation.
 - Evidence subset: ips/benchmark-results@1
 - Symbolic first: false
-- Acceptance: Artifacts contain 40 complete transition rows, deterministic roots where applicable, actual versus target fields, best/worst/fallback cases, and no production compute claim derived from simulated evidence.
+- Acceptance: `benchmark.json` is canonical `incremental-proof-sealer-benchmark-results@2` for `incremental-proof-sealer-40-transition@1` and binds its exact task-parent revision without self-referencing a future completion commit; every row has the exact 00–39 scenario/index, observed planner counts with `required=reused+newly_proved` and `newly_proved=invalidated+added`, derived cache hit/savings, full/incremental cost, CPU/GPU/memory/time/size/storage values with per-field measured/estimated/unavailable provenance, exact mandatory full-checkpoint indices/reasons, and an honest reason/status when merge or policy transitions 17/29/38 conditionally fall back full. Full and incremental roots match, simulated required units are zero, and row 37 retains the typed stale-parent attempt. CSV is an exact ordered scalar projection. First Validation must turn the exact two-file request into process-observed evidence; one stabilization rerun must be read-only and hash-identical. Process failure, partial/request drift, source-lineage drift, non-output completion changes, or artifact drift exits nonzero; provider prose or hand-authored result files do not replace the protected materialization.
 - Embedding query: run incremental proof benchmark result json csv provenance measured estimated savings
 
 ## IPS-054 Analyze actual reuse, compute, latency, size, and storage results
@@ -1723,7 +1744,7 @@ Global invariants for every task:
 - Effects: Computes average reuse/compute reduction, localized/docs cases, best/worst/fallback, proof/seal sizes, verification latency, storage growth, CPU/GPU/memory, and deterministic-root evidence with uncertainty and limitations.
 - Evidence subset: ips/performance-analysis@1
 - Symbolic first: true
-- Acceptance: Every reported number traces to raw rows; weighted and unweighted averages are labeled; unavailable data stays unavailable; conclusions do not overstate proof or execution assurance.
+- Acceptance: Canonical `incremental-proof-sealer-benchmark-summary@1` binds the raw benchmark SHA-256 and exactly recomputes provenance counts, unweighted reuse and available-cost reduction means, best/worst cases, forced-full indices, per-metric availability/min/max/mean, and the localized-70/mixed-50/documentation-80 target assessments. Markdown cites the digest and schema, labels measured/estimated/unavailable values, says targets are not facts, receipt aggregation does not prove test execution, simulated required units cannot satisfy a production seal, and reports unavailable evidence honestly.
 - Embedding query: benchmark analysis reuse compute reduction best worst proof seal size latency storage target actual
 
 ## IPS-055 Document the precise trust model and migration guidance
@@ -1754,7 +1775,7 @@ Global invariants for every task:
 - Effects: Documents proof-class claims/nonclaims, public/private inputs, signer trust, setup/key origins/allowlists, recursion or manifest strategy, network/environment trust, cache admission, fallback, retention/recovery, and staged legacy migration.
 - Evidence subset: ips/trust-model@1, ips/migration-guide@1
 - Symbolic first: true
-- Acceptance: It states whether child signatures are circuit-verified, whether test execution is directly proven, key assumptions/depth/cost, test-only limitations, and remaining production work using only defensible claim language.
+- Acceptance: It separately defines the five proof classes and their exact nonclaims; public/private inputs and sensitive-witness handling; signer/signature trust; whether child signatures are circuit-verified and whether test execution is directly proven; manifest aggregation versus recursion; setup origin, test-only keys, content-addressed allowlisted verification keys, no silent production key generation, unknown-system/arbitrary-circuit rejection, verify-before-cache admission, full-checkpoint triggers, CAS/WAL/ambiguous-prover recovery, and remaining production work. Migration explicitly classifies accept/adapt/reverify/reject/simulated and integrity/signed/direct evidence without assurance upgrade, including allowlist, schema/canonicalization fallback, staged rollback, unknown legacy systems, and witness/key handling.
 - Embedding query: incremental proof trust model setup keys signer receipts direct execution manifest aggregation migration
 
 ## IPS-056 Run terminal current-tree validation and publish the final report
@@ -1767,8 +1788,8 @@ Global invariants for every task:
 - Track: release-fan-in
 - Depends on: IPS-055
 - Goal id: IPS-G130
-- Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md, artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json
-- Validation: python scripts/validate_incremental_proof_sealer_board.py --check-all && python -m pytest -q test/api/incremental_sealing ipfs_datasets_py/tests/unit/logic/zkp/incremental_sealing ipfs_kit_py/tests/proof_seal_store
+- Outputs: docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md, artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json, artifacts/agent_supervisor/incremental_proof_sealer/release_validation.log
+- Validation: python scripts/validate_incremental_proof_sealer_board.py --run-release-validation
 - Board namespace: incremental-proof-sealer-v1
 - Bundle: incremental-proof-sealer/release
 - Parallel lane: accelerate
@@ -1776,14 +1797,15 @@ Global invariants for every task:
 - Resource stage: release-validation
 - Estimated tokens: 28000
 - Implementation timeout seconds: 10800
-- Predicted files: docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md, artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json
+- Predicted files: docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md, artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json, artifacts/agent_supervisor/incremental_proof_sealer/release_validation.log
+- Proposal artifact envelope: {"max_file_bytes":7000000,"max_output_bytes":20000000,"max_patch_bytes":12000000,"paths":["docs/architecture/INCREMENTAL_PROOF_SEALER_REPORT.md","artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json","artifacts/agent_supervisor/incremental_proof_sealer/release_validation.log"],"schema":"ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"}
 - Submodules: none
 - Interfaces: terminal release report and current-tree validation receipt
 - Allow concurrent with:
 - Conflict policy: This task solely owns the final report/validation receipt; it may repair only demonstrated integration/regression defects, must commit nested repositories before gitlink updates, and may not edit operator-owned board controls.
 - Preconditions: Public/migration, adversarial, benchmark, trust, and migration-documentation fan-ins pass.
-- Effects: Runs focused cross-repository current-tree tests and import checks, verifies clean committed nested heads/gitlinks, records exact inspected/final commits and commands/results, and reports architecture/security/recovery/performance evidence and remaining production gaps.
+- Effects: Because the sealed provider has no process authority, it writes a substantive final report containing exactly one `<!-- IPS-056 RELEASE EVIDENCE: MATERIALIZE ONCE -->` marker and writes the declared JSON/log paths as the exact closed `incremental-proof-sealer-materialization-request@1` requests for `IPS-056`. The protected `--run-release-validation` Validation is a convergent ensure operation. Only on the exact request bundle it refuses any live `ipfs` resolved from its fixed PATH, executes `--check-terminal`, all 17 protected existing ZK/reuse/WAL/release suites, and the three new incremental-sealing suites with explicit argv, fixed offline/autoinstall-disabled workspaces, bounded timeouts, a 256-KiB per-process output limit, and process-tree termination. It retains at most six MiB of combined secret-scanned strict-UTF-8/NUL-free text log evidence, bounds the receipt at two MiB and report at one MiB, and keeps the aggregate under the reviewed 12-MiB patch/20-MiB serialized text proposal envelope. It writes canonical `incremental-proof-sealer-release-validation@2` process evidence, then replaces only the single report marker with the fresh receipt digest, exact three source revisions, and actual ordered `baseline_compatible_non_green` IDs before full artifact validation. An absent request does not start work. The supervisor stabilization invocation recognizes the complete valid report/receipt/log bundle, requires the materialization marker to be absent, and performs read-only validation without subprocesses or rewrites, yielding identical hashes. Partial, duplicated/missing-marker, unknown pre-existing, or invalid completed bundles fail closed. Post-commit verification finds the exact no-ff output merge and permits only tightly validated daemon status-only descendants while requiring unchanged evidence bytes.
 - Evidence subset: ips/final-report@1, ips/release-conformance@1
 - Symbolic first: true
-- Acceptance: The report covers exact commits; discovered real/simulated/structural/direct systems/tests; modules, granularity, key/invalidation/fallback/aggregation rules; 40-transition metrics; size/latency/storage; crash/tamper results; direct/signed/integrity claims; and remaining work, with all focused gates passing or failures explicitly unresolved rather than hidden.
+- Acceptance: The first protected release ensure invocation, not provider-authored prose, observes a successful terminal gate plus exactly 17 existing and 3 new current-tree suites, exact contiguous secret-scanned log evidence, and unchanged source revisions/trees; its single bounded report substitution binds that new evidence, and the stabilization invocation is read-only with identical report/receipt/log hashes. All three new suites require complete nonzero collection, exit zero, and zero failed/error/xpassed/skipped/xfailed/deselected outcomes. Each existing suite must be green or baseline-compatible-or-improved against its exact protected operator observation: no new non-pass node/category, no increased failed/error/xpassed/skipped/xfailed/deselected outcomes, no lost passes, consistent selected/collection arithmetic, and no new collection abort; an incomplete baseline collection must either retain the exact blocker or improve to complete collection. Every retained skip, xfail, deselection, failure, error, xpass, or collection issue is labeled `baseline_compatible_non_green` and named in the final report, never hidden as success. The final report binds the receipt digest and exact commits; discovered real/simulated/structural/direct systems/tests; modules, granularity, complete key/invalidation/fallback/Merkle-manifest rules; all provenance-labeled 40-transition metrics; size/latency/storage; crash/tamper results; direct/signed/integrity claims; and remaining production work. It says pytest process outputs were observed but execution was not cryptographically proven and uses the narrow requested final claim without treating stale or simulated evidence as current verification.
 - Embedding query: final incremental proof sealer report exact commits tests benchmark crash tamper trust claims remaining production work

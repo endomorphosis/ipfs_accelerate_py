@@ -27,11 +27,16 @@ is bound to these fetched canonical revisions:
 | `endomorphosis/ipfs_datasets_py` | `bd2ff6245ebe476fc744d45c7c66235c92b0e19c` | `a2f5400b7cb89c8481819379a1b7b9959fe81d45`, dirty detached feature state |
 | `endomorphosis/ipfs_kit_py` | `5a7a2df8181cfdc33bc19be09989df7ff83f2d4e` | `69091bf8f11a3ef1fb0e04e11a6d8a4c87f3fa78`, clean but behind upstream |
 
-Planning revisions are provenance, not completion evidence. IPS-001 through
-IPS-003 repeat the executable inventory and focused baseline in supervisor
-worktrees. IPS-004 must synthesize their exact results before any implementation
-task can become ready. A changed source revision requires a fresh inventory and
-baseline.
+Planning revisions are provenance, not completion evidence. Before IPS-001
+through IPS-003 run, the operator-owned baseline capture script executes the
+fixed pytest suites and commits canonical, source-bound receipts plus their full
+retained logs. Both capture and validation parse the protected, closed JSON
+suite registry as data; validation never executes working-tree registry code.
+The no-shell inventory providers consume those protected inputs
+and inspect code; they do not run pytest or turn static inspection into a passed
+test. IPS-004 must synthesize the validated receipts and inventories before any
+implementation task can become ready. A changed tested source revision requires
+a fresh operator capture and inventory.
 
 No package, optional prover, proving key, verification key, language model,
 fixture corpus, or daemon may be installed or downloaded by import. Tests use
@@ -40,8 +45,8 @@ existing tools only. Missing optional capability is recorded as typed
 
 ## 2. Executable-code truth known at planning time
 
-These observations are provisional until IPS-001 through IPS-004 commit the
-current-tree inventory:
+These observations are provisional until protected operator receipts and
+IPS-001 through IPS-004 commit the current-tree inventory:
 
 - `ipfs_datasets_py.logic.zkp` contains the canonical ZK surface, including a
   Rust Groth16 backend, verification-key registry, circuit/statement helpers,
@@ -76,25 +81,24 @@ allowlist evidence and therefore remain test-only candidates. The outer
 `ZKPProof.public_inputs` metadata is not currently bound to the inner verified
 Groth16 public input, an admission gap that must be closed before reuse.
 
-The accelerate focused baseline completed 257 structural/callback/digest tests
-with no real Groth16 or ProveKit proof because the required v4 artifacts were
-unavailable. Its cross-repository proof-reuse baseline completed 15 tests and
-failed 10 because of pytest entry-point drift. The certification helper that
-labels a path live/cryptographic currently checks only a SHA digest and is not
-admissible as Groth16 evidence. The reusable scheduler provides dependency DAGs,
-leases/fencing, critical-path ordering, resource admission, and subprocess
-process-tree termination, but needs proof-seal stages and GPU-memory propagation.
+Planning reconnaissance mentioned a 257-result accelerate slice, but its exact
+argv and full transcript were not retained. It is therefore non-reproducible
+planning prose, not a baseline receipt and not a count that an inventory may
+copy. The prior cross-repository 15/10 figures and the isolated 36-file
+704/26/2 figures are likewise historical context rather than the current
+controlled bundle. The reviewed capture registry now separates four new
+observations: `accelerate-proof-focused-core-15`,
+`accelerate-proof-focused-wide-36`, `accelerate-proof-reuse-migration`, and
+`accelerate-proof-reuse-cross-repo`. Only their config-pinned receipts and full
+logs are current evidence; no historical count is reconstructed. These pytest
+observations do not prove test execution cryptographically. Independently, the
+certification helper that labels a path live/cryptographic checks only a SHA
+digest and is not admissible as Groth16 evidence. The reusable scheduler
+provides dependency DAGs, leases/fencing, critical-path ordering, resource
+admission, and subprocess process-tree termination, but needs proof-seal stages
+and GPU-memory propagation.
 
-Those figures are layout-sensitive.  On 2026-08-11 the larger 36-file command
-selected by the first supervisor inventory attempt was repeated in the clean
-isolated worktree with `/usr/bin/python3.12`, no installs, and no cache writes:
-704 passed, 26 failed, and 2 were deselected in 27.17 seconds.  Failures include
-two proof-scheduler resource-class expectations plus missing sibling-layout
-datasets source/artifact paths and packaging/setup drift.  This result does not
-supersede the narrower 257-pass slice; the inventory must preserve each command
-as a separate observation rather than mixing their counts.
-
-Known kit baseline evidence, gathered without installs or downloads, is a set
+Historical kit reconnaissance, gathered without installs or downloads, is a set
 of separate commands, not one aggregate pytest invocation.  In the original
 sibling checkout, the green proof-certificate, reuse-capability, Profile-D,
 coordination-store, and modern-WAL slices contributed 12, 5, 2, 7, and 69
@@ -107,26 +111,84 @@ accelerate pytest plugin is not discoverable in that invocation, and the same
 agent-receipt collection error.  An inventory must bind each count to the exact
 command, checkout layout, interpreter, duration, exit code, and output digest;
 it must never attach the aggregate counts to a command that aborts at
-collection. Kit has no real proving test, signature-verified execution receipt,
-or recursive verifier. Non-pass results are recorded, not relabeled as passes.
+collection. Those numbers remain context until replaced by the nine separate
+controlled kit receipts; they cannot be combined under a collection-aborting
+command. Kit has no real proving test, signature-verified execution receipt, or
+recursive verifier. Non-pass results are recorded, not relabeled as passes.
 
-The datasets focused unit/integration slice completed 177 tests with 3 skips;
-the wider ZK unit directory completed 749 tests with 31 skips and 13 known
-failures. Existing real Groth16 v1 wire and enabled integration tests passed.
-The broader command proposed by the first supervisor inventory attempt was
-also executed in the isolated worktree on 2026-08-11: 1,180 passed, 33 skipped,
-and 17 failed in 50.14 seconds.  Ten failures require an absent external MCP++
-ceremony fixture, six require an evaluation document outside the nested
-datasets checkout, and one F-logic fallback assertion failed.  The earlier
-attempt's `pending-local-run` zero-count record is invalid evidence.
-All counts, commands, environment controls, key provenance, and classifications
-are reified by IPS-001 through IPS-004 so later workers do not rely on this prose.
+Historical datasets reconnaissance mentioned focused 177/3, unit-wide
+749/31/13, and broad 1180/33/17 observations. They were produced by different
+argv/layouts and remain planning prose rather than a current combined result.
+The controlled registry instead creates four distinct observations:
+`datasets-zkp-focused-current` for the focused current unit/integration paths,
+`datasets-zkp-unit-wide-current` for the legacy unit-wide directory,
+`datasets-proof-cache-adapters` for CEC/TDFOL/F-logic cache adapters, and
+`datasets-zkp-broad-safe-current` for their explicit safe union plus selected
+MCP++, wallet, and PDF paths. The focused/broad commands exclude the available-
+toolchain Nargo path; the broad command also excludes the installed-multiformats
+runtime case. The controlled environment disables Groth16/ProveKit enablement,
+builds, downloads, and auto-install paths, so these pytest observations must not
+be reported as new real proving. Existing manual Groth16 evidence remains a
+separate planning-time probe, not proof that pytest ran. The earlier
+`pending-local-run` zero-count record is invalid evidence.
+All counts, commands, environment controls, and non-pass nodes are reified by
+operator receipts whose canonical digests are pinned in the protected scheduler
+configuration. The operator capture is one all-repository operation over fresh
+no-local, no-hardlink materialized Git trees at one shared source epoch and
+capture ID. Receipt schema `incremental-proof-sealer-baseline-receipt@4` binds
+the fixed non-inherited Git environment policy, exact clean source trees and
+gitlinks, an empty non-source-input set, interpreter/plugin provenance, each
+reviewed pytest argv, and every full retained log. The authority checkout's
+incidental redirected caches are not execution evidence; the gate separately
+denies ignored task-worktree inputs outside its closed irrelevant cache roots.
+These are integrity-protected process observations, not cryptographic proofs
+that pytest execution occurred.
 
-Inventory acceptance is fail-closed.  Placeholder results such as
-`pending-local-run`, zero-count success, or prose copied from this plan are not
-current baseline evidence.  The inventories must distinguish the bound
-planning revision from the exact descendant task HEAD and classify individual
-test paths/functions where proof behavior differs.  In particular:
+IPS-001 through IPS-004 reference those receipts and record key
+provenance/classifications so later workers do not rely on this prose.
+
+The operator bootstrap is a two-commit, fail-closed sequence; providers never
+capture or pin their own evidence:
+
+1. Commit the reviewed validator, capture script, closed suite registry,
+   plan/objectives/taskboard, scheduler with empty receipt pins, tests, and
+   ignore policy. Run the phase-specific `--check-bootstrap`; it requires a
+   pristine committed tree, exact empty pins/base protected paths, the reviewed
+   registry/capture controls, and zero canonical receipts/logs/work entries.
+2. Run `python scripts/capture_incremental_proof_sealer_baselines.py capture --repository all`.
+   This one-shot all-repository capture executes all 17 suites from one clean
+   materialized source epoch and publishes the three receipts/full logs.
+3. Run `python scripts/capture_incremental_proof_sealer_baselines.py render-pins`.
+   This revalidates the whole bundle and prints, without writing, the canonical
+   `operator_baseline_receipts` and exact-file `protected_paths` projection.
+4. The operator applies only that printed scheduler projection with
+   `apply_patch`; no provider or capture code mutates scheduler authority.
+5. Run `python scripts/capture_incremental_proof_sealer_baselines.py validate-only --repository all`,
+   then commit the receipts, logs, and exact scheduler pins/protected paths as
+   one evidence commit.
+6. Run the no-argument/`--check-all` preflight. Only then may IPS-001/002/003
+   read the reference-only evidence and create their two declared outputs.
+
+Before IPS-004, preflight requires the receipt epoch to remain current except
+for the exact pin/evidence/inventory transition. After IPS-004 commits the
+closed `incremental-proof-sealer-trust-baseline@2` authority/proof-class/
+aggregation/backend/nonclaim milestone, restarts intrinsically verify those receipts as
+historical evidence and validate the captured-to-synthesis lineage without
+requiring later implementation HEADs to equal the tested baseline.
+
+Inventory acceptance is fail-closed. The validator recomputes canonical receipt
+digests, full-log hashes and sizes, fixed suite/command digests, pytest outcome
+counts, exact non-pass nodes, and the schema-bound absence of ignored proof,
+key, or build inputs against the config-pinned operator bundle.
+Provider-owned inventories contain a reference-only `baseline_evidence` record;
+they cannot replace or copy the measurements. Placeholder results such as
+`pending-local-run`, zero-count success, prose copied from this plan, static
+scans labeled as passed, patterned hashes, or undeclared helper outputs are not
+current baseline evidence. Inventories distinguish the bound planning revision
+from their worktree parent; the supervisor completion receipt supplies the final
+task commit because an artifact cannot truthfully self-embed that future commit.
+Individual test paths/functions are classified where proof behavior differs. In
+particular:
 
 - accelerate's unsigned `TestPassReceipt` and `ProofReceipt` structures are
   assertions/integrity envelopes, not signed receipts; its cache/admission
@@ -678,6 +740,30 @@ edits. A metric based on a cost model is labeled `estimated`; a simulated unit
 is excluded from production proving-compute claims. Best, worst, fallback, and
 unavailable cases are all reported.
 
+IPS-053 cannot satisfy this contract by authoring JSON/CSV, and its sealed
+provider has no process authority. The provider therefore writes both declared
+paths as exact closed `incremental-proof-sealer-materialization-request@1`
+markers. Protected `--run-benchmark` Validation consumes only that complete
+request, invokes the IPS-052 CLI with seed `20260811`, count `40`, and the two
+exact output paths using direct argv, then runs the artifact gate. An absent
+request never starts benchmark work. Each JSON/CSV artifact is bounded to one
+MiB and the task declares the exact reviewed proposal envelope. The one
+allowed stabilization invocation recognizes the complete valid bundle and is
+read-only, so candidate hashes converge; partial, unknown, or invalid existing
+bytes fail closed. `benchmark.json` is canonical
+`incremental-proof-sealer-benchmark-results@2`; it binds the exact
+`benchmark_worktree_parent_revision` and source revisions/trees. Candidate
+validation requires that parent to be current; dependent analysis proves the
+exact output-only candidate child and no-ff integration merge, then admits only
+byte-exact daemon status-only descendants while keeping evidence blobs
+unchanged. Each row binds the exact ordered scenario, observed planner counts,
+complete arithmetic, full/incremental roots, checkpoint/fallback status,
+wrong-parent side observation, zero production simulated units, and per-metric
+`measured`/`estimated`/`unavailable` provenance. `benchmark.csv` is an exact
+ordered scalar projection. IPS-054's canonical summary binds the raw JSON
+SHA-256 and is recomputed from those rows; targets remain comparisons, never
+retrofitted observations.
+
 ## 14. Checkpoint policy and chain compaction
 
 Policy parameters include full checkpoint every N accepted seals, release tags,
@@ -710,7 +796,7 @@ by retention policy. It does not rewrite history or silently delete evidence.
 ## 16. Supervisor dependency waves
 
 ```text
-Wave 0: IPS-001 / 002 / 003 executable inventories and baselines
+Wave 0: protected operator baseline capture, then IPS-001 / 002 / 003 inventories
     -> IPS-004 cross-repository trust and ownership synthesis
 
 Wave 1: three safe per-repository chains begin in parallel:
@@ -745,14 +831,58 @@ dirty nested completion, and edits to this plan/board/config by workers are
 forbidden.
 
 The scheduler uses three strict SHA-256 task-ID shards, bounded retry budgets, a
-20-minute log-stall threshold, and current-tree validation. Runtime files are
+10,800-second implementation/validation outer timeout (below the 14,400-second
+hard maximum), a 20-minute log-stall threshold, and current-tree validation. Runtime files are
 ignored and are not completion authority. Refill scanning is disabled so the
 fixed reviewed board cannot silently expand into unrelated work.
 
 ## 17. Completion and final report
 
-IPS-056 may close only after every goal/task dependency is terminal and current
-tree evidence proves:
+IPS-056 may close only after every goal/task dependency is terminal. Its sealed
+provider writes exact JSON/log materialization requests and a substantive report
+containing exactly one closed release-evidence marker. Protected convergent
+`--run-release-validation`, not a provider shell string or provider-authored
+pass receipt, consumes only that complete request and observes the
+historical terminal board gate, all 17 existing reviewed ZK/reuse/WAL/release
+suites, and the three new cross-repository incremental-sealing suites with
+explicit argv, bounded timeouts, fixed offline/autoinstall-disabled workspaces,
+and one content-bound retained log. An absent request never starts release
+work. Each child is capped at 256 KiB of output; the combined public log must be
+strict UTF-8 without NUL bytes and is capped at six MiB, the receipt at two MiB,
+and the report at one MiB;
+the complete three-file evidence remains below the exact 12-MiB patch and
+20-MiB serialized proposal envelope. It writes canonical
+`incremental-proof-sealer-release-validation@2`, independently reparses every
+pytest summary/non-pass/collection result, binds unchanged source revisions and
+trees, rejects any public log containing a private-key header, named secret,
+authorization token, GitHub/AWS token, or JWT, and states that process output
+observation is not cryptographic proof of test execution, and replaces only the
+single report marker with the fresh receipt digest and exact source revisions.
+Before starting a suite it also refuses a fixed PATH that resolves a live
+`ipfs` executable. Its ignored fixed `release-work` tree is securely cleaned
+before and after materialization; final evidence paths remain unignored.
+The three new incremental-sealing suites must be fully green, including zero
+skipped, xfailed, or deselected outcomes. Each existing
+suite must be green or baseline-compatible-or-improved against its protected
+operator receipt: no new non-pass identity/category, no increased
+failure/error/xpass/skip/xfail/deselection count, no lost passes, consistent
+selected/collection arithmetic, and no new collection abort. An
+unchanged baseline collection blocker is retained as
+`baseline_compatible_non_green`, never renamed success, and the final report
+must name every such remaining blocker. Current-tree evidence must establish:
+
+The first IPS-056 Validation materializes only the exact closed request. The
+supervisor's one stabilization rerun securely reparses the complete bundle but
+neither executes a subprocess nor changes an output, and therefore observes
+identical candidate hashes. Partial requests, duplicate/missing report markers,
+or provider-authored completed-looking evidence that fails the closed artifact
+gate reject.
+
+The release receipt binds the task worktree parent, not its unknowable future
+completion commit. Candidate validation requires exact parent equality;
+post-commit verification locates the exact output-only candidate and no-ff
+integration merge, permits only validated daemon status-only descendants, and
+requires all report/receipt/log blobs to remain unchanged.
 
 - public APIs and CLI work through the narrow three-repository boundaries;
 - positive invalidation/seal/compaction tests pass;
