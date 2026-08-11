@@ -468,6 +468,13 @@ def load_configured_board(
     ):
         if not isinstance(payload.get(field), bool):
             raise ConfiguredBoardError(f"{field} must be boolean")
+    for field in (
+        "retry_budget_guardrail_enabled",
+        "dependency_guardrail_enabled",
+        "reconciliation_guardrail_enabled",
+    ):
+        if field in payload and not isinstance(payload[field], bool):
+            raise ConfiguredBoardError(f"{field} must be boolean when present")
 
     for field in (
         "poll_interval_seconds",
@@ -926,6 +933,12 @@ def configured_board_common_args(
         )
     if payload.get("codebase_refill_enabled") is True:
         args.append("--codebase-refill-scan")
+    if payload.get("retry_budget_guardrail_enabled") is False:
+        args.append("--no-retry-budget-guardrail")
+    if payload.get("dependency_guardrail_enabled") is False:
+        args.append("--no-dependency-guardrail")
+    if payload.get("reconciliation_guardrail_enabled") is False:
+        args.append("--no-reconciliation-guardrail")
     return tuple(args)
 
 

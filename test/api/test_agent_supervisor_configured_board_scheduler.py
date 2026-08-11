@@ -204,6 +204,9 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     assert "--strict-task-sharding" in common
     assert "--objective-refill-scan" not in common
     assert "--codebase-refill-scan" not in common
+    assert "--no-retry-budget-guardrail" not in common
+    assert "--no-dependency-guardrail" not in common
+    assert "--no-reconciliation-guardrail" not in common
     assert "--no-objective-task-janitor" in common
     assert common.count("--worktree-submodule-path") == 2
     assert set(board.worktree_submodule_paths).issubset(common)
@@ -220,6 +223,68 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
+
+
+def test_disabled_guardrails_project_to_existing_supervisor_flags(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload.update(
+        {
+            "retry_budget_guardrail_enabled": False,
+            "dependency_guardrail_enabled": False,
+            "reconciliation_guardrail_enabled": False,
+        }
+    )
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260804T000000Z",
+    )
+    common = _common_args(plan)
+
+    assert common.count("--no-retry-budget-guardrail") == 1
+    assert common.count("--no-dependency-guardrail") == 1
+    assert common.count("--no-reconciliation-guardrail") == 1
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "retry_budget_guardrail_enabled",
+        "dependency_guardrail_enabled",
+        "reconciliation_guardrail_enabled",
+    ),
+)
+def test_guardrail_policy_rejects_nonboolean_and_defaults_enabled(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload[field] = "false"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(ConfiguredBoardError, match=field):
+        load_configured_board(config_path, repo_root=repo)
+
+    del payload[field]
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    board = load_configured_board(config_path, repo_root=repo)
+    common = _common_args(
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=True,
+            stamp="20260804T000000Z",
+        )
+    )
+    assert f"--no-{field.removesuffix('_enabled').replace('_', '-')}" not in common
 
 
 def test_ordered_provider_contract_requires_complete_unambiguous_fields(
