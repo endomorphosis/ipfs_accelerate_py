@@ -10,7 +10,7 @@ the receipt-tested control lineage. This document is a companion to
 | Field | Value |
 | --- | --- |
 | `planning_revision` | `8881344bb2162f3f8d82f22d8348bc0ac7536f95` |
-| `inventory_worktree_parent_revision` | `c202f147ef481105b214dbce888cd8461574a23f` |
+| `inventory_worktree_parent_revision` | `d852af139cc9885c5aff24fdc1c61441fe07add8` |
 
 `inventory_worktree_parent_revision` is immutable and equals the accelerate
 task-start parent during candidate validation. Final task commits come from
@@ -24,7 +24,7 @@ command lines, outcome tallies, logs, or execution claims.
 | Field | Value |
 | --- | --- |
 | path | `artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json` |
-| receipt_digest | `sha256:8db3857c748ef217a9da15dcc4cef81d8522170e44d0ee7cf9c337bc9f4acc52` |
+| receipt_digest | `sha256:7bfbb3d28aa0711f5a121a43acd1947caf23a58ecce2c940fbc804665221c322` |
 | required_command_ids | `accelerate-proof-focused-core-15`, `accelerate-proof-focused-wide-36`, `accelerate-proof-reuse-migration`, `accelerate-proof-reuse-cross-repo` |
 | evidence_origin | `operator_capture` |
 | assurance | `process_observed_only` |
