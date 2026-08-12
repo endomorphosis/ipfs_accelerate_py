@@ -33322,15 +33322,24 @@ class PortalImplementationDaemon:
         return f"{prefix}{bounded_relative}{suffix}"
 
     def _is_git_worktree(self, path: Path) -> bool:
-        if not path.exists() or path.is_symlink():
+        try:
+            if path.is_symlink() or not path.is_dir():
+                return False
+        except OSError:
             return False
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=path,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            # The path can disappear or change type between the stat above and
+            # process creation.  Callers use a false result to take their
+            # ordinary non-worktree path, which remains fail-closed.
+            return False
         if result.returncode != 0:
             return False
         try:

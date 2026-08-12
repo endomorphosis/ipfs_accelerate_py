@@ -5648,6 +5648,128 @@ def test_out_of_scope_restore_force_checkouts_drifted_submodule(
     assert binding["candidate_binding"]["verified"] is True
 
 
+def test_proposal_cleanup_removes_root_scratch_file_without_losing_two_submodule_outputs(
+    tmp_path: Path,
+):
+    """A regular OOS scratch file must not abort nested proposal collection.
+
+    VGO-010 produced four valid declared outputs in two submodules plus one
+    disposable root checkpoint.  Cleanup passed that regular file to Git as a
+    working directory, raised ``NotADirectoryError``, and the fail-closed
+    collector consequently reported an empty patch.  Preserve the strict
+    scope fence by deleting only the untracked OOS scratch path, then prove
+    both task-owned submodule entries remain source-materialized.
+    """
+
+    repo, first = _seed_parent_with_submodule(tmp_path)
+    second_source = tmp_path / "second-source"
+    second_source.mkdir()
+    _git(second_source, "init")
+    _git(second_source, "checkout", "-b", "main")
+    _git(second_source, "config", "user.name", "Test User")
+    _git(second_source, "config", "user.email", "test@example.invalid")
+    (second_source / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(second_source, "add", "base.txt")
+    _git(second_source, "commit", "-m", "second base")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(second_source),
+        "libs/other",
+    )
+    _git(repo, "commit", "-am", "add second child")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    second = repo / "libs" / "other"
+    _git(second, "config", "user.name", "Test User")
+    _git(second, "config", "user.email", "test@example.invalid")
+
+    (first / "first_output.py").write_text("FIRST = 1\n", encoding="utf-8")
+    (second / "second_output.ts").write_text(
+        "export const SECOND = 2;\n",
+        encoding="utf-8",
+    )
+    scratch = repo / ".provider-checkpoint.json"
+    scratch.write_text("{}\n", encoding="utf-8")
+    state_dir = tmp_path / "two-submodule-proposal-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child", "libs/other"],
+    )
+    task = _submodule_proposal_task(
+        [
+            "libs/child/first_output.py",
+            "libs/other/second_output.ts",
+        ]
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert not scratch.exists()
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/first_output.py",
+        "libs/other/second_output.ts",
+    )
+    assert "FIRST = 1" in result.proposal.patch_text
+    assert "SECOND = 2" in result.proposal.patch_text
+
+
+def test_is_git_worktree_rejects_nondirectories_without_spawning_git(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """Regular, FIFO, and missing paths are not valid Git process cwd values."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    regular = repo / "provider-checkpoint.json"
+    regular.write_text("{}\n", encoding="utf-8")
+    fifo = repo / "provider-progress.fifo"
+    os.mkfifo(fifo)
+    missing = repo / "already-gone"
+
+    def unexpected_git(*_args, **_kwargs):
+        raise AssertionError("Git must not be spawned with a non-directory cwd")
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        unexpected_git,
+    )
+
+    assert daemon._is_git_worktree(regular) is False
+    assert daemon._is_git_worktree(fifo) is False
+    assert daemon._is_git_worktree(missing) is False
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            FileNotFoundError("directory disappeared before Git spawn")
+        ),
+    )
+    assert daemon._is_git_worktree(repo) is False
+
+
 def test_post_validation_candidate_binding_rejects_late_source_change(
     tmp_path: Path,
 ):
