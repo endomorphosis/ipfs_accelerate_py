@@ -146,6 +146,7 @@ from ..validation.validation_runtime import (
     PROVIDER_PROTECTED_STATE_ROOT_ENV,
     VALIDATION_LANDLOCK_FAILURE_MARKER,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    VALIDATION_RUFF_UNAVAILABLE_MARKER,
     ValidationFilesystemBoundaryReceipt,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
@@ -27322,6 +27323,19 @@ class PortalImplementationDaemon:
                         "infrastructure_failure": True,
                     }
                 )
+        if (
+            completed.returncode == 75
+            and VALIDATION_RUFF_UNAVAILABLE_MARKER in output
+        ):
+            result.update(
+                {
+                    "error": (
+                        "validation_environment_ruff_executable_unavailable"
+                    ),
+                    "reason": "sealed_validation_ruff_executable_unavailable",
+                    "infrastructure_failure": True,
+                }
+            )
         if (
             completed.returncode != 0
             and PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER in output

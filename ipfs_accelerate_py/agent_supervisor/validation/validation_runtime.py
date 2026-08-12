@@ -27,6 +27,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -68,7 +69,22 @@ VALIDATION_PYTHON_INTERPRETER_SHA256_ENV = (
 VALIDATION_PYTHON_INTERPRETER_STAT_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_INTERPRETER_STAT"
 )
+VALIDATION_RUFF_EXECUTABLE_MODE_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE_MODE"
+)
+VALIDATION_RUFF_EXECUTABLE_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE_SHA256"
+)
+VALIDATION_RUFF_EXECUTABLE_STAT_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE_STAT"
+)
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
+VALIDATION_RUFF_EXECUTABLE_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE"
+)
+VALIDATION_RUFF_UNAVAILABLE_MARKER = (
+    "ipfs-accelerate-validation-ruff-error:unavailable"
+)
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
 _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
 HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
@@ -78,11 +94,12 @@ _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "nested-validation-python-launcher@1;"
+    "nested-validation-python-launcher@2;"
     "seals=write,grow,shrink,seal;"
     "shell-startup=privileged-no-bash-env;"
     "user-site=interpreter-s-flag;"
-    "pythonpath=task-local-then-approved"
+    "pythonpath=task-local-then-approved;"
+    "ruff=active-distribution-content-stat-sealed-memfd-exact-module"
 )
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
     "__ipfs_accelerate_sealed_validation_python__"
@@ -1075,6 +1092,17 @@ try:
                 )
             finally:
                 os.close(path_fd)
+        for executable_variable in (
+            "PYTHON",
+            "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE",
+        ):
+            raw_executable = os.environ.get(executable_variable, "")
+            if raw_executable.startswith("/proc/"):
+                executable_fd = os.open(raw_executable, os.O_RDONLY)
+                os.set_inheritable(executable_fd, True)
+                os.environ[executable_variable] = (
+                    "/proc/" + str(os.getpid()) + "/fd/" + str(executable_fd)
+                )
         checked(libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0))
         checked(libc.syscall(RESTRICT_SELF, ruleset_fd, 0))
     finally:
@@ -1529,6 +1557,83 @@ def _validation_python_interpreter_identity(
     return str(identity["sha256"]), stat_identity
 
 
+def _active_ruff_executable_snapshot(
+    *, approved_pythonpath: str
+) -> tuple[bytes, str, str] | None:
+    """Read the approved active Ruff distribution binary with stable identity."""
+
+    try:
+        approved_roots = {
+            Path(entry).resolve(strict=True)
+            for entry in approved_pythonpath.split(os.pathsep)
+            if entry
+        }
+        distribution = importlib_metadata.distribution("ruff")
+        if Path(distribution.locate_file("")).resolve(
+            strict=True
+        ) not in approved_roots:
+            return None
+        executable_name = "ruff.exe" if os.name == "nt" else "ruff"
+        candidates = {
+            Path(distribution.locate_file(entry)).resolve(strict=True)
+            for entry in distribution.files or ()
+            if Path(str(entry)).name == executable_name
+        }
+    except importlib_metadata.PackageNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "active Ruff distribution is unavailable"
+        ) from exc
+    if not candidates:
+        return None
+    if len(candidates) != 1:
+        raise ValidationRuntimeError(
+            "active Ruff distribution has ambiguous executable entries"
+        )
+    executable = candidates.pop()
+    try:
+        before = executable.stat()
+        if not stat.S_ISREG(before.st_mode) or not (
+            stat.S_IMODE(before.st_mode) & 0o111
+        ):
+            raise ValidationRuntimeError(
+                "active Ruff executable is not a regular executable"
+            )
+        content = executable.read_bytes()
+        after = executable.stat()
+
+        def stat_payload(value: os.stat_result) -> str:
+            return _canonical_json(
+                {
+                    "path": str(executable),
+                    "device": int(value.st_dev),
+                    "inode": int(value.st_ino),
+                    "size": int(value.st_size),
+                    "mode": stat.S_IMODE(value.st_mode),
+                    "mtime_ns": int(value.st_mtime_ns),
+                    "ctime_ns": int(value.st_ctime_ns),
+                }
+            )
+        before_identity = stat_payload(before)
+        after_identity = stat_payload(after)
+        if before_identity != after_identity:
+            raise ValidationRuntimeError(
+                "active Ruff executable changed while being read"
+            )
+        if len(content) != int(after.st_size):
+            raise ValidationRuntimeError(
+                "active Ruff executable read was incomplete"
+            )
+        return content, hashlib.sha256(content).hexdigest(), after_identity
+    except ValidationRuntimeError:
+        raise
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "active Ruff executable cannot be read"
+        ) from exc
+
+
 def sealed_validation_python_runner(runner: Any) -> Any:
     """Mark a trusted runner as requiring sealed nested-Python delivery."""
 
@@ -1567,6 +1672,27 @@ def validation_environment_for_runner(
         raise ValidationRuntimeError(
             "validation environment is missing its canonical Python"
         )
+    for variable in (
+        VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+        VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+        VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
+        VALIDATION_RUFF_EXECUTABLE_ENV,
+    ):
+        result.pop(variable, None)
+    ruff_snapshot = _active_ruff_executable_snapshot(
+        approved_pythonpath=str(result.get("PYTHONPATH") or "")
+    )
+    if ruff_snapshot is None:
+        result[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] = "unavailable"
+    else:
+        _ruff_content, ruff_sha256, ruff_stat = ruff_snapshot
+        result.update(
+            {
+                VALIDATION_RUFF_EXECUTABLE_MODE_ENV: "sealed-memfd",
+                VALIDATION_RUFF_EXECUTABLE_SHA256_ENV: ruff_sha256,
+                VALIDATION_RUFF_EXECUTABLE_STAT_ENV: ruff_stat,
+            }
+        )
     mode = _validation_python_launcher_mode(sealed=True)
     result.update(
         {
@@ -1578,6 +1704,9 @@ def validation_environment_for_runner(
                 _validation_python_launcher_source(
                     executable=executable,
                     approved_pythonpath=result.get("PYTHONPATH", ""),
+                    ruff_sha256=(
+                        ruff_snapshot[1] if ruff_snapshot is not None else ""
+                    ),
                 )
             ).hexdigest(),
         }
@@ -1684,15 +1813,98 @@ def _validation_python_launcher_source(
     *,
     executable: str,
     approved_pythonpath: str,
+    ruff_sha256: str,
 ) -> bytes:
-    """Render a launcher containing no child-controlled configuration."""
+    """Render a launcher that discovers Ruff beside its sealed parent FD."""
+
+    ruff_broker = (
+        "import fcntl,hashlib,os,re,stat,sys\n"
+        "launcher,expected=sys.argv[1:3]\n"
+        "match=re.fullmatch(r'/proc/(?:([1-9][0-9]*)|self)/fd/([0-9]+)',launcher)\n"
+        "if match is None: sys.exit(75)\n"
+        "directory=('/proc/'+match.group(1)+'/fd') if match.group(1) else '/proc/self/fd'\n"
+        "launcher_fd=int(match.group(2))\n"
+        "entries=[int(entry) for entry in os.listdir(directory) if entry.isdecimal()]\n"
+        "if len(entries)>512: sys.exit(75)\n"
+        "required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL\n"
+        "fd=-1\n"
+        "for candidate in sorted(entries):\n"
+        " if candidate==launcher_fd: continue\n"
+        " opened=-1\n"
+        " try:\n"
+        "  opened=os.open(directory+'/'+str(candidate),os.O_RDONLY|os.O_CLOEXEC)\n"
+        "  before=os.fstat(opened)\n"
+        "  if not stat.S_ISREG(before.st_mode) or not before.st_mode&0o111: continue\n"
+        "  if fcntl.fcntl(opened,fcntl.F_GET_SEALS)&required != required: continue\n"
+        "  digest=hashlib.sha256()\n"
+        "  while chunk:=os.read(opened,1024*1024): digest.update(chunk)\n"
+        "  after=os.fstat(opened)\n"
+        "  if (before.st_dev,before.st_ino,before.st_size,before.st_mode)!=(after.st_dev,after.st_ino,after.st_size,after.st_mode): continue\n"
+        "  if digest.hexdigest()!=expected: continue\n"
+        "  os.lseek(opened,0,os.SEEK_SET)\n"
+        "  fd=opened\n"
+        "  opened=-1\n"
+        "  break\n"
+        " except OSError:\n"
+        "  pass\n"
+        " finally:\n"
+        "  if opened>=0: os.close(opened)\n"
+        "if fd<0: sys.exit(75)\n"
+        "env=dict(os.environ)\n"
+        f"[env.pop(key,None) for key in {(VALIDATION_RUFF_EXECUTABLE_ENV, VALIDATION_RUFF_EXECUTABLE_MODE_ENV, VALIDATION_RUFF_EXECUTABLE_SHA256_ENV, VALIDATION_RUFF_EXECUTABLE_STAT_ENV)!r}]\n"
+        "os.execve(fd,['ruff',*sys.argv[3:]],env)\n"
+    )
 
     return (
         "#!/bin/bash -p\n"
         f"readonly executable={shlex.quote(executable)}\n"
         f"readonly approved={shlex.quote(approved_pythonpath)}\n"
-        "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP\n"
+        'readonly launcher_path="$0"\n'
+        f"readonly ruff_sha256={shlex.quote(ruff_sha256)}\n"
+        f"readonly ruff_broker={shlex.quote(ruff_broker)}\n"
+        "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP "
+        f"{VALIDATION_RUFF_EXECUTABLE_ENV} "
+        f"{VALIDATION_RUFF_EXECUTABLE_MODE_ENV} "
+        f"{VALIDATION_RUFF_EXECUTABLE_SHA256_ENV} "
+        f"{VALIDATION_RUFF_EXECUTABLE_STAT_ENV}\n"
         "export PYTHONNOUSERSITE=1\n"
+        "ruff_invocation=0\n"
+        'if [[ "$#" -ge 2 && "$1" =~ ^-[^-]*m$ '
+        '&& "$2" == "ruff" ]]; then\n'
+        "    shift 2\n"
+        "    ruff_invocation=1\n"
+        'elif [[ "$#" -ge 1 && "$1" == "-mruff" ]]; then\n'
+        "    shift\n"
+        "    ruff_invocation=1\n"
+        "else\n"
+        "    previous_module_flag=0\n"
+        '    for argument in "$@"; do\n'
+        '        if [[ "$previous_module_flag" == 1 && '
+        '"$argument" =~ ^ruff(\\.|$) ]]; then\n'
+        "            printf '%s\\n' "
+        "ipfs-accelerate-validation-ruff-error:unsupported-module-spelling >&2\n"
+        "            exit 75\n"
+        "        fi\n"
+        '        if [[ "$argument" =~ ^-[^-]*mruff(\\.|$) ]]; then\n'
+        "            printf '%s\\n' "
+        "ipfs-accelerate-validation-ruff-error:unsupported-module-spelling >&2\n"
+        "            exit 75\n"
+        "        fi\n"
+        '        if [[ "$argument" =~ ^-[^-]*m$ ]]; then\n'
+        "            previous_module_flag=1\n"
+        "        else\n"
+        "            previous_module_flag=0\n"
+        "        fi\n"
+        "    done\n"
+        "fi\n"
+        'if [[ "$ruff_invocation" == 1 ]]; then\n'
+        '    if [[ -z "$ruff_sha256" ]]; then\n'
+        f"        printf '%s\\n' {shlex.quote(VALIDATION_RUFF_UNAVAILABLE_MARKER)} >&2\n"
+        "        exit 75\n"
+        "    fi\n"
+        '    exec "$executable" -I -c "$ruff_broker" '
+        '"$launcher_path" "$ruff_sha256" "$@"\n'
+        "fi\n"
         'requested="${PYTHONPATH-}"\n'
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then\n'
         '    if [[ -n "$requested" ]]; then\n'
@@ -1702,7 +1914,7 @@ def _validation_python_launcher_source(
         "    fi\n"
         "fi\n"
         'exec "$executable" -s "$@"\n'
-    ).encode("utf-8")
+    ).encode()
 
 
 def _write_all(fd: int, payload: bytes) -> None:
@@ -1714,6 +1926,65 @@ def _write_all(fd: int, payload: bytes) -> None:
                 "sealed validation Python launcher write was incomplete"
             )
         offset += written
+
+
+def _sealed_executable_memfd(
+    *,
+    name: str,
+    payload: bytes,
+    creation_flags: int,
+    required_seals: int,
+    fcntl_module: Any,
+) -> tuple[int, str]:
+    """Copy executable bytes to a verified sealed memfd."""
+
+    fd = -1
+    try:
+        fd = os.memfd_create(name, creation_flags)
+        _write_all(fd, payload)
+        os.fchmod(fd, 0o500)
+        fcntl_module.fcntl(fd, fcntl_module.F_ADD_SEALS, required_seals)
+        actual_seals = int(
+            fcntl_module.fcntl(fd, fcntl_module.F_GET_SEALS)
+        )
+        if actual_seals & required_seals != required_seals:
+            raise ValidationRuntimeError(
+                f"sealed {name} did not acquire all required seals"
+            )
+        expected_sha256 = hashlib.sha256(payload).hexdigest()
+        persisted_hasher = hashlib.sha256()
+        offset = 0
+        while offset < len(payload):
+            chunk = os.pread(
+                fd,
+                min(1024 * 1024, len(payload) - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            persisted_hasher.update(chunk)
+            offset += len(chunk)
+        if (
+            offset != len(payload)
+            or os.pread(fd, 1, offset)
+            or persisted_hasher.hexdigest() != expected_sha256
+        ):
+            raise ValidationRuntimeError(
+                f"sealed {name} content mismatch"
+            )
+        executable_path = f"/proc/{os.getpid()}/fd/{fd}"
+        if not os.access(executable_path, os.R_OK | os.X_OK):
+            raise ValidationRuntimeError(
+                f"sealed {name} is not executable"
+            )
+        return fd, executable_path
+    except Exception:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        raise
 
 
 @contextmanager
@@ -1829,6 +2100,40 @@ def validation_python_launcher_environment(
         )
         return
 
+    recorded_ruff_mode = str(
+        child_environment.get(VALIDATION_RUFF_EXECUTABLE_MODE_ENV) or ""
+    )
+    recorded_ruff_sha256 = str(
+        child_environment.get(VALIDATION_RUFF_EXECUTABLE_SHA256_ENV) or ""
+    )
+    recorded_ruff_stat = str(
+        child_environment.get(VALIDATION_RUFF_EXECUTABLE_STAT_ENV) or ""
+    )
+    if recorded_ruff_mode not in {"sealed-memfd", "unavailable"}:
+        raise ValidationRuntimeError(
+            "validation Ruff executable mode does not match runtime policy"
+        )
+    ruff_snapshot = _active_ruff_executable_snapshot(
+        approved_pythonpath=approved_pythonpath
+    )
+    if recorded_ruff_mode == "unavailable":
+        if (
+            recorded_ruff_sha256
+            or recorded_ruff_stat
+            or ruff_snapshot is not None
+        ):
+            raise ValidationRuntimeError(
+                "validation Ruff unavailable identity mismatch"
+            )
+    elif (
+        ruff_snapshot is None
+        or recorded_ruff_sha256 != ruff_snapshot[1]
+        or recorded_ruff_stat != ruff_snapshot[2]
+    ):
+        raise ValidationRuntimeError(
+            "validation Ruff executable identity mismatch"
+        )
+
     try:
         import fcntl
 
@@ -1844,42 +2149,46 @@ def validation_python_launcher_environment(
             "sealed validation Python launcher is unavailable on Linux"
         ) from exc
 
-    payload = _validation_python_launcher_source(
+    identity_payload = _validation_python_launcher_source(
         executable=rendered_executable,
         approved_pythonpath=approved_pythonpath,
+        ruff_sha256=(ruff_snapshot[1] if ruff_snapshot is not None else ""),
     )
-    content_sha256 = hashlib.sha256(payload).hexdigest()
+    content_sha256 = hashlib.sha256(identity_payload).hexdigest()
     if recorded_content_sha256 != content_sha256:
         raise ValidationRuntimeError(
             "validation Python launcher content identity mismatch"
         )
-    fd = -1
+    open_fds: set[int] = set()
     try:
-        fd = os.memfd_create(
-            "ipfs-accelerate-validation-python",
-            creation_flags,
+        if ruff_snapshot is not None:
+            ruff_fd, ruff_path = (
+                _sealed_executable_memfd(
+                    name="validation Ruff executable",
+                    payload=ruff_snapshot[0],
+                    creation_flags=creation_flags,
+                    required_seals=required_seals,
+                    fcntl_module=fcntl,
+                )
+            )
+            open_fds.add(ruff_fd)
+            child_environment[VALIDATION_RUFF_EXECUTABLE_ENV] = ruff_path
+        python_fd, launcher_path = (
+            _sealed_executable_memfd(
+                name="validation Python launcher",
+                payload=identity_payload,
+                creation_flags=creation_flags,
+                required_seals=required_seals,
+                fcntl_module=fcntl,
+            )
         )
-        _write_all(fd, payload)
-        os.fchmod(fd, 0o500)
-        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, required_seals)
-        actual_seals = int(fcntl.fcntl(fd, fcntl.F_GET_SEALS))
-        if actual_seals & required_seals != required_seals:
-            raise ValidationRuntimeError(
-                "validation Python launcher did not acquire all required seals"
-            )
-        persisted = os.pread(fd, len(payload) + 1, 0)
-        if (
-            len(persisted) != len(payload)
-            or hashlib.sha256(persisted).hexdigest() != content_sha256
+        open_fds.add(python_fd)
+        for variable in (
+            VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+            VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+            VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
         ):
-            raise ValidationRuntimeError(
-                "sealed validation Python launcher content mismatch"
-            )
-        launcher_path = f"/proc/{os.getpid()}/fd/{fd}"
-        if not os.access(launcher_path, os.R_OK | os.X_OK):
-            raise ValidationRuntimeError(
-                "sealed validation Python launcher is not executable"
-            )
+            child_environment.pop(variable, None)
         child_environment["PYTHON"] = launcher_path
         yield child_environment, ValidationPythonLauncherReceipt(
             executable=launcher_path,
@@ -1897,11 +2206,67 @@ def validation_python_launcher_environment(
             "sealed validation Python launcher construction failed"
         ) from exc
     finally:
-        if fd >= 0:
+        for fd in open_fds:
             try:
                 os.close(fd)
             except OSError:
                 pass
+
+
+_SHELL_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+_SHELL_CONTROL_TOKEN = re.compile(r"[;&|()]+")
+_PYTHON_MODULE_FLAG = re.compile(r"^-[^-]*m$")
+_PYTHON_COMPACT_RUFF_MODULE = re.compile(r"^-[^-]*mruff(?:\.|$)")
+_RUFF_MODULE_NAME = re.compile(r"^ruff(?:\.|$)")
+_DYNAMIC_SHELL_COMMAND_WORD = re.compile(r"[$*?\[\]{}~]")
+_COMMAND_WRAPPERS = frozenset(
+    {"chrt", "command", "env", "ionice", "nice", "nohup", "setsid", "stdbuf", "timeout"}
+)
+
+
+def _ruff_module_indices(
+    arguments: Sequence[str],
+) -> tuple[tuple[int, int | None], ...]:
+    """Locate Python Ruff module spellings without executing argv wrappers."""
+
+    found: list[tuple[int, int | None]] = []
+    for index, argument in enumerate(arguments):
+        if _PYTHON_COMPACT_RUFF_MODULE.match(argument):
+            found.append((index, None))
+        elif (
+            _PYTHON_MODULE_FLAG.match(argument)
+            and index + 1 < len(arguments)
+            and _RUFF_MODULE_NAME.match(arguments[index + 1])
+        ):
+            found.append((index, index + 1))
+    return tuple(found)
+
+
+def _shell_command_start(arguments: Sequence[str], index: int) -> int:
+    """Return the first token after the nearest shell control operator."""
+
+    for candidate in range(index - 1, -1, -1):
+        if _SHELL_CONTROL_TOKEN.fullmatch(arguments[candidate]):
+            return candidate + 1
+    return 0
+
+
+def _shell_command_segments(
+    arguments: Sequence[str],
+) -> tuple[tuple[str, ...], ...]:
+    """Split reviewed shell words at command-control operators."""
+
+    segments: list[tuple[str, ...]] = []
+    start = 0
+    for index, argument in enumerate(arguments):
+        if not _SHELL_CONTROL_TOKEN.fullmatch(argument):
+            continue
+        if index > start:
+            segments.append(tuple(arguments[start:index]))
+        start = index + 1
+    if start < len(arguments):
+        segments.append(tuple(arguments[start:]))
+    return tuple(segments)
 
 
 def validation_shell_command(command: str) -> list[str]:
@@ -1915,8 +2280,9 @@ def validation_shell_command(command: str) -> list[str]:
             "dynamic command substitution is not permitted for validation"
         )
     try:
+        analysis_text = text.replace("\r\n", ";").replace("\n", ";").replace("\r", ";")
         lexer = shlex.shlex(
-            text,
+            analysis_text,
             posix=True,
             punctuation_chars=";&|()<>",
         )
@@ -1936,6 +2302,82 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "dynamic shell evaluation is not permitted for validation"
         )
+    for token in leading:
+        if not any(character.isspace() for character in token):
+            continue
+        try:
+            embedded = shlex.split(token)
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "validation command has invalid embedded shell arguments"
+            ) from exc
+        if (
+            _ruff_module_indices(embedded)
+            or any(Path(part).name == "ruff" for part in embedded)
+            or any(Path(part).name in {"python", "python3"} for part in embedded)
+        ):
+            raise ValidationRuntimeError(
+                "embedded Python or Ruff validation arguments are not permitted"
+            )
+    ruff_module_indices = _ruff_module_indices(leading)
+    for module_index, _value_index in ruff_module_indices:
+        command_start = _shell_command_start(leading, module_index)
+        while (
+            command_start < module_index
+            and _SHELL_ASSIGNMENT.fullmatch(leading[command_start])
+        ):
+            command_start += 1
+        if (
+            command_start >= module_index
+            or leading[command_start] not in {"python", "python3"}
+        ):
+            raise ValidationRuntimeError(
+                "Ruff validation must use the sealed python or python3 launcher"
+            )
+    module_value_indices = {
+        value_index
+        for _flag_index, value_index in ruff_module_indices
+        if value_index is not None
+    }
+    for index, token in enumerate(leading):
+        if index in module_value_indices or Path(token).name != "ruff":
+            continue
+        raise ValidationRuntimeError(
+            "direct Ruff validation requires the sealed Python launcher"
+        )
+    for segment in _shell_command_segments(leading):
+        command_index = 0
+        while (
+            command_index < len(segment)
+            and _SHELL_ASSIGNMENT.fullmatch(segment[command_index])
+        ):
+            command_index += 1
+        if command_index >= len(segment):
+            continue
+        if _DYNAMIC_SHELL_COMMAND_WORD.search(segment[command_index]):
+            raise ValidationRuntimeError(
+                "dynamic validation command names are not permitted"
+            )
+        for later in segment[command_index + 1 :]:
+            if Path(later).name in {"python", "python3"}:
+                raise ValidationRuntimeError(
+                    "wrapped Python validation commands are not permitted"
+                )
+        command_name = segment[command_index]
+        if Path(command_name).name in _COMMAND_WRAPPERS and any(
+            _DYNAMIC_SHELL_COMMAND_WORD.search(argument)
+            for argument in segment[command_index + 1 :]
+        ):
+            raise ValidationRuntimeError(
+                "dynamic wrapped validation command names are not permitted"
+            )
+        if Path(command_name).name in {"python", "python3"} and command_name not in {
+            "python",
+            "python3",
+        }:
+            raise ValidationRuntimeError(
+                "validation Python must use the sealed python or python3 launcher"
+            )
     # A reviewed command may prepend workspace-local import roots with an
     # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
     # that assignment to the shell function itself, which would otherwise
@@ -1946,21 +2388,26 @@ def validation_shell_command(command: str) -> list[str]:
     # the pinned pytest/runtime packages available.
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
+        '_IPFS_ACCELERATE_SEALED_PYTHON="${PYTHON}"; '
+        "readonly _IPFS_ACCELERATE_SEALED_PYTHON; "
         '_IPFS_ACCELERATE_APPROVED_PYTHONPATH="${PYTHONPATH-}"; '
         "readonly _IPFS_ACCELERATE_APPROVED_PYTHONPATH; "
         "_ipfs_accelerate_validation_python() { "
         'local requested="${PYTHONPATH-}"; '
         'local approved="${_IPFS_ACCELERATE_APPROVED_PYTHONPATH}"; '
+        'local -a prefix=(); '
+        f'if [[ "${{_IPFS_ACCELERATE_SEALED_PYTHON}}" '
+        f'== "${{{_CHILD_PYTHON_ENV}}}" ]]; then prefix=(-s); fi; '
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
         'if [[ -n "$requested" ]]; then '
         'PYTHONPATH="$requested:$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
         "else "
         'PYTHONPATH="$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
         "fi; "
         "else "
-        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
         "fi; "
         "}; "
         'python() { _ipfs_accelerate_validation_python "$@"; }; '
@@ -1986,6 +2433,55 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
     parts = [str(part) for part in command]
     if not parts or not parts[0]:
         raise ValidationRuntimeError("validation argv must not be empty")
+    executable_name = Path(parts[0]).name
+    split_env_argv: list[str] = []
+    for index, part in enumerate(parts):
+        split_text = ""
+        if part in {"-S", "--split-string"} and index + 1 < len(parts):
+            split_text = parts[index + 1]
+        elif part.startswith("--split-string="):
+            split_text = part.partition("=")[2]
+        elif part.startswith("-S") and len(part) > 2:
+            split_text = part[2:]
+        if split_text:
+            try:
+                split_env_argv.extend(shlex.split(split_text))
+            except ValueError as exc:
+                raise ValidationRuntimeError(
+                    "invalid env split-string validation argv"
+                ) from exc
+    embedded_argv: list[str] = []
+    for part in parts:
+        if not any(character.isspace() for character in part):
+            continue
+        try:
+            embedded_argv.extend(shlex.split(part))
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "invalid embedded validation argv"
+            ) from exc
+    ruff_argv = [parts, split_env_argv, embedded_argv]
+    if (
+        any(Path(part).name == "ruff" for argv in ruff_argv for part in argv)
+        or any(_ruff_module_indices(argv) for argv in ruff_argv)
+    ):
+        raise ValidationRuntimeError(
+            "direct argv Ruff validation requires the sealed string-command launcher"
+        )
+    if executable_name in {"python", "python3"} and parts[0] not in {
+        "python",
+        "python3",
+    }:
+        raise ValidationRuntimeError(
+            "direct argv Python must use the canonical launcher name"
+        )
+    if any(
+        Path(part).name in {"python", "python3"}
+        for part in parts[1:]
+    ):
+        raise ValidationRuntimeError(
+            "wrapped direct argv Python validation is not permitted"
+        )
     if parts[0] in {"python", "python3"}:
         return [validation_python_executable(), "-s", *parts[1:]]
     if parts[0] == "pytest":
@@ -1996,8 +2492,7 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
             "pytest",
             *parts[1:],
         ]
-    executable = Path(parts[0]).name
-    if executable not in {"bash", "sh"}:
+    if executable_name not in {"bash", "sh"}:
         if any(Path(part).name in {"bash", "sh"} for part in parts[1:]):
             raise ValidationRuntimeError(
                 "wrapped validation shells are not permitted"

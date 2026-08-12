@@ -38,14 +38,18 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
     VALIDATION_PYTHONPATH_ENV,
+    VALIDATION_RUFF_EXECUTABLE_ENV,
+    VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+    VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+    VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
     ValidationRuntimeError,
-    build_validation_environment,
     build_hermetic_validation_runtime,
+    build_validation_environment,
     sealed_validation_python_runner,
     validation_argv_command,
     validation_environment_for_runner,
-    validation_python_launcher_environment,
     validation_python_executable,
+    validation_python_launcher_environment,
     validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
@@ -204,6 +208,61 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
             match="wrapped validation shells",
         ):
             validation_argv_command(wrapped_shell)
+    for direct_ruff in (
+        ("python3", "-m", "ruff", "check", "."),
+        ("python3", "-mruff", "--version"),
+        ("python3", "-Bmruff", "--version"),
+        ("python3", "-Bm", "ruff", "--version"),
+        ("/usr/bin/env", "python3", "-m", "ruff", "--version"),
+        ("/usr/bin/timeout", "10", "python3", "-m", "ruff", "--version"),
+        (
+            "/usr/bin/timeout",
+            "10",
+            "/usr/bin/env",
+            "-S",
+            "python3 -m ruff --version",
+        ),
+        ("/usr/bin/nice", "/usr/bin/env", "-Spython3 -mruff --version"),
+        ("ruff", "--version"),
+        ("/usr/bin/env", "-S", "python3 -m ruff --version"),
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="direct argv Ruff validation requires the sealed",
+        ):
+            validation_argv_command(direct_ruff)
+    for unsealed_python in (
+        ("/usr/bin/python3", "-c", "print('reviewed')"),
+        ("/usr/bin/timeout", "5", "python3", "-c", "print('reviewed')"),
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="direct argv Python|wrapped direct argv Python",
+        ):
+            validation_argv_command(unsealed_python)
+    for wrapped_ruff in (
+        "command python3 -m ruff --version",
+        "/usr/bin/python3 -m ruff --version",
+        "env python3 -m ruff --version",
+        "env -S 'python3 -m ruff --version'",
+        "env --split-string='python3 -mruff --version'",
+        "timeout 5 python3 -m ruff --version",
+        '"$IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE" -m ruff --version',
+        'env "$IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE" -m ruff --version',
+        "ruff --version",
+        "/usr/bin/python3 -m ${NO_SUCH:-ruff} --version",
+        "/usr/bin/python3 -m ruf? --version",
+        "PATH=.:$PATH r?ff --version",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match=(
+                "Ruff validation must use|direct Ruff validation requires|"
+                "embedded Python or Ruff validation arguments|"
+                "dynamic validation command names|validation Python must use"
+            ),
+        ):
+            validation_shell_command(wrapped_ruff)
     for dynamic_shell in (
         "echo `bash -lc 'python -V'`",
         "echo $(bash -lc 'python -V')",
@@ -607,12 +666,14 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor(
 
     environment = _sealed_daemon_environment()
     launcher_path = ""
+    ruff_path = ""
 
     with validation_python_launcher_environment(environment) as (
         child_environment,
         receipt,
     ):
         launcher_path = child_environment["PYTHON"]
+        ruff_path = child_environment.get(VALIDATION_RUFF_EXECUTABLE_ENV, "")
         payload = Path(launcher_path).read_bytes()
         descriptor = os.open(launcher_path, os.O_RDONLY)
         try:
@@ -661,9 +722,271 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor(
             == receipt.content_sha256
         )
         assert child_environment["PYTHONNOUSERSITE"] == "1"
+        assert not {
+            VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+            VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+            VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
+        } & set(child_environment)
+        if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] == "sealed-memfd":
+            assert ruff_path.startswith(f"/proc/{os.getpid()}/fd/")
+            assert Path(ruff_path).is_file()
+            assert hashlib.sha256(Path(ruff_path).read_bytes()).hexdigest() == (
+                environment[VALIDATION_RUFF_EXECUTABLE_SHA256_ENV]
+            )
 
     assert launcher_path
     assert not Path(launcher_path).exists()
+    if ruff_path:
+        assert not Path(ruff_path).exists()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables are Linux-specific",
+)
+@pytest.mark.parametrize(
+    "command",
+    (
+        "python -m ruff --version",
+        "python3 -m ruff --version",
+        "python3 -mruff --version",
+        "python3 -Bm ruff --version",
+        "PYTHONPATH=. python3 -m ruff --version",
+    ),
+)
+def test_daemon_routes_reviewed_python_m_ruff_spellings_to_sealed_binary(
+    tmp_path: Path,
+    command: str,
+) -> None:
+    environment = _sealed_daemon_environment()
+    if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] != "sealed-memfd":
+        pytest.skip("Ruff is not installed in the approved validation runtime")
+    spec = SimpleNamespace(
+        command=command,
+        raw_command=command,
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    assert str(result["output"]).startswith("ruff ")
+    assert result["validation_python_launcher"]["sealed"] is True
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables are Linux-specific",
+)
+def test_daemon_rejects_noncanonical_combined_python_ruff_option(
+    tmp_path: Path,
+) -> None:
+    environment = _sealed_daemon_environment()
+    if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] != "sealed-memfd":
+        pytest.skip("Ruff is not installed in the approved validation runtime")
+    command = "python3 -Bmruff --version"
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert "unsupported-module-spelling" in str(result["output"])
+    assert result["validation_python_launcher"]["sealed"] is True
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables are Linux-specific",
+)
+def test_validation_runtime_rejects_tampered_ruff_identity() -> None:
+    environment = _sealed_daemon_environment()
+    if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] != "sealed-memfd":
+        pytest.skip("Ruff is not installed in the approved validation runtime")
+    environment[VALIDATION_RUFF_EXECUTABLE_SHA256_ENV] = "0" * 64
+
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="validation Ruff executable identity mismatch",
+    ), validation_python_launcher_environment(environment):
+        pytest.fail("tampered Ruff identity must fail before yielding")
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables are Linux-specific",
+)
+def test_nested_child_cannot_replace_sealed_ruff_through_environment(
+    tmp_path: Path,
+) -> None:
+    environment = _sealed_daemon_environment()
+    if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] != "sealed-memfd":
+        pytest.skip("Ruff is not installed in the approved validation runtime")
+    (tmp_path / "adversarial_ruff.py").write_text(
+        f"""
+import os
+import subprocess
+
+sealed_python = os.environ["PYTHON"]
+environment = dict(os.environ)
+environment[{VALIDATION_RUFF_EXECUTABLE_ENV!r}] = "/bin/true"
+environment[{VALIDATION_RUFF_EXECUTABLE_MODE_ENV!r}] = "sealed-memfd"
+environment[{VALIDATION_RUFF_EXECUTABLE_SHA256_ENV!r}] = "0" * 64
+environment[{VALIDATION_RUFF_EXECUTABLE_STAT_ENV!r}] = "forged"
+completed = subprocess.run(
+    [sealed_python, "-m", "ruff", "check", "missing.py"],
+    env=environment,
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    check=False,
+)
+print(f"sealed-ruff-returncode={{completed.returncode}}")
+print(completed.stdout, end="")
+raise SystemExit(0 if completed.returncode != 0 else 42)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    spec = SimpleNamespace(
+        command="python adversarial_ruff.py",
+        raw_command="python adversarial_ruff.py",
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    assert "sealed-ruff-returncode=1" in str(result["output"])
+    assert "missing.py" in str(result["output"])
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables and Landlock are Linux-specific",
+)
+def test_sealed_ruff_survives_proof_state_landlock_fence(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "proof-state"
+    state_root.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "bad.py").write_text("import os\n", encoding="utf-8")
+    environment = validation_environment_for_runner(
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(state_root)}
+        ),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] != "sealed-memfd":
+        pytest.skip("Ruff is not installed in the approved validation runtime")
+    command = "python3 -m ruff check bad.py"
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 1, result["output"]
+    assert "F401" in str(result["output"])
+    assert result["validation_filesystem_boundary"]["applied"] is True
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables and Landlock are Linux-specific",
+)
+def test_nested_sealed_ruff_survives_proof_state_landlock_fence(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "proof-state"
+    state_root.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    environment = validation_environment_for_runner(
+        build_validation_environment(
+            {PROOF_REUSE_STATE_ROOT_ENV: str(state_root)}
+        ),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] != "sealed-memfd":
+        pytest.skip("Ruff is not installed in the approved validation runtime")
+    probe = """
+import os
+import subprocess
+
+completed = subprocess.run(
+    [os.environ["PYTHON"], "-m", "ruff", "--version"],
+    check=False,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+)
+print(completed.stdout, end="")
+raise SystemExit(completed.returncode)
+""".lstrip()
+    command = f"python3 -c {shlex.quote(probe)}"
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=command, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    assert str(result["output"]).startswith("ruff ")
+    assert result["validation_filesystem_boundary"]["applied"] is True
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd executables are Linux-specific",
+)
+def test_missing_ruff_is_typed_as_infrastructure_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        (
+            "ipfs_accelerate_py.agent_supervisor.validation."
+            "validation_runtime._active_ruff_executable_snapshot"
+        ),
+        lambda **_kwargs: None,
+    )
+    environment = _sealed_daemon_environment()
+    assert environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] == "unavailable"
+    spec = SimpleNamespace(
+        command="python3 -m ruff --version",
+        raw_command="python3 -m ruff --version",
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == (
+        "validation_environment_ruff_executable_unavailable"
+    )
+    assert result["reason"] == "sealed_validation_ruff_executable_unavailable"
 
 
 @pytest.mark.skipif(
@@ -1204,9 +1527,12 @@ def test_cache_and_result_digests_bind_python_launcher_policy() -> None:
         VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
         VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
         VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+        VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+        VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+        VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
     ):
         changed = dict(environment)
-        changed[variable] = f"{changed[variable]}-changed"
+        changed[variable] = f"{changed.get(variable, '')}-changed"
         variant = build_validation_cache_key(
             target_commit="commit-a",
             command="pytest tests/test_alpha.py",
