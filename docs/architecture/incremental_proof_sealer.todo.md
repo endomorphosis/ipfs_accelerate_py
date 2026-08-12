@@ -1959,7 +1959,7 @@ Global invariants for every task:
 
 ## IPS-063 Resolve dirty main checkout blocking 3 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
