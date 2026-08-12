@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Incremental-verification benchmark harness (IVP-017 / IVP-G090).
 
 Produces a schema- and order-deterministic current-tree artifact that measures
