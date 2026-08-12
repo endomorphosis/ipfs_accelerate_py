@@ -26,7 +26,7 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
 
 ```json
 {
-  "benchmark_content_id": "baguqeeraizf3put456mfruwtfnqspvm2bwb6aryhoptacbpt7usdbyjtk7zq",
+  "benchmark_content_id": "baguqeeram6jtyce43lbhoazqxpw5zfltxu3qibiezbvzrsexfkxaidhksctq",
   "benchmark_evidence": "ivp/benchmark@2",
   "benchmark_schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
   "command_identities": {
@@ -79,10 +79,10 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
     "policy_id": "policy:ivp-incremental-verification-benchmark@1",
     "zero_stale_simulated_acceptance_hard": true
   },
-  "observed_head": "3039c773e2ba1a37c7abf239a2a2442e91e55b52",
+  "observed_head": "7628f9d2553b607767ce0d851949dcdaaf4ef7ea",
   "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2",
   "source_snapshot_domain": "ivp-source-snapshot@1",
-  "source_snapshot_id": "sha256:70cd5234f119946c8b2793bb7f9f1837fc60facb10df2822f6e0b635824bcff4",
+  "source_snapshot_id": "sha256:32bf46ccd07392b0c1dd4b7006f21e67fad0f5e439b034a586ebb3610065939c",
   "source_snapshot_schema": "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1",
   "target_misses": [
     {
