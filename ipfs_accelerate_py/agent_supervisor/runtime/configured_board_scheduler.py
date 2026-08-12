@@ -589,7 +589,12 @@ def _configured_board_task_population(
         if task_state_snapshots is None
         else (dict(item) for item in task_state_snapshots)
     )
-    attempts_by_id: dict[str, int] = {}
+    current_cid_by_id = {
+        str(item["task_id"]): str(item["canonical_task_cid"])
+        for item in records
+    }
+    legacy_attempts_by_id: dict[str, int] = {}
+    attempts_by_task_revision: dict[tuple[str, str], int] = {}
     attempts_by_cid: dict[str, int] = {}
 
     def attempt_count(value: Any) -> int:
@@ -600,19 +605,78 @@ def _configured_board_task_population(
     for snapshot in snapshots:
         raw_by_id = snapshot.get("implementation_attempts")
         raw_by_cid = snapshot.get("implementation_attempts_by_cid")
+        raw_task_identities = snapshot.get("task_identities")
         if raw_by_id not in (None, {}) and not isinstance(raw_by_id, Mapping):
             raise ConfiguredBoardError("task-state implementation_attempts is invalid")
         if raw_by_cid not in (None, {}) and not isinstance(raw_by_cid, Mapping):
             raise ConfiguredBoardError(
                 "task-state implementation_attempts_by_cid is invalid"
             )
-        for key, value in dict(raw_by_id or {}).items():
-            attempts_by_id[str(key)] = max(
-                attempts_by_id.get(str(key), 0), attempt_count(value)
+        if raw_task_identities not in (None, {}) and not isinstance(
+            raw_task_identities, Mapping
+        ):
+            raise ConfiguredBoardError("task-state task_identities is invalid")
+
+        snapshot_attempts_by_cid = {
+            str(key): attempt_count(value)
+            for key, value in dict(raw_by_cid or {}).items()
+        }
+        for canonical_task_cid, count in snapshot_attempts_by_cid.items():
+            attempts_by_cid[canonical_task_cid] = max(
+                attempts_by_cid.get(canonical_task_cid, 0), count
             )
-        for key, value in dict(raw_by_cid or {}).items():
-            attempts_by_cid[str(key)] = max(
-                attempts_by_cid.get(str(key), 0), attempt_count(value)
+
+        identity_cid_by_id: dict[str, str] = {}
+        for key, value in dict(raw_task_identities or {}).items():
+            display_task_id = str(key)
+            if not isinstance(value, Mapping):
+                raise ConfiguredBoardError("task-state task identity is invalid")
+            identity_display_task_id = value.get("display_task_id")
+            if identity_display_task_id not in (None, "") and (
+                not isinstance(identity_display_task_id, str)
+                or identity_display_task_id.strip() != display_task_id
+            ):
+                raise ConfiguredBoardError(
+                    "task-state task identity display ID is invalid"
+                )
+            identity_cid = value.get("canonical_task_cid")
+            if identity_cid in (None, ""):
+                # Older projections carried provenance without a canonical
+                # identity.  Their display-ID counter remains a conservative
+                # retry limit for every later revision of the same task ID.
+                continue
+            if (
+                not isinstance(identity_cid, str)
+                or not identity_cid.strip()
+                or identity_cid != identity_cid.strip()
+            ):
+                raise ConfiguredBoardError(
+                    "task-state canonical task identity is invalid"
+                )
+            identity_cid_by_id[display_task_id] = identity_cid
+
+        for key, value in dict(raw_by_id or {}).items():
+            display_task_id = str(key)
+            count = attempt_count(value)
+            identity_cid = identity_cid_by_id.get(display_task_id)
+            if not identity_cid:
+                legacy_attempts_by_id[display_task_id] = max(
+                    legacy_attempts_by_id.get(display_task_id, 0), count
+                )
+                continue
+            current_cid = current_cid_by_id.get(display_task_id)
+            if (
+                current_cid
+                and identity_cid != current_cid
+                and snapshot_attempts_by_cid.get(identity_cid, 0) < count
+            ):
+                raise ConfiguredBoardError(
+                    "task-state mismatched task identity is not backed by "
+                    "its canonical attempt ledger"
+                )
+            revision_key = (display_task_id, identity_cid)
+            attempts_by_task_revision[revision_key] = max(
+                attempts_by_task_revision.get(revision_key, 0), count
             )
     max_attempts = int(board.payload["max_task_attempts"])
     attempt_limited: set[str] = set()
@@ -623,7 +687,8 @@ def _configured_board_task_population(
         if statuses.get(task_id) != "ready":
             continue
         attempt_count = max(
-            attempts_by_id.get(task_id, 0),
+            legacy_attempts_by_id.get(task_id, 0),
+            attempts_by_task_revision.get((task_id, task_cid), 0),
             attempts_by_cid.get(task_cid, 0),
         )
         if max_attempts > 0 and attempt_count >= max_attempts:
@@ -633,7 +698,17 @@ def _configured_board_task_population(
     state_snapshot_id = _identity(
         {
             "statuses": statuses,
-            "implementation_attempts": attempts_by_id,
+            "implementation_attempts": legacy_attempts_by_id,
+            "implementation_attempts_by_task_revision": [
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": canonical_task_cid,
+                    "attempts": count,
+                }
+                for (task_id, canonical_task_cid), count in sorted(
+                    attempts_by_task_revision.items()
+                )
+            ],
             "implementation_attempts_by_cid": attempts_by_cid,
         }
     )

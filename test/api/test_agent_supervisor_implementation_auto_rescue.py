@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
     summarize_test_failure,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+    PortalTask,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
@@ -305,3 +316,182 @@ def test_inline_provider_rescue_prompt_includes_failure_evidence() -> None:
     assert "test_foo.py::test_codec" in prompt
     assert "AssertionError: missing providers" in prompt
     assert prompt.startswith("Implement DCR-013 outputs.")
+
+
+def _inline_rescue_test_daemon(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[PortalImplementationDaemon, list[tuple[str, dict[str, object]]]]:
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.implementation_timeout = 60
+    daemon.implementation_max_timeout = 60
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_expected_outputs_present_on_disk",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_dirty_in_scope_declared_output_paths",
+        lambda *_args, **_kwargs: (),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda name, payload: events.append((name, dict(payload))),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_ensure_implementation_checkpoint_dir",
+        lambda _task: tmp_path / "checkpoint",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_process_environment",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_stage_declared_candidate_outputs",
+        lambda *_args, **_kwargs: (),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_apply_implementation_failure_review",
+        lambda **kwargs: dict(kwargs["validation_result"]),
+    )
+    return daemon, events
+
+
+def _run_inline_rescue(
+    daemon: PortalImplementationDaemon,
+    tmp_path: Path,
+    command: list[str],
+) -> dict[str, object]:
+    task = PortalTask(
+        task_id="RESCUE-001",
+        title="repair validation",
+        status="in_progress",
+        completion="validation passes",
+        priority="high",
+        track="test",
+        outputs=["result.txt"],
+    )
+    return daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-001",
+        baseline_ref="a" * 40,
+        validation_result={
+            "passed": False,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "failed_commands": ["python3 -m pytest -q test_result.py"],
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+            },
+        },
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=command,
+        base_prompt="repair the implementation",
+    )
+
+
+def test_inline_provider_rescue_refuses_prompt_bound_control_plane_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    accepted_path = "/proc/self/fd/71"
+    daemon._scoped_control_plane_launch = SimpleNamespace(
+        descriptor=71,
+        executable_path=accepted_path,
+    )
+    daemon._scoped_recovery_control_plane_launches = {
+        "unrelated": SimpleNamespace(
+            descriptor=72,
+            executable_path="/proc/self/fd/72",
+        )
+    }
+    command = [sys.executable, "-I", accepted_path, "--workspace", str(tmp_path)]
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "prompt-bound control-plane command must not run inline rescue"
+        ),
+    )
+
+    result = _run_inline_rescue(daemon, tmp_path, command)
+
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert result["auto_rescue"]["provider_passes"] == 0
+
+
+def test_inline_provider_rescue_fails_closed_on_ambiguous_sealed_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    accepted_path = "/proc/self/fd/71"
+    daemon._scoped_control_plane_launch = SimpleNamespace(
+        descriptor=71,
+        executable_path=accepted_path,
+    )
+    daemon._scoped_recovery_control_plane_launches = {
+        "ambiguous": SimpleNamespace(
+            descriptor=72,
+            executable_path=accepted_path,
+        )
+    }
+    command = [sys.executable, "-I", accepted_path, "--workspace", str(tmp_path)]
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "ambiguous control-plane authority must not launch a provider"
+        ),
+    )
+
+    result = _run_inline_rescue(daemon, tmp_path, command)
+
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert not any(name.endswith("provider_started") for name, _payload in events)
+
+
+def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    command = ["/opt/providers/grok", "--model", "grok-4.5"]
+    calls: list[dict[str, object]] = []
+
+    def fake_stream(run_command, **kwargs):
+        calls.append(dict(kwargs))
+        return subprocess.CompletedProcess(run_command, 0)
+
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        fake_stream,
+    )
+
+    result = _run_inline_rescue(daemon, tmp_path, command)
+
+    assert result["passed"] is True
+    assert len(calls) == 1
+    assert "pass_fds" not in calls[0]

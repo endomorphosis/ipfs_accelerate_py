@@ -10,11 +10,12 @@ import shlex
 import subprocess
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
 from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
+from ipfs_accelerate_py.agent_supervisor.entrypoints import provider_attempt_store
 from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as merge_resolver_fallback,
 )
@@ -167,6 +168,135 @@ def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
         "_configured_agent_implementation_route_plan",
         lambda _repo_root: llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
     )
+
+
+def _install_fake_grok_docker_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    create_returncode: int = 0,
+    create_stdout: bytes | None = None,
+) -> dict[str, object]:
+    workspace = tmp_path / "workspace"
+    provider_home = tmp_path / "asref-grok-home-test"
+    lease_root = tmp_path / "asref-grok-container-test"
+    workspace.mkdir()
+    provider_home.mkdir(mode=0o700)
+    lease_root.mkdir(mode=0o700)
+    docker_config = lease_root / "docker-config"
+    docker_config.mkdir(mode=0o700)
+    policy_path = provider_home / "sandbox.toml"
+    policy_path.write_text("[profiles.test]\n", encoding="utf-8")
+    grok = tmp_path / "grok"
+    codex = tmp_path / "codex"
+    for executable in (grok, codex):
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o700)
+    container_id = "d" * 64
+    close_calls: list[bool] = []
+    create_calls: list[tuple[list[str], dict[str, object]]] = []
+
+    class FakeHome:
+        name = str(provider_home)
+
+        def cleanup(self) -> None:
+            return None
+
+    class FakeCommandEnvironment:
+        wrapper_path = "/opt/provider-command-wrapper"
+        contract_sha256 = "sha256:" + "1" * 64
+        formal_toolchain_contract_sha256 = "sha256:" + "2" * 64
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    class FakeLease:
+        docker_bin = "/usr/bin/docker"
+        container_name = "ipfs-accelerate-grok-1-" + "c" * 32
+
+        def close(self, *, docker_run_finished: bool) -> None:
+            close_calls.append(docker_run_finished)
+
+    FakeLease.docker_config = docker_config
+    FakeLease.cidfile = lease_root / "container.cid"
+    FakeLease.lease_root = lease_root
+
+    def fake_create_run(command, **kwargs):
+        create_calls.append((list(command), dict(kwargs)))
+        return subprocess.CompletedProcess(
+            command,
+            create_returncode,
+            stdout=(
+                (container_id + "\n").encode("ascii")
+                if create_stdout is None
+                else create_stdout
+            ),
+            stderr=(b"create failed" if create_returncode else b""),
+        )
+
+    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("implement"))
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "sealed_provider_command_environment",
+        lambda *_args, **_kwargs: FakeCommandEnvironment(),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_isolated_grok_home",
+        lambda **kwargs: (
+            FakeHome(),
+            {
+                **kwargs["child_env"],
+                "GROK_HOME": str(provider_home),
+                "HOME": str(provider_home),
+            },
+            policy_path,
+            (provider_home,),
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_select_grok_isolation_backend",
+        lambda **_kwargs: grok_cli_runner.GROK_ISOLATION_DOCKER,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_docker_isolation_binary",
+        lambda: "/usr/bin/docker",
+    )
+    monkeypatch.setattr(
+        grok_cli_runner._DockerContainerLease,
+        "create",
+        lambda *_args, **_kwargs: FakeLease(),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_docker_isolation_image_id",
+        lambda *_args, **_kwargs: "sha256:" + "e" * 64,
+    )
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_create_run)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_trusted_grok_bin",
+        lambda **_kwargs: str(grok),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: str(codex),
+    )
+    monkeypatch.chdir(workspace)
+    return {
+        "workspace": workspace,
+        "grok": grok,
+        "codex": codex,
+        "container_id": container_id,
+        "close_calls": close_calls,
+        "create_calls": create_calls,
+    }
 
 
 def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
@@ -393,6 +523,98 @@ def test_typed_preflight_process_uses_its_isolated_workspace_as_os_cwd(
     assert command[command.index("--max-turns") + 1] == "1"
     assert command[command.index("--permission-mode") + 1] == "dontAsk"
     assert captured["prompt"] == grok_cli_runner.GROK_QUOTA_PROBE_PROMPT
+
+
+def test_scoped_route_rejects_prompt_cid_before_grok_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    grok = tmp_path / "grok"
+    codex = tmp_path / "codex"
+    for executable in (grok, codex):
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o700)
+    invocation = SimpleNamespace(
+        prompt_cid=grok_cli_runner._agent_prompt_cid("signed prompt"),
+        control_plane=object(),
+        provider_attempt_store=str(tmp_path / "attempt-store"),
+        provider_attempt_store_identity="sha256:" + "a" * 64,
+        logical_attempt_id="sha256:" + "b" * 64,
+    )
+    route_plan = SimpleNamespace(
+        invocation_binding=invocation,
+        fallback_reasoning_effort="high",
+    )
+
+    class EmptyAttemptStore:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def read(self, _logical_attempt_id: str) -> None:
+            return None
+
+    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("wrong prompt"))
+    monkeypatch.setattr(grok_cli_runner.sys, "argv", ["/proc/self/fd/71"])
+    monkeypatch.setattr(
+        llm_router,
+        "resolve_agent_implementation_route_binding",
+        lambda *_args, **_kwargs: route_plan,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "verify_agent_implementation_sealed_control_plane",
+        lambda _pin, _descriptor: "/proc/self/fd/71",
+    )
+    monkeypatch.setattr(
+        provider_attempt_store,
+        "DurableProviderAttemptCAS",
+        EmptyAttemptStore,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: str(codex),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_trusted_grok_bin",
+        lambda **_kwargs: str(grok),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_repository_head",
+        lambda _workspace: "c" * 40,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_typed_grok_preflight",
+        lambda **_kwargs: pytest.fail(
+            "prompt CID mismatch must stop before Grok preflight"
+        ),
+    )
+
+    result = grok_cli_runner.main(
+        [
+            "--workspace",
+            str(workspace),
+            "--grok-bin",
+            str(grok),
+            "--model",
+            "grok-4.5",
+            "--codex-fallback-command-json",
+            json.dumps(_terra_fallback_command(str(codex), workspace)),
+            "--grok-failure-receipt-nonce",
+            "a" * 64,
+            "--agent-implementation-route-json",
+            "{}",
+        ]
+    )
+
+    assert result == 2
+    assert "does not match the task prompt" in capsys.readouterr().err
 
 
 def test_typed_preflight_probe_overflow_is_measured_fail_closed(
@@ -1436,6 +1658,270 @@ def test_codex_isolated_home_seals_environment_without_host_toolchain(
             Path(temporary_home.name)
         )
         temporary_home.cleanup()
+
+
+def test_grok_docker_create_binds_exact_id_to_attached_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container_id = "d" * 64
+    docker_environment = {"PATH": "/usr/bin"}
+    create_command = ["/usr/bin/docker", "create", "sealed-grok"]
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    class FakeLease:
+        docker_bin = "/usr/bin/docker"
+        docker_config = tmp_path / "docker-config"
+
+    def fake_run(command, **kwargs):
+        calls.append((list(command), dict(kwargs)))
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(container_id + "\n").encode("ascii"),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+
+    start_command = (
+        grok_cli_runner._create_grok_container_and_build_start_command(
+            create_command,
+            workspace=tmp_path,
+            docker_environment=docker_environment,
+            docker_lease=FakeLease(),
+        )
+    )
+
+    assert start_command == [
+        "/usr/bin/docker",
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(FakeLease.docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        container_id,
+    ]
+    assert calls[0][0] == create_command
+    assert calls[0][1]["env"] is docker_environment
+    assert calls[0][1]["stdin"] is subprocess.DEVNULL
+    assert calls[0][1]["stdout"] is subprocess.PIPE
+    assert calls[0][1]["stderr"] is subprocess.PIPE
+
+
+@pytest.mark.parametrize(
+    "create_stdout",
+    (
+        b"container-name\n",
+        ("a" * 64 + "\n" + "b" * 64 + "\n").encode("ascii"),
+        ("A" * 64 + "\n").encode("ascii"),
+    ),
+)
+def test_grok_docker_create_rejects_untrusted_container_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    create_stdout: bytes,
+) -> None:
+    class FakeLease:
+        docker_bin = "/usr/bin/docker"
+        docker_config = tmp_path / "docker-config"
+
+    monkeypatch.setattr(
+        grok_cli_runner.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=create_stdout,
+            stderr=b"",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="container identity is invalid"):
+        grok_cli_runner._create_grok_container_and_build_start_command(
+            ["/usr/bin/docker", "create", "sealed-grok"],
+            workspace=tmp_path,
+            docker_environment={},
+            docker_lease=FakeLease(),
+        )
+
+
+@pytest.mark.parametrize("typed_route", (False, True))
+def test_grok_docker_primary_parses_attached_start_not_create_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    typed_route: bool,
+) -> None:
+    harness = _install_fake_grok_docker_primary(tmp_path, monkeypatch)
+    provider_calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_bounded(command, *, env):
+        provider_calls.append((list(command), dict(env)))
+        return 0, b"", 0, False
+
+    def fake_typed(command, *, env):
+        provider_calls.append((list(command), dict(env)))
+        return 0
+
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_bounded_stderr",
+        fake_bounded,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_typed_failure_capture",
+        fake_typed,
+    )
+    argv = [
+        "--workspace",
+        str(harness["workspace"]),
+        "--grok-bin",
+        str(harness["grok"]),
+        "--model",
+        "grok-4.5",
+    ]
+    if typed_route:
+        argv.extend(
+            [
+                "--codex-fallback-command-json",
+                json.dumps(
+                    _terra_fallback_command(
+                        str(harness["codex"]),
+                        harness["workspace"],
+                        reasoning_effort="medium",
+                    )
+                ),
+            ]
+        )
+
+    assert grok_cli_runner.main(argv) == 0
+
+    create_calls = harness["create_calls"]
+    assert isinstance(create_calls, list)
+    assert len(create_calls) == 1
+    assert "create" in create_calls[0][0]
+    assert len(provider_calls) == 1
+    assert provider_calls[0][0] == [
+        "/usr/bin/docker",
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(tmp_path / "asref-grok-container-test" / "docker-config"),
+        "start",
+        "--attach",
+        "--interactive",
+        harness["container_id"],
+    ]
+    assert harness["close_calls"] == [True]
+
+
+@pytest.mark.parametrize(
+    ("create_returncode", "create_stdout"),
+    (
+        (125, b""),
+        (0, b"container-name\n"),
+    ),
+)
+def test_grok_docker_create_failure_cleans_without_provider_or_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    create_returncode: int,
+    create_stdout: bytes,
+) -> None:
+    harness = _install_fake_grok_docker_primary(
+        tmp_path,
+        monkeypatch,
+        create_returncode=create_returncode,
+        create_stdout=create_stdout,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_typed_failure_capture",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed container creation must never start Grok"
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_codex_quota_fallback_in_docker",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed container creation must not fall through to Terra"
+        ),
+    )
+
+    result = grok_cli_runner.main(
+        [
+            "--workspace",
+            str(harness["workspace"]),
+            "--grok-bin",
+            str(harness["grok"]),
+            "--model",
+            "grok-4.5",
+            "--codex-fallback-command-json",
+            json.dumps(
+                _terra_fallback_command(
+                    str(harness["codex"]),
+                    harness["workspace"],
+                    reasoning_effort="medium",
+                )
+            ),
+        ]
+    )
+
+    assert result == 2
+    assert harness["close_calls"] == [False]
+
+
+def test_grok_docker_start_failure_cleans_without_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_fake_grok_docker_primary(tmp_path, monkeypatch)
+    start_calls: list[list[str]] = []
+
+    def fail_start(command, *, env):
+        del env
+        start_calls.append(list(command))
+        raise OSError("docker start failed")
+
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_typed_failure_capture",
+        fail_start,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_codex_quota_fallback_in_docker",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed Docker start must not fall through to Terra"
+        ),
+    )
+
+    result = grok_cli_runner.main(
+        [
+            "--workspace",
+            str(harness["workspace"]),
+            "--grok-bin",
+            str(harness["grok"]),
+            "--model",
+            "grok-4.5",
+            "--codex-fallback-command-json",
+            json.dumps(
+                _terra_fallback_command(
+                    str(harness["codex"]),
+                    harness["workspace"],
+                    reasoning_effort="medium",
+                )
+            ),
+        ]
+    )
+
+    assert result == 127
+    assert len(start_calls) == 1
+    assert "start" in start_calls[0]
+    assert "create" not in start_calls[0]
+    assert harness["close_calls"] == [False]
 
 
 @pytest.mark.parametrize(

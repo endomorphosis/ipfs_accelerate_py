@@ -39922,6 +39922,16 @@ class PortalImplementationDaemon:
         steps: list[dict[str, Any]] = []
         expected = task_declared_output_paths(task)
         validation_commands = tuple(getattr(task, "validation", ()) or ())
+        protected_provider_command = False
+        if command:
+            try:
+                protected_provider_command = bool(
+                    self._accepted_control_plane_pass_fds(command)
+                )
+            except ImplementationRetryDeferred:
+                # Ambiguous sealed authority is protected too. It must never
+                # be converted into an unsealed invocation with a new prompt.
+                protected_provider_command = True
 
         for _step in range(3):
             present = self._expected_outputs_present_on_disk(
@@ -39948,7 +39958,11 @@ class PortalImplementationDaemon:
                 provider_rescue_passes_used=provider_passes,
                 stage_rescue_used=stage_used,
                 materialize_rescue_used=materialize_used,
-                allow_provider_rescue=bool(allow_provider_rescue and command),
+                allow_provider_rescue=bool(
+                    allow_provider_rescue
+                    and command
+                    and not protected_provider_command
+                ),
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
                 missing_expected_outputs=missing,
@@ -40225,6 +40239,9 @@ class PortalImplementationDaemon:
             "steps": list(steps),
             "stage_used": stage_used,
             "provider_passes": provider_passes,
+            "provider_rescue_blocked_by_prompt_binding": (
+                protected_provider_command
+            ),
             "succeeded": False,
         }
         result["auto_rescue_terminal"] = True

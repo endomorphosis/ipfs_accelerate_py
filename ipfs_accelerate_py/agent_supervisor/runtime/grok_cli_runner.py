@@ -2650,6 +2650,52 @@ def _docker_grok_command(
     return command
 
 
+def _create_grok_container_and_build_start_command(
+    create_command: Sequence[str],
+    *,
+    workspace: Path,
+    docker_environment: dict[str, str],
+    docker_lease: _DockerContainerLease,
+) -> list[str]:
+    """Create inert Grok container, then bind its exact ID to attached start."""
+
+    try:
+        created = subprocess.run(
+            list(create_command),
+            cwd=workspace,
+            env=docker_environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120.0,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Grok container creation timed out") from exc
+    if (
+        created.returncode != 0
+        or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Grok container could not be created")
+    created_fields = created.stdout.decode("ascii", errors="strict").split()
+    if (
+        len(created_fields) != 1
+        or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
+    ):
+        raise ValueError("Grok container identity is invalid")
+    return [
+        docker_lease.docker_bin,
+        f"--host={_DOCKER_LOCAL_HOST}",
+        "--config",
+        str(docker_lease.docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        created_fields[0],
+    ]
+
+
 def _docker_codex_fallback_command(
     *,
     codex_command: Sequence[str],
@@ -5092,6 +5138,23 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         )
     )
 
+    prompt: str | None = None
+    if (
+        codex_fallback_command
+        and route_plan.invocation_binding is not None
+    ):
+        # The scoped route signs the task prompt. Read and verify it before
+        # even the supposedly tool-free primary preflight so no provider call
+        # can be made under a prompt authority that the runner did not receive.
+        prompt = sys.stdin.read()
+        if _agent_prompt_cid(prompt) != route_plan.invocation_binding.prompt_cid:
+            print(
+                "Signed invocation does not match the task prompt; provider "
+                "dispatch is forbidden",
+                file=sys.stderr,
+            )
+            return 2
+
     workspace_baseline = ""
     preflight_fallback_reason = ""
     preflight_returncode = 0
@@ -5818,7 +5881,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 else 127
             )
 
-    prompt = sys.stdin.read()
+    if prompt is None:
+        prompt = sys.stdin.read()
     if not prompt.strip():
         print("empty implementation prompt on stdin", file=sys.stderr)
         return 2
@@ -5977,6 +6041,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     _SEALED_GROK_DISALLOWED_TOOLS,
                 ]
             )
+            if codex_fallback_command:
+                try:
+                    output_index = cmd.index("--output-format") + 1
+                    cmd[output_index] = "streaming-json"
+                except (ValueError, IndexError) as exc:
+                    raise LLMRouterError(
+                        "Grok agent command has no output-format slot"
+                    ) from exc
             child_env = build_grok_cli_env(
                 base_env=base_env,
                 isolate_alternate_providers=True,
@@ -6066,6 +6138,12 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 # runner-owned config. Only explicitly named sanitized
                 # variables cross into Grok via ``--env NAME`` arguments.
                 grok_launch_env = _docker_control_env(env)
+                cmd = _create_grok_container_and_build_start_command(
+                    cmd,
+                    workspace=workspace,
+                    docker_environment=grok_launch_env,
+                    docker_lease=docker_lease,
+                )
         except (
             LLMRouterError,
             ProviderCommandEnvironmentError,
@@ -6083,8 +6161,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         # path so Terra may run only after verified typed provider evidence.
         if not codex_fallback_command:
             child_returncode, error_bytes, error_size, error_overflow = (
-                _run_grok_with_bounded_stderr(cmd, env=env)
+                _run_grok_with_bounded_stderr(cmd, env=grok_launch_env)
             )
+            docker_run_finished = True
             if error_bytes:
                 sys.stderr.buffer.write(error_bytes)
                 if not error_bytes.endswith(b"\n"):
@@ -6127,8 +6206,6 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 else child_returncode
             )
 
-        output_index = cmd.index("--output-format") + 1
-        cmd[output_index] = "streaming-json"
         try:
             primary_returncode = _run_grok_with_typed_failure_capture(
                 cmd,
