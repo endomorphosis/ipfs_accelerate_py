@@ -9,12 +9,17 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import (
+    _capture_spawned_direct_child_start_time,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    read_process_birth,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import core as core_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
     pid_alive,
     terminate_pid_tree,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import core as core_module
-
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or not Path("/proc").is_dir(),
@@ -91,6 +96,73 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
         owned_process_group_id=pid,
         expected_root_start_time_ticks=123,
     )
+
+
+def test_naturally_exited_direct_child_retains_empty_group_authority() -> None:
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(0.2)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        birth = read_process_birth(child.pid)
+        assert birth is not None
+        assert birth.parent_pid == os.getpid()
+        child.wait(timeout=3.0)
+
+        assert terminate_pid_tree(
+            child.pid,
+            grace_seconds=0.0,
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=child.pid,
+            expected_root_start_time_ticks=birth.start_time_ticks,
+        )
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=1.0)
+
+
+def test_fast_zombie_child_birth_is_captured_before_reap() -> None:
+    child = subprocess.Popen(
+        [sys.executable, "-c", "pass"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 3.0
+        state = ""
+        while time.monotonic() < deadline:
+            raw = Path(f"/proc/{child.pid}/stat").read_text(encoding="utf-8")
+            close = raw.rfind(")")
+            state = raw[close + 2 :].split()[0]
+            if state == "Z":
+                break
+            time.sleep(0.005)
+        assert state == "Z"
+        start_time = _capture_spawned_direct_child_start_time(
+            child.pid,
+            expected_parent_pid=os.getpid(),
+        )
+        assert start_time is not None and start_time > 0
+        child.wait(timeout=3.0)
+        assert terminate_pid_tree(
+            child.pid,
+            grace_seconds=0.0,
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=child.pid,
+            expected_root_start_time_ticks=start_time,
+        )
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=1.0)
 
 
 def test_terminate_pid_tree_fences_descendant_in_separate_session(
