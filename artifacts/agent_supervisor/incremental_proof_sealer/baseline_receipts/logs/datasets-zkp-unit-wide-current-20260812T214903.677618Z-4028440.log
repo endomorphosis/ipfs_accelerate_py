@@ -1,0 +1,269 @@
+PLUGIN registered: <_pytest.config.PytestPluginManager object at 0xefb5197ee360>
+PLUGIN registered: <_pytest.config.Config object at 0xefb51930d3a0>
+PLUGIN registered: <module '_pytest.mark' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/mark/__init__.py'>
+PLUGIN registered: <module '_pytest.main' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py'>
+PLUGIN registered: <module '_pytest.runner' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/runner.py'>
+PLUGIN registered: <module '_pytest.fixtures' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/fixtures.py'>
+PLUGIN registered: <module '_pytest.helpconfig' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/helpconfig.py'>
+PLUGIN registered: <module '_pytest.python' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/python.py'>
+PLUGIN registered: <module '_pytest.terminal' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/terminal.py'>
+PLUGIN registered: <module '_pytest.debugging' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/debugging.py'>
+PLUGIN registered: <module '_pytest.unittest' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/unittest.py'>
+PLUGIN registered: <module '_pytest.capture' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/capture.py'>
+PLUGIN registered: <module '_pytest.skipping' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/skipping.py'>
+PLUGIN registered: <module '_pytest.legacypath' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/legacypath.py'>
+PLUGIN registered: <module '_pytest.tmpdir' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/tmpdir.py'>
+PLUGIN registered: <module '_pytest.monkeypatch' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/monkeypatch.py'>
+PLUGIN registered: <module '_pytest.recwarn' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/recwarn.py'>
+PLUGIN registered: <module '_pytest.pastebin' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/pastebin.py'>
+PLUGIN registered: <module '_pytest.assertion' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/__init__.py'>
+PLUGIN registered: <module '_pytest.junitxml' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/junitxml.py'>
+PLUGIN registered: <module '_pytest.doctest' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/doctest.py'>
+PLUGIN registered: <module '_pytest.cacheprovider' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/cacheprovider.py'>
+PLUGIN registered: <module '_pytest.setuponly' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/setuponly.py'>
+PLUGIN registered: <module '_pytest.setupplan' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/setupplan.py'>
+PLUGIN registered: <module '_pytest.stepwise' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/stepwise.py'>
+PLUGIN registered: <module '_pytest.unraisableexception' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/unraisableexception.py'>
+PLUGIN registered: <module '_pytest.threadexception' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/threadexception.py'>
+PLUGIN registered: <module '_pytest.warnings' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/warnings.py'>
+PLUGIN registered: <module '_pytest.logging' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/logging.py'>
+PLUGIN registered: <module '_pytest.reports' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/reports.py'>
+PLUGIN registered: <module '_pytest.faulthandler' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/faulthandler.py'>
+PLUGIN registered: <module '_pytest.subtests' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/subtests.py'>
+PLUGIN registered: <module 'pytest_mock' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py'>
+PLUGIN registered: <module 'xdist.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py'>
+PLUGIN registered: <module 'xdist.looponfail' from '/home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py'>
+PLUGIN registered: <module 'pytest_benchmark.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py'>
+PLUGIN registered: <module 'pytest_cov.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py'>
+PLUGIN registered: <module 'pytest_base_url.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py'>
+PLUGIN registered: <module 'pytest_asyncio.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py'>
+PLUGIN registered: <module 'pytest_trio.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py'>
+PLUGIN registered: <module 'typeguard._pytest_plugin' from '/home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py'>
+PLUGIN registered: <module 'pytest_env.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py'>
+PLUGIN registered: <module '_hypothesis_pytestplugin' from '/home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py'>
+PLUGIN registered: <module 'pytest_playwright.pytest_playwright' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py'>
+PLUGIN registered: <module 'pytest_timeout' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py'>
+PLUGIN registered: <module 'anyio.pytest_plugin' from '/home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py'>
+PLUGIN registered: <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=6 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> err=<FDCapture 2 oldfd=7 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=8 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> in_=<FDCapture 0 oldfd=3 _state='started' tmpfile=<_io.TextIOWrapper name='/dev/null' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+PLUGIN registered: <module 'source.ipfs_datasets_py.conftest' from '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/conftest.py'>
+PLUGIN registered: <module 'source.ipfs_datasets_py.tests.conftest' from '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/tests/conftest.py'>
+PLUGIN registered: <Session  exitstatus=<ExitCode.OK: 0> testsfailed=0 testscollected=0>
+PLUGIN registered: <_pytest.cacheprovider.LFPlugin object at 0xefb5194b3ef0>
+PLUGIN registered: <_pytest.cacheprovider.NFPlugin object at 0xefb517b169f0>
+PLUGIN registered: <class '_pytest.legacypath.LegacyTmpdirPlugin'>
+PLUGIN registered: <_pytest.terminal.TerminalReporter object at 0xefb519051fa0>
+PLUGIN registered: <_pytest.logging.LoggingPlugin object at 0xefb519051dc0>
+PLUGIN registered: <pytest_benchmark.session.BenchmarkSession object at 0xefb517b16780>
+PLUGIN registered: <_pytest.fixtures.FixtureManager object at 0xefb518ee9970>
+================================================= test session starts ==================================================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3.12
+using: pytest-9.1.1
+registered third-party plugins:
+  pytest-mock-3.15.1 at /home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py
+  pytest-xdist-3.8.0 at /home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py
+  pytest-xdist-3.8.0 at /home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py
+  pytest-benchmark-5.2.3 at /home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py
+  pytest-cov-7.1.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py
+  pytest-base-url-2.1.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py
+  pytest-asyncio-1.3.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py
+  pytest-trio-0.8.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py
+  typeguard-4.5.2 at /home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py
+  pytest-env-1.7.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py
+  hypothesis-6.152.1 at /home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py
+  pytest-playwright-0.8.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py
+  pytest-timeout-2.4.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py
+  anyio-4.14.2 at /home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py
+active plugins:
+    263561095865184     : <_pytest.config.PytestPluginManager object at 0xefb5197ee360>
+    pytestconfig        : <_pytest.config.Config object at 0xefb51930d3a0>
+    mark                : /home/barberb/.local/lib/python3.12/site-packages/_pytest/mark/__init__.py
+    main                : /home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py
+    runner              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/runner.py
+    fixtures            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/fixtures.py
+    helpconfig          : /home/barberb/.local/lib/python3.12/site-packages/_pytest/helpconfig.py
+    python              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/python.py
+    terminal            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/terminal.py
+    debugging           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/debugging.py
+    unittest            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/unittest.py
+    capture             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/capture.py
+    skipping            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/skipping.py
+    legacypath          : /home/barberb/.local/lib/python3.12/site-packages/_pytest/legacypath.py
+    tmpdir              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/tmpdir.py
+    monkeypatch         : /home/barberb/.local/lib/python3.12/site-packages/_pytest/monkeypatch.py
+    recwarn             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/recwarn.py
+    pastebin            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/pastebin.py
+    assertion           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/__init__.py
+    junitxml            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/junitxml.py
+    doctest             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/doctest.py
+    cacheprovider       : /home/barberb/.local/lib/python3.12/site-packages/_pytest/cacheprovider.py
+    setuponly           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/setuponly.py
+    setupplan           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/setupplan.py
+    stepwise            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/stepwise.py
+    unraisableexception : /home/barberb/.local/lib/python3.12/site-packages/_pytest/unraisableexception.py
+    threadexception     : /home/barberb/.local/lib/python3.12/site-packages/_pytest/threadexception.py
+    warnings            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/warnings.py
+    logging             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/logging.py
+    reports             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/reports.py
+    faulthandler        : /home/barberb/.local/lib/python3.12/site-packages/_pytest/faulthandler.py
+    subtests            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/subtests.py
+    pytest_mock         : /home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py
+    xdist               : /home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py
+    xdist.looponfail    : /home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py
+    benchmark           : /home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py
+    pytest_cov          : /home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py
+    base_url            : /home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py
+    asyncio             : /home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py
+    trio                : /home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py
+    typeguard           : /home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py
+    env                 : /home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py
+    hypothesispytest    : /home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py
+    playwright          : /home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py
+    timeout             : /home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py
+    anyio               : /home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py
+    capturemanager      : <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=6 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> err=<FDCapture 2 oldfd=7 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=8 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> in_=<FDCapture 0 oldfd=3 _state='started' tmpfile=<_io.TextIOWrapper name='/dev/null' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+    /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/conftest.py: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/conftest.py
+    /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/tests/conftest.py: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/tests/conftest.py
+    session             : <Session  exitstatus=<ExitCode.OK: 0> testsfailed=0 testscollected=0>
+    lfplugin            : <_pytest.cacheprovider.LFPlugin object at 0xefb5194b3ef0>
+    nfplugin            : <_pytest.cacheprovider.NFPlugin object at 0xefb517b169f0>
+    legacypath-tmpdir   : <class '_pytest.legacypath.LegacyTmpdirPlugin'>
+    terminalreporter    : <_pytest.terminal.TerminalReporter object at 0xefb519051fa0>
+    logging-plugin      : <_pytest.logging.LoggingPlugin object at 0xefb519051dc0>
+    pytest-benchmark    : <pytest_benchmark.session.BenchmarkSession object at 0xefb517b16780>
+    funcmanage          : <_pytest.fixtures.FixtureManager object at 0xefb518ee9970>
+cachedir: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/datasets-zkp-unit-wide-current/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+hypothesis profile 'default'
+rootdir: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 93 items / 40 errors
+
+======================================================== ERRORS ========================================================
+________________________ ERROR collecting tests/unit_tests/logic/zkp/test_backend_selection.py _________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________________ ERROR collecting tests/unit_tests/logic/zkp/test_canonicalization.py _________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+______________________ ERROR collecting tests/unit_tests/logic/zkp/test_circuit_version_policy.py ______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+______________________ ERROR collecting tests/unit_tests/logic/zkp/test_eth_contract_artifacts.py ______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_____________________ ERROR collecting tests/unit_tests/logic/zkp/test_eth_vk_registry_payloads.py _____________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________________ ERROR collecting tests/unit_tests/logic/zkp/test_evm_harness.py ____________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+________________________ ERROR collecting tests/unit_tests/logic/zkp/test_evm_public_inputs.py _________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________ ERROR collecting tests/unit_tests/logic/zkp/test_groth16_backend_entrypoint_seed.py __________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________________ ERROR collecting tests/unit_tests/logic/zkp/test_groth16_backend_ffi.py ________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________________ ERROR collecting tests/unit_tests/logic/zkp/test_groth16_wire_vectors.py _______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_____________________ ERROR collecting tests/unit_tests/logic/zkp/test_legal_theorem_semantics.py ______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________________ ERROR collecting tests/unit_tests/logic/zkp/test_mpc_ceremony.py ___________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________________ ERROR collecting tests/unit_tests/logic/zkp/test_onchain_pipeline.py _________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________ ERROR collecting tests/unit_tests/logic/zkp/test_phase3c5_golden_vector_roundtrip.py _________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+________________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_artifacts.py ________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+__________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_attestation_envelope.py ___________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_backend.py _________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_cache_ipfs_payloads.py ___________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_cli_wrapper.py _______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_ffi_wrapper.py _______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_____________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_golden_vectors.py ______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_____________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_hybrid_provers.py ______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_knowledge_of_axioms_circuit.py _______________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_properties.py ________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+______________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_public_inputs.py ______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_recursive_export_contract.py ________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_tdfol_trace_circuit.py ___________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_tdfol_trace_schema.py ____________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_____________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_witness_no_leak.py _____________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________ ERROR collecting tests/unit_tests/logic/zkp/test_provekit_zkp_attestation_bridge.py __________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_______________________ ERROR collecting tests/unit_tests/logic/zkp/test_setup_artifacts_ipfs.py _______________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________ ERROR collecting tests/unit_tests/logic/zkp/test_tdfol_v1_derivation_circuit.py ____________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+___________________________ ERROR collecting tests/unit_tests/logic/zkp/test_vk_registry.py ____________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________________ ERROR collecting tests/unit_tests/logic/zkp/test_witness_manager.py __________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+__________________________ ERROR collecting tests/unit_tests/logic/zkp/test_zkp_edge_cases.py __________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+________________________ ERROR collecting tests/unit_tests/logic/zkp/test_zkp_golden_vectors.py ________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________________ ERROR collecting tests/unit_tests/logic/zkp/test_zkp_integration.py __________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+____________________________ ERROR collecting tests/unit_tests/logic/zkp/test_zkp_module.py ____________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+_________________________ ERROR collecting tests/unit_tests/logic/zkp/test_zkp_performance.py __________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+__________________________ ERROR collecting tests/unit_tests/logic/zkp/test_zkp_properties.py __________________________
+E   PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+====================================================== Cache Info ======================================================
+Commit hash: cae71d99
+Note: Uncommitted changes present
+=============================================== short test summary info ================================================
+ERROR tests/unit_tests/logic/zkp/test_backend_selection.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_canonicalization.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_circuit_version_policy.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_eth_contract_artifacts.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_eth_vk_registry_payloads.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_evm_harness.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_evm_public_inputs.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_groth16_backend_entrypoint_seed.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_groth16_backend_ffi.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_groth16_wire_vectors.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_legal_theorem_semantics.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_mpc_ceremony.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_onchain_pipeline.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_phase3c5_golden_vector_roundtrip.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_artifacts.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_attestation_envelope.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_backend.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_cache_ipfs_payloads.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_cli_wrapper.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_ffi_wrapper.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_golden_vectors.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_hybrid_provers.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_knowledge_of_axioms_circuit.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_properties.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_public_inputs.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_recursive_export_contract.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_tdfol_trace_circuit.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_tdfol_trace_schema.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_witness_no_leak.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_provekit_zkp_attestation_bridge.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_setup_artifacts_ipfs.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_tdfol_v1_derivation_circuit.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_vk_registry.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_witness_manager.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_zkp_edge_cases.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_zkp_golden_vectors.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_zkp_integration.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_zkp_module.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_zkp_performance.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+ERROR tests/unit_tests/logic/zkp/test_zkp_properties.py - PermissionError: [Errno 13] Permission denied: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T214903.677618Z-4028440/source/ipfs_datasets_py/bin'
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Interrupted: 40 errors during collection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+================================================== 40 errors in 1.60s ==================================================
