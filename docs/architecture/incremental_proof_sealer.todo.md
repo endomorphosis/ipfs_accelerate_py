@@ -1831,7 +1831,7 @@ Global invariants for every task:
 
 ## IPS-058 Resolve validation retry-budget failure for IPS-001
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
