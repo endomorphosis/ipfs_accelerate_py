@@ -17,6 +17,14 @@ from typing import Any, Callable
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+    canonical_task_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
+    parse_todo_blocks,
+    split_csv,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -86,6 +94,27 @@ def _commit(path: Path, message: str) -> tuple[str, str]:
     _git(path, "add", "--all")
     _git(path, "commit", "-q", "-m", message)
     return _git(path, "rev-parse", "HEAD"), _git(path, "rev-parse", "HEAD^{tree}")
+
+
+def _complete_task(root: Path, task_id: str) -> str:
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    path = root / relative
+    text = path.read_text(encoding="utf-8")
+    start = text.index(f"## {task_id} ")
+    end = text.find("\n## ", start + 1)
+    if end < 0:
+        end = len(text)
+    block = text[start:end]
+    assert "- Status: todo" in block
+    text = text[:start] + block.replace(
+        "- Status: todo", "- Status: completed", 1
+    ) + text[end:]
+    _write(path, text)
+    _git(root, "config", "user.email", "implementation-daemon@example.invalid")
+    _git(root, "config", "user.name", "Implementation Daemon")
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-q", "-m", f"{task_id}: mark todo completed")
+    return _git(root, "rev-parse", "HEAD")
 
 
 def _digest(label: str) -> str:
@@ -172,8 +201,16 @@ def _run_relevance(
             task_id="IPS-001",
             spec={
                 "repository": "accelerate",
-                "inventory": next(iter(gate.ACCELERATE_INVENTORY_OUTPUTS)),
-                "report": sorted(gate.ACCELERATE_INVENTORY_OUTPUTS)[1],
+                "inventory": next(
+                    path
+                    for path in gate.ACCELERATE_INVENTORY_OUTPUTS
+                    if path.endswith(".json")
+                ),
+                "report": next(
+                    path
+                    for path in gate.ACCELERATE_INVENTORY_OUTPUTS
+                    if path.endswith(".md")
+                ),
             },
             receipt={"source_revision": source_revision},
             parent_revision=parent_revision,
@@ -236,10 +273,9 @@ def test_post_capture_allowed_bundle_is_inventory_relevant(tmp_path: Path) -> No
         _write_json(repository / pin["path"], {"operator": "capture"})
         for retained_log in pin["retained_log_paths"]:
             _write(repository / retained_log, "pytest retained transcript\n")
-    _commit(repository, "operator receipt and pin bundle")
+    parent_revision, _ = _commit(repository, "operator receipt and pin bundle")
     for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
         _write(repository / relative, "{}\n" if relative.endswith(".json") else "inventory\n")
-    parent_revision, _ = _commit(repository, "accelerate inventory")
 
     errors = _run_relevance(
         repository,
@@ -301,7 +337,7 @@ def test_post_capture_rejects_unrelated_scheduler_change(tmp_path: Path) -> None
     assert any("not limited to receipt pins/protected paths" in error for error in errors)
 
 
-def test_inventory_parent_must_equal_current_task_head(tmp_path: Path) -> None:
+def test_inventory_parent_cannot_skip_non_inventory_commit(tmp_path: Path) -> None:
     repository = tmp_path / "stale-parent"
     first, _ = _init_repository(
         repository,
@@ -311,7 +347,11 @@ def test_inventory_parent_must_equal_current_task_head(tmp_path: Path) -> None:
     _commit(repository, "advance")
 
     errors = _run_relevance(repository, first, first)
-    assert any("does not equal current task-owned HEAD" in error for error in errors)
+    assert any(
+        "direct output-only candidate" in error
+        or "relevance-changing" in error
+        for error in errors
+    ), errors
 
 
 @pytest.mark.parametrize("inventory_only", [True, False])
@@ -348,11 +388,374 @@ def test_nested_gitlink_delta_is_recursively_limited_to_inventory_documents(
     _commit(nested, "nested delta")
     parent_revision, _ = _commit(repository, "advance gitlink")
 
-    errors = _run_relevance(repository, source_revision, parent_revision)
+    previous_root = gate.REPO_ROOT
+    gate.REPO_ROOT = repository
+    try:
+        errors: list[str] = []
+        gate._validate_nested_gitlink_inventory_delta(
+            submodule="ipfs_datasets_py",
+            source_revision=source_revision,
+            parent_revision=parent_revision,
+            errors=errors,
+        )
+    finally:
+        gate.REPO_ROOT = previous_root
     if inventory_only:
         assert errors == []
     else:
         assert any("gitlink delta contains non-inventory paths" in error for error in errors)
+
+
+def test_accelerate_inventory_accepts_candidate_no_ff_merge_and_status_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "accelerate-publication"
+    parent, _ = _init_repository(
+        root,
+        {
+            taskboard: (ROOT / taskboard).read_text(encoding="utf-8"),
+            "source.py": "captured\n",
+        },
+    )
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
+        _write(root / relative, "{}\n" if relative.endswith(".json") else "inventory\n")
+    candidate, _ = _commit(root, "IPS-001 inventory candidate")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", "integrate IPS-001")
+    merged = _git(root, "rev-parse", "HEAD")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    missing_status_errors: list[str] = []
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=merged,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=missing_status_errors,
+    )
+    assert any(
+        "publication lineage lacks its daemon status commit" in error
+        for error in missing_status_errors
+    ), missing_status_errors
+    completion = _complete_task(root, "IPS-001")
+    errors: list[str] = []
+
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=completion,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert candidate != completion
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("task_id", "submodule"),
+    (("IPS-002", "ipfs_datasets_py"), ("IPS-003", "ipfs_kit_py")),
+)
+def test_nested_inventory_accepts_child_outer_no_ff_merge_and_status_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_id: str,
+    submodule: str,
+) -> None:
+    origin = tmp_path / f"{submodule}-origin"
+    nested_parent, _ = _init_repository(origin, {"source.py": "captured\n"})
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / f"{submodule}-publication"
+    _init_repository(
+        root,
+        {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")},
+    )
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        str(origin),
+        submodule,
+    )
+    control_captured, _ = _commit(root, "capture nested source")
+    nested = root / submodule
+    _git(nested, "config", "user.email", "inventory-gate@example.invalid")
+    _git(nested, "config", "user.name", "Inventory Gate Test")
+    for relative in gate.NESTED_INVENTORY_OUTPUTS[submodule]:
+        _write(nested / relative, "{}\n" if relative.endswith(".json") else "inventory\n")
+    nested_candidate, _ = _commit(nested, f"{task_id} nested inventory")
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    _git(root, "add", "--", submodule)
+    _git(root, "commit", "-q", "-m", f"{task_id} outer candidate")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", f"integrate {task_id}")
+    completion = _complete_task(root, task_id)
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_nested_inventory_lifecycle(
+        task_id=task_id,
+        submodule=submodule,
+        parent_revision=nested_parent,
+        current_nested_revision=nested_candidate,
+        control_captured_revision=control_captured,
+        control_current_revision=completion,
+        outputs=set(gate.NESTED_INVENTORY_OUTPUTS[submodule]),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert errors == []
+
+
+def test_accelerate_inventory_rejects_full_dag_rewrite_then_revert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Side-branch rewrite/revert must not launder a final-tree-looking publication."""
+
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "accelerate-dag-launder"
+    parent, _ = _init_repository(
+        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+    )
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
+        _write(
+            root / relative,
+            "{}\n" if relative.endswith(".json") else "inventory\n",
+        )
+    _commit(root, "IPS-001 inventory candidate")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", "integrate IPS-001")
+    _complete_task(root, "IPS-001")
+    # Extra side branch rewrites inventory then reverts to the admitted blobs.
+    _git(root, "checkout", "-q", "-b", "launder")
+    rewritten = next(iter(gate.ACCELERATE_INVENTORY_OUTPUTS))
+    _write(root / rewritten, "temporary rewrite\n")
+    _commit(root, "rewrite inventory on side branch")
+    _write(
+        root / rewritten,
+        "{}\n" if rewritten.endswith(".json") else "inventory\n",
+    )
+    _commit(root, "revert inventory rewrite on side branch")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "launder", "-m", "merge laundered history")
+    current = _git(root, "rev-parse", "HEAD")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=current,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert any(
+        "reachable Git DAG rewrites inventory outputs" in error for error in errors
+    ), errors
+
+
+def test_accelerate_inventory_rejects_first_parent_rewrite_then_revert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "accelerate-first-parent-launder"
+    parent, _ = _init_repository(
+        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+    )
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
+        _write(
+            root / relative,
+            "{}\n" if relative.endswith(".json") else "inventory\n",
+        )
+    _commit(root, "IPS-001 inventory candidate")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", "integrate IPS-001")
+    _complete_task(root, "IPS-001")
+    rewritten = next(iter(gate.ACCELERATE_INVENTORY_OUTPUTS))
+    _write(root / rewritten, "temporary rewrite\n")
+    _commit(root, "rewrite inventory on first parent")
+    _write(
+        root / rewritten,
+        "{}\n" if rewritten.endswith(".json") else "inventory\n",
+    )
+    current, _ = _commit(root, "revert inventory rewrite on first parent")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=current,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert any(
+        "reachable Git DAG rewrites inventory outputs" in error for error in errors
+    ), errors
+
+
+def test_accelerate_inventory_rejects_side_branch_taskboard_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "accelerate-side-board"
+    parent, _ = _init_repository(
+        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+    )
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
+        _write(
+            root / relative,
+            "{}\n" if relative.endswith(".json") else "inventory\n",
+        )
+    _commit(root, "IPS-001 inventory candidate")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", "integrate IPS-001")
+    _complete_task(root, "IPS-001")
+    # Side branch touches the taskboard (even if later merged without final drift).
+    _git(root, "checkout", "-q", "-b", "board-side")
+    text = (root / taskboard).read_text(encoding="utf-8")
+    _write(
+        root / taskboard,
+        text.replace(
+            "- Validation: python scripts/validate_incremental_proof_sealer_board.py "
+            "--check-artifact IPS-002",
+            "- Validation: python forged.py",
+            1,
+        ),
+    )
+    _git(root, "add", "--", taskboard)
+    _git(root, "commit", "-q", "-m", "side board mutation")
+    # Revert board text so final tree matches first-parent content.
+    _write(root / taskboard, text)
+    _git(root, "add", "--", taskboard)
+    _git(root, "commit", "-q", "-m", "revert side board mutation")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "board-side", "-m", "merge board side")
+    current = _git(root, "rev-parse", "HEAD")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=current,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert any(
+        "taskboard was modified on an untrusted merged side branch" in error
+        for error in errors
+    ), errors
+
+
+def test_accelerate_inventory_rejects_post_merge_blob_rewrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "accelerate-rewrite"
+    parent, _ = _init_repository(
+        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+    )
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
+        _write(root / relative, "{}\n" if relative.endswith(".json") else "inventory\n")
+    _commit(root, "IPS-001 inventory candidate")
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", "integrate IPS-001")
+    _complete_task(root, "IPS-001")
+    rewritten = next(iter(gate.ACCELERATE_INVENTORY_OUTPUTS))
+    _write(root / rewritten, "rewritten\n")
+    current, _ = _commit(root, "rewrite accepted inventory")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=current,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert any("blobs changed after" in error for error in errors), errors
+
+
+def test_completed_inventory_without_outputs_is_not_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "missing-completed-output"
+    _init_repository(
+        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+    )
+    _complete_task(root, "IPS-001")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_published_inventory_artifacts(errors)
+
+    assert any(
+        "IPS-001 is completed but committed outputs are missing" in error
+        for error in errors
+    ), errors
+
+
+def test_inventory_contract_revision_changes_all_three_canonical_task_cids() -> None:
+    prior = {
+        "IPS-001": "baguqeeraaumb2lxdl4znxw2fcpafbupteyul5nocu3jefmldcaouzwuadfoq",
+        "IPS-002": "baguqeerazjmoazoowy2plo62xoeivdni4cmh3yaifs6ijg3ady2kpdjdspaq",
+        "IPS-003": "baguqeerarwmbfdov5nxfz4zu64cls4m2lhzs2ysmmmx77iiyrgiua5uo7z6q",
+    }
+    path = ROOT / "docs/architecture/incremental_proof_sealer.todo.md"
+    current: dict[str, str] = {}
+    for task_id, title, _line, fields in parse_todo_blocks(
+        path.read_text(encoding="utf-8"), task_header_prefix="## IPS-"
+    ):
+        if task_id not in prior:
+            continue
+        current[task_id] = canonical_task_identity(
+            {
+                "task_id": task_id,
+                "title": title,
+                "outputs": split_csv(fields.get("outputs", "")),
+                "acceptance": fields.get("acceptance", ""),
+                "metadata": fields,
+            },
+            board_namespace=fields.get("board_namespace", "") or path.name,
+            source_path=path,
+        ).canonical_task_cid
+
+    assert set(current) == set(prior)
+    assert all(current[task_id] != old for task_id, old in prior.items())
 
 
 def test_reference_only_namespace_allows_static_classification() -> None:
@@ -1128,7 +1531,29 @@ def test_gate_rejects_stale_nested_tested_revision(bound_gate: CapturedBundle) -
     bound_gate.write_receipt(mutate)
     result = gate.validate_artifact("IPS-003")
     assert not result["valid"]
-    assert any("nested inventory HEAD differs" in error for error in result["errors"])
+    assert any(
+        "does not match the captured control gitlink" in error
+        for error in result["errors"]
+    ), result["errors"]
+
+
+def test_nested_inventory_parent_must_equal_receipt_tested_source(
+    bound_gate: CapturedBundle,
+) -> None:
+    inventory = copy.deepcopy(bound_gate.pristine_inventory)
+    inventory["inventory_worktree_parent_revision"] = (
+        bound_gate.planning_revisions["kit"]
+    )
+    _write_json(bound_gate.inventory_path, inventory)
+
+    result = gate.validate_artifact("IPS-003")
+
+    assert not result["valid"]
+    assert any(
+        "nested inventory_worktree_parent_revision must equal the "
+        "receipt-tested source revision" in error
+        for error in result["errors"]
+    ), result["errors"]
 
 
 def test_nested_gate_rejects_post_capture_control_source_commit(

@@ -29,7 +29,7 @@ import sys
 import threading
 import time
 from collections import defaultdict, deque
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -1668,6 +1668,7 @@ def _validate_taskboard_status_transition(
         errors,
         "enumerate all newly reachable taskboard commits",
         "rev-list",
+        "--full-history",
         "--reverse",
         f"{captured_revision}..{current_revision}",
         "--",
@@ -1959,12 +1960,27 @@ def _validate_accelerate_control_transition(
         if changed_paths == inventory_paths:
             if commit in first_parent_commits:
                 accelerate_inventory_publications += 1
+            else:
+                errors.append(
+                    f"{task_id} accelerate inventory was rewritten on an untrusted "
+                    f"merged side branch: {commit}"
+                )
             continue
         if changed_paths == {taskboard_relative}:
+            if commit not in first_parent_commits:
+                errors.append(
+                    f"{task_id} taskboard was modified on an untrusted merged side "
+                    f"branch: {commit}"
+                )
             _validate_taskboard_status_commit(first_parent, commit, errors)
             continue
         if len(changed_paths) == 1 and changed_paths <= nested_paths:
             submodule = next(iter(changed_paths))
+            if commit not in first_parent_commits:
+                errors.append(
+                    f"{task_id} {submodule} gitlink was rewritten on an untrusted "
+                    f"merged side branch: {commit}"
+                )
             _validate_nested_gitlink_inventory_delta(
                 submodule=submodule,
                 source_revision=first_parent,
@@ -1988,6 +2004,502 @@ def _validate_accelerate_control_transition(
             errors.append(f"{task_id} {submodule} gitlink was republished after inventory")
 
 
+def _commit_parent_tokens(repository: Path, revision: str) -> tuple[str, ...]:
+    result = _git("rev-list", "--parents", "-n", "1", revision, cwd=repository)
+    if result.returncode != 0:
+        return ()
+    tokens = result.stdout.strip().split()
+    if not tokens or tokens[0] != revision:
+        return ()
+    return tuple(tokens[1:])
+
+
+def _commit_changed_paths(
+    repository: Path,
+    parent_revision: str,
+    revision: str,
+) -> set[str] | None:
+    result = _git(
+        "diff",
+        "--name-only",
+        "--no-renames",
+        parent_revision,
+        revision,
+        "--",
+        cwd=repository,
+    )
+    if result.returncode != 0:
+        return None
+    return {line for line in result.stdout.splitlines() if line}
+
+
+def _regular_blob_at_revision(
+    repository: Path,
+    revision: str,
+    relative: str,
+) -> str:
+    result = _git("ls-tree", revision, "--", relative, cwd=repository)
+    if result.returncode != 0:
+        return ""
+    match = re.fullmatch(
+        r"100(?:644|755) blob (?P<object>[0-9a-f]{40,64})\t.+\n?",
+        result.stdout,
+    )
+    return match.group("object") if match is not None else ""
+
+
+def _exact_inventory_candidate(
+    *,
+    repository: Path,
+    parent_revision: str,
+    candidate_revision: str,
+    outputs: set[str],
+) -> bool:
+    """Recognize one direct, output-only candidate with regular blob outputs."""
+
+    if _commit_parent_tokens(repository, candidate_revision) != (parent_revision,):
+        return False
+    if _commit_changed_paths(repository, parent_revision, candidate_revision) != outputs:
+        return False
+    return all(
+        _regular_blob_at_revision(repository, candidate_revision, relative)
+        for relative in outputs
+    )
+
+
+def _paths_have_identical_blobs(
+    *,
+    repository: Path,
+    left_revision: str,
+    right_revision: str,
+    paths: set[str],
+) -> bool:
+    return all(
+        _regular_blob_at_revision(repository, left_revision, relative)
+        and _regular_blob_at_revision(repository, left_revision, relative)
+        == _regular_blob_at_revision(repository, right_revision, relative)
+        for relative in paths
+    )
+
+
+def _task_completion_in_history(
+    *,
+    task_id: str,
+    history: Sequence[str],
+    errors: list[str],
+) -> bool:
+    """Return True when history contains exactly one daemon completion of task_id.
+
+    Probe validation uses a private error list so unrelated first-parent board
+    commits (for other tasks) do not pollute the caller. Invalid board-only
+    commits on this lineage still surface.
+    """
+
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    completed_revisions: list[str] = []
+    for revision in history:
+        parents = _commit_parent_tokens(REPO_ROOT, revision)
+        if len(parents) != 1:
+            continue
+        changed = _commit_changed_paths(REPO_ROOT, parents[0], revision)
+        if changed is None or changed != {taskboard}:
+            continue
+        probe: list[str] = []
+        transitioned = _validate_taskboard_status_commit(
+            parents[0], revision, probe
+        )
+        if probe:
+            errors.extend(probe)
+            continue
+        if transitioned == {task_id}:
+            completed_revisions.append(revision)
+    if len(completed_revisions) > 1:
+        errors.append(
+            f"{task_id} publication lineage has duplicate daemon status commits: "
+            f"{completed_revisions}"
+        )
+        return False
+    return len(completed_revisions) == 1
+
+
+def _reject_untrusted_path_rewrites(
+    *,
+    repository: Path,
+    parent_revision: str,
+    current_revision: str,
+    paths: set[str],
+    allowed_commits: set[str],
+    task_id: str,
+    label: str,
+    errors: list[str],
+) -> None:
+    """Reject any reachable commit that rewrites paths outside admitted transactions.
+
+    Counts the full Git DAG (not only first-parent) so a side branch can neither
+    rewrite-then-revert inventory artifacts nor hide intermediate mutations while
+    the final tree still looks valid.
+    """
+
+    if not paths:
+        return
+    # --full-history is required: default path-limited history simplification
+    # drops rewrite-then-revert commits that cancel in the final tree.
+    result = _git(
+        "rev-list",
+        "--full-history",
+        "--reverse",
+        f"{parent_revision}..{current_revision}",
+        "--",
+        *sorted(paths),
+        cwd=repository,
+    )
+    if result.returncode != 0:
+        errors.append(
+            f"{task_id} cannot enumerate full reachable {label} history: "
+            f"{result.stderr.strip() or result.returncode}"
+        )
+        return
+    untrusted = [
+        commit
+        for commit in result.stdout.splitlines()
+        if commit and commit not in allowed_commits
+    ]
+    if untrusted:
+        errors.append(
+            f"{task_id} reachable Git DAG rewrites {label} outside the admitted "
+            f"candidate/merge transaction: {untrusted}"
+        )
+
+
+def _reject_side_branch_taskboard_commits(
+    *,
+    parent_revision: str,
+    current_revision: str,
+    task_id: str,
+    errors: list[str],
+) -> None:
+    """Reject taskboard mutations that only exist on merged side branches."""
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    first_parent = _git(
+        "rev-list",
+        "--first-parent",
+        "--reverse",
+        f"{parent_revision}..{current_revision}",
+        "--",
+        relative,
+        cwd=REPO_ROOT,
+    )
+    all_commits = _git(
+        "rev-list",
+        "--full-history",
+        "--reverse",
+        f"{parent_revision}..{current_revision}",
+        "--",
+        relative,
+        cwd=REPO_ROOT,
+    )
+    if first_parent.returncode != 0 or all_commits.returncode != 0:
+        errors.append(f"{task_id} cannot enumerate reachable taskboard history")
+        return
+    side = {
+        line for line in all_commits.stdout.splitlines() if line
+    } - {line for line in first_parent.stdout.splitlines() if line}
+    if side:
+        errors.append(
+            f"{task_id} taskboard was modified on an untrusted merged side branch: "
+            f"{sorted(side)}"
+        )
+
+
+def _validate_accelerate_inventory_lifecycle(
+    *,
+    task_id: str,
+    parent_revision: str,
+    current_revision: str,
+    outputs: set[str],
+    require_published: bool,
+    errors: list[str],
+) -> None:
+    """Bind an accelerate inventory to its candidate, merge, and status commit."""
+
+    if _exact_inventory_candidate(
+        repository=REPO_ROOT,
+        parent_revision=parent_revision,
+        candidate_revision=current_revision,
+        outputs=outputs,
+    ):
+        if require_published:
+            errors.append(
+                f"{task_id} committed target lacks its no-ff inventory merge and "
+                "daemon status publication"
+            )
+        return
+
+    history_result = _git(
+        "rev-list",
+        "--first-parent",
+        "--reverse",
+        f"{parent_revision}..{current_revision}",
+        "--",
+        cwd=REPO_ROOT,
+    )
+    if history_result.returncode != 0:
+        errors.append(f"{task_id} cannot enumerate inventory publication lineage")
+        return
+    history = [line for line in history_result.stdout.splitlines() if line]
+    matches: list[tuple[int, str, str]] = []
+    for index, integration in enumerate(history):
+        parents = _commit_parent_tokens(REPO_ROOT, integration)
+        if len(parents) != 2:
+            continue
+        first_parent, candidate = parents
+        if (
+            _git(
+                "merge-base",
+                "--is-ancestor",
+                parent_revision,
+                first_parent,
+                cwd=REPO_ROOT,
+            ).returncode
+            != 0
+        ):
+            continue
+        if (
+            _git(
+                "diff",
+                "--quiet",
+                parent_revision,
+                first_parent,
+                "--",
+                *sorted(outputs),
+                cwd=REPO_ROOT,
+            ).returncode
+            != 0
+        ):
+            continue
+        if not _exact_inventory_candidate(
+            repository=REPO_ROOT,
+            parent_revision=parent_revision,
+            candidate_revision=candidate,
+            outputs=outputs,
+        ):
+            continue
+        if _commit_changed_paths(REPO_ROOT, first_parent, integration) != outputs:
+            continue
+        if not _paths_have_identical_blobs(
+            repository=REPO_ROOT,
+            left_revision=candidate,
+            right_revision=integration,
+            paths=outputs,
+        ):
+            continue
+        matches.append((index, integration, candidate))
+    if len(matches) != 1:
+        errors.append(
+            f"{task_id} publication must contain exactly one no-ff merge of its "
+            f"direct output-only candidate; found {len(matches)}"
+        )
+        return
+    integration_index, integration, candidate = matches[0]
+    if not _paths_have_identical_blobs(
+        repository=REPO_ROOT,
+        left_revision=candidate,
+        right_revision=current_revision,
+        paths=outputs,
+    ):
+        errors.append(f"{task_id} inventory blobs changed after their integration merge")
+    _reject_untrusted_path_rewrites(
+        repository=REPO_ROOT,
+        parent_revision=parent_revision,
+        current_revision=current_revision,
+        paths=outputs,
+        allowed_commits={candidate, integration},
+        task_id=task_id,
+        label="inventory outputs",
+        errors=errors,
+    )
+    _reject_side_branch_taskboard_commits(
+        parent_revision=parent_revision,
+        current_revision=current_revision,
+        task_id=task_id,
+        errors=errors,
+    )
+    if not _task_completion_in_history(
+        task_id=task_id,
+        history=history[integration_index + 1 :],
+        errors=errors,
+    ):
+        errors.append(f"{task_id} publication lineage lacks its daemon status commit")
+
+
+def _validate_nested_inventory_lifecycle(
+    *,
+    task_id: str,
+    submodule: str,
+    parent_revision: str,
+    current_nested_revision: str,
+    control_captured_revision: str,
+    control_current_revision: str,
+    outputs: set[str],
+    require_published: bool,
+    errors: list[str],
+) -> None:
+    """Bind a nested inventory candidate through its exact outer publication."""
+
+    nested = REPO_ROOT / submodule
+    if not _exact_inventory_candidate(
+        repository=nested,
+        parent_revision=parent_revision,
+        candidate_revision=current_nested_revision,
+        outputs=outputs,
+    ):
+        errors.append(
+            f"{task_id} nested inventory must be one direct two-output child of its "
+            "embedded worktree parent"
+        )
+        return
+
+    current_gitlink = _git(
+        "rev-parse",
+        f"{control_current_revision}:{submodule}",
+        cwd=REPO_ROOT,
+    )
+    if (
+        current_gitlink.returncode != 0
+        or current_gitlink.stdout.strip() != current_nested_revision
+    ):
+        errors.append(f"{task_id} current control gitlink does not bind its inventory commit")
+        return
+
+    control_parents = _commit_parent_tokens(REPO_ROOT, control_current_revision)
+    if len(control_parents) == 1:
+        candidate_parent = control_parents[0]
+        parent_gitlink = _git(
+            "rev-parse", f"{candidate_parent}:{submodule}", cwd=REPO_ROOT
+        )
+        if (
+            parent_gitlink.returncode == 0
+            and parent_gitlink.stdout.strip() == parent_revision
+            and _commit_changed_paths(
+                REPO_ROOT, candidate_parent, control_current_revision
+            )
+            == {submodule}
+        ):
+            if require_published:
+                errors.append(
+                    f"{task_id} committed target lacks its no-ff gitlink merge and "
+                    "daemon status publication"
+                )
+            return
+
+    history_result = _git(
+        "rev-list",
+        "--first-parent",
+        "--reverse",
+        f"{control_captured_revision}..{control_current_revision}",
+        "--",
+        cwd=REPO_ROOT,
+    )
+    if history_result.returncode != 0:
+        errors.append(f"{task_id} cannot enumerate outer inventory publication lineage")
+        return
+    history = [line for line in history_result.stdout.splitlines() if line]
+    matches: list[tuple[int, str, str]] = []
+    for index, integration in enumerate(history):
+        merge_parents = _commit_parent_tokens(REPO_ROOT, integration)
+        if len(merge_parents) != 2:
+            continue
+        integration_parent, outer_candidate = merge_parents
+        candidate_parents = _commit_parent_tokens(REPO_ROOT, outer_candidate)
+        if len(candidate_parents) != 1:
+            continue
+        outer_candidate_parent = candidate_parents[0]
+        if _commit_changed_paths(
+            REPO_ROOT, outer_candidate_parent, outer_candidate
+        ) != {submodule}:
+            continue
+        if _commit_changed_paths(
+            REPO_ROOT, integration_parent, integration
+        ) != {submodule}:
+            continue
+        base_gitlink = _git(
+            "rev-parse", f"{outer_candidate_parent}:{submodule}", cwd=REPO_ROOT
+        )
+        candidate_gitlink = _git(
+            "rev-parse", f"{outer_candidate}:{submodule}", cwd=REPO_ROOT
+        )
+        integrated_gitlink = _git(
+            "rev-parse", f"{integration}:{submodule}", cwd=REPO_ROOT
+        )
+        integration_parent_gitlink = _git(
+            "rev-parse", f"{integration_parent}:{submodule}", cwd=REPO_ROOT
+        )
+        if not (
+            base_gitlink.returncode == 0
+            and base_gitlink.stdout.strip() == parent_revision
+            and integration_parent_gitlink.returncode == 0
+            and integration_parent_gitlink.stdout.strip() == parent_revision
+            and candidate_gitlink.returncode == 0
+            and candidate_gitlink.stdout.strip() == current_nested_revision
+            and integrated_gitlink.returncode == 0
+            and integrated_gitlink.stdout.strip() == current_nested_revision
+        ):
+            continue
+        if (
+            _git(
+                "merge-base",
+                "--is-ancestor",
+                outer_candidate_parent,
+                integration_parent,
+                cwd=REPO_ROOT,
+            ).returncode
+            != 0
+        ):
+            continue
+        matches.append((index, integration, outer_candidate))
+    if len(matches) != 1:
+        errors.append(
+            f"{task_id} publication must contain exactly one no-ff merge of its "
+            f"direct gitlink candidate; found {len(matches)}"
+        )
+        return
+    integration_index, integration, outer_candidate = matches[0]
+    after_gitlink = _git(
+        "diff",
+        "--quiet",
+        integration,
+        control_current_revision,
+        "--",
+        submodule,
+        cwd=REPO_ROOT,
+    )
+    if after_gitlink.returncode != 0:
+        errors.append(f"{task_id} inventory gitlink changed after its integration merge")
+    _reject_untrusted_path_rewrites(
+        repository=REPO_ROOT,
+        parent_revision=control_captured_revision,
+        current_revision=control_current_revision,
+        paths={submodule},
+        allowed_commits={outer_candidate, integration},
+        task_id=task_id,
+        label="inventory gitlink",
+        errors=errors,
+    )
+    _reject_side_branch_taskboard_commits(
+        parent_revision=control_captured_revision,
+        current_revision=control_current_revision,
+        task_id=task_id,
+        errors=errors,
+    )
+    if not _task_completion_in_history(
+        task_id=task_id,
+        history=history[integration_index + 1 :],
+        errors=errors,
+    ):
+        errors.append(f"{task_id} publication lineage lacks its daemon status commit")
+
+
 def _validate_inventory_source_relevance(
     *,
     task_id: str,
@@ -1995,6 +2507,7 @@ def _validate_inventory_source_relevance(
     receipt: Mapping[str, Any],
     parent_revision: str,
     configured_receipts: Mapping[str, Any],
+    require_published: bool = False,
     errors: list[str],
 ) -> None:
     _validate_current_trust_sensitive_ignored_inputs(errors)
@@ -2007,17 +2520,14 @@ def _validate_inventory_source_relevance(
         "rev-parse",
         "HEAD",
     )
-    if parent_revision != current_head:
-        errors.append(
-            f"{task_id} inventory_worktree_parent_revision does not equal current task-owned HEAD"
-        )
     captured_revision = receipt.get("source_revision")
     if not isinstance(captured_revision, str) or not _HEX_40.fullmatch(captured_revision):
         return
     if repository in {"datasets", "kit"}:
-        if current_head != captured_revision:
+        if parent_revision != captured_revision:
             errors.append(
-                f"{task_id} initial nested inventory HEAD differs from captured tested revision"
+                f"{task_id} nested inventory_worktree_parent_revision must equal "
+                "the receipt-tested source revision"
             )
         control_captured_revision = receipt.get("execution_head")
         control_current_revision = _git_stdout(
@@ -2095,6 +2605,41 @@ def _validate_inventory_source_relevance(
     if unexpected_dirty:
         errors.append(
             f"{task_id} worktree contains undeclared dirty paths: {sorted(unexpected_dirty)}"
+        )
+    if current_head == parent_revision:
+        if require_published:
+            errors.append(f"{task_id} inventory remains an unpublished worktree candidate")
+        if dirty_paths != expected_outputs:
+            errors.append(
+                f"{task_id} candidate must dirty exactly its declared outputs: "
+                f"{sorted(expected_outputs)}; got {sorted(dirty_paths)}"
+            )
+        return
+
+    if repository == "accelerate":
+        _validate_accelerate_inventory_lifecycle(
+            task_id=task_id,
+            parent_revision=parent_revision,
+            current_revision=current_head,
+            outputs=expected_outputs,
+            require_published=require_published,
+            errors=errors,
+        )
+    elif (
+        isinstance(control_captured_revision, str)
+        and _HEX_40.fullmatch(control_captured_revision)
+        and _HEX_40.fullmatch(control_current_revision)
+    ):
+        _validate_nested_inventory_lifecycle(
+            task_id=task_id,
+            submodule=REPOSITORY_PATHS[repository].as_posix(),
+            parent_revision=parent_revision,
+            current_nested_revision=current_head,
+            control_captured_revision=control_captured_revision,
+            control_current_revision=control_current_revision,
+            outputs=expected_outputs,
+            require_published=require_published,
+            errors=errors,
         )
 
 
@@ -3126,8 +3671,10 @@ def validate(*, check_all: bool, check_terminal: bool = False) -> dict[str, Any]
                 errors.append(
                     "terminal validation requires the committed, bound IPS-004 synthesis"
                 )
-            if not synthesis_valid and not check_terminal:
-                _validate_current_baseline_sources(configured, receipts, errors)
+            if not synthesis_valid:
+                _validate_published_inventory_artifacts(errors)
+                if not check_terminal:
+                    _validate_current_baseline_sources(configured, receipts, errors)
 
     edge_count = sum(len(value) for value in dependencies.values())
     return {
@@ -9725,7 +10272,55 @@ def run_release_validation() -> dict[str, Any]:
         "receipt_digest": body.get("receipt_digest"),
         "errors": errors,
     }
-def validate_artifact(task_id: str) -> dict[str, Any]:
+def _validate_published_inventory_artifacts(errors: list[str]) -> None:
+    """Revalidate every completed pre-synthesis inventory transaction."""
+
+    current = _git_stdout(
+        REPO_ROOT, errors, "resolve committed inventory control HEAD", "rev-parse", "HEAD"
+    )
+    if not _HEX_40.fullmatch(current):
+        return
+    taskboard = _git_text_at_revision(
+        current,
+        "docs/architecture/incremental_proof_sealer.todo.md",
+        errors,
+        "current inventory taskboard",
+    )
+    records = _parse_markdown_records(
+        taskboard,
+        re.compile(r"^## (IPS-\d{3})\s+([^\n]+)$", re.MULTILINE),
+        "current inventory task",
+        errors,
+    )
+    for task_id, spec in BASELINE_RECEIPT_SPECS.items():
+        status = (
+            records.get(task_id, {})
+            .get("fields", {})
+            .get("status", "")
+            .casefold()
+        )
+        if status != "completed":
+            continue
+        outputs = {str(spec[field]) for field in ("inventory", "report")}
+        missing = sorted(
+            relative
+            for relative in outputs
+            if not _task_output_exists_at_control_revision(current, relative)
+        )
+        if missing:
+            errors.append(
+                f"{task_id} is completed but committed outputs are missing: {missing}"
+            )
+            continue
+        result = validate_artifact(task_id, require_published=True)
+        errors.extend(str(item) for item in result.get("errors", ()))
+
+
+def validate_artifact(
+    task_id: str,
+    *,
+    require_published: bool = False,
+) -> dict[str, Any]:
     """Validate the bounded data/document tasks that cannot use inline eval.
 
     The implementation supervisor deliberately rejects ``python -c`` and
@@ -9813,6 +10408,7 @@ def validate_artifact(task_id: str) -> dict[str, Any]:
                     if isinstance(configured_receipts, Mapping)
                     else {}
                 ),
+                require_published=require_published,
                 errors=errors,
             )
         if "repository_commit" in payload and payload.get("repository_commit") != revision:
