@@ -243,7 +243,7 @@ A9  SCH-018
 
 ## SCH-007 Implement model routing and real-provider adapters
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: model-routing
