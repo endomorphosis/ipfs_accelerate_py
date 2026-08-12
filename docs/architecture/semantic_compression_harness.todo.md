@@ -270,7 +270,7 @@ A9  SCH-018
 
 ## SCH-008 Adapt the sealed selection and execute checks, tests, and provers
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: verification
