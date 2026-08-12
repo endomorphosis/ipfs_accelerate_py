@@ -1704,6 +1704,8 @@ def _validate_taskboard_status_transition(
             continue
         if _is_operational_residual_board_appendix(parent, commit):
             continue
+        if _is_operator_inventory_reopen_commit(parent, commit):
+            continue
         _validate_taskboard_status_commit(parent, commit, errors)
 
 
@@ -1871,6 +1873,81 @@ def _validate_taskboard_status_commit(
     return transitioned
 
 
+
+
+
+def _is_operator_inventory_reopen_commit(
+    parent_revision: str,
+    current_revision: str,
+) -> bool:
+    """Admit board-only reopens of inventory tasks after a fresh capture epoch.
+
+    When operator baseline evidence is recaptured, previously completed inventory
+    publications may no longer bind the new receipts. A single-parent board
+    commit whose subject is ``IPS-00N: reopen for fresh capture epoch`` may
+    flip that inventory task from completed back to todo without any other
+    sealed-task mutation.
+    """
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    parents = _commit_parent_tokens(REPO_ROOT, current_revision)
+    if len(parents) != 1 or parents[0] != parent_revision:
+        return False
+    if _commit_changed_paths(REPO_ROOT, parent_revision, current_revision) != {
+        relative
+    }:
+        return False
+    meta = _git(
+        "show",
+        "-s",
+        "--format=%s%x00%ae",
+        current_revision,
+        cwd=REPO_ROOT,
+    )
+    if meta.returncode != 0:
+        return False
+    subject, sep, email = meta.stdout.partition("\x00")
+    if not sep:
+        return False
+    match = re.fullmatch(
+        r"(IPS-00[123]): reopen for fresh capture epoch",
+        subject.strip(),
+    )
+    if match is None:
+        return False
+    task_id = match.group(1)
+    before = _git("show", f"{parent_revision}:{relative}", cwd=REPO_ROOT)
+    after = _git("show", f"{current_revision}:{relative}", cwd=REPO_ROOT)
+    if before.returncode != 0 or after.returncode != 0:
+        return False
+    before_text, after_text = before.stdout, after.stdout
+    before_order = re.findall(r"^## (IPS-\d{3})\s+", before_text, re.MULTILINE)
+    after_order = re.findall(r"^## (IPS-\d{3})\s+", after_text, re.MULTILINE)
+    if before_order != after_order:
+        return False
+    # Only the named inventory task may change, and only completed -> todo.
+    b_start = before_text.find(f"## {task_id} ")
+    a_start = after_text.find(f"## {task_id} ")
+    if b_start < 0 or a_start < 0:
+        return False
+    b_end = before_text.find("\n## ", b_start + 1)
+    a_end = after_text.find("\n## ", a_start + 1)
+    if b_end < 0:
+        b_end = len(before_text)
+    if a_end < 0:
+        a_end = len(after_text)
+    b_block = before_text[b_start:b_end]
+    a_block = after_text[a_start:a_end]
+    if "- Status: completed" not in b_block or "- Status: todo" not in a_block:
+        return False
+    if b_block.replace("- Status: completed", "- Status: todo", 1) != a_block:
+        return False
+    # No other task status bytes may change.
+    if before_text[:b_start] != after_text[:a_start]:
+        return False
+    if before_text[b_end:] != after_text[a_end:]:
+        return False
+    return True
 
 
 def _is_operational_residual_board_appendix(
@@ -2083,6 +2160,8 @@ def _validate_accelerate_control_transition(
                 continue
             if _is_operational_residual_board_appendix(first_parent, commit):
                 continue
+            if _is_operator_inventory_reopen_commit(first_parent, commit):
+                continue
             _validate_taskboard_status_commit(first_parent, commit, errors)
             continue
         if len(changed_paths) == 1 and changed_paths <= nested_paths:
@@ -2223,6 +2302,8 @@ def _task_completion_in_history(
         if changed is None or changed != {taskboard}:
             continue
         if _is_operational_residual_board_appendix(parents[0], revision):
+            continue
+        if _is_operator_inventory_reopen_commit(parents[0], revision):
             continue
         probe: list[str] = []
         transitioned = _validate_taskboard_status_commit(
