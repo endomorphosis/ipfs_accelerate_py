@@ -16782,7 +16782,16 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
-        deterministic_only = self._task_uses_typed_local_execution(task)
+        # Typed-local-only execution is owned by task_execution_policy (not yet
+        # present on this merge surface). Ordinary provider tasks always take
+        # the model/provider path; keep the branches for future porting.
+        deterministic_only = False
+        try:
+            uses_typed = getattr(self, "_task_uses_typed_local_execution", None)
+            if callable(uses_typed):
+                deterministic_only = bool(uses_typed(task))
+        except Exception:
+            deterministic_only = False
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
