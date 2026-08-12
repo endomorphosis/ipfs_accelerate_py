@@ -459,7 +459,7 @@ A9  SCH-018
 
 ## SCH-015 Prove the end-to-end acceptance matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: acceptance
