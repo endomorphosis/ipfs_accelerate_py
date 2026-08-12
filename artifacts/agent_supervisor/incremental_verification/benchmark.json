@@ -1,6 +1,6 @@
 {
   "authoritative": false,
-  "benchmark_duration_ms": 1153,
+  "benchmark_duration_ms": 112,
   "cases": [
     {
       "change_kind": "config_edge",
@@ -2203,7 +2203,7 @@
       "CI": "",
       "GITHUB_ACTIONS": ""
     },
-    "executable": "/usr/bin/python3",
+    "executable": "/usr/bin/python3.12",
     "machine": "aarch64",
     "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
     "processor": "aarch64",
@@ -2299,8 +2299,8 @@
       "label": "estimated",
       "paired_cache": {
         "basis": "paired_cold_hot",
-        "cold_lookup_ms": 0.363582,
-        "hot_lookup_ms": 13.646886,
+        "cold_lookup_ms": 0.386524,
+        "hot_lookup_ms": 12.614613,
         "label": "paired",
         "sample_count": 1,
         "saved_ms": 0.0
@@ -2322,11 +2322,8 @@
       "note": "controlled corpus catalogs empty static/proof sets; real prover availability is probed separately",
       "proof_obligations_executed": 0,
       "provers": {
-        "any_real_prover": true,
-        "available": [
-          "lean",
-          "z3"
-        ],
+        "any_real_prover": false,
+        "available": [],
         "missing_typed": "unavailable",
         "probes": {
           "coqc": {
@@ -2346,25 +2343,27 @@
             "version": null
           },
           "lean": {
-            "measurement_status": "measured",
+            "measurement_status": "not_measured",
             "name": "lean",
-            "path": "/home/barberb/.elan/bin/lean",
-            "reason": "probed",
-            "status": "available",
-            "version": "Lean (version 4.33.0, aarch64-unknown-linux-gnu, commit d8b18978322de05a8f3dba51ef03cf5461676c17, Release)"
+            "path": null,
+            "reason": "executable_not_on_path",
+            "status": "unavailable",
+            "version": null
           },
           "z3": {
-            "measurement_status": "measured",
+            "measurement_status": "not_measured",
             "name": "z3",
-            "path": "/home/barberb/.local/bin/z3",
-            "reason": "probed",
-            "status": "available",
-            "version": "Z3 version 4.15.4 - 64 bit"
+            "path": null,
+            "reason": "executable_not_on_path",
+            "status": "unavailable",
+            "version": null
           }
         },
         "unavailable": [
           "coqc",
-          "isabelle"
+          "isabelle",
+          "lean",
+          "z3"
         ]
       },
       "static_checks_executed": 0,
@@ -2388,25 +2387,25 @@
       "tokens_saved_total": 19834
     },
     "wall_samples": {
-      "max_ms": 1.320223,
-      "mean_ms": 1.285925,
-      "median_ms": 1.279739,
-      "min_ms": 1.269978,
-      "p95_ms": 1.320223,
+      "max_ms": 1.327993,
+      "mean_ms": 1.290453,
+      "median_ms": 1.283736,
+      "min_ms": 1.273847,
+      "p95_ms": 1.327993,
       "role": "observational",
       "sample_count": 5,
       "samples_ms": [
-        1.269978,
-        1.270458,
-        1.279739,
-        1.289228,
-        1.320223
+        1.273847,
+        1.273975,
+        1.283736,
+        1.292712,
+        1.327993
       ],
       "tolerance_ms": 1.0,
       "tolerance_ratio": 0.35
     }
   },
-  "observed_head": "7628f9d2553b607767ce0d851949dcdaaf4ef7ea",
+  "observed_head": "8c7800cedc5e1b848367db9952f912428466f8cc",
   "policy": {
     "performance_cannot_weaken_correctness": true,
     "policy_id": "policy:ivp-incremental-verification-benchmark@1",
@@ -2415,11 +2414,8 @@
     "zero_stale_simulated_acceptance_hard": true
   },
   "provers": {
-    "any_real_prover": true,
-    "available": [
-      "lean",
-      "z3"
-    ],
+    "any_real_prover": false,
+    "available": [],
     "missing_typed": "unavailable",
     "probes": {
       "coqc": {
@@ -2439,25 +2435,27 @@
         "version": null
       },
       "lean": {
-        "measurement_status": "measured",
+        "measurement_status": "not_measured",
         "name": "lean",
-        "path": "/home/barberb/.elan/bin/lean",
-        "reason": "probed",
-        "status": "available",
-        "version": "Lean (version 4.33.0, aarch64-unknown-linux-gnu, commit d8b18978322de05a8f3dba51ef03cf5461676c17, Release)"
+        "path": null,
+        "reason": "executable_not_on_path",
+        "status": "unavailable",
+        "version": null
       },
       "z3": {
-        "measurement_status": "measured",
+        "measurement_status": "not_measured",
         "name": "z3",
-        "path": "/home/barberb/.local/bin/z3",
-        "reason": "probed",
-        "status": "available",
-        "version": "Z3 version 4.15.4 - 64 bit"
+        "path": null,
+        "reason": "executable_not_on_path",
+        "status": "unavailable",
+        "version": null
       }
     },
     "unavailable": [
       "coqc",
-      "isabelle"
+      "isabelle",
+      "lean",
+      "z3"
     ]
   },
   "repository_root": ".",
