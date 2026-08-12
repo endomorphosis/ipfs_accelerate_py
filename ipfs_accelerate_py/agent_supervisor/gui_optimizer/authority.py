@@ -32,6 +32,8 @@ Fail-closed invariants enforced here:
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -103,6 +105,30 @@ DEFAULT_FORBIDDEN_PATH_PARTS: Final[frozenset[str]] = frozenset(
 # Browser payload / fixture keys that must never cross the host boundary.
 # Mirrors swissknife/src/services/mcp/all-app-tool-gateway.ts plus explicit
 # process/command/path/credential selector aliases used by optimizer doctrine.
+# Extended credential aliases that must never cross the browser→host boundary.
+_EXTENDED_CREDENTIAL_ALIASES: Final[frozenset[str]] = frozenset(
+    {
+        "access_token",
+        "auth_token",
+        "client_secret",
+        "private_key",
+        "session_token",
+        "refresh_token",
+        "authorization_header",
+        "api_token",
+        "oauth_token",
+        "accesstoken",
+        "authtoken",
+        "clientsecret",
+        "privatekey",
+        "sessiontoken",
+        "refreshtoken",
+        "authorizationheader",
+        "apitoken",
+        "oauthtoken",
+    }
+)
+
 FORBIDDEN_BROWSER_PAYLOAD_KEYS: Final[frozenset[str]] = frozenset(
     {
         "authorization",
@@ -129,6 +155,15 @@ FORBIDDEN_BROWSER_PAYLOAD_KEYS: Final[frozenset[str]] = frozenset(
         "executable",
         "argv",
         "cmd",
+        "access_token",
+        "auth_token",
+        "client_secret",
+        "private_key",
+        "session_token",
+        "refresh_token",
+        "authorization_header",
+        "api_token",
+        "oauth_token",
     }
 )
 
@@ -172,6 +207,15 @@ FORBIDDEN_BROWSER_CREDENTIAL_FIELDS: Final[frozenset[str]] = frozenset(
         "secret",
         "credential",
         "credentials",
+        "access_token",
+        "auth_token",
+        "client_secret",
+        "private_key",
+        "session_token",
+        "refresh_token",
+        "authorization_header",
+        "api_token",
+        "oauth_token",
     }
 )
 
@@ -382,6 +426,10 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 # never authorize.
 _CANONICAL_ARGUMENT_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _WINDOWS_PATH_RE = re.compile(r"^[a-zA-Z]:[\\/]")
+_DRIVE_RELATIVE_RE = re.compile(r"^[a-zA-Z]:(?![\\/]|$)")
+_RELATIVE_TRAVERSAL_RE = re.compile(
+    r"(?:^|[/\\])\.\.(?:[/\\]|$)|(?:^|[/\\])\.(?:[/\\]|$)"
+)
 _CREDENTIAL_VALUE_RE = re.compile(
     r"^(?:password|secret|token|apikey|api_key|bearer)\s*[=:]",
     re.IGNORECASE,
@@ -393,24 +441,40 @@ _CREDENTIAL_INLINE_MARKERS: Final[tuple[str, ...]] = (
     "api_key=",
     "apikey=",
     "bearer ",
+    "secret:",
+    "password:",
+    "token:",
+)
+_COMMAND_EXECUTABLE_RE = re.compile(
+    r"(?:^|[\s;/|&`])"
+    r"(?:cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh(?:\.exe)?|bash|sh|zsh|fish|"
+    r"python(?:3)?|sudo|curl|wget)"
+    r"(?:$|[\s;/|&`])",
+    re.IGNORECASE,
 )
 
 
-def _text(value: Any, name: str, *, required: bool = True) -> str:
-    """Strict string field.  Never coerces numbers/bools/null into strings."""
-    if not isinstance(value, str):
+def _exact_str(value: Any, name: str) -> str:
+    """Accept only the exact built-in ``str`` type (never str subclasses/Enums)."""
+    if type(value) is not str:
         raise GuiAuthorityError(
             f"{name} must be a string",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             details={"field": name, "value_type": type(value).__name__},
         )
-    if "\x00" in value:
+    return value
+
+
+def _text(value: Any, name: str, *, required: bool = True) -> str:
+    """Strict string field.  Never coerces numbers/bools/null into strings."""
+    text_value = _exact_str(value, name)
+    if "\x00" in text_value:
         raise GuiAuthorityError(
             f"{name} must not contain NUL",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             details={"field": name},
         )
-    text = value.strip()
+    text = text_value.strip()
     if required and not text:
         raise GuiAuthorityError(
             f"{name} must not be empty",
@@ -427,19 +491,14 @@ def _identifier_field(
     allow_empty: bool = False,
 ) -> str:
     """Identifier fields accept only a canonical nonempty string when set."""
-    if not isinstance(value, str):
-        raise GuiAuthorityError(
-            f"{name} must be a nonempty string identifier",
-            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            details={"field": name, "value_type": type(value).__name__},
-        )
-    if "\x00" in value:
+    text_value = _exact_str(value, name)
+    if "\x00" in text_value:
         raise GuiAuthorityError(
             f"{name} must not contain NUL",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             details={"field": name},
         )
-    if value == "":
+    if text_value == "":
         if allow_empty:
             return ""
         raise GuiAuthorityError(
@@ -451,13 +510,13 @@ def _identifier_field(
             ),
             details={"field": name},
         )
-    if value != value.strip():
+    if text_value != text_value.strip():
         raise GuiAuthorityError(
             f"{name} must be a canonical nonempty string identifier",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             details={"field": name},
         )
-    return value
+    return text_value
 
 
 def _digest_field(
@@ -473,19 +532,14 @@ def _digest_field(
     algorithm prefixes, short/long payloads, and arbitrary non-canonical
     strings (even when equal across fields) always reject.
     """
-    if not isinstance(value, str):
-        raise GuiAuthorityError(
-            f"{name} must be a string digest",
-            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            details={"field": name, "value_type": type(value).__name__},
-        )
-    if "\x00" in value:
+    text_value = _exact_str(value, name)
+    if "\x00" in text_value:
         raise GuiAuthorityError(
             f"{name} must not contain NUL",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             details={"field": name},
         )
-    if value == "":
+    if text_value == "":
         if allow_empty:
             return ""
         raise GuiAuthorityError(
@@ -493,14 +547,16 @@ def _digest_field(
             reason_code=AuthorityReasonCode.EMPTY_ARGUMENT_DIGEST.value,
             details={"field": name},
         )
-    if value != value.strip() or not _CANONICAL_ARGUMENT_DIGEST_RE.fullmatch(value):
+    if text_value != text_value.strip() or not _CANONICAL_ARGUMENT_DIGEST_RE.fullmatch(
+        text_value
+    ):
         raise GuiAuthorityError(
             f"{name} must be a canonical argument digest matching "
             "sha256:[0-9a-f]{64}",
             reason_code=AuthorityReasonCode.NONCANONICAL_ARGUMENT_DIGEST.value,
             details={"field": name},
         )
-    return value
+    return text_value
 
 
 def _reject_present_null(payload: Mapping[str, Any], key: str) -> None:
@@ -533,13 +589,7 @@ def _optional_notes(payload: Mapping[str, Any], key: str = "notes") -> str:
     if key not in payload:
         return ""
     _reject_present_null(payload, key)
-    value = payload[key]
-    if not isinstance(value, str):
-        raise GuiAuthorityError(
-            f"{key} must be a string",
-            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            details={"field": key, "value_type": type(value).__name__},
-        )
+    value = _exact_str(payload[key], key)
     if "\x00" in value:
         raise GuiAuthorityError(
             f"{key} must not contain NUL",
@@ -550,8 +600,8 @@ def _optional_notes(payload: Mapping[str, Any], key: str = "notes") -> str:
 
 
 def _bool(value: Any, name: str) -> bool:
-    """Accept only real booleans.  String/int coercions are fail-open vectors."""
-    if not isinstance(value, bool):
+    """Accept only exact built-in booleans.  Subclasses and coercions reject."""
+    if type(value) is not bool:
         raise GuiAuthorityError(
             f"{name} must be a boolean",
             reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
@@ -568,46 +618,53 @@ def _optional_mapping_bool(
     return _bool(payload[key], key)
 
 
-def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping) or isinstance(value, (str, bytes, bytearray)):
-        raise GuiAuthorityError(
-            f"{name} must be a JSON object/mapping",
-            reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
-            details={"field": name, "value_type": type(value).__name__},
-        )
-    if not all(isinstance(key, str) for key in value):
-        raise GuiAuthorityError(
-            f"{name} keys must be strings",
-            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            details={"field": name},
-        )
-    return value
-
-
-def _require_json_object(value: Any, name: str) -> dict[str, Any]:
-    """JSON objects on the wire are real dicts with string keys only."""
-    if not isinstance(value, dict):
+def _require_exact_wire_mapping(value: Any, name: str) -> dict[str, Any]:
+    """Wire objects must be exact ``dict`` before any attribute introspection."""
+    if type(value) is not dict:
         raise GuiAuthorityError(
             f"{name} must be a JSON object",
             reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
             details={"field": name, "value_type": type(value).__name__},
         )
-    if not all(isinstance(key, str) for key in value):
-        raise GuiAuthorityError(
-            f"{name} keys must be strings",
-            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-            details={"field": name},
-        )
+    for key in value:
+        if type(key) is not str:
+            raise GuiAuthorityError(
+                f"{name} keys must be strings",
+                reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+                details={"field": name, "key_type": type(key).__name__},
+            )
     return value
 
 
-def _require_json_array(value: Any, name: str) -> list[Any]:
-    """Wire collection fields accept only JSON arrays (Python list).
+def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if type(value) is not dict:
+        raise GuiAuthorityError(
+            f"{name} must be a JSON object/mapping",
+            reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+            details={"field": name, "value_type": type(value).__name__},
+        )
+    for key in value:
+        if type(key) is not str:
+            raise GuiAuthorityError(
+                f"{name} keys must be strings",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"field": name},
+            )
+    return value
 
-    Python tuples, strings, mappings, numbers, booleans, null, and other
-    containers never become valid arrays.
+
+def _require_json_object(value: Any, name: str) -> dict[str, Any]:
+    """JSON objects on the wire are exact dicts with exact string keys only."""
+    return _require_exact_wire_mapping(value, name)
+
+
+def _require_json_array(value: Any, name: str) -> list[Any]:
+    """Wire collection fields accept only exact JSON arrays (built-in list).
+
+    Python tuples, list subclasses, strings, mappings, numbers, booleans, null,
+    and other containers never become valid arrays.
     """
-    if not isinstance(value, list):
+    if type(value) is not list:
         raise GuiAuthorityError(
             f"{name} must be a JSON array (list); "
             f"{type(value).__name__} is not a valid collection",
@@ -618,17 +675,9 @@ def _require_json_array(value: Any, name: str) -> list[Any]:
 
 
 def _require_python_sequence(value: Any, name: str) -> Sequence[Any]:
-    """Python constructor API: list or tuple of items, never str/bytes/mapping."""
-    if isinstance(value, list):
+    """Python constructor API: exact list or exact tuple only."""
+    if type(value) is list or type(value) is tuple:
         return value
-    if isinstance(value, tuple):
-        return value
-    if isinstance(value, Mapping):
-        raise GuiAuthorityError(
-            f"{name} must be a JSON array, not an object",
-            reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
-            details={"field": name, "value_type": type(value).__name__},
-        )
     raise GuiAuthorityError(
         f"{name} must be a JSON array/sequence",
         reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
@@ -652,36 +701,61 @@ def _optional_json_array(
     return _require_json_array(value, key)
 
 
-def _assert_json_shape(value: Any, name: str) -> None:
-    """Recursive browser payloads admit only JSON shapes at every depth."""
-    if value is None or isinstance(value, bool):
-        return
-    if isinstance(value, (str, int, float)):
-        return
-    if isinstance(value, list):
-        for index, child in enumerate(value):
-            _assert_json_shape(child, f"{name}[{index}]")
-        return
-    if isinstance(value, dict):
+def _canonicalize_json_value(value: Any, name: str) -> Any:
+    """Recursively retain only exact built-in RFC-JSON wire shapes.
+
+    Rejects custom subclasses before any overridable method is invoked, rejects
+    non-finite floats, and returns a deep-copied tree of exact builtins.
+    """
+    if value is None:
+        return None
+    value_type = type(value)
+    if value_type is bool:
+        return value
+    if value_type is int:
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise GuiAuthorityError(
+                f"{name} must be a finite JSON number",
+                reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+                details={"field": name, "value_type": "float"},
+            )
+        return value
+    if value_type is str:
+        return value
+    if value_type is list:
+        return [
+            _canonicalize_json_value(child, f"{name}[{index}]")
+            for index, child in enumerate(value)
+        ]
+    if value_type is dict:
+        out: dict[str, Any] = {}
         for key, child in value.items():
-            if not isinstance(key, str):
+            if type(key) is not str:
                 raise GuiAuthorityError(
                     f"{name} object keys must be strings",
-                    reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-                    details={
-                        "field": name,
-                        "key_type": type(key).__name__,
-                    },
+                    reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+                    details={"field": name, "key_type": type(key).__name__},
                 )
-            _assert_json_shape(child, f"{name}.{key}")
-        return
-    # Tuples, sets, non-dict mappings, custom containers, bytes, etc.
+            out[key] = _canonicalize_json_value(child, f"{name}.{key}")
+        return out
     raise GuiAuthorityError(
         f"{name} must be a JSON value; {type(value).__name__} is not a "
         "JSON array, object, string, number, boolean, or null",
         reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
         details={"field": name, "value_type": type(value).__name__},
     )
+
+
+def _assert_json_shape(value: Any, name: str) -> None:
+    """Recursive browser payloads admit only exact built-in JSON shapes."""
+    _canonicalize_json_value(value, name)
+
+
+def _json_roundtrip_tree(value: Any) -> Any:
+    """Serialize with allow_nan=False and re-load into exact built-ins."""
+    return json.loads(json.dumps(value, allow_nan=False, separators=(",", ":")))
 
 
 def _reject_unknown(
@@ -773,14 +847,21 @@ _CREDENTIAL_COMPACT = frozenset(
 
 def _classify_forbidden_key(key: str) -> str | None:
     """Return 'path', 'command', 'credential', or None for a payload key."""
+    if type(key) is not str:
+        return None
     canonical = _canonical_field_token(key)
     compact = _compact_field_token(key)
+    if (
+        canonical in _CREDENTIAL_CANONICAL
+        or compact in _CREDENTIAL_COMPACT
+        or canonical in _EXTENDED_CREDENTIAL_ALIASES
+        or compact in _EXTENDED_CREDENTIAL_ALIASES
+    ):
+        return "credential"
     if canonical in _PATH_CANONICAL or compact in _PATH_COMPACT:
         return "path"
     if canonical in _COMMAND_CANONICAL or compact in _COMMAND_COMPACT:
         return "command"
-    if canonical in _CREDENTIAL_CANONICAL or compact in _CREDENTIAL_COMPACT:
-        return "credential"
     if canonical in _FORBIDDEN_CANONICAL_KEYS or compact in _FORBIDDEN_COMPACT_KEYS:
         return "path"
     return None
@@ -807,9 +888,21 @@ def _normalize_repo_path(value: Any, name: str = "path") -> str:
     return raw
 
 
-def _as_change_kind(value: Any) -> ForbiddenChangeKind:
-    if isinstance(value, ForbiddenChangeKind):
+def _as_change_kind(value: Any, *, wire: bool = False) -> ForbiddenChangeKind:
+    """Coerce a change kind.
+
+    Direct typed constructors may pass ``ForbiddenChangeKind`` members.  Wire
+    inputs accept only exact built-in strings — Python Enum members reject even
+    though they are ``str`` subclasses.
+    """
+    if not wire and type(value) is ForbiddenChangeKind:
         return value
+    if type(value) is not str:
+        raise GuiAuthorityError(
+            "change_kind must be a string",
+            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+            details={"value_type": type(value).__name__},
+        )
     text = _text(value, "change_kind")
     try:
         return ForbiddenChangeKind(text)
@@ -821,9 +914,20 @@ def _as_change_kind(value: Any) -> ForbiddenChangeKind:
         ) from exc
 
 
-def _as_evidence_kind(value: Any) -> AuthorityEvidenceKind:
-    if isinstance(value, AuthorityEvidenceKind):
+def _as_evidence_kind(value: Any, *, wire: bool = False) -> AuthorityEvidenceKind:
+    """Coerce an evidence kind.
+
+    Direct typed constructors may pass ``AuthorityEvidenceKind`` members.  Wire
+    inputs accept only exact built-in strings.
+    """
+    if not wire and type(value) is AuthorityEvidenceKind:
         return value
+    if type(value) is not str:
+        raise GuiAuthorityError(
+            "evidence_kind must be a string",
+            reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+            details={"value_type": type(value).__name__},
+        )
     text = _text(value, "evidence_kind")
     try:
         return AuthorityEvidenceKind(text)
@@ -863,9 +967,9 @@ def _coerce_change_kinds(
     sequence: Sequence[Any]
     if wire:
         sequence = _require_json_array(value, field_name)
-    else:
-        sequence = _require_python_sequence(value, field_name)
-    return tuple(_as_change_kind(kind) for kind in sequence)
+        return tuple(_as_change_kind(kind, wire=True) for kind in sequence)
+    sequence = _require_python_sequence(value, field_name)
+    return tuple(_as_change_kind(kind, wire=False) for kind in sequence)
 
 
 def _optional_change_kinds(
@@ -881,9 +985,9 @@ def _claim_change_kinds(
 ) -> tuple[ForbiddenChangeKind, ...]:
     merged: list[ForbiddenChangeKind] = []
     for claim in claims:
-        if isinstance(claim, PatchPathClaim):
+        if type(claim) is PatchPathClaim:
             merged.extend(claim.change_kinds)
-        elif isinstance(claim, Mapping):
+        elif type(claim) is dict:
             merged.extend(_optional_change_kinds(claim))
     # Preserve order while de-duplicating.
     seen: set[ForbiddenChangeKind] = set()
@@ -1039,10 +1143,11 @@ class PatchPathClaim:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any], *, index: int = 0) -> "PatchPathClaim":
-        if not isinstance(raw, Mapping):
+        if type(raw) is not dict:
             raise GuiAuthorityError(
                 f"claims[{index}] must be a mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"value_type": type(raw).__name__},
             )
         _reject_unknown(raw, _PATCH_CLAIM_KEYS, f"claims[{index}]")
         if "path" not in raw:
@@ -1082,21 +1187,51 @@ class GuiPatchAuthority:
     interface: str = GUI_PATCH_AUTHORITY_INTERFACE
 
     def __post_init__(self) -> None:
-        roots = tuple(
-            _text(root, "allowed_root")
-            if str(root).endswith("/")
-            else f"{_text(root, 'allowed_root')}/"
-            for root in (self.allowed_roots or ())
-        )
-        if not roots:
+        # Exact-type check before any truthiness or iteration so subclass-controlled
+        # RuntimeError cannot masquerade as safe rejection evidence.
+        roots_value = self.allowed_roots
+        if type(roots_value) is not tuple:
+            raise GuiAuthorityError(
+                "allowed_roots must be an exact tuple of strings",
+                reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+                details={
+                    "field": "allowed_roots",
+                    "value_type": type(roots_value).__name__,
+                },
+            )
+        roots_list: list[str] = []
+        for root in roots_value:
+            if type(root) is not str:
+                raise GuiAuthorityError(
+                    "allowed_roots entries must be exact strings",
+                    reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                    details={
+                        "field": "allowed_roots",
+                        "value_type": type(root).__name__,
+                    },
+                )
+            normalized = _text(root, "allowed_root")
+            if not normalized.endswith("/"):
+                normalized = f"{normalized}/"
+            roots_list.append(normalized)
+        if not roots_list:
             raise GuiAuthorityError(
                 "allowed_roots must not be empty",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             )
-        object.__setattr__(self, "allowed_roots", roots)
+        object.__setattr__(self, "allowed_roots", tuple(roots_list))
+        parts_value = self.forbidden_path_parts
+        if type(parts_value) is not frozenset:
+            raise GuiAuthorityError(
+                "forbidden_path_parts must be an exact frozenset",
+                reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+                details={
+                    "field": "forbidden_path_parts",
+                    "value_type": type(parts_value).__name__,
+                },
+            )
         parts = frozenset(
-            _text(part, "forbidden_path_part")
-            for part in (self.forbidden_path_parts or ())
+            _text(part, "forbidden_path_part") for part in parts_value
         )
         object.__setattr__(self, "forbidden_path_parts", parts)
         object.__setattr__(self, "schema", _text(self.schema, "schema"))
@@ -1161,10 +1296,13 @@ class GuiPatchAuthority:
         )
 
     def evaluate_change_kinds(
-        self, change_kinds: Sequence[ForbiddenChangeKind | str]
+        self, change_kinds: Sequence[ForbiddenChangeKind | str] | None
     ) -> AuthorityDecision:
-        """Classify sensitive change kinds as reject / review / allow."""
-        kinds = _coerce_change_kinds(change_kinds if change_kinds is not None else [])
+        """Classify sensitive change kinds as reject / review / allow.
+
+        Explicit null rejects rather than interpreting as an empty safe set.
+        """
+        kinds = _coerce_change_kinds(change_kinds)
         if not kinds:
             return _decision(
                 AuthorityVerdict.ALLOW,
@@ -1217,17 +1355,15 @@ class GuiPatchAuthority:
         self, claims: Sequence[PatchPathClaim | Mapping[str, Any]]
     ) -> AuthorityDecision:
         """Evaluate a batch of path claims; fail closed on the first hard reject."""
-        if claims is None or (
-            not isinstance(claims, Sequence)
-            or isinstance(claims, (str, bytes, bytearray))
-            or isinstance(claims, Mapping)
-        ):
+        # Exact list/tuple only — sequence subclasses are rejected before any
+        # overridable method (truthiness, iteration, indexing) is invoked.
+        if type(claims) is not list and type(claims) is not tuple:
             raise GuiAuthorityError(
                 "claims must be a sequence",
                 reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
                 details={"field": "claims", "value_type": type(claims).__name__},
             )
-        if not claims:
+        if len(claims) == 0:
             return _decision(
                 AuthorityVerdict.REJECT,
                 AuthorityReasonCode.MISSING_AUTHORITY_EVIDENCE,
@@ -1275,8 +1411,14 @@ class GuiPatchAuthority:
     def _coerce_claim(
         self, raw: PatchPathClaim | Mapping[str, Any], index: int
     ) -> PatchPathClaim:
-        if isinstance(raw, PatchPathClaim):
+        if type(raw) is PatchPathClaim:
             return raw
+        if type(raw) is not dict:
+            raise GuiAuthorityError(
+                f"claims[{index}] must be a mapping",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"value_type": type(raw).__name__},
+            )
         return PatchPathClaim.from_mapping(raw, index=index)
 
 
@@ -1291,9 +1433,13 @@ class BrowserHostInput:
 
     Fixture-only doctrine: production credentials, services, MCP tools, host
     paths, and process commands are forbidden.
+
+    ``payload`` is retained as a recursively canonicalized exact-JSON tree.
+    Each access returns a fresh deep copy so callers cannot mutate retained
+    state, and accepted payloads always ``json.dumps(..., allow_nan=False)``
+    round-trip through ``json.loads``.
     """
 
-    payload: Mapping[str, Any] = field(default_factory=dict)
     fixture_only: bool = True
     uses_production_credentials: bool = False
     uses_production_services: bool = False
@@ -1302,61 +1448,88 @@ class BrowserHostInput:
     selected_host_paths: tuple[str, ...] = ()
     selected_commands: tuple[str, ...] = ()
     selected_executables: tuple[str, ...] = ()
+    _payload_json: str = field(default="{}", repr=False, compare=True)
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.payload, dict):
+    def __init__(
+        self,
+        payload: Mapping[str, Any] | None = None,
+        fixture_only: bool = True,
+        uses_production_credentials: bool = False,
+        uses_production_services: bool = False,
+        uses_production_mcp_tools: bool = False,
+        uses_user_or_legal_data: bool = False,
+        selected_host_paths: tuple[str, ...] = (),
+        selected_commands: tuple[str, ...] = (),
+        selected_executables: tuple[str, ...] = (),
+    ) -> None:
+        if payload is None:
+            payload = {}
+        if type(payload) is not dict:
             raise GuiAuthorityError(
                 "payload must be a JSON object",
                 reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
-                details={"field": "payload", "value_type": type(self.payload).__name__},
+                details={"field": "payload", "value_type": type(payload).__name__},
             )
-        payload = _require_json_object(self.payload, "payload")
-        _assert_json_shape(payload, "payload")
-        object.__setattr__(self, "payload", MappingProxyType(dict(payload)))
-        object.__setattr__(
-            self, "fixture_only", _bool(self.fixture_only, "fixture_only")
+        tree = _canonicalize_json_value(payload, "payload")
+        if type(tree) is not dict:
+            raise GuiAuthorityError(
+                "payload must be a JSON object",
+                reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+                details={"field": "payload"},
+            )
+        # Round-trip through json to prove allow_nan=False serializability and
+        # retain only exact built-in types.
+        encoded = json.dumps(
+            tree, allow_nan=False, separators=(",", ":"), sort_keys=True
         )
+        object.__setattr__(self, "_payload_json", encoded)
+        object.__setattr__(self, "fixture_only", _bool(fixture_only, "fixture_only"))
         object.__setattr__(
             self,
             "uses_production_credentials",
-            _bool(self.uses_production_credentials, "uses_production_credentials"),
+            _bool(uses_production_credentials, "uses_production_credentials"),
         )
         object.__setattr__(
             self,
             "uses_production_services",
-            _bool(self.uses_production_services, "uses_production_services"),
+            _bool(uses_production_services, "uses_production_services"),
         )
         object.__setattr__(
             self,
             "uses_production_mcp_tools",
-            _bool(self.uses_production_mcp_tools, "uses_production_mcp_tools"),
+            _bool(uses_production_mcp_tools, "uses_production_mcp_tools"),
         )
         object.__setattr__(
             self,
             "uses_user_or_legal_data",
-            _bool(self.uses_user_or_legal_data, "uses_user_or_legal_data"),
+            _bool(uses_user_or_legal_data, "uses_user_or_legal_data"),
         )
         object.__setattr__(
             self,
             "selected_host_paths",
-            self._coerce_string_tuple(
-                self.selected_host_paths, "selected_host_paths", wire=False
+            BrowserHostInput._coerce_string_tuple(
+                selected_host_paths, "selected_host_paths", wire=False
             ),
         )
         object.__setattr__(
             self,
             "selected_commands",
-            self._coerce_string_tuple(
-                self.selected_commands, "selected_commands", wire=False
+            BrowserHostInput._coerce_string_tuple(
+                selected_commands, "selected_commands", wire=False
             ),
         )
         object.__setattr__(
             self,
             "selected_executables",
-            self._coerce_string_tuple(
-                self.selected_executables, "selected_executables", wire=False
+            BrowserHostInput._coerce_string_tuple(
+                selected_executables, "selected_executables", wire=False
             ),
         )
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        """Fresh exact-JSON deep copy of the retained canonical payload tree."""
+        return json.loads(self._payload_json)
 
     @staticmethod
     def _coerce_string_tuple(
@@ -1376,10 +1549,11 @@ class BrowserHostInput:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "BrowserHostInput":
-        if not isinstance(raw, Mapping):
+        if type(raw) is not dict:
             raise GuiAuthorityError(
                 "browser_input must be a mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"value_type": type(raw).__name__},
             )
         _reject_unknown(raw, _BROWSER_HOST_INPUT_KEYS, "browser_input")
         for flag in (
@@ -1405,7 +1579,7 @@ class BrowserHostInput:
             )
         else:
             payload = _require_json_object(raw["payload"], "payload")
-            _assert_json_shape(payload, "payload")
+            payload = _canonicalize_json_value(payload, "payload")
 
         selected_host_paths = _optional_json_array(raw, "selected_host_paths")
         selected_commands = _optional_json_array(raw, "selected_commands")
@@ -1468,18 +1642,19 @@ def _walk_forbidden_payload_keys(
 ) -> list[tuple[str, str]]:
     """Return (json_path, classification) for forbidden selectors.
 
-    Accepts dict and mappingproxy (frozen payloads) but never strings/bytes.
+    Operates only on exact built-in dict/list trees (already canonicalized).
     """
     hits = found if found is not None else []
-    if isinstance(value, Mapping) and not isinstance(value, (str, bytes, bytearray)):
+    if type(value) is dict:
         for key, child in value.items():
-            key_text = str(key)
-            child_path = f"{path}.{key_text}" if path else key_text
-            classification = _classify_forbidden_key(key_text)
+            if type(key) is not str:
+                continue
+            child_path = f"{path}.{key}" if path else key
+            classification = _classify_forbidden_key(key)
             if classification is not None:
                 hits.append((child_path, classification))
             _walk_forbidden_payload_keys(child, path=child_path, found=hits)
-    elif isinstance(value, list):
+    elif type(value) is list:
         for index, child in enumerate(value):
             child_path = f"{path}[{index}]"
             _walk_forbidden_payload_keys(child, path=child_path, found=hits)
@@ -1496,7 +1671,11 @@ def _path_candidates(value: str) -> tuple[str, ...]:
 
 
 def _looks_like_host_path(value: str) -> bool:
+    if type(value) is not str:
+        return False
     for text in _path_candidates(value):
+        if not text:
+            continue
         lowered = text.lower()
         if text.startswith("/") or text.startswith("~"):
             return True
@@ -1507,12 +1686,32 @@ def _looks_like_host_path(value: str) -> bool:
             return True
         if _WINDOWS_PATH_RE.match(text):
             return True
+        # Drive-relative forms such as C:secret (no slash after the colon).
+        if _DRIVE_RELATIVE_RE.match(text):
+            return True
         if lowered.startswith("file:"):
+            return True
+        # Relative traversal and dotted parent segments.
+        if ".." in text.replace("\\", "/").split("/"):
+            return True
+        if _RELATIVE_TRAVERSAL_RE.search(text.replace("\\", "/")):
+            # Allow ordinary single-dot path segments only when they are pure
+            # relative traversal patterns (../, ./.., etc.).
+            if ".." in text:
+                return True
+        normalized = text.replace("\\", "/")
+        if normalized.startswith("../") or normalized.startswith("./../"):
+            return True
+        if "/../" in normalized or normalized.endswith("/.."):
+            return True
+        if normalized == ".." or normalized.startswith("..\\"):
             return True
     return False
 
 
 def _looks_like_command(value: str) -> bool:
+    if type(value) is not str:
+        return False
     markers = (
         "&&",
         "||",
@@ -1520,6 +1719,10 @@ def _looks_like_command(value: str) -> bool:
         "`",
         "$(",
         "\n",
+        "\t",
+        "|",
+        ">",
+        "<",
         "sudo ",
         "rm -",
         "curl ",
@@ -1529,21 +1732,35 @@ def _looks_like_command(value: str) -> bool:
         "bash ",
         "sh ",
         "powershell ",
+        "powershell.exe",
         "cmd.exe",
+        "cmd /",
         "cmd.exe ",
     )
     for text in _path_candidates(value):
+        if not text:
+            continue
         lowered = text.lower()
         if any(marker in lowered for marker in markers):
             return True
-        # Encoded forms such as cmd.exe /c after decode.
-        if lowered.startswith("cmd.exe") or " cmd.exe" in lowered:
+        if _COMMAND_EXECUTABLE_RE.search(lowered):
+            return True
+        # Bare cmd /c and powershell -Command forms.
+        if lowered.startswith("cmd ") or lowered.startswith("cmd.exe"):
+            return True
+        if lowered.startswith("powershell") or lowered.startswith("pwsh"):
+            return True
+        if "\t" in text or "|" in text or ">" in text or "<" in text:
             return True
     return False
 
 
 def _looks_like_credential(value: str) -> bool:
+    if type(value) is not str:
+        return False
     for text in _path_candidates(value):
+        if not text:
+            continue
         lowered = text.lower()
         if _CREDENTIAL_VALUE_RE.match(text):
             return True
@@ -1571,16 +1788,30 @@ class GuiHostBoundaryPolicy:
     def __post_init__(self) -> None:
         object.__setattr__(self, "schema", _text(self.schema, "schema"))
         object.__setattr__(self, "interface", _text(self.interface, "interface"))
-        object.__setattr__(
-            self,
-            "forbid_absolute_path_strings",
-            _bool(self.forbid_absolute_path_strings, "forbid_absolute_path_strings"),
-        )
-        object.__setattr__(
-            self,
-            "forbid_command_like_strings",
-            _bool(self.forbid_command_like_strings, "forbid_command_like_strings"),
-        )
+        # Doctrine cannot be weakened through construction: only literal True is
+        # accepted.  False raises rather than silently becoming True.
+        if self.forbid_absolute_path_strings is not True:
+            raise GuiAuthorityError(
+                "forbid_absolute_path_strings must be literal True; "
+                "path value inspection executes unconditionally",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={
+                    "field": "forbid_absolute_path_strings",
+                    "value": self.forbid_absolute_path_strings,
+                },
+            )
+        if self.forbid_command_like_strings is not True:
+            raise GuiAuthorityError(
+                "forbid_command_like_strings must be literal True; "
+                "command value inspection executes unconditionally",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={
+                    "field": "forbid_command_like_strings",
+                    "value": self.forbid_command_like_strings,
+                },
+            )
+        object.__setattr__(self, "forbid_absolute_path_strings", True)
+        object.__setattr__(self, "forbid_command_like_strings", True)
 
     def evaluate(
         self, browser_input: BrowserHostInput | Mapping[str, Any]
@@ -1663,10 +1894,10 @@ class GuiHostBoundaryPolicy:
                 },
             )
 
-        if self.forbid_absolute_path_strings or self.forbid_command_like_strings:
-            string_hits = self._scan_string_values(payload_input.payload)
-            if string_hits:
-                return string_hits
+        # Path, command, and credential value inspection execute unconditionally.
+        string_hits = self._scan_string_values(payload_input.payload)
+        if string_hits:
+            return string_hits
 
         return _decision(
             AuthorityVerdict.ALLOW,
@@ -1679,25 +1910,23 @@ class GuiHostBoundaryPolicy:
     def _scan_string_values(
         self, value: Any, *, path: str = ""
     ) -> AuthorityDecision | None:
-        # Mappingproxy-frozen payloads must still be inspected.
-        if isinstance(value, Mapping) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        # Operate only on the same recursively canonicalized retained tree.
+        if type(value) is dict:
             for key, child in value.items():
-                child_path = f"{path}.{key}" if path else str(key)
+                child_path = f"{path}.{key}" if path else key
                 hit = self._scan_string_values(child, path=child_path)
                 if hit is not None:
                     return hit
             return None
-        if isinstance(value, list):
+        if type(value) is list:
             for index, child in enumerate(value):
                 hit = self._scan_string_values(child, path=f"{path}[{index}]")
                 if hit is not None:
                     return hit
             return None
-        if not isinstance(value, str):
+        if type(value) is not str:
             return None
-        if self.forbid_absolute_path_strings and _looks_like_host_path(value):
+        if _looks_like_host_path(value):
             return _decision(
                 AuthorityVerdict.REJECT,
                 AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN,
@@ -1706,7 +1935,7 @@ class GuiHostBoundaryPolicy:
                 message="browser payload must not embed host filesystem paths",
                 details={"path": path, "value": value},
             )
-        if self.forbid_command_like_strings and _looks_like_command(value):
+        if _looks_like_command(value):
             return _decision(
                 AuthorityVerdict.REJECT,
                 AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN,
@@ -1729,12 +1958,13 @@ class GuiHostBoundaryPolicy:
     def _coerce_input(
         self, browser_input: BrowserHostInput | Mapping[str, Any]
     ) -> BrowserHostInput:
-        if isinstance(browser_input, BrowserHostInput):
+        if type(browser_input) is BrowserHostInput:
             return browser_input
-        if not isinstance(browser_input, Mapping):
+        if type(browser_input) is not dict:
             raise GuiAuthorityError(
                 "browser_input must be a BrowserHostInput or mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"value_type": type(browser_input).__name__},
             )
         return BrowserHostInput.from_mapping(browser_input)
 
@@ -1762,7 +1992,13 @@ class AuthorityEvidence:
     notes: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "kind", _as_evidence_kind(self.kind))
+        # Direct constructors may pass typed Enum members; wire path uses
+        # from_mapping which forces exact-string kinds first.
+        if type(self.kind) is AuthorityEvidenceKind:
+            kind = self.kind
+        else:
+            kind = _as_evidence_kind(self.kind, wire=False)
+        object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "valid", _bool(self.valid, "valid"))
         if self.evidence_id is None:
             raise GuiAuthorityError(
@@ -1819,26 +2055,24 @@ class AuthorityEvidence:
         object.__setattr__(
             self, "policy_fresh", _bool(self.policy_fresh, "policy_fresh")
         )
-        if not isinstance(self.notes, str):
-            raise GuiAuthorityError(
-                "notes must be a string",
-                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
-                details={"field": "notes", "value_type": type(self.notes).__name__},
-            )
-        if "\x00" in self.notes:
+        notes = _exact_str(self.notes, "notes")
+        if "\x00" in notes:
             raise GuiAuthorityError(
                 "notes must not contain NUL",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
                 details={"field": "notes"},
             )
-        object.__setattr__(self, "notes", self.notes)
+        object.__setattr__(self, "notes", notes)
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any], *, index: int = 0) -> "AuthorityEvidence":
-        if not isinstance(raw, Mapping):
+        # Exact-dict check before any attribute introspection so subclass-
+        # controlled RuntimeError is a test failure rather than accepted rejection.
+        if type(raw) is not dict:
             raise GuiAuthorityError(
-                f"evidence[{index}] must be a mapping",
+                f"evidence[{index}] must be a JSON object",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+                details={"value_type": type(raw).__name__},
             )
         _reject_unknown(raw, _AUTHORITY_EVIDENCE_KEYS, f"evidence[{index}]")
         if "valid" not in raw:
@@ -1863,11 +2097,19 @@ class AuthorityEvidence:
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
                 details={"field": "kind", "value_type": "NoneType"},
             )
-        if "evidence_id" not in raw or raw["evidence_id"] is None:
+        # Wire kinds are exact built-in strings only (Enums reject).
+        kind = _as_evidence_kind(raw["kind"], wire=True)
+        if "evidence_id" not in raw:
             raise GuiAuthorityError(
                 "authority evidence requires a nonempty identity",
                 reason_code=AuthorityReasonCode.EVIDENCE_IDENTITY_REQUIRED.value,
                 details={"field": "evidence_id"},
+            )
+        if raw["evidence_id"] is None:
+            raise GuiAuthorityError(
+                "evidence_id must not be null when present",
+                reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"field": "evidence_id", "value_type": "NoneType"},
             )
         if "policy_fresh" in raw and raw["policy_fresh"] is None:
             raise GuiAuthorityError(
@@ -1876,7 +2118,7 @@ class AuthorityEvidence:
                 details={"field": "policy_fresh", "value_type": "NoneType"},
             )
         return cls(
-            kind=raw["kind"],
+            kind=kind,
             valid=_bool(raw["valid"], f"evidence[{index}].valid"),
             evidence_id=raw["evidence_id"],
             binds_action_id=_optional_identifier(raw, "binds_action_id"),
@@ -2015,8 +2257,9 @@ class AcceptanceAuthorityRequest:
                 reason_code=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
                 details={"field": "change_kinds"},
             )
+        # Direct constructors may pass typed Enum members; wire uses from_mapping.
         kinds = tuple(
-            _as_change_kind(kind)
+            _as_change_kind(kind, wire=False)
             for kind in _require_python_sequence(self.change_kinds, "change_kinds")
         )
         object.__setattr__(self, "change_kinds", kinds)
@@ -2030,14 +2273,15 @@ class AcceptanceAuthorityRequest:
         for index, item in enumerate(
             _require_python_sequence(self.evidence, "evidence")
         ):
-            if isinstance(item, AuthorityEvidence):
+            if type(item) is AuthorityEvidence:
                 evidence_items.append(item)
-            elif isinstance(item, Mapping):
+            elif type(item) is dict:
                 evidence_items.append(AuthorityEvidence.from_mapping(item, index=index))
             else:
                 raise GuiAuthorityError(
-                    "evidence items must be AuthorityEvidence or mappings",
+                    "evidence items must be AuthorityEvidence or exact JSON objects",
                     reason_code=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+                    details={"value_type": type(item).__name__},
                 )
         object.__setattr__(self, "evidence", tuple(evidence_items))
         object.__setattr__(
@@ -2050,16 +2294,16 @@ class AcceptanceAuthorityRequest:
             "security_regression",
             _bool(self.security_regression, "security_regression"),
         )
-        if self.host_boundary_decision is not None and not isinstance(
-            self.host_boundary_decision, AuthorityDecision
-        ):
+        if self.host_boundary_decision is not None and type(
+            self.host_boundary_decision
+        ) is not AuthorityDecision:
             raise GuiAuthorityError(
                 "host_boundary_decision must be an AuthorityDecision",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
             )
-        if self.patch_authority_decision is not None and not isinstance(
-            self.patch_authority_decision, AuthorityDecision
-        ):
+        if self.patch_authority_decision is not None and type(
+            self.patch_authority_decision
+        ) is not AuthorityDecision:
             raise GuiAuthorityError(
                 "patch_authority_decision must be an AuthorityDecision",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
@@ -2067,10 +2311,11 @@ class AcceptanceAuthorityRequest:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "AcceptanceAuthorityRequest":
-        if not isinstance(raw, Mapping):
+        if type(raw) is not dict:
             raise GuiAuthorityError(
                 "request must be a mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"value_type": type(raw).__name__},
             )
         _reject_unknown(raw, _ACCEPTANCE_REQUEST_KEYS, "acceptance_request")
         for flag in (
@@ -2089,7 +2334,24 @@ class AcceptanceAuthorityRequest:
                     reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
                     details={"field": flag, "value_type": "NoneType"},
                 )
-        evidence = _optional_json_array(raw, "evidence")
+        evidence_raw = _optional_json_array(raw, "evidence")
+        evidence_items: tuple[AuthorityEvidence, ...]
+        if evidence_raw is None:
+            evidence_items = ()
+        else:
+            parsed: list[AuthorityEvidence] = []
+            for index, item in enumerate(evidence_raw):
+                # Every evidence-array wire entry is an exact JSON object.
+                # Model/dataclass instances and dict subclasses reject before
+                # attribute introspection.
+                if type(item) is not dict:
+                    raise GuiAuthorityError(
+                        f"evidence[{index}] must be a JSON object",
+                        reason_code=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+                        details={"value_type": type(item).__name__},
+                    )
+                parsed.append(AuthorityEvidence.from_mapping(item, index=index))
+            evidence_items = tuple(parsed)
         return cls(
             intended_action_id=_optional_identifier(raw, "intended_action_id"),
             intended_argument_digest=_optional_digest(raw, "intended_argument_digest"),
@@ -2112,7 +2374,7 @@ class AcceptanceAuthorityRequest:
                 raw, "confirmation_granted", False
             ),
             change_kinds=_optional_change_kinds(raw),
-            evidence=() if evidence is None else tuple(evidence),
+            evidence=evidence_items,
             accessibility_regression=_optional_mapping_bool(
                 raw, "accessibility_regression", False
             ),
@@ -2558,12 +2820,13 @@ class GuiAcceptanceAuthority:
     def _coerce_request(
         self, request: AcceptanceAuthorityRequest | Mapping[str, Any]
     ) -> AcceptanceAuthorityRequest:
-        if isinstance(request, AcceptanceAuthorityRequest):
+        if type(request) is AcceptanceAuthorityRequest:
             return request
-        if not isinstance(request, Mapping):
+        if type(request) is not dict:
             raise GuiAuthorityError(
                 "request must be an AcceptanceAuthorityRequest or mapping",
                 reason_code=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+                details={"value_type": type(request).__name__},
             )
         return AcceptanceAuthorityRequest.from_mapping(request)
 
@@ -2640,7 +2903,7 @@ class GuiOptimizerSecurityAuthority:
 
         claim_kinds = _claim_change_kinds(claims)
 
-        if isinstance(acceptance, AcceptanceAuthorityRequest):
+        if type(acceptance) is AcceptanceAuthorityRequest:
             # Claim-derived kinds cannot be stripped by acceptance input.
             merged_kinds = tuple(
                 dict.fromkeys((*claim_kinds, *acceptance.change_kinds))

@@ -19,8 +19,8 @@ Acceptance coverage:
 * claim-derived change kinds and computed decisions override acceptance input
 * authority evidence has nonempty identity and is current + action-bound
 * a scope declaration alone is never host authority
-* WIRE_TYPE_CASES has exactly 214 unique IDs (exact Cartesian products)
-* AUTHORIZATION_CASES has exactly 27 unique IDs
+* WIRE_TYPE_CASES has exactly 221 unique IDs (exact Cartesian products)
+* AUTHORIZATION_CASES has exactly 49 unique IDs
 """
 
 from __future__ import annotations
@@ -1174,6 +1174,26 @@ def test_present_null_scalars_reject() -> None:
         ), field
 
 
+def test_evidence_id_missing_and_present_null_have_distinct_reasons() -> None:
+    base = {"kind": "contract_verification", "valid": True}
+
+    with pytest.raises(GuiAuthorityError) as missing_exc:
+        GuiAcceptanceAuthority().evaluate({"evidence": [base]})
+    assert (
+        missing_exc.value.reason_code
+        == AuthorityReasonCode.EVIDENCE_IDENTITY_REQUIRED.value
+    )
+
+    with pytest.raises(GuiAuthorityError) as null_exc:
+        GuiAcceptanceAuthority().evaluate(
+            {"evidence": [{**base, "evidence_id": None}]}
+        )
+    assert (
+        null_exc.value.reason_code
+        == AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value
+    )
+
+
 def test_arbitrary_equal_noncanonical_digests_never_authorize() -> None:
     """Matching non-canonical digests must not authorize."""
     with pytest.raises(GuiAuthorityError) as exc:
@@ -1199,7 +1219,41 @@ def test_arbitrary_equal_noncanonical_digests_never_authorize() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WIRE_TYPE_CASES — exact Cartesian products (214 unique IDs)
+# Adversarial built-in subclasses used by sealed recursive/authorization cases.
+# ---------------------------------------------------------------------------
+
+
+class _AdversarialDict(dict):
+    pass
+
+
+class _AdversarialList(list):
+    pass
+
+
+class _AdversarialStr(str):
+    pass
+
+
+class _ClaimsSequence(list):
+    pass
+
+
+class _RootsSequence(tuple):
+    def __bool__(self) -> bool:  # pragma: no cover - must never be invoked
+        raise RuntimeError("sequence subclass truthiness accessed")
+
+    def __iter__(self):  # pragma: no cover - must never be invoked
+        raise RuntimeError("sequence subclass iteration accessed")
+
+
+class _EvidenceDict(dict):
+    def __getattribute__(self, name: str) -> Any:  # pragma: no cover
+        raise RuntimeError(f"evidence subclass attribute accessed: {name}")
+
+
+# ---------------------------------------------------------------------------
+# WIRE_TYPE_CASES — exact Cartesian products (221 unique IDs)
 # ---------------------------------------------------------------------------
 
 _STRING_TYPE_BAD: dict[str, Any] = {
@@ -1414,7 +1468,7 @@ def _build_wire_type_cases() -> list[dict[str, Any]]:
                 }
             )
 
-    # Exactly three recursive-shape cases.
+    # Exactly ten recursive-shape cases.
     cases.extend(
         [
             {
@@ -1441,6 +1495,62 @@ def _build_wire_type_cases() -> list[dict[str, Any]]:
                 "value": {"items": {1, 2}},
                 "group": "recursive",
             },
+            {
+                "id": "wire:recursive:nested_nan",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "nested_nan",
+                "value": {"x": float("nan")},
+                "group": "recursive",
+            },
+            {
+                "id": "wire:recursive:nested_positive_infinity",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "nested_positive_infinity",
+                "value": {"x": float("inf")},
+                "group": "recursive",
+            },
+            {
+                "id": "wire:recursive:nested_negative_infinity",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "nested_negative_infinity",
+                "value": {"x": float("-inf")},
+                "group": "recursive",
+            },
+            {
+                "id": "wire:recursive:adversarial_dict_subclass",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "adversarial_dict_subclass",
+                "value": {"x": _AdversarialDict(y=1)},
+                "group": "recursive",
+            },
+            {
+                "id": "wire:recursive:adversarial_list_subclass",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "adversarial_list_subclass",
+                "value": {"x": _AdversarialList([1])},
+                "group": "recursive",
+            },
+            {
+                "id": "wire:recursive:adversarial_string_value_subclass",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "adversarial_string_value_subclass",
+                "value": {"x": _AdversarialStr("value")},
+                "group": "recursive",
+            },
+            {
+                "id": "wire:recursive:adversarial_string_key_subclass",
+                "owner": "BrowserHostInput",
+                "field": "payload",
+                "category": "adversarial_string_key_subclass",
+                "value": {_AdversarialStr("x"): 1},
+                "group": "recursive",
+            },
         ]
     )
     return cases
@@ -1451,11 +1561,11 @@ WIRE_TYPE_CASES: list[dict[str, Any]] = _build_wire_type_cases()
 
 def test_wire_type_cases_manifest_is_exact_cartesian_product() -> None:
     """Assert exact field/category Cartesian products with no padding."""
-    expected_ids = {case["id"] for case in _build_wire_type_cases()}
-    actual_ids = {case["id"] for case in WIRE_TYPE_CASES}
-    assert actual_ids == expected_ids
-    assert len(WIRE_TYPE_CASES) == 214
-    assert len(actual_ids) == 214
+    built = _build_wire_type_cases()
+    expected_ids = {case["id"] for case in built}
+    assert len(built) == 221
+    assert len(expected_ids) == 221
+    assert len(WIRE_TYPE_CASES) == 221
 
     # Decomposition from Evidence subset.
     assert len(_STRING_FIELDS) * len(_STRING_TYPE_BAD) == 65
@@ -1463,9 +1573,9 @@ def test_wire_type_cases_manifest_is_exact_cartesian_product() -> None:
     assert len(_ARRAY_FIELDS) * len(_ARRAY_TYPE_BAD) == 36
     assert len(_PAYLOAD_TYPE_BAD) == 6
     assert len(_DIGEST_FIELDS) * len(_DIGEST_GRAMMAR_BAD) == 24
-    recursive = [c for c in WIRE_TYPE_CASES if c["group"] == "recursive"]
-    assert len(recursive) == 3
-    assert 65 + 80 + 36 + 6 + 24 + 3 == 214
+    recursive = [c for c in built if c["group"] == "recursive"]
+    assert len(recursive) == 10
+    assert 65 + 80 + 36 + 6 + 24 + 10 == 221
 
 
 @pytest.mark.parametrize(
@@ -1488,8 +1598,35 @@ def test_wire_type_case_rejects(case: dict[str, Any]) -> None:
     }
 
 
+@pytest.mark.parametrize("key", [1, _AdversarialStr("x")])
+def test_nested_non_exact_string_keys_are_collection_type_errors(key: Any) -> None:
+    with pytest.raises(GuiAuthorityError) as exc:
+        _apply_wire_case(
+            "BrowserHostInput",
+            "payload",
+            {"nested": {key: "value"}},
+        )
+    assert (
+        exc.value.reason_code
+        == AuthorityReasonCode.INVALID_COLLECTION_TYPE.value
+    )
+
+
+def test_root_non_exact_string_key_is_a_collection_type_error() -> None:
+    with pytest.raises(GuiAuthorityError) as exc:
+        _apply_wire_case(
+            "BrowserHostInput",
+            "payload",
+            {_AdversarialStr("x"): "value"},
+        )
+    assert (
+        exc.value.reason_code
+        == AuthorityReasonCode.INVALID_COLLECTION_TYPE.value
+    )
+
+
 # ---------------------------------------------------------------------------
-# AUTHORIZATION_CASES — exactly 27 unique IDs
+# AUTHORIZATION_CASES — exactly 49 unique IDs
 # ---------------------------------------------------------------------------
 
 
@@ -1569,7 +1706,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             )
         )
 
-    # 11 strict coercion
     cases.append(
         _auth_error(
             "auth:strict_coercion:string_boolean",
@@ -1579,7 +1715,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
         )
     )
-    # 12 unknown field
     cases.append(
         _auth_error(
             "auth:unknown_field",
@@ -1589,7 +1724,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.UNKNOWN_FIELD.value,
         )
     )
-    # 13 unbound caller policy
     cases.append(
         _auth_decision(
             "auth:caller_policy_unbound",
@@ -1604,7 +1738,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.CALLER_POLICY_NOT_AUTHORITY.value,
         )
     )
-    # 14 digest uppercase
     cases.append(
         _auth_error(
             "auth:digest_grammar:uppercase",
@@ -1617,7 +1750,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.NONCANONICAL_ARGUMENT_DIGEST.value,
         )
     )
-    # 15 digest not-canonical equal
     cases.append(
         _auth_error(
             "auth:digest_grammar:not_canonical_equal",
@@ -1639,7 +1771,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.NONCANONICAL_ARGUMENT_DIGEST.value,
         )
     )
-    # 16 recursive JSON shape
     cases.append(
         _auth_error(
             "auth:recursive_json_shape",
@@ -1655,7 +1786,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             BrowserHostInput(payload=payload)
         )
 
-    # 17 percent/double-encoded selector key + encoded alias + path value
     cases.append(
         _auth_decision(
             "auth:encoded_selector:host_path_encoded_double",
@@ -1669,7 +1799,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
         )
     )
-    # 18 workingDirectoryEncoded
     cases.append(
         _auth_decision(
             "auth:encoded_selector:workingDirectoryEncoded",
@@ -1677,7 +1806,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
         )
     )
-    # 19 fileUriEncoded FILE URI
     cases.append(
         _auth_decision(
             "auth:encoded_selector:fileUriEncoded",
@@ -1685,7 +1813,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
         )
     )
-    # 20 credentialEncoded
     cases.append(
         _auth_decision(
             "auth:encoded_selector:credentialEncoded",
@@ -1693,7 +1820,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_CREDENTIAL_FORBIDDEN.value,
         )
     )
-    # 21 generic target path-looking value
     cases.append(
         _auth_decision(
             "auth:value:generic_target_path",
@@ -1701,7 +1827,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
         )
     )
-    # 22 UNC + percent-encoded Windows path
     cases.append(
         _auth_decision(
             "auth:value:unc_and_encoded_windows",
@@ -1709,7 +1834,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
         )
     )
-    # 23 encoded command
     cases.append(
         _auth_decision(
             "auth:value:encoded_command",
@@ -1717,7 +1841,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN.value,
         )
     )
-    # 24 encoded credential value + named path/command/credential aliases
     cases.append(
         _auth_decision(
             "auth:value:encoded_credential_and_aliases",
@@ -1733,11 +1856,9 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
                     "credential": "token",
                 }
             ),
-            # Credential classification wins when path/command/credential keys coexist.
             reason=AuthorityReasonCode.BROWSER_CREDENTIAL_FORBIDDEN.value,
         )
     )
-    # 25 evidence binding mismatch
     cases.append(
         _auth_decision(
             "auth:evidence_binding_mismatch",
@@ -1759,7 +1880,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.EVIDENCE_BINDING_MISMATCH.value,
         )
     )
-    # 26 evidence freshness
     cases.append(
         _auth_decision(
             "auth:evidence_not_current",
@@ -1782,9 +1902,8 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.EVIDENCE_NOT_CURRENT.value,
         )
     )
-    # 27 scope-not-authority + computed-decision override (combined runner)
+
     def _scope_and_override() -> Any:
-        # Scope alone never authorizes.
         scope = GuiAcceptanceAuthority().evaluate(
             AcceptanceAuthorityRequest(
                 intended_action_id="dispatch_task",
@@ -1802,7 +1921,6 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             scope.reason_codes
         ):
             return scope
-        # Computed host decision overrides forged acceptance ALLOW.
         authority = default_security_authority()
         forged = GuiPatchAuthority().evaluate_path(
             "swissknife/web/js/apps/agent-supervisor.js"
@@ -1839,35 +1957,320 @@ def _build_authorization_cases_exact() -> list[dict[str, Any]]:
             reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
         )
     )
+
+    # --- 22 mandatory sealed authorization IDs ---
+    cases.append(
+        _auth_error(
+            "auth:policy_configuration:path_scan_not_disableable",
+            lambda: GuiHostBoundaryPolicy(forbid_absolute_path_strings=False),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:policy_configuration:command_scan_not_disableable",
+            lambda: GuiHostBoundaryPolicy(forbid_command_like_strings=False),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:policy_configuration:credential_scan_not_disableable",
+            lambda: GuiHostBoundaryPolicy(
+                forbid_absolute_path_strings=False,
+                forbid_command_like_strings=False,
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:string_subclass_cannot_forge_action_or_digest_binding",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "intended_action_id": _AdversarialStr("dispatch_task"),
+                    "intended_argument_digest": DIGEST_A,
+                    "evidence": [
+                        {
+                            "kind": "contract_verification",
+                            "valid": True,
+                            "evidence_id": "e",
+                            "binds_action_id": "dispatch_task",
+                            "binds_argument_digest": DIGEST_A,
+                        }
+                    ],
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:string_subclass_cannot_forge_confirmation_binding",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "intended_action_id": "dispatch_task",
+                    "intended_argument_digest": DIGEST_A,
+                    "confirmation_required": True,
+                    "confirmation_granted": True,
+                    "confirmation_action_id": _AdversarialStr("dispatch_task"),
+                    "confirmation_argument_digest": DIGEST_A,
+                    "evidence": [
+                        {
+                            "kind": "contract_verification",
+                            "valid": True,
+                            "evidence_id": "e",
+                            "binds_action_id": "dispatch_task",
+                            "binds_argument_digest": DIGEST_A,
+                        }
+                    ],
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:string_subclass_cannot_forge_nonempty_evidence_identity",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "evidence": [
+                        {
+                            "kind": "scope_declaration",
+                            "valid": True,
+                            "evidence_id": _AdversarialStr("e"),
+                        }
+                    ]
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:string_subclass_cannot_forge_policy_decision_binding",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "policy_decision_id": _AdversarialStr("p"),
+                    "policy_fresh": False,
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_decision(
+            "auth:value:generic_target_relative_traversal",
+            _br({"target": ".\\..\\secret"}),
+            reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
+        )
+    )
+    cases.append(
+        _auth_decision(
+            "auth:value:windows_drive_relative_path",
+            _br({"target": "C:secret"}),
+            reason=AuthorityReasonCode.BROWSER_HOST_PATH_FORBIDDEN.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:direct_patch_change_kinds_null",
+            lambda: GuiPatchAuthority().evaluate_change_kinds(None),
+            reason=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+        )
+    )
+    cases.append(
+        _auth_decision(
+            "auth:value:cmd_without_exe",
+            _br({"x": "cmd /c whoami"}),
+            reason=AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN.value,
+        )
+    )
+    cases.append(
+        _auth_decision(
+            "auth:value:powershell_exe",
+            _br({"x": "powershell.exe -c whoami"}),
+            reason=AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN.value,
+        )
+    )
+    cases.append(
+        _auth_decision(
+            "auth:value:shell_whitespace_and_metacharacters",
+            _br({"x": "sh\t-c\tid|whoami"}),
+            reason=AuthorityReasonCode.BROWSER_COMMAND_FORBIDDEN.value,
+        )
+    )
+    cases.append(
+        _auth_decision(
+            "auth:key:extended_credential_aliases",
+            _br(
+                {
+                    "accessToken": "x",
+                    "authToken": "x",
+                    "clientSecret": "x",
+                    "privateKey": "x",
+                    "sessionToken": "x",
+                    "refreshToken": "x",
+                    "authorizationHeader": "x",
+                    "apiToken": "x",
+                    "oauthToken": "x",
+                }
+            ),
+            reason=AuthorityReasonCode.BROWSER_CREDENTIAL_FORBIDDEN.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:direct_claims_sequence_subclass_rejected",
+            lambda: GuiPatchAuthority().evaluate_claims(
+                _ClaimsSequence(
+                    [{"path": "swissknife/web/js/apps/agent-supervisor.js"}]
+                )
+            ),
+            reason=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:patch_allowed_roots_string_subclass_rejected",
+            lambda: GuiPatchAuthority(
+                allowed_roots=(_AdversarialStr("swissknife/"),)
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:wire_enum_evidence_kind_rejected",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "evidence": [
+                        {
+                            "kind": AuthorityEvidenceKind.SCOPE_DECLARATION,
+                            "valid": True,
+                            "evidence_id": "e",
+                        }
+                    ]
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:wire_enum_patch_change_kind_rejected",
+            lambda: GuiPatchAuthority().evaluate_claims(
+                [
+                    {
+                        "path": "swissknife/web/js/apps/agent-supervisor.js",
+                        "change_kinds": [
+                            ForbiddenChangeKind.BACKEND_AUTHORIZATION
+                        ],
+                    }
+                ]
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:wire_enum_acceptance_change_kind_rejected",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "change_kinds": [
+                        ForbiddenChangeKind.BACKEND_AUTHORIZATION
+                    ]
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_INPUT.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:wire_model_evidence_entry_rejected",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "evidence": [
+                        AuthorityEvidence(
+                            kind=AuthorityEvidenceKind.SCOPE_DECLARATION,
+                            valid=True,
+                            evidence_id="e",
+                        )
+                    ]
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:patch_allowed_roots_sequence_subclass_rejected_before_truthiness",
+            lambda: GuiPatchAuthority(
+                allowed_roots=_RootsSequence(("swissknife/",))
+            ),
+            reason=AuthorityReasonCode.INVALID_COLLECTION_TYPE.value,
+        )
+    )
+    cases.append(
+        _auth_error(
+            "auth:wire_evidence_dict_subclass_rejected_before_attribute_access",
+            lambda: GuiAcceptanceAuthority().evaluate(
+                {
+                    "intended_action_id": "dispatch_task",
+                    "intended_argument_digest": DIGEST_A,
+                    "evidence": [
+                        _EvidenceDict(
+                            {
+                                "kind": "contract_verification",
+                                "valid": True,
+                                "evidence_id": "e",
+                                "binds_action_id": "dispatch_task",
+                                "binds_argument_digest": DIGEST_A,
+                            }
+                        )
+                    ],
+                }
+            ),
+            reason=AuthorityReasonCode.INVALID_AUTHORITY_EVIDENCE.value,
+        )
+    )
     return cases
 
 
 AUTHORIZATION_CASES: list[dict[str, Any]] = _build_authorization_cases_exact()
 
 
-def test_authorization_cases_manifest_has_exactly_27_unique_ids() -> None:
-    ids = [case["id"] for case in AUTHORIZATION_CASES]
-    assert len(ids) == 27
-    assert len(set(ids)) == 27
-    # Required topic coverage markers appear in case ids.
-    joined = " ".join(ids)
-    assert "present_null" in joined
-    assert "strict_coercion" in joined
-    assert "unknown_field" in joined
-    assert "caller_policy" in joined
-    assert "digest_grammar" in joined
-    assert "recursive_json_shape" in joined
-    assert "host_path_encoded" in joined
-    assert "workingDirectoryEncoded" in joined
-    assert "fileUriEncoded" in joined
-    assert "credentialEncoded" in joined
-    assert "generic_target" in joined
-    assert "unc" in joined
-    assert "encoded_command" in joined
-    assert "encoded_credential" in joined
-    assert "evidence_binding" in joined or "evidence_not_current" in joined
-    assert "scope" in joined
-    assert "override" in joined
+def test_authorization_cases_manifest_has_exactly_49_unique_ids() -> None:
+    built = _build_authorization_cases_exact()
+    ids = [case["id"] for case in built]
+    assert len(ids) == 49
+    assert len(set(ids)) == 49
+    assert len(AUTHORIZATION_CASES) == 49
+    mandatory = {
+        "auth:policy_configuration:path_scan_not_disableable",
+        "auth:policy_configuration:command_scan_not_disableable",
+        "auth:policy_configuration:credential_scan_not_disableable",
+        "auth:string_subclass_cannot_forge_action_or_digest_binding",
+        "auth:string_subclass_cannot_forge_confirmation_binding",
+        "auth:string_subclass_cannot_forge_nonempty_evidence_identity",
+        "auth:string_subclass_cannot_forge_policy_decision_binding",
+        "auth:value:generic_target_relative_traversal",
+        "auth:value:windows_drive_relative_path",
+        "auth:direct_patch_change_kinds_null",
+        "auth:value:cmd_without_exe",
+        "auth:value:powershell_exe",
+        "auth:value:shell_whitespace_and_metacharacters",
+        "auth:key:extended_credential_aliases",
+        "auth:direct_claims_sequence_subclass_rejected",
+        "auth:patch_allowed_roots_string_subclass_rejected",
+        "auth:wire_enum_evidence_kind_rejected",
+        "auth:wire_enum_patch_change_kind_rejected",
+        "auth:wire_enum_acceptance_change_kind_rejected",
+        "auth:wire_model_evidence_entry_rejected",
+        "auth:patch_allowed_roots_sequence_subclass_rejected_before_truthiness",
+        "auth:wire_evidence_dict_subclass_rejected_before_attribute_access",
+    }
+    assert mandatory.issubset(set(ids))
 
 
 @pytest.mark.parametrize(
