@@ -29,8 +29,14 @@
   },
   "initial_projection": {
     "task_count": 57,
-    "completed_task_ids": ["IPS-000"],
-    "ready_task_ids": ["IPS-001", "IPS-002", "IPS-003"],
+    "completed_task_ids": [
+      "IPS-000"
+    ],
+    "ready_task_ids": [
+      "IPS-001",
+      "IPS-002",
+      "IPS-003"
+    ],
     "blocked_task_ids": [],
     "terminal_task_id": "IPS-056",
     "goal_count": 14,
@@ -55,129 +61,21 @@
   "implementation_max_timeout_seconds": 14400,
   "implementation_log_stall_seconds": 1200,
   "validation_max_workers": 3,
-  "worktree_submodule_paths": ["ipfs_datasets_py", "ipfs_kit_py"],
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py",
+    "ipfs_kit_py"
+  ],
   "protected_paths": [
     ".gitignore",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/datasets.json",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/kit.json",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-core-15-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-wide-36-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-cross-repo-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-migration-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-proof-cache-adapters-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-broad-safe-current-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-focused-current-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-unit-wide-current-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-agent-receipts-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-coordination-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-iroh-release-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-modern-wal-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-profile-d-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-certificate-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-reuse-bootstrap-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-release-receipt-20260812T031935.673552Z-1526669.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-reuse-capabilities-20260812T031935.673552Z-1526669.log",
-    "config/agent_supervisor_incremental_proof_sealer_scheduler.json",
-    "config/incremental_proof_sealer_baseline_suite_registry.json",
     "docs/architecture/INCREMENTAL_PROOF_SEALER_PLAN.md",
     "docs/architecture/incremental_proof_sealer.objectives.md",
     "docs/architecture/incremental_proof_sealer.todo.md",
-    "scripts/capture_incremental_proof_sealer_baselines.py",
-    "scripts/validate_incremental_proof_sealer_board.py"
+    "config/agent_supervisor_incremental_proof_sealer_scheduler.json",
+    "config/incremental_proof_sealer_baseline_suite_registry.json",
+    "scripts/validate_incremental_proof_sealer_board.py",
+    "scripts/capture_incremental_proof_sealer_baselines.py"
   ],
-  "operator_baseline_receipts": {
-    "IPS-001": {
-      "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
-      "planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
-      "receipt_digest": "sha256:2e71eb7a569a2d0187cc5c217cf186418f6cf4ce88448ad5070564679b98f21b",
-      "required_command_ids": [
-        "accelerate-proof-focused-core-15",
-        "accelerate-proof-focused-wide-36",
-        "accelerate-proof-reuse-migration",
-        "accelerate-proof-reuse-cross-repo"
-      ],
-      "retained_log_paths": [
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-core-15-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-wide-36-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-migration-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-cross-repo-20260812T031935.673552Z-1526669.log"
-      ],
-      "source_revision": "b0ddd9c59b940873b1be9d8a07463816172641ad",
-      "source_tree": "09330ce3aeb20cc059af79e54f6f72bd014cbbf8",
-      "suite_definition_digests": {
-        "accelerate-proof-focused-core-15": "sha256:c6701b3552e88b61e11e86907ea24863fd233401bec1cfdcddb2d44874eb157f",
-        "accelerate-proof-focused-wide-36": "sha256:92e1f8df4d56363f6899b29c797d9d34013a859e1504a9e018897dbd48cc09fb",
-        "accelerate-proof-reuse-cross-repo": "sha256:0c1510628b48aab11c76287d9adbf942253bb269bd792507b4897bc4732e471b",
-        "accelerate-proof-reuse-migration": "sha256:ca91a14fa1a51f07b5c61846fe71f85a921c57c52d6d95e0654c11eaddab9d45"
-      }
-    },
-    "IPS-002": {
-      "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/datasets.json",
-      "planning_revision": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
-      "receipt_digest": "sha256:935606bea2a215ad99563c6fccc5da10a8bb5a8e5e72129f4318b2b5615ee539",
-      "required_command_ids": [
-        "datasets-zkp-focused-current",
-        "datasets-zkp-unit-wide-current",
-        "datasets-proof-cache-adapters",
-        "datasets-zkp-broad-safe-current"
-      ],
-      "retained_log_paths": [
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-focused-current-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-unit-wide-current-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-proof-cache-adapters-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-broad-safe-current-20260812T031935.673552Z-1526669.log"
-      ],
-      "source_revision": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
-      "source_tree": "ec59c4527dd442e6318c24a79a9f4ad80b4548a9",
-      "suite_definition_digests": {
-        "datasets-proof-cache-adapters": "sha256:a726bc186495c05852518d2d4036920f7c94c5f94fd339b10350eaaca3ab57bc",
-        "datasets-zkp-broad-safe-current": "sha256:bb2b89fd5e717ea8cc7a977f7a2e26f958151e1e1a1ffa14365c97c4cb387802",
-        "datasets-zkp-focused-current": "sha256:698e8b10542034fe7d993371efcf1479edfd1c09a06d94610215702a9eda4fa4",
-        "datasets-zkp-unit-wide-current": "sha256:04a74051a55e1fc36eaa3b1e12a41fc58cb8e04fc27938b8f4f89af7bd9dad02"
-      }
-    },
-    "IPS-003": {
-      "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/kit.json",
-      "planning_revision": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
-      "receipt_digest": "sha256:457285de920656ca15ec24d1222582d72c6de2bf422a91bc195687ae7dd0aa4f",
-      "required_command_ids": [
-        "kit-proof-certificate",
-        "kit-reuse-capabilities",
-        "kit-profile-d",
-        "kit-coordination",
-        "kit-modern-wal",
-        "kit-proof-reuse-bootstrap",
-        "kit-agent-receipts",
-        "kit-iroh-release",
-        "kit-release-receipt"
-      ],
-      "retained_log_paths": [
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-certificate-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-reuse-capabilities-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-profile-d-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-coordination-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-modern-wal-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-reuse-bootstrap-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-agent-receipts-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-iroh-release-20260812T031935.673552Z-1526669.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-release-receipt-20260812T031935.673552Z-1526669.log"
-      ],
-      "source_revision": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
-      "source_tree": "55e8dd7139658e23ba0f278e70a28b118f0aee3f",
-      "suite_definition_digests": {
-        "kit-agent-receipts": "sha256:8d7942d828d7e82ffaf202bb118274896569bda983e72b44c184487e19b45a0c",
-        "kit-coordination": "sha256:f193fe07b5ba3109fd191b60c2e0fa0c09abd4fc211562ffb65f3585cc549d91",
-        "kit-iroh-release": "sha256:ddb1e17b9fd03e01e2a268198cae7ce960fa209fb92c477f406fff5fabe6725d",
-        "kit-modern-wal": "sha256:ecdc91c4ef4866b8f983417559dc0cb8baa92715f78ecab3bd846ae1d0931ee9",
-        "kit-profile-d": "sha256:3dca13e6aeaf8419e11f774d5c25c373143ffcfd26644ac8205a850e9efb727f",
-        "kit-proof-certificate": "sha256:876154cb523cb321c9caac891e63bd0073d0a8de3251f8399e6165be1dbb2e07",
-        "kit-proof-reuse-bootstrap": "sha256:59797fdea072393b1d45ba502523c1ab8c29d7a37db55ed860d8eaa3d2722915",
-        "kit-release-receipt": "sha256:0b221ff9296415784fdea1716fc02fb5a26f203eca209eb74300d96f6143161d",
-        "kit-reuse-capabilities": "sha256:437a313abdfdf2b6b7d24f925c85daf5aa84f8243f0750f388312344fa9daae3"
-      }
-    }
-  },
+  "operator_baseline_receipts": {},
   "runtime_paths": {
     "root": "data/agent_supervisor/incremental_proof_sealer",
     "state": "data/agent_supervisor/incremental_proof_sealer/state",
@@ -192,38 +90,114 @@
       "index": 0,
       "name": "ips-lane-0",
       "strict_shard_remainder": 0,
-      "initial_task_ids": ["IPS-003"],
+      "initial_task_ids": [
+        "IPS-003"
+      ],
       "initial_focus": "kit-storage-wal-and-merkle-inventory"
     },
     {
       "index": 1,
       "name": "ips-lane-1",
       "strict_shard_remainder": 1,
-      "initial_task_ids": ["IPS-002"],
+      "initial_task_ids": [
+        "IPS-002"
+      ],
       "initial_focus": "datasets-zk-and-identity-inventory"
     },
     {
       "index": 2,
       "name": "ips-lane-2",
       "strict_shard_remainder": 2,
-      "initial_task_ids": ["IPS-001"],
+      "initial_task_ids": [
+        "IPS-001"
+      ],
       "initial_focus": "accelerate-proof-and-scheduler-inventory"
     }
   ],
   "task_groups": {
-    "IPS-G010": ["IPS-000", "IPS-001", "IPS-002", "IPS-003", "IPS-004"],
-    "IPS-G020": ["IPS-005", "IPS-006", "IPS-007", "IPS-008", "IPS-009", "IPS-010", "IPS-011", "IPS-012"],
-    "IPS-G030": ["IPS-013", "IPS-014", "IPS-015", "IPS-016", "IPS-017"],
-    "IPS-G040": ["IPS-018", "IPS-019", "IPS-020", "IPS-021", "IPS-022"],
-    "IPS-G050": ["IPS-023", "IPS-024", "IPS-025", "IPS-026", "IPS-027"],
-    "IPS-G060": ["IPS-028", "IPS-029", "IPS-030", "IPS-031"],
-    "IPS-G070": ["IPS-032", "IPS-033", "IPS-034", "IPS-035", "IPS-036", "IPS-037"],
-    "IPS-G080": ["IPS-038", "IPS-039", "IPS-040", "IPS-041", "IPS-042"],
-    "IPS-G090": ["IPS-043", "IPS-044"],
-    "IPS-G100": ["IPS-045", "IPS-046", "IPS-047"],
-    "IPS-G110": ["IPS-048", "IPS-049", "IPS-050", "IPS-051"],
-    "IPS-G120": ["IPS-052", "IPS-053", "IPS-054"],
-    "IPS-G130": ["IPS-055", "IPS-056"]
+    "IPS-G010": [
+      "IPS-000",
+      "IPS-001",
+      "IPS-002",
+      "IPS-003",
+      "IPS-004"
+    ],
+    "IPS-G020": [
+      "IPS-005",
+      "IPS-006",
+      "IPS-007",
+      "IPS-008",
+      "IPS-009",
+      "IPS-010",
+      "IPS-011",
+      "IPS-012"
+    ],
+    "IPS-G030": [
+      "IPS-013",
+      "IPS-014",
+      "IPS-015",
+      "IPS-016",
+      "IPS-017"
+    ],
+    "IPS-G040": [
+      "IPS-018",
+      "IPS-019",
+      "IPS-020",
+      "IPS-021",
+      "IPS-022"
+    ],
+    "IPS-G050": [
+      "IPS-023",
+      "IPS-024",
+      "IPS-025",
+      "IPS-026",
+      "IPS-027"
+    ],
+    "IPS-G060": [
+      "IPS-028",
+      "IPS-029",
+      "IPS-030",
+      "IPS-031"
+    ],
+    "IPS-G070": [
+      "IPS-032",
+      "IPS-033",
+      "IPS-034",
+      "IPS-035",
+      "IPS-036",
+      "IPS-037"
+    ],
+    "IPS-G080": [
+      "IPS-038",
+      "IPS-039",
+      "IPS-040",
+      "IPS-041",
+      "IPS-042"
+    ],
+    "IPS-G090": [
+      "IPS-043",
+      "IPS-044"
+    ],
+    "IPS-G100": [
+      "IPS-045",
+      "IPS-046",
+      "IPS-047"
+    ],
+    "IPS-G110": [
+      "IPS-048",
+      "IPS-049",
+      "IPS-050",
+      "IPS-051"
+    ],
+    "IPS-G120": [
+      "IPS-052",
+      "IPS-053",
+      "IPS-054"
+    ],
+    "IPS-G130": [
+      "IPS-055",
+      "IPS-056"
+    ]
   },
   "provider": {
     "primary_provider_id": "grok_cli",
