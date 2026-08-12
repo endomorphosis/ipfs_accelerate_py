@@ -1,0 +1,485 @@
+PLUGIN registered: <_pytest.config.PytestPluginManager object at 0xe84a7618a2a0>
+PLUGIN registered: <_pytest.config.Config object at 0xe84a761ab9b0>
+PLUGIN registered: <module '_pytest.mark' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/mark/__init__.py'>
+PLUGIN registered: <module '_pytest.main' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py'>
+PLUGIN registered: <module '_pytest.runner' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/runner.py'>
+PLUGIN registered: <module '_pytest.fixtures' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/fixtures.py'>
+PLUGIN registered: <module '_pytest.helpconfig' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/helpconfig.py'>
+PLUGIN registered: <module '_pytest.python' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/python.py'>
+PLUGIN registered: <module '_pytest.terminal' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/terminal.py'>
+PLUGIN registered: <module '_pytest.debugging' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/debugging.py'>
+PLUGIN registered: <module '_pytest.unittest' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/unittest.py'>
+PLUGIN registered: <module '_pytest.capture' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/capture.py'>
+PLUGIN registered: <module '_pytest.skipping' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/skipping.py'>
+PLUGIN registered: <module '_pytest.legacypath' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/legacypath.py'>
+PLUGIN registered: <module '_pytest.tmpdir' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/tmpdir.py'>
+PLUGIN registered: <module '_pytest.monkeypatch' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/monkeypatch.py'>
+PLUGIN registered: <module '_pytest.recwarn' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/recwarn.py'>
+PLUGIN registered: <module '_pytest.pastebin' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/pastebin.py'>
+PLUGIN registered: <module '_pytest.assertion' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/__init__.py'>
+PLUGIN registered: <module '_pytest.junitxml' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/junitxml.py'>
+PLUGIN registered: <module '_pytest.doctest' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/doctest.py'>
+PLUGIN registered: <module '_pytest.cacheprovider' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/cacheprovider.py'>
+PLUGIN registered: <module '_pytest.setuponly' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/setuponly.py'>
+PLUGIN registered: <module '_pytest.setupplan' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/setupplan.py'>
+PLUGIN registered: <module '_pytest.stepwise' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/stepwise.py'>
+PLUGIN registered: <module '_pytest.unraisableexception' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/unraisableexception.py'>
+PLUGIN registered: <module '_pytest.threadexception' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/threadexception.py'>
+PLUGIN registered: <module '_pytest.warnings' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/warnings.py'>
+PLUGIN registered: <module '_pytest.logging' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/logging.py'>
+PLUGIN registered: <module '_pytest.reports' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/reports.py'>
+PLUGIN registered: <module '_pytest.faulthandler' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/faulthandler.py'>
+PLUGIN registered: <module '_pytest.subtests' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/subtests.py'>
+PLUGIN registered: <module 'pytest_mock' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py'>
+PLUGIN registered: <module 'xdist.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py'>
+PLUGIN registered: <module 'xdist.looponfail' from '/home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py'>
+PLUGIN registered: <module 'pytest_benchmark.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py'>
+PLUGIN registered: <module 'pytest_cov.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py'>
+PLUGIN registered: <module 'pytest_base_url.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py'>
+PLUGIN registered: <module 'pytest_asyncio.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py'>
+PLUGIN registered: <module 'pytest_trio.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py'>
+PLUGIN registered: <module 'typeguard._pytest_plugin' from '/home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py'>
+PLUGIN registered: <module 'pytest_env.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py'>
+PLUGIN registered: <module '_hypothesis_pytestplugin' from '/home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py'>
+PLUGIN registered: <module 'pytest_playwright.pytest_playwright' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py'>
+PLUGIN registered: <module 'pytest_timeout' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py'>
+PLUGIN registered: <module 'anyio.pytest_plugin' from '/home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py'>
+PLUGIN registered: <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=6 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> err=<FDCapture 2 oldfd=7 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=8 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> in_=<FDCapture 0 oldfd=3 _state='started' tmpfile=<_io.TextIOWrapper name='/dev/null' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+PLUGIN registered: <module 'source.test.conftest' from '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test/conftest.py'>
+PLUGIN registered: <module 'source.test.api.conftest' from '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test/api/conftest.py'>
+PLUGIN registered: <Session  exitstatus=<ExitCode.OK: 0> testsfailed=0 testscollected=0>
+PLUGIN registered: <_pytest.cacheprovider.LFPlugin object at 0xe8498b952de0>
+PLUGIN registered: <_pytest.cacheprovider.NFPlugin object at 0xe84a75b2fbf0>
+PLUGIN registered: <class '_pytest.legacypath.LegacyTmpdirPlugin'>
+PLUGIN registered: <_pytest.terminal.TerminalReporter object at 0xe8498b2a59a0>
+PLUGIN registered: <_pytest.logging.LoggingPlugin object at 0xe8498b2a67e0>
+PLUGIN registered: <pytest_benchmark.session.BenchmarkSession object at 0xe8498b2a48c0>
+PLUGIN registered: <_pytest.fixtures.FixtureManager object at 0xe8498ba75430>
+================================================= test session starts ==================================================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3.12
+using: pytest-9.1.1
+registered third-party plugins:
+  pytest-mock-3.15.1 at /home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py
+  pytest-xdist-3.8.0 at /home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py
+  pytest-xdist-3.8.0 at /home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py
+  pytest-benchmark-5.2.3 at /home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py
+  pytest-cov-7.1.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py
+  pytest-base-url-2.1.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py
+  pytest-asyncio-1.3.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py
+  pytest-trio-0.8.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py
+  typeguard-4.5.2 at /home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py
+  pytest-env-1.7.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py
+  hypothesis-6.152.1 at /home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py
+  pytest-playwright-0.8.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py
+  pytest-timeout-2.4.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py
+  anyio-4.14.2 at /home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py
+active plugins:
+    255406506549920     : <_pytest.config.PytestPluginManager object at 0xe84a7618a2a0>
+    pytestconfig        : <_pytest.config.Config object at 0xe84a761ab9b0>
+    mark                : /home/barberb/.local/lib/python3.12/site-packages/_pytest/mark/__init__.py
+    main                : /home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py
+    runner              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/runner.py
+    fixtures            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/fixtures.py
+    helpconfig          : /home/barberb/.local/lib/python3.12/site-packages/_pytest/helpconfig.py
+    python              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/python.py
+    terminal            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/terminal.py
+    debugging           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/debugging.py
+    unittest            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/unittest.py
+    capture             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/capture.py
+    skipping            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/skipping.py
+    legacypath          : /home/barberb/.local/lib/python3.12/site-packages/_pytest/legacypath.py
+    tmpdir              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/tmpdir.py
+    monkeypatch         : /home/barberb/.local/lib/python3.12/site-packages/_pytest/monkeypatch.py
+    recwarn             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/recwarn.py
+    pastebin            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/pastebin.py
+    assertion           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/__init__.py
+    junitxml            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/junitxml.py
+    doctest             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/doctest.py
+    cacheprovider       : /home/barberb/.local/lib/python3.12/site-packages/_pytest/cacheprovider.py
+    setuponly           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/setuponly.py
+    setupplan           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/setupplan.py
+    stepwise            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/stepwise.py
+    unraisableexception : /home/barberb/.local/lib/python3.12/site-packages/_pytest/unraisableexception.py
+    threadexception     : /home/barberb/.local/lib/python3.12/site-packages/_pytest/threadexception.py
+    warnings            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/warnings.py
+    logging             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/logging.py
+    reports             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/reports.py
+    faulthandler        : /home/barberb/.local/lib/python3.12/site-packages/_pytest/faulthandler.py
+    subtests            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/subtests.py
+    pytest_mock         : /home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py
+    xdist               : /home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py
+    xdist.looponfail    : /home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py
+    benchmark           : /home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py
+    pytest_cov          : /home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py
+    base_url            : /home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py
+    asyncio             : /home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py
+    trio                : /home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py
+    typeguard           : /home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py
+    env                 : /home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py
+    hypothesispytest    : /home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py
+    playwright          : /home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py
+    timeout             : /home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py
+    anyio               : /home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py
+    capturemanager      : <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=6 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> err=<FDCapture 2 oldfd=7 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=8 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> in_=<FDCapture 0 oldfd=3 _state='started' tmpfile=<_io.TextIOWrapper name='/dev/null' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+    /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test/conftest.py: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test/conftest.py
+    /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test/api/conftest.py: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test/api/conftest.py
+    session             : <Session  exitstatus=<ExitCode.OK: 0> testsfailed=0 testscollected=0>
+    lfplugin            : <_pytest.cacheprovider.LFPlugin object at 0xe8498b952de0>
+    nfplugin            : <_pytest.cacheprovider.NFPlugin object at 0xe84a75b2fbf0>
+    legacypath-tmpdir   : <class '_pytest.legacypath.LegacyTmpdirPlugin'>
+    terminalreporter    : <_pytest.terminal.TerminalReporter object at 0xe8498b2a59a0>
+    logging-plugin      : <_pytest.logging.LoggingPlugin object at 0xe8498b2a67e0>
+    pytest-benchmark    : <pytest_benchmark.session.BenchmarkSession object at 0xe8498b2a48c0>
+    funcmanage          : <_pytest.fixtures.FixtureManager object at 0xe8498ba75430>
+cachedir: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/accelerate-proof-focused-core-15/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+hypothesis profile 'default'
+rootdir: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 310 items / 1 deselected / 309 selected
+
+test/api/test_agent_supervisor_provekit_setup.py::test_scaev180proofready_shared_with_solver_readiness PASSED    [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_absent_cli_or_artifacts_emits_typed_unavailable PASSED    [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_identities_are_content_addressed_when_configured PASSED   [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_mandatory_self_tests_gate_production_eligibility PASSED   [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_incomplete_surfaces_stay_non_production PASSED            [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_simulated_provekit_is_never_attested_or_production_eligible PASSED [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_attestation_requires_approved_kernel_verified_receipt_predicate PASSED [  2%]
+test/api/test_agent_supervisor_provekit_setup.py::test_env_overrides_discover_executable_and_artifacts PASSED    [  2%]
+test/api/test_agent_supervisor_provekit_setup.py::test_which_discovery_for_provekit_cli PASSED                   [  2%]
+test/api/test_agent_supervisor_provekit_setup.py::test_setup_report_envelope_and_json_stability PASSED           [  3%]
+test/api/test_agent_supervisor_provekit_setup.py::test_self_test_exception_is_fail_closed PASSED                 [  3%]
+test/api/test_agent_supervisor_provekit_setup.py::test_non_eligible_setup_blocks_attestation PASSED              [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_evidence_term_and_interface_are_stable PASSED [  4%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_require_zk_backend_selection_authorized_for_datasets_use_case PASSED [  4%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_setup_identity_binds_executable_and_artifacts PASSED [  4%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_probe_unavailable_without_binaries_is_typed_and_non_authoritative PASSED [  5%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_self_tests_gate_production_eligibility PASSED [  5%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_cryptographic_attestation_is_authoritative PASSED [  5%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_verifier_rejection_is_non_authoritative PASSED [  6%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_unverified_receipt_cannot_attest PASSED     [  6%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_unsupported_predicate_is_not_applicable PASSED [  6%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_unavailable_backend_emits_typed_status PASSED [  7%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_simulated_backend_never_satisfies_attested PASSED [  7%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_failed_self_tests_block_real_zk_claims PASSED [  7%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_witness_cannot_enter_public_artifacts PASSED [  8%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_prover_failure_does_not_fall_back_to_simulation PASSED [  8%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_groth16_family_path PASSED                  [  8%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_registry_probe_is_boolean PASSED            [  9%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_result_to_cache_record_is_public PASSED     [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_public_inputs_bind_all_canonical_commitments PASSED [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_every_public_commitment_changes_identity PASSED     [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_public_inputs_reject_wrong_codec_version PASSED     [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_encode_public_input_vector_rejects_missing_or_extra_keys PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_validity_non_claims_are_normative PASSED      [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_supported_transition_table_is_complete_and_deterministic PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_canonical_trace_follows_supported_transitions PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_reordered_steps PASSED                [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_omitted_steps PASSED                  [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_illegal_single_transition PASSED      [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_forged_result_binding PASSED          [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_is_non_authoritative_and_non_semantic PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_vfs_g080_evidence_terms_are_published_on_statement_and_receipt PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_objective_validation_repair_evidence_term_discoverable PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_vfs_g080_acceptance_shadow_and_non_semantic_authority PASSED [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_rejects_forged_evidence_identity PASSED   [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_receipt_rejects_forged_evidence_identity PASSED     [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_rejects_semantic_proof_flag PASSED        [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_shadow_envelope_is_non_authoritative PASSED         [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[forest_commitment] PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[inventory_commitment] PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[contract_commitment] PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[call_slice_commitment] PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[assumptions_commitment] PASSED [ 17%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[result_commitment] PASSED [ 17%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[circuit_id] PASSED [ 17%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[proving_key_id] PASSED [ 18%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[verifying_key_id] PASSED [ 18%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[ceremony_id] PASSED [ 18%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[analyzer_version] PASSED [ 19%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[resolver_version] PASSED [ 19%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[translator_version] PASSED [ 19%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[prover_version] PASSED [ 20%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_statement_identity_is_rejected PASSED      [ 20%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_statement_digest_is_rejected PASSED        [ 20%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_envelope_cannot_assert_authority PASSED             [ 21%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_cannot_assert_authority PASSED            [ 21%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_receipt_rejects_mismatched_key_or_circuit_pins PASSED [ 21%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_verification_receipt_replays_against_exact_inputs PASSED [ 22%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_drifted_public_inputs PASSED         [ 22%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_stale_verifying_key PASSED           [ 22%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_wrong_circuit_or_ceremony PASSED     [ 22%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_codec_version_drift PASSED           [ 23%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_stale_proving_key_via_public_input_digest PASSED [ 23%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_shadow_verified_receipt_is_still_non_authoritative PASSED [ 23%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_private_witness_is_redacted_non_mapping_and_non_serializable PASSED [ 24%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_proving_callback_can_use_read_only_witness_without_publication PASSED [ 24%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_witness_fields_are_absent_from_logs_context_and_public_artifacts PASSED [ 24%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_reject_private_witness_from_public_payload PASSED   [ 25%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_witness_policy_requires_redaction_and_limits_fields PASSED [ 25%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_contract_version_is_pinned_in_payloads PASSED       [ 25%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_version_fields_are_bound_in_public_inputs PASSED    [ 26%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_receipt_rejects_codec_version_mismatch_on_construction PASSED [ 26%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[model_proved] PASSED [ 26%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[model_disproved] PASSED [ 27%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[runtime_witnessed] PASSED [ 27%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[observed_syntax] PASSED [ 27%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[resolved_static] PASSED [ 28%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[observed_syntax] PASSED [ 28%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[resolved_static] PASSED [ 28%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[model_proved] PASSED [ 29%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[runtime_witnessed] PASSED [ 29%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_rejects_non_zk_claim_level PASSED         [ 29%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_general_claim_promotion_still_rejects_cross_level PASSED [ 30%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_prepare_round_trip_binds_trace_and_public_inputs PASSED [ 30%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_default_probe_is_shadow_only_and_non_authoritative PASSED [ 30%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_probe_covers_every_required_dimension PASSED [ 31%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_production_fixture_is_eligible_and_round_trips PASSED [ 31%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_simulated_defaults_fail_closed PASSED   [ 31%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_knowledge_graph_fail_open_fails_closed PASSED [ 32%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_placeholder_field_encoding_fails_closed PASSED [ 32%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_v1_nonzero_only_circuit_fails_closed PASSED [ 32%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_incompatible_tdfol_only_circuit_fails_closed PASSED [ 33%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_unversioned_and_missing_artifacts_fail_closed PASSED [ 33%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_stale_capability_fails_closed PASSED    [ 33%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_bn254_field_encoding_is_deterministic PASSED [ 33%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_simulated_proof_layout_is_detected PASSED [ 34%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_deterministic_proof_receipt_identity PASSED [ 34%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_independent_replay_against_exact_pins PASSED [ 34%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_corrupted_proof_is_rejected PASSED      [ 35%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_corrupted_key_is_rejected PASSED        [ 35%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_corrupted_public_input_is_rejected PASSED [ 35%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_cryptographic_without_callback_fails_closed PASSED [ 36%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_production_record_requires_eligible_capability_and_callback PASSED [ 36%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_capability_loss_invalidates_prior_authority PASSED [ 36%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_capability_loss_when_probe_degrades PASSED [ 37%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_shadow_only_rollout_never_authoritative PASSED [ 37%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_cryptographic_without_capability_binding_is_non_authoritative PASSED [ 37%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_cancellation_fails_closed PASSED        [ 38%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_bounds_probe_rejects_overflow PASSED    [ 38%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_authoritative_receipt_does_not_promote_semantic_claims PASSED [ 38%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_forged_authoritative_flag_on_shadow_receipt_is_rejected PASSED [ 39%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_vfs_g081_capability_conformance_evidence_discoverable PASSED [ 39%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_proof_system_substitution_fails_closed PASSED [ 39%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_simulated_proof_under_cryptographic_path_fails_closed PASSED [ 40%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_forged_capability_conformance_identity_is_rejected PASSED [ 40%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_priorities_expose_critical_path_and_downstream_unlocks PASSED [ 40%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_dependency_order_and_bounded_independent_stage_overlap FAILED [ 41%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_stage_and_resource_class_limits_refine_global_parallelism FAILED [ 41%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_preparation_failure_releases_entire_admission_batch PASSED [ 41%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_conclusive_portfolio_receipt_cancels_redundant_attempt PASSED [ 42%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_unsupported_and_failed_dependencies_propagate_explicitly PASSED [ 42%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_restart_restores_plan_attempts_receipts_and_does_not_reexecute PASSED [ 42%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_restart_requeues_an_expired_fenced_lease PASSED          [ 43%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_canonical_resource_classes_distinguish_every_proof_work_type PASSED [ 43%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_cpu_model_and_artifact_pools_are_independent_and_leases_are_reclaimable PASSED [ 43%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_supervisor_lease_budget_accounts_aggregate_process_memory_disk_and_provider_use PASSED [ 44%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host0-provider0-requirement0-host_cpu_high_watermark] PASSED [ 44%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host1-provider1-requirement1-host_memory_headroom] PASSED [ 44%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host2-provider2-requirement2-host_disk_headroom] PASSED [ 44%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host3-provider3-requirement3-provider_quota] PASSED [ 45%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host4-provider4-requirement4-provider_context] PASSED [ 45%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host5-provider5-requirement5-provider_token_budget] PASSED [ 45%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host6-provider6-requirement6-provider_latency] PASSED [ 46%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_propagates_one_budget_to_portfolio_and_kernel_children PASSED [ 46%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_model_concurrency_is_separate_from_cpu_proof_concurrency PASSED [ 46%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_waits_for_provider_capacity_before_claiming PASSED [ 47%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_adaptive_stage_capacity_contracts_before_the_hard_host_gate PASSED [ 47%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_adaptive_admission_round_robins_stages_and_exports_lane_metrics PASSED [ 47%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_resource_pool_splits_validation_from_proof_solver_classes PASSED [ 48%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_resource_pools_expose_fair_order_and_backpressure PASSED [ 48%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_six_stage_profiles_and_git_aliases_are_explicit_and_deterministic PASSED [ 48%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_gpu_provider_and_disk_pressure_only_block_relevant_stages PASSED [ 49%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_queue_depth_merge_age_and_active_leases_are_capacity_signals PASSED [ 49%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_hysteresis_and_resource_loss_recovery_are_sample_deterministic PASSED [ 49%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_critical_path_wins_but_aged_merge_work_cannot_starve PASSED [ 50%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_cancellation_releases_lease_and_capacity_for_the_next_lane PASSED [ 50%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_aggregate_gpu_memory_and_active_slots_never_overadmit PASSED [ 50%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_resource_backpressure_event_projection_is_latest_and_taskless PASSED [ 51%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_generic_stage_events_are_not_resource_admission_observations PASSED [ 51%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_content_addressed_benchmark_receipt_is_fail_closed_and_rebinds PASSED [ 51%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_benchmark_runner_proves_two_x_without_duplicates_or_overcommit PASSED [ 52%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_benchmark_rejects_duplicates_incomplete_acceptance_and_overcommit PASSED [ 52%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_resource_taxonomy_covers_every_formal_execution_family PASSED [ 52%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_one_root_lease_accounts_process_thread_memory_disk_model_and_quota PASSED [ 53%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_ref258_supervisor_budget_adapts_into_the_shared_prover_lease PASSED [ 53%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_child_limits_prevent_native_and_jvm_nested_pool_expansion PASSED [ 53%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_serial_and_bundle_supervisors_share_the_same_live_capacity PASSED [ 54%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_dependency_closed_slices_do_not_let_a_late_blocked_member_idle_ready_work PASSED [ 54%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_failed_dependency_blocks_only_its_lane_while_independent_lane_completes PASSED [ 54%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_bundle_width_never_exceeds_shared_process_or_thread_capacity PASSED [ 55%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_adaptive_width_contracts_under_pressure_and_values_critical_work PASSED [ 55%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_exact_deterministic_cache_hit_bypasses_execution_and_host_pressure PASSED [ 55%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_timeout_terminates_process_group_releases_capacity_and_bounds_diagnostics PASSED [ 55%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_root_cancellation_terminates_running_command_and_returns_partial_receipt PASSED [ 56%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_provider_and_model_capacity_are_reclaimed_after_inference PASSED [ 56%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_provider_telemetry_quota_is_reserved_cumulatively PASSED [ 56%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_wall_time_is_one_root_deadline_not_a_fresh_timeout_per_child PASSED [ 57%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_invalid_or_nondeterministic_cache_claims_fail_closed PASSED [ 57%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_manager_closes_root_and_releases_all_outstanding_grants PASSED [ 57%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[finite_constraint-expected0] PASSED [ 58%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[state_machine-expected1] PASSED [ 58%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[authorization-expected2] PASSED [ 58%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[protocol-expected3] PASSED [ 59%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[hyperproperty-expected4] PASSED [ 59%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[runtime_trace-expected5] PASSED [ 59%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[kernel_check-expected6] PASSED [ 60%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_dcec_tdfol_and_hammer_form_staged_reconstruction_portfolio PASSED [ 60%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_code_obligation_requires_explicit_reviewed_property_classification PASSED [ 60%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_model_checking_authority_can_prove_but_candidate_cannot_self_promote PASSED [ 61%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_hammer_receives_domain_results_and_kernel_reconstruction_is_authority PASSED [ 61%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[raw0-unknown-inconclusive] PASSED [ 61%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[raw1-unsupported-unsupported] PASSED [ 62%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[raw2-timeout-inconclusive] PASSED [ 62%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[not a typed result-malformed-error] PASSED [ 62%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_authority_disagreement_fails_closed_and_retains_both_attempts PASSED [ 63%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_conclusive_counterexample_cancels_redundant_stages_and_retains_all PASSED [ 63%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_strict_output_rejects_unknown_fields_and_oversized_evidence PASSED [ 63%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_matrix_and_legacy_conformance_gates_fail_closed_before_execution PASSED [ 64%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_conclusive_candidate_counterexample_stops_reconstruction PASSED [ 64%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_kernel_required_code_obligation_adds_reconstruction_authorities PASSED [ 64%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_result_is_canonical_and_retains_plan_order PASSED    [ 65%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_obligation_has_canonical_json_round_trip_and_content_identity PASSED [ 65%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_all_primary_contracts_have_stable_ids_and_round_trip PASSED [ 65%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_plan_rejects_unknown_dependencies_and_cycles PASSED [ 66%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_receipt_binds_every_trust_relevant_input PASSED [ 66%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_candidate_sources_cannot_become_kernel_verified[llm_output-llm] PASSED [ 66%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_candidate_sources_cannot_become_kernel_verified[atp_candidate-atp] PASSED [ 66%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_candidate_sources_cannot_become_kernel_verified[smt_candidate-smt] PASSED [ 67%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_provider_claims_are_audited_but_never_authoritative PASSED [ 67%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_independent_exact_kernel_evidence_derives_kernel_assurance PASSED [ 67%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_attestation_requires_kernel_receipt_and_real_independent_verification PASSED [ 68%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_stale_cache_evidence_cannot_satisfy_kernel_or_attested_assurance PASSED [ 68%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_canonical_contracts_reject_floats_and_forged_content_ids PASSED [ 68%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_key_binds_every_semantic_execution_and_candidate_input PASSED [ 69%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_key_binds_every_route_aware_reuse_dimension PASSED [ 69%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_untrusted_drafts_are_physically_and_logically_separate_from_receipts PASSED [ 69%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_explicit_draft_context_bindings_must_match_the_route_aware_key PASSED [ 70%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim0] PASSED [ 70%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim1] PASSED [ 70%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim2] PASSED [ 71%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim3] PASSED [ 71%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim4] PASSED [ 71%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim5] PASSED [ 72%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_ttl_size_bound_and_corruption_fail_closed PASSED [ 72%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_only_current_receipts_meeting_requested_assurance_are_hits PASSED [ 72%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_maximum_age_is_stric_even_before_entry_ttl PASSED [ 73%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_partial_solver_only_and_simulated_attestation_are_not_stored PASSED [ 73%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_malformed_and_binding_poisoned_entries_have_reason_codes PASSED [ 73%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_mismatched_receipt_binding_is_rejected_before_persistence PASSED [ 74%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_threads PASSED      [ 74%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_single_flight_uses_the_route_aware_namespace PASSED [ 74%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_single_flight_rejects_authority_before_publishing PASSED [ 75%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_heartbeats_long_running_leader PASSED [ 75%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes PASSED    [ 75%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_expired_lease_is_fenced_and_can_be_taken_over PASSED [ 76%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_report_is_versioned_and_covers_every_formal_logic_provider PASSED [ 76%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_each_health_dimension_is_serialized_separately PASSED [ 76%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_missing_optional_packages_models_bindings_and_binaries_are_explicit PASSED [ 77%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_core_provider_degrades_when_only_optional_nlp_health_is_missing PASSED [ 77%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_python_discovery_failures_do_not_escape_or_import_providers PASSED [ 77%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_default_dotted_package_discovery_does_not_execute_parent_packages PASSED [ 77%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_default_discovery_resolves_nested_source_package_without_importing_wrapper PASSED [ 78%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_default_discovery_traverses_nested_namespace_packages_without_importing PASSED [ 78%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_leanstral_route_is_discoverable_through_accelerator_source_wrapper PASSED [ 78%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_probe_is_cached_until_forced_or_ttl_expires PASSED [ 79%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_probe_check_budget_bounds_discovery_work PASSED [ 79%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_probe_wall_clock_budget_bounds_stalled_discovery PASSED [ 79%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_capability_availability_never_becomes_proof_success PASSED [ 80%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_zkp_backend_health_requires_executable_and_circuit_artifacts PASSED [ 80%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_probe_limits_fail_fast PASSED   [ 80%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_leanstral_surfaces_are_independent_routing_capabilities PASSED [ 81%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_configured_local_model_does_not_depend_on_kernel_or_codec PASSED [ 81%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_effective_context_limit_uses_smallest_authority_and_reserves PASSED [ 81%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_effective_context_limit_is_unknown_or_exhausted_not_unlimited PASSED [ 82%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_context_limit_is_attached_to_route_health_and_can_fail_route PASSED [ 82%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_inference_canary_is_opt_in_and_never_runs_by_default PASSED [ 82%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_enabled_inference_canary_receives_only_bounded_health_request PASSED [ 83%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_inference_canary_has_independent_timeout_and_response_bound PASSED [ 83%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_callback_result_cannot_evade_canary_bounds_or_claim_verification PASSED [ 83%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result0-input_tokens] PASSED [ 84%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result1-output_tokens] PASSED [ 84%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result2-input_tokens] PASSED [ 84%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result3-output_tokens] PASSED [ 85%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs0-positive integer] PASSED [ 85%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs1-positive integer] PASSED [ 85%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs2-object or integer] PASSED [ 86%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs3-non-negative integer] PASSED [ 86%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs4-non-negative integer] PASSED [ 86%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_operation_capability_is_versioned_deterministic_and_not_proof_evidence PASSED [ 87%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_request_response_envelopes_are_correlated_and_fail_closed PASSED [ 87%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_all_protocol_operations_execute_in_process_without_promoting_status PASSED [ 87%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_in_process_timeout_cancellation_network_and_malformed_fail_explicitly PASSED [ 88%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_subprocess_protocol_round_trip_and_all_failure_classes PASSED [ 88%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_subprocess_cancellation_and_declared_network_policy PASSED [ 88%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_stdio_server_emits_protocol_response_and_rejects_bad_requests PASSED [ 88%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_missing_provider_is_normal_and_does_not_import_ipfs_datasets_py PASSED [ 89%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_policy_maps_path_ast_risk_and_invariant_to_assurance_and_fallback PASSED [ 89%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_overlapping_rules_merge_conservatively_and_cannot_weaken_fallback PASSED [ 89%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonblocking_modes_report_failure_without_blocking[disabled] PASSED [ 90%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonblocking_modes_report_failure_without_blocking[shadow] PASSED [ 90%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_canary_only_blocks_configured_or_deterministically_selected_paths PASSED [ 90%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[unsupported] PASSED [ 91%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[unavailable] PASSED [ 91%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[timed_out] PASSED [ 91%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[inconclusive] PASSED [ 92%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[error] PASSED [ 92%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[missing] PASSED [ 92%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_proved_result_requires_durable_receipt_and_required_assurance PASSED [ 93%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_unsupported_can_only_use_an_explicit_complete_fallback PASSED [ 93%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_override_requires_bounded_actor_reason_tree_policy_and_expiration PASSED [ 93%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_expired_wrong_tree_and_out_of_scope_overrides_fail_closed PASSED [ 94%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_override_receipt_is_canonical_content_addressed_and_durable PASSED [ 94%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_rollout_promotion_is_adjacent_evidence_gated_and_content_addressed PASSED [ 94%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_rollout_rollback_is_explicit_and_does_not_need_success_evidence PASSED [ 95%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_policy_and_selection_round_trip_with_deterministic_identities PASSED [ 95%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_baseline_policy_protects_only_modeled_high_risk_changes PASSED [ 95%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_unsafe_paths_and_accidental_global_rules_are_rejected PASSED [ 96%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_path_globs_do_not_let_single_star_cross_directories PASSED [ 96%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_threat_model_names_required_roles_and_insufficiency PASSED [ 96%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_policy_records_not_applicable_without_blocking_core_cbp PASSED [ 97%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_backend_selection_requires_approved_use_case_decision PASSED [ 97%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_simulated_attestation_cannot_satisfy_attested PASSED [ 97%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_public_inputs_bind_property_repo_tree_obligation_toolchain_policy_kernel PASSED [ 98%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_private_witnesses_rejected_from_public_receipts_and_cache_entries PASSED [ 98%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_real_attestation_reverify_and_fail_closed_on_drift PASSED [ 98%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_persisted_record_rejects_non_authoritative_and_simulated_paths PASSED [ 99%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_threat_model_and_policy_docs_cross_link_and_name_cache_boundary PASSED [ 99%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_cbp_public_bindings_appear_in_authoritative_attestation_evidence PASSED [ 99%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_module_exports_policy_surface_for_supervisor_integration PASSED [100%]
+
+======================================================= FAILURES =======================================================
+E   KeyError: 'cpu-general'
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py:2732: KeyError: 'cpu-general'
+E   KeyError: 'cpu-general'
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py:2732: KeyError: 'cpu-general'
+=================================================== warnings summary ===================================================
+ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py:16
+  /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T210903.558672Z-2569990/source/ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py:16: DeprecationWarning: __package__ != __spec__.parent
+    from ..objectives.goal_completion import (
+
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2713816) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================================= slowest 10 durations =================================================
+1.52s call     api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_heartbeats_long_running_leader
+1.22s call     api/test_agent_supervisor_proof_resource_scheduler.py::test_model_concurrency_is_separate_from_cpu_proof_concurrency
+1.11s call     api/test_agent_supervisor_proof_scheduler.py::test_conclusive_portfolio_receipt_cancels_redundant_attempt
+1.09s call     api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_waits_for_provider_capacity_before_claiming
+1.00s call     api/test_agent_supervisor_proof_scheduler.py::test_restart_restores_plan_attempts_receipts_and_does_not_reexecute
+0.99s call     api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_propagates_one_budget_to_portfolio_and_kernel_children
+0.95s call     api/test_agent_supervisor_proof_scheduler.py::test_priorities_expose_critical_path_and_downstream_unlocks
+0.91s call     api/test_agent_supervisor_proof_scheduler.py::test_dependency_order_and_bounded_independent_stage_overlap
+0.88s call     api/test_agent_supervisor_proof_scheduler.py::test_unsupported_and_failed_dependencies_propagate_explicitly
+0.86s call     api/test_agent_supervisor_proof_scheduler.py::test_restart_requeues_an_expired_fenced_lease
+=============================================== short test summary info ================================================
+FAILED test/api/test_agent_supervisor_proof_scheduler.py::test_dependency_order_and_bounded_independent_stage_overlap - KeyError: 'cpu-general'
+FAILED test/api/test_agent_supervisor_proof_scheduler.py::test_stage_and_resource_class_limits_refine_global_parallelism - KeyError: 'cpu-general'
+=============================== 2 failed, 307 passed, 1 deselected, 5 warnings in 18.69s ===============================
