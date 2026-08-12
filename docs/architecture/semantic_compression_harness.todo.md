@@ -297,7 +297,7 @@ A9  SCH-018
 
 ## SCH-009 Emit MCP++ receipts and enforce freshness admission
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: receipts
