@@ -14344,9 +14344,10 @@ class PortalImplementationDaemon:
         queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
         quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
         successfully_merged_task_ids = self._successfully_merged_task_ids()
-        completion_receipt_task_ids = (
-            successfully_merged_task_ids | shared_completed_task_ids
-        ) - historical_completion_quarantine_task_ids
+        completion_receipt_task_ids = self._filter_inventory_merges_still_valid(
+            (successfully_merged_task_ids | shared_completed_task_ids)
+            - historical_completion_quarantine_task_ids
+        )
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
