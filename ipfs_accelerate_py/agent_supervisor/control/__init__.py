@@ -49,6 +49,7 @@ CONTROL_OWNED_MODULES: Final[tuple[str, ...]] = (
     "control_contracts",
     "control_plane",
     "execution_permit",
+    "launch_profile_housekeeping",
     "lifecycle_orchestrator",
 )
 

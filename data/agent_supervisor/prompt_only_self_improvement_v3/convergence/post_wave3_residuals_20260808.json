@@ -1,0 +1,98 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.post-wave3-residual-report@1",
+  "created_at": "2026-08-08T09:53:00Z",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "repository": {
+    "head": "4370931d7dc556d56962a88ed1db511487be39d2",
+    "tree": "1d472b508368a0574e1dbfa87467158377797e23",
+    "branch": "agent/prompt-self-improvement-v3"
+  },
+  "completed_task_evidence": {
+    "ASE3-005": {
+      "implementation_commit": "8b82c968d829a1191fcacff3e20804be0c232b0a",
+      "merge_commit": "8945d1b08e564fb1baf26a38d7ea6909012a104b",
+      "status_commit": "4370931d7dc556d56962a88ed1db511487be39d2",
+      "declared_current_tree_tests_passed": 13,
+      "declared_current_tree_tests_failed": 0
+    },
+    "ASE3-007": {
+      "implementation_commit": "5c4098a8adf7c29e24602a18b699f9042b3ca9f6",
+      "merge_commit": "023bb9972ca8d9eb6009f565c3293c2ce8a16aea",
+      "status_commit": "05773ac5abcf361a870404428f4e82dcd15168ce",
+      "declared_current_tree_tests_passed": 87,
+      "declared_current_tree_tests_failed": 0
+    }
+  },
+  "residuals": [
+    {
+      "gap_id": "trusted-context-canonical-composition",
+      "severity": "P0",
+      "source_tasks": ["ASE3-001", "ASE3-002", "ASE3-005"],
+      "target_task": "ASE3-018",
+      "evidence": [
+        "frozen invocation contexts retain mutable caller mappings",
+        "caller booleans and paths can stand in for profile and transport authority",
+        "only repository and partial profile fields are canonically resolved",
+        "transport identity is mixed into otherwise equivalent context identity"
+      ]
+    },
+    {
+      "gap_id": "signed-authority-and-durable-provider-attempt",
+      "severity": "P0",
+      "source_tasks": ["ASE3-002", "ASE3-006"],
+      "target_task": "ASE3-019",
+      "evidence": [
+        "profile and revocation lifecycle is local-file and caller-trust based",
+        "provider freshness, independent review, and once-only fallback are caller values rather than durable CAS facts",
+        "the production Grok route is not wired to the new provider policy",
+        "expired Grok authentication caused a typed non-consuming provider deferral with no policy-authorized continuation"
+      ]
+    },
+    {
+      "gap_id": "production-durable-refill-wiring",
+      "severity": "P0",
+      "source_tasks": ["ASE3-007"],
+      "target_task": "ASE3-021",
+      "evidence": [
+        "refill epoch, deduplication, cooldown, and circuit-breaker state are process-local",
+        "append CAS is represented by a callback boolean without a durable revision receipt",
+        "current-tree and completion authority are caller-supplied values",
+        "the controller has no configured scheduler, runtime, Planner Doctor, refinery, or goal-completion consumer"
+      ]
+    },
+    {
+      "gap_id": "transactional-run-truth-and-effect-recovery",
+      "severity": "P0",
+      "source_tasks": ["ASE3-003", "ASE3-005", "ASE3-007"],
+      "target_task": "ASE3-020",
+      "evidence": [
+        "the production factory composes the legacy JSON registry rather than DuckDB authority",
+        "arbitrary callables and caller effect_applied values can simulate durable success",
+        "the prompt saga only materializes and starts and does not compose the full lifecycle",
+        "effects occur before registry advancement without a crash-safe reservation or reconciliation protocol",
+        "running replay does not require fresh process-birth, health, lease, fence, or adoption proof"
+      ]
+    }
+  ],
+  "provider_incident": {
+    "task_id": "ASE3-006",
+    "event_id": "sha256:e2dee32eb866a9a4216c809318f4066bc49bf33e1e0ef3290365cf4ccaf58f97",
+    "log_sha256": "sha256:2724af1a5b52fadae7130b4a80081cf9849dabc0f0104f839033474fff332596",
+    "failure": "grok_authentication_unavailable",
+    "attempt": 1,
+    "attempt_consumed": false,
+    "fallback_dispatched": false,
+    "workspace_changed": false,
+    "operator_fenced_before_retry": true
+  },
+  "disposition": {
+    "historical_task_status_authoritative": false,
+    "declared_test_success_authorizes_goal_completion": false,
+    "operator_reviewed_refill_required": true,
+    "target_tasks": ["ASE3-018", "ASE3-019", "ASE3-021", "ASE3-020"],
+    "gate_task": "ASE3-008",
+    "completion_authority": false,
+    "provider_policy_broadening_authorized": false,
+    "attempt_counter_mutation_authorized": false
+  }
+}

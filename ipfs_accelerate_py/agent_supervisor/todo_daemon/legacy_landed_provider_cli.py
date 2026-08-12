@@ -56,6 +56,27 @@ _CODEX_USAGE_LIMIT_PATTERN: Final = re.compile(
     r"\byou(?:'|\u2019)ve hit your usage limit\b",
     re.IGNORECASE,
 )
+_GROK_BALANCE_EXHAUSTED_MESSAGE: Final = (
+    "API error (status 402 Payment Required): Grok Build usage balance exhausted"
+)
+GROK_BUILD_BALANCE_EXHAUSTED_MARKER: Final = "grok_build_balance_exhausted"
+_MAX_GROK_STREAM_EVENT_BYTES: Final = 64 * 1024
+_NATIVE_CLI_SUBREAPER_PATH: Final = Path(__file__).with_name("native_cli_subreaper.py")
+
+
+class NativeGrokQuotaExhaustionSignal(RuntimeError):
+    """Fixed, secret-free signal from an exact Grok transport event.
+
+    The signal is deliberately transport-specific.  Production policy may
+    translate it into its typed quota exception, while model text and generic
+    provider failures remain ordinary ``RuntimeError`` instances.
+    """
+
+    reason_code: Final = GROK_BUILD_BALANCE_EXHAUSTED_MARKER
+
+    def __init__(self) -> None:
+        super().__init__(self.reason_code)
+
 
 LegacyCLIInvoker = Callable[
     [str, LlmRouterInvocation],
@@ -150,15 +171,79 @@ def _bounded_failure_sample(value: bytearray) -> bytes:
     return bytes(value[:head_bytes]) + b"\n" + bytes(value[-tail_bytes:])
 
 
+def _grok_stream_failure_kind(payload: Mapping[str, Any]) -> str:
+    """Classify only CLI-owned structured failure event shapes."""
+
+    if payload.get("type") == "error":
+        if str(payload.get("message") or "").strip() == _GROK_BALANCE_EXHAUSTED_MESSAGE:
+            return "verified_quota"
+        return "other_failure"
+    if payload.get("method") not in {
+        "_x.ai/session/update",
+        "session/update",
+    }:
+        return ""
+    params = payload.get("params")
+    update = params.get("update") if isinstance(params, Mapping) else None
+    if not isinstance(update, Mapping):
+        return ""
+    if update.get("sessionUpdate") != "retry_state" or update.get("type") != "failed":
+        return ""
+    if (
+        str(update.get("error_type") or "").strip().casefold() == "api"
+        and str(update.get("message") or "").strip() == _GROK_BALANCE_EXHAUSTED_MESSAGE
+    ):
+        return "verified_quota"
+    return "other_failure"
+
+
+def _stdout_is_exact_grok_quota_failure(value: bytearray) -> bool:
+    """Require a strict JSONL quota event with no conflicting failure.
+
+    Grok is invoked with ``streaming-json`` output.  Therefore a non-empty
+    non-JSON stdout line is a protocol failure, not evidence that authorizes a
+    provider switch.  Stderr is intentionally never considered.
+    """
+
+    try:
+        output = bytes(value).decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return False
+    verified_quota = False
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if len(line.encode("utf-8")) > _MAX_GROK_STREAM_EVENT_BYTES:
+            return False
+        try:
+            payload = _strict_json_object(line)
+        except RuntimeError:
+            return False
+        failure_kind = _grok_stream_failure_kind(payload)
+        if failure_kind == "verified_quota":
+            verified_quota = True
+        elif failure_kind == "other_failure":
+            return False
+    return verified_quota
+
+
 def _native_cli_failure(
     command: Sequence[str],
     *,
+    return_code: int,
     stdout: bytearray,
     stderr: bytearray,
 ) -> RuntimeError:
-    """Classify a known Codex capacity failure without exposing diagnostics."""
+    """Classify exact capacity failures without exposing diagnostics."""
 
     executable = Path(str(command[0] or "")).name.casefold() if command else ""
+    if (
+        executable == "grok"
+        and return_code == 1
+        and _stdout_is_exact_grok_quota_failure(stdout)
+    ):
+        return NativeGrokQuotaExhaustionSignal()
     if executable == "codex":
         # ``codex exec --json`` versions have emitted the account-limit event
         # on either JSONL stdout or diagnostic stderr. Inspect bounded samples
@@ -193,7 +278,23 @@ def _run_native_cli_process(
     timeout_seconds: int,
     stdin_text: str | None = None,
 ) -> tuple[str, str]:
-    """Run one exact argv with bounded capture and fenced descendant cleanup."""
+    """Run one exact argv with bounded capture and subreaper confinement."""
+
+    if (
+        sys.platform != "linux"
+        or not Path("/proc/self/task").is_dir()
+        or not _NATIVE_CLI_SUBREAPER_PATH.is_file()
+    ):
+        # Native provider execution must never be attempted when the
+        # fork/setsid confinement boundary cannot be established.
+        raise RuntimeError("legacy native provider confinement unavailable")
+    subreaper_command = [
+        sys.executable,
+        "-I",
+        str(_NATIVE_CLI_SUBREAPER_PATH.resolve(strict=True)),
+        "--",
+        *[str(value) for value in command],
+    ]
 
     # Bind every observed descendant PID to its Linux start time so cleanup
     # cannot accidentally signal a PID that was recycled during a long model
@@ -303,7 +404,7 @@ def _run_native_cli_process(
     captures = {"stdout": bytearray(), "stderr": bytearray()}
     try:
         process = subprocess.Popen(
-            [str(value) for value in command],
+            subreaper_command,
             cwd=str(cwd),
             stdin=stdin_handle if stdin_text is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -357,6 +458,7 @@ def _run_native_cli_process(
             terminate_family(process)
             raise _native_cli_failure(
                 command,
+                return_code=return_code,
                 stdout=captures["stdout"],
                 stderr=captures["stderr"],
             )

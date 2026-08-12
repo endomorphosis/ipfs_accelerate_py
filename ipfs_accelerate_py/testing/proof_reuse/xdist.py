@@ -714,6 +714,17 @@ class ProofReuseXdistCoordinator:
         if not self.can_accept_publication:
             self._record_degraded(COORDINATION_UNAVAILABLE)
             return False
+        # Workers may only enqueue public intents; they never write stores.
+        if self.role is ProofReuseXdistRole.WORKER:
+            # Strip any accidental private kwargs before intent construction.
+            for banned in (
+                "private_key",
+                "signing_key",
+                "proving_key",
+                "witness",
+                "secret",
+            ):
+                kwargs.pop(banned, None)
         try:
             intent = (
                 intent_or_receipt
@@ -725,6 +736,12 @@ class ProofReuseXdistCoordinator:
         except Exception:
             self.metrics.degraded(reason_code="publication_intent_invalid")
             return False
+        # Public-only deferred request fence (workers cannot leak private data).
+        if intent.deferred_request is not None:
+            leaked = _public_deferred_request(intent.deferred_request)
+            if leaked is None:
+                self.metrics.degraded(reason_code="publication_private_material")
+                return False
         with self._lock:
             existing = self._intents.get(intent.intent_id)
             if existing is not None:
@@ -883,12 +900,18 @@ class ProofReuseXdistCoordinator:
         with self._lock:
             intents = tuple(self._intents.values())
 
-        # This transaction is the sole certificate-publication authority.  An
-        # import/construction failure deliberately has no legacy issuer or
-        # candidate-index fallback.
+        # ControllerCandidatePublisher@2 is the sole signed-receipt +
+        # certificate-publication authority (PTR-164).  An import/construction
+        # failure deliberately has no legacy issuer or candidate-index fallback.
+        # Workers never receive private signing material through this path.
+        publisher: Any = None
         transaction: Any = None
         try:
-            from .publication import ProofReuseControllerPublicationTransaction
+            from .publication import (
+                ControllerCandidatePublisher,
+                ProofReuseControllerPublicationTransaction,
+                build_controller_candidate_publisher,
+            )
 
             transaction = ProofReuseControllerPublicationTransaction(
                 store=store,
@@ -897,7 +920,18 @@ class ProofReuseXdistCoordinator:
                 owner_id=self.controller_id,
                 metrics=self.metrics,
             )
+            publisher = build_controller_candidate_publisher(
+                role="controller",
+                transaction=transaction,
+                store=store,
+                candidate_store=candidate_store,
+                issuer=issuer,
+                owner_id=self.controller_id,
+                metrics=self.metrics,
+            )
+            del ControllerCandidatePublisher  # type-only import for clarity
         except Exception:
+            publisher = None
             transaction = None
 
         def retain_non_authoritative(
@@ -937,7 +971,7 @@ class ProofReuseXdistCoordinator:
         for intent in intents:
             if intent.intent_id in self._published:
                 continue
-            if transaction is None:
+            if publisher is None and transaction is None:
                 retain_non_authoritative(
                     intent,
                     reason_code="deferred_issuer_unavailable",
@@ -950,14 +984,43 @@ class ProofReuseXdistCoordinator:
                     "receipt_cid": intent.receipt_cid,
                     "locator_cid": intent.locator_cid,
                 }
-            try:
-                outcome = transaction.publish_intent(
-                    intent,
-                    store=store,
-                    candidate_store=candidate_store,
-                    issuer=issuer,
-                    deferred_request=request,
+            # Reject any residual private material before controller publish.
+            if publisher is not None:
+                accepted, private_reason = publisher.reject_worker_private_material(
+                    {
+                        "receipt": intent.receipt,
+                        "certificate": intent.certificate,
+                        "deferred_request": intent.deferred_request,
+                    }
                 )
+                if not accepted:
+                    retain_non_authoritative(
+                        intent,
+                        reason_code="worker_private_material_rejected",
+                    )
+                    self.metrics.degraded(reason_code=private_reason[:64])
+                    continue
+            try:
+                if publisher is not None:
+                    outcome = publisher.publish(
+                        intent,
+                        store=store,
+                        candidate_store=candidate_store,
+                        issuer=issuer,
+                        deferred_request=request,
+                        # Signing requires controller key material which is
+                        # session-scoped and never present on workers.  When
+                        # unset, publish still runs the verified transaction.
+                        sign=False,
+                    )
+                else:
+                    outcome = transaction.publish_intent(
+                        intent,
+                        store=store,
+                        candidate_store=candidate_store,
+                        issuer=issuer,
+                        deferred_request=request,
+                    )
             except Exception:
                 # An incompatible/broken transaction is equivalent to an
                 # unavailable authority boundary, never permission to issue or

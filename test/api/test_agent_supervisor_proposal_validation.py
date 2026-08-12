@@ -537,7 +537,7 @@ def test_declared_validation_config_authority_allows_additions_only() -> None:
             _entry(
                 "pyproject.toml",
                 before=before,
-                after=before + "scripts = { semantic-index = 'module:main' }\n",
+                after=before + "dependencies = ['duckdb>=1.5,<1.6']\n",
             )
         ),
         policy=policy,

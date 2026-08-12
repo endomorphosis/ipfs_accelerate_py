@@ -1,0 +1,10 @@
+{
+  "exact_generation_only": true,
+  "fences_released": true,
+  "owned_process_generations": [
+    "lifecycle:gen1",
+    "monitor:gen1"
+  ],
+  "receipt_cid": "baguqeerainfehzvnmc3ddaxsacj5wd2zzvmq7ihkmkrf7uxkcw6veovpl26a",
+  "schema": "ipfs_accelerate_py.agent_supervisor.terminal-shutdown-receipt@1"
+}

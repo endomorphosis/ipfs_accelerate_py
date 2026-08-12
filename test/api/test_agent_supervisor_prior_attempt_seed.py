@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-    implementation_daemon as implementation_daemon_module,
-)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -213,8 +209,6 @@ def test_prior_attempt_seed_plan_reuses_unmerged_commit(
     tmp_path: Path, monkeypatch
 ) -> None:
     daemon = _daemon(tmp_path)
-    task = _task("src/output.py")
-    identity = daemon._identity_for_task(task)
     monkeypatch.setattr(
         daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate"
     )
@@ -228,20 +222,12 @@ def test_prior_attempt_seed_plan_reuses_unmerged_commit(
         "_git_ref_is_ancestor",
         lambda ancestor, descendant: False,
     )
-    monkeypatch.setattr(
-        daemon,
-        "_branch_changed_paths_in_repo",
-        lambda _repo, _ref, base_ref: {"src/output.py"},
-    )
     state = PortalTaskState(
-        last_implementation_task_id=task.task_id,
-        last_implementation_task_key=identity.canonical_task_key,
-        last_implementation_task_cid=identity.canonical_task_cid,
         last_implementation_commit="abc123prior",
         last_implementation_branch="implementation/lig-016-attempt-1",
         last_implementation_returncode=78,
     )
-    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=2)
+    plan = daemon._prior_attempt_seed_plan(state=state, attempt=2)
     assert plan["reuse_prior_attempt"] is True
     assert plan["seed_ref"] == "abc123prior"
     assert plan["reason"] == "prior_failed_attempt_commit"
@@ -251,8 +237,6 @@ def test_prior_attempt_seed_plan_skips_when_already_on_target(
     tmp_path: Path, monkeypatch
 ) -> None:
     daemon = _daemon(tmp_path)
-    task = _task("src/output.py")
-    identity = daemon._identity_for_task(task)
     monkeypatch.setattr(
         daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate"
     )
@@ -266,13 +250,8 @@ def test_prior_attempt_seed_plan_skips_when_already_on_target(
         "_git_ref_is_ancestor",
         lambda ancestor, descendant: ancestor == "abc123prior",
     )
-    state = PortalTaskState(
-        last_implementation_task_id=task.task_id,
-        last_implementation_task_key=identity.canonical_task_key,
-        last_implementation_task_cid=identity.canonical_task_cid,
-        last_implementation_commit="abc123prior",
-    )
-    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=3)
+    state = PortalTaskState(last_implementation_commit="abc123prior")
+    plan = daemon._prior_attempt_seed_plan(state=state, attempt=3)
     assert plan["reuse_prior_attempt"] is False
     assert plan["reason"] == "prior_already_on_merge_target"
 
@@ -281,100 +260,12 @@ def test_prior_attempt_seed_plan_first_attempt_uses_baseline(
     tmp_path: Path, monkeypatch
 ) -> None:
     daemon = _daemon(tmp_path)
-    task = _task("src/output.py")
     monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
     state = PortalTaskState(last_implementation_commit="abc123prior")
-    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=1)
+    plan = daemon._prior_attempt_seed_plan(state=state, attempt=1)
     assert plan["reuse_prior_attempt"] is False
     assert plan["seed_ref"] == "feature/x"
     assert plan["reason"] == "merge_target_baseline"
-
-
-def test_prior_attempt_seed_plan_rejects_cross_task_last_commit(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    daemon = _daemon(tmp_path)
-    task = _task("src/output.py")
-    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
-    state = PortalTaskState(
-        last_implementation_task_id="OTHER-001",
-        last_implementation_task_key="task/v1/other-001",
-        last_implementation_task_cid="cid-other-001",
-        last_implementation_commit="other-commit",
-    )
-
-    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=2)
-
-    assert plan["reuse_prior_attempt"] is False
-    assert plan["reason"] == "prior_attempt_task_identity_mismatch"
-    assert plan["seed_ref"] == "feature/x"
-    assert plan["prior_task_identity"]["task_id"] == "OTHER-001"
-
-
-def test_prior_attempt_seed_plan_rejects_revised_canonical_task(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    daemon = _daemon(tmp_path)
-    task = _task("src/output.py")
-    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
-    state = PortalTaskState(
-        last_implementation_task_id=task.task_id,
-        last_implementation_task_key="task/v1/obsolete-seed-001",
-        last_implementation_task_cid="cid-obsolete-seed-001",
-        last_implementation_commit="obsolete-commit",
-    )
-
-    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=2)
-
-    assert plan["reuse_prior_attempt"] is False
-    assert plan["reason"] == "prior_attempt_task_identity_mismatch"
-    assert plan["prior_task_identity"]["canonical_task_cid"] == (
-        "cid-obsolete-seed-001"
-    )
-
-
-def test_prior_attempt_seed_plan_rejects_out_of_scope_prior_artifacts(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    daemon = _daemon(tmp_path)
-    task = _task("src/output.py")
-    identity = daemon._identity_for_task(task)
-    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
-    monkeypatch.setattr(
-        daemon,
-        "_git_commit_exists_in_repo",
-        lambda _repo, ref: ref == "prior-commit",
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_git_ref_is_ancestor",
-        lambda _ancestor, _descendant: False,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_branch_changed_paths_in_repo",
-        lambda _repo, _ref, base_ref: {
-            "src/output.py",
-            "faiss_index/generated.index",
-        },
-    )
-    state = PortalTaskState(
-        last_implementation_task_id=task.task_id,
-        last_implementation_task_key=identity.canonical_task_key,
-        last_implementation_task_cid=identity.canonical_task_cid,
-        last_implementation_commit="prior-commit",
-    )
-
-    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=2)
-
-    assert plan["reuse_prior_attempt"] is False
-    assert plan["reason"] == "prior_attempt_paths_outside_task_scope"
-    assert plan["prior_out_of_scope_paths"] == [
-        "faiss_index/generated.index"
-    ]
 
 
 def test_prior_seed_requires_accepted_same_identity_proposal(
@@ -1472,12 +1363,18 @@ def test_consume_merge_rejects_queue_target_mismatch(
         raise AssertionError("mismatched merge queue target must fail closed")
 
 
-def test_record_prior_attempt_seed_failure_writes_guidance(
+def test_record_prior_attempt_seed_failure_writes_guidance_outside_candidate(
     tmp_path: Path,
 ) -> None:
     daemon = _daemon(tmp_path)
     worktree = tmp_path / "wt"
     worktree.mkdir()
+    _git(worktree, "init")
+    _git(worktree, "config", "user.name", "Test User")
+    _git(worktree, "config", "user.email", "test@example.invalid")
+    (worktree / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(worktree, "add", "base.txt")
+    _git(worktree, "commit", "-m", "base")
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalTask,
     )
@@ -1508,75 +1405,69 @@ def test_record_prior_attempt_seed_failure_writes_guidance(
     key = daemon._canonical_ref(task)
     assert key in daemon._implementation_seed_failure_guidance
     assert "abc123" in daemon._implementation_seed_failure_guidance[key]
-    assert (
-        "recover preserved work"
-        in daemon._implementation_seed_failure_guidance[key]
+    legacy_guide = (
+        worktree
+        / "docs"
+        / "agent-supervisor"
+        / "rescue"
+        / "lig-016-attempt-2-seed-recovery.md"
     )
     guide = (
         daemon.implementation_log_dir
-        / "seed_recovery"
+        / "seed_recovery_guidance"
         / "lig-016-attempt-2-seed-recovery.md"
     )
+    assert not legacy_guide.exists()
     assert guide.is_file()
     assert "compactly" in guide.read_text(encoding="utf-8")
-    assert not (worktree / "docs" / "agent-supervisor" / "rescue").exists()
-    event = json.loads(
-        daemon.events_path.read_text(encoding="utf-8").splitlines()[-1]
-    )
-    assert event["type"] == "implementation_prior_attempt_seed_failed"
-    assert event["guidance_path"] == str(guide)
+    assert _git(worktree, "status", "--short") == ""
 
 
-def test_rejected_prior_seed_guidance_forbids_replay_and_reaches_retry_prompt(
+def test_record_prior_attempt_seed_failure_never_writes_inside_candidate(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    daemon = _daemon(tmp_path)
     worktree = tmp_path / "wt"
     worktree.mkdir()
-    task = _task("src/repair.py")
-    prior_commit = "a" * 40
+    _git(worktree, "init")
+    _git(worktree, "config", "user.name", "Test User")
+    _git(worktree, "config", "user.email", "test@example.invalid")
+    (worktree / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(worktree, "add", "base.txt")
+    _git(worktree, "commit", "-m", "base")
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=worktree / "candidate-logs",
+    )
+    task = PortalTask(
+        task_id="PTR-042",
+        title="t",
+        status="pending",
+        completion="manual",
+        priority="P0",
+        track="gate",
+        outputs=["tests/fixtures/logic/admissibility"],
+        canonical_task_cid="cid-ptr-042",
+    )
 
     daemon._record_prior_attempt_seed_failure(
         task=task,
         attempt=2,
-        seed_plan={
-            "reuse_prior_attempt": True,
-            "prior_commit": prior_commit,
-            "prior_branch": "implementation/seed-001-attempt-1",
-            "seed_ref": prior_commit,
-        },
-        seed_apply={
-            "applied": False,
-            "reason": "prior_seed_accepted_proposal_missing",
-        },
+        seed_plan={"prior_commit": "abc123"},
+        seed_apply={"applied": False, "reason": "prior_seed_apply_failed"},
         worktree_path=worktree,
-        branch_name="implementation/seed-001-attempt-2",
+        branch_name="implementation/ptr-042-attempt-2",
     )
 
-    key = daemon._canonical_ref(task)
-    guidance = daemon._implementation_seed_failure_guidance[key]
-    assert "read-only diagnostic evidence only" in guidance
-    assert "MUST NOT cherry-pick, merge, apply, or replay it" in guidance
+    assert not (worktree / "candidate-logs").exists()
+    assert _git(worktree, "status", "--short") == ""
+    event = daemon._iter_events()[-1]
+    assert event["guidance_storage"] == "supervisor_event"
+    assert event["guidance_path"] == ""
     assert (
-        "remove every reported proposal, security, and validation finding"
-        in guidance
+        event["guidance_file_skipped_reason"]
+        == "implementation_log_dir_within_candidate"
     )
-    assert "recover preserved work" not in guidance
-
-    monkeypatch.setattr(
-        daemon,
-        "_compile_implementation_context",
-        lambda _task, _attempt: SimpleNamespace(capsule=object()),
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "render_context_capsule",
-        lambda _capsule: "base implementation prompt",
-    )
-
-    prompt = daemon._build_implementation_prompt(task, attempt=2)
-
-    assert "## Prior attempt seed recovery" in prompt
-    assert guidance in prompt
-    assert key not in daemon._implementation_seed_failure_guidance

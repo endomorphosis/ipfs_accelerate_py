@@ -42,8 +42,10 @@ from .contract_packet_provider_router import (
     MAX_PROVIDER_TIMEOUT_SECONDS,
     ProviderRequest,
     ProviderRole,
+    VerifiedGrokQuotaExhaustion,
 )
 from .legacy_landed_provider_cli import (
+    NativeGrokQuotaExhaustionSignal,
     _invoke_native_structured_cli,
 )
 from .llm import (
@@ -610,21 +612,28 @@ class BoundProductionCLIProvider:
         *,
         max_response_bytes: int,
     ) -> tuple[str, LlmChildResultEnvelope | None]:
-        if self.invoker is not None:
-            return self.invoker(prompt, config)
-        return _invoke_native_structured_cli(
-            prompt,
-            config,
-            response_schema,
-            response_validator=_validate_production_native_response,
-            execution_schema=PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
-            max_response_bytes=max_response_bytes,
-            codex_reasoning_effort=(
-                self.policy.codex_reasoning_effort
-                if self.role is ProviderRole.CODEX_REVIEW
-                else ""
-            ),
-        )
+        try:
+            if self.invoker is not None:
+                return self.invoker(prompt, config)
+            return _invoke_native_structured_cli(
+                prompt,
+                config,
+                response_schema,
+                response_validator=_validate_production_native_response,
+                execution_schema=PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
+                max_response_bytes=max_response_bytes,
+                codex_reasoning_effort=(
+                    self.policy.codex_reasoning_effort
+                    if self.role is ProviderRole.CODEX_REVIEW
+                    else ""
+                ),
+            )
+        except NativeGrokQuotaExhaustionSignal as exc:
+            if self.role is ProviderRole.GROK_IMPLEMENT:
+                raise VerifiedGrokQuotaExhaustion() from exc
+            raise RuntimeError(
+                "non-Grok production provider emitted a Grok quota signal"
+            ) from exc
 
     def __call__(self, request: ProviderRequest) -> Mapping[str, Any]:
         if not isinstance(request, ProviderRequest):

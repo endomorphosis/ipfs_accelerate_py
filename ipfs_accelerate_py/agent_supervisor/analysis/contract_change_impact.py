@@ -26,7 +26,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from ..program_graph import (
+from .program_graph import (
     Completeness,
     ProgramEdge,
     ProgramEdgeKind,

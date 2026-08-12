@@ -1,0 +1,216 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.ipfs_kit_fuse_vfs.scheduler_config@1",
+  "taskboard_path": "docs/architecture/ipfs_kit_fuse_vfs.todo.md",
+  "objectives_path": "docs/architecture/ipfs_kit_fuse_vfs.objectives.md",
+  "plan_path": "docs/architecture/IPFS_KIT_FUSE_VFS_PLAN.md",
+  "validator_path": "scripts/validate_ipfs_kit_fuse_vfs_board.py",
+  "task_prefix": "KVFS-",
+  "goal_prefix": "KVFS-G",
+  "board_namespace": "ipfs-kit-kernel-vfs-fuse-v1",
+  "merge_target_branch": "agent/ipfs-kit-fuse-vfs",
+  "source_binding": {
+    "accelerator_required_ancestor": "ea11293bb996f052d620eae989f5377a956764b1",
+    "accelerator_required_branch": "agent/ipfs-kit-fuse-vfs",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "69091bf8f11a3ef1fb0e04e11a6d8a4c87f3fa78",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 40,
+    "completed_task_ids": [
+      "KVFS-000"
+    ],
+    "ready_task_ids": [
+      "KVFS-100",
+      "KVFS-101",
+      "KVFS-103",
+      "KVFS-108"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "KVFS-811",
+    "goal_count": 9,
+    "root_goal_id": "KVFS-G000"
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 30,
+  "check_interval_seconds": 15,
+  "stale_seconds": 900,
+  "watchdog_startup_grace_seconds": 180,
+  "max_restarts": 3,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 900,
+  "worktree_submodule_paths": [
+    "ipfs_kit_py"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/IPFS_KIT_FUSE_VFS_PLAN.md",
+    "docs/architecture/ipfs_kit_fuse_vfs.objectives.md",
+    "docs/architecture/ipfs_kit_fuse_vfs.todo.md",
+    "config/agent_supervisor_ipfs_kit_fuse_vfs_scheduler.json",
+    "scripts/validate_ipfs_kit_fuse_vfs_board.py",
+    "test/api/test_ipfs_kit_fuse_vfs_board.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/ipfs_kit_fuse_vfs",
+    "state": "data/agent_supervisor/ipfs_kit_fuse_vfs/state",
+    "worktrees": "data/agent_supervisor/ipfs_kit_fuse_vfs/worktrees",
+    "merge_queue": "data/agent_supervisor/ipfs_kit_fuse_vfs/merge-queue",
+    "logs": "data/agent_supervisor/ipfs_kit_fuse_vfs/logs",
+    "evidence": "data/agent_supervisor/ipfs_kit_fuse_vfs/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "kvfs-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "KVFS-103"
+      ],
+      "initial_focus": "hermetic-fixtures"
+    },
+    {
+      "index": 1,
+      "name": "kvfs-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "KVFS-101"
+      ],
+      "initial_focus": "host-contracts"
+    },
+    {
+      "index": 2,
+      "name": "kvfs-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [
+        "KVFS-108"
+      ],
+      "initial_focus": "bounded-doctor-baseline"
+    },
+    {
+      "index": 3,
+      "name": "kvfs-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_task_ids": [
+        "KVFS-100"
+      ],
+      "initial_focus": "authority-cutover-adr"
+    }
+  ],
+  "task_groups": {
+    "KVFS-G100": [
+      "KVFS-100",
+      "KVFS-101",
+      "KVFS-103",
+      "KVFS-108"
+    ],
+    "KVFS-G200": [
+      "KVFS-200",
+      "KVFS-202",
+      "KVFS-201",
+      "KVFS-204",
+      "KVFS-203",
+      "KVFS-205",
+      "KVFS-208",
+      "KVFS-210",
+      "KVFS-206"
+    ],
+    "KVFS-G300": [
+      "KVFS-303",
+      "KVFS-309",
+      "KVFS-300",
+      "KVFS-301",
+      "KVFS-304"
+    ],
+    "KVFS-G400": [
+      "KVFS-400",
+      "KVFS-401",
+      "KVFS-404",
+      "KVFS-403"
+    ],
+    "KVFS-G500": [
+      "KVFS-503",
+      "KVFS-500",
+      "KVFS-506",
+      "KVFS-501"
+    ],
+    "KVFS-G600": [
+      "KVFS-608",
+      "KVFS-600",
+      "KVFS-601",
+      "KVFS-603"
+    ],
+    "KVFS-G700": [
+      "KVFS-703",
+      "KVFS-701",
+      "KVFS-700",
+      "KVFS-702"
+    ],
+    "KVFS-G800": [
+      "KVFS-808",
+      "KVFS-800",
+      "KVFS-802",
+      "KVFS-801",
+      "KVFS-811"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "native_capability_policy": {
+    "doctor_timeout_seconds": 5,
+    "mount_readiness_timeout_seconds": 15,
+    "integration_case_timeout_seconds": 60,
+    "mount_runs_as_bounded_child_process": true,
+    "exclusive_mountpoint_and_drive_leases": true,
+    "cleanup_finally_and_watchdog_required": true,
+    "capability_absence_receipt": "capability_unavailable",
+    "capability_absence_may_leave_task_running": false,
+    "linux_windows_and_container_certification_independent": true
+  },
+  "nested_repository_policy": {
+    "task_specific_nested_branch_required": true,
+    "nested_commit_before_parent_gitlink_update": true,
+    "parent_gitlink_updates_serialized_by_merge_queue": true,
+    "rebase_nested_change_on_latest_accepted_gitlink": true,
+    "rerun_nested_validation_after_rebase": true,
+    "dirty_or_detached_nested_completion_allowed": false,
+    "broad_snapshot_merge_allowed": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "KVFS-811",
+    "all_task_and_goal_dependencies_terminal_required": true,
+    "current_tree_evidence_required": true,
+    "skipped_stale_simulated_or_driver_absent_evidence_promotes_support": false,
+    "acknowledged_data_loss_floor": 0,
+    "duplicate_non_idempotent_effect_floor": 0,
+    "stale_committed_cache_read_floor": 0,
+    "path_escape_floor": 0,
+    "false_success_floor": 0,
+    "leaked_native_resource_floor": 0
+  }
+}

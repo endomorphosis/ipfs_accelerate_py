@@ -860,33 +860,58 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
         coordinator.mark_controller_unavailable(collected)
         return
 
-    request_items = [
-        item
-        for item in collected
-        if (
-            getattr(item, ITEM_LOOKUP_REQUEST_ATTRIBUTE, None) is not None
-            or (
-                getattr(item, "_ipfs_proof_reuse_locator", None) is not None
-                and getattr(
-                    item,
-                    "_ipfs_proof_reuse_execution_key",
-                    None,
-                )
-                is not None
-            )
-        )
-    ]
+    # PTR-164: unmodified locator-seeded items reach two-stage warm lookup
+    # before setup.  Execution keys are optional; stage-1 rebuilds current
+    # context and stage-1.5 verifies signed-receipt trust before proof work.
+    from .lookup import (
+        ProofReuseTwoStageLookup,
+        RevalidatedProofReuseLookupRequest,
+    )
+
     lookup = getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None)
-    if (
-        proof_config.reads_candidates
-        and request_items
-        and not isinstance(lookup, ProofReuseLookup)
-    ):
-        # Resolve optional CID/cache/verifier dependencies only when collection
-        # produced an exact lookup identity. Ordinary fail-open execution never
-        # imports or installs those providers.
-        _inject_default_services(config)
-        lookup = getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None)
+    if proof_config.reads_candidates and not isinstance(lookup, ProofReuseLookup):
+        # Resolve optional services when any collected item carries a stable
+        # locator (locator-only warm path) or an explicit lookup request.
+        has_locator_identity = any(
+            getattr(item, ITEM_LOOKUP_REQUEST_ATTRIBUTE, None) is not None
+            or getattr(item, "_ipfs_proof_reuse_locator", None) is not None
+            for item in collected
+        )
+        if has_locator_identity:
+            _inject_default_services(config)
+            lookup = getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None)
+
+    request_items: list[Any] = []
+    for item in collected:
+        existing = getattr(item, ITEM_LOOKUP_REQUEST_ATTRIBUTE, None)
+        if existing is not None:
+            request_items.append(item)
+            continue
+        locator = getattr(item, "_ipfs_proof_reuse_locator", None)
+        execution_key = getattr(
+            item,
+            "_ipfs_proof_reuse_execution_key",
+            None,
+        )
+        if locator is None:
+            continue
+        # Attach a locator-first warm request so batch lookup does not require
+        # a pre-built execution key for TwoStageCandidateLookup@2.
+        if execution_key is None and isinstance(lookup, ProofReuseTwoStageLookup):
+            try:
+                setattr(
+                    item,
+                    ITEM_LOOKUP_REQUEST_ATTRIBUTE,
+                    RevalidatedProofReuseLookupRequest(
+                        item=item,
+                        locator=locator,
+                        execution_key=None,
+                    ),
+                )
+            except Exception:
+                pass
+        request_items.append(item)
+
     if (
         proof_config.reads_candidates
         and request_items

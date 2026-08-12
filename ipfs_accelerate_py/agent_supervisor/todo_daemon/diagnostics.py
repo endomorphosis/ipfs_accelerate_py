@@ -116,15 +116,47 @@ def is_pytest_session_noise(text: str) -> bool:
     )
 
 
+def _is_pytest_banner_noise(text: str) -> bool:
+    """Return whether a line is a pytest section banner with no failure signal."""
+
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if stripped.startswith("=") and len(stripped) >= 8:
+        # Keep banner text that names a concrete failed node/path; drop pure
+        # separators and section titles like "short test summary info".
+        lowered = stripped.strip("=").strip().lower()
+        if not lowered:
+            return True
+        if lowered in {
+            "failures",
+            "short test summary info",
+            "warnings summary",
+            "test session starts",
+            "slowest durations",
+        }:
+            return True
+        if lowered.startswith("short test summary"):
+            return True
+    return is_pytest_session_noise(stripped)
+
+
 def summarize_test_failure(stdout: Any) -> dict[str, Any]:
-    """Summarize failed pytest/Playwright ids, paths, and useful output head."""
+    """Summarize failed pytest/Playwright ids, paths, and useful output head.
+
+    Prefer concrete failure signal (FAILED node ids, assertion ``E`` lines,
+    exception types, and FAILURES-section body) over pytest section banners.
+    Empty banner-only heads previously starved automatic rescue guidance.
+    """
 
     output = command_output_text(stdout)
     failed_tests: list[str] = []
     failed_test_paths: list[str] = []
     for match in re.finditer(r"FAILED\s+([^\s]+)", output):
         name = match.group(1).strip()
-        if name == "[" or "::" not in name:
+        # Allow node ids without ``::`` when pytest -q short summary uses a
+        # bare path, but still drop noise tokens like "[".
+        if not name or name == "[" or name.startswith("["):
             continue
         if name and name not in failed_tests:
             failed_tests.append(name)
@@ -157,24 +189,59 @@ def summarize_test_failure(stdout: Any) -> dict[str, Any]:
             exception_types.append(name)
 
     interesting_lines: list[str] = []
-    for line in output.splitlines():
-        text = line.strip()
+    in_failures_section = False
+    for raw_line in output.splitlines():
+        text = _ANSI_CONTROL_SEQUENCE_RE.sub("", raw_line).strip()
         if not text:
             continue
-        if (
+        lowered = text.strip("=").strip().lower()
+        if text.startswith("=") and "failures" == lowered:
+            in_failures_section = True
+            continue
+        if text.startswith("=") and lowered and lowered != "failures":
+            # Leaving the FAILURES body (summary / warnings / etc.).
+            if in_failures_section and lowered.startswith("short test summary"):
+                in_failures_section = False
+            elif in_failures_section and lowered not in {"failures"}:
+                in_failures_section = False
+        if _is_pytest_banner_noise(text):
+            continue
+        useful = (
             text.startswith("FAILED ")
+            or text.startswith("E ")
+            or text.startswith("E\t")
             or text.startswith("E   ")
             or "Recursion detected" in text
-            or "short test summary info" in text
-        ):
+            or text.startswith("AssertionError")
+            or text.startswith("Error")
+            or text.startswith(">")
+            or text.startswith("File ")
+            or text.startswith("self =")
+            or (
+                in_failures_section
+                and not text.startswith("-")
+                and len(text) > 3
+            )
+        )
+        if useful:
             interesting_lines.append(text)
-        if len(interesting_lines) >= 10:
+        if len(interesting_lines) >= 16:
             break
     for identifier in playwright_failure_lines:
         if identifier not in interesting_lines:
             interesting_lines.append(identifier)
-        if len(interesting_lines) >= 10:
+        if len(interesting_lines) >= 16:
             break
+    # If still empty, fall back to trailing non-noise lines (often -q summary).
+    if not interesting_lines:
+        for raw_line in reversed(output.splitlines()):
+            text = _ANSI_CONTROL_SEQUENCE_RE.sub("", raw_line).strip()
+            if not text or _is_pytest_banner_noise(text):
+                continue
+            interesting_lines.append(text)
+            if len(interesting_lines) >= 8:
+                break
+        interesting_lines.reverse()
 
     return {
         "failed_tests": failed_tests,

@@ -26,7 +26,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final, Protocol, runtime_checkable
 
-from ..program_graph import Completeness, ProgramGraphRoots
+from .program_graph import Completeness, ProgramGraphRoots
 
 
 # ---------------------------------------------------------------------------

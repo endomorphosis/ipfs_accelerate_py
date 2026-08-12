@@ -5,6 +5,8 @@ import logging
 import sys
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredDaemonBootstrapRunner,
     ConfiguredImplementationDaemonRunner,
@@ -34,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
+    _configured_agent_implementation_route_plan,
     default_llm_merge_resolver_command,
     parse_args,
     task_declares_validation_config_change,
@@ -52,12 +55,12 @@ from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervi
 
 def test_validation_config_authority_requires_exact_declared_task_output() -> None:
     base = {
-        "task_id": "ISI-030",
-        "title": "CLI packaging",
+        "task_id": "DQP-005",
+        "title": "schema",
         "status": "todo",
         "completion": "automatic",
         "priority": "P0",
-        "track": "cli",
+        "track": "schema",
     }
 
     assert task_declares_validation_config_change(
@@ -70,7 +73,7 @@ def test_validation_config_authority_requires_exact_declared_task_output() -> No
         )
     )
     assert not task_declares_validation_config_change(
-        PortalTask(**base, outputs=["src/cli.py"])
+        PortalTask(**base, outputs=["src/schema.py"])
     )
     assert not task_declares_validation_config_change(
         PortalTask(**base, outputs=[".github/workflows/"])
@@ -400,6 +403,23 @@ def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: P
 
     assert daemon.worktree_root == (tmp_path / "tmp" / "implementation-worktrees").resolve()
     assert command[command.index("-C") + 1] == str(workspace.resolve())
+
+
+def test_daemon_partial_sealed_route_metadata_still_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "primary_quota_exhausted",
+    )
+
+    with pytest.raises(ValueError, match="complete six-field tuple"):
+        _configured_agent_implementation_route_plan(tmp_path)
 
 
 def test_daemon_links_shared_dependencies_from_configured_source_root(tmp_path: Path, monkeypatch):

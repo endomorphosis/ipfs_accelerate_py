@@ -314,6 +314,41 @@ freshness, and policy checks still succeed.
 - Treat any suspected disclosure as an artifact-invalidating security event:
   discard it, revoke affected material when applicable, and execute the test.
 
+## Authenticated runner pass attestations
+
+`RunnerPassAttestation@1` is the sole v1 receipt-authentication suite.  Its
+unsigned envelope has exactly one strict canonical DAG-CBOR encoding and a
+CIDv1 `dag-cbor` / `sha2-256` identity.  The runner signs precisely
+`b"ipfs-test-pass-attestation/v1\0" + sha256(unsigned_attestation_dag_cbor_bytes)`
+with Ed25519; the signed wrapper is also canonical DAG-CBOR.  The signed
+preimage binds the immutable pass receipt CID, exact execution key, candidate
+context, phase commitment, trace commitment, trust-policy CID, trust domain,
+signer key, key epoch, and unique issuance nonce.  A signature over a similar
+JSON rendering, a noncanonical CBOR rendering, or an alternate digest is not
+v1 authority.
+
+Runner public material is exactly `varint(ed25519-pub) || public-key-32-bytes`.
+Its identifier is the lower-base32 CIDv1 `raw` / `sha2-256` of those exact
+bytes.  The material is public; private keys, proving witnesses, and secrets
+are rejected from every cacheable public artifact.
+
+Trust begins only with an explicitly locally pinned
+`RunnerTrustPolicy@1` CIDv1 `dag-cbor` / `sha2-256`.  Neither a cache entry,
+certificate, attestation, nor key advertised by a remote source can select or
+extend that policy (no TOFU).  Before proof verification, the pinned policy
+must approve the pytest-pass-only usage, trust domain, active key epoch,
+not-before/not-after interval, rotation predecessor, and revocation status.
+Possession of a proving or signing key alone cannot fabricate skip authority.
+
+An issuance nonce is bound once to one immutable attestation; verification and
+warm cache reads never consume it.  Re-reading that exact immutable
+certificate is legitimate only while its receipt, execution/context, policy,
+and epoch remain current.  Cross-context or cross-policy use, revoked or
+expired epochs, substituted receipts/attestations, and nonce reissues are
+replay attempts and resolve to normal execution.  Unsigned, altered,
+wrong-key, expired, revoked, malformed, or otherwise unverifiable receipts are
+never authoritative.
+
 ## Decision procedure and audit contract
 
 For each collected pytest item, the policy gate performs a bounded lookup and

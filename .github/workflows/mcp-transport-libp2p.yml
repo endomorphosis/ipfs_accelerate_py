@@ -81,4 +81,4 @@ jobs:
       - name: Run networked trio-p2p parity test
         shell: bash
         run: |
-          python -m pytest -q --maxfail=1 ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py
+          python -m pytest -q --maxfail=1 --import-mode=prepend ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py

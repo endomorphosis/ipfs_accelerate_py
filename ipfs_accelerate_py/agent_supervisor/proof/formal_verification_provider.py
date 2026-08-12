@@ -1564,7 +1564,7 @@ def project_provider_request_to_canonical(
 ) -> Any:
     """Convert a supervisor provider request to the datasets logic-provider wire type."""
 
-    from ..canonical_logic_adapter import project_provider_request
+    from .canonical_logic_adapter import project_provider_request
 
     return project_provider_request(request, cancellation=cancellation)
 
@@ -1574,7 +1574,7 @@ def project_resource_budget_to_canonical(
 ) -> dict[str, Any]:
     """Project a supervisor resource budget onto the canonical provider budget shape."""
 
-    from ..canonical_logic_adapter import project_resource_budget
+    from .canonical_logic_adapter import project_resource_budget
 
     return project_resource_budget(budget)
 

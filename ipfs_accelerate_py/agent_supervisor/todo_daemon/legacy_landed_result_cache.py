@@ -33,7 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from ..multiformats_identity import (
+from ..core.multiformats_identity import (
     MultiformatsIdentityError,
     validate_cid,
 )

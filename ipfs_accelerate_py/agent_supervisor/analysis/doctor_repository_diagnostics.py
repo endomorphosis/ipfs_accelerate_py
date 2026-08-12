@@ -27,7 +27,7 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..program_ast_adapters import (
+from .program_ast_adapters import (
     DEFAULT_MAX_SOURCE_BYTES,
     ProgramASTAdapterResult,
     ProgramEvidenceFact,

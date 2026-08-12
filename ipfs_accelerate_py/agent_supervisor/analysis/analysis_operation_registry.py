@@ -249,7 +249,7 @@ def to_canonical_logic_family_id(value: Any) -> str:
     one shared vocabulary without importing the datasets package.
     """
 
-    from ..canonical_logic_adapter import map_analysis_family_to_canonical
+    from ..proof.canonical_logic_adapter import map_analysis_family_to_canonical
 
     try:
         return map_analysis_family_to_canonical(value)

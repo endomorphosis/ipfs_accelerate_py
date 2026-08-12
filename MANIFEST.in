@@ -1,6 +1,9 @@
 include LICENSE
 include README.md
 include pyproject.toml
+include requirements.txt
+include requirements-proof-reuse.txt
+include docs/guides/TEST_PROOF_REUSE_DEPENDENCY_PROVISIONING.md
 include WEBGPU_WEBNN_MIGRATION_PLAN.md
 
 recursive-include ipfs_accelerate_py *.py

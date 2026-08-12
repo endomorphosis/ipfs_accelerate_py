@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -23,8 +24,171 @@ DEFAULT_MEMORY_LIMIT = "256MB"
 DUCKDB_ONLY_ENV = "IPFS_ACCELERATE_DUCKDB_ONLY"
 SQLITE_MAGIC = b"SQLite format 3\0"
 
+# These settings are connection-birth policy, not mutable query preferences.
+# ``lock_configuration`` is deliberately supplied in the same connect call and
+# inserted last: no caller SQL can observe or restore DuckDB's permissive
+# defaults between connection birth and policy verification.  The policy
+# denies dynamic extension bytes and external filesystem/network access.
+# Statically linked modules remain part of the separately reviewed native
+# DuckDB payload and do not cross that byte boundary.
+DUCKDB_CONNECTION_POLICY_SETTINGS = (
+    ("autoinstall_known_extensions", "false", False),
+    ("autoload_known_extensions", "false", False),
+    ("enable_external_access", "false", False),
+    ("allow_unsigned_extensions", "false", False),
+    ("lock_configuration", "true", True),
+)
+DUCKDB_CONNECTION_POLICY_TUNING_KEYS = frozenset({"threads", "memory_limit"})
+DUCKDB_CONNECTION_POLICY_MAX_THREADS = 256
+DUCKDB_CONNECTION_POLICY_MIN_MEMORY_BYTES = 1_000_000
+DUCKDB_CONNECTION_POLICY_MAX_MEMORY_BYTES = 256_000_000
+_DUCKDB_MEMORY_LIMIT = re.compile(r"([1-9][0-9]{0,9})(B|KB|MB|GB)", re.ASCII)
+_DUCKDB_MEMORY_MULTIPLIERS = {
+    "B": 1,
+    "KB": 1_000,
+    "MB": 1_000_000,
+    "GB": 1_000_000_000,
+}
+
 _THREAD_LOCKS: dict[str, threading.RLock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
+
+
+class DuckDBConnectionPolicyError(RuntimeError):
+    """A DuckDB connection did not enforce the supervisor's sealed policy."""
+
+
+def _connection_tuning(
+    configuration: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    if configuration is None:
+        return {}
+    if not isinstance(configuration, Mapping):
+        raise TypeError("DuckDB connection configuration must be a mapping")
+    tuning: dict[str, str] = {}
+    protected = {
+        name
+        for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
+    }
+    for raw_name, raw_value in configuration.items():
+        if not isinstance(raw_name, str):
+            raise TypeError("DuckDB connection configuration keys must be strings")
+        name = raw_name
+        if name in protected:
+            raise ValueError(
+                f"DuckDB supervisor policy setting {name!r} cannot be overridden"
+            )
+        if name not in DUCKDB_CONNECTION_POLICY_TUNING_KEYS:
+            raise ValueError(
+                f"unsupported DuckDB supervisor connection setting: {raw_name!r}"
+            )
+        if name in tuning:
+            raise ValueError(f"duplicate DuckDB connection setting: {name!r}")
+        if name == "threads":
+            if type(raw_value) is not int:
+                raise TypeError("DuckDB threads must be an integer")
+            if not 1 <= raw_value <= DUCKDB_CONNECTION_POLICY_MAX_THREADS:
+                raise ValueError(
+                    "DuckDB threads must be between 1 and "
+                    f"{DUCKDB_CONNECTION_POLICY_MAX_THREADS}"
+                )
+            tuning[name] = str(raw_value)
+            continue
+        if type(raw_value) is not str:
+            raise TypeError("DuckDB memory_limit must be a string")
+        memory_limit = raw_value
+        match = _DUCKDB_MEMORY_LIMIT.fullmatch(memory_limit)
+        if match is None:
+            raise ValueError(
+                "DuckDB memory_limit must be an integer B, KB, MB, or GB value"
+            )
+        memory_bytes = int(match.group(1)) * _DUCKDB_MEMORY_MULTIPLIERS[
+            match.group(2)
+        ]
+        if not (
+            DUCKDB_CONNECTION_POLICY_MIN_MEMORY_BYTES
+            <= memory_bytes
+            <= DUCKDB_CONNECTION_POLICY_MAX_MEMORY_BYTES
+        ):
+            raise ValueError(
+                "DuckDB memory_limit must be between "
+                f"{DUCKDB_CONNECTION_POLICY_MIN_MEMORY_BYTES} and "
+                f"{DUCKDB_CONNECTION_POLICY_MAX_MEMORY_BYTES} bytes"
+            )
+        tuning[name] = memory_limit
+    return tuning
+
+
+def _verify_duckdb_connection_policy(connection: Any) -> None:
+    setting_names = tuple(
+        name for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
+    )
+    expressions = ", ".join(
+        f"current_setting('{name}')" for name in setting_names
+    )
+    try:
+        row = connection.execute(f"SELECT {expressions}").fetchone()
+    except Exception as exc:
+        raise DuckDBConnectionPolicyError(
+            "could not verify DuckDB supervisor connection policy"
+        ) from exc
+    expected = tuple(
+        value for _name, _configured, value in DUCKDB_CONNECTION_POLICY_SETTINGS
+    )
+    if (
+        not isinstance(row, tuple)
+        or len(row) != len(expected)
+        or any(type(value) is not bool for value in row)
+        or row != expected
+    ):
+        raise DuckDBConnectionPolicyError(
+            "DuckDB supervisor connection policy verification failed"
+        )
+
+
+def connect_duckdb_with_policy(
+    duckdb_module: Any,
+    database: Path | str,
+    *,
+    read_only: bool = False,
+    configuration: Mapping[str, Any] | None = None,
+) -> Any:
+    """Open and verify one configuration-locked supervisor connection.
+
+    The four dynamic-extension/external-access settings and configuration lock
+    are passed to ``duckdb.connect`` atomically.  Only the bounded, canonical
+    ``threads`` and ``memory_limit`` tuning keys may be supplied by internal
+    callers; names and values are never normalized or coerced, and policy
+    settings and all other DuckDB settings are not caller-overridable.
+    """
+
+    if type(read_only) is not bool:
+        raise TypeError("DuckDB read_only must be a boolean")
+    tuning = {
+        "threads": "1",
+        "memory_limit": DEFAULT_MEMORY_LIMIT,
+    }
+    tuning.update(_connection_tuning(configuration))
+    connect_config: dict[str, str] = {
+        name: configured
+        for name, configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
+        if name != "lock_configuration"
+    }
+    connect_config.update(tuning)
+    # Keep the lock last in insertion order so DuckDB applies every selected
+    # tuning and denial before sealing the connection configuration.
+    connect_config["lock_configuration"] = "true"
+    connection = duckdb_module.connect(
+        str(database),
+        read_only=read_only,
+        config=connect_config,
+    )
+    try:
+        _verify_duckdb_connection_policy(connection)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
 
 
 def duckdb_only_enabled() -> bool:
@@ -225,11 +389,13 @@ class DuckDBConnection:
         try:
             import duckdb
 
-            self._connection = duckdb.connect(str(self.path))
-            self._connection.execute(f"SET threads={max(1, int(threads))}")
-            self._connection.execute(
-                "SET memory_limit=?",
-                [str(memory_limit)],
+            self._connection = connect_duckdb_with_policy(
+                duckdb,
+                self.path,
+                configuration={
+                    "threads": threads,
+                    "memory_limit": memory_limit,
+                },
             )
         except BaseException:
             self._lock_context.__exit__(None, None, None)

@@ -55,6 +55,7 @@ TEST_LOCATOR_KEY_INTERFACE: Final = "TestLocatorKey@1"
 TEST_EXECUTION_KEY_INTERFACE: Final = "TestExecutionKey@1"
 TEST_PASS_RECEIPT_INTERFACE: Final = "TestPassReceipt@1"
 TEST_PROOF_CERTIFICATE_INTERFACE: Final = "TestProofCertificate@1"
+SIGNED_TEST_PASS_RECEIPT_V2_INTERFACE: Final = "SignedTestPassReceiptV2"
 REUSE_DECISION_INTERFACE: Final = "ReuseDecision@1"
 
 TEST_LOCATOR_KEY_SCHEMA: Final = (
@@ -68,6 +69,9 @@ TEST_PASS_RECEIPT_SCHEMA: Final = (
 )
 TEST_PROOF_CERTIFICATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/test-proof-certificate@1"
+)
+SIGNED_TEST_PASS_RECEIPT_V2_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/signed-test-pass-receipt-v2"
 )
 REUSE_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/reuse-decision@1"
@@ -1220,6 +1224,98 @@ class TestPassReceipt(CanonicalContract):
 
 
 # ---------------------------------------------------------------------------
+# SignedTestPassReceiptV2
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SignedTestPassReceiptV2(CanonicalContract):
+    """Public linkage from an admitted receipt to runner-attestation evidence.
+
+    This is deliberately only a typed *reference* contract.  The authoritative
+    signature, its DAG-CBOR identity, key material, and local trust-policy
+    evaluation live in :mod:`testing.proof_reuse.runner_pass_attestation`.
+    Keeping no signature or witness bytes here prevents a DAG-JSON cache record
+    from accidentally becoming a second signing or trust authority.
+    """
+
+    __test__: ClassVar[bool] = False
+    SCHEMA: ClassVar[str] = SIGNED_TEST_PASS_RECEIPT_V2_SCHEMA
+
+    receipt_cid: str
+    execution_key_cid: str
+    candidate_context_cid: str
+    runner_attestation_cid: str
+    trust_policy_cid: str
+    signer_key_cid: str
+    trust_domain: str
+    key_epoch: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "receipt_cid", "execution_key_cid", "candidate_context_cid",
+            "runner_attestation_cid", "trust_policy_cid", "signer_key_cid",
+            "trust_domain", "key_epoch",
+        ):
+            object.__setattr__(
+                self, name, _bounded_text(getattr(self, name), field_name=name, required=True)
+            )
+
+    @property
+    def interface(self) -> str:
+        return SIGNED_TEST_PASS_RECEIPT_V2_INTERFACE
+
+    def _payload(self) -> Dict[str, Any]:
+        return {
+            "contract_version": TEST_EXECUTION_CONTRACT_VERSION,
+            "interface": self.interface,
+            "receipt_cid": self.receipt_cid,
+            "execution_key_cid": self.execution_key_cid,
+            "candidate_context_cid": self.candidate_context_cid,
+            "runner_attestation_cid": self.runner_attestation_cid,
+            "trust_policy_cid": self.trust_policy_cid,
+            "signer_key_cid": self.signer_key_cid,
+            "trust_domain": self.trust_domain,
+            "key_epoch": self.key_epoch,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SignedTestPassReceiptV2":
+        _schema_or_raise(payload, cls.SCHEMA, artifact_name="signed test pass receipt")
+        _require_versioned_interface(
+            payload,
+            expected_interface=SIGNED_TEST_PASS_RECEIPT_V2_INTERFACE,
+            artifact_name="signed test pass receipt",
+        )
+        _safe_reject_unknown_fields(
+            payload,
+            {
+                "schema", "contract_version", "interface", "receipt_cid",
+                "execution_key_cid", "candidate_context_cid",
+                "runner_attestation_cid", "trust_policy_cid", "signer_key_cid",
+                "trust_domain", "key_epoch", "content_id",
+            },
+            artifact_name="signed test pass receipt",
+        )
+        result = cls(
+            receipt_cid=payload.get("receipt_cid", ""),
+            execution_key_cid=payload.get("execution_key_cid", ""),
+            candidate_context_cid=payload.get("candidate_context_cid", ""),
+            runner_attestation_cid=payload.get("runner_attestation_cid", ""),
+            trust_policy_cid=payload.get("trust_policy_cid", ""),
+            signer_key_cid=payload.get("signer_key_cid", ""),
+            trust_domain=payload.get("trust_domain", ""),
+            key_epoch=payload.get("key_epoch", ""),
+        )
+        claimed = payload.get("content_id")
+        if claimed and claimed != result.content_id:
+            raise TestExecutionContractError(
+                "signed test pass receipt content identity does not match payload"
+            )
+        return result
+
+
+# ---------------------------------------------------------------------------
 # TestProofCertificate@1
 # ---------------------------------------------------------------------------
 
@@ -1726,6 +1822,8 @@ __all__ = [
     "ReuseDecision",
     "ReuseReasonCode",
     "SCHEMA_VERSION",
+    "SIGNED_TEST_PASS_RECEIPT_V2_INTERFACE",
+    "SIGNED_TEST_PASS_RECEIPT_V2_SCHEMA",
     "TEST_EXECUTION_CONTRACT_VERSION",
     "TEST_EXECUTION_KEY_INTERFACE",
     "TEST_EXECUTION_KEY_SCHEMA",
@@ -1739,6 +1837,7 @@ __all__ = [
     "TestExecutionKey",
     "TestLocatorKey",
     "TestPassReceipt",
+    "SignedTestPassReceiptV2",
     "TestProofCertificate",
     "bounded_rejection_reason",
     "canonical_json",

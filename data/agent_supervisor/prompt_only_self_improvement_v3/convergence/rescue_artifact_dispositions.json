@@ -1,0 +1,547 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-rescue-dispositions@1",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "observed_at": "2026-08-08T07:12:11Z",
+  "historical_authority": "evidence-only",
+  "bulk_merge_allowed": false,
+  "merge_base": "9646826c6b9d20966f254f0109986727bf96873d",
+  "rescue_head": "7cdaa1bc628c9ed5d1d0da4d112611366329bb1a",
+  "current_seed": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+  "decision_rule": "Only the named v3 task may rewrite or selectively port an idea after current-tree tests; no historical commit, merge topology, status edit, or receipt satisfies v3 completion.",
+  "commits": [
+    {
+      "commit": "4f6f5e996903fc85e47cf20a356baa58c156703e",
+      "subject": "Fix supervisor preflight crash on missing reconciliation helper",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Re-express the recovery invariant against the current Doctor/watchdog composition."
+    },
+    {
+      "commit": "1889920b73e61fe60a718f310fb1e2345289d781",
+      "subject": "Restore missing reconciliation and retry-budget schema constants",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007", "ASE3-008"],
+      "rationale": "Current refill and recovery contracts must own their schemas instead of restoring branch-local constants."
+    },
+    {
+      "commit": "e23d6e64392b4aa46f4596fa5f6828553cda52c5",
+      "subject": "Honor production context budget when compiling task packets",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001", "ASE3-005"],
+      "rationale": "Bind context budgets through the v3 invocation receipt and real lifecycle."
+    },
+    {
+      "commit": "45f69508e3b1c01d9fb6f22eef2a575744ae3661",
+      "subject": "Fix provider text redaction so Python token bindings survive",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002", "ASE3-012"],
+      "rationale": "Retest redaction within the exact v3 provider-attempt and leak-denial contracts."
+    },
+    {
+      "commit": "aaea320010dd695e3cc018e2f604d866d08430b1",
+      "subject": "ASE2-004: Land DuckDB run registry with immutable IPLD history",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003"],
+      "rationale": "Salvage the design, but replace the stale implementation with current coordination and effect guards."
+    },
+    {
+      "commit": "680fb9c7fbb7c1438f4dd437589e6408075c4c87",
+      "subject": "Admit security-small bundle work on default CPU hosts",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006"],
+      "rationale": "Resource admission must be compiled from current typed host/provider evidence."
+    },
+    {
+      "commit": "b9846c6ace48123df6c6a9ab46d9610a98fc0450",
+      "subject": "Restore profile_g_task_attempt_limit for bundle payload planning",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-007"],
+      "rationale": "Attempt limits belong to the signed v3 budget and refill bounds."
+    },
+    {
+      "commit": "9dce1c75da7b6e604e8b94b4fcb0a9e4375aae45",
+      "subject": "ASE2-003: Add one-time signed local-development profile initialization",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002"],
+      "rationale": "Retain the one-time bootstrap concept while rebinding signatures and effect ceilings to current contracts."
+    },
+    {
+      "commit": "c8c18ecd4b96f6675df883ea7b5084eade9eccdf",
+      "subject": "Merge ASE2-003 implementation branch",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Historical merge topology is not portable and grants no completion credit."
+    },
+    {
+      "commit": "ac6aab510621fbd39e961b71062cccadfddabcbd",
+      "subject": "Auto-recover stalled wave0 supervisor blockers without operator action",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Replace ad hoc recovery with progress classes, bounded actions, and a circuit breaker."
+    },
+    {
+      "commit": "90c22ce047427ef6fa302077e53a0cf19bcf6e34",
+      "subject": "Wire progress auto-recovery into the main daemon pass",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Compose recovery through the v3 monitor service and durable run revision."
+    },
+    {
+      "commit": "c9270bcc2b67ee149d4ca43353d1e3efa36e5782",
+      "subject": "Quiet landed-output recognition when no thrash reset is needed",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Use semantic progress and accepted evidence instead of landed-output heuristics."
+    },
+    {
+      "commit": "e560f785da0127804d37f17ff2df4ee212a8f6de",
+      "subject": "Fix production context for large contracts without symbol hints",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001", "ASE3-005"],
+      "rationale": "Revalidate context selection under frozen invocation and lifecycle budgets."
+    },
+    {
+      "commit": "016e8a0e0a9715952396093a028d0f11ca28c91f",
+      "subject": "Bind auto-selected context symbols so verify accepts budgeted slices",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001", "ASE3-005"],
+      "rationale": "Compile symbol evidence into the current task packet rather than transplanting stale slicing code."
+    },
+    {
+      "commit": "b708ae2e06e337f4cdb8e2eeaaee94c459f62dfd",
+      "subject": "Prefer trailing symbols when auto-slicing effect modules",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001", "ASE3-005"],
+      "rationale": "Current-tree context tests must justify any slicing preference."
+    },
+    {
+      "commit": "666f5233193acb04c6ee28cba2a1c13ff06224a3",
+      "subject": "ASE2-002: land exact Grok to Codex quota-only provider route",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002"],
+      "rationale": "Rebuild the route as installed policy plus fresh per-attempt evidence."
+    },
+    {
+      "commit": "0c07c3efc3d72d0d11fded414b2fdfb156984697",
+      "subject": "Stop thrashing landed ASE2 products pending independent review",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "A historical board mutation and soft landed state cannot be imported."
+    },
+    {
+      "commit": "b83708afeebc756e44793170f81ce27cbb328db3",
+      "subject": "Restore implementation daemon thrash fix without bulk rewrite",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "The v3 bounded recovery controller owns anti-thrash behavior."
+    },
+    {
+      "commit": "129b1c70bcc2137c55031647dda2c62317fceecf",
+      "subject": "Auto-resolve landed thrash and stale lane bindings",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Recover stale lanes only from process, lease, fence, heartbeat, and progress evidence."
+    },
+    {
+      "commit": "fc201f022afd88cef8b60f2e526ce42a4e473272",
+      "subject": "Auto-advance eligible bundle index from board readiness",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007"],
+      "rationale": "Refill and readiness must use one authoritative revision and accepted dependencies."
+    },
+    {
+      "commit": "1df6f94463fbc83c54f5fdb84a53392a39298b21",
+      "subject": "ASE2-006: Require a complete revalidated LaunchPlan at every effect boundary",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003", "ASE3-005"],
+      "rationale": "Retain the invariant but compose it with the current registry and real effect handlers."
+    },
+    {
+      "commit": "fdc9fff9fd569eb0679b99bd933b57aa0cb770d5",
+      "subject": "ASE2-005: Implement transport-specific trusted invocation-context adapters",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001"],
+      "rationale": "Rebuild adapters around one immutable trusted-evidence collector."
+    },
+    {
+      "commit": "272c9022f24b76feac43ca35b3c1b200d68812c1",
+      "subject": "Merge ASE2-005 implementation branch",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Historical merge topology is not portable and grants no completion credit."
+    },
+    {
+      "commit": "574342e8db345e3090e20281592a5d6107387e23",
+      "subject": "ASE2-006: land LaunchPlan effect guard from preserved validation rescue",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003", "ASE3-005"],
+      "rationale": "Resolve the preserved guard against current effect-boundary and saga contracts."
+    },
+    {
+      "commit": "dfc3e5949aec62329be6111fee8ddab16bdc3741",
+      "subject": "Recover failed-validation product land without re-implement thrash",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008", "ASE3-012"],
+      "rationale": "Current validation evidence, not branch-local output presence, governs recovery."
+    },
+    {
+      "commit": "cc5eab360fe548dd5a3d89738c630c67e4b005cf",
+      "subject": "Reclaim abandoned PREPARING worktree claims after startup grace",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Reclaim only after current process-birth and lease/fence checks."
+    },
+    {
+      "commit": "fd95fcdaf12e20fcbdf60f087ed061f30ffaf96d",
+      "subject": "Preclaim-reclaim dead worktree owners before begin_preparing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Move reclaim into the typed recovery decision before a new claim."
+    },
+    {
+      "commit": "48424f3c4008ba3c853105aa4e8b734a521d17ae",
+      "subject": "Requeue exhausted cancelled retryable leases when board still has work",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007", "ASE3-008"],
+      "rationale": "Requeue is bounded by residual evidence, attempt budget, and recovery circuit breaker."
+    },
+    {
+      "commit": "fac56051617b7dfc653de083b31c1ad6395018cf",
+      "subject": "Skip missing worktrees during merged-worktree cleanup",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Cleanup must be idempotent and restricted to registered v3 worktrees."
+    },
+    {
+      "commit": "08da6408bc6a8a0b2988cf698fd71e69c77df7c5",
+      "subject": "Reset repair budget when open work still has missing products",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007", "ASE3-008"],
+      "rationale": "Budgets do not reset implicitly; a signed bounded refill/recovery epoch is required."
+    },
+    {
+      "commit": "84c570bd2e056a805d9d42fe4a41954b34e1a78e",
+      "subject": "ASE2-007: Converge prompt-only Python, CLI, MCP, and MCP++ facades",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-009", "ASE3-010", "ASE3-011"],
+      "rationale": "Split transports into thin adapters over the real shared intent service."
+    },
+    {
+      "commit": "8f6bdbe7046687284e17f165115d96a4e6a5f3b7",
+      "subject": "Merge ASE2-007 implementation branch",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Historical merge topology is not portable and grants no completion credit."
+    },
+    {
+      "commit": "9e257f5587da95ea23291bdba3759dc7799ac541",
+      "subject": "ASE2-008: Validate, materialize, and stage the canonical v2 cutover",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-014"],
+      "rationale": "Generate fresh v3 roots and rollout evidence only after current-tree gates pass."
+    },
+    {
+      "commit": "624641843e83c20599914a3b02ebbb427fe3917c",
+      "subject": "Merge ASE2-008 implementation branch",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Historical merge topology is not portable and grants no completion credit."
+    },
+    {
+      "commit": "9b484b3be2ec5ecd4b6897134497746643ae30b5",
+      "subject": "Drain bundle lanes when board disposition is already completed",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007", "ASE3-008"],
+      "rationale": "Queue drain must trigger residual evaluation and cannot infer completion."
+    },
+    {
+      "commit": "7cdaa1bc628c9ed5d1d0da4d112611366329bb1a",
+      "subject": "Settle deferred dual-review leases after soft board complete",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-008"],
+      "rationale": "Lease settlement and completion require current accepted evidence; soft completion is forbidden."
+    }
+  ],
+  "files": [
+    {
+      "path": "data/agent_supervisor/prompt_only_entrypoints_v2/plan",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Stale v2 materialization is historical evidence, not a v3 plan root."
+    },
+    {
+      "path": "data/agent_supervisor/prompt_only_entrypoints_v2/rollout",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Inactive staged v2 rollout cannot be activated or imported."
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_prompt_only_entrypoints_v2_delta.todo.md",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "discard",
+      "target_tasks": [],
+      "rationale": "Branch-local status edits conflict with the current source board and are non-authoritative."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-010"],
+      "rationale": "Rebuild as a thin product CLI adapter with cold help and real lifecycle results."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001"],
+      "rationale": "Compose current leaf resolvers under one frozen trusted invocation context."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/facade.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-009"],
+      "rationale": "Remove the in-memory completed simulation and bind to the real intent service."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/launch_guard.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003"],
+      "rationale": "Revalidate every effect boundary against current run truth."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002"],
+      "rationale": "Implement the signed bounded profile against current DID and authority contracts."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002"],
+      "rationale": "Separate immutable route policy from fresh per-attempt fallback evidence."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003"],
+      "rationale": "Converge the evolved registry API on one DuckDB mutable authority."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/run_registry_backend.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003"],
+      "rationale": "Port the schema concept only after current CAS, lease, fence, and epoch tests."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-005"],
+      "rationale": "Replace no-op defaults with mandatory real lifecycle handlers."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-008"],
+      "rationale": "Apply v3 attempt bounds and accepted-only settlement to the current coordinator."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007", "ASE3-008"],
+      "rationale": "Use residual goals and semantic progress instead of soft board disposition."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006"],
+      "rationale": "Compile conflict-free lanes from current resource and provider evidence."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002", "ASE3-012"],
+      "rationale": "Revalidate redaction and fallback invariants against the current router."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-007", "ASE3-008"],
+      "rationale": "Integrate bounded refill/recovery without transplanting stale daemon internals."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_progress_recovery.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Replace landed-output heuristics with the v3 progress vector and recovery policy."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-005", "ASE3-008"],
+      "rationale": "Compose real lifecycle and monitor behavior against the current supervisor."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001", "ASE3-005"],
+      "rationale": "Bind current context selection to the admitted invocation budget."
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-008"],
+      "rationale": "Use registered isolated worktrees and current process/lease evidence."
+    },
+    {
+      "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/prompt_entrypoints.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-011"],
+      "rationale": "Expose MCP and MCP++ as equivalent adapters over the shared intent service."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_context_adapters.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-001"],
+      "rationale": "Retain adversarial cases but assert the v3 frozen context contract."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_contract_packet_provider_router.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002", "ASE3-012"],
+      "rationale": "Reconcile provider tests with the current expanded suite."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_duckdb_run_registry.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003"],
+      "rationale": "Rebuild CAS, adoption, crash, and immutable epoch tests for current coordination."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_implementation_progress_recovery.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-008"],
+      "rationale": "Test progress-vector classification and bounded recovery, not landed-output shortcuts."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_launch_guard.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-003", "ASE3-005"],
+      "rationale": "Cover every current effect boundary and stale-field denial."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_lease_coordination.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-008"],
+      "rationale": "Reconcile historical lease tests with accepted-only current settlement."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_local_profile.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002"],
+      "rationale": "Test key permissions, repository bounds, rotation, revocation, and leak denial."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_prompt_only_v2_conformance.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-012"],
+      "rationale": "Convert useful cases into v3 cross-transport and no-simulation conformance."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_prompt_only_v2_load.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-012", "ASE3-014"],
+      "rationale": "Run load and rollout gates only against current v3 artifacts."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_scheduler.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-007", "ASE3-008"],
+      "rationale": "Integrate v3 parallelism, refill, and recovery assertions into current scheduler tests."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_typed_provider_fallback.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-002"],
+      "rationale": "Test exact current provider identities and fresh quota-only fallback."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_validation_optional_paths.py",
+      "rescue_change": "added",
+      "current_state": "missing",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-012"],
+      "rationale": "Retain optional-path cases while forbidding output-presence completion."
+    },
+    {
+      "path": "test/api/test_agent_supervisor_worktree_lifecycle.py",
+      "rescue_change": "modified",
+      "current_state": "diverged",
+      "disposition": "rewrite",
+      "target_tasks": ["ASE3-006", "ASE3-008"],
+      "rationale": "Reconcile reclaim and cleanup tests with current registered-worktree policy."
+    }
+  ]
+}

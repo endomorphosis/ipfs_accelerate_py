@@ -35,7 +35,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from ..release_evidence import (
+from ..runtime.release_evidence import (
     MEMBER_COMPLETION_RECEIPT_SCHEMA as _MEMBER_COMPLETION_RECEIPT_SCHEMA,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as _OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID as _OBJECTIVE_VALIDATION_REPAIR_TASK_ID,

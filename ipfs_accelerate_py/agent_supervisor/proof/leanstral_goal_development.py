@@ -1798,7 +1798,7 @@ class LeanstralGoalDevelopmentProvider:
         if mode_raw in {"", "off"}:
             return _execute()
 
-        from ..provider_usage_migration import (
+        from ..runtime.provider_usage_migration import (
             ConsumerId,
             build_consumer_call_context,
             dispatch_migrated_provider_call,

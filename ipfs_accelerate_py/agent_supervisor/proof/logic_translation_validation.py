@@ -914,7 +914,7 @@ def project_translation_contract_to_canonical(
 ) -> dict[str, Any]:
     """Project a supervisor translation contract onto canonical form/class ids."""
 
-    from ..canonical_logic_adapter import get_canonical_logic_adapter
+    from .canonical_logic_adapter import get_canonical_logic_adapter
 
     return get_canonical_logic_adapter().project_translation_contract(contract)
 
@@ -924,7 +924,7 @@ def project_translation_validation_to_canonical(
 ) -> dict[str, Any]:
     """Project a supervisor translation validation receipt for datasets consumers."""
 
-    from ..canonical_logic_adapter import get_canonical_logic_adapter
+    from .canonical_logic_adapter import get_canonical_logic_adapter
 
     return get_canonical_logic_adapter().project_translation_validation_receipt(
         result

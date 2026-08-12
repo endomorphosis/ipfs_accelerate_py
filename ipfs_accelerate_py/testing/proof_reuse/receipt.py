@@ -402,6 +402,11 @@ class ReceiptCaptureResult:
     deferred_proving_status: str = "not_requested"
     deferred_proving_reason: str = ""
     diagnostics: Mapping[str, Any] = field(default_factory=dict)
+    # PTR-164: controller-signed public attestation linkage (never private keys).
+    controller_signed: bool = False
+    runner_attestation_cid: str = ""
+    signed_receipt: Any = None
+    attestation_bytes: bytes = field(default=b"", repr=False)
 
     def __bool__(self) -> bool:
         return self.reusable
@@ -1859,7 +1864,74 @@ __all__ = [
     "map_report_to_phase_outcome",
     "public_deferred_mapping",
     "pytest_runtest_logreport",
+    "controller_sign_complete_pass",
     "reconstruct_controller_context_from_receipt_public",
     "reconstruct_deferred_request_from_public",
     "register_collector",
 ]
+
+
+def controller_sign_complete_pass(
+    receipt: Any,
+    *,
+    private_key: Any = None,
+    trust_policy: Any = None,
+    candidate_context_cid: str = "",
+    issuance_nonce: str | None = None,
+    issued_at: int | None = None,
+    nonce_registry: Any = None,
+    role: str = "controller",
+) -> tuple[Any | None, Any | None, str]:
+    """Controller-sign a terminal setup/call/teardown pass (PTR-164).
+
+    Returns ``(attestation, signed_receipt_v2, reason)``.  Workers and any
+    caller without controller role receive ``(None, None, reason)``.  Private
+    keys never appear in the returned public material.
+    """
+
+    role_text = _bounded_text(role, max_chars=32).lower()
+    if role_text not in {"", "controller", "master", "gwmaster"}:
+        return None, None, "worker_cannot_sign"
+    if private_key is None or trust_policy is None:
+        return None, None, "controller_signing_material_unavailable"
+    if not isinstance(receipt, TestPassReceipt):
+        if isinstance(receipt, Mapping):
+            try:
+                receipt = TestPassReceipt.from_dict(receipt)
+            except Exception:
+                return None, None, "receipt_invalid"
+        else:
+            return None, None, "receipt_invalid"
+    if not receipt.admitted or not receipt.all_phases_pass:
+        return None, None, "receipt_not_complete_pass"
+    try:
+        from .runner_pass_attestation import (
+            attest_test_pass_receipt,
+            verify_runner_pass_attestation,
+        )
+
+        attestation = attest_test_pass_receipt(
+            receipt,
+            private_key=private_key,
+            policy=trust_policy,
+            candidate_context_cid=str(candidate_context_cid or ""),
+            issuance_nonce=issuance_nonce,
+            issued_at=issued_at,
+            nonce_registry=nonce_registry,
+        )
+        verified = verify_runner_pass_attestation(
+            attestation,
+            receipt=receipt,
+            policy=trust_policy,
+            pinned_policy_cid=getattr(trust_policy, "cid", ""),
+            current_execution_key_cid=receipt.execution_key_cid,
+            current_candidate_context_cid=str(candidate_context_cid or ""),
+            now=issued_at,
+            nonce_registry=nonce_registry,
+        )
+        signed = getattr(verified, "signed_receipt", None) if verified.valid else None
+        if not verified.valid or signed is None:
+            return None, None, "controller_sign_self_check_failed"
+        return attestation, signed, "signed"
+    except Exception as exc:
+        return None, None, f"controller_sign_failed:{type(exc).__name__}"[:128]

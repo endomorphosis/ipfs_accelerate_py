@@ -1,0 +1,214 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-historical-contradictions@1",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "observed_at": "2026-08-08T07:12:11Z",
+  "authority": "evidence-only",
+  "v3_completion_credit": false,
+  "historical_task_ids": [
+    "ASE2-001",
+    "ASE2-002",
+    "ASE2-003",
+    "ASE2-004",
+    "ASE2-005",
+    "ASE2-006",
+    "ASE2-007",
+    "ASE2-008"
+  ],
+  "sources": {
+    "source_board": {
+      "kind": "markdown-taskboard",
+      "path": "docs/architecture/agent_supervisor_prompt_only_entrypoints_v2_delta.todo.md",
+      "sha256": "sha256:8fe1bd85e9045a80145ab62806b39383eec3343f1c37dbd43c4c9d2fd8bed02d",
+      "generated_at": null
+    },
+    "bundle_index": {
+      "kind": "json-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/bundles/index.json",
+      "sha256": "sha256:89f08271e09ee47616efd5c583c5b47d181c179253f2bd8897b5f1dc2c0da104",
+      "generated_at": "2026-08-04T21:46:00.895191+00:00"
+    },
+    "eligible_index": {
+      "kind": "json-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/eligible-bundles.json",
+      "sha256": "sha256:0ea81b9a82c42effcbbe43f38c2f65e95ed23e2c1ce979da0a7e70ebcdb77e5d",
+      "generated_at": "2026-08-05T05:52:22.294771+00:00"
+    },
+    "bundle_lanes": {
+      "kind": "json-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/bundle_lanes.json",
+      "sha256": "sha256:6c1aef58a2973dfd520fb0079130a108a81efbcf40f22d3ee49fa49077107271",
+      "generated_at": "2026-08-05T05:59:53.670015+00:00"
+    },
+    "scheduler_metrics": {
+      "kind": "json-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/scheduler_decision_metrics.json",
+      "sha256": "sha256:f5f4840f03ae680ab369cc003ba3f5f6743287a00004238de3ee8a1d112d1f2b",
+      "generated_at": "2026-08-05T05:59:53.668998+00:00"
+    },
+    "closeout_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-closeout/state/agent_agent_supervisor_prompt_entrypoints_v2_closeout_supervisor_status.json",
+      "sha256": "sha256:819c27ad4ead64ee1fe28ba6d1cdaf5aea39caca7931f3f998314b7704951b5a"
+    },
+    "context_adapters_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-context-adapters/state/agent_agent_supervisor_prompt_entrypoints_v2_context_adapters_supervisor_status.json",
+      "sha256": "sha256:167993bd8bf85580f72fe96b6692e877792a99cbd4a772c69f3b8fc508c7d588"
+    },
+    "run_registry_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-duckdb-run-registry/state/agent_agent_supervisor_prompt_entrypoints_v2_duckdb_run_registry_supervisor_status.json",
+      "sha256": "sha256:9ad15f67df051492db36897fa96f970eab45a2a64fbdecb640562fedcf660a24"
+    },
+    "inference_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-inference-runtime/state/agent_agent_supervisor_prompt_entrypoints_v2_inference_runtime_supervisor_status.json",
+      "sha256": "sha256:60d96937429b58f6601fe4bfe9bf89577ccba9f231cd11d70bf29cadc3efddb1"
+    },
+    "launch_guard_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-launch-guard/state/agent_agent_supervisor_prompt_entrypoints_v2_launch_guard_supervisor_status.json",
+      "sha256": "sha256:e24ca6d322f31c702d4d8304aaaea0f6b5f9357002e9a896520b2b16589d46c9"
+    },
+    "local_profile_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-local-profile/state/agent_agent_supervisor_prompt_entrypoints_v2_local_profile_supervisor_status.json",
+      "sha256": "sha256:e293696d3442fd12036379c0e415c89b6870c6ae0a238c17cc255c65ce2b0099"
+    },
+    "provider_route_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-provider-route/state/agent_agent_supervisor_prompt_entrypoints_v2_provider_route_supervisor_status.json",
+      "sha256": "sha256:5488a0bb49348f9ec9f48db4889db81be6a3548478d80009b0469232868dd807"
+    },
+    "public_facades_status": {
+      "kind": "lane-status-projection",
+      "path": "~/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/agent-supervisor-prompt-entrypoints-v2-public-facades/state/agent_agent_supervisor_prompt_entrypoints_v2_public_facades_supervisor_status.json",
+      "sha256": "sha256:98003c99ae79834c1176210ef6d94488fda69419165e6fd41b12a3ae95037b98"
+    },
+    "rescue_branch_head": {
+      "kind": "git-commit-identity",
+      "path": "refs/heads/rescue/local-main-worktree-20260801",
+      "sha256": "sha256:4e0c15ac71c4c8f5b6e5c610b7e7d5d9192359d4b915c531d07d30b868372e31"
+    }
+  },
+  "contradictions": [
+    {
+      "code": "source-board-vs-eligible-index",
+      "source_ids": ["source_board", "eligible_index"],
+      "left_claim": {
+        "ASE2-001": "todo",
+        "ASE2-002": "todo",
+        "ASE2-003": "todo",
+        "ASE2-004": "todo",
+        "ASE2-005": "todo",
+        "ASE2-006": "todo",
+        "ASE2-007": "todo",
+        "ASE2-008": "todo"
+      },
+      "right_claim": {
+        "completed_task_ids": [
+          "ASE2-001",
+          "ASE2-002",
+          "ASE2-003",
+          "ASE2-004",
+          "ASE2-005",
+          "ASE2-006",
+          "ASE2-007",
+          "ASE2-008"
+        ]
+      },
+      "authoritative": false,
+      "resolution": "Revalidate every v3 producer on the integration tree."
+    },
+    {
+      "code": "bundle-index-vs-eligible-index",
+      "source_ids": ["bundle_index", "eligible_index"],
+      "left_claim": {
+        "completed_task_ids": ["ASE2-001", "ASE2-002", "ASE2-003", "ASE2-004"],
+        "todo_task_ids": ["ASE2-005", "ASE2-006", "ASE2-007", "ASE2-008"]
+      },
+      "right_claim": {
+        "completed_task_ids": [
+          "ASE2-001",
+          "ASE2-002",
+          "ASE2-003",
+          "ASE2-004",
+          "ASE2-005",
+          "ASE2-006",
+          "ASE2-007",
+          "ASE2-008"
+        ]
+      },
+      "authoritative": false,
+      "resolution": "Do not import a mutable task head from either projection."
+    },
+    {
+      "code": "stale-process-projections",
+      "source_ids": [
+        "bundle_lanes",
+        "closeout_status",
+        "context_adapters_status",
+        "run_registry_status",
+        "inference_status",
+        "launch_guard_status",
+        "local_profile_status",
+        "provider_route_status",
+        "public_facades_status"
+      ],
+      "left_claim": {
+        "projected_statuses": [
+          "running",
+          "running",
+          "restarting",
+          "running",
+          "running",
+          "running",
+          "running",
+          "running"
+        ],
+        "projected_pids": [2099771, 1740848, 3786911, 3787956, 414735, 3787793, 3788555, 2284951]
+      },
+      "right_claim": {
+        "observed_live_pids": [],
+        "bundle_lane_running_count": 0,
+        "bundle_lane_active_worker_count": 0,
+        "wave0_v2_bundle_supervisor_pid_file_present": false
+      },
+      "authoritative": false,
+      "resolution": "Running requires process birth identity, lease, fence, and heartbeat; projection text alone is stale."
+    },
+    {
+      "code": "drained-without-refill",
+      "source_ids": ["eligible_index", "bundle_lanes", "scheduler_metrics"],
+      "left_claim": {
+        "ready_count": 0,
+        "active_count": 0,
+        "completed_task_ids": 8
+      },
+      "right_claim": {
+        "refill_scan_attempts": 0,
+        "refill_receipt_count": 0,
+        "goal_completion_diagnostics_available": false,
+        "goal_count": 0
+      },
+      "authoritative": false,
+      "resolution": "Queue drain is not goal completion; v3 requires a forced residual scan and current goal evidence."
+    },
+    {
+      "code": "branch-local-completion",
+      "source_ids": ["eligible_index", "rescue_branch_head"],
+      "left_claim": {
+        "eligible_git_head": "7cdaa1bc628c9ed5d1d0da4d112611366329bb1a",
+        "completed_task_ids": 8
+      },
+      "right_claim": {
+        "current_main_head": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+        "rescue_is_ancestor_of_current_main": false,
+        "current_main_ahead_of_merge_base": 597,
+        "rescue_ahead_of_merge_base": 36
+      },
+      "authoritative": false,
+      "resolution": "Only current-tree acceptance on the v3 merge target can satisfy a v3 dependency or goal."
+    }
+  ]
+}

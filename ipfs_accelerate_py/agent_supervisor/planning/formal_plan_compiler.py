@@ -1342,7 +1342,15 @@ class FormalPlanCompiler:
             if hasattr(source, "execute") and callable(source.execute):
                 connection = source
             else:
-                connection = duckdb.connect(str(Path(source)), read_only=True)
+                from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                    connect_duckdb_with_policy,
+                )
+                connection = connect_duckdb_with_policy(
+                    duckdb,
+                    Path(source),
+                    read_only=True,
+                    configuration={"threads": 1, "memory_limit": "256MB"},
+                )
                 owned = True
             bundle = self._read_duckdb(connection)
             supplements = {
@@ -3814,7 +3822,15 @@ def write_formal_plan_compiler_input_duckdb(
     bundle = _normalize_bundle(_record(source))
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    connection = duckdb.connect(str(target))
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+    connection = connect_duckdb_with_policy(
+        duckdb,
+        target,
+        read_only=False,
+        configuration={"threads": 1, "memory_limit": "256MB"},
+    )
     try:
         connection.execute("DROP TABLE IF EXISTS formal_plan_input_records")
         connection.execute("DROP TABLE IF EXISTS formal_plan_input_metadata")

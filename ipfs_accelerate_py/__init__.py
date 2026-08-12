@@ -312,6 +312,27 @@ _GROUP_MEMBERS: dict[str, dict[str, tuple[str, str | None]]] = {
         ),
         "TTSProvider": (".voice_router", "TTSProvider"),
     },
+    # Narrow proof-reuse bootstrap facade (PTR-139).  Resolved only on
+    # explicit attribute access; never imports the supervisor, datasets ZK
+    # stack, kit daemons, or installer machinery at package import time.
+    "proof_reuse_bootstrap": {
+        "AcceleratorProofReuseBootstrap": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "AcceleratorProofReuseBootstrap",
+        ),
+        "ProofReuseLazyDependencyInstaller": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "ProofReuseLazyDependencyInstaller",
+        ),
+        "ProofReuseCapabilityResolution": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "ProofReuseCapabilityResolution",
+        ),
+        "get_proof_reuse_bootstrap": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "get_proof_reuse_bootstrap",
+        ),
+    },
 }
 
 _GROUP_AVAILABILITY: dict[str, tuple[str, ...]] = {
@@ -975,6 +996,13 @@ __all__ = [
 ]
 
 
+# Narrow proof-reuse bootstrap names are intentionally *not* part of the
+# historical ``export`` / ``__all__`` accelerator surface.  They remain
+# available through lazy ``__getattr__`` so direct-node zero-config code can
+# request them without pulling the rest of the package.
+_PROOF_REUSE_BOOTSTRAP_EXPORTS = frozenset(_GROUP_MEMBERS["proof_reuse_bootstrap"])
+
+
 def __getattr__(name: str) -> Any:
     if name == "worker":
         return _load_legacy_worker()
@@ -1056,4 +1084,6 @@ class _IPFSAccelerateModule(ModuleType):
 
 sys.modules[__name__].__class__ = _IPFSAccelerateModule
 
-__version__ = "0.4.0"
+# Packaging pin — must match pyproject.toml / setup.py (documentation-gates).
+_PACKAGING_VERSION = "0.0.45"
+__version__ = _PACKAGING_VERSION

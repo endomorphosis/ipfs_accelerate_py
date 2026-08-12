@@ -31,10 +31,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar, Final, Iterable
 
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_dag_json,
 )
-from ipfs_accelerate_py.agent_supervisor.repository_forest import (
+from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
     AuthorityMode,
     IgnorePolicy,
     RepositoryAuthority,

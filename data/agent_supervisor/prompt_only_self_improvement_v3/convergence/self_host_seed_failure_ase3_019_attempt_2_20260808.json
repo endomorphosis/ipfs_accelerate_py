@@ -1,0 +1,159 @@
+{
+  "attempt_accounting": {
+    "attempt_counter_mutation_authorized": false,
+    "attempt_restoration_authorized": false,
+    "attempts_by_canonical_task_cid": 2,
+    "attempts_by_task_id": 2,
+    "consecutive_failures": 2,
+    "exhausted": true,
+    "queue_attempt_count": 2,
+    "queue_history_mutation_authorized": false,
+    "runtime_state_mutation_authorized": false,
+    "selection_penalty": 200
+  },
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "control_plane_provenance": {
+    "accepted_control_plane_required_for_salvage": true,
+    "accepted_generation_blobs": {
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": "346c809c0457f0d612d378672abbdb0324de1f47",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "5774ec9fe78f7b80decb51b82d57cab775d7a615",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "70ae5eb357888b50cec3267aaac7281661425b93",
+      "ipfs_accelerate_py/llm_router.py": "0d974f6f085c05979470b34d156f7d4170f2df92"
+    },
+    "candidate_only_required_route_fields": [
+      "fallback_implementer_identity",
+      "reviewer_identity",
+      "reviewer_provider"
+    ],
+    "candidate_package_imported_from_candidate_cwd": true,
+    "classification": "candidate_workspace_shadowed_accepted_provider_control_plane",
+    "invocation_command_sha256": "sha256:bc60c2bc61d4da36d516bc6b0a7ee92e889f792e746c7816271dc7b9e26ce49f",
+    "module_argv": [
+      "-m",
+      "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+    ],
+    "provider_capacity_failure": false,
+    "python_executable": "/home/barberb/.local/bin/python",
+    "seeded_candidate_blobs": {
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": "346c809c0457f0d612d378672abbdb0324de1f47",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "06c6ef1eeca773efc6173130597d44d2664370b4",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "bb5e7c469a47d2fb2f2cab287a17d182dff95f63",
+      "ipfs_accelerate_py/llm_router.py": "f4c27ebe41c0968529ebb933a8d7a7bc8315b1f5"
+    },
+    "subprocess_cwd": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+  },
+  "created_at": "2026-08-08T17:56:14Z",
+  "fence": {
+    "interrupted_at": "2026-08-08T17:37:31Z",
+    "interrupted_lane_0_and_2_candidates_preserved": true,
+    "lane_1_active_attempt_cleared": true,
+    "lane_1_shutdown_event_id": "sha256:878bc907f4ee2f844c245cc7a0677496b87dd9b59e21aef4651929b8845aaefb",
+    "lane_restart_counts": [
+      0,
+      0,
+      0
+    ],
+    "lane_statuses": [
+      "stopped",
+      "stopped",
+      "stopped"
+    ],
+    "shutdown_signal": "SIGINT",
+    "zero_owned_processes": true,
+    "zero_scoped_provider_containers": true
+  },
+  "launch": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "daemon_pids": [
+      2332798,
+      2330758,
+      2330811
+    ],
+    "launch_head": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+    "launch_stamp": "20260808T173004Z",
+    "launch_tree": "62a5b820bafa6c43387a2047b87e8c48941c83dc",
+    "master_pid": 2329325,
+    "supervisor_pids": [
+      2330228,
+      2330230,
+      2330232
+    ]
+  },
+  "operator_salvage_gate": {
+    "accepted_control_plane_required": true,
+    "ase3_019_required_status": "todo",
+    "completion_authority": false,
+    "provider_dispatch_authorized": false,
+    "receipt_filename": "operator_salvage_receipt_ase3_019_20260808.json",
+    "receipt_present": false,
+    "reload_gate_required_status": "blocked",
+    "reload_gate_task_id": "ASE3-022",
+    "required_receipt_fields": [
+      "schema",
+      "created_at",
+      "board_namespace",
+      "task",
+      "incident",
+      "authority",
+      "source_candidate",
+      "salvage_base",
+      "implementation",
+      "merge",
+      "validation",
+      "review",
+      "accepted_control_plane",
+      "denials"
+    ]
+  },
+  "prior_attempt_seed": {
+    "attempt_2_branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+    "binary_full_index_delta_sha256": "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403",
+    "merge_base": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+    "replayed_paths": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/llm_router.py",
+      "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+      "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+    ],
+    "seed_event_id": "sha256:6f69feb3b06607060c5d69e790066addf9434c7bbda66f51f83c0cb5b4357f09",
+    "source_attempt": 1,
+    "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+    "source_rescue_ref": "rescue/ase3-019-b75326e8a50d-attempt-1-1786206062-failed-validation",
+    "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+    "started_event_id": "sha256:190828f5596ac57a1790f87131dff3cd4db3bf07e4f6f32c2b59751d34f7e0aa"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.ase3-019-attempt2-self-host-incident@1",
+  "task": {
+    "attempt": 2,
+    "board_status": "todo",
+    "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+    "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+    "completion": "manual",
+    "max_attempts": 2,
+    "runtime_status": "ready",
+    "task_id": "ASE3-019",
+    "title": "Seal signed provider authority, authentication lifecycle, and once-only fallback"
+  },
+  "terminal_failure": {
+    "attempt_consumed": true,
+    "event_snapshot": "failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json",
+    "event_snapshot_sha256": "sha256:8dfe081d00135789e7c6b6969125f643a4913e3227b2ad3d6a6fa76747ad1d62",
+    "fallback_provider_effect_dispatched": false,
+    "finished_event_id": "sha256:e0c223f22824466570825cae33c68ef5baceeaae267e7a968bbea13d5b2e9682",
+    "implementation_commit": "",
+    "implementation_runner_dispatched": true,
+    "log_snapshot": "failed_pre_dispatch_log_ase3_019_attempt_2_20260808.txt",
+    "log_snapshot_sha256": "sha256:24adec0b6d3cd97badb5586d26b7f17bdbaaa9851cfb344ebcf030773c50744e",
+    "merge_dispatched": false,
+    "normalized_error": "agent implementation route binding fields are invalid",
+    "primary_provider_effect_dispatched": false,
+    "provider_failure_receipt_emitted": false,
+    "returncode": 2,
+    "route_outcome_emitted": false,
+    "validation_attempted": false
+  }
+}

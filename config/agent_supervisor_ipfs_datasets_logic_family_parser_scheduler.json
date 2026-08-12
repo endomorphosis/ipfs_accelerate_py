@@ -1,0 +1,222 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_logic_family_parser.scheduler_config@1",
+  "taskboard_path": "docs/architecture/ipfs_datasets_logic_family_parser.todo.md",
+  "objectives_path": "docs/architecture/ipfs_datasets_logic_family_parser.objectives.md",
+  "plan_path": "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_PLAN.md",
+  "validator_path": "scripts/validate_ipfs_datasets_logic_family_parser_board.py",
+  "task_prefix": "LFP-",
+  "goal_prefix": "LFP-G",
+  "board_namespace": "ipfs-datasets-logic-family-parser-v1",
+  "merge_target_branch": "agent/logic-family-parser-supervisor",
+  "source_binding": {
+    "accelerator_required_ancestor": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+    "accelerator_required_branch": "agent/logic-family-parser-supervisor",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "a2f5400b7cb89c8481819379a1b7b9959fe81d45",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 48,
+    "completed_task_ids": [
+      "LFP-000"
+    ],
+    "ready_task_ids": [
+      "LFP-001",
+      "LFP-002",
+      "LFP-003",
+      "LFP-004"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "LFP-047",
+    "goal_count": 11,
+    "root_goal_id": "LFP-G000"
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": false,
+  "exit_when_all_tracks_terminal": false,
+  "objective_refill_enabled": true,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 3,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/IPFS_DATASETS_LOGIC_FAMILY_PARSER_PLAN.md",
+    "docs/architecture/ipfs_datasets_logic_family_parser.objectives.md",
+    "docs/architecture/ipfs_datasets_logic_family_parser.todo.md",
+    "config/agent_supervisor_ipfs_datasets_logic_family_parser_scheduler.json",
+    "scripts/validate_ipfs_datasets_logic_family_parser_board.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/ipfs_datasets_logic_family_parser",
+    "state": "data/agent_supervisor/ipfs_datasets_logic_family_parser/state",
+    "worktrees": "data/agent_supervisor/ipfs_datasets_logic_family_parser/worktrees",
+    "merge_queue": "data/agent_supervisor/ipfs_datasets_logic_family_parser/merge-queue",
+    "logs": "data/agent_supervisor/ipfs_datasets_logic_family_parser/logs",
+    "evidence": "data/agent_supervisor/ipfs_datasets_logic_family_parser/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "lfp-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_focus": "domain-family-provider-capability-matrix"
+    },
+    {
+      "index": 1,
+      "name": "lfp-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_focus": "parser-ast-printer-decoder-inventory"
+    },
+    {
+      "index": 2,
+      "name": "lfp-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_focus": "cross-family-conformance-corpus"
+    },
+    {
+      "index": 3,
+      "name": "lfp-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_focus": "canonical-family-identifier-audit"
+    }
+  ],
+  "task_groups": {
+    "LFP-G010": [
+      "LFP-001",
+      "LFP-002",
+      "LFP-003",
+      "LFP-004",
+      "LFP-005"
+    ],
+    "LFP-G020": [
+      "LFP-006",
+      "LFP-007",
+      "LFP-008",
+      "LFP-009",
+      "LFP-010"
+    ],
+    "LFP-G030": [
+      "LFP-011",
+      "LFP-012",
+      "LFP-013",
+      "LFP-014",
+      "LFP-015",
+      "LFP-016"
+    ],
+    "LFP-G040": [
+      "LFP-017",
+      "LFP-018",
+      "LFP-019",
+      "LFP-020",
+      "LFP-021",
+      "LFP-022"
+    ],
+    "LFP-G050": [
+      "LFP-023",
+      "LFP-024",
+      "LFP-025",
+      "LFP-026",
+      "LFP-027",
+      "LFP-028"
+    ],
+    "LFP-G060": [
+      "LFP-029",
+      "LFP-030",
+      "LFP-031",
+      "LFP-032",
+      "LFP-033"
+    ],
+    "LFP-G070": [
+      "LFP-034",
+      "LFP-035",
+      "LFP-036",
+      "LFP-037",
+      "LFP-038",
+      "LFP-039"
+    ],
+    "LFP-G080": [
+      "LFP-040",
+      "LFP-041",
+      "LFP-042",
+      "LFP-043"
+    ],
+    "LFP-G090": [
+      "LFP-044",
+      "LFP-045",
+      "LFP-046"
+    ],
+    "LFP-G100": [
+      "LFP-047"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "nested_repository_policy": {
+    "task_specific_nested_branch_required": true,
+    "nested_commit_before_parent_gitlink_update": true,
+    "parent_gitlink_updates_serialized_by_merge_queue": true,
+    "rebase_nested_change_on_latest_accepted_gitlink": true,
+    "rerun_nested_validation_after_rebase": true,
+    "dirty_or_detached_nested_completion_allowed": false,
+    "broad_snapshot_merge_allowed": false,
+    "cross_repository_tasks_require_independent_commits_and_receipts": true
+  },
+  "refill_policy": {
+    "source": "objective_heap",
+    "append_only": true,
+    "content_addressed": true,
+    "seed_tasks_are_immutable": true,
+    "unscoped_codebase_refill_allowed": false,
+    "empty_scan_may_claim_completion": false,
+    "derived_refill": {
+      "max_goals_per_epoch": 8,
+      "max_tasks_per_epoch": 24,
+      "min_open_tasks": 8,
+      "max_open_tasks": 48,
+      "max_refinement_depth": 3,
+      "max_unchanged_failure_retries": 2,
+      "cooldown_seconds": 3600,
+      "mutate_seed_board": false
+    }
+  },
+  "authority_policy": {
+    "parser_or_solver_success_is_completion_authority": false,
+    "advisor_output_is_completion_authority": false,
+    "official_kernel_check_required_for_kernel_proof": true,
+    "independent_countermodel_validation_required_for_refutation": true,
+    "silent_translation_loss_allowed": false,
+    "unknown_ambiguous_stale_or_unsupported_disposition": "abstain_or_require_approval"
+  }
+}

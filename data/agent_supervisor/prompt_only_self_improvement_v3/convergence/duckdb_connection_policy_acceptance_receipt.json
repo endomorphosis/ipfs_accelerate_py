@@ -1,0 +1,247 @@
+{
+  "acceptance_parent": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "future_artifact_paths_absent": [
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json"
+    ],
+    "head": "e9f919d472f700cc33dd163c14d1482d31ce0379",
+    "manifest_schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2",
+    "phase": "A031",
+    "prior_artifacts": {
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json": "sha256:aaf8412b2abb3fe2c27b955dd1e31debadf35f173e30c144413467dd5397e7ee",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json": "sha256:072d2753093a4a670b77f20c3db87bcae4de56781a6354d0bd4c62b702119de0",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json": "sha256:386517e52a94951b0336cf9cf6468665c7a82392a179e92727cc7f0ff11fb72b",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json": "sha256:8ec9511f86833f0731513d47ab1738bad84dcfbcf55e0692fa57da51fff26146"
+    },
+    "reload_gate_status": "blocked",
+    "task_statuses": {
+      "ASE3-019": "completed",
+      "ASE3-022": "blocked",
+      "ASE3-023": "todo",
+      "ASE3-027": "todo",
+      "ASE3-030": "completed",
+      "ASE3-031": "completed",
+      "ASE3-032": "todo"
+    },
+    "tree": "509ffb58f8c74e5eb6b16b3409365b22ec4d6bb9"
+  },
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "catalog_seal": {
+    "foreign_catalog_cases_rejected": [
+      "main_table",
+      "main_view",
+      "empty_schema",
+      "foreign_schema_table",
+      "foreign_schema_view",
+      "sequence",
+      "macro",
+      "custom_type",
+      "index",
+      "check_constraint",
+      "unique_constraint",
+      "collation",
+      "regular_column",
+      "generated_column",
+      "table_comment"
+    ],
+    "inventories": [
+      "databases",
+      "schemas",
+      "tables",
+      "views",
+      "sequences",
+      "macros_and_functions",
+      "types",
+      "indexes",
+      "constraints",
+      "columns"
+    ],
+    "path_independent_full_persistent_catalog_equality": true,
+    "source_bytes_unchanged_on_rejection": true,
+    "temporary_files_cleaned_on_rejection": true
+  },
+  "compaction": {
+    "atomic_replace_failure_preserves_authoritative_store": true,
+    "attach_count": 0,
+    "foreign_catalog_rejection_preserves_source_bytes": true,
+    "partial_copy_failure_preserves_authoritative_store": true,
+    "source_read_only": true,
+    "target_policy_initialized": true,
+    "temporary_files_cleaned": true
+  },
+  "connection_birth_policy": {
+    "caller_override_or_coercion_allowed": false,
+    "close_on_verification_failure": true,
+    "lock_configuration_last": true,
+    "returned_connection_exact_bool_tuple": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ],
+    "settings_in_connect_call": [
+      [
+        "autoinstall_known_extensions",
+        "false",
+        false
+      ],
+      [
+        "autoload_known_extensions",
+        "false",
+        false
+      ],
+      [
+        "enable_external_access",
+        "false",
+        false
+      ],
+      [
+        "allow_unsigned_extensions",
+        "false",
+        false
+      ],
+      [
+        "lock_configuration",
+        "true",
+        true
+      ]
+    ],
+    "tuning_bounds": {
+      "allowed_keys": [
+        "memory_limit",
+        "threads"
+      ],
+      "default_memory_limit": "256MB",
+      "memory_bytes_maximum": 256000000,
+      "memory_bytes_minimum": 1000000,
+      "threads_maximum": 256,
+      "threads_minimum": 1
+    }
+  },
+  "connection_sites": {
+    "duckdb_task_source.materialize": 1,
+    "duckdb_task_source.snapshot": 1,
+    "lease_compaction.source_read_only": 1,
+    "lease_compaction.target_initialize": 1,
+    "lease_compaction.target_write": 1,
+    "lease_coordinator.initialize": 1,
+    "lease_coordinator.operation": 1,
+    "merge_queue.initialize": 1,
+    "merge_queue.legacy_import": 1,
+    "merge_queue.operation": 1,
+    "merge_resolver.initialize": 1,
+    "merge_resolver.operation": 1
+  },
+  "created_at": "2026-08-10T02:46:27Z",
+  "denials": {
+    "boolean_integer_coercion_allowed": false,
+    "codex_or_openai_reviewer_allowed": false,
+    "compaction_attach_allowed": false,
+    "configuration_override_allowed": false,
+    "foreign_persistent_catalog_drop_allowed": false,
+    "one_step_not_null_default_migration_allowed": false,
+    "receipt_selected_product_identity_allowed": false,
+    "self_review_allowed": false
+  },
+  "external_byte_boundary": {
+    "compaction_attach_count": 0,
+    "dynamic_external_extension_bytes_allowed": false,
+    "external_filesystem_or_network_paths_allowed": false,
+    "in_memory_attach_allowed": true,
+    "install_or_fetch_allowed": false,
+    "reviewed_statically_linked_load_allowed": true
+  },
+  "legacy_migration": {
+    "idempotent_reopen_verified": true,
+    "mid_step_failure_rolls_back": true,
+    "populated_backfill_verified": true,
+    "post_compaction_catalog_equal": true,
+    "transactional_two_step_add_default_then_set_not_null": true
+  },
+  "phase": "A032",
+  "product": {
+    "binary_patch_sha256": "sha256:b05414db27f68f34634975ff248048c934714c973debcffe71839bdeb84ee124",
+    "changed_paths": [
+      "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+      "test/api/test_agent_supervisor_duckdb_connection_policy.py"
+    ],
+    "commit": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+    "file_raw_sha256": {
+      "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py": "sha256:1c312171d6c5b81003806cc8baddeeb5a41a6c33f2a2d5b1cac9f8f04843cb93",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py": "sha256:2e13d01fda9d0be2aa69704b0f3f325c69bfd3b07bc4f98820d99a123a8a7d46",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py": "sha256:40a8d96a85ca239b269581a525fab82014614e5d77234c13491a168cc79c3efe",
+      "test/api/test_agent_supervisor_duckdb_connection_policy.py": "sha256:637bad1d0655f0cc6f3e54caac7c84d740fb7a451d857153b24b55c4b10e0080"
+    },
+    "ordered_file_hash_manifest_sha256": "sha256:950491fbd586f8a8b5da38dd69b0c4241ae6856eb58e341dde9f346b0b3b3a5f",
+    "parent": "1a419e525699e74254a450c0137264d8dd60ea00",
+    "stable_patch_id": "161c8c765cb0407b2a55d9d8b03a3884f732179f",
+    "tree": "f7160446af32a9affeef554d319c443b6449271a"
+  },
+  "review": {
+    "algorithm": "Ed25519",
+    "fallback_authorization_id": "sha256:dfbcb29e1b624b345b263857ba750404b8287f3a869b317efdadc363250a9301",
+    "fallback_authorization_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "implementer_identity": "codex:ase3-032-product",
+    "implementer_provider": "codex",
+    "lifecycle_anchor_digest": "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239",
+    "lifecycle_anchor_id": "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8",
+    "lifecycle_generation": 1,
+    "lifecycle_root_identity_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+    "lifecycle_root_pin_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "lifecycle_root_pin_sha256": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+    "lifecycle_witness_id": "sha256:c0ff822e398493bd35e054b8bdbe8ed3b6d94bcbb04521241e1b1a48bc3cd65b",
+    "lifecycle_witness_nonce": "z3Y5bP4zbgLAgGHWV0sKhzXCKJ8CAMNt",
+    "lifecycle_witness_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "lifecycle_witness_sha256": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+    "profile_content_id": "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec",
+    "profile_id": "78d545927196b5dad4c2c76b461927ec",
+    "reviewer_identity": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "reviewer_provider": "local_operator",
+    "signature": "ed25519:l4SC3hVJERUNwh5mt1Y0NXztRGxo19jv8PhtJE5z0vj-f5E8CbbJ1l46t_vJD1GQZjMZFH8i322Jf0gXuOPBCA",
+    "signed_at": "2026-08-10T02:46:27Z"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.ase3-032-duckdb-connection-policy-acceptance@1",
+  "suite": {
+    "command": "python -m pytest -q test/api/test_agent_supervisor_duckdb_connection_policy.py test/api/test_agent_supervisor_duckdb_state.py test/api/test_agent_supervisor_duckdb_task_source.py test/api/test_agent_supervisor_lease_coordination.py",
+    "exit_code": 0,
+    "failed_count": 0,
+    "passed": true,
+    "passed_count": 51,
+    "report_sha256": "sha256:2863198d96699a5767cae0568892c9e5f6bf0d73bf84d03878f430695defd96d",
+    "required_test_functions": [
+      "test_policy_is_atomic_verified_on_returned_connection_and_immutable",
+      "test_caller_cannot_override_or_smuggle_connection_configuration",
+      "test_policy_verification_rejects_integer_bool_spoof_and_closes",
+      "test_policy_blocks_dynamic_extension_fetch_load_and_http_access",
+      "test_reviewed_statically_linked_modules_do_not_cross_external_byte_boundary",
+      "test_only_in_memory_attach_is_nonexternal",
+      "test_policy_blocks_arbitrary_local_extension_load",
+      "test_every_accepted_runtime_connection_site_uses_the_canonical_policy",
+      "test_compaction_rejects_any_foreign_persistent_catalog_without_source_change",
+      "test_populated_legacy_additive_schema_upgrades_idempotently_and_compacts",
+      "test_legacy_additive_schema_failure_between_steps_rolls_back",
+      "test_compaction_partial_copy_failure_keeps_authoritative_store",
+      "test_compaction_atomic_replace_failure_keeps_authoritative_store"
+    ],
+    "validated_head": "e9f919d472f700cc33dd163c14d1482d31ce0379",
+    "validated_tree": "509ffb58f8c74e5eb6b16b3409365b22ec4d6bb9"
+  },
+  "task": {
+    "canonical_task_cid": "baguqeerarapsgz3yexowvp6ppcroujqmfymfgsmrapanyv5ggclalkyxicva",
+    "completed_contract_sha256": "sha256:0fdea6170e4e336a27c9a61f3eefaefdcc8fc2a77ae5433a57a8e52a22d8cd75",
+    "status_after": "completed",
+    "status_before": "todo",
+    "task_id": "ASE3-032",
+    "todo_contract_sha256": "sha256:b44b0a0c2853296def5276f1fb08219480d9b0bb2282f3b7d9587fafd1ec28be"
+  }
+}

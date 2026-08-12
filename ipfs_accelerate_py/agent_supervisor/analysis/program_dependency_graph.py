@@ -19,7 +19,7 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..core.conflict_graph import ASTBlobRecord, build_python_ast_blob_record
-from ..program_graph import (
+from .program_graph import (
     Completeness,
     PROGRAM_GRAPH_VERSION,
     ProgramAuthority,

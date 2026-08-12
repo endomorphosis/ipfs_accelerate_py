@@ -65,7 +65,7 @@ When launching or diagnosing lanes:
 | --- | --- |
 | Provider selection | Set `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex` |
 | Primary | Authenticated Grok Build, exact model `grok-4.5` |
-| Quota-only fallback | Exact `gpt-5.6-terra`, reasoning `medium`, only after independently signed Grok quota authority on the associated fresh retry |
+| Quota-only fallback | Exact `gpt-5.6-terra`, reasoning `medium` by default or explicitly sealed `high`, only after independently signed Grok quota authority on the associated fresh retry |
 | Legacy compatibility | Unset / `auto` is availability-based and is not the quota-authority policy |
 | All other failures | Fail closed; do not fall back |
 

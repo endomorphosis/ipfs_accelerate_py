@@ -4,16 +4,13 @@ import tempfile
 import os
 import sys
 
-# Try to import storage wrapper with comprehensive fallback
 try:
     from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except ImportError:
-    try:
-        from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
-        HAVE_STORAGE_WRAPPER = False
-        def get_storage_wrapper(*args, **kwargs):
-            return None
+    HAVE_STORAGE_WRAPPER = False
+
+    def get_storage_wrapper(*args, **kwargs):
+        return None
 
 class ipfs_multiformats_py:
     def __init__(self, resources, metadata): 

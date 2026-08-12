@@ -184,6 +184,22 @@ class ProviderQuotaError(RuntimeError):
         self.reason_code = str(reason_code or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value)
 
 
+class VerifiedGrokQuotaExhaustion(ProviderQuotaError):
+    """Supervisor-observed, exact Grok Build balance-exhaustion signal.
+
+    Only the native transport adapter may construct this signal after checking
+    the CLI exit status and its structured transport event.  Provider/model
+    response text and generic quota exceptions deliberately cannot authorize
+    the Codex Terra implementation fallback.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+            reason_code=ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderBounds:
     """Frozen prompt, response, and wall-clock bounds for every provider call."""
@@ -3360,6 +3376,7 @@ __all__ = [
     "ProviderExecutionReceipt",
     "ProviderProposal",
     "ProviderQuotaError",
+    "VerifiedGrokQuotaExhaustion",
     "ProviderQuotaLatch",
     "ProviderReason",
     "ProviderRequest",

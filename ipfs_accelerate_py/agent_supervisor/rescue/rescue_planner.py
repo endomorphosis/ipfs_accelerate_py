@@ -2013,7 +2013,7 @@ class RescuePlanner:
             )
             return response
 
-        from ..provider_usage_migration import (
+        from ..runtime.provider_usage_migration import (
             ConsumerId,
             build_consumer_call_context,
             dispatch_migrated_provider_call,

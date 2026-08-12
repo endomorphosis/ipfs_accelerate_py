@@ -1,0 +1,97 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-current-main-baseline@1",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "observed_at": "2026-08-08T07:12:11Z",
+  "repository": {
+    "worktree_common_root": "/home/barberb/lift_coding",
+    "canonical_checkout": "external/ipfs_accelerate"
+  },
+  "upstream_main": {
+    "branch": "main",
+    "remote_tracking_branch": "origin/main",
+    "commit": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+    "tree": "8532a03ed3b804379c2bef8153e346c73c6368f2",
+    "ahead": 0,
+    "behind": 0
+  },
+  "integration_seed": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "commit": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+    "tree": "d9162b360129ab32f765bb524828e061838a360f",
+    "parent": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac"
+  },
+  "rescue": {
+    "branch": "rescue/local-main-worktree-20260801",
+    "head": "7cdaa1bc628c9ed5d1d0da4d112611366329bb1a",
+    "tree": "904001ab3188d74c62b1730074df31878126c8e1",
+    "merge_base": "9646826c6b9d20966f254f0109986727bf96873d",
+    "merge_base_tree": "f8f9038e42f99a7438a27dd1d0c207e6ed4cf6a8",
+    "current_main_ahead": 597,
+    "rescue_ahead": 36,
+    "patch_equivalent_commits_on_current_main": 0,
+    "bulk_merge_safe": false
+  },
+  "original_checkout": {
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+    "branch": "main",
+    "head": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+    "clean": false,
+    "status_format": "git-status-porcelain-v1-z",
+    "status_sha256": "sha256:b4fd43043138b7a07e6e969a5bcd1da3085836a6c5b6a2311c096837e4e2458e",
+    "dirty_entry_count": 140,
+    "preservation_policy": "read-only-protected",
+    "status_snapshot_is_historical": true
+  },
+  "submodules": [
+    {
+      "path": "docs/fastmcp",
+      "gitlink_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+      "initialized": false
+    },
+    {
+      "path": "docs/mcp-python-sdk",
+      "gitlink_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+      "initialized": false
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "gitlink_commit": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
+      "initialized": false
+    },
+    {
+      "path": "ipfs_datasets_py",
+      "gitlink_commit": "a2f5400b7cb89c8481819379a1b7b9959fe81d45",
+      "initialized": false
+    },
+    {
+      "path": "ipfs_kit_py",
+      "gitlink_commit": "e164bb21c7a73b722a83aea7623e5677391bce54",
+      "initialized": false
+    },
+    {
+      "path": "ipfs_model_manager_py",
+      "gitlink_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+      "initialized": false
+    },
+    {
+      "path": "ipfs_transformers_py",
+      "gitlink_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+      "initialized": false
+    },
+    {
+      "path": "test/doc-builder",
+      "gitlink_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+      "initialized": false
+    },
+    {
+      "path": "test/huggingface_doc_builder",
+      "gitlink_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+      "initialized": false
+    },
+    {
+      "path": "test/huggingface_transformers",
+      "gitlink_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
+      "initialized": false
+    }
+  ]
+}

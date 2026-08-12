@@ -371,7 +371,12 @@ def test_stale_terminal_writer_cannot_overwrite_new_task_index(
     terminal_write_reached = threading.Event()
     allow_terminal_write = threading.Event()
     replacement_finished = threading.Event()
-    original_write = lifecycle_module._atomic_write_json
+    # Flat-stem alias modules re-export symbols; method free names resolve via
+    # the canonical merge.worktree_lifecycle globals.
+    patch_target = getattr(
+        lifecycle_module, "__canonical_module__", lifecycle_module
+    )
+    original_write = patch_target._atomic_write_json
 
     def paused_write(path: Path, payload: dict[str, object]) -> None:
         if (
@@ -383,7 +388,7 @@ def test_stale_terminal_writer_cannot_overwrite_new_task_index(
             assert allow_terminal_write.wait(timeout=5.0)
         original_write(path, payload)
 
-    monkeypatch.setattr(lifecycle_module, "_atomic_write_json", paused_write)
+    monkeypatch.setattr(patch_target, "_atomic_write_json", paused_write)
     errors: list[BaseException] = []
 
     def reclaim() -> None:

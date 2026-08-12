@@ -52,7 +52,7 @@ def _load_cid_bridge() -> tuple[type[Exception], Callable[..., str], Callable[..
     """
 
     try:
-        from ..multiformats_identity import (  # type: ignore[attr-defined]
+        from ..core.multiformats_identity import (  # type: ignore[attr-defined]
             MultiformatsIdentityError as identity_error,
             cid_for_bytes as identity_cid_for_bytes,
             validate_cid as identity_validate_cid,
@@ -1307,6 +1307,14 @@ class PromptBodyBroker:
             )
 
 
+
+
+# ASE3-024 interface aliases: the existing hardened broker is the multiproc
+# durable encrypted store; capabilities are single-use continuation leases.
+MultiprocessPromptBrokerStore = PromptBodyBroker
+BrokerContinuationLease = PromptCapability
+
+
 __all__ = (
     "ARTIFACT_BLOB_DIR",
     "ARTIFACT_INDEX_NAME",
@@ -1330,4 +1338,6 @@ __all__ = (
     "PromptNotFoundError",
     "PromptReference",
     "PromptStorageKind",
+    "MultiprocessPromptBrokerStore",
+    "BrokerContinuationLease",
 )

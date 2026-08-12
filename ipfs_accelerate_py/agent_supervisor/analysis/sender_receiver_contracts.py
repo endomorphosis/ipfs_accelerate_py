@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
-from ..program_contracts import (
+from ..proof.program_contracts import (
     CapabilityMode,
     CapabilitySpec,
     ContractSourceKind,

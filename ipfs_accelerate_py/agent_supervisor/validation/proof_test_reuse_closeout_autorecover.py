@@ -364,10 +364,13 @@ def strip_contradictory_approval_merge_rows(
     for task_id in sorted(targets):
         for path in root.glob(f"*{task_id}*"):
             name = path.name
-            # Only strip recovery-tagged or recovered-* files, never genuine
-            # daemon merge history that might exist under other names with
-            # non-recovery content. Prefer recovered- prefix and recovery_source.
-            if name.startswith(f"recovered-{task_id}"):
+            # Only strip recovery-tagged, manual closeout, or recovered-* files.
+            # Never genuine daemon merge history under other names. Prefer
+            # recovered- prefix, recovery_source, and manual-ptr-* operator
+            # scaffolds that conflict with approval-only provenance.
+            if name.startswith(f"recovered-{task_id}") or name.startswith(
+                f"manual-{task_id.lower()}-"
+            ) or name.startswith(f"manual-{task_id}-"):
                 try:
                     path.unlink()
                     removed.append(str(path))
@@ -382,7 +385,13 @@ def strip_contradictory_approval_merge_rows(
                 payload.get("recovery_source")
                 or (recovery.get("source") if isinstance(recovery, Mapping) else "")
             )
-            if recovery_source and _text(payload.get("task_id")) == task_id:
+            # Local closeout scaffolds (manual-*) and recovered rows dual-claim
+            # with operator approvals for historic tasks.
+            if _text(payload.get("task_id")) == task_id and (
+                recovery_source
+                or _text(payload.get("source")).startswith("manual")
+                or "manual" in name
+            ):
                 try:
                     path.unlink()
                     removed.append(str(path))
@@ -705,8 +714,11 @@ def inventory_closeout_inputs(
             name="persisted_final_current_tree_gate_bundle",
             expected_count=1,
             observed_count=int(
-                gate.get("producing_task_id") == "PTR-122"
+                # Live final gate is produced by PTR-169 (Authenticated V5).
+                # Historical stage label remains PTR-122 for inventory grouping.
+                gate.get("producing_task_id") in {"PTR-169", "PTR-122"}
                 and isinstance(gate.get("decision"), Mapping)
+                and bool((gate.get("decision") or {}).get("passed"))
             ),
             source=str(gate_file),
         ),

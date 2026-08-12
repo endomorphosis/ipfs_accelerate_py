@@ -6,9 +6,15 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    _LEGACY_JSON_IMPORT_MARKER,
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,
+    MergeQueueIntegrityError,
+    MergeRequest,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    DuckDBConnection,
 )
 
 
@@ -28,6 +34,339 @@ def _enqueue(
         priority=priority,
         metadata=metadata,
     )
+
+
+def _legacy_request(
+    ordinal: int,
+    *,
+    request_id: str | None = None,
+    canonical_task_id: str | None = None,
+    commit_sha: str | None = None,
+) -> MergeRequest:
+    return MergeRequest(
+        request_id=request_id or f"legacy-request-{ordinal}",
+        branch_name=f"legacy/{ordinal}",
+        task_id=f"LEGACY-{ordinal}",
+        priority="P2",
+        lane_id="legacy",
+        enqueued_at=float(ordinal),
+        canonical_task_id=canonical_task_id or f"legacy-canonical-{ordinal}",
+        commit_sha=commit_sha or f"{ordinal + 1:040x}",
+    )
+
+
+def _write_legacy_receipt(path: Path, request: MergeRequest) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(request.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _clear_legacy_import_marker(queue: MergeQueue) -> None:
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "DELETE FROM agent_supervisor_store_metadata WHERE key=?",
+            (_LEGACY_JSON_IMPORT_MARKER,),
+        )
+        connection.commit()
+
+
+def _set_legacy_import_marker(queue: MergeQueue, value: str) -> None:
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """
+            UPDATE agent_supervisor_store_metadata
+            SET value=?
+            WHERE key=?
+            """,
+            (value, _LEGACY_JSON_IMPORT_MARKER),
+        )
+        connection.commit()
+
+
+def _has_legacy_import_marker(queue: MergeQueue) -> bool:
+    with queue._connect() as connection:
+        rows = connection.execute(
+            "SELECT key FROM agent_supervisor_store_metadata"
+        ).fetchall()
+    return any(
+        str(row["key"]) == _LEGACY_JSON_IMPORT_MARKER
+        for row in rows
+    )
+
+
+def test_legacy_json_receipts_are_imported_and_marked_once(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    request = _legacy_request(0)
+    _write_legacy_receipt(
+        queue_path / "completed" / f"{request.request_id}.json",
+        request,
+    )
+
+    queue = MergeQueue(queue_path)
+
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "completed"
+    assert _has_legacy_import_marker(queue) is True
+
+
+def test_completed_legacy_import_does_not_rescan_new_projection_files(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    late_receipt = _legacy_request(1)
+    _write_legacy_receipt(
+        queue.pending_dir / f"{late_receipt.request_id}.json",
+        late_receipt,
+    )
+
+    restarted = MergeQueue(queue_path)
+
+    assert restarted.get(late_receipt.request_id) is None
+    assert _has_legacy_import_marker(restarted) is True
+
+
+def test_legacy_import_full_scan_skips_existing_authoritative_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    existing = _enqueue(queue, 0)
+    _clear_legacy_import_marker(queue)
+
+    def fail_if_inserted(*_args, **_kwargs) -> None:
+        raise AssertionError("an existing stage projection must not be reinserted")
+
+    monkeypatch.setattr(MergeQueue, "_insert", fail_if_inserted)
+    restarted = MergeQueue(queue_path)
+
+    assert restarted.get(existing.request_id) is not None
+    assert _has_legacy_import_marker(restarted) is True
+
+
+@pytest.mark.parametrize(
+    ("authoritative_commit", "receipt_commit"),
+    (
+        ("", "a" * 40),
+        ("a" * 40, ""),
+    ),
+    ids=("database-empty", "receipt-empty"),
+)
+def test_legacy_import_preserves_primary_identity_when_one_dedupe_is_empty(
+    tmp_path: Path,
+    authoritative_commit: str,
+    receipt_commit: str,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    existing = queue.enqueue(
+        branch_name="candidate/legacy-primary",
+        task_id="LEGACY-PRIMARY",
+        canonical_task_id="canonical-legacy-primary",
+        commit_sha=authoritative_commit,
+    )
+    _clear_legacy_import_marker(queue)
+    _write_legacy_receipt(
+        queue.pending_dir / f"{existing.request_id}.json",
+        replace(existing, commit_sha=receipt_commit),
+    )
+
+    restarted = MergeQueue(queue_path)
+
+    durable = restarted.get(existing.request_id)
+    assert durable is not None
+    assert durable.dedupe_key == existing.dedupe_key
+    assert _has_legacy_import_marker(restarted) is True
+
+
+def test_legacy_import_fails_closed_on_unknown_marker_value(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    _set_legacy_import_marker(queue, "partial")
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="import marker is invalid",
+    ):
+        MergeQueue(queue_path)
+
+
+def test_legacy_import_fails_closed_on_request_id_identity_conflict(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    existing = _enqueue(queue, 0)
+    _clear_legacy_import_marker(queue)
+    conflicting = _legacy_request(
+        2,
+        request_id=existing.request_id,
+    )
+    _write_legacy_receipt(
+        queue.processing_dir / f"{conflicting.request_id}.json",
+        conflicting,
+    )
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="authoritative dedupe identity",
+    ):
+        MergeQueue(queue_path)
+
+    assert _has_legacy_import_marker(queue) is False
+    durable = queue.get(existing.request_id)
+    assert durable is not None
+    assert durable.dedupe_key == existing.dedupe_key
+
+
+def test_legacy_import_conflict_rolls_back_rows_and_completion_marker(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    existing = _enqueue(queue, 0)
+    _clear_legacy_import_marker(queue)
+    missing = _legacy_request(3)
+    _write_legacy_receipt(
+        queue.pending_dir / f"{missing.request_id}.json",
+        missing,
+    )
+    conflicting = _legacy_request(
+        4,
+        request_id="different-request-id",
+        canonical_task_id=existing.canonical_task_id,
+        commit_sha=existing.commit_sha,
+    )
+    _write_legacy_receipt(
+        queue.processing_dir / f"{conflicting.request_id}.json",
+        conflicting,
+    )
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="authoritative request identity",
+    ):
+        MergeQueue(queue_path)
+
+    assert queue.get(missing.request_id) is None
+    assert _has_legacy_import_marker(queue) is False
+    assert queue.get(existing.request_id) is not None
+
+
+def test_enqueue_dedupe_lookup_uses_an_unfiltered_authoritative_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    existing = _enqueue(queue, 0)
+    original_execute = DuckDBConnection.execute
+    observed_scans: list[str] = []
+
+    def reject_filtered_dedupe_sql(
+        connection: DuckDBConnection,
+        sql: str,
+        parameters=None,
+    ):
+        normalized = " ".join(str(sql).upper().split())
+        assert "WHERE DEDUPE_KEY" not in normalized
+        if normalized == "SELECT * FROM MERGE_REQUESTS":
+            observed_scans.append(normalized)
+        return original_execute(connection, sql, parameters)
+
+    monkeypatch.setattr(
+        DuckDBConnection,
+        "execute",
+        reject_filtered_dedupe_sql,
+    )
+    duplicate = queue.enqueue(
+        branch_name="candidate/duplicate",
+        task_id="TASK-DUPLICATE",
+        canonical_task_id=existing.canonical_task_id,
+        commit_sha=existing.commit_sha,
+    )
+
+    assert duplicate.request_id == existing.request_id
+    assert observed_scans == ["SELECT * FROM MERGE_REQUESTS"]
+
+
+def test_enqueue_exception_recovery_reuses_the_authoritative_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    existing = _enqueue(queue, 0)
+    original_find = queue._find_by_dedupe_key
+    calls: list[str] = []
+
+    def miss_once(
+        connection: DuckDBConnection,
+        dedupe_key: str,
+    ):
+        calls.append(dedupe_key)
+        if len(calls) == 1:
+            return None
+        return original_find(connection, dedupe_key)
+
+    original_execute = DuckDBConnection.execute
+
+    def reject_filtered_dedupe_sql(
+        connection: DuckDBConnection,
+        sql: str,
+        parameters=None,
+    ):
+        normalized = " ".join(str(sql).upper().split())
+        assert "WHERE DEDUPE_KEY" not in normalized
+        return original_execute(connection, sql, parameters)
+
+    monkeypatch.setattr(queue, "_find_by_dedupe_key", miss_once)
+    monkeypatch.setattr(
+        DuckDBConnection,
+        "execute",
+        reject_filtered_dedupe_sql,
+    )
+    duplicate = queue.enqueue(
+        branch_name="candidate/recovered-duplicate",
+        task_id="TASK-RECOVERED-DUPLICATE",
+        canonical_task_id=existing.canonical_task_id,
+        commit_sha=existing.commit_sha,
+    )
+
+    assert duplicate.request_id == existing.request_id
+    assert calls == [existing.dedupe_key, existing.dedupe_key]
+
+
+def test_authoritative_dedupe_scan_fails_closed_on_multiple_matches(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    existing = _enqueue(queue, 0)
+    duplicate = replace(
+        existing,
+        request_id="duplicate-logical-dedupe",
+    )
+
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DROP INDEX merge_requests_dedupe")
+        connection.commit()
+        connection.execute("BEGIN IMMEDIATE")
+        queue._insert(connection, duplicate, ignore=False)
+        connection.commit()
+        with pytest.raises(
+            MergeQueueIntegrityError,
+            match="multiple requests for dedupe_key",
+        ):
+            queue._find_by_dedupe_key(connection, existing.dedupe_key)
 
 
 def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(

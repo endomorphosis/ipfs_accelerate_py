@@ -1,0 +1,160 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.exact-codex-route-smoke@1",
+  "receipt_id": "exact-codex-route-smoke-ad49402f-20260808",
+  "captured_at": "2026-08-08T08:50:39Z",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "repository": {
+    "head_mode": "detached",
+    "source_branch": "agent/prompt-self-improvement-v3",
+    "commit": "ad49402fe510b208c6762c6dc8306ec352d0907d",
+    "tree": "abbe36bfe34e4a470f67d2c0f5d47d777366c70f",
+    "workspace_kind": "linked_git_worktree",
+    "workspace": "/tmp/ase3-exact-route-worktree.EQ1emu/repo",
+    "tracked_changes_before": [],
+    "tracked_changes_after": [],
+    "untracked_changes_after": [
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/exact_codex_route_smoke_sentinel_20260808.txt"
+    ]
+  },
+  "route": {
+    "status": "passed",
+    "exit_code": 0,
+    "primary_provider": "grok_cli",
+    "primary_model": "grok-4.5",
+    "primary_failure_type": "spending_limit_exhausted",
+    "primary_failure_native_and_pre_effect": true,
+    "independent_verifier_same_failure_type": true,
+    "fallback_provider": "codex",
+    "fallback_model": "gpt-5.6-terra",
+    "fallback_reasoning_effort": "medium",
+    "requested_sandbox": "workspace-write",
+    "effective_inner_sandbox": "danger-full-access",
+    "outer_docker_boundary_is_enforcing_sandbox": true,
+    "trusted_repository_precondition": true,
+    "command_argv": [
+      "python",
+      "-m",
+      "pytest",
+      "test/api/test_agent_supervisor_prompt_v3_convergence.py",
+      "-q"
+    ],
+    "command_argv_canonicalization": "sha256 of UTF-8 compact JSON emitted by json.dumps(argv, separators=(\",\", \":\"))",
+    "command_argv_sha256": "sha256:806fd80efc41d9a8b1e06db86cee923adba021bd45dae77ee927c63475e6cc39",
+    "interactive_stdout_persisted": false,
+    "interactive_observation": "The full native Grok quota route selected the independently verified pinned Terra/medium fallback, executed the exact command argv, passed all 46 tests, verified the sentinel contents, and exited zero. The separate production-shaped replay below preserves a byte-bound command transcript."
+  },
+  "container_boundary": {
+    "observed_live_by_independent_monitor": true,
+    "image_digest": "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6",
+    "image_label": "2026-08-03-v2",
+    "image_os": "linux",
+    "image_architecture": "arm64",
+    "runtime": "runc",
+    "read_only_root": true,
+    "network": "bridge",
+    "uid": 1000,
+    "gid": 1000,
+    "capabilities_dropped": "ALL",
+    "no_new_privileges": true,
+    "pids_limit": 1024,
+    "devices": [],
+    "docker_socket_mounted": false,
+    "host_home_mounted": false,
+    "host_local_site_mounted": false,
+    "persistent_read_write_mounts": [
+      "/tmp/ase3-exact-route-worktree.EQ1emu/repo"
+    ],
+    "read_only_mount_classes": [
+      "host_usr",
+      "host_ca_certificates",
+      "root_owned_python_3_12",
+      "git_worktree_metadata",
+      "git_common_metadata",
+      "exact_codex_auth_file"
+    ],
+    "entrypoint": "/usr/bin/env -i",
+    "sealed_environment_keys": [
+      "BASH_ENV",
+      "CODEX_HOME",
+      "ENV",
+      "HOME",
+      "LANG",
+      "LC_ALL",
+      "PATH",
+      "PYTHONDONTWRITEBYTECODE",
+      "PYTHONNOUSERSITE",
+      "PYTHONPATH",
+      "TERM"
+    ],
+    "ambient_cuda_nvidia_loader_environment_absent": true
+  },
+  "board_validation": {
+    "status": "passed",
+    "exit_code": 0,
+    "python_executable": "/opt/ipfs-task-tools/bin/python",
+    "python_version": "3.12.3",
+    "pytest_version": "9.0.3",
+    "cwd": "/tmp/ase3-exact-route-worktree.EQ1emu/repo",
+    "command": "python -m pytest test/api/test_agent_supervisor_prompt_v3_convergence.py -q",
+    "target_paths": [
+      "test/api/test_agent_supervisor_prompt_v3_convergence.py"
+    ],
+    "collected_test_count": 46,
+    "passed_test_count": 46,
+    "failed_test_count": 0,
+    "duration_seconds": 1.08,
+    "observed_rootdir": "/tmp/ase3-exact-route-worktree.EQ1emu/repo/test",
+    "observed_pytest_config": "test/pytest.ini",
+    "nearest_config_discovery_is_expected": true,
+    "missing_path_signature_absent": true,
+    "import_error_signature_absent": true,
+    "toolchain_error_signature_absent": true,
+    "bwrap_signature_absent": true
+  },
+  "sentinel": {
+    "path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/exact_codex_route_smoke_sentinel_20260808.txt",
+    "size_bytes": 84,
+    "sha256": "sha256:5e2f39d723e08c1695fee3f48fa146adf7caba5bbbaf0f2454f3d7d79fb8f11d",
+    "content": "ASE3 exact Codex fallback smoke passed for ad49402fe510b208c6762c6dc8306ec352d0907d\n",
+    "created_by_fallback_tool_command": true,
+    "verified_by_fallback_before_exit": true
+  },
+  "production_shaped_command_replay": {
+    "purpose": "Persist byte-bound corroboration for the exact board argv without invoking another model.",
+    "captured_at": "2026-08-08T08:57:49Z",
+    "route_invoked": false,
+    "container_id": "30d4844ca9b493eaeda251fafc71010783cfa8ec4fdc103fb5ebcfe93f94235b",
+    "container_name": "ipfs-accelerate-codex-449979-feedface00112233445566778899aabb",
+    "docker_event_times_nanoseconds": {
+      "create": 1786179469952953792,
+      "start": 1786179470093187238,
+      "die": 1786179471705920570,
+      "destroy": 1786179471718422297
+    },
+    "docker_die_event_exit_code": 0,
+    "docker_events_image_and_isolation_label_match": true,
+    "same_image_environment_mount_and_runtime_boundary": true,
+    "same_repository_commit_and_tree": true,
+    "same_cwd": true,
+    "same_command_argv": true,
+    "combined_output_sha256": "sha256:3173c70bd00bc328d7925de39ce066265ce2179b8f31c3da214bfc2d221ca009",
+    "pytest_wrote_separate_stderr": false,
+    "exit_code": 0,
+    "collected_test_count": 46,
+    "passed_test_count": 46,
+    "duration_seconds": 0.75,
+    "workspace_sentinel_unchanged": true
+  },
+  "negative_control": {
+    "shared_clone_attempt_accepted": false,
+    "reason": "A prior shared-clone fixture did not project its alternates object store into the boundary and therefore was not production-topology evidence; its missing sentinel prevented acceptance.",
+    "production_linked_worktree_required": true
+  },
+  "completion_authority": {
+    "authorizes_retry_credit_restoration_only": true,
+    "authorizes_source_task_completion": false,
+    "authorizes_raw_counter_or_queue_mutation": false,
+    "authorizes_supervisor_relaunch_by_itself": false,
+    "infrastructure_signature_absent": true
+  }
+}

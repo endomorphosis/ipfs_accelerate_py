@@ -31,7 +31,7 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from ..proof.formal_verification_contracts import content_identity
-from ..repository_forest import (
+from .repository_forest import (
     AuthorityMode,
     ForestPolicy,
     ForestRootSpec,

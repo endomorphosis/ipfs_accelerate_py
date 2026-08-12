@@ -27,15 +27,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
-from .duckdb_state import exclusive_file_lock
 from ..planning.formal_plan_compiler import (
-    CompilationStatus,
     FORMAL_PLAN_INPUT_SCHEMA,
+    CompilationStatus,
     FormalPlanCompiler,
     prompt_goal_graph_to_formal_input,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
-
+from .duckdb_state import connect_duckdb_with_policy, exclusive_file_lock
 
 DUCKDB_TASK_SOURCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/duckdb-task-source@1"
@@ -780,25 +779,15 @@ def _cursor_decode(cursor: str, plan_root: str, revision: int) -> int:
     return offset
 
 
-def _configure_connection(connection: Any) -> None:
-    """Disable DuckDB's external/autoload surfaces for this local store."""
-
-    for statement in (
-        "SET enable_external_access=false",
-        "SET autoinstall_known_extensions=false",
-        "SET autoload_known_extensions=false",
-        "SET threads=1",
-        "SET memory_limit='256MB'",
-    ):
-        connection.execute(statement)
-
-
 def _connect(path: Path, *, read_only: bool) -> Any:
     duckdb = _duckdb_module()
     try:
-        connection = duckdb.connect(str(path), read_only=read_only)
-        _configure_connection(connection)
-        return connection
+        return connect_duckdb_with_policy(
+            duckdb,
+            path,
+            read_only=read_only,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
     except Exception as exc:
         raise TaskSourceIntegrityError(f"could not open DuckDB task source: {exc}") from exc
 

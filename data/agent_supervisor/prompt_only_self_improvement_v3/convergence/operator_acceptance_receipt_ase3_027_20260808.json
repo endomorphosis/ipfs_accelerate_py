@@ -1,0 +1,124 @@
+{
+  "acceptance_parent": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "head": "63f0f4a5a994a5f6d3ecbbd58d1e6da5489d5194",
+    "manifest_schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2",
+    "receipt_paths_absent": [
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json"
+    ],
+    "reload_gate_status": "blocked",
+    "task_statuses": {
+      "ASE3-019": "completed",
+      "ASE3-022": "blocked",
+      "ASE3-023": "todo",
+      "ASE3-027": "todo",
+      "ASE3-030": "completed",
+      "ASE3-031": "completed",
+      "ASE3-032": "completed"
+    },
+    "tree": "69fdc1d2121d632ca61dd2a0422e4fa3b6412afc"
+  },
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "created_at": "2026-08-10T02:46:27Z",
+  "denials": {
+    "attempt_counter_mutation_authorized": false,
+    "branch_local_completion_authority": false,
+    "codex_or_openai_reviewer_allowed": false,
+    "historical_completion_authority": false,
+    "runtime_state_mutation_authorized": false,
+    "self_review_allowed": false
+  },
+  "implementation": {
+    "final_blobs": {
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py": "61cddc9adabb431fbf2aa98a300072d88be8088b",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py": "4671f417029bf7f9a3f7b578b9db65c3633f4242",
+      "test/api/test_agent_supervisor_inference_runtime.py": "dde3e01a95ef430d87d7e879c579c7d4d6fbac1d",
+      "test/api/test_agent_supervisor_prompt_v3_resolution.py": "5b8d0087ec4f92e7e3f7f942a71d378fa3d37a3f",
+      "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py": "4c1094926c2bc4eda4161e117f70895fb061e247"
+    },
+    "generations": [
+      {
+        "binary_full_index_patch_sha256": "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062",
+        "changed_paths": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+          "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py"
+        ],
+        "integrated_commit": "6a0047436f9515281127c17913132a23cecfe56c",
+        "integrated_parent": "0321fd148bf7c5dc6e91251d119dc25f853e546f",
+        "integrated_tree": "ec240271c204fc8befcddef6b7ca2bcad124dc3b",
+        "role": "product",
+        "source_commit": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+        "source_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+        "source_tree": "323f14dbcd9b15b09046cd3a481eb8588a6ede2a"
+      },
+      {
+        "binary_full_index_patch_sha256": "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd",
+        "changed_paths": [
+          "test/api/test_agent_supervisor_inference_runtime.py",
+          "test/api/test_agent_supervisor_prompt_v3_resolution.py"
+        ],
+        "integrated_commit": "d32415e4308a8462e96b4d04f807338f0a2d8b53",
+        "integrated_parent": "6a0047436f9515281127c17913132a23cecfe56c",
+        "integrated_tree": "87191ce65498a637c7b9500d72d434cadb8efbef",
+        "role": "test-contract-correction",
+        "source_commit": "bd93ae76c277ae8761cd2abe0df79685d0b1b8ef",
+        "source_parent": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+        "source_tree": "043677ccb5216204b3142bb8e2b7f71d4ca74bd9"
+      }
+    ]
+  },
+  "recovery": {
+    "artifact": "false_completion_recovery_20260808.json",
+    "branch_local_completion_authority": false,
+    "historical_completion_authority": false,
+    "pointer": "false_completions/ASE3-018",
+    "repair_required": true
+  },
+  "review": {
+    "algorithm": "Ed25519",
+    "fallback_authorization_id": "sha256:dfbcb29e1b624b345b263857ba750404b8287f3a869b317efdadc363250a9301",
+    "fallback_authorization_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "implementer_identity": "codex:ase3-027-product",
+    "implementer_provider": "codex",
+    "lifecycle_anchor_digest": "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239",
+    "lifecycle_anchor_id": "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8",
+    "lifecycle_generation": 1,
+    "lifecycle_root_identity_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+    "lifecycle_root_pin_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "lifecycle_root_pin_sha256": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+    "lifecycle_witness_id": "sha256:c0ff822e398493bd35e054b8bdbe8ed3b6d94bcbb04521241e1b1a48bc3cd65b",
+    "lifecycle_witness_nonce": "z3Y5bP4zbgLAgGHWV0sKhzXCKJ8CAMNt",
+    "lifecycle_witness_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "lifecycle_witness_sha256": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+    "profile_content_id": "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec",
+    "profile_id": "78d545927196b5dad4c2c76b461927ec",
+    "reviewer_identity": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "reviewer_provider": "local_operator",
+    "signature": "ed25519:iHYtmh0NHWXvu1P6H4XVFpeW_DDLl9wqR0z1_WaxdDw_NbUfo5blQIao9uvklOO2aoct7cmkcN4_v-Mqzs4hBQ",
+    "signed_at": "2026-08-10T02:46:27Z"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.operator-repair-acceptance@1",
+  "task": {
+    "canonical_task_cid": "baguqeerarq7rlvae2dqoqdctzibxe5fuvte4mxptjcn45ri75c4hp742lb6q",
+    "completed_contract_sha256": "sha256:49ac9f26bef2d2b71d8afe9e45a06a500902f79091f1b125731e41ecbe4cdadd",
+    "goal_id": "ASE3-G020",
+    "repairs_task": "ASE3-018",
+    "status_after": "completed",
+    "status_before": "todo",
+    "task_id": "ASE3-027",
+    "todo_contract_sha256": "sha256:69853f7f6174a9bd118b4fca13d5ba8e897e962def801d7fb012d9e4969f7d8c"
+  },
+  "validation": {
+    "command": "python -m pytest test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py test/api/test_agent_supervisor_prompt_v3_resolution.py test/api/test_agent_supervisor_inference_runtime.py test/api/test_agent_supervisor_target_resolver.py test/api/test_agent_supervisor_state_resolver.py test/api/test_agent_supervisor_profile_resolver.py test/api/test_agent_supervisor_objective_resolver.py test/api/test_agent_supervisor_capability_resolver.py test/api/test_agent_supervisor_authority_resolver.py -q",
+    "exit_code": 0,
+    "failed_count": 0,
+    "passed": true,
+    "passed_count": 174,
+    "validated_head": "63f0f4a5a994a5f6d3ecbbd58d1e6da5489d5194",
+    "validated_tree": "69fdc1d2121d632ca61dd2a0422e4fa3b6412afc"
+  }
+}

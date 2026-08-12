@@ -34,7 +34,7 @@ from ..proof.formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
 )
-from ..program_graph import Completeness, ProgramEdgeKind, ProgramNodeKind
+from .program_graph import Completeness, ProgramEdgeKind, ProgramNodeKind
 from .change_propagation_contracts import ImpactClosureReceipt, ImpactCompleteness
 from .program_logic_prediction_contracts import (
     GapDisposition,

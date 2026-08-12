@@ -4,15 +4,17 @@ import builtins
 import errno
 import fcntl
 import io
+import json
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as resolver,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor
 
 
@@ -48,21 +50,21 @@ def test_merge_resolver_lock_timeout_fails_closed(tmp_path, monkeypatch) -> None
 def test_merge_resolver_common_dir_failure_fails_before_provider(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    provider_invoked = False
+    runner_invoked = False
 
-    def fail_provider(_prompt, _workspace):
-        nonlocal provider_invoked
-        provider_invoked = True
-        return 0, False
+    def fail_runner(_argv):
+        nonlocal runner_invoked
+        runner_invoked = True
+        return 0
 
     monkeypatch.delenv("AGENT_RESOLVER_LOCK_BYPASS", raising=False)
-    monkeypatch.setattr(resolver, "_run_grok", fail_provider)
+    monkeypatch.setattr(grok_cli_runner, "main", fail_runner)
     monkeypatch.setattr(sys, "stdin", io.StringIO("resolve"))
 
     result = resolver.main([str(tmp_path / "not-a-repository")])
 
     assert result == resolver._LOCK_ACQUISITION_FAILURE_EXIT_CODE
-    assert provider_invoked is False
+    assert runner_invoked is False
     assert "no provider was invoked" in capsys.readouterr().err
 
 
@@ -133,37 +135,46 @@ def test_merge_resolver_explicit_test_lock_bypass_remains_available(
     assert resolver._acquire_git_lock(tmp_path) is None
 
 
-def test_merge_resolver_provider_output_is_bounded_and_truncation_fails_closed(
-    tmp_path,
+def test_merge_resolver_main_delegates_once_to_canonical_marked_runner(
+    tmp_path, monkeypatch
 ) -> None:
-    completed = resolver._run_tool(
-        (
-            sys.executable,
-            "-c",
-            (
-                "import sys; "
-                "sys.stdout.buffer.write(b'x' * 400000); "
-                "sys.stderr.buffer.write(b'y' * 400000)"
-            ),
-        ),
-        prompt="bounded provider output",
-        timeout=5,
-    )
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o700)
+    captured: list[tuple[list[str], str]] = []
 
-    assert completed.returncode == 0
-    assert len(completed.stdout.encode("utf-8")) < (
-        resolver._MAX_TOOL_OUTPUT_BYTES + 100
-    )
-    assert len(completed.stderr.encode("utf-8")) < (
-        resolver._MAX_TOOL_OUTPUT_BYTES + 100
-    )
-    assert "stdout truncated" in completed.stdout
-    assert "stderr truncated" in completed.stderr
-    assert resolver._strict_grok_quota_exhaustion(
-        completed.stderr,
-        returncode=86,
-    ) is False
+    def fake_runner_main(argv) -> int:
+        captured.append((list(argv), sys.stdin.read()))
+        return 23
 
+    monkeypatch.setenv("AGENT_RESOLVER_LOCK_BYPASS", "1")
+    monkeypatch.setenv(resolver._INVOCATION_DEPTH_ENV, "0")
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: str(codex),
+    )
+    monkeypatch.setattr(grok_cli_runner, "main", fake_runner_main)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("resolve this conflict"))
+
+    assert resolver.main([str(tmp_path)]) == 23
+    assert len(captured) == 1
+    argv, prompt = captured[0]
+    assert prompt == "resolve this conflict"
+    assert argv[:2] == ["--workspace", str(tmp_path)]
+    assert grok_cli_runner.CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG in argv
+    fallback = json.loads(
+        argv[argv.index("--codex-fallback-command-json") + 1]
+    )
+    assert fallback[0] == str(codex)
+    assert fallback[1] == "exec"
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert (
+        fallback[fallback.index("-c") + 1]
+        == 'model_reasoning_effort="medium"'
+    )
+    assert "--dangerously-bypass-approvals-and-sandbox" not in fallback
+    assert fallback[fallback.index("-s") + 1] == "workspace-write"
 
 @pytest.mark.parametrize(
     "cmdline",
@@ -186,7 +197,7 @@ def test_merge_resolver_provider_output_is_bounded_and_truncation_fails_closed(
 def test_worker_watchdog_recognizes_packaged_merge_resolver(
     monkeypatch, cmdline
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     monkeypatch.setattr(
         supervisor,
         "descendant_processes",

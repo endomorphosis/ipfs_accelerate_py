@@ -30,6 +30,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final, Protocol
 
 from ..planning.formal_planning_contracts import FormalWorkPlan
@@ -3587,6 +3588,921 @@ def refine_goal_from_evidence(
     ).refine(request)
 
 
+# ---------------------------------------------------------------------------
+# WPD-042 / RefillResidualGuard@1
+# ---------------------------------------------------------------------------
+# Guards only: refilled / backlog-generated tasks inherit residual LLM rules
+# and doctor preconditions.  This surface never mutates the objective heap or
+# protected WPD control anchors.  Generated tasks must carry the
+# pre-implementation kernel flag, and residual_llm_authorized is admitted only
+# when the residual packet schema is declared.
+
+REFILL_RESIDUAL_GUARD_INTERFACE: Final[str] = "RefillResidualGuard@1"
+REFILL_RESIDUAL_GUARD_VERSION: Final[int] = 1
+REFILL_RESIDUAL_GUARD_EVIDENCE: Final[str] = "wpd/refill-guard@1"
+REFILL_RESIDUAL_GUARD_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/refill-residual-guard@1"
+)
+REFILL_RESIDUAL_GUARD_PRODUCER: Final[str] = "refill-residual-guard@1"
+
+# Canonical residual packet schema that residual_llm_authorized must declare.
+# Kept as a literal so this guard remains a leaf over residual packet identity
+# without importing the full packet constructor graph.
+REFILL_RESIDUAL_PACKET_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/residual-llm-packet@1"
+)
+
+# Wire keys stamped onto / required of generated refill tasks.
+PRE_IMPLEMENTATION_KERNEL_FLAG_KEY: Final[str] = (
+    "requires_pre_implementation_kernel"
+)
+RESIDUAL_PACKET_SCHEMA_KEY: Final[str] = "residual_packet_schema"
+IMPLEMENTATION_DISPOSITION_KEY: Final[str] = "implementation_disposition"
+DOCTOR_PRECONDITIONS_KEY: Final[str] = "doctor_preconditions"
+REFILL_RESIDUAL_RULES_KEY: Final[str] = "refill_residual_rules"
+
+RESIDUAL_LLM_AUTHORIZED_DISPOSITION: Final[str] = "residual_llm_authorized"
+
+# Doctor preconditions that refilled tasks inherit and cannot drop.
+REQUIRED_DOCTOR_PRECONDITIONS: Final[tuple[str, ...]] = (
+    "doctor_inspect_on_typed_failure",
+    "formal_replan_on_typed_failure",
+    "residual_packet_before_provider_retry",
+    "pre_implementation_kernel_before_provider",
+)
+
+# Operator-protected WPD control anchors.  Refill guards reject any generated
+# task that lists these as write outputs (guards only; no heap mutation).
+DEFAULT_WPD_PROTECTED_CONTROL_PATHS: Final[tuple[str, ...]] = (
+    "implementation_plan/docs/47-supervisor-worker-planner-doctor-integration-plan-2026-08-06.md",
+    "implementation_plan/docs/47-supervisor-worker-planner-doctor-integration.objectives.md",
+    "implementation_plan/docs/47-supervisor-worker-planner-doctor-integration.todo.md",
+    "config/supervisor_worker_planner_doctor_integration_scheduler.json",
+    "config/supervisor_worker_planner_doctor_supervisor.json",
+    "config/supervisor_worker_planner_doctor_authority_policy.json",
+    "scripts/validate_supervisor_worker_planner_doctor_board.py",
+    "scripts/supervisor_worker_planner_doctor_supervisor.sh",
+)
+
+# Stable rejection reason codes (fail closed).
+REASON_MISSING_PRE_IMPLEMENTATION_KERNEL_FLAG: Final[str] = (
+    "missing_pre_implementation_kernel_flag"
+)
+REASON_PRE_IMPLEMENTATION_KERNEL_FLAG_FALSE: Final[str] = (
+    "pre_implementation_kernel_flag_false"
+)
+REASON_RESIDUAL_LLM_WITHOUT_PACKET_SCHEMA: Final[str] = (
+    "residual_llm_authorized_without_packet_schema"
+)
+REASON_UNKNOWN_PACKET_SCHEMA: Final[str] = "unknown_residual_packet_schema"
+REASON_DROPPED_DOCTOR_PRECONDITION: Final[str] = "dropped_doctor_precondition"
+REASON_PROTECTED_CONTROL_PATH: Final[str] = "protected_control_path_write"
+REASON_OBJECTIVE_HEAP_MUTATION: Final[str] = (
+    "objective_heap_mutation_forbidden"
+)
+REASON_MALFORMED_TASK: Final[str] = "malformed_refill_task"
+
+_WRITE_PATH_KEYS: Final[tuple[str, ...]] = (
+    "predicted_files",
+    "output_paths",
+    "write_paths",
+    "expected_outputs",
+    "outputs",
+)
+
+_HEAP_MUTATION_TRUE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "mutates_objective_heap",
+        "objective_heap_mutation",
+        "authorizes_objective_heap_mutation",
+        "authorize_objective_heap_mutation",
+        "completion_authority",
+        "mutation_authority",
+    }
+)
+
+
+class RefillResidualGuardError(AdaptiveGoalRefinementError):
+    """A generated refill task violates residual / doctor guard rules."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        codes = tuple(
+            sorted(
+                {
+                    _text(code, "reason_code")
+                    for code in reason_codes
+                    if str(code or "").strip()
+                }
+            )
+        )
+        self.reason_codes = codes
+
+
+class RefillResidualGuardVerdict(str, Enum):
+    """Closed guard outcomes for one generated refill task."""
+
+    ADMITTED = "admitted"
+    REJECTED = "rejected"
+
+
+def _truthy_flag(value: Any) -> bool | None:
+    """Return True/False for explicit boolean-like flags, else None."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "required", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "forbidden"}:
+            return False
+    return None
+
+
+def _task_mapping(task: Any, *, name: str = "task") -> dict[str, Any]:
+    if task is None:
+        raise RefillResidualGuardError(
+            f"{name} is required",
+            reason_codes=(REASON_MALFORMED_TASK,),
+        )
+    if isinstance(task, Mapping):
+        if any(not isinstance(key, str) for key in task):
+            raise RefillResidualGuardError(
+                f"{name} keys must be strings",
+                reason_codes=(REASON_MALFORMED_TASK,),
+            )
+        return dict(task)
+    to_dict = getattr(task, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping) and all(
+            isinstance(key, str) for key in payload
+        ):
+            return dict(payload)
+    raise RefillResidualGuardError(
+        f"{name} must be a mapping or expose to_dict()",
+        reason_codes=(REASON_MALFORMED_TASK,),
+    )
+
+
+def _disposition_token(task: Mapping[str, Any]) -> str:
+    for key in (
+        IMPLEMENTATION_DISPOSITION_KEY,
+        "disposition",
+        "implementation_disposition_value",
+    ):
+        raw = task.get(key)
+        if raw is None or raw == "":
+            continue
+        if isinstance(raw, Enum):
+            return str(raw.value).strip().lower()
+        return str(raw).strip().lower()
+    metadata = task.get("metadata")
+    if isinstance(metadata, Mapping):
+        for key in (IMPLEMENTATION_DISPOSITION_KEY, "disposition"):
+            raw = metadata.get(key)
+            if raw is None or raw == "":
+                continue
+            if isinstance(raw, Enum):
+                return str(raw.value).strip().lower()
+            return str(raw).strip().lower()
+    return ""
+
+
+def _packet_schema_token(task: Mapping[str, Any]) -> str:
+    for key in (
+        RESIDUAL_PACKET_SCHEMA_KEY,
+        "packet_schema",
+        "residual_llm_packet_schema",
+        "residual_packet_schema_id",
+    ):
+        raw = task.get(key)
+        if raw is None or raw == "":
+            continue
+        return str(raw).strip()
+    metadata = task.get("metadata")
+    if isinstance(metadata, Mapping):
+        for key in (
+            RESIDUAL_PACKET_SCHEMA_KEY,
+            "packet_schema",
+            "residual_llm_packet_schema",
+        ):
+            raw = metadata.get(key)
+            if raw is None or raw == "":
+                continue
+            return str(raw).strip()
+    residual_rules = task.get(REFILL_RESIDUAL_RULES_KEY)
+    if isinstance(residual_rules, Mapping):
+        raw = residual_rules.get(RESIDUAL_PACKET_SCHEMA_KEY)
+        if raw not in (None, ""):
+            return str(raw).strip()
+    return ""
+
+
+def _kernel_flag_value(task: Mapping[str, Any]) -> bool | None:
+    for key in (
+        PRE_IMPLEMENTATION_KERNEL_FLAG_KEY,
+        "pre_implementation_kernel",
+        "pre_implementation_kernel_required",
+        "require_pre_implementation_kernel",
+    ):
+        if key in task:
+            return _truthy_flag(task.get(key))
+    metadata = task.get("metadata")
+    if isinstance(metadata, Mapping):
+        for key in (
+            PRE_IMPLEMENTATION_KERNEL_FLAG_KEY,
+            "pre_implementation_kernel",
+            "pre_implementation_kernel_required",
+        ):
+            if key in metadata:
+                return _truthy_flag(metadata.get(key))
+    residual_rules = task.get(REFILL_RESIDUAL_RULES_KEY)
+    if isinstance(residual_rules, Mapping):
+        if PRE_IMPLEMENTATION_KERNEL_FLAG_KEY in residual_rules:
+            return _truthy_flag(
+                residual_rules.get(PRE_IMPLEMENTATION_KERNEL_FLAG_KEY)
+            )
+    return None
+
+
+def _doctor_preconditions(task: Mapping[str, Any]) -> tuple[str, ...]:
+    collected: list[str] = []
+    for container in (
+        task,
+        task.get("metadata") if isinstance(task.get("metadata"), Mapping) else {},
+        (
+            task.get(REFILL_RESIDUAL_RULES_KEY)
+            if isinstance(task.get(REFILL_RESIDUAL_RULES_KEY), Mapping)
+            else {}
+        ),
+    ):
+        if not isinstance(container, Mapping):
+            continue
+        raw = container.get(DOCTOR_PRECONDITIONS_KEY)
+        if raw is None:
+            raw = container.get("preconditions")
+        if raw is None:
+            continue
+        if isinstance(raw, (str, bytes, bytearray)):
+            text = str(raw).strip()
+            if text:
+                collected.append(text)
+            continue
+        if isinstance(raw, Iterable):
+            for item in raw:
+                text = str(item or "").strip()
+                if text:
+                    collected.append(text)
+    # Preserve first-seen order while deduplicating.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in collected:
+        if item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return tuple(ordered)
+
+
+def _write_paths(task: Mapping[str, Any]) -> tuple[str, ...]:
+    paths: list[str] = []
+    containers: list[Mapping[str, Any]] = [task]
+    metadata = task.get("metadata")
+    if isinstance(metadata, Mapping):
+        containers.append(metadata)
+    for container in containers:
+        for key in _WRITE_PATH_KEYS:
+            raw = container.get(key)
+            if raw is None:
+                continue
+            if isinstance(raw, (str, bytes, bytearray)):
+                text = str(raw).strip().replace("\\", "/")
+                if text:
+                    paths.append(text)
+                continue
+            if isinstance(raw, Iterable):
+                for item in raw:
+                    text = str(item or "").strip().replace("\\", "/")
+                    if text:
+                        paths.append(text)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            ordered.append(path)
+    return tuple(ordered)
+
+
+def _path_is_protected(path: str, protected: Sequence[str]) -> bool:
+    normalized = path.replace("\\", "/").strip().lstrip("./")
+    for anchor in protected:
+        target = str(anchor).replace("\\", "/").strip().lstrip("./")
+        if not target:
+            continue
+        if normalized == target or normalized.startswith(target + "/"):
+            return True
+    return False
+
+
+def _claims_heap_mutation(task: Mapping[str, Any]) -> bool:
+    containers: list[Mapping[str, Any]] = [task]
+    metadata = task.get("metadata")
+    if isinstance(metadata, Mapping):
+        containers.append(metadata)
+    residual_rules = task.get(REFILL_RESIDUAL_RULES_KEY)
+    if isinstance(residual_rules, Mapping):
+        containers.append(residual_rules)
+    for container in containers:
+        for key in _HEAP_MUTATION_TRUE_KEYS:
+            if key not in container:
+                continue
+            flag = _truthy_flag(container.get(key))
+            if flag is True:
+                return True
+    return False
+
+
+def default_refill_residual_rules() -> dict[str, Any]:
+    """Return the residual/LLM rules inherited by every guarded refill task."""
+
+    return {
+        PRE_IMPLEMENTATION_KERNEL_FLAG_KEY: True,
+        RESIDUAL_PACKET_SCHEMA_KEY: REFILL_RESIDUAL_PACKET_SCHEMA,
+        DOCTOR_PRECONDITIONS_KEY: list(REQUIRED_DOCTOR_PRECONDITIONS),
+        "residual_llm_authorized_requires_packet_schema": True,
+        "free_reprompt_after_typed_failure_forbidden": True,
+        "objective_heap_mutation": False,
+        "completion_authority": False,
+        "mutation_authority": False,
+        "interface": REFILL_RESIDUAL_GUARD_INTERFACE,
+        "evidence": REFILL_RESIDUAL_GUARD_EVIDENCE,
+        "version": REFILL_RESIDUAL_GUARD_VERSION,
+    }
+
+
+def stamp_refill_residual_rules(
+    task: Mapping[str, Any] | Any,
+    *,
+    disposition: str | None = None,
+    residual_packet_schema: str | None = None,
+) -> dict[str, Any]:
+    """Return a copy of ``task`` with mandatory residual/doctor rules stamped.
+
+    Generation path: every refill task inherits the pre-implementation kernel
+    flag and doctor preconditions.  When disposition is residual_llm_authorized
+    the residual packet schema is also stamped.  This never grants completion
+    or objective-heap mutation authority.
+    """
+
+    payload = _task_mapping(task)
+    rules = default_refill_residual_rules()
+    existing_rules = payload.get(REFILL_RESIDUAL_RULES_KEY)
+    if isinstance(existing_rules, Mapping):
+        # Caller-supplied rules may only tighten, never drop required fields.
+        merged = dict(existing_rules)
+        merged.update(rules)
+        # Preserve any extra doctor preconditions the caller already listed.
+        prior = _doctor_preconditions(payload)
+        merged[DOCTOR_PRECONDITIONS_KEY] = list(
+            dict.fromkeys([*REQUIRED_DOCTOR_PRECONDITIONS, *prior])
+        )
+        rules = merged
+
+    disposition_token = (
+        str(disposition).strip().lower()
+        if disposition not in (None, "")
+        else _disposition_token(payload)
+    )
+    schema_token = (
+        str(residual_packet_schema).strip()
+        if residual_packet_schema not in (None, "")
+        else _packet_schema_token(payload)
+    )
+    if disposition_token == RESIDUAL_LLM_AUTHORIZED_DISPOSITION:
+        if not schema_token:
+            schema_token = REFILL_RESIDUAL_PACKET_SCHEMA
+        if schema_token != REFILL_RESIDUAL_PACKET_SCHEMA:
+            raise RefillResidualGuardError(
+                "residual_llm_authorized requires the residual-llm-packet@1 schema",
+                reason_codes=(REASON_UNKNOWN_PACKET_SCHEMA,),
+            )
+        payload[IMPLEMENTATION_DISPOSITION_KEY] = (
+            RESIDUAL_LLM_AUTHORIZED_DISPOSITION
+        )
+        payload[RESIDUAL_PACKET_SCHEMA_KEY] = schema_token
+        rules[RESIDUAL_PACKET_SCHEMA_KEY] = schema_token
+        rules[IMPLEMENTATION_DISPOSITION_KEY] = (
+            RESIDUAL_LLM_AUTHORIZED_DISPOSITION
+        )
+    elif disposition_token:
+        payload[IMPLEMENTATION_DISPOSITION_KEY] = disposition_token
+        # Non-residual dispositions must not carry residual packet schema.
+        payload.pop(RESIDUAL_PACKET_SCHEMA_KEY, None)
+        rules.pop(IMPLEMENTATION_DISPOSITION_KEY, None)
+        # Keep schema identity as documentation of the residual rule set.
+        rules[RESIDUAL_PACKET_SCHEMA_KEY] = REFILL_RESIDUAL_PACKET_SCHEMA
+
+    payload[PRE_IMPLEMENTATION_KERNEL_FLAG_KEY] = True
+    payload[DOCTOR_PRECONDITIONS_KEY] = list(
+        dict.fromkeys(
+            [*REQUIRED_DOCTOR_PRECONDITIONS, *_doctor_preconditions(payload)]
+        )
+    )
+    rules[PRE_IMPLEMENTATION_KERNEL_FLAG_KEY] = True
+    rules[DOCTOR_PRECONDITIONS_KEY] = list(payload[DOCTOR_PRECONDITIONS_KEY])
+    rules["objective_heap_mutation"] = False
+    rules["completion_authority"] = False
+    rules["mutation_authority"] = False
+    payload[REFILL_RESIDUAL_RULES_KEY] = rules
+    payload["mutates_objective_heap"] = False
+    payload["completion_authority"] = False
+    payload["mutation_authority"] = False
+    return payload
+
+
+@dataclass(frozen=True)
+class RefillResidualGuardResult:
+    """Content-addressed outcome of one refill residual guard evaluation."""
+
+    verdict: RefillResidualGuardVerdict
+    reason_codes: tuple[str, ...]
+    task: Mapping[str, Any]
+    guarded_task: Mapping[str, Any] | None = None
+    requires_pre_implementation_kernel: bool = False
+    disposition: str = ""
+    residual_packet_schema: str = ""
+    doctor_preconditions: tuple[str, ...] = ()
+    interface: str = REFILL_RESIDUAL_GUARD_INTERFACE
+    version: int = REFILL_RESIDUAL_GUARD_VERSION
+    evidence: str = REFILL_RESIDUAL_GUARD_EVIDENCE
+    producer_id: str = REFILL_RESIDUAL_GUARD_PRODUCER
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "verdict",
+            (
+                self.verdict
+                if isinstance(self.verdict, RefillResidualGuardVerdict)
+                else RefillResidualGuardVerdict(str(self.verdict))
+            ),
+        )
+        codes = tuple(
+            sorted(
+                {
+                    _text(code, "reason_code")
+                    for code in self.reason_codes
+                    if str(code or "").strip()
+                }
+            )
+        )
+        object.__setattr__(self, "reason_codes", codes)
+        object.__setattr__(
+            self, "task", MappingProxyType(dict(self.task))
+        )
+        if self.guarded_task is None:
+            object.__setattr__(self, "guarded_task", None)
+        else:
+            object.__setattr__(
+                self,
+                "guarded_task",
+                MappingProxyType(dict(self.guarded_task)),
+            )
+        object.__setattr__(
+            self,
+            "requires_pre_implementation_kernel",
+            bool(self.requires_pre_implementation_kernel),
+        )
+        object.__setattr__(
+            self,
+            "disposition",
+            _text(self.disposition, "disposition", required=False),
+        )
+        object.__setattr__(
+            self,
+            "residual_packet_schema",
+            _text(
+                self.residual_packet_schema,
+                "residual_packet_schema",
+                required=False,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "doctor_preconditions",
+            tuple(
+                _text(item, "doctor_precondition")
+                for item in self.doctor_preconditions
+            ),
+        )
+        object.__setattr__(
+            self,
+            "interface",
+            _text(self.interface, "interface") or REFILL_RESIDUAL_GUARD_INTERFACE,
+        )
+        object.__setattr__(
+            self,
+            "version",
+            _positive(self.version, "version"),
+        )
+        object.__setattr__(
+            self,
+            "evidence",
+            _text(self.evidence, "evidence") or REFILL_RESIDUAL_GUARD_EVIDENCE,
+        )
+        object.__setattr__(
+            self,
+            "producer_id",
+            _text(self.producer_id, "producer_id")
+            or REFILL_RESIDUAL_GUARD_PRODUCER,
+        )
+        if self.verdict is RefillResidualGuardVerdict.ADMITTED and codes:
+            raise RefillResidualGuardError(
+                "admitted guard results cannot carry rejection reason codes",
+                reason_codes=codes,
+            )
+        if (
+            self.verdict is RefillResidualGuardVerdict.ADMITTED
+            and self.guarded_task is None
+        ):
+            raise RefillResidualGuardError(
+                "admitted guard results require a guarded_task",
+                reason_codes=(REASON_MALFORMED_TASK,),
+            )
+
+    @property
+    def admitted(self) -> bool:
+        return self.verdict is RefillResidualGuardVerdict.ADMITTED
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": REFILL_RESIDUAL_GUARD_SCHEMA,
+            "interface": self.interface,
+            "version": self.version,
+            "evidence": self.evidence,
+            "producer_id": self.producer_id,
+            "verdict": self.verdict.value,
+            "reason_codes": list(self.reason_codes),
+            "requires_pre_implementation_kernel": (
+                self.requires_pre_implementation_kernel
+            ),
+            "disposition": self.disposition,
+            "residual_packet_schema": self.residual_packet_schema,
+            "doctor_preconditions": list(self.doctor_preconditions),
+            "task": dict(self.task),
+        }
+        if self.guarded_task is not None:
+            payload["guarded_task"] = dict(self.guarded_task)
+        return payload
+
+
+def evaluate_refill_residual_guard(
+    task: Mapping[str, Any] | Any,
+    *,
+    protected_paths: Sequence[str] | None = None,
+    require_all_doctor_preconditions: bool = True,
+    stamp_on_admit: bool = True,
+) -> RefillResidualGuardResult:
+    """Evaluate residual/LLM rules on a generated refill task (fail closed).
+
+    Acceptance (WPD-042):
+
+    * generated refill tasks require the pre-implementation kernel flag;
+    * residual_llm_authorized cannot be marked without the residual packet
+      schema;
+    * doctor preconditions cannot be dropped; and
+    * the guard never admits objective-heap mutation of WPD control files.
+    """
+
+    try:
+        payload = _task_mapping(task)
+    except RefillResidualGuardError as exc:
+        return RefillResidualGuardResult(
+            verdict=RefillResidualGuardVerdict.REJECTED,
+            reason_codes=exc.reason_codes or (REASON_MALFORMED_TASK,),
+            task={},
+            requires_pre_implementation_kernel=False,
+        )
+
+    reasons: list[str] = []
+    kernel_flag = _kernel_flag_value(payload)
+    if kernel_flag is None:
+        reasons.append(REASON_MISSING_PRE_IMPLEMENTATION_KERNEL_FLAG)
+    elif kernel_flag is False:
+        reasons.append(REASON_PRE_IMPLEMENTATION_KERNEL_FLAG_FALSE)
+
+    disposition = _disposition_token(payload)
+    packet_schema = _packet_schema_token(payload)
+    if disposition == RESIDUAL_LLM_AUTHORIZED_DISPOSITION:
+        if not packet_schema:
+            reasons.append(REASON_RESIDUAL_LLM_WITHOUT_PACKET_SCHEMA)
+        elif packet_schema != REFILL_RESIDUAL_PACKET_SCHEMA:
+            reasons.append(REASON_UNKNOWN_PACKET_SCHEMA)
+
+    preconditions = _doctor_preconditions(payload)
+    if require_all_doctor_preconditions:
+        missing = [
+            item
+            for item in REQUIRED_DOCTOR_PRECONDITIONS
+            if item not in preconditions
+        ]
+        if missing:
+            reasons.append(REASON_DROPPED_DOCTOR_PRECONDITION)
+
+    anchors = (
+        tuple(protected_paths)
+        if protected_paths is not None
+        else DEFAULT_WPD_PROTECTED_CONTROL_PATHS
+    )
+    for path in _write_paths(payload):
+        if _path_is_protected(path, anchors):
+            reasons.append(REASON_PROTECTED_CONTROL_PATH)
+            break
+
+    if _claims_heap_mutation(payload):
+        reasons.append(REASON_OBJECTIVE_HEAP_MUTATION)
+
+    unique_reasons = tuple(sorted(set(reasons)))
+    if unique_reasons:
+        return RefillResidualGuardResult(
+            verdict=RefillResidualGuardVerdict.REJECTED,
+            reason_codes=unique_reasons,
+            task=payload,
+            requires_pre_implementation_kernel=bool(kernel_flag),
+            disposition=disposition,
+            residual_packet_schema=packet_schema,
+            doctor_preconditions=preconditions,
+        )
+
+    guarded = (
+        stamp_refill_residual_rules(payload)
+        if stamp_on_admit
+        else dict(payload)
+    )
+    return RefillResidualGuardResult(
+        verdict=RefillResidualGuardVerdict.ADMITTED,
+        reason_codes=(),
+        task=payload,
+        guarded_task=guarded,
+        requires_pre_implementation_kernel=True,
+        disposition=_disposition_token(guarded),
+        residual_packet_schema=_packet_schema_token(guarded),
+        doctor_preconditions=_doctor_preconditions(guarded),
+    )
+
+
+def guard_refill_task(
+    task: Mapping[str, Any] | Any,
+    *,
+    protected_paths: Sequence[str] | None = None,
+    require_all_doctor_preconditions: bool = True,
+) -> dict[str, Any]:
+    """Admit a guarded refill task or raise :class:`RefillResidualGuardError`."""
+
+    result = evaluate_refill_residual_guard(
+        task,
+        protected_paths=protected_paths,
+        require_all_doctor_preconditions=require_all_doctor_preconditions,
+        stamp_on_admit=True,
+    )
+    if not result.admitted or result.guarded_task is None:
+        raise RefillResidualGuardError(
+            "refill residual guard rejected task: "
+            + ",".join(result.reason_codes),
+            reason_codes=result.reason_codes,
+        )
+    return dict(result.guarded_task)
+
+
+def build_refill_task_with_residual_guard(
+    *,
+    task_id: str,
+    title: str,
+    predicted_files: Sequence[str] = (),
+    validation_commands: Sequence[str] = (),
+    disposition: str = "closed_deterministic",
+    residual_packet_schema: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    protected_paths: Sequence[str] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """Build a generated refill task that already satisfies residual rules.
+
+    The pre-implementation kernel flag and doctor preconditions are always
+    stamped.  residual_llm_authorized is only accepted with the residual
+    packet schema.
+    """
+
+    task_id_text = _text(task_id, "task_id")
+    title_text = _text(title, "title")
+    disposition_token = _text(disposition, "disposition").lower()
+    files = tuple(
+        _text(path, "predicted_files")
+        for path in predicted_files
+        if str(path or "").strip()
+    )
+    commands = tuple(
+        _text(command, "validation_commands")
+        for command in validation_commands
+        if str(command or "").strip()
+    )
+    base: dict[str, Any] = {
+        "task_id": task_id_text,
+        "title": title_text,
+        "predicted_files": list(files),
+        "validation_commands": list(commands),
+        IMPLEMENTATION_DISPOSITION_KEY: disposition_token,
+        PRE_IMPLEMENTATION_KERNEL_FLAG_KEY: True,
+        DOCTOR_PRECONDITIONS_KEY: list(REQUIRED_DOCTOR_PRECONDITIONS),
+        "mutates_objective_heap": False,
+        "completion_authority": False,
+        "mutation_authority": False,
+        "source": "refill",
+    }
+    if metadata:
+        if not isinstance(metadata, Mapping) or any(
+            not isinstance(key, str) for key in metadata
+        ):
+            raise RefillResidualGuardError(
+                "metadata must be an object with string keys",
+                reason_codes=(REASON_MALFORMED_TASK,),
+            )
+        base["metadata"] = dict(metadata)
+    for key, value in extra.items():
+        if key in base and key not in {
+            "metadata",
+            "predicted_files",
+            "validation_commands",
+        }:
+            # Explicit constructor fields win over extras for identity keys.
+            continue
+        base[key] = value
+
+    if disposition_token == RESIDUAL_LLM_AUTHORIZED_DISPOSITION:
+        schema = (
+            _text(residual_packet_schema, RESIDUAL_PACKET_SCHEMA_KEY)
+            if residual_packet_schema not in (None, "")
+            else REFILL_RESIDUAL_PACKET_SCHEMA
+        )
+        base[RESIDUAL_PACKET_SCHEMA_KEY] = schema
+    elif residual_packet_schema not in (None, ""):
+        # Declaring a packet schema without residual authorization is ignored
+        # at stamp time for non-residual dispositions.
+        pass
+
+    stamped = stamp_refill_residual_rules(
+        base,
+        disposition=disposition_token,
+        residual_packet_schema=residual_packet_schema,
+    )
+    return guard_refill_task(
+        stamped,
+        protected_paths=protected_paths,
+        require_all_doctor_preconditions=True,
+    )
+
+
+@dataclass(frozen=True)
+class RefillResidualGuard:
+    """Production guard binding residual/LLM rules onto refill generation."""
+
+    protected_paths: tuple[str, ...] = DEFAULT_WPD_PROTECTED_CONTROL_PATHS
+    require_all_doctor_preconditions: bool = True
+    interface: str = REFILL_RESIDUAL_GUARD_INTERFACE
+    version: int = REFILL_RESIDUAL_GUARD_VERSION
+    evidence: str = REFILL_RESIDUAL_GUARD_EVIDENCE
+
+    def __post_init__(self) -> None:
+        paths = tuple(
+            _text(path, "protected_paths")
+            for path in self.protected_paths
+            if str(path or "").strip()
+        )
+        object.__setattr__(
+            self,
+            "protected_paths",
+            paths or DEFAULT_WPD_PROTECTED_CONTROL_PATHS,
+        )
+        object.__setattr__(
+            self,
+            "require_all_doctor_preconditions",
+            bool(self.require_all_doctor_preconditions),
+        )
+        object.__setattr__(
+            self,
+            "interface",
+            _text(self.interface, "interface") or REFILL_RESIDUAL_GUARD_INTERFACE,
+        )
+        object.__setattr__(self, "version", _positive(self.version, "version"))
+        object.__setattr__(
+            self,
+            "evidence",
+            _text(self.evidence, "evidence") or REFILL_RESIDUAL_GUARD_EVIDENCE,
+        )
+
+    def evaluate(
+        self, task: Mapping[str, Any] | Any
+    ) -> RefillResidualGuardResult:
+        """Evaluate residual rules without raising."""
+
+        return evaluate_refill_residual_guard(
+            task,
+            protected_paths=self.protected_paths,
+            require_all_doctor_preconditions=(
+                self.require_all_doctor_preconditions
+            ),
+            stamp_on_admit=True,
+        )
+
+    def guard(self, task: Mapping[str, Any] | Any) -> dict[str, Any]:
+        """Admit a guarded task or raise."""
+
+        return guard_refill_task(
+            task,
+            protected_paths=self.protected_paths,
+            require_all_doctor_preconditions=(
+                self.require_all_doctor_preconditions
+            ),
+        )
+
+    def build_task(
+        self,
+        *,
+        task_id: str,
+        title: str,
+        predicted_files: Sequence[str] = (),
+        validation_commands: Sequence[str] = (),
+        disposition: str = "closed_deterministic",
+        residual_packet_schema: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+        **extra: Any,
+    ) -> dict[str, Any]:
+        """Build a residual-rule compliant generated refill task."""
+
+        return build_refill_task_with_residual_guard(
+            task_id=task_id,
+            title=title,
+            predicted_files=predicted_files,
+            validation_commands=validation_commands,
+            disposition=disposition,
+            residual_packet_schema=residual_packet_schema,
+            metadata=metadata,
+            protected_paths=self.protected_paths,
+            **extra,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interface": self.interface,
+            "version": self.version,
+            "evidence": self.evidence,
+            "protected_paths": list(self.protected_paths),
+            "require_all_doctor_preconditions": (
+                self.require_all_doctor_preconditions
+            ),
+            "required_doctor_preconditions": list(REQUIRED_DOCTOR_PRECONDITIONS),
+            "residual_packet_schema": REFILL_RESIDUAL_PACKET_SCHEMA,
+            "pre_implementation_kernel_flag_key": (
+                PRE_IMPLEMENTATION_KERNEL_FLAG_KEY
+            ),
+            "objective_heap_mutation": False,
+        }
+
+
+def create_refill_residual_guard(
+    *,
+    protected_paths: Sequence[str] | None = None,
+    require_all_doctor_preconditions: bool = True,
+) -> RefillResidualGuard:
+    """Construct the production-default :class:`RefillResidualGuard`."""
+
+    return RefillResidualGuard(
+        protected_paths=(
+            tuple(protected_paths)
+            if protected_paths is not None
+            else DEFAULT_WPD_PROTECTED_CONTROL_PATHS
+        ),
+        require_all_doctor_preconditions=require_all_doctor_preconditions,
+    )
+
+
 __all__ = [
     "ADAPTIVE_GOAL_REFINER_VERSION",
     "ADAPTIVE_REFINEMENT_RECEIPT_VERSION",
@@ -3635,4 +4551,37 @@ __all__ = [
     "JsonlRefinementStore",
     "AdaptiveGoalRefiner",
     "refine_goal_from_evidence",
+    # WPD-042 / RefillResidualGuard@1
+    "REFILL_RESIDUAL_GUARD_INTERFACE",
+    "REFILL_RESIDUAL_GUARD_VERSION",
+    "REFILL_RESIDUAL_GUARD_EVIDENCE",
+    "REFILL_RESIDUAL_GUARD_SCHEMA",
+    "REFILL_RESIDUAL_GUARD_PRODUCER",
+    "REFILL_RESIDUAL_PACKET_SCHEMA",
+    "PRE_IMPLEMENTATION_KERNEL_FLAG_KEY",
+    "RESIDUAL_PACKET_SCHEMA_KEY",
+    "IMPLEMENTATION_DISPOSITION_KEY",
+    "DOCTOR_PRECONDITIONS_KEY",
+    "REFILL_RESIDUAL_RULES_KEY",
+    "RESIDUAL_LLM_AUTHORIZED_DISPOSITION",
+    "REQUIRED_DOCTOR_PRECONDITIONS",
+    "DEFAULT_WPD_PROTECTED_CONTROL_PATHS",
+    "REASON_MISSING_PRE_IMPLEMENTATION_KERNEL_FLAG",
+    "REASON_PRE_IMPLEMENTATION_KERNEL_FLAG_FALSE",
+    "REASON_RESIDUAL_LLM_WITHOUT_PACKET_SCHEMA",
+    "REASON_UNKNOWN_PACKET_SCHEMA",
+    "REASON_DROPPED_DOCTOR_PRECONDITION",
+    "REASON_PROTECTED_CONTROL_PATH",
+    "REASON_OBJECTIVE_HEAP_MUTATION",
+    "REASON_MALFORMED_TASK",
+    "RefillResidualGuardError",
+    "RefillResidualGuardVerdict",
+    "RefillResidualGuardResult",
+    "RefillResidualGuard",
+    "default_refill_residual_rules",
+    "stamp_refill_residual_rules",
+    "evaluate_refill_residual_guard",
+    "guard_refill_task",
+    "build_refill_task_with_residual_guard",
+    "create_refill_residual_guard",
 ]
