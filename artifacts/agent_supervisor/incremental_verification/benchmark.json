@@ -1,6 +1,6 @@
 {
   "authoritative": false,
-  "benchmark_duration_ms": 137,
+  "benchmark_duration_ms": 112,
   "cases": [
     {
       "change_kind": "config_edge",
@@ -2167,12 +2167,12 @@
       "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
       "metrics_digest": "baguqeeralpl6umixxwvdhbeqeeoya7ogh2iitepabzjmgjbd4zkksn4w3viq",
       "policy_id": "policy:ivp-incremental-verification-benchmark@1",
-      "source_snapshot_id": "sha256:70cd5234f119946c8b2793bb7f9f1837fc60facb10df2822f6e0b635824bcff4"
+      "source_snapshot_id": "sha256:32bf46ccd07392b0c1dd4b7006f21e67fad0f5e439b034a586ebb3610065939c"
     },
-    "commitment_cid": "baguqeeraumgfjb33trsn4wug2vsep4brqqwtcw47yuffqtl675yrjnhluqra",
+    "commitment_cid": "baguqeerapkswlsalqvc3o3jcoaic42ta7ca2t46ffb64hnqjqulzyn2ybu3a",
     "deterministic": true
   },
-  "content_id": "baguqeeraizf3put456mfruwtfnqspvm2bwb6aryhoptacbpt7usdbyjtk7zq",
+  "content_id": "baguqeeram6jtyce43lbhoazqxpw5zfltxu3qibiezbvzrsexfkxaidhksctq",
   "corpus": {
     "case_count": 20,
     "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
@@ -2299,8 +2299,8 @@
       "label": "estimated",
       "paired_cache": {
         "basis": "paired_cold_hot",
-        "cold_lookup_ms": 0.390643,
-        "hot_lookup_ms": 12.487467,
+        "cold_lookup_ms": 0.386524,
+        "hot_lookup_ms": 12.614613,
         "label": "paired",
         "sample_count": 1,
         "saved_ms": 0.0
@@ -2387,25 +2387,25 @@
       "tokens_saved_total": 19834
     },
     "wall_samples": {
-      "max_ms": 1.35396,
-      "mean_ms": 1.307051,
-      "median_ms": 1.313576,
-      "min_ms": 1.27116,
-      "p95_ms": 1.35396,
+      "max_ms": 1.327993,
+      "mean_ms": 1.290453,
+      "median_ms": 1.283736,
+      "min_ms": 1.273847,
+      "p95_ms": 1.327993,
       "role": "observational",
       "sample_count": 5,
       "samples_ms": [
-        1.27116,
-        1.282087,
-        1.313576,
-        1.314472,
-        1.35396
+        1.273847,
+        1.273975,
+        1.283736,
+        1.292712,
+        1.327993
       ],
       "tolerance_ms": 1.0,
       "tolerance_ratio": 0.35
     }
   },
-  "observed_head": "eb8e2a2f4402affa2b2ee2b30ca17d94ceab88c0",
+  "observed_head": "8c7800cedc5e1b848367db9952f912428466f8cc",
   "policy": {
     "performance_cannot_weaken_correctness": true,
     "policy_id": "policy:ivp-incremental-verification-benchmark@1",
@@ -2498,7 +2498,7 @@
     "total_false_positives": 7
   },
   "source_snapshot_domain": "ivp-source-snapshot@1",
-  "source_snapshot_id": "sha256:70cd5234f119946c8b2793bb7f9f1837fc60facb10df2822f6e0b635824bcff4",
+  "source_snapshot_id": "sha256:32bf46ccd07392b0c1dd4b7006f21e67fad0f5e439b034a586ebb3610065939c",
   "source_snapshot_schema": "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1",
   "status": "red",
   "target_misses": [
