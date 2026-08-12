@@ -432,7 +432,7 @@ A9  SCH-018
 
 ## SCH-014 Create the controlled Python fixture repository
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: fixtures
