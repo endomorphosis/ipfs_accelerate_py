@@ -71,7 +71,7 @@ Global invariants for every task:
 
 ## IPS-001 Inventory accelerate proof backends, tests, receipts, schedulers, and baselines
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
