@@ -135,7 +135,7 @@ Global invariants for every task:
 
 ## IPS-003 Inventory kit proof storage, CID, Merkle, WAL, CAS, and baseline paths
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
