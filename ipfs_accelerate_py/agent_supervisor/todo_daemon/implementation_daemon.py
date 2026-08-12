@@ -370,6 +370,24 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
         "lock_cleanup_failed",
     }
 )
+ABANDONED_MERGE_RECONCILE_REASONS = frozenset(
+    {
+        "stale_failed_merge_candidate",
+        "stale_quarantined_merge",
+        "operator_abandoned_stale_inventory_merge_after_capture_epoch",
+        "baseline_not_ancestor_of_target",
+        "main_checkout_dirty_conflict",
+        "main_checkout_dirty",
+        "dirty_worktree",
+    }
+)
+STALE_QUARANTINED_MERGE_FAILURE_REASONS = frozenset(
+    {
+        "inventory_published_gate_not_satisfied",
+        "merge_branch_candidate_mismatch",
+    }
+)
+INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
@@ -14113,6 +14131,9 @@ class PortalImplementationDaemon:
                 task.task_id
                 not in historical_completion_quarantine_task_ids
                 and self._canonical_ref(task) in shared_active_merge_cids
+                and not self._latest_queued_implementation_was_reconciled(
+                    task.task_id
+                )
             )
         }
         previous = PortalTaskState.load(self.state_path)
@@ -14334,6 +14355,9 @@ class PortalImplementationDaemon:
             merge_reconciliation = self._reconcile_failed_merges(
                 skip_task_ids=merge_skip_task_ids,
                 deprioritized_task_ids=strategy_deprioritized_task_ids,
+            )
+            merge_reconciliation.extend(
+                self._release_stale_quarantined_merges()
             )
             dead_owner_reclaim = self._reclaim_dead_same_lane_worktree_owners()
             merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
@@ -47899,32 +47923,11 @@ class PortalImplementationDaemon:
                     implementation_commit
                     and candidate_key
                     not in persistence_recovery_candidate_keys
-                    and merge_reason
-                    == "baseline_not_ancestor_of_target"
+                    and (
+                        merge_reason in ABANDONED_MERGE_RECONCILE_REASONS
+                        or reconcile_reason in ABANDONED_MERGE_RECONCILE_REASONS
+                    )
                 ):
-                    abandoned_candidates.add(candidate_key)
-                elif (
-                    implementation_commit
-                    and candidate_key
-                    not in persistence_recovery_candidate_keys
-                    and reconcile_reason
-                    == "stale_failed_merge_candidate"
-                ):
-                    abandoned_candidates.add(candidate_key)
-                elif (
-                    implementation_commit
-                    and candidate_key
-                    not in persistence_recovery_candidate_keys
-                    and merge_reason
-                    in {
-                        "main_checkout_dirty_conflict",
-                        "main_checkout_dirty",
-                        "dirty_worktree",
-                    }
-                ):
-                    # An attempted merge that failed because the main checkout
-                    # was dirty is not a useful reconciliation candidate; the
-                    # operator must clean the target before retrying.
                     abandoned_candidates.add(candidate_key)
                 continue
             if str(event.get("type") or "") != "implementation_finished":
@@ -48150,6 +48153,11 @@ class PortalImplementationDaemon:
         if previous.last_merge_returncode in (None, 0):
             return False
         if previous.last_merge_commit:
+            return False
+        if self._implementation_commit_was_reconciled(
+            task.task_id,
+            previous.last_implementation_commit,
+        ):
             return False
         return not self._git_ref_is_ancestor(previous.last_implementation_commit, self._main_branch_name())
 
@@ -51032,6 +51040,151 @@ class PortalImplementationDaemon:
                 latest[task_id] = event
         return latest
 
+    def _reconciled_implementation_candidate_keys(self) -> set[tuple[str, str]]:
+        """Return ``(task_id, implementation_commit)`` pairs that are settled."""
+
+        keys: set[tuple[str, str]] = set()
+        for event in self._iter_events():
+            if str(event.get("type") or "") != "merge_reconciled":
+                continue
+            task_id = str(event.get("task_id") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if not task_id or not implementation_commit:
+                continue
+            if event.get("resolved"):
+                keys.add((task_id, implementation_commit))
+                continue
+            merge_result = event.get("merge_result") or {}
+            merge_reason = (
+                str(merge_result.get("reason") or "")
+                if isinstance(merge_result, dict)
+                else ""
+            )
+            reconcile_reason = str(event.get("reason") or "")
+            if (
+                merge_reason in ABANDONED_MERGE_RECONCILE_REASONS
+                or reconcile_reason in ABANDONED_MERGE_RECONCILE_REASONS
+            ):
+                keys.add((task_id, implementation_commit))
+        return keys
+
+    def _implementation_commit_was_reconciled(
+        self,
+        task_id: str,
+        implementation_commit: str,
+    ) -> bool:
+        task_id = str(task_id or "").strip()
+        implementation_commit = str(implementation_commit or "").strip()
+        if not task_id or not implementation_commit:
+            return False
+        return (
+            task_id,
+            implementation_commit,
+        ) in self._reconciled_implementation_candidate_keys()
+
+    def _latest_queued_implementation_was_reconciled(self, task_id: str) -> bool:
+        latest = self._latest_implementation_finished_by_task().get(str(task_id or ""))
+        if not isinstance(latest, dict):
+            return False
+        merge_result = latest.get("merge_result") or {}
+        if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+            return False
+        return self._implementation_commit_was_reconciled(
+            str(latest.get("task_id") or task_id),
+            str(latest.get("implementation_commit") or ""),
+        )
+
+    def _task_has_blocking_pending_merge(self, task: PortalTask) -> bool:
+        """True when the shared queue still owns a live, unresolved merge."""
+
+        has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
+        if not callable(has_pending):
+            return False
+        if not (
+            has_pending(self._canonical_ref(task))
+            or has_pending(task.task_id)
+        ):
+            return False
+        latest = self._latest_implementation_finished_by_task().get(task.task_id) or {}
+        implementation_commit = str(latest.get("implementation_commit") or "")
+        if self._implementation_commit_was_reconciled(
+            task.task_id,
+            implementation_commit,
+        ):
+            return False
+        return True
+
+    def _release_stale_quarantined_merges(self) -> list[dict[str, Any]]:
+        """Abandon queued merges that can no longer land on the current tip.
+
+        A quarantined or still-active inventory merge whose commit is off the
+        target first-parent history, or that fails the published artifact gate
+        after a recapture epoch, must not latch the source task as blocked.
+        """
+
+        if not hasattr(self.merge_queue, "get"):
+            return []
+        results: list[dict[str, Any]] = []
+        target_branch = self._main_branch_name()
+        for task_id, event in self._latest_implementation_finished_by_task().items():
+            merge_result = event.get("merge_result") or {}
+            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if not implementation_commit:
+                continue
+            if self._implementation_commit_was_reconciled(
+                task_id,
+                implementation_commit,
+            ):
+                continue
+            request_id = str(merge_result.get("request_id") or "")
+            request = self.merge_queue.get(request_id) if request_id else None
+            request_status = str(getattr(request, "status", "") or "")
+            failure_reason = str(getattr(request, "failure_reason", "") or "")
+            if request_status not in {"quarantined", "pending", "processing"}:
+                continue
+            not_ancestor = not self._git_ref_is_ancestor(
+                implementation_commit,
+                target_branch,
+            )
+            inventory_task = task_id in INVENTORY_TASK_IDS
+            inventory_gate_failed = inventory_task and (
+                failure_reason in STALE_QUARANTINED_MERGE_FAILURE_REASONS
+                or not self._inventory_task_passes_published_gate(task_id)
+            )
+            if request_status != "quarantined" and not inventory_task:
+                continue
+            if not (
+                not_ancestor
+                or inventory_gate_failed
+                or failure_reason in STALE_QUARANTINED_MERGE_FAILURE_REASONS
+            ):
+                continue
+            result = {
+                "task_id": task_id,
+                "attempt": int(event.get("attempt") or 0),
+                "branch": str(
+                    event.get("branch") or merge_result.get("branch") or ""
+                ),
+                "implementation_commit": implementation_commit,
+                "request_id": request_id,
+                "request_status": request_status,
+                "failure_reason": failure_reason,
+                "resolved": True,
+                "reason": "stale_quarantined_merge",
+                "merge_result": {
+                    "attempted": False,
+                    "merged": False,
+                    "queued": True,
+                    "request_id": request_id,
+                    "reason": "stale_quarantined_merge",
+                },
+            }
+            self._record_event("merge_reconciled", result)
+            results.append(result)
+        return results
+
     def _pending_queued_merge_task_ids(
         self,
         latest_results: dict[str, dict[str, Any]] | None = None,
@@ -51044,11 +51197,16 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if self._implementation_commit_was_reconciled(
+                task_id,
+                implementation_commit,
+            ):
+                continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id and hasattr(self.merge_queue, "get") else None
             if request is not None and str(getattr(request, "status", "")) == "quarantined":
                 continue
-            implementation_commit = str(event.get("implementation_commit") or "")
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 pending.add(task_id)
         return pending
@@ -51065,6 +51223,12 @@ class PortalImplementationDaemon:
         for task_id, event in (latest_results or self._latest_implementation_finished_by_task()).items():
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if self._implementation_commit_was_reconciled(
+                task_id,
+                implementation_commit,
+            ):
                 continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id else None
@@ -57373,12 +57537,7 @@ class PortalImplementationDaemon:
             task
             for task in ready
             if self._manual_completion_authority_revalidation_only_task(task)
-            or (
-                not self.merge_queue.has_pending_for_task(
-                    self._canonical_ref(task)
-                )
-                and not self.merge_queue.has_pending_for_task(task.task_id)
-            )
+            or not self._task_has_blocking_pending_merge(task)
         ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
         if strict_deprioritized:
