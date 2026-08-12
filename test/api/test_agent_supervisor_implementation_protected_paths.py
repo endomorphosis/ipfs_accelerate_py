@@ -368,8 +368,17 @@ def _quiesced_terminal_task_claim(
     if live_claim_owner:
         assert claim["pid"] == os.getpid()
     else:
-        # Exercise the dead PID binding used by the live DQP claim.
-        claim["pid"] = 2**30 - 79
+        # Exercise the dead process-birth binding used by the live DQP claim.
+        dead_claim_pid = 2**30 - 79
+        claim["pid"] = dead_claim_pid
+        claim["owner_process_birth"] = ProcessBirthIdentity(
+            pid=dead_claim_pid,
+            start_time_ticks=1,
+            boot_id="provably-dead-task-claim-owner",
+        ).to_dict()
+        claim["dispatch_authority_cid"] = (
+            daemon._implementation_dispatch_authority_cid(claim)
+        )
     acquired, _reason, _existing = (
         daemon._try_acquire_implementation_task_claim(claim_path, claim)
     )
@@ -605,6 +614,11 @@ def test_shared_protected_maintenance_lease_defers_model_dispatch(
             "maintenance coordination must precede model prompt construction"
         ),
     )
+    monkeypatch.setattr(
+        daemon,
+        "_wait_for_protected_path_maintenance_release",
+        lambda claim: (dict(claim), 0.01),
+    )
 
     try:
         result = daemon._run_implementation(task, PortalTaskState())
@@ -613,12 +627,29 @@ def test_shared_protected_maintenance_lease_defers_model_dispatch(
 
     assert result["skipped"] is True
     assert result["reason"] == "implementation_protected_path_maintenance_active"
-    assert result["backoff_seconds"] == 30
-    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
-    assert not daemon._implementation_task_claim_path(
+    assert result["backoff_seconds"] == 0
+    assert result["dispatch_intent_retained"] is True
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is False
+    claim_path = daemon._implementation_task_claim_path(
         task.task_id,
         canonical_task_cid=daemon._canonical_ref(task),
-    ).exists()
+    )
+    retained = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert retained["lease_role"] == "implementation_dispatch_intent"
+
+    reacquired = daemon._try_acquire_implementation_dispatch_intent(
+        claim_path,
+        daemon._build_implementation_task_claim_metadata(
+            task,
+            1,
+            "2026-08-12T00:00:00+00:00",
+        ),
+    )
+    assert reacquired[0] is True
+    assert reacquired[1] == "dispatch_intent_reused"
+    assert reacquired[3] == retained
+    assert reacquired[4] is None
+    assert daemon._release_implementation_task_claim(claim_path, retained)
 
 
 def test_repo_global_maintenance_lease_defers_daemon_without_local_paths(
@@ -638,6 +669,11 @@ def test_repo_global_maintenance_lease_defers_daemon_without_local_paths(
             "the repo-global lease must precede prompt construction"
         ),
     )
+    monkeypatch.setattr(
+        daemon,
+        "_wait_for_protected_path_maintenance_release",
+        lambda claim: (dict(claim), 0.01),
+    )
 
     try:
         result = daemon._run_implementation(task, PortalTaskState())
@@ -646,7 +682,14 @@ def test_repo_global_maintenance_lease_defers_daemon_without_local_paths(
 
     assert result["skipped"] is True
     assert result["reason"] == "implementation_protected_path_maintenance_active"
-    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
+    assert result["dispatch_intent_retained"] is True
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is False
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    retained = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert daemon._release_implementation_task_claim(claim_path, retained)
 
 
 def test_live_shared_maintenance_lease_survives_empty_process_command_line(
@@ -686,6 +729,7 @@ def test_live_shared_maintenance_lease_survives_empty_process_command_line(
 
 def test_shared_protected_maintenance_waits_for_active_task_claim(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon = _daemon(tmp_path)
     supervisor = _supervisor(tmp_path)
@@ -706,6 +750,13 @@ def test_shared_protected_maintenance_waits_for_active_task_claim(
         )
     )
     assert acquired is True
+    monkeypatch.setattr(
+        supervisor,
+        "_publish_implementation_maintenance_lease",
+        lambda *_args, **_kwargs: pytest.fail(
+            "dispatch intent precheck must precede maintenance publication"
+        ),
+    )
 
     try:
         lease, guard = supervisor._acquire_protected_path_maintenance_lease()
@@ -717,8 +768,319 @@ def test_shared_protected_maintenance_waits_for_active_task_claim(
 
     assert lease is None
     assert guard["reason"] == "shared_implementation_task_claim_active"
+    assert guard["claim_check"] == "before_lease_publication"
     assert guard["active_claims"][0]["task_id"] == task.task_id
     assert not supervisor._protected_path_maintenance_lock_path().exists()
+
+
+def test_shared_maintenance_mixed_version_postcheck_withdraws_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(
+        tmp_path,
+        state_path=tmp_path / "lane-worker" / "task-state.json",
+    )
+    supervisor = _supervisor(
+        tmp_path,
+        state_path=tmp_path / "lane-maintenance" / "task-state.json",
+    )
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    publish = supervisor._publish_implementation_maintenance_lease
+
+    def publish_then_legacy_claim(
+        lock_path: Path,
+        metadata: dict[str, object],
+    ) -> bool:
+        published = publish(lock_path, metadata)
+        if published:
+            acquired, _reason, _existing = (
+                daemon._try_acquire_implementation_task_claim(
+                    claim_path,
+                    claim_metadata,
+                )
+            )
+            assert acquired is True
+        return published
+
+    monkeypatch.setattr(
+        supervisor,
+        "_publish_implementation_maintenance_lease",
+        publish_then_legacy_claim,
+    )
+
+    try:
+        lease, guard = supervisor._acquire_protected_path_maintenance_lease()
+    finally:
+        daemon._release_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+
+    assert lease is None
+    assert guard["reason"] == "shared_implementation_task_claim_active"
+    assert guard["claim_check"] == "after_lease_publication"
+    assert guard["active_claims"][0]["task_id"] == task.task_id
+    assert not supervisor._protected_path_maintenance_lock_path().exists()
+
+
+def test_dispatch_intent_reuse_is_owner_exact_and_reconciles_when_unselected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = _daemon(
+        tmp_path,
+        state_path=tmp_path / "lane-owner" / "task-state.json",
+    )
+    peer = _daemon(
+        tmp_path,
+        state_path=tmp_path / "lane-peer" / "task-state.json",
+    )
+    task = _task(outputs=["src/example.py"])
+    claim_path = owner._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=owner._canonical_ref(task),
+    )
+    metadata = owner._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    acquired = owner._try_acquire_implementation_dispatch_intent(
+        claim_path,
+        metadata,
+    )
+    assert acquired[0] is True
+    assert int(metadata["owner_process_birth"]["start_time_ticks"]) > 0
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: "python -m pytest",
+    )
+
+    # Ordinary scans never hide a retained intent. Selection must explicitly
+    # request reuse, and only the exact owner process/state can receive it.
+    assert task.task_id in owner._active_implementation_task_claims([task])
+    owner_reusable: dict[str, tuple[Path, dict[str, object]]] = {}
+    assert owner._active_implementation_task_claims(
+        [task],
+        reusable_dispatch_intents=owner_reusable,  # type: ignore[arg-type]
+    ) == {}
+    assert task.task_id in owner_reusable
+
+    peer_reusable: dict[str, tuple[Path, dict[str, object]]] = {}
+    assert task.task_id in peer._active_implementation_task_claims(
+        [task],
+        reusable_dispatch_intents=peer_reusable,  # type: ignore[arg-type]
+    )
+    assert peer_reusable == {}
+
+    owner._reconcile_unselected_implementation_dispatch_intents(
+        owner_reusable,  # type: ignore[arg-type]
+        selected=None,
+    )
+    assert not claim_path.exists()
+
+
+def test_dispatch_intent_reuse_rejects_changed_compiled_authority(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    original = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    acquired = daemon._try_acquire_implementation_dispatch_intent(
+        claim_path,
+        original,
+    )
+    assert acquired[0] is True
+
+    changed = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-12T00:00:01+00:00",
+    )
+    changed.update(
+        {
+            "lease_id": "compiled-lease-new-plan",
+            "plan_revision_cid": "plan-revision-new",
+            "execution_plan_id": "execution-plan-new",
+            "compiled_fence_token": "fence-new",
+        }
+    )
+    changed["dispatch_authority_cid"] = (
+        daemon._implementation_dispatch_authority_cid(changed)
+    )
+
+    replaced = daemon._try_acquire_implementation_dispatch_intent(
+        claim_path,
+        changed,
+    )
+
+    assert replaced[0] is True
+    assert replaced[1] == "acquired"
+    persisted = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert persisted["lease_id"] == "compiled-lease-new-plan"
+    assert persisted["plan_revision_cid"] == "plan-revision-new"
+    assert daemon._release_implementation_task_claim(claim_path, persisted)
+
+
+def test_board_revision_reconciles_obsolete_owned_dispatch_intent(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    original = _task(outputs=["src/example.py"])
+    revised = replace(original, title="Revised implementation authority")
+    assert daemon._canonical_ref(original) != daemon._canonical_ref(revised)
+    claim_path = daemon._implementation_task_claim_path(
+        original.task_id,
+        canonical_task_cid=daemon._canonical_ref(original),
+    )
+    metadata = daemon._build_implementation_task_claim_metadata(
+        original,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    acquired = daemon._try_acquire_implementation_dispatch_intent(
+        claim_path,
+        metadata,
+    )
+    assert acquired[0] is True
+
+    reusable: dict[str, tuple[Path, dict[str, object]]] = {}
+    daemon._active_implementation_task_claims(
+        [revised],
+        reusable_dispatch_intents=reusable,  # type: ignore[arg-type]
+    )
+
+    assert reusable == {}
+    assert not claim_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("explicitly_retained", "claim_remains"),
+    [(False, False), (True, True)],
+)
+def test_daemon_pass_reconciles_selected_intent_after_early_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    explicitly_retained: bool,
+    claim_remains: bool,
+) -> None:
+    daemon = _daemon(tmp_path)
+    daemon.todo_path.write_text(
+        """# Tasks
+
+## PORTAL-001 Retained dispatch handoff
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: quality
+- Outputs: src/example.py
+""",
+        encoding="utf-8",
+    )
+    task = daemon._load_tasks()[0]
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    acquired = daemon._try_acquire_implementation_dispatch_intent(
+        claim_path,
+        metadata,
+    )
+    assert acquired[0] is True
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        lambda *_args: {
+            "skipped": True,
+            "reason": "plan_runtime_capacity_wait",
+            "dispatch_intent_retained": explicitly_retained,
+        },
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["reason"] == (
+        "plan_runtime_capacity_wait"
+    )
+    assert claim_path.exists() is claim_remains
+
+
+def test_linked_worktree_claim_blocks_physical_repository_maintenance(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    (repo / "tasks.todo.md").write_text("# Tasks\n", encoding="utf-8")
+    _git(repo, "add", "tasks.todo.md")
+    _git(repo, "commit", "-m", "initial")
+    sibling = tmp_path / "sibling"
+    _git(repo, "worktree", "add", "-b", "sibling", str(sibling))
+
+    daemon = _daemon(
+        sibling,
+        state_path=tmp_path / "lane-worker" / "task-state.json",
+    )
+    supervisor = _supervisor(
+        repo,
+        state_path=tmp_path / "lane-maintenance" / "task-state.json",
+    )
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+
+    try:
+        active = supervisor._active_implementation_task_claims_for_maintenance()
+    finally:
+        daemon._release_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+
+    assert active[0]["task_id"] == task.task_id
+    assert claim_metadata["repository_id"]
+    assert claim_metadata["worktree_root"] == str(sibling.resolve())
 
 
 @pytest.mark.parametrize(
@@ -772,6 +1134,11 @@ def test_shared_maintenance_waits_for_orphan_task_claim_fence(
         implementation_supervisor_module,
         "process_is_running",
         lambda _pid: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "owner_liveness",
+        lambda _owner: implementation_supervisor_module.OwnerLiveness.DEAD,
     )
 
     blocked_lease, blocked_guard = (

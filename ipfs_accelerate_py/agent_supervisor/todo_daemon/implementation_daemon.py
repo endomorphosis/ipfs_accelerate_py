@@ -110,6 +110,7 @@ from ..merge.checkout_lock import (
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
@@ -137,6 +138,7 @@ from ..merge.worktree_lifecycle import (
     WorkspaceLifecycleState,
     WorktreeLifecycleError,
     WorktreeLifecycleStore,
+    current_process_birth,
     lifecycle_race_result,
     normalize_workspace_path,
     owner_liveness,
@@ -382,6 +384,13 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE = "implementation_dispatch_intent"
+IMPLEMENTATION_DISPATCH_INTENT_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/implementation-dispatch-authority@1"
+)
+PROTECTED_PATH_MAINTENANCE_COORDINATION_TIMEOUT_SECONDS = 2.0
+PROTECTED_PATH_MAINTENANCE_HANDOFF_WAIT_SECONDS = 2.0
+PROTECTED_PATH_MAINTENANCE_HANDOFF_POLL_SECONDS = 0.05
 IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "quiesced-implementation-task-claim-release@1"
@@ -4698,6 +4707,13 @@ class PortalImplementationDaemon:
                 if lifecycle_startup_grace > 0
                 else DEFAULT_STARTUP_GRACE_SECONDS
             ),
+        )
+        # A retained dispatch intent can outlive one daemon pass.  Bind it to
+        # the process birth, not merely the PID/argv, so PID reuse cannot turn
+        # a dead intent into a live owner and wrappers cannot make a live
+        # intent appear stale by changing argv spelling.
+        self._implementation_dispatch_process_birth = current_process_birth(
+            proc_root=self.worktree_lifecycle.proc_root,
         )
         self.worktree_lifecycle_restart_recovery = []
         if _env_bool(
@@ -9261,7 +9277,31 @@ class PortalImplementationDaemon:
                     claim_lease_id=lease_id,
                     claim_state_dir=claim_state_dir,
                 )
-            owner = ProcessBirthIdentity(pid=pid, start_time_ticks=0)
+            owner_payload = claim.get("owner_process_birth")
+            try:
+                owner = (
+                    ProcessBirthIdentity.from_dict(owner_payload)
+                    if isinstance(owner_payload, Mapping)
+                    else ProcessBirthIdentity(
+                        pid=pid,
+                        start_time_ticks=0,
+                    )
+                )
+            except (TypeError, ValueError):
+                return blocked(
+                    "task_claim_owner_liveness_unknown",
+                    owner_pid=pid,
+                    owner_liveness=OwnerLiveness.UNKNOWN.value,
+                )
+            if owner.pid != pid or (
+                isinstance(owner_payload, Mapping)
+                and owner.start_time_ticks <= 0
+            ):
+                return blocked(
+                    "task_claim_owner_liveness_unknown",
+                    owner_pid=pid,
+                    owner_liveness=OwnerLiveness.UNKNOWN.value,
+                )
             liveness = owner_liveness(
                 owner,
                 proc_root=self.worktree_lifecycle.proc_root,
@@ -14132,7 +14172,14 @@ class PortalImplementationDaemon:
             execution_tasks,
             resolved_statuses,
         )
-        active_task_claims = self._active_implementation_task_claims(tasks)
+        reusable_dispatch_intents: dict[
+            str,
+            tuple[Path, dict[str, Any]],
+        ] = {}
+        active_task_claims = self._active_implementation_task_claims(
+            tasks,
+            reusable_dispatch_intents=reusable_dispatch_intents,
+        )
         active_resource_claims = (
             self._active_implementation_resource_claims(tasks)
         )
@@ -14276,6 +14323,15 @@ class PortalImplementationDaemon:
             recent_outcomes,
             all_tasks=tasks,
             downstream_unlock_by_task=unlock_counts,
+        )
+        self._reconcile_unselected_implementation_dispatch_intents(
+            reusable_dispatch_intents,
+            selected=(
+                selected
+                if selected is not None
+                and resolved_statuses.get(selected.task_id) == "ready"
+                else None
+            ),
         )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
@@ -14461,38 +14517,51 @@ class PortalImplementationDaemon:
                 {"task_ids": sorted(revision_reset_task_ids)},
             )
         implementation_result: dict[str, Any] | None = None
-        if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
-            unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
-            if (
-                unresolved_for_selected is not None
-                and selected.task_id
-                not in manual_completion_revalidation_only_task_ids
-            ):
-                implementation_result = {
-                    "skipped": True,
-                    "reason": "unresolved_merge_failure",
-                    "task_id": selected.task_id,
-                    "branch": str(unresolved_for_selected.get("branch") or ""),
-                    "implementation_commit": str(unresolved_for_selected.get("implementation_commit") or ""),
-                }
-                self._record_event("implementation_skipped", implementation_result)
-            elif (
-                selected.task_id
-                not in manual_completion_revalidation_only_task_ids
-                and self._task_has_recent_no_change_outcome(
-                    selected.task_id,
-                    recent_outcomes,
-                )
-            ):
-                implementation_result = {
-                    "skipped": True,
-                    "reason": "recent_no_change",
-                    "task_id": selected.task_id,
-                    "last_attempt": int((recent_outcomes.get(selected.task_id) or {}).get("attempt") or 0),
-                }
-                self._record_event("implementation_skipped", implementation_result)
-            else:
-                implementation_result = self._run_implementation(selected, state)
+        try:
+            if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
+                unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
+                if (
+                    unresolved_for_selected is not None
+                    and selected.task_id
+                    not in manual_completion_revalidation_only_task_ids
+                ):
+                    implementation_result = {
+                        "skipped": True,
+                        "reason": "unresolved_merge_failure",
+                        "task_id": selected.task_id,
+                        "branch": str(unresolved_for_selected.get("branch") or ""),
+                        "implementation_commit": str(unresolved_for_selected.get("implementation_commit") or ""),
+                    }
+                    self._record_event("implementation_skipped", implementation_result)
+                elif (
+                    selected.task_id
+                    not in manual_completion_revalidation_only_task_ids
+                    and self._task_has_recent_no_change_outcome(
+                        selected.task_id,
+                        recent_outcomes,
+                    )
+                ):
+                    implementation_result = {
+                        "skipped": True,
+                        "reason": "recent_no_change",
+                        "task_id": selected.task_id,
+                        "last_attempt": int((recent_outcomes.get(selected.task_id) or {}).get("attempt") or 0),
+                    }
+                    self._record_event("implementation_skipped", implementation_result)
+                else:
+                    implementation_result = self._run_implementation(selected, state)
+        finally:
+            retain_selected_intent = bool(
+                selected is not None
+                and implementation_result is not None
+                and implementation_result.get("dispatch_intent_retained")
+                is True
+            )
+            self._reconcile_unselected_implementation_dispatch_intents(
+                reusable_dispatch_intents,
+                selected=selected if retain_selected_intent else None,
+                reason="retained_intent_not_preserved_after_dispatch",
+            )
         provider_backoff_result = bool(
             implementation_result
             and implementation_result.get("reason") == "provider_capacity_backoff"
@@ -16345,12 +16414,18 @@ class PortalImplementationDaemon:
         task_claim_metadata = self._build_implementation_task_claim_metadata(task, attempt, started_at)
         lock_path = self._implementation_lock_path()
         lock_metadata = self._build_implementation_lock_metadata(task, attempt, started_at)
-        acquired_task_claim, task_claim_reason, existing_task_claim = (
-            self._try_acquire_implementation_task_claim(
+        (
+            acquired_task_claim,
+            task_claim_reason,
+            existing_task_claim,
+            acquired_task_claim_metadata,
+            maintenance_claim,
+        ) = self._try_acquire_implementation_dispatch_intent(
                 task_claim_path,
                 task_claim_metadata,
-            )
         )
+        if acquired_task_claim_metadata is not None:
+            task_claim_metadata = acquired_task_claim_metadata
         if not acquired_task_claim:
             result = {
                 "skipped": True,
@@ -16365,43 +16440,49 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
 
-        # This repository-global lease protects peer lanes' paths as well as
-        # this daemon's configured list. Every implementation must therefore
-        # participate, including a lane configured with no local paths.
-        maintenance_claim = self._active_protected_path_maintenance_claim()
+        # A task claim is also the repo-global dispatch intent.  It is
+        # published while the maintenance update gate is held, so a newer
+        # supervisor cannot start maintenance after this point.  When an
+        # incumbent (possibly older) supervisor already owns maintenance,
+        # retain the intent while waiting boundedly for its release.  The
+        # retained claim makes the release wake actionable instead of losing
+        # the handoff to a 30-second queue cooldown.
         if maintenance_claim is not None:
-            canonical_task_cid = self._canonical_ref(task)
-            self.task_queue.defer(
-                canonical_task_cid,
-                30,
-                reason="implementation_protected_path_maintenance_active",
-            )
-            self.task_queue.save()
-            result = {
-                "skipped": True,
-                "reason": "implementation_protected_path_maintenance_active",
-                "task_id": task.task_id,
-                "attempt": attempt,
-                "backoff_seconds": 30,
-                "maintenance_owner_pid": int(
-                    maintenance_claim.get("pid") or 0
-                ),
-                "maintenance_owner_state_dir": str(
-                    maintenance_claim.get("state_dir") or ""
-                ),
-            }
-            if not self._release_implementation_task_claim(
-                task_claim_path,
-                task_claim_metadata,
-            ):
-                logger.warning(
-                    "Refusing to remove implementation task claim no "
-                    "longer owned by this maintenance deferral: %s",
-                    task_claim_path,
+            maintenance_claim, waited_seconds = (
+                self._wait_for_protected_path_maintenance_release(
+                    maintenance_claim,
                 )
-            acquired_task_claim = False
-            self._record_event("implementation_retry_deferred", result)
-            return result
+            )
+            if maintenance_claim is not None:
+                result = {
+                    "skipped": True,
+                    "deferred": True,
+                    "reason": "implementation_protected_path_maintenance_active",
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                    "backoff_seconds": 0,
+                    "maintenance_wait_seconds": waited_seconds,
+                    "dispatch_intent_retained": True,
+                    "maintenance_owner_pid": int(
+                        maintenance_claim.get("pid") or 0
+                    ),
+                    "maintenance_owner_state_dir": str(
+                        maintenance_claim.get("state_dir") or ""
+                    ),
+                }
+                self._record_event("implementation_retry_deferred", result)
+                return result
+            self._record_event(
+                "implementation_dispatch_intent_admitted",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "maintenance_wait_seconds": waited_seconds,
+                    "dispatch_intent_retained": True,
+                },
+            )
 
         acquired_resource_claims: list[
             tuple[Path, dict[str, Any]]
@@ -50485,32 +50566,75 @@ class PortalImplementationDaemon:
 
     def _active_protected_path_maintenance_claim(
         self,
+        *,
+        timeout_seconds: float = (
+            PROTECTED_PATH_MAINTENANCE_COORDINATION_TIMEOUT_SECONDS
+        ),
     ) -> dict[str, Any] | None:
         """Return a live shared maintenance lease, failing closed on I/O."""
 
         lock_path = self._protected_path_maintenance_lock_path()
         try:
-            with serialized_lock_update(lock_path):
-                metadata = load_json_dict(lock_path)
-                if metadata is None:
-                    if lock_path.exists():
-                        return {
-                            "kind": "implementation-protected-maintenance",
-                            "coordination_error": "malformed_maintenance_lease",
-                        }
-                    return None
-                if self._lock_owner_is_active(
-                    metadata,
-                    expected_kind="implementation-protected-maintenance",
-                ):
-                    return metadata
-                lock_path.unlink(missing_ok=True)
-                return None
+            with serialized_lock_update(
+                lock_path,
+                timeout_seconds=timeout_seconds,
+            ):
+                return self._active_protected_path_maintenance_claim_serialized(
+                    lock_path
+                )
         except (OSError, RuntimeError) as exc:
             return {
                 "kind": "implementation-protected-maintenance",
                 "coordination_error": f"{type(exc).__name__}: {exc}",
             }
+
+    def _active_protected_path_maintenance_claim_serialized(
+        self,
+        lock_path: Path,
+    ) -> dict[str, Any] | None:
+        """Inspect one maintenance lease while its update gate is held."""
+
+        metadata = load_json_dict(lock_path)
+        if metadata is None:
+            if lock_path.exists():
+                return {
+                    "kind": "implementation-protected-maintenance",
+                    "coordination_error": "malformed_maintenance_lease",
+                }
+            return None
+        if self._lock_owner_is_active(
+            metadata,
+            expected_kind="implementation-protected-maintenance",
+        ):
+            return metadata
+        lock_path.unlink(missing_ok=True)
+        return None
+
+    def _wait_for_protected_path_maintenance_release(
+        self,
+        maintenance_claim: Mapping[str, Any],
+        *,
+        timeout_seconds: float = PROTECTED_PATH_MAINTENANCE_HANDOFF_WAIT_SECONDS,
+    ) -> tuple[dict[str, Any] | None, float]:
+        """Wait briefly for an incumbent lease without surrendering intent."""
+
+        started = time.monotonic()
+        deadline = started + max(0.0, float(timeout_seconds))
+        current: dict[str, Any] | None = dict(maintenance_claim)
+        while current is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(
+                min(
+                    PROTECTED_PATH_MAINTENANCE_HANDOFF_POLL_SECONDS,
+                    remaining,
+                )
+            )
+            current = self._active_protected_path_maintenance_claim(
+                timeout_seconds=max(0.0, deadline - time.monotonic()),
+            )
+        return current, max(0.0, time.monotonic() - started)
 
     def _implementation_task_claim_path(self, task_id: str, *, canonical_task_cid: str = "") -> Path:
         lock_identity = canonical_task_cid or task_id
@@ -50643,6 +50767,65 @@ class PortalImplementationDaemon:
             "started_at": started_at,
         }
 
+    @staticmethod
+    def _implementation_dispatch_authority_payload(
+        metadata: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Return the complete stable authority carried between passes.
+
+        ``started_at`` and the ordinary unplanned ``lease_id`` are issuance
+        metadata, not dispatch authority.  Every compiled plan field is
+        included by prefix so future preconditions fail closed without this
+        handoff code needing another allow-list update.
+        """
+
+        compiled_authority = {
+            str(key): value
+            for key, value in sorted(metadata.items())
+            if str(key).startswith("compiled_")
+        }
+        owner_birth = metadata.get("owner_process_birth")
+        return {
+            "schema": IMPLEMENTATION_DISPATCH_INTENT_AUTHORITY_SCHEMA,
+            "kind": str(metadata.get("kind") or ""),
+            "lease_role": str(metadata.get("lease_role") or ""),
+            "pid": int(metadata.get("pid") or 0),
+            "owner_process_birth": (
+                dict(owner_birth) if isinstance(owner_birth, Mapping) else {}
+            ),
+            "repository_id": str(metadata.get("repository_id") or ""),
+            "worktree_root": str(metadata.get("worktree_root") or ""),
+            "state_dir": str(metadata.get("state_dir") or ""),
+            "state_path": str(metadata.get("state_path") or ""),
+            "task_id": str(metadata.get("task_id") or ""),
+            "canonical_task_key": str(
+                metadata.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": str(
+                metadata.get("canonical_task_cid") or ""
+            ),
+            "board_namespace": str(metadata.get("board_namespace") or ""),
+            "attempt": int(metadata.get("attempt") or 0),
+            "task_shard_count": int(metadata.get("task_shard_count") or 0),
+            "task_shard_index": int(metadata.get("task_shard_index") or 0),
+            "plan_revision_cid": str(
+                metadata.get("plan_revision_cid") or ""
+            ),
+            "execution_plan_id": str(
+                metadata.get("execution_plan_id") or ""
+            ),
+            "compiled_authority": compiled_authority,
+        }
+
+    @classmethod
+    def _implementation_dispatch_authority_cid(
+        cls,
+        metadata: Mapping[str, Any],
+    ) -> str:
+        return content_identity(
+            cls._implementation_dispatch_authority_payload(metadata)
+        )
+
     def _build_implementation_task_claim_metadata(
         self,
         task: PortalTask,
@@ -50662,6 +50845,10 @@ class PortalImplementationDaemon:
             or hashlib.sha1(lease_seed.encode("utf-8")).hexdigest()
         )
         extra = {
+            "lease_role": IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE,
+            "owner_process_birth": (
+                self._implementation_dispatch_process_birth.to_dict()
+            ),
             "state_dir": str(self.state_path.parent.resolve()),
             "state_path": str(self.state_path.resolve()),
             "started_at": started_at,
@@ -50673,7 +50860,7 @@ class PortalImplementationDaemon:
             "lease_id": lease_id,
         }
         extra.update(compiled)
-        return checkout_lock_metadata(
+        metadata = checkout_lock_metadata(
             kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
             repo_root=self.repo_root,
             task_id=task.task_id,
@@ -50681,6 +50868,10 @@ class PortalImplementationDaemon:
             owner_script=Path(sys.argv[0]).name,
             extra=extra,
         )
+        metadata["dispatch_authority_cid"] = (
+            self._implementation_dispatch_authority_cid(metadata)
+        )
+        return metadata
 
     def _build_implementation_resource_claim_metadata(
         self,
@@ -50747,14 +50938,152 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        repo_root = str(metadata.get("repo_root") or "")
-        if repo_root:
-            try:
-                if Path(repo_root).resolve() != self.repo_root.resolve():
-                    return False
-            except OSError:
-                return False
+        repository_match = checkout_lock_repository_matches(
+            metadata,
+            self.repo_root,
+        )
+        if repository_match is False:
+            # A foreign repository cannot place a claim in this checkout's
+            # common-Git namespace.  If such metadata is supplied directly,
+            # preserve it rather than turning repository mismatch into lock
+            # deletion authority.
+            return True
+        birth_liveness = self._implementation_task_claim_birth_liveness(
+            metadata
+        )
+        if birth_liveness is not None:
+            # UNKNOWN is deliberately active: unavailable process-birth
+            # inspection must not become claim-stealing authority.
+            return birth_liveness is not OwnerLiveness.DEAD
         return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+
+    def _implementation_task_claim_birth_liveness(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> OwnerLiveness | None:
+        """Inspect new process-bound claims; return None for legacy records."""
+
+        payload = metadata.get("owner_process_birth")
+        if payload is None:
+            return None
+        if not isinstance(payload, Mapping):
+            return OwnerLiveness.UNKNOWN
+        try:
+            owner = ProcessBirthIdentity.from_dict(payload)
+            metadata_pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return OwnerLiveness.UNKNOWN
+        if (
+            owner.pid <= 0
+            or owner.start_time_ticks <= 0
+            or owner.pid != metadata_pid
+        ):
+            return OwnerLiveness.UNKNOWN
+        return owner_liveness(
+            owner,
+            proc_root=self.worktree_lifecycle.proc_root,
+        )
+
+    def _implementation_dispatch_intent_is_reusable(
+        self,
+        existing: Mapping[str, Any],
+        expected: Mapping[str, Any],
+    ) -> bool:
+        """Return whether this process still owns the exact pending intent."""
+
+        if not self._implementation_dispatch_intent_is_owned(existing):
+            return False
+        for field_name in (
+            "pid",
+            "state_dir",
+            "state_path",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+        ):
+            if str(existing.get(field_name) or "") != str(
+                expected.get(field_name) or ""
+            ):
+                return False
+        existing_authority = str(
+            existing.get("dispatch_authority_cid") or ""
+        )
+        expected_authority = str(
+            expected.get("dispatch_authority_cid") or ""
+        )
+        if (
+            not existing_authority
+            or existing_authority != expected_authority
+        ):
+            return False
+        try:
+            return bool(
+                existing_authority
+                == self._implementation_dispatch_authority_cid(existing)
+                == self._implementation_dispatch_authority_cid(expected)
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def _implementation_dispatch_intent_is_owned(
+        self,
+        existing: Mapping[str, Any],
+    ) -> bool:
+        """Return whether this exact daemon process owns a pending intent."""
+
+        if (
+            str(existing.get("kind") or "")
+            != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+            or str(existing.get("lease_role") or "")
+            != IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE
+        ):
+            return False
+        try:
+            if int(existing.get("pid") or 0) != os.getpid():
+                return False
+        except (TypeError, ValueError):
+            return False
+        current_owner = {
+            "state_dir": str(self.state_path.parent.resolve()),
+            "state_path": str(self.state_path.resolve()),
+        }
+        if any(
+            str(existing.get(field_name) or "") != field_value
+            for field_name, field_value in current_owner.items()
+        ):
+            return False
+        repository_match = checkout_lock_repository_matches(
+            existing,
+            self.repo_root,
+        )
+        if repository_match is False:
+            return False
+        payload = existing.get("owner_process_birth")
+        if not isinstance(payload, Mapping):
+            return False
+        try:
+            owner = ProcessBirthIdentity.from_dict(payload)
+        except (TypeError, ValueError):
+            return False
+        current = self._implementation_dispatch_process_birth
+        if (
+            owner.pid != current.pid
+            or owner.start_time_ticks <= 0
+            or owner.start_time_ticks != current.start_time_ticks
+            or (
+                owner.boot_id
+                and current.boot_id
+                and owner.boot_id != current.boot_id
+            )
+        ):
+            return False
+        return (
+            owner_liveness(
+                owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            is OwnerLiveness.ALIVE
+        )
 
     def _implementation_resource_claim_owner_is_active(
         self,
@@ -50833,7 +51162,17 @@ class PortalImplementationDaemon:
     def _active_implementation_task_claims(
         self,
         tasks: Sequence[PortalTask | str],
+        *,
+        reusable_dispatch_intents: (
+            dict[str, tuple[Path, dict[str, Any]]] | None
+        ) = None,
     ) -> dict[str, dict[str, Any]]:
+        if reusable_dispatch_intents is not None and all(
+            isinstance(item, PortalTask) for item in tasks
+        ):
+            self._reconcile_obsolete_implementation_dispatch_intents(
+                tuple(item for item in tasks if isinstance(item, PortalTask))
+            )
         active_claims: dict[str, dict[str, Any]] = {}
         active_claims_by_cid: dict[str, dict[str, Any]] = {}
         for item in tasks:
@@ -50856,6 +51195,38 @@ class PortalImplementationDaemon:
                     continue
                 metadata = load_json_dict(claim_path)
                 if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
+                    # Selection has not compiled the current plan claim yet.
+                    # Validate the stored authority against itself here, while
+                    # overriding owner/task identity from current state.  The
+                    # acquisition path later compares it with freshly built
+                    # plan-bound metadata before any dispatch.
+                    expected_dispatch_intent = {
+                        **metadata,
+                        "pid": os.getpid(),
+                        "state_dir": str(self.state_path.parent.resolve()),
+                        "state_path": str(self.state_path.resolve()),
+                        "task_id": task_id,
+                        "canonical_task_cid": canonical_task_cid,
+                        # Selection is deciding whether the exact durable
+                        # attempt can be resumed; acquisition rechecks the
+                        # actual attempt against freshly built metadata.
+                        "attempt": metadata.get("attempt"),
+                    }
+                    if (
+                        reusable_dispatch_intents is not None
+                        and self._implementation_dispatch_intent_is_reusable(
+                            metadata,
+                            expected_dispatch_intent,
+                        )
+                    ):
+                        # A bounded maintenance wait may span daemon passes.
+                        # Keep this process's intent selectable so the release
+                        # wake can reuse it; peer daemons still see it active.
+                        reusable_dispatch_intents[task_id] = (
+                            claim_path,
+                            metadata,
+                        )
+                        continue
                     active_claims[task_id] = metadata
                     if canonical_task_cid:
                         active_claims_by_cid[canonical_task_cid] = metadata
@@ -50867,6 +51238,64 @@ class PortalImplementationDaemon:
             if metadata is not None:
                 active_claims.setdefault(item.task_id, metadata)
         return active_claims
+
+    def _reconcile_obsolete_implementation_dispatch_intents(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> None:
+        """Release exact-owner intents for revisions absent from this board.
+
+        Canonical task claims are named by revision CID.  Looking only at the
+        current task's claim path would strand an old revision forever after a
+        protected board update, causing every supervisor maintenance pass to
+        observe a live-but-unreachable claim.  Only this process birth and
+        state path may remove such an intent.
+        """
+
+        current_identities = {
+            (task.task_id, self._canonical_ref(task)) for task in tasks
+        }
+        claim_dir = checkout_mutation_lock_path(
+            self.repo_root,
+            lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+        )
+        try:
+            claim_paths = sorted(claim_dir.glob("*.lock"))
+        except OSError:
+            return
+        for claim_path in claim_paths:
+            if claim_path.name.startswith("."):
+                continue
+            metadata = load_json_dict(claim_path)
+            if (
+                metadata is None
+                or not self._implementation_dispatch_intent_is_owned(
+                    metadata
+                )
+            ):
+                continue
+            identity = (
+                str(metadata.get("task_id") or ""),
+                str(metadata.get("canonical_task_cid") or ""),
+            )
+            if identity in current_identities:
+                continue
+            try:
+                released = self._release_implementation_task_claim(
+                    claim_path,
+                    metadata,
+                )
+            except (OSError, RuntimeError):
+                released = False
+            self._record_event(
+                "implementation_dispatch_intent_reconciled",
+                {
+                    "task_id": identity[0],
+                    "canonical_task_cid": identity[1],
+                    "reason": "retained_intent_revision_obsolete",
+                    "released": released,
+                },
+            )
 
     def _active_implementation_resource_claims(
         self,
@@ -50927,6 +51356,50 @@ class PortalImplementationDaemon:
             if resource_path:
                 active_claims[resource_path] = metadata
         return active_claims
+
+    def _reconcile_unselected_implementation_dispatch_intents(
+        self,
+        intents: Mapping[str, tuple[Path, dict[str, Any]]],
+        *,
+        selected: PortalTask | None,
+        reason: str = "retained_intent_no_longer_selected",
+    ) -> None:
+        """Release this daemon's retained intent when it is no longer ready."""
+
+        selected_identity = (
+            (selected.task_id, self._canonical_ref(selected))
+            if selected is not None
+            else None
+        )
+        for intent_task_id, (intent_path, intent_metadata) in intents.items():
+            intent_identity = (
+                intent_task_id,
+                str(intent_metadata.get("canonical_task_cid") or ""),
+            )
+            if intent_identity == selected_identity:
+                continue
+            existing = load_json_dict(intent_path)
+            if (
+                existing is None
+                or str(existing.get("lease_id") or "")
+                != str(intent_metadata.get("lease_id") or "")
+            ):
+                # The implementation path may already have consumed and
+                # released or replaced this exact intent.
+                continue
+            released = self._release_implementation_task_claim(
+                intent_path,
+                intent_metadata,
+            )
+            self._record_event(
+                "implementation_dispatch_intent_reconciled",
+                {
+                    "task_id": intent_task_id,
+                    "canonical_task_cid": intent_identity[1],
+                    "reason": reason,
+                    "released": released,
+                },
+            )
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         repo_root = str(metadata.get("repo_root") or "")
@@ -53034,6 +53507,114 @@ class PortalImplementationDaemon:
                 if not published:
                     lock_path.unlink(missing_ok=True)
             return True, reason, existing
+
+    def _try_acquire_implementation_dispatch_intent(
+        self,
+        lock_path: Path,
+        metadata: dict[str, Any],
+    ) -> tuple[
+        bool,
+        str,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+    ]:
+        """Publish/reuse task intent atomically against maintenance admission."""
+
+        maintenance_lock_path = self._protected_path_maintenance_lock_path()
+        acquired_metadata: dict[str, Any] | None = None
+        existing: dict[str, Any] | None = None
+        try:
+            with serialized_lock_update(
+                maintenance_lock_path,
+                timeout_seconds=(
+                    PROTECTED_PATH_MAINTENANCE_COORDINATION_TIMEOUT_SECONDS
+                ),
+            ):
+                acquired, reason, existing = (
+                    self._try_acquire_implementation_task_claim(
+                        lock_path,
+                        metadata,
+                    )
+                )
+                acquired_metadata = (
+                    dict(metadata) if acquired else None
+                )
+                if (
+                    not acquired
+                    and existing is not None
+                    and self._implementation_dispatch_intent_is_owned(
+                        existing
+                    )
+                    and not self._implementation_dispatch_intent_is_reusable(
+                        existing,
+                        metadata,
+                    )
+                    and self._release_implementation_task_claim(
+                        lock_path,
+                        existing,
+                    )
+                ):
+                    acquired, reason, existing = (
+                        self._try_acquire_implementation_task_claim(
+                            lock_path,
+                            metadata,
+                        )
+                    )
+                    acquired_metadata = (
+                        dict(metadata) if acquired else None
+                    )
+                if (
+                    not acquired
+                    and existing is not None
+                    and self._implementation_dispatch_intent_is_reusable(
+                        existing,
+                        metadata,
+                    )
+                ):
+                    acquired = True
+                    reason = "dispatch_intent_reused"
+                    acquired_metadata = dict(existing)
+                if not acquired:
+                    return False, reason, existing, None, None
+                maintenance_claim = (
+                    self._active_protected_path_maintenance_claim_serialized(
+                        maintenance_lock_path
+                    )
+                )
+                return (
+                    True,
+                    reason,
+                    existing,
+                    acquired_metadata,
+                    maintenance_claim,
+                )
+        except (OSError, RuntimeError) as exc:
+            if acquired_metadata is not None:
+                # The intent is durable even when maintenance inspection is
+                # inconclusive.  Return it as acquired and fail closed through
+                # the ordinary bounded maintenance-wait path; the next daemon
+                # pass can then reuse or explicitly reconcile this exact
+                # owner/attempt instead of leaking an invisible claim.
+                return (
+                    True,
+                    "dispatch_intent_retained_after_coordination_error",
+                    existing,
+                    acquired_metadata,
+                    {
+                        "kind": "implementation-protected-maintenance",
+                        "coordination_error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+            return (
+                False,
+                "maintenance_coordination_failed",
+                {
+                    "coordination_error": f"{type(exc).__name__}: {exc}",
+                },
+                None,
+                None,
+            )
 
     def _try_acquire_implementation_resource_claim(
         self,

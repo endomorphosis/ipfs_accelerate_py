@@ -63,6 +63,7 @@ from ..merge.checkout_lock import (
     adopt_inactive_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     read_checkout_mutation_lease,
@@ -156,8 +157,10 @@ from .supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
     OwnerLiveness,
+    ProcessBirthIdentity,
     RestartPolicy,
     load_supervised_child_identity,
+    owner_liveness,
     read_process_birth,
     read_process_command_argv,
     supervised_child_identity_liveness,
@@ -3219,10 +3222,19 @@ class PortalImplementationSupervisor:
         )
 
     def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
-        metadata = self._implementation_maintenance_lease_metadata()
-        metadata["kind"] = "implementation-protected-maintenance"
-        metadata["lease_role"] = "shared_protected_path_maintenance"
-        return metadata
+        local_metadata = self._implementation_maintenance_lease_metadata()
+        return checkout_lock_metadata(
+            kind="implementation-protected-maintenance",
+            repo_root=self.config.repo_root,
+            owner_script=str(local_metadata.get("owner_script") or ""),
+            extra={
+                "lease_role": "shared_protected_path_maintenance",
+                "lease_id": str(local_metadata["lease_id"]),
+                "state_dir": str(local_metadata["state_dir"]),
+                "state_path": str(local_metadata["state_path"]),
+                "started_at": str(local_metadata["started_at"]),
+            },
+        )
 
     def _protected_path_maintenance_owner_is_active(
         self,
@@ -3247,6 +3259,7 @@ class PortalImplementationSupervisor:
             claim_paths = sorted(claim_dir.glob("*.lock"))
         except OSError:
             return [{"claim_path": str(claim_dir), "reason": "claim_scan_failed"}]
+        repository_matches: dict[tuple[str, str], bool | None] = {}
         active: list[dict[str, Any]] = []
         for claim_path in claim_paths:
             if claim_path.name.startswith("."):
@@ -3261,21 +3274,56 @@ class PortalImplementationSupervisor:
                 )
                 continue
             kind = str(metadata.get("kind") or "")
-            repo_root = str(metadata.get("repo_root") or "")
             try:
-                same_repository = (
-                    not repo_root
-                    or Path(repo_root).resolve()
-                    == self.config.repo_root.resolve()
-                )
                 pid = int(metadata.get("pid") or 0)
-            except (OSError, TypeError, ValueError):
-                same_repository = False
+            except (TypeError, ValueError):
                 pid = 0
+            repository_key = (
+                str(metadata.get("repository_id") or ""),
+                str(
+                    metadata.get("worktree_root")
+                    or metadata.get("repo_root")
+                    or ""
+                ),
+            )
+            if repository_key not in repository_matches:
+                repository_matches[repository_key] = (
+                    checkout_lock_repository_matches(
+                        metadata,
+                        self.config.repo_root,
+                    )
+                )
+            # The claim directory itself is repo-global.  Inconclusive
+            # physical identity must therefore fail closed as a match.
+            same_repository = repository_matches[repository_key] is not False
             protected_fence_paths = (
                 implementation_task_claim_protected_fence_paths(metadata)
             )
-            owner_live = process_is_running(pid)
+            birth_payload = metadata.get("owner_process_birth")
+            birth_liveness: OwnerLiveness | None = None
+            if birth_payload is not None:
+                if isinstance(birth_payload, Mapping):
+                    try:
+                        owner_birth = ProcessBirthIdentity.from_dict(
+                            birth_payload
+                        )
+                    except (TypeError, ValueError):
+                        owner_birth = None
+                    if (
+                        owner_birth is None
+                        or owner_birth.pid != pid
+                        or owner_birth.start_time_ticks <= 0
+                    ):
+                        birth_liveness = OwnerLiveness.UNKNOWN
+                    else:
+                        birth_liveness = owner_liveness(owner_birth)
+                else:
+                    birth_liveness = OwnerLiveness.UNKNOWN
+            owner_live = (
+                process_is_running(pid)
+                if birth_liveness is None
+                else birth_liveness is not OwnerLiveness.DEAD
+            )
             # Task claims may be owned through pytest, systemd, or another
             # wrapper whose argv does not contain the daemon filename. A live
             # PID on a compatible claim is sufficient to keep maintenance out.
@@ -3292,6 +3340,11 @@ class PortalImplementationSupervisor:
                         "task_id": str(metadata.get("task_id") or ""),
                         "pid": pid,
                         "owner_live": owner_live,
+                        "owner_liveness": (
+                            birth_liveness.value
+                            if birth_liveness is not None
+                            else "legacy_pid_probe"
+                        ),
                         "state_dir": str(metadata.get("state_dir") or ""),
                         "protected_fence_paths": list(
                             protected_fence_paths
@@ -3308,6 +3361,17 @@ class PortalImplementationSupervisor:
         lease_published = False
         try:
             with serialized_lock_update(lock_path):
+                active_claims = (
+                    self._active_implementation_task_claims_for_maintenance()
+                )
+                if active_claims:
+                    return None, {
+                        "blocked": True,
+                        "reason": "shared_implementation_task_claim_active",
+                        "lock_path": str(lock_path),
+                        "active_claims": active_claims,
+                        "claim_check": "before_lease_publication",
+                    }
                 for _ in range(2):
                     if self._publish_implementation_maintenance_lease(
                         lock_path,
@@ -3337,18 +3401,36 @@ class PortalImplementationSupervisor:
                         "reason": "protected_path_maintenance_unavailable",
                         "lock_path": str(lock_path),
                     }
-            active_claims = (
-                self._active_implementation_task_claims_for_maintenance()
-            )
-            if active_claims:
-                self._release_protected_path_maintenance_lease(metadata)
-                lease_published = False
-                return None, {
-                    "blocked": True,
-                    "reason": "shared_implementation_task_claim_active",
-                    "lock_path": str(lock_path),
-                    "active_claims": active_claims,
-                }
+                # Rolling-upgrade postcheck: an older daemon does not take
+                # the repo-global update gate when publishing its task claim.
+                # Re-scan before leaving the gate and withdraw our exact lease
+                # if that mixed-version intent appeared concurrently.
+                active_claims = (
+                    self._active_implementation_task_claims_for_maintenance()
+                )
+                if active_claims:
+                    existing = load_json_dict(lock_path)
+                    if (
+                        existing is None
+                        or str(existing.get("lease_id") or "")
+                        != str(metadata.get("lease_id") or "")
+                    ):
+                        return None, {
+                            "blocked": True,
+                            "reason": "protected_path_maintenance_coordination_failed",
+                            "lock_path": str(lock_path),
+                            "active_claims": active_claims,
+                            "error": "published maintenance lease was replaced before mixed-version postcheck",
+                        }
+                    lock_path.unlink(missing_ok=True)
+                    lease_published = False
+                    return None, {
+                        "blocked": True,
+                        "reason": "shared_implementation_task_claim_active",
+                        "lock_path": str(lock_path),
+                        "active_claims": active_claims,
+                        "claim_check": "after_lease_publication",
+                    }
             return metadata, {
                 "blocked": False,
                 "reason": "protected_path_maintenance_lease_acquired",
