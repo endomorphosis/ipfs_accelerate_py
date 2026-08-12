@@ -108,7 +108,7 @@ A9  SCH-018
 
 ## SCH-002 Implement the pinned datasets semantic-state adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: datasets-adapter
