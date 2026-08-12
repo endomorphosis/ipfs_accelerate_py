@@ -246,6 +246,7 @@ from ..validation.validation_scheduler import (
 )
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
+from .supervisor import validated_protected_attempt_latch
 from .supervisor_runtime import run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
@@ -326,6 +327,8 @@ MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
+PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS = 2.0
+PROVIDER_RUNNER_BIRTH_POLL_SECONDS = 0.005
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
@@ -3828,6 +3831,7 @@ class PortalTaskState:
     protected_implementation_attempts: dict[str, dict[str, Any]] = field(
         default_factory=dict
     )
+    active_provider_runner: dict[str, Any] = field(default_factory=dict)
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
@@ -3881,6 +3885,9 @@ class PortalTaskState:
         if not isinstance(payload, dict):
             return cls()
         try:
+            active_attempt_raw = payload.get("active_attempt", 0)
+            if isinstance(active_attempt_raw, bool):
+                raise ValueError("active_attempt must be an integer")
             return cls(
                 heartbeat_at=str(payload.get("heartbeat_at") or ""),
                 last_progress_at=str(payload.get("last_progress_at") or ""),
@@ -3890,7 +3897,7 @@ class PortalTaskState:
                 active_task_title=str(payload.get("active_task_title") or ""),
                 active_task_track=str(payload.get("active_task_track") or ""),
                 active_task_started_at=str(payload.get("active_task_started_at") or ""),
-                active_attempt=int(payload.get("active_attempt") or 0),
+                active_attempt=int(active_attempt_raw or 0),
                 active_phase=str(payload.get("active_phase") or ""),
                 active_phase_started_at=str(payload.get("active_phase_started_at") or ""),
                 active_phase_detail=str(payload.get("active_phase_detail") or ""),
@@ -3958,6 +3965,11 @@ class PortalTaskState:
                     ).items()
                     if isinstance(value, dict)
                 },
+                active_provider_runner=(
+                    dict(payload.get("active_provider_runner") or {})
+                    if isinstance(payload.get("active_provider_runner"), dict)
+                    else {}
+                ),
                 retry_budget_repair_receipts={
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
@@ -4090,7 +4102,10 @@ def state_file_repair_reason(path: Path) -> str:
     optional_int_fields = ("last_implementation_returncode", "last_merge_returncode")
     try:
         for field_name in int_fields:
-            int(payload.get(field_name) or 0)
+            raw_value = payload.get(field_name, 0)
+            if isinstance(raw_value, bool):
+                raise ValueError(f"{field_name} must be an integer")
+            int(raw_value or 0)
         for field_name in optional_int_fields:
             if payload.get(field_name) is not None:
                 int(payload[field_name])
@@ -4104,6 +4119,7 @@ def state_file_repair_reason(path: Path) -> str:
         "implementation_attempts",
         "implementation_attempts_by_cid",
         "protected_implementation_attempts",
+        "active_provider_runner",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -16952,6 +16968,8 @@ class PortalImplementationDaemon:
                 attempt=attempt,
                 started_at=started_at,
                 log_path=log_path,
+                worktree_path=workspace_path,
+                branch_name=baseline_branch,
             )
             self._record_event(
                 "implementation_started",
@@ -16987,17 +17005,23 @@ class PortalImplementationDaemon:
                         returncode=0,
                     )
                 else:
-                    completed = self._decision_runtime_mutation(
-                        "command_invocation",
-                        {
-                            "operation": "implementation_provider",
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "command": tuple(command),
-                            "workspace_path": str(workspace_path),
-                            "context_receipt_path": str(context_receipt_path),
-                        },
-                        lambda: run_process_group_stream(
+                    def invoke_provider() -> subprocess.CompletedProcess[str]:
+                        self._mark_provider_launch_boundary(
+                            state,
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=workspace_path,
+                        )
+                        birth_callback = (
+                            self._provider_runner_started_callback(
+                                state,
+                                task=task,
+                                attempt=attempt,
+                                command=command,
+                                workspace_path=workspace_path,
+                            )
+                        )
+                        return run_process_group_stream(
                             command,
                             cwd=workspace_path,
                             stdout=log_fh,
@@ -17018,12 +17042,25 @@ class PortalImplementationDaemon:
                             ),
                             max_timeout_seconds=timeout_policy.max_timeout_seconds,
                             progress_paths=(checkpoint_dir,),
+                            on_started=birth_callback,
                             on_progress=self._implementation_progress_observer(
                                 state,
                                 task,
                                 attempt=attempt,
                             ),
-                        ),
+                        )
+
+                    completed = self._decision_runtime_mutation(
+                        "command_invocation",
+                        {
+                            "operation": "implementation_provider",
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "command": tuple(command),
+                            "workspace_path": str(workspace_path),
+                            "context_receipt_path": str(context_receipt_path),
+                        },
+                        invoke_provider,
                     )
             effective_returncode = completed.returncode
             protected_path_violation = (
@@ -26247,7 +26284,30 @@ class PortalImplementationDaemon:
                                     attempt=attempt,
                                 )
                             )
-                            provider_dispatched = True
+                            self._mark_provider_launch_boundary(
+                                state,
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                            )
+                            birth_callback = (
+                                self._provider_runner_started_callback(
+                                    state,
+                                    task=task,
+                                    attempt=attempt,
+                                    command=command,
+                                    workspace_path=worktree_path,
+                                )
+                            )
+
+                            def provider_started(
+                                process: subprocess.Popen[Any],
+                            ) -> None:
+                                nonlocal provider_dispatched
+                                provider_dispatched = True
+                                if birth_callback is not None:
+                                    birth_callback(process)
+
                             return run_process_group_stream(
                                 command,
                                 cwd=worktree_path,
@@ -26265,6 +26325,7 @@ class PortalImplementationDaemon:
                                 ),
                                 max_timeout_seconds=timeout_policy.max_timeout_seconds,
                                 progress_paths=(checkpoint_dir,),
+                                on_started=provider_started,
                                 on_progress=progress_observer,
                             )
 
@@ -28635,6 +28696,7 @@ class PortalImplementationDaemon:
         state.active_worktree_path = ""
         state.active_branch = ""
         state.implementation_in_progress = False
+        state.active_provider_runner = {}
 
     def _mark_implementation_started(
         self,
@@ -28664,6 +28726,7 @@ class PortalImplementationDaemon:
         state.active_worktree_path = str(worktree_path) if worktree_path is not None else ""
         state.active_branch = branch_name
         state.implementation_in_progress = True
+        state.active_provider_runner = {}
         state.last_implementation_task_id = task.task_id
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
@@ -28682,6 +28745,488 @@ class PortalImplementationDaemon:
         # caller explicitly opts out without rewriting the prior count.
         if consume_attempt:
             self._record_task_attempt(state, task, attempt)
+        state.save(self.state_path)
+
+    @staticmethod
+    def _provider_process_identity(pid: int) -> tuple[int, int, int, int]:
+        try:
+            raw = (Path("/proc") / str(pid) / "stat").read_text(
+                encoding="utf-8"
+            )
+            fields = raw[raw.rindex(")") + 1 :].strip().split()
+            state = fields[0]
+            parent_pid = int(fields[1])
+            process_group = int(fields[2])
+            session = int(fields[3])
+            start_ticks = int(fields[19])
+        except (IndexError, OSError, UnicodeError, ValueError) as exc:
+            raise RuntimeError(
+                "provider runner process birth is unavailable"
+            ) from exc
+        if (
+            state == "Z"
+            or parent_pid <= 0
+            or process_group <= 0
+            or session <= 0
+            or start_ticks <= 0
+        ):
+            raise RuntimeError("provider runner process birth is invalid")
+        return start_ticks, parent_pid, process_group, session
+
+    def _provider_runner_started_callback(
+        self,
+        state: PortalTaskState,
+        *,
+        task: PortalTask,
+        attempt: int,
+        command: Sequence[str],
+        workspace_path: Path,
+    ) -> Callable[[subprocess.Popen[Any]], None] | None:
+        """Persist a daemon-owned birth receipt for one sealed fresh route."""
+
+        launch = self._scoped_control_plane_launch
+        route_flag = "--agent-implementation-route-json"
+        recovery_flag = "--agent-implementation-recovery-json"
+        raw_items = tuple(command)
+        if (
+            launch is not None
+            and route_flag in raw_items
+            and len(raw_items) >= 3
+            and raw_items[1] == "-I"
+            and isinstance(raw_items[2], str)
+            and re.fullmatch(r"/proc/self/fd/[0-9]+", raw_items[2])
+            and raw_items[2] != launch.executable_path
+        ):
+            raise RuntimeError("sealed provider runner command is malformed")
+        try:
+            sealed_candidate = bool(
+                launch is not None
+                and isinstance(launch.executable_path, str)
+                and len(command) >= 3
+                and os.fspath(command[2]) == launch.executable_path
+            )
+        except TypeError:
+            sealed_candidate = False
+        if not sealed_candidate:
+            # Unscoped route plans also carry route JSON.  They run the
+            # installed module and retain their existing process lifecycle;
+            # only the daemon-owned sealed descriptor requires this receipt.
+            return None
+        if any(not isinstance(item, str) or not item for item in command):
+            raise RuntimeError("sealed provider runner command is malformed")
+        argv = tuple(command)
+
+        if recovery_flag in argv and route_flag not in argv:
+            # Recovery remains deliberately ineligible as watchdog liveness
+            # evidence in this narrow patch, without blocking its launch.
+            return None
+        if (
+            len(argv) < 8
+            or argv[0] != sys.executable
+            or argv[1] != "-I"
+            or argv.count("-I") != 1
+            or argv[2] != launch.executable_path
+            or argv.count(route_flag) != 1
+            or recovery_flag in argv
+            or argv.count("--workspace") != 1
+        ):
+            raise RuntimeError("sealed provider runner command is malformed")
+
+        try:
+            route_index = argv.index(route_flag)
+            workspace_index = argv.index("--workspace")
+            if (
+                route_index + 1 >= len(argv)
+                or not argv[route_index + 1]
+                or argv[route_index + 1].startswith("--")
+                or any(
+                    character in argv[route_index + 1]
+                    for character in "\0\n\r"
+                )
+            ):
+                raise ValueError("sealed provider route value is missing")
+            route_raw = argv[route_index + 1]
+            if len(route_raw.encode("utf-8")) > 16 * 1024:
+                raise ValueError("sealed provider route value is oversized")
+
+            def unique_object(
+                pairs: Sequence[tuple[str, Any]],
+            ) -> dict[str, Any]:
+                decoded: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in decoded:
+                        raise ValueError("duplicate sealed provider route key")
+                    decoded[key] = value
+                return decoded
+
+            binding = json.loads(route_raw, object_pairs_hook=unique_object)
+            if (
+                not isinstance(binding, dict)
+                or json.dumps(
+                    binding,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                != route_raw
+            ):
+                raise ValueError("sealed provider route value is not canonical")
+            authorization = binding.get("authorization")
+            invocation = binding.get("invocation_binding")
+            workspace = workspace_path.expanduser().resolve(strict=True)
+            workspace_value = str(workspace)
+            revision = self._canonical_ref(task)
+            descriptor_match = re.fullmatch(
+                r"/proc/self/fd/([0-9]+)",
+                argv[2],
+            )
+            descriptor_number = int(descriptor_match.group(1))
+            if descriptor_number < 3:
+                raise ValueError("sealed provider descriptor is invalid")
+            latch = validated_protected_attempt_latch(
+                vars(state),
+                task_id=task.task_id,
+                attempt=attempt,
+                task_revision_cid=revision,
+            )
+            pin = self._scoped_control_plane
+            descriptor = launch.descriptor
+            fd_stat = os.fstat(descriptor)
+            path_stat = os.stat(argv[2])
+            descriptor_target = os.readlink(argv[2])
+            seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+            owner_pid = os.getpid()
+            owner_start_ticks, _, _, _ = self._provider_process_identity(
+                owner_pid
+            )
+            executable_stat = os.stat(Path("/proc/self/exe"))
+            required_seals = (
+                fcntl.F_SEAL_WRITE
+                | fcntl.F_SEAL_SHRINK
+                | fcntl.F_SEAL_GROW
+                | fcntl.F_SEAL_SEAL
+            )
+        except (
+            AttributeError,
+            IndexError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise RuntimeError(
+                "sealed provider runner birth receipt cannot be constructed"
+            ) from exc
+        if (
+            pin is None
+            or launch.executable_path != argv[2]
+            or launch.descriptor != descriptor_number
+            or launch.archive_sha256 != pin.archive_sha256
+            or launch.capsule_id != pin.capsule_id
+            or launch.seals != seals
+            or descriptor_target
+            != "/memfd:ipfs-accelerate-accepted-control-plane (deleted)"
+            or not stat_module.S_ISREG(fd_stat.st_mode)
+            or fd_stat.st_uid != os.geteuid()
+            or fd_stat.st_nlink != 0
+            or not 0 < fd_stat.st_size <= 64 * 1024 * 1024
+            or (path_stat.st_dev, path_stat.st_ino, path_stat.st_size)
+            != (fd_stat.st_dev, fd_stat.st_ino, fd_stat.st_size)
+            or argv[workspace_index + 1] != workspace_value
+            or state.implementation_in_progress is not True
+            or state.active_task_id != task.task_id
+            or state.active_attempt != attempt
+            or state.active_task_cid != revision
+            or state.active_worktree_path != workspace_value
+            or latch is None
+            or not isinstance(authorization, Mapping)
+            or authorization.get("board_namespace")
+            != latch.get("board_namespace")
+            or not isinstance(invocation, Mapping)
+            or invocation.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "provider-fallback-invocation@2"
+            )
+            or invocation.get("task_id") != task.task_id
+            or isinstance(invocation.get("attempt"), bool)
+            or not isinstance(invocation.get("attempt"), int)
+            or invocation.get("attempt") != attempt
+            or invocation.get("task_revision_cid") != revision
+            or invocation.get("workspace_path") != workspace_value
+            or binding.get("route_id") != latch.get("route_id")
+            or invocation.get("route_id") != latch.get("route_id")
+            or invocation.get("invocation_id") != latch.get("invocation_id")
+            or invocation.get("logical_attempt_id")
+            != latch.get("logical_attempt_id")
+            or invocation.get("worktree_id") != latch.get("worktree_id")
+            or invocation.get("provider_attempt_store")
+            != latch.get("provider_attempt_store")
+            or invocation.get("provider_attempt_store_identity")
+            != latch.get("provider_attempt_store_identity")
+            or invocation.get("control_plane") != pin.as_dict()
+            or seals & required_seals != required_seals
+        ):
+            raise RuntimeError("sealed provider runner launch identity drifted")
+        argv_sha256 = "sha256:" + hashlib.sha256(
+            b"\0".join(item.encode("utf-8") for item in argv) + b"\0"
+        ).hexdigest()
+        expected_argv = b"\0".join(
+            item.encode("utf-8") for item in argv
+        ) + b"\0"
+
+        def persist(process: subprocess.Popen[Any]) -> None:
+            try:
+                pid = int(process.pid)
+                start_ticks, parent_pid, process_group, session = (
+                    self._provider_process_identity(pid)
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "provider runner birth identity is unavailable"
+                ) from exc
+            if (
+                pid <= 1
+                or parent_pid != owner_pid
+                or process_group != pid
+                or session != pid
+                or validated_protected_attempt_latch(
+                    vars(state),
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    task_revision_cid=revision,
+                )
+                != latch
+            ):
+                raise RuntimeError("provider runner birth identity drifted")
+
+            child_fd_path = (
+                Path("/proc")
+                / str(pid)
+                / "fd"
+                / str(descriptor_number)
+            )
+            expected_birth = (start_ticks, owner_pid, pid, pid)
+            birth_deadline = (
+                time.monotonic() + PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS
+            )
+            while True:
+                # Popen can return before the child's /proc cmdline is
+                # populated.  Stdin remains withheld while this bounded
+                # handshake waits for one complete, exact procfs snapshot.
+                # Birth/session drift is never transient: it fails closed
+                # immediately so PID reuse cannot satisfy a later sample.
+                if self._provider_process_identity(pid) != expected_birth:
+                    raise RuntimeError(
+                        "provider runner birth identity drifted"
+                    )
+                try:
+                    process_argv = (
+                        Path("/proc") / str(pid) / "cmdline"
+                    ).read_bytes()
+                    if process_argv and process_argv != expected_argv:
+                        raise RuntimeError(
+                            "provider runner birth identity drifted"
+                        )
+                    exe_stat = os.stat(Path("/proc") / str(pid) / "exe")
+                    child_target = os.readlink(child_fd_path)
+                    child_fd = os.stat(child_fd_path)
+                    child_descriptor = os.open(
+                        child_fd_path,
+                        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+                    )
+                    try:
+                        child_seals = int(
+                            fcntl.fcntl(
+                                child_descriptor,
+                                fcntl.F_GET_SEALS,
+                            )
+                        )
+                    finally:
+                        os.close(child_descriptor)
+                    current_fd = os.fstat(descriptor)
+                except OSError:
+                    process_argv = b""
+                else:
+                    if (
+                        process_argv == expected_argv
+                        and child_target == descriptor_target
+                        and child_seals == seals
+                        and (exe_stat.st_dev, exe_stat.st_ino)
+                        == (
+                            executable_stat.st_dev,
+                            executable_stat.st_ino,
+                        )
+                        and (
+                            child_fd.st_dev,
+                            child_fd.st_ino,
+                            child_fd.st_size,
+                        )
+                        == (fd_stat.st_dev, fd_stat.st_ino, fd_stat.st_size)
+                        and (
+                            current_fd.st_dev,
+                            current_fd.st_ino,
+                            current_fd.st_size,
+                        )
+                        == (fd_stat.st_dev, fd_stat.st_ino, fd_stat.st_size)
+                    ):
+                        break
+                    if process_argv:
+                        raise RuntimeError(
+                            "provider runner birth identity drifted"
+                        )
+                if time.monotonic() >= birth_deadline:
+                    raise RuntimeError(
+                        "provider runner birth identity was not published"
+                    )
+                time.sleep(PROVIDER_RUNNER_BIRTH_POLL_SECONDS)
+
+            # One last birth read binds the complete sample above to the
+            # originally observed, still-live direct child.  Revalidate the
+            # mutable task state and daemon-owned launch at this same barrier:
+            # the procfs handshake may have waited while another control path
+            # attempted to replace the active latch or scoped capsule.
+            try:
+                current_owner_fd = os.fstat(descriptor)
+                current_owner_seals = int(
+                    fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)
+                )
+                current_owner_target = os.readlink(argv[2])
+            except OSError as exc:
+                raise RuntimeError(
+                    "provider runner owner identity drifted"
+                ) from exc
+            if (
+                self._provider_process_identity(pid) != expected_birth
+                or state.implementation_in_progress is not True
+                or state.active_task_id != task.task_id
+                or state.active_attempt != attempt
+                or state.active_task_cid != revision
+                or state.active_worktree_path != workspace_value
+                or validated_protected_attempt_latch(
+                    vars(state),
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    task_revision_cid=revision,
+                )
+                != latch
+                or self._scoped_control_plane_launch is not launch
+                or self._scoped_control_plane is not pin
+                or launch.descriptor != descriptor_number
+                or launch.executable_path != argv[2]
+                or launch.archive_sha256 != pin.archive_sha256
+                or launch.capsule_id != pin.capsule_id
+                or launch.seals != seals
+                or pin.as_dict() != invocation.get("control_plane")
+                or current_owner_target != descriptor_target
+                or current_owner_seals != seals
+                or (
+                    current_owner_fd.st_dev,
+                    current_owner_fd.st_ino,
+                    current_owner_fd.st_size,
+                )
+                != (fd_stat.st_dev, fd_stat.st_ino, fd_stat.st_size)
+            ):
+                raise RuntimeError("provider runner birth identity drifted")
+            receipt_body = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "provider-runner-birth@1"
+                ),
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "task_revision_cid": revision,
+                "workspace_path": workspace_value,
+                "latch_id": latch["latch_id"],
+                "route_id": latch["route_id"],
+                "invocation_id": latch["invocation_id"],
+                "logical_attempt_id": latch["logical_attempt_id"],
+                "worktree_id": latch["worktree_id"],
+                "owner_pid": owner_pid,
+                "owner_start_ticks": owner_start_ticks,
+                "pid": pid,
+                "start_ticks": start_ticks,
+                "argv_sha256": argv_sha256,
+                "executable_device": exe_stat.st_dev,
+                "executable_inode": exe_stat.st_ino,
+                "descriptor_number": descriptor_number,
+                "descriptor_device": fd_stat.st_dev,
+                "descriptor_inode": fd_stat.st_ino,
+                "descriptor_size": fd_stat.st_size,
+                "descriptor_seals": seals,
+                "archive_sha256": launch.archive_sha256,
+            }
+            state.active_provider_runner = {
+                **receipt_body,
+                "receipt_id": content_identity(receipt_body),
+            }
+            state.save(self.state_path)
+
+            # Persistence is the effect barrier.  Recheck the exact child
+            # after it is durable and before stdin is released to the runner.
+            try:
+                identity_after = self._provider_process_identity(pid)
+                argv_after = (
+                    Path("/proc") / str(pid) / "cmdline"
+                ).read_bytes()
+                exe_after = os.stat(Path("/proc") / str(pid) / "exe")
+                fd_after = os.stat(child_fd_path)
+            except OSError as exc:
+                raise RuntimeError(
+                    "provider runner birth drifted after persistence"
+                ) from exc
+            if (
+                identity_after
+                != (start_ticks, owner_pid, pid, pid)
+                or argv_after != expected_argv
+                or (exe_after.st_dev, exe_after.st_ino)
+                != (exe_stat.st_dev, exe_stat.st_ino)
+                or (fd_after.st_dev, fd_after.st_ino, fd_after.st_size)
+                != (fd_stat.st_dev, fd_stat.st_ino, fd_stat.st_size)
+            ):
+                raise RuntimeError(
+                    "provider runner birth drifted after persistence"
+                )
+
+        return persist
+
+    def _mark_provider_launch_boundary(
+        self,
+        state: PortalTaskState,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+    ) -> None:
+        """Start a fresh no-worker grace window immediately before Popen."""
+
+        try:
+            workspace_value = str(
+                workspace_path.expanduser().resolve(strict=True)
+            )
+            revision = self._canonical_ref(task)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise RuntimeError(
+                "provider launch boundary identity is unavailable"
+            ) from exc
+        if (
+            not isinstance(attempt, int)
+            or isinstance(attempt, bool)
+            or attempt < 1
+            or state.implementation_in_progress is not True
+            or state.active_task_id != task.task_id
+            or state.active_attempt != attempt
+            or state.active_task_cid != revision
+            or state.active_worktree_path != workspace_value
+            or state.active_provider_runner
+        ):
+            raise RuntimeError("provider launch boundary identity drifted")
+        timestamp = utc_now()
+        state.active_phase = "implementing"
+        state.active_phase_started_at = timestamp
+        state.active_phase_detail = "provider_launch_birth"
+        state.heartbeat_at = timestamp
+        state.last_progress_at = timestamp
         state.save(self.state_path)
 
     def _mark_active_phase(

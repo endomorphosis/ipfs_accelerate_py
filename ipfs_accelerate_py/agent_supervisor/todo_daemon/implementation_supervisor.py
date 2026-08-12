@@ -2201,7 +2201,7 @@ class PortalImplementationSupervisor:
         self.restart_count = 0
         self.last_start_at: float | None = None
         self._last_supervisor_maintenance_at: float = 0.0
-        self._worktree_worker_phase = ""
+        self._worktree_worker_generation = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
 
@@ -4236,7 +4236,7 @@ class PortalImplementationSupervisor:
             )
             result = loop.run()
             self.restart_count = result.restart_count
-            self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
             self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
@@ -13453,6 +13453,18 @@ class PortalImplementationSupervisor:
         threshold = max(0.0, float(self.config.implementation_log_stall_seconds))
         if threshold <= 0.0:
             return ""
+        if state.active_phase_detail == "provider_launch_birth":
+            boundary = parse_timestamp(state.active_phase_started_at)
+            if (
+                boundary is not None
+                and max(0.0, now_ts - boundary.timestamp()) <= threshold
+            ):
+                # The daemon has durably crossed the provider-launch boundary,
+                # but the child birth callback still withholds stdin while it
+                # records exact runner evidence.  Bound this log-independent
+                # grace to the ordinary log-stall threshold; a missing receipt
+                # can never extend it indefinitely.
+                return ""
         log_text = state.last_implementation_log_path or state.active_log_path
         if not log_text:
             return ""
@@ -13475,7 +13487,12 @@ class PortalImplementationSupervisor:
         daemon_pid = self._read_managed_daemon_pid()
         if not daemon_pid:
             return []
-        return active_codex_exec_workers(daemon_pid)
+        # Include the exact active projection so the shared worker classifier
+        # can bind a sealed ``/proc/self/fd/N`` runner to this task, attempt,
+        # revision, and worktree.  Without that binding, arbitrary same-user
+        # Python processes must remain ineligible as liveness evidence.
+        state = PortalTaskState.load(self.config.state_path)
+        return active_codex_exec_workers(daemon_pid, vars(state))
 
     def _active_validation_subprocess_exists(self) -> bool:
         """Return whether a managed agent is currently running a bounded test command."""
@@ -13551,21 +13568,25 @@ class PortalImplementationSupervisor:
             return ""
         threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
         worker_status = worktree_phase_worker_status(
-            {
-                "active_phase": state.active_phase,
-                "active_phase_started_at": state.active_phase_started_at,
-            },
+            # Sealed provider runners are identified by an exact task-bound
+            # status projection (attempt, revision, worktree, and protected
+            # latch), not by their generic Python argv alone.
+            vars(state),
             self._read_managed_daemon_pid(),
             threshold,
             now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
         )
         phase = str(worker_status.get("phase") or "")
         if not worker_status.get("required"):
-            self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
             self._last_worktree_worker_seen_monotonic = None
-        elif phase != self._worktree_worker_phase:
-            self._worktree_worker_phase = phase
-            self._last_worktree_worker_seen_monotonic = None
+        else:
+            tracking_generation = str(
+                worker_status.get("tracking_generation") or phase
+            )
+            if tracking_generation != self._worktree_worker_generation:
+                self._worktree_worker_generation = tracking_generation
+                self._last_worktree_worker_seen_monotonic = None
 
         now_monotonic = time.monotonic()
         if int(worker_status.get("active_worker_count") or 0) > 0:
