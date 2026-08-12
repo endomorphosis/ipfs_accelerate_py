@@ -16782,6 +16782,7 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
+        deterministic_only = self._task_uses_typed_local_execution(task)
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
