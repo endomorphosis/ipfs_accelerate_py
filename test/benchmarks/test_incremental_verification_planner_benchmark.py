@@ -284,6 +284,40 @@ def test_source_snapshot_is_stable_across_provenance_history_and_clone_root(
     ).source_snapshot_id
 
 
+def test_benchmark_artifact_paths_are_stable_across_clone_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Checkout-local absolute paths cannot enter stable release evidence."""
+
+    root, reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "--quiet", str(root), str(clone))
+    for name in reviewed:
+        (clone / name).mkdir(exist_ok=True)
+        _git(clone / name, "init", "--quiet")
+        _git(clone / name, "fetch", "--quiet", str(root / name), reviewed[name])
+        _git(clone / name, "checkout", "--quiet", "--detach", reviewed[name])
+
+    source = run_incremental_verification_benchmark(
+        repo_root_path=root,
+        wall_samples=2,
+        output_path=DEFAULT_OUTPUT_RELPATH,
+    )
+    copied = run_incremental_verification_benchmark(
+        repo_root_path=clone,
+        wall_samples=2,
+        output_path=DEFAULT_OUTPUT_RELPATH,
+    )
+    for artifact in (source, copied):
+        assert artifact["repository_root"] == "."
+        assert artifact["effective_environment"]["cwd"] == "."
+        assert artifact["corpus"]["path"] == (
+            "test/fixtures/incremental_verification/corpus_manifest.json"
+        )
+    assert artifacts_structurally_equivalent(source, copied)
+
+
 def test_source_snapshot_detects_effective_source_mode_symlink_and_gitlink_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

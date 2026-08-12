@@ -236,7 +236,11 @@ def effective_environment() -> dict[str, Any]:
         "machine": platform.machine(),
         "processor": platform.processor() or "unknown",
         "executable": sys.executable,
-        "cwd": str(Path.cwd().resolve()),
+        # The benchmark is invoked from the repository root.  Persist the
+        # logical location rather than a checkout-specific absolute path so
+        # the same source tree produces byte-identical release evidence in a
+        # candidate worktree and the integration checkout.
+        "cwd": ".",
         "env_markers": {
             "CI": os.environ.get("CI", ""),
             "GITHUB_ACTIONS": os.environ.get("GITHUB_ACTIONS", ""),
@@ -1430,6 +1434,12 @@ def run_incremental_verification_benchmark(
         else default_fixture_root(root)
     )
     corpus_info = ensure_corpus_manifest(fx_root)
+    corpus_path = Path(str(corpus_info.get("path") or ""))
+    try:
+        canonical_corpus_path = corpus_path.resolve().relative_to(root).as_posix()
+    except (OSError, ValueError):
+        canonical_corpus_path = f"<external-fixture>/{corpus_path.name}"
+    corpus_info = {**corpus_info, "path": canonical_corpus_path}
     corpus_present = bool(corpus_info.get("present"))
 
     fixtures: tuple[ControlledSemanticFixture, ...] = ()
@@ -1663,7 +1673,7 @@ def run_incremental_verification_benchmark(
         "source_snapshot_domain": SOURCE_SNAPSHOT_DOMAIN,
         # Diagnostic only. It is excluded from content/freshness authority.
         "observed_head": observed_head,
-        "repository_root": str(root),
+        "repository_root": ".",
         "corpus": {
             **corpus_info,
             "evaluated_count": selection_summary.get("evaluated_count", 0),
