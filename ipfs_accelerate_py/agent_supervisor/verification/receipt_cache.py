@@ -41,7 +41,6 @@ from .contracts import (
     VerificationIdentityError,
     VerificationReceipt,
     VerificationReceiptKey,
-    VerificationReceiptKind,
 )
 from .receipt_store import (
     CompareAndSwapResult,

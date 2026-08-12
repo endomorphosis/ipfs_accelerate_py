@@ -28,7 +28,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-import pytest
 
 from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
     MeasurementStatus,

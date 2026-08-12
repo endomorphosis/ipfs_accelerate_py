@@ -43,7 +43,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     TerminalStatus,
     TestReceipt,
     TypeCheckReceipt,
-    VerificationBundle,
     VerificationCommitment,
     VerificationIdentityError,
     VerificationReceiptKind,

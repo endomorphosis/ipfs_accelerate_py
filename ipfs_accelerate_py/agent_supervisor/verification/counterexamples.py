@@ -1157,16 +1157,6 @@ class CounterexampleMinimizer:
             _normalize_repo_path(p, cone_paths) for p in cone_paths if str(p).strip()
         )
         cone_paths = tuple(p for p in cone_paths if p and not _is_irrelevant_frame(p))
-        cone_symbols = tuple(
-            dict.fromkeys(
-                [
-                    *(material.relevant_symbols or ()),
-                    *(request.semantic_cone_symbols or ()),
-                    *tuple(key.affected_symbol_version_cids or ()),
-                ]
-            )
-        )
-
         original_argv = tuple(
             str(item)
             for item in (

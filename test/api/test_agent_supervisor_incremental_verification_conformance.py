@@ -117,7 +117,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_cache import (
     REASON_KEY_MISMATCH,
     REASON_TOMBSTONED,
     AdmitResult,
-    VerificationReceiptCache,
     production_eligible,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (

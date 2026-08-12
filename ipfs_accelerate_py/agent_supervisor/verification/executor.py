@@ -53,7 +53,6 @@ from .bundle import (
     build_verification_summary,
 )
 from .contracts import (
-    CacheReuseDecision,
     CacheReuseDisposition,
     CounterexampleReceipt,
     DirectExecutionObservation,
@@ -73,7 +72,6 @@ from .contracts import (
     VerificationReceiptKey,
     VerificationReceiptKind,
     VerificationSummary,
-    aggregate_terminal_status,
 )
 from .counterexamples import minimize_counterexample
 from .model_route import (
@@ -1103,7 +1101,6 @@ class VerificationExecutor:
             decisions = {
                 item.key_cid: item for item in plan.cache_reuse_decisions
             }
-            keys_by_id = {key.key_id: key for key in plan.required_receipt_keys}
             reused: list[VerificationReceipt] = []
             to_execute: list[VerificationReceiptKey] = []
             stale_keys: list[VerificationReceiptKey] = []

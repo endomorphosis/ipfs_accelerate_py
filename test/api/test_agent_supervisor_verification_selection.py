@@ -20,7 +20,6 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.verification.datasets_adapter import (
     DATASETS_INVALIDATION_PLAN_SCHEMA,
     DATASETS_SEMANTIC_CAPSULE_SCHEMA,
-    DatasetsVerificationInputAdapter,
     EdgeDisposition,
     create_datasets_verification_input_adapter,
 )
@@ -31,7 +30,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.selection import (
     AffectedCheckSelector,
     AffectedVerificationSelection,
     FallbackMode,
-    REASON_BROADER_REQUIRED,
     REASON_CONFIG_EDGE,
     REASON_CONFLICTING_CRITICAL,
     REASON_DIRECT_PATH,

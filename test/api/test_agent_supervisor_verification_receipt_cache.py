@@ -23,7 +23,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import pytest
 

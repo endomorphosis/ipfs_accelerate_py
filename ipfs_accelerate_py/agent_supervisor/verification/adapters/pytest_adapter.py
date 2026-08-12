@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Final, Optional
+from typing import Any, Final
 
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_bytes,
@@ -724,7 +724,6 @@ def parse_phase_report(
     Returns ``(items, collected, collection_errors, usage_error, malformed)``.
     """
 
-    reasons: list[str] = []
     if source is None:
         return (), 0, (), False, True
     payload: Any

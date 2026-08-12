@@ -63,12 +63,11 @@ from .contracts import (
 from .datasets_adapter import (
     ContextPackView,
     DatasetsVerificationInputAdapter,
-    InputKind,
     InvalidationPlanView,
     RepositoryStateView,
     create_datasets_verification_input_adapter,
 )
-from .receipt_cache import VerificationReceiptCache, classify_candidate
+from .receipt_cache import VerificationReceiptCache
 from .selection import (
     AffectedVerificationSelection,
     SelectionPolicy,

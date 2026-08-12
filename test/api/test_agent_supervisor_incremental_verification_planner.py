@@ -18,7 +18,6 @@ Acceptance coverage:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -35,7 +34,6 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
 from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile import (
     CapabilitySnapshot,
     LockIdentity,
-    ToolIdentity,
 )
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_bytes
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
@@ -46,14 +44,12 @@ from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     DirectExecutionObservation,
     TerminalStatus,
     TestReceipt,
-    VerificationIdentityCompiler,
     VerificationReceiptKind,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.datasets_adapter import (
     DATASETS_CONTEXT_PACK_SCHEMA,
     DATASETS_INVALIDATION_PLAN_SCHEMA,
     DATASETS_REPOSITORY_STATE_SCHEMA,
-    DatasetsVerificationInputAdapter,
     InputKind,
     create_datasets_verification_input_adapter,
 )
