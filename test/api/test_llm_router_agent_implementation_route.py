@@ -18,7 +18,6 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
-
 from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.entrypoints import (
     local_profile as local_profile_module,
@@ -34,6 +33,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import (
     _validate_quota_evidence_in_accepted_child,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
 )
 
 AUTHORIZATION_PATH = Path(
@@ -1004,6 +1006,99 @@ def test_authorization_loader_rejects_artifact_or_source_drift(
             artifact_path=AUTHORIZATION_PATH.as_posix(),
             board_namespace=BOARD_NAMESPACE,
         )
+
+
+def test_scoped_route_hardens_and_reloads_real_worktree_under_umask_0002(
+    tmp_path: Path,
+) -> None:
+    fixture = _authorized_repo(tmp_path)
+    route = _high_plan(fixture.repo)
+    worktree = tmp_path / "attempt-worktree"
+    created = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'umask 0002; exec git worktree add --detach "$1" HEAD',
+            "route-worktree",
+            str(worktree),
+        ],
+        cwd=fixture.repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert created.returncode == 0, created.stderr
+    authorization = route.authorization
+    assert authorization is not None
+    signed_paths = (
+        authorization.artifact_path,
+        authorization.lifecycle_root_pin_path,
+        authorization.reviewer_witness_path,
+    )
+    assert all(
+        (worktree / relative).stat().st_mode & 0o777 == 0o664
+        for relative in signed_paths
+    )
+
+    hardened = (
+        implementation_daemon_module._harden_and_reload_agent_implementation_route_workspace(
+            route,
+            worktree,
+        )
+    )
+
+    assert hardened.authorization is not None
+    assert hardened.authorization.as_dict() == authorization.as_dict()
+    assert all(
+        (worktree / relative).stat().st_mode & 0o777 == 0o400
+        for relative in signed_paths
+    )
+    assert _git(worktree, "status", "--porcelain") == ""
+    independently_reloaded = (
+        llm_router.load_agent_implementation_route_authorization(
+            repo_root=worktree,
+            artifact_path=authorization.artifact_path,
+            board_namespace=authorization.board_namespace,
+            expected_sha256=authorization.artifact_sha256,
+            expected_authorization_id=authorization.authorization_id,
+        )
+    )
+    assert independently_reloaded.as_dict() == authorization.as_dict()
+
+
+def test_scoped_route_refuses_wrong_digest_before_changing_workspace_mode(
+    tmp_path: Path,
+) -> None:
+    fixture = _authorized_repo(tmp_path)
+    route = _high_plan(fixture.repo)
+    worktree = tmp_path / "tampered-attempt-worktree"
+    created = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'umask 0002; exec git worktree add --detach "$1" HEAD',
+            "route-worktree",
+            str(worktree),
+        ],
+        cwd=fixture.repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert created.returncode == 0, created.stderr
+    authorization = route.authorization
+    assert authorization is not None
+    artifact = worktree / authorization.artifact_path
+    artifact.write_text("tampered-before-hardening\n", encoding="utf-8")
+    assert artifact.stat().st_mode & 0o777 == 0o664
+
+    with pytest.raises(ValueError, match="digest or identity drifted"):
+        implementation_daemon_module._harden_and_reload_agent_implementation_route_workspace(
+            route,
+            worktree,
+        )
+
+    assert artifact.stat().st_mode & 0o777 == 0o664
 
 
 def test_copied_authorization_in_unrelated_repository_denies(

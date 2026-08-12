@@ -12,9 +12,9 @@ import os
 import posixpath
 import re
 import secrets
-import signal
 import shlex
 import shutil
+import signal
 import stat as stat_module
 import subprocess
 import sys
@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence
+from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence, TextIO
 from urllib.parse import unquote, urlsplit
 
 from ...llm_router import (
@@ -487,6 +487,196 @@ DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
 # adoption/quarantine lineage (up to the router's 512KiB record ceiling).
 # Read enough stable LF-framed tail for that record plus its paired receipt.
 PROVIDER_CAPACITY_LOG_TAIL_BYTES = 1024 * 1024
+
+
+def _open_no_follow_parent(path: Path) -> tuple[int, str]:
+    """Open ``path``'s parent through no-follow directory descriptors."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("no-follow private file access is unavailable")
+    unresolved = path.expanduser()
+    if any(component == ".." for component in unresolved.parts):
+        raise OSError("private file path contains parent traversal")
+    candidate = unresolved if unresolved.is_absolute() else Path.cwd() / unresolved
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    if not lexical.name:
+        raise OSError("private file path has no filename")
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    parent_descriptor = os.open(lexical.anchor, directory_flags)
+    try:
+        for component in lexical.parts[1:-1]:
+            child_descriptor = os.open(
+                component,
+                directory_flags,
+                dir_fd=parent_descriptor,
+            )
+            os.close(parent_descriptor)
+            parent_descriptor = child_descriptor
+    except BaseException:
+        os.close(parent_descriptor)
+        raise
+    return parent_descriptor, lexical.name
+
+
+def _private_file_identity(item: os.stat_result) -> tuple[int, ...]:
+    return (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_nlink,
+        item.st_uid,
+        item.st_gid,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+
+
+def _open_private_implementation_log(
+    path: Path,
+    mode: str,
+) -> TextIO:
+    """Open an owned 0600 attempt log without destructively reopening it."""
+
+    if mode not in {"w", "a"}:
+        raise ValueError("private implementation log mode must be 'w' or 'a'")
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("no-follow private log creation is unavailable")
+    parent_descriptor, filename = _open_no_follow_parent(path)
+    descriptor = -1
+    temporary_filename = ""
+    common_flags = (
+        os.O_WRONLY
+        | nofollow
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    if mode == "a":
+        common_flags |= os.O_APPEND
+    try:
+        if mode == "w":
+            # Never truncate an inode already reachable from the task
+            # workspace.  A same-uid peer could otherwise hard-link it between
+            # validation and ftruncate.  Publish a fresh private inode with a
+            # dirfd-scoped atomic replacement instead.
+            for _ in range(16):
+                temporary_filename = (
+                    f".implementation-log-{secrets.token_hex(16)}.tmp"
+                )
+                try:
+                    descriptor = os.open(
+                        temporary_filename,
+                        common_flags | os.O_CREAT | os.O_EXCL,
+                        0o600,
+                        dir_fd=parent_descriptor,
+                    )
+                except FileExistsError:
+                    continue
+                break
+            if descriptor < 0:
+                raise OSError("private implementation log creation collided")
+        else:
+            try:
+                descriptor = os.open(
+                    filename,
+                    common_flags | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                    dir_fd=parent_descriptor,
+                )
+            except FileExistsError:
+                # Appending is non-destructive, but the existing inode still
+                # has to satisfy the complete protected-log contract.
+                descriptor = os.open(
+                    filename,
+                    common_flags,
+                    dir_fd=parent_descriptor,
+                )
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+        ):
+            raise OSError("implementation log is not an owned private regular file")
+        os.fchmod(descriptor, 0o600)
+        hardened = os.fstat(descriptor)
+        named = os.stat(
+            temporary_filename if mode == "w" else filename,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat_module.S_ISREG(hardened.st_mode)
+            or hardened.st_uid != os.geteuid()
+            or hardened.st_nlink != 1
+            or stat_module.S_IMODE(hardened.st_mode) != 0o600
+            or _private_file_identity(hardened) != _private_file_identity(named)
+            or (
+                before.st_dev,
+                before.st_ino,
+                before.st_nlink,
+                before.st_uid,
+                before.st_gid,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            != (
+                hardened.st_dev,
+                hardened.st_ino,
+                hardened.st_nlink,
+                hardened.st_uid,
+                hardened.st_gid,
+                hardened.st_size,
+                hardened.st_mtime_ns,
+            )
+        ):
+            raise OSError("implementation log identity changed before use")
+        if mode == "w":
+            os.replace(
+                temporary_filename,
+                filename,
+                src_dir_fd=parent_descriptor,
+                dst_dir_fd=parent_descriptor,
+            )
+        final_descriptor = os.fstat(descriptor)
+        final_named = os.stat(
+            filename,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat_module.S_ISREG(final_descriptor.st_mode)
+            or final_descriptor.st_uid != os.geteuid()
+            or final_descriptor.st_nlink != 1
+            or stat_module.S_IMODE(final_descriptor.st_mode) != 0o600
+            or _private_file_identity(final_descriptor)
+            != _private_file_identity(final_named)
+        ):
+            raise OSError("implementation log identity changed while opening")
+        if mode == "w":
+            # Keep the temporary name armed for exception cleanup until the
+            # published name has passed the complete identity contract.  A
+            # same-inode POSIX rename is a no-op and can leave both names.
+            temporary_filename = ""
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary_filename:
+            try:
+                os.unlink(temporary_filename, dir_fd=parent_descriptor)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        os.close(parent_descriptor)
+    return os.fdopen(descriptor, mode, encoding="utf-8")
 
 
 def _stable_owned_log_tail(
@@ -2060,6 +2250,179 @@ def _configured_agent_implementation_route_plan(
     ]:
         raise ValueError("scoped agent implementation route identity drifted")
     return plan
+
+
+def _harden_agent_implementation_route_workspace_file(
+    workspace: Path,
+    relative_path: str,
+    *,
+    expected_sha256: str,
+    maximum_bytes: int,
+) -> None:
+    """Verify then make one signed workspace authority blob read-only."""
+
+    lexical_relative = PurePosixPath(str(relative_path or ""))
+    if (
+        not relative_path
+        or lexical_relative.is_absolute()
+        or lexical_relative.as_posix() != relative_path
+        or any(part in {"", ".", ".."} for part in lexical_relative.parts)
+    ):
+        raise ValueError("scoped route workspace authority path is invalid")
+    candidate = workspace.joinpath(*lexical_relative.parts)
+    parent_descriptor, filename = _open_no_follow_parent(candidate)
+    descriptor = -1
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        os.close(parent_descriptor)
+        raise ValueError("scoped route workspace no-follow access is unavailable")
+    try:
+        descriptor = os.open(
+            filename,
+            os.O_RDONLY
+            | nofollow
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=parent_descriptor,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid not in {0, os.geteuid()}
+            or before.st_size > maximum_bytes
+        ):
+            raise ValueError(
+                "scoped route workspace authority is not a stable regular file"
+            )
+        remaining = maximum_bytes + 1
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        read_back = os.fstat(descriptor)
+        read_named = os.stat(
+            filename,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            len(raw) > maximum_bytes
+            or len(raw) != read_back.st_size
+            or "sha256:" + hashlib.sha256(raw).hexdigest() != expected_sha256
+            or not (
+                _private_file_identity(before)
+                == _private_file_identity(read_back)
+                == _private_file_identity(read_named)
+            )
+        ):
+            raise ValueError(
+                "scoped route workspace authority digest or identity drifted"
+            )
+        os.fchmod(descriptor, 0o400)
+        hardened = os.fstat(descriptor)
+        named = os.stat(
+            filename,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        stable_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_nlink,
+            before.st_uid,
+            before.st_gid,
+            before.st_size,
+            before.st_mtime_ns,
+        )
+        stable_hardened = (
+            hardened.st_dev,
+            hardened.st_ino,
+            hardened.st_nlink,
+            hardened.st_uid,
+            hardened.st_gid,
+            hardened.st_size,
+            hardened.st_mtime_ns,
+        )
+        if (
+            stable_before != stable_hardened
+            or not stat_module.S_ISREG(hardened.st_mode)
+            or hardened.st_nlink != 1
+            or hardened.st_uid not in {0, os.geteuid()}
+            or stat_module.S_IMODE(hardened.st_mode) != 0o400
+            or _private_file_identity(hardened) != _private_file_identity(named)
+        ):
+            raise ValueError(
+                "scoped route workspace authority changed while hardening"
+            )
+    except OSError as exc:
+        raise ValueError(
+            "scoped route workspace authority is unavailable"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        os.close(parent_descriptor)
+
+
+def _harden_and_reload_agent_implementation_route_workspace(
+    route_plan: AgentImplementationRoutePlan,
+    workspace_path: Path,
+) -> AgentImplementationRoutePlan:
+    """Harden and canonically reload the exact three signed route blobs."""
+
+    authorization = route_plan.authorization
+    if authorization is None:
+        raise ValueError("scoped route workspace authorization is unavailable")
+    unresolved_workspace = resolve_agent_implementation_private_state_path(
+        workspace_path
+    )
+    try:
+        workspace = unresolved_workspace.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("scoped route workspace is unavailable") from exc
+    if workspace != unresolved_workspace or not workspace.is_dir():
+        raise ValueError("scoped route workspace contains a symlink")
+    signed_files = (
+        (
+            authorization.artifact_path,
+            authorization.artifact_sha256,
+            128 * 1024,
+        ),
+        (
+            authorization.lifecycle_root_pin_path,
+            authorization.lifecycle_root_pin_sha256,
+            32 * 1024,
+        ),
+        (
+            authorization.reviewer_witness_path,
+            authorization.reviewer_witness_sha256,
+            128 * 1024,
+        ),
+    )
+    if len({relative for relative, _, _ in signed_files}) != 3:
+        raise ValueError("scoped route workspace authority paths are not distinct")
+    for relative_path, expected_sha256, maximum_bytes in signed_files:
+        _harden_agent_implementation_route_workspace_file(
+            workspace,
+            relative_path,
+            expected_sha256=expected_sha256,
+            maximum_bytes=maximum_bytes,
+        )
+    reloaded = load_agent_implementation_route_authorization(
+        repo_root=workspace,
+        artifact_path=authorization.artifact_path,
+        board_namespace=authorization.board_namespace,
+        expected_sha256=authorization.artifact_sha256,
+        expected_authorization_id=authorization.authorization_id,
+    )
+    if reloaded.as_dict() != authorization.as_dict():
+        raise ValueError("scoped route workspace authorization changed on reload")
+    return replace(route_plan, authorization=reloaded)
 
 
 def _ordered_grok_codex_route_configured(
@@ -16605,7 +16968,7 @@ class PortalImplementationDaemon:
                     ),
                 },
             )
-            with log_path.open("w", encoding="utf-8") as log_fh:
+            with _open_private_implementation_log(log_path, "w") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
                 if deterministic_only:
@@ -17766,7 +18129,7 @@ class PortalImplementationDaemon:
                     "implementation_context_compiled": False,
                 },
             )
-            with log_path.open("w", encoding="utf-8") as log_fh:
+            with _open_private_implementation_log(log_path, "w") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Workspace: {worktree_path}\n")
@@ -25057,19 +25420,19 @@ class PortalImplementationDaemon:
             state_owned = True
 
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            log_path.write_text(
-                "\n".join(
-                    (
-                        f"Task: {task.task_id} reconciled candidate",
-                        f"Task CID: {identity.canonical_task_cid}",
-                        f"Candidate: {resolved_candidate}",
-                        f"Baseline: {resolved_baseline}",
-                        "Provider dispatched: false",
-                        "",
+            with _open_private_implementation_log(log_path, "w") as log_fh:
+                log_fh.write(
+                    "\n".join(
+                        (
+                            f"Task: {task.task_id} reconciled candidate",
+                            f"Task CID: {identity.canonical_task_cid}",
+                            f"Candidate: {resolved_candidate}",
+                            f"Baseline: {resolved_baseline}",
+                            "Provider dispatched: false",
+                            "",
+                        )
                     )
-                ),
-                encoding="utf-8",
-            )
+                )
             self._record_event(
                 "worktree_reconciliation_validation_started",
                 {
@@ -25778,7 +26141,7 @@ class PortalImplementationDaemon:
                     ),
                 },
             )
-            with log_path.open("w", encoding="utf-8") as log_fh:
+            with _open_private_implementation_log(log_path, "w") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Workspace: {worktree_path}\n")
@@ -28128,7 +28491,7 @@ class PortalImplementationDaemon:
             "worktree_path": str(worktree_path),
         }
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as log_fh:
+        with _open_private_implementation_log(log_path, "a") as log_fh:
             log_fh.write("\nValidation:\n")
             log_fh.write(f"[validation workspace missing] {worktree_path}\n")
         self._record_event(
@@ -39456,7 +39819,7 @@ class PortalImplementationDaemon:
         if existing:
             pythonpath_parts.append(existing)
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-        with log_path.open("a", encoding="utf-8") as log_fh:
+        with _open_private_implementation_log(log_path, "a") as log_fh:
             for raw in commands:
                 command = str(raw or "").strip()
                 if not command:
@@ -39616,7 +39979,7 @@ class PortalImplementationDaemon:
                         "plan": plan.to_record(),
                     },
                 )
-                with log_path.open("a", encoding="utf-8") as log_fh:
+                with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
                         "\n[auto-rescue] materialize_and_stage "
                         f"commands={list(plan.materialize_commands)} "
@@ -39681,7 +40044,7 @@ class PortalImplementationDaemon:
                         "plan": plan.to_record(),
                     },
                 )
-                with log_path.open("a", encoding="utf-8") as log_fh:
+                with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
                         "\n[auto-rescue] stage_and_revalidate "
                         f"paths={list(staged_paths)}\n"
@@ -39746,7 +40109,7 @@ class PortalImplementationDaemon:
                         "failed_commands": list(plan.failed_commands),
                     },
                 )
-                with log_path.open("a", encoding="utf-8") as log_fh:
+                with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
                         "\n[auto-rescue] inline_provider_rescue start\n"
                     )
@@ -40187,7 +40550,7 @@ class PortalImplementationDaemon:
         failure_heads: list[str] = []
         validation_impact_paths: list[str] = []
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as log_fh:
+        with _open_private_implementation_log(log_path, "a") as log_fh:
             log_fh.write("\nValidation:\n")
             for note in normalization_notes:
                 log_fh.write(f"[validation normalized] {note}\n")
@@ -53424,6 +53787,29 @@ class PortalImplementationDaemon:
                 "scoped fallback workspace baseline is unavailable",
                 backoff_seconds=300,
             ) from exc
+        try:
+            route_plan = (
+                _harden_and_reload_agent_implementation_route_workspace(
+                    route_plan,
+                    workspace_path,
+                )
+            )
+        except (OSError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                f"scoped fallback workspace authority is unavailable: {exc}",
+                backoff_seconds=300,
+            ) from exc
+        authorization = route_plan.authorization
+        bounds = (
+            authorization.authority_bounds
+            if authorization is not None
+            else None
+        )
+        if authorization is None or bounds is None:
+            raise ImplementationRetryDeferred(
+                "scoped fallback workspace authority was not canonically reloaded",
+                backoff_seconds=300,
+            )
         from ..entrypoints.local_profile import (
             load_local_profile,
             resolve_local_profile_state_paths,
