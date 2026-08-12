@@ -81,7 +81,7 @@ A9  SCH-018
 
 ## SCH-001 Implement MCP++ wire codec and interface descriptor
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: wire-contracts
