@@ -700,6 +700,20 @@ def test_validator_rejects_stale_report_source_snapshot(
         )
 
 
+def test_validator_rejects_stale_report_tree(
+    report_docs: tuple[str, str],
+    fresh_benchmark: dict[str, Any],
+    current_source_snapshot_id: str,
+) -> None:
+    """Retain the legacy regression ID against the stronger snapshot binding."""
+
+    test_validator_rejects_stale_report_source_snapshot(
+        report_docs,
+        fresh_benchmark,
+        current_source_snapshot_id,
+    )
+
+
 def test_validator_rejects_stale_benchmark_source_snapshot(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
@@ -717,6 +731,20 @@ def test_validator_rejects_stale_benchmark_source_snapshot(
             current_source_snapshot_id=current_source_snapshot_id,
             readme_text=readme,
         )
+
+
+def test_validator_rejects_stale_benchmark_tree(
+    report_docs: tuple[str, str],
+    fresh_benchmark: dict[str, Any],
+    current_source_snapshot_id: str,
+) -> None:
+    """Retain the legacy regression ID against the stronger snapshot binding."""
+
+    test_validator_rejects_stale_benchmark_source_snapshot(
+        report_docs,
+        fresh_benchmark,
+        current_source_snapshot_id,
+    )
 
 
 def test_observed_head_is_diagnostic_not_freshness_authority(

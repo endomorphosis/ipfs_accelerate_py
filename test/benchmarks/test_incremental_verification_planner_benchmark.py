@@ -827,6 +827,14 @@ def test_fresh_run_binds_current_source_and_is_schema_stable(
     ]["body"]["case_fixture_ids"]
 
 
+def test_fresh_run_binds_current_tree_and_is_schema_stable(
+    tmp_path: Path,
+) -> None:
+    """Retain the legacy regression ID for the stronger source-snapshot contract."""
+
+    test_fresh_run_binds_current_source_and_is_schema_stable(tmp_path)
+
+
 def test_absent_corpus_is_not_measured_never_zero_fn(tmp_path: Path) -> None:
     empty = tmp_path / "empty_fixtures"
     empty.mkdir()

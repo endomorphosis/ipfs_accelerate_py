@@ -26,7 +26,7 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
 
 ```json
 {
-  "benchmark_content_id": "baguqeeraeilibqsurqdx3gsoc2mth7cbwaxtkjy6fdeif5tvnizwk2jlo3na",
+  "benchmark_content_id": "baguqeerashywo4dcva4b7eo3cfu74mdc35m77gqq47crtm3v4mbqsnpk6m5q",
   "benchmark_evidence": "ivp/benchmark@2",
   "benchmark_schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
   "command_identities": {
@@ -82,7 +82,7 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
   "observed_head": "3039c773e2ba1a37c7abf239a2a2442e91e55b52",
   "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2",
   "source_snapshot_domain": "ivp-source-snapshot@1",
-  "source_snapshot_id": "sha256:bd04a558fb64029eafaa62961abf43d7cdaf4ca4856f9eb5c7c316976e1b5e32",
+  "source_snapshot_id": "sha256:713b19e166d41be5af54690470eecaac6828e5dfafc7844a312733332c15a9cc",
   "source_snapshot_schema": "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1",
   "target_misses": [
     {
