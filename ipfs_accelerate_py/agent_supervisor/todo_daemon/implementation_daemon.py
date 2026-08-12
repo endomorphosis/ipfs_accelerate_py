@@ -136,6 +136,7 @@ from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallba
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
 from ..validation.validation_commands import (
+    build_validation_commands,
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
@@ -29024,6 +29025,28 @@ class PortalImplementationDaemon:
             commands.append(command)
             normalization_notes.extend(notes)
             normalization_notes.extend(workspace_notes)
+
+        # Define schedule + runner before fenced dispatch (main + authority hybrid).
+        authority_revalidation_required = bool(
+            getattr(self, "_manual_completion_authority_revalidation_task_ids", None)
+            and task.task_id
+            in set(self._manual_completion_authority_revalidation_task_ids or ())
+        )
+        if authority_revalidation_required:
+            force_uncached = True
+        scheduled_commands: Sequence[Any] = list(commands)
+        if force_uncached:
+            from dataclasses import replace as _dc_replace
+
+            scheduled_commands = tuple(
+                _dc_replace(spec, cacheable=False)
+                for spec in build_validation_commands(commands)
+            )
+        validation_runner = (
+            self._authority_validation_command_runner
+            if authority_revalidation_required
+            else self._validation_command_runner
+        )
 
         def dispatch_validation(effect: Callable[[], Any]) -> Any:
             """Dispatch only while the immutable worktree token is current.
