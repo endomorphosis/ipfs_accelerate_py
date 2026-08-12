@@ -682,7 +682,7 @@ configured-board dispatch input.
 
 ## IVP-021 Replace Git-HEAD evidence binding with a canonical source snapshot
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
