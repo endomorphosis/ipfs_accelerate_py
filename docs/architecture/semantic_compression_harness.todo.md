@@ -216,7 +216,7 @@ A9  SCH-018
 
 ## SCH-006 Admit capsules and compile assurance-aware ContextPacks
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: context
