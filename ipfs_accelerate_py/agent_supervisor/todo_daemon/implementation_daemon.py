@@ -162,6 +162,18 @@ from ..validation.validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
+from .task_execution_policy import (
+    MAX_TASK_CONTEXT_BYTES,
+    MAX_TASK_CONTEXT_TOKENS,
+    ExecutionMode,
+    ExecutionStatus,
+    LocalOperationType,
+    TaskContextMetadata,
+    TaskExecutionPolicy,
+    TaskExecutionReceipt,
+    TaskExecutionRequest,
+    TypedLocalOperation,
+)
 from .worktrees import (
     WorktreeLease,
     WorktreePool,
