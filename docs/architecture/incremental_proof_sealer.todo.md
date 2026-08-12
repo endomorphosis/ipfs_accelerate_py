@@ -103,7 +103,7 @@ Global invariants for every task:
 
 ## IPS-002 Inventory datasets ZK, identity, manifest, dependency, and baseline paths
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
