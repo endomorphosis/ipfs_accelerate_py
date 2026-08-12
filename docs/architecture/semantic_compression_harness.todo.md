@@ -135,7 +135,7 @@ A9  SCH-018
 
 ## SCH-003 Implement the narrow kit durable-root adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: durable-state
