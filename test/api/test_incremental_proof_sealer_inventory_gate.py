@@ -96,6 +96,23 @@ def _commit(path: Path, message: str) -> tuple[str, str]:
     return _git(path, "rev-parse", "HEAD"), _git(path, "rev-parse", "HEAD^{tree}")
 
 
+def _taskboard_text_with_inventory_todos() -> str:
+    """Copy the live board with IPS-001/002/003 forced back to todo."""
+    text = (ROOT / "docs/architecture/incremental_proof_sealer.todo.md").read_text(
+        encoding="utf-8"
+    )
+    for task_id in ("IPS-001", "IPS-002", "IPS-003"):
+        start = text.index(f"## {task_id} ")
+        end = text.find("\n## ", start + 1)
+        if end < 0:
+            end = len(text)
+        block = text[start:end]
+        for status in ("completed", "in_progress", "blocked"):
+            block = block.replace(f"- Status: {status}", "- Status: todo", 1)
+        text = text[:start] + block + text[end:]
+    return text
+
+
 def _complete_task(root: Path, task_id: str) -> str:
     relative = "docs/architecture/incremental_proof_sealer.todo.md"
     path = root / relative
@@ -105,10 +122,12 @@ def _complete_task(root: Path, task_id: str) -> str:
     if end < 0:
         end = len(text)
     block = text[start:end]
-    assert "- Status: todo" in block
-    text = text[:start] + block.replace(
-        "- Status: todo", "- Status: completed", 1
-    ) + text[end:]
+    assert "- Status: todo" in block, block[:200]
+    text = (
+        text[:start]
+        + block.replace("- Status: todo", "- Status: completed", 1)
+        + text[end:]
+    )
     _write(path, text)
     _git(root, "config", "user.email", "implementation-daemon@example.invalid")
     _git(root, "config", "user.name", "Implementation Daemon")
@@ -415,7 +434,7 @@ def test_accelerate_inventory_accepts_candidate_no_ff_merge_and_status_commit(
     parent, _ = _init_repository(
         root,
         {
-            taskboard: (ROOT / taskboard).read_text(encoding="utf-8"),
+            taskboard: _taskboard_text_with_inventory_todos(),
             "source.py": "captured\n",
         },
     )
@@ -473,7 +492,7 @@ def test_nested_inventory_accepts_child_outer_no_ff_merge_and_status_commit(
     root = tmp_path / f"{submodule}-publication"
     _init_repository(
         root,
-        {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")},
+        {taskboard: _taskboard_text_with_inventory_todos()},
     )
     _git(
         root,
@@ -526,7 +545,7 @@ def test_accelerate_inventory_rejects_full_dag_rewrite_then_revert(
     taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
     root = tmp_path / "accelerate-dag-launder"
     parent, _ = _init_repository(
-        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+        root, {taskboard: _taskboard_text_with_inventory_todos()}
     )
     target = _git(root, "branch", "--show-current")
     _git(root, "checkout", "-q", "-b", "candidate")
@@ -576,7 +595,7 @@ def test_accelerate_inventory_rejects_first_parent_rewrite_then_revert(
     taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
     root = tmp_path / "accelerate-first-parent-launder"
     parent, _ = _init_repository(
-        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+        root, {taskboard: _taskboard_text_with_inventory_todos()}
     )
     target = _git(root, "branch", "--show-current")
     _git(root, "checkout", "-q", "-b", "candidate")
@@ -621,7 +640,7 @@ def test_accelerate_inventory_rejects_side_branch_taskboard_mutation(
     taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
     root = tmp_path / "accelerate-side-board"
     parent, _ = _init_repository(
-        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+        root, {taskboard: _taskboard_text_with_inventory_todos()}
     )
     target = _git(root, "branch", "--show-current")
     _git(root, "checkout", "-q", "-b", "candidate")
@@ -680,7 +699,7 @@ def test_accelerate_inventory_rejects_post_merge_blob_rewrite(
     taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
     root = tmp_path / "accelerate-rewrite"
     parent, _ = _init_repository(
-        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+        root, {taskboard: _taskboard_text_with_inventory_todos()}
     )
     target = _git(root, "branch", "--show-current")
     _git(root, "checkout", "-q", "-b", "candidate")
@@ -715,7 +734,7 @@ def test_completed_inventory_without_outputs_is_not_masked(
     taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
     root = tmp_path / "missing-completed-output"
     _init_repository(
-        root, {taskboard: (ROOT / taskboard).read_text(encoding="utf-8")}
+        root, {taskboard: _taskboard_text_with_inventory_todos()}
     )
     _complete_task(root, "IPS-001")
     monkeypatch.setattr(gate, "REPO_ROOT", root)
@@ -3098,7 +3117,7 @@ def test_parent_bound_evidence_accepts_exact_output_only_completion_commit(
         root,
         {
             "source.py": "bound\n",
-            taskboard: (ROOT / taskboard).read_text(encoding="utf-8"),
+            taskboard: _taskboard_text_with_inventory_todos(),
         },
     )
     datasets_revision, datasets_tree = _init_repository(

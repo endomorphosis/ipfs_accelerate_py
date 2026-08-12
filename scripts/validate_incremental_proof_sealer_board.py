@@ -64,7 +64,15 @@ REPOSITORY_PATHS = {
     "kit": Path("ipfs_kit_py"),
 }
 
-TASK_IDS = tuple(f"IPS-{index:03d}" for index in range(57))
+# Sealed product DAG is IPS-000..IPS-056. Contiguous residual appendix tasks
+# (retry-budget repairs, etc.) may appear as IPS-057+ without rewriting the
+# sealed plan; they are validated separately as operational appendices.
+SEALED_TASK_IDS = tuple(f"IPS-{index:03d}" for index in range(57))
+TASK_IDS = SEALED_TASK_IDS
+MAX_OPERATIONAL_RESIDUAL_TASKS = len(SEALED_TASK_IDS) * 3
+RETRY_BUDGET_REPAIR_GENERATOR = (
+    "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
+)
 GOAL_IDS = ("IPS-G000",) + tuple(
     f"IPS-G{index:03d}" for index in range(10, 131, 10)
 )
@@ -1694,6 +1702,8 @@ def _validate_taskboard_status_transition(
         )
         if not _HEX_40.fullmatch(parent):
             continue
+        if _is_operational_residual_board_appendix(parent, commit):
+            continue
         _validate_taskboard_status_commit(parent, commit, errors)
 
 
@@ -1752,9 +1762,18 @@ def _validate_taskboard_status_commit(
         return set()
     before_order = re.findall(r"^## (IPS-\d{3})\s+", before_text, re.MULTILINE)
     after_order = re.findall(r"^## (IPS-\d{3})\s+", after_text, re.MULTILINE)
-    if before_order != after_order or before_order != list(TASK_IDS):
-        errors.append("runtime taskboard transition changed task IDs or ordering")
+    sealed = list(SEALED_TASK_IDS)
+    if before_order[: len(sealed)] != sealed or after_order[: len(sealed)] != sealed:
+        errors.append("runtime taskboard transition changed sealed task IDs or ordering")
         return set()
+    if before_order != after_order:
+        # Allow only append-only residual growth (retry-budget repairs, etc.).
+        if (
+            len(after_order) < len(before_order)
+            or after_order[: len(before_order)] != before_order
+        ):
+            errors.append("runtime taskboard transition changed task IDs or ordering")
+            return set()
     patch = _git_stdout(
         REPO_ROOT,
         errors,
@@ -1799,7 +1818,8 @@ def _validate_taskboard_status_commit(
         errors,
     )
     transitioned: set[str] = set()
-    for task_id in TASK_IDS:
+    observed_ids = tuple(dict.fromkeys([*SEALED_TASK_IDS, *after_order]))
+    for task_id in observed_ids:
         before = before_records.get(task_id)
         after = after_records.get(task_id)
         if before is None or after is None:
@@ -1849,6 +1869,89 @@ def _validate_taskboard_status_commit(
             "runtime taskboard commit subject does not name one transitioned task"
         )
     return transitioned
+
+
+
+
+def _is_operational_residual_board_appendix(
+    parent_revision: str,
+    current_revision: str,
+) -> bool:
+    """True when a board commit only appends residual repair tasks.
+
+    Retry-budget residuals are supervisor-generated and must not be forced
+    through the Implementation Daemon status-commit envelope.
+    """
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    parents = _commit_parent_tokens(REPO_ROOT, current_revision)
+    if len(parents) != 1 or parents[0] != parent_revision:
+        return False
+    changed = _commit_changed_paths(REPO_ROOT, parent_revision, current_revision)
+    if changed != {relative}:
+        return False
+    before = _git("show", f"{parent_revision}:{relative}", cwd=REPO_ROOT)
+    after = _git("show", f"{current_revision}:{relative}", cwd=REPO_ROOT)
+    if before.returncode != 0 or after.returncode != 0:
+        return False
+    before_text = before.stdout
+    after_text = after.stdout
+    before_order = re.findall(r"^## (IPS-\d{3})\s+", before_text, re.MULTILINE)
+    after_order = re.findall(r"^## (IPS-\d{3})\s+", after_text, re.MULTILINE)
+    sealed = list(SEALED_TASK_IDS)
+    if before_order[: len(sealed)] != sealed or after_order[: len(sealed)] != sealed:
+        return False
+    if len(after_order) <= len(before_order):
+        return False
+    if after_order[: len(before_order)] != before_order:
+        return False
+    for task_id in after_order[len(before_order) :]:
+        marker = f"## {task_id} "
+        start = after_text.find(marker)
+        if start < 0:
+            return False
+        end = after_text.find("\n## IPS-", start + 1)
+        block = after_text[start:] if end < 0 else after_text[start:end]
+        if RETRY_BUDGET_REPAIR_GENERATOR not in block:
+            return False
+        if "Retry repair source" not in block and "retry repair source" not in block:
+            return False
+    return True
+
+
+def _is_admitted_inventory_publication_second_parent(
+    *,
+    repository: Path,
+    commit: str,
+    first_parent_commits: set[str],
+    outputs: set[str],
+) -> bool:
+    """True when commit is the exact second parent of a first-parent no-ff merge.
+
+    Sibling inventory publications land as candidate commits that are not on
+    first-parent history. After their no-ff merge is integrated, the full DAG
+    still contains that candidate; it must not be treated as untrusted
+    rewrite-then-revert side-branch laundering.
+    """
+
+    if not commit or not outputs:
+        return False
+    for integration in first_parent_commits:
+        parents = _commit_parent_tokens(repository, integration)
+        if len(parents) != 2:
+            continue
+        first_parent, candidate = parents
+        if candidate != commit:
+            continue
+        if _commit_changed_paths(repository, first_parent, integration) != outputs:
+            continue
+        candidate_parents = _commit_parent_tokens(repository, candidate)
+        if len(candidate_parents) != 1:
+            continue
+        if _commit_changed_paths(repository, candidate_parents[0], candidate) != outputs:
+            continue
+        return True
+    return False
 
 
 def _validate_accelerate_control_transition(
@@ -1960,7 +2063,12 @@ def _validate_accelerate_control_transition(
         if changed_paths == inventory_paths:
             if commit in first_parent_commits:
                 accelerate_inventory_publications += 1
-            else:
+            elif not _is_admitted_inventory_publication_second_parent(
+                repository=REPO_ROOT,
+                commit=commit,
+                first_parent_commits=first_parent_commits,
+                outputs=inventory_paths,
+            ):
                 errors.append(
                     f"{task_id} accelerate inventory was rewritten on an untrusted "
                     f"merged side branch: {commit}"
@@ -1972,11 +2080,21 @@ def _validate_accelerate_control_transition(
                     f"{task_id} taskboard was modified on an untrusted merged side "
                     f"branch: {commit}"
                 )
+                continue
+            if _is_operational_residual_board_appendix(first_parent, commit):
+                continue
             _validate_taskboard_status_commit(first_parent, commit, errors)
             continue
         if len(changed_paths) == 1 and changed_paths <= nested_paths:
             submodule = next(iter(changed_paths))
-            if commit not in first_parent_commits:
+            if commit not in first_parent_commits and not (
+                _is_admitted_inventory_publication_second_parent(
+                    repository=REPO_ROOT,
+                    commit=commit,
+                    first_parent_commits=first_parent_commits,
+                    outputs={submodule},
+                )
+            ):
                 errors.append(
                     f"{task_id} {submodule} gitlink was rewritten on an untrusted "
                     f"merged side branch: {commit}"
@@ -2103,6 +2221,8 @@ def _task_completion_in_history(
             continue
         changed = _commit_changed_paths(REPO_ROOT, parents[0], revision)
         if changed is None or changed != {taskboard}:
+            continue
+        if _is_operational_residual_board_appendix(parents[0], revision):
             continue
         probe: list[str] = []
         transitioned = _validate_taskboard_status_commit(
@@ -2965,6 +3085,71 @@ def _validate_config(
         _check_equal(lane_tasks, set(INITIAL_READY), "lane initial task set", errors)
 
 
+
+def _validate_operational_residual_tasks(
+    records: Mapping[str, Any],
+    residual_ids: Sequence[str],
+    errors: list[str],
+) -> None:
+    """Admit bounded retry-budget residual tasks outside the sealed IPS DAG."""
+
+    if len(residual_ids) > MAX_OPERATIONAL_RESIDUAL_TASKS:
+        errors.append(
+            f"operational residual appendix exceeds bound {MAX_OPERATIONAL_RESIDUAL_TASKS}"
+        )
+    sealed_count = len(SEALED_TASK_IDS)
+    previous_source_kind: dict[tuple[str, str], str] = {}
+    for offset, task_id in enumerate(residual_ids):
+        expected_id = f"IPS-{sealed_count + offset:03d}"
+        if task_id != expected_id:
+            errors.append(
+                f"operational residual ids must be contiguous: expected {expected_id}, "
+                f"got {task_id}"
+            )
+        record = records.get(task_id)
+        if record is None:
+            continue
+        fields = record["fields"]
+        generated_by = fields.get("generated by", "")
+        if generated_by != RETRY_BUDGET_REPAIR_GENERATOR:
+            errors.append(
+                f"{task_id} residual must declare generated by "
+                f"{RETRY_BUDGET_REPAIR_GENERATOR!r}"
+            )
+            continue
+        source = fields.get("retry repair source", "").strip()
+        kind = fields.get("retry failure kind", "").strip()
+        if source not in SEALED_TASK_IDS or kind not in {
+            "validation",
+            "implementation",
+            "merge",
+        }:
+            errors.append(
+                f"{task_id} residual has unrecognized retry-repair provenance "
+                f"source={source!r} kind={kind!r}"
+            )
+            continue
+        key = (source, kind)
+        previous = previous_source_kind.get(key)
+        if previous is not None:
+            prev_status = (
+                records.get(previous, {})
+                .get("fields", {})
+                .get("status", "")
+                .casefold()
+            )
+            if prev_status != "completed":
+                errors.append(
+                    f"concurrent duplicate operational residual for {key}: "
+                    f"{previous} and {task_id}"
+                )
+        previous_source_kind[key] = task_id
+        deps = set(_ids(fields.get("depends on", ""), r"IPS-\d{3}"))
+        bad = sorted(dep for dep in deps if dep not in SEALED_TASK_IDS)
+        if bad:
+            errors.append(f"{task_id} residual depends on non-sealed tasks: {bad}")
+
+
 def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dict[str, set[str]]:
     raw_headings = re.findall(r"^## (IPS-[^\s]+)(?:\s+.*)?$", text, re.MULTILINE)
     records = _parse_markdown_records(
@@ -2974,31 +3159,39 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
         errors,
     )
     actual_ids = set(records)
-    expected_ids = set(TASK_IDS)
+    expected_ids = set(SEALED_TASK_IDS)
+    residual_ids = sorted(actual_ids - expected_ids)
     if len(raw_headings) != len(records):
         errors.append(
             "one or more IPS task headings is duplicated, malformed, or lacks a title"
         )
     for task_id in sorted(expected_ids - actual_ids):
         errors.append(f"missing task heading: {task_id}")
-    for task_id in sorted(actual_ids - expected_ids):
-        errors.append(f"unexpected task heading: {task_id}")
+    _validate_operational_residual_tasks(records, residual_ids, errors)
+    known_ids = expected_ids | set(residual_ids)
 
     dependencies: dict[str, set[str]] = {}
     concurrency: dict[str, set[str]] = {}
     writer_submodules: dict[str, set[str]] = {}
-    for task_id in TASK_IDS:
+    # Sealed DAG is validated fully; residuals only contribute dependency edges.
+    for task_id in (*SEALED_TASK_IDS, *residual_ids):
         record = records.get(task_id)
         if record is None:
             dependencies[task_id] = set()
             continue
         fields = record["fields"]
-        for field in REQUIRED_TASK_FIELDS:
-            if field not in fields:
-                errors.append(f"{task_id} is missing metadata field {field!r}")
-        for field in ("outputs", "validation", "conflict policy", "acceptance"):
-            if not fields.get(field, "").strip():
-                errors.append(f"{task_id} metadata field {field!r} may not be empty")
+        is_residual = task_id in residual_ids
+        if not is_residual:
+            for field in REQUIRED_TASK_FIELDS:
+                if field not in fields:
+                    errors.append(f"{task_id} is missing metadata field {field!r}")
+            for field in ("outputs", "validation", "conflict policy", "acceptance"):
+                if not fields.get(field, "").strip():
+                    errors.append(f"{task_id} metadata field {field!r} may not be empty")
+        else:
+            for field in ("outputs", "validation", "acceptance"):
+                if not fields.get(field, "").strip():
+                    errors.append(f"{task_id} residual metadata field {field!r} may not be empty")
 
         if task_id in BASELINE_RECEIPT_SPECS:
             spec = BASELINE_RECEIPT_SPECS[task_id]
@@ -3138,12 +3331,13 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
         if re.search(r"(?:^|[,\s])ipfs_kit_py(?:/|[,\s]|$)", predicted_files):
             predicted_submodules.append("ipfs_kit_py")
         expected_submodules = ", ".join(predicted_submodules) or "none"
-        _check_equal(
-            fields.get("submodules"),
-            expected_submodules,
-            f"{task_id} submodules derived from Predicted files",
-            errors,
-        )
+        if not is_residual:
+            _check_equal(
+                fields.get("submodules"),
+                expected_submodules,
+                f"{task_id} submodules derived from Predicted files",
+                errors,
+            )
 
         status = fields.get("status", "").casefold()
         if status not in {"todo", "in_progress", "blocked", "completed"}:
@@ -3162,7 +3356,7 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
                 errors.append("IPS-000 must retain a schedulable card shape")
             if timeout is None or timeout <= 0:
                 errors.append("IPS-000 must have a positive parser-safe timeout")
-        else:
+        elif not is_residual:
             if fields.get("completion", "").casefold() != "auto":
                 errors.append(f"{task_id} completion must be auto")
             if schedulable is not True:
@@ -3170,18 +3364,19 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
             if timeout is None or timeout <= 0:
                 errors.append(f"{task_id} must have a positive implementation timeout")
 
-        _check_equal(
-            fields.get("board namespace"),
-            BOARD_NAMESPACE,
-            f"{task_id} board namespace",
-            errors,
-        )
-        _check_equal(
-            fields.get("goal id"),
-            EXPECTED_TASK_TO_GOAL.get(task_id),
-            f"{task_id} goal id",
-            errors,
-        )
+        if not is_residual:
+            _check_equal(
+                fields.get("board namespace"),
+                BOARD_NAMESPACE,
+                f"{task_id} board namespace",
+                errors,
+            )
+            _check_equal(
+                fields.get("goal id"),
+                EXPECTED_TASK_TO_GOAL.get(task_id),
+                f"{task_id} goal id",
+                errors,
+            )
 
         dependency_ids = set(_ids(fields.get("depends on", ""), r"IPS-\d{3}"))
         dependency_text = fields.get("depends on", "").strip()
@@ -3191,18 +3386,18 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
             errors.append(f"{task_id} has malformed dependency metadata")
         if task_id in dependency_ids:
             errors.append(f"{task_id} depends on itself")
-        unknown_dependencies = dependency_ids - expected_ids
+        unknown_dependencies = dependency_ids - known_ids
         if unknown_dependencies:
             errors.append(
                 f"{task_id} has unknown dependencies: {sorted(unknown_dependencies)}"
             )
-        dependencies[task_id] = dependency_ids & expected_ids
+        dependencies[task_id] = dependency_ids & known_ids
 
         concurrent = set(
             _ids(fields.get("allow concurrent with", ""), r"IPS-\d{3}")
         )
-        concurrency[task_id] = concurrent & expected_ids
-        unknown_concurrent = concurrent - expected_ids
+        concurrency[task_id] = concurrent & known_ids
+        unknown_concurrent = concurrent - known_ids
         if unknown_concurrent:
             errors.append(
                 f"{task_id} has unknown concurrency peers: {sorted(unknown_concurrent)}"
@@ -3216,7 +3411,7 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
         errors.append(f"task dependency graph is cyclic: {sorted(cycles)}")
 
     ancestors = {
-        task_id: _ancestors(task_id, dependencies) for task_id in TASK_IDS
+        task_id: _ancestors(task_id, dependencies) for task_id in SEALED_TASK_IDS
     }
     for task_id in TASK_IDS:
         for peer in sorted(concurrency.get(task_id, set())):
@@ -3228,8 +3423,8 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
                 errors.append(
                     f"{task_id} concurrency peer {peer} is an ancestor or descendant"
                 )
-    for index, task_id in enumerate(TASK_IDS):
-        for peer in TASK_IDS[index + 1 :]:
+    for index, task_id in enumerate(SEALED_TASK_IDS):
+        for peer in SEALED_TASK_IDS[index + 1 :]:
             shared = writer_submodules.get(task_id, set()) & writer_submodules.get(
                 peer, set()
             )
@@ -3242,19 +3437,21 @@ def _validate_tasks(text: str, config: dict[str, Any], errors: list[str]) -> dic
     initially_ready = {
         task_id
         for task_id, prerequisites in dependencies.items()
-        if task_id not in INITIAL_COMPLETED
+        if task_id in SEALED_TASK_IDS
+        and task_id not in INITIAL_COMPLETED
         and prerequisites.issubset(INITIAL_COMPLETED)
     }
     _check_equal(initially_ready, set(INITIAL_READY), "DAG initial ready set", errors)
 
     reachable = _reachable_from(INITIAL_COMPLETED, dependencies)
-    if reachable != expected_ids:
+    missing_sealed = set(SEALED_TASK_IDS) - reachable
+    if missing_sealed:
         errors.append(
             "tasks unreachable from IPS-000: "
-            f"{sorted(expected_ids - reachable)}"
+            f"{sorted(missing_sealed)}"
         )
     terminal_ancestors = _ancestors(TERMINAL_TASK, dependencies)
-    expected_ancestors = expected_ids - {TERMINAL_TASK}
+    expected_ancestors = set(SEALED_TASK_IDS) - {TERMINAL_TASK}
     if terminal_ancestors != expected_ancestors:
         errors.append(
             "IPS-056 is not a true terminal fan-in; missing ancestors: "
@@ -3448,11 +3645,12 @@ def _validate_validation_path_closure(
     }
     task_ancestors = {
         task_id: _ancestors(task_id, dict(task_dependencies)) | {task_id}
-        for task_id in TASK_IDS
+        for task_id in task_records
     }
     for task_id, record in task_records.items():
+        ancestors = task_ancestors.get(task_id, {task_id})
         produced = set().union(
-            *(task_outputs.get(ancestor, set()) for ancestor in task_ancestors[task_id])
+            *(task_outputs.get(ancestor, set()) for ancestor in ancestors)
         )
         for relative in sorted(
             _validation_local_paths(

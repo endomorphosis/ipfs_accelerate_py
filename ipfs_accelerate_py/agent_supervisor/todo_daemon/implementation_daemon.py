@@ -2424,6 +2424,9 @@ RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION = (
 STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
 )
+VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION = (
+    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@1"
+)
 RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "todo_daemon/implementation_daemon.py",
     "objectives/backlog_refinery.py",
@@ -3563,6 +3566,9 @@ class PortalTaskState:
     stale_proposal_replay_rearm_receipts: dict[str, list[str]] = field(
         default_factory=dict
     )
+    validation_obsolescence_rearm_receipts: dict[str, list[str]] = field(
+        default_factory=dict
+    )
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -3724,6 +3730,21 @@ class PortalTaskState:
                     if str(key).strip()
                     and isinstance(value, list)
                 },
+                validation_obsolescence_rearm_receipts={
+                    str(key): [
+                        str(item)
+                        for item in value
+                        if str(item).strip()
+                    ]
+                    for key, value in (
+                        payload.get(
+                            "validation_obsolescence_rearm_receipts"
+                        )
+                        or {}
+                    ).items()
+                    if str(key).strip()
+                    and isinstance(value, list)
+                },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
                 last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
                 last_implementation_task_cid=str(payload.get("last_implementation_task_cid") or ""),
@@ -3868,6 +3889,7 @@ def state_file_repair_reason(path: Path) -> str:
         "retry_budget_repair_receipts",
         "retry_budget_repair_rearm_receipts",
         "stale_proposal_replay_rearm_receipts",
+        "validation_obsolescence_rearm_receipts",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -7432,6 +7454,12 @@ class PortalImplementationDaemon:
                 return "workspace_todo_board_content_change"
             return None
 
+        # Ephemeral workspace rewrote a protected control script while the
+        # shared checkout still holds the authoritative bytes. Discard the
+        # workspace mutation instead of latching an operator-only stall.
+        if scope == "workspace" and change == "content_changed":
+            return "workspace_protected_content_discard"
+
         return None
 
     def _plan_auto_clear_ephemeral_protected_path_deletions(
@@ -7555,11 +7583,14 @@ class PortalImplementationDaemon:
             reason = "shared_todo_board_content_change_accepted"
         elif class_codes == {"content_preserving_identity_thrash"}:
             reason = "content_preserving_identity_thrash_accepted"
+        elif class_codes == {"workspace_protected_content_discard"}:
+            reason = "workspace_protected_content_discarded"
         elif class_codes <= {
             "content_preserving_identity_thrash",
             "shared_todo_board_content_change",
             "workspace_todo_board_content_change",
             "workspace_protected_deletion",
+            "workspace_protected_content_discard",
         }:
             reason = "protected_path_stall_auto_cleared"
         else:
@@ -7612,6 +7643,31 @@ class PortalImplementationDaemon:
             )
         )
         write_json_atomic(receipt_path, receipt)
+        restored_paths: list[str] = []
+        if "workspace_protected_content_discard" in set(receipt.get("class_codes") or []):
+            workspace_value = str(receipt.get("workspace_path") or "").strip()
+            if workspace_value:
+                try:
+                    workspace = Path(workspace_value).resolve(strict=False)
+                except (OSError, RuntimeError, ValueError):
+                    workspace = None
+                if workspace is not None and workspace.exists():
+                    for relative in receipt.get("mutated_paths") or []:
+                        rel = str(relative).strip()
+                        if not rel:
+                            continue
+                        source = self.repo_root / rel
+                        target = workspace / rel
+                        try:
+                            if not source.is_file():
+                                continue
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_bytes(source.read_bytes())
+                            restored_paths.append(rel)
+                        except OSError:
+                            continue
+        receipt["restored_paths"] = restored_paths
+        write_json_atomic(receipt_path, receipt)
         try:
             incident_path.unlink()
         except FileNotFoundError:
@@ -7630,6 +7686,7 @@ class PortalImplementationDaemon:
             "attempt": receipt["attempt"],
             "mutated_paths": receipt["mutated_paths"],
             "class_codes": receipt["class_codes"],
+            "restored_paths": restored_paths,
             "blocked": False,
         }
         self._record_event(
@@ -10250,6 +10307,163 @@ class PortalImplementationDaemon:
             "ordinary_task_stale_proposal_replay_rearmed",
             {
                 "schema": STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "rearmed_count": len(rearmed),
+                "rearmed": rearmed,
+            },
+        )
+        return rearmed
+
+
+    def _task_has_validation_command_failure_evidence(
+        self,
+        task: PortalTask,
+    ) -> bool:
+        """True when durable diagnostics show the last failure was validation."""
+
+        logs_dir = Path(self.state_path).parent / "implementation_logs"
+        task_slug = str(task.task_id or "").strip().lower()
+        if not task_slug or not logs_dir.is_dir():
+            return False
+        candidates = sorted(
+            logs_dir.glob(f"{task_slug}-diagnostic-receipt.json")
+        ) + sorted(logs_dir.glob(f"{task_slug}-*-diagnostic-receipt.json"))
+        for path in candidates[-3:]:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            failure = payload.get("failure")
+            if not isinstance(failure, Mapping):
+                continue
+            review = failure.get("failure_review")
+            if not isinstance(review, Mapping):
+                continue
+            reasons = review.get("reasons") or []
+            if isinstance(reasons, (list, tuple)) and any(
+                "validation" in str(item).casefold() for item in reasons
+            ):
+                return True
+            addendum = str(review.get("next_attempt_prompt_addendum") or "")
+            if "validation_command_failed" in addendum:
+                return True
+            failed_commands = review.get("failed_commands") or []
+            if isinstance(failed_commands, (list, tuple)) and any(
+                "validate_" in str(item) or "--check-artifact" in str(item)
+                for item in failed_commands
+            ):
+                return True
+        return False
+
+    def _rearm_attempt_limited_obsoleted_validation_tasks(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Rearm ordinary tasks exhausted on validation after control-plane fixes.
+
+        When a provider burns its attempt budget solely on validation failures
+        and the recovery runtime revision later advances (gate/daemon fix),
+        grant one full attempt-budget reset so the supervisor can self-unblock
+        without operator counter surgery. Each recovery revision rearms a
+        canonical task at most once.
+        """
+
+        revision = str(recovery_revision or "").strip()
+        if self.max_task_attempts <= 0 or not revision:
+            return []
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        identities = {
+            task.task_id: self._identity_for_task(task) for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid, []
+            ).append(task_id)
+
+        rearmed: list[dict[str, Any]] = []
+        queue_changed = False
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+                or is_retry_budget_repair_task(task)
+            ):
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+            if not self._task_has_validation_command_failure_evidence(task):
+                continue
+            identity = identities[task.task_id]
+            fingerprint_payload = {
+                "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior = state.validation_obsolescence_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior:
+                continue
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.pop(alias, 0) or 0)
+                for alias in aliases_by_cid.get(
+                    identity.canonical_task_cid,
+                    [task.task_id],
+                )
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.pop(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            queue_changed = (
+                self.task_queue.reset_retry_state(identity.canonical_task_cid)
+                or queue_changed
+            )
+            prior.append(fingerprint)
+            rearmed.append(
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": attempt_count,
+                    "previous_display_attempt_counts": previous_display_counts,
+                    "previous_canonical_attempt_count": previous_canonical_count,
+                    "recovery_revision": revision,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+        if not rearmed:
+            return []
+        state.last_progress_at = utc_now()
+        state.save(self.state_path)
+        if queue_changed:
+            self.task_queue.save()
+        self._record_event(
+            "ordinary_task_validation_obsolescence_rearmed",
+            {
+                "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
                 "recovery_revision": revision,
                 "rearmed_count": len(rearmed),
                 "rearmed": rearmed,
@@ -14454,6 +14668,16 @@ class PortalImplementationDaemon:
                 recovery_revision=recovery_runtime_revision,
             )
         )
+        validation_obsolescence_rearms = (
+            []
+            if self.manual_completion_authority_revalidation_only
+            else self._rearm_attempt_limited_obsoleted_validation_tasks(
+                previous,
+                selectable_tasks,
+                resolved_statuses,
+                recovery_revision=recovery_runtime_revision,
+            )
+        )
         selectable_tasks, attempt_limited_tasks = self._partition_tasks_at_attempt_limit(
             selectable_tasks,
             resolved_statuses,
@@ -14559,6 +14783,12 @@ class PortalImplementationDaemon:
             str(key): list(value)
             for key, value in (
                 previous.stale_proposal_replay_rearm_receipts.items()
+            )
+        }
+        state.validation_obsolescence_rearm_receipts = {
+            str(key): list(value)
+            for key, value in (
+                previous.validation_obsolescence_rearm_receipts.items()
             )
         }
         revision_reset_task_ids: list[str] = []
@@ -42421,23 +42651,43 @@ class PortalImplementationDaemon:
                     target_base_commit,
                     current_ref,
                 )
-                return {
-                    "path": full_relative,
-                    "branch": submodule_branch,
-                    "default_branch": integration_ref,
-                    "integration_ref": integration_ref,
-                    "target_base_commit": target_base_commit,
-                    "integration_ref_commit": current_ref,
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "submodule_target_ref_drift",
-                    "drift_kind": (
-                        "target_behind"
-                        if target_is_behind
-                        else "diverged"
-                    ),
-                    "retryable": True,
-                }
+                rebinding = self._rebind_competing_inventory_submodule_tip(
+                    source=source,
+                    integration_ref=integration_ref,
+                    current_ref=current_ref,
+                    target_base_commit=target_base_commit,
+                    branch_commit=branch_commit,
+                    target_is_behind=target_is_behind,
+                )
+                if rebinding.get("rebound"):
+                    current_ref = str(rebinding["integration_ref_commit"])
+                    integration_ref_fast_forward = {
+                        **integration_ref_fast_forward,
+                        "competing_inventory_tip_rebound_from": rebinding.get(
+                            "previous_ref"
+                        ),
+                        "competing_inventory_tip_rebound_to": current_ref,
+                        "competing_inventory_tip_reason": rebinding.get("reason"),
+                    }
+                else:
+                    return {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "default_branch": integration_ref,
+                        "integration_ref": integration_ref,
+                        "target_base_commit": target_base_commit,
+                        "integration_ref_commit": current_ref,
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "submodule_target_ref_drift",
+                        "drift_kind": (
+                            "target_behind"
+                            if target_is_behind
+                            else "diverged"
+                        ),
+                        "retryable": True,
+                        "rebinding": rebinding,
+                    }
 
         worktree_root = self._submodule_target_worktree_root()
         worktree_root.mkdir(parents=True, exist_ok=True)
