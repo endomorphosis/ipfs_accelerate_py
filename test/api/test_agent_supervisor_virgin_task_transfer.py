@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 from pathlib import Path
 
 import pytest
@@ -322,6 +323,127 @@ def test_stale_grant_is_rejected_at_task_claim_publication(
         )
     )
 
+    assert claimed is False
+    assert reason == "virgin_transfer_grant_invalid"
+    assert not claim_path.exists()
+
+
+def test_attempt_cannot_interleave_between_transfer_proof_and_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_ids = _task_ids_for_home(1, 2)
+    board = tmp_path / "todo.md"
+    _write_board(board, task_ids)
+    recipient = _daemon(tmp_path, board, lane=0, count=2)
+    home = _daemon(tmp_path, board, lane=1, count=2)
+    target = home._load_tasks()[0]
+
+    recipient.run_once()
+    home.run_once()
+    recipient.run_once()
+    metadata = recipient._build_implementation_task_claim_metadata(
+        target,
+        1,
+        "2026-08-12T00:00:00+00:00",
+    )
+    claim_path = recipient._implementation_task_claim_path(
+        target.task_id,
+        canonical_task_cid=recipient._canonical_ref(target),
+    )
+    original_eligibility = recipient._virgin_transfer_eligibility
+    proof_reached = threading.Event()
+    release_proof = threading.Event()
+
+    def barrier_eligibility(*args: object, **kwargs: object) -> dict[str, object]:
+        result = original_eligibility(*args, **kwargs)
+        if result.get("eligible") is True:
+            proof_reached.set()
+            assert release_proof.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(
+        recipient,
+        "_virgin_transfer_eligibility",
+        barrier_eligibility,
+    )
+    recipient_outcome: list[tuple[bool, str, dict[str, object] | None]] = []
+    competitor_outcome: list[tuple[bool, str, dict[str, object] | None]] = []
+
+    def acquire_recipient() -> None:
+        recipient_outcome.append(
+            recipient._try_acquire_implementation_task_claim(
+                claim_path,
+                metadata,
+            )
+        )
+
+    competitor_metadata = home._build_implementation_task_claim_metadata(
+        target,
+        1,
+        "2026-08-12T00:00:01+00:00",
+    )
+    recipient_lease_id = metadata["lease_id"]
+    original_home_owner_active = (
+        home._implementation_task_claim_owner_is_active
+    )
+
+    def home_owner_active(claim: dict[str, object]) -> bool:
+        # Both daemons are threads in this test process. Model the recipient as
+        # a genuinely live foreign owner independently of the pytest launcher
+        # spelling in /proc/<pid>/cmdline, which varies across test runners.
+        if claim.get("lease_id") == recipient_lease_id:
+            return True
+        return original_home_owner_active(claim)
+
+    monkeypatch.setattr(
+        home,
+        "_implementation_task_claim_owner_is_active",
+        home_owner_active,
+    )
+
+    def acquire_competitor() -> None:
+        competitor_outcome.append(
+            home._try_acquire_implementation_task_claim(
+                claim_path,
+                competitor_metadata,
+            )
+        )
+
+    recipient_thread = threading.Thread(target=acquire_recipient)
+    competitor_thread = threading.Thread(target=acquire_competitor)
+    recipient_thread.start()
+    assert proof_reached.wait(timeout=5)
+    competitor_thread.start()
+    # The competing home lane must be waiting on the exact claim guard while
+    # the recipient is paused after proof but before claim publication.
+    competitor_thread.join(timeout=0.2)
+    assert competitor_thread.is_alive()
+    release_proof.set()
+    recipient_thread.join(timeout=5)
+    competitor_thread.join(timeout=5)
+
+    assert not recipient_thread.is_alive()
+    assert not competitor_thread.is_alive()
+    assert recipient_outcome[0][0] is True
+    assert competitor_outcome[0][0] is False
+    assert competitor_outcome[0][1] == "lock_exists"
+    assert recipient._release_implementation_task_claim(
+        claim_path,
+        metadata,
+    )
+
+    # Once the competing lane records a consumed exact-revision attempt, a
+    # subsequent transfer claimant re-proves under the guard and rejects it.
+    home_state = PortalTaskState.load(home.state_path)
+    home._record_task_attempt(home_state, target, 1)
+    home_state.save(home.state_path)
+    claimed, reason, _existing = (
+        recipient._try_acquire_implementation_task_claim(
+            claim_path,
+            metadata,
+        )
+    )
     assert claimed is False
     assert reason == "virgin_transfer_grant_invalid"
     assert not claim_path.exists()

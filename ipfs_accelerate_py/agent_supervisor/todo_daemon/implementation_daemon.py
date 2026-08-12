@@ -55035,29 +55035,51 @@ class PortalImplementationDaemon:
     ) -> tuple[bool, str, dict[str, Any] | None]:
         """Publish a complete canonical-task claim under its update guard."""
 
-        def publish_claim() -> tuple[
+        def publish_claim_locked() -> tuple[
             bool,
             str,
             dict[str, Any] | None,
         ]:
-            with serialized_lock_update(lock_path):
-                lock_fd, reason, existing = self._try_acquire_lock(
-                    lock_path,
-                    lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-                    owner_active=(
-                        self._implementation_task_claim_owner_is_active
-                    ),
+            lock_fd, reason, existing = self._try_acquire_lock(
+                lock_path,
+                lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                owner_active=(
+                    self._implementation_task_claim_owner_is_active
+                ),
+            )
+            if lock_fd is None:
+                return False, reason, existing
+            published = False
+            try:
+                self._write_lock_metadata(lock_fd, metadata)
+                published = True
+            finally:
+                if not published:
+                    lock_path.unlink(missing_ok=True)
+            return True, reason, existing
+
+        def clear_existing_claim_locked() -> tuple[
+            bool,
+            str,
+            dict[str, Any] | None,
+        ]:
+            if not lock_path.exists():
+                return True, "absent", None
+            existing = load_json_dict(lock_path)
+            if (
+                existing is not None
+                and self._implementation_task_claim_owner_is_active(
+                    existing
                 )
-                if lock_fd is None:
-                    return False, reason, existing
-                published = False
-                try:
-                    self._write_lock_metadata(lock_fd, metadata)
-                    published = True
-                finally:
-                    if not published:
-                        lock_path.unlink(missing_ok=True)
-                return True, reason, existing
+            ):
+                return False, "lock_exists", existing
+            if not self._clear_stale_lock(
+                lock_path,
+                lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                metadata=existing,
+            ):
+                return False, "lock_cleanup_failed", existing
+            return True, "stale_lock_cleared", existing
 
         transfer = metadata.get("virgin_task_transfer")
         if transfer is not None:
@@ -55069,81 +55091,96 @@ class PortalImplementationDaemon:
             grant_path = self._virgin_transfer_grant_path_for_cid(
                 canonical_task_cid
             )
-            # Cleanup takes this same lock and rechecks for a published task
-            # claim before unlinking. Holding it through claim publication
-            # closes the stale-selector TOCTOU window.
-            with serialized_lock_update(grant_path):
-                grant = self._load_private_virgin_transfer_record(grant_path)
-                registration = self._load_private_virgin_transfer_record(
-                    self._virgin_transfer_registration_path(
-                        self.task_shard_index
-                    )
+            # The canonical task-claim update guard is the outer critical
+            # section. Existing-claim handling, the fresh all-lane zero-effect
+            # proof, and publication must be indivisible: a home lane cannot
+            # acquire/release this exact claim and consume an attempt between
+            # proof and recipient publication. Grant cleanup takes the inner
+            # grant guard and only observes claim existence, so this ordering
+            # does not introduce a reverse lock dependency.
+            with serialized_lock_update(lock_path):
+                claim_path_ready, claim_reason, existing_claim = (
+                    clear_existing_claim_locked()
                 )
-                try:
-                    exact_tasks = [
-                        task
-                        for task in self._load_tasks()
-                        if task.task_id == metadata.get("task_id")
-                        and self._canonical_ref(task)
-                        == metadata.get("canonical_task_cid")
-                    ]
-                    current_state_reason = state_file_repair_reason(
-                        self.state_path
+                if not claim_path_ready:
+                    return False, claim_reason, existing_claim
+                with serialized_lock_update(grant_path):
+                    grant = self._load_private_virgin_transfer_record(
+                        grant_path
                     )
-                    current_state = PortalTaskState.load(self.state_path)
-                    registrations = self._virgin_transfer_registrations(
-                        require_active=False
-                    )
-                    claim_eligibility = (
-                        self._virgin_transfer_eligibility(
-                            exact_tasks[0],
-                            registrations,
-                            current_state=current_state,
+                    registration = self._load_private_virgin_transfer_record(
+                        self._virgin_transfer_registration_path(
+                            self.task_shard_index
                         )
-                        if len(exact_tasks) == 1
-                        and current_state_reason
-                        in {"", "missing_state_file"}
-                        else {"eligible": False}
                     )
-                except (OSError, RuntimeError, TypeError, ValueError):
-                    exact_tasks = []
-                    registrations = {}
-                    claim_eligibility = {"eligible": False}
-                if (
-                    grant is None
-                    or not self._virgin_transfer_record_valid(
-                        grant,
-                        id_field="grant_id",
-                    )
-                    or grant.get("schema")
-                    != VIRGIN_TASK_TRANSFER_GRANT_SCHEMA
-                    or grant.get("cohort_id")
-                    != self._virgin_transfer_cohort_id()
-                    or grant.get("grant_id") != transfer.get("grant_id")
-                    or grant.get("task_id") != metadata.get("task_id")
-                    or grant.get("canonical_task_cid")
-                    != metadata.get("canonical_task_cid")
-                    or grant.get("recipient_shard_index")
-                    != self.task_shard_index
-                    or grant.get("recipient_registration_id")
-                    != transfer.get("recipient_registration_id")
-                    or registration is None
-                    or not self._virgin_transfer_record_valid(
-                        registration,
-                        id_field="registration_id",
-                    )
-                    or registration.get("registration_id")
-                    != grant.get("recipient_registration_id")
-                    or len(exact_tasks) != 1
-                    or normalize_status(exact_tasks[0].status)
-                    == "completed"
-                    or len(registrations) != self.task_shard_count
-                    or claim_eligibility.get("eligible") is not True
-                ):
-                    return False, "virgin_transfer_grant_invalid", grant
-                return publish_claim()
+                    try:
+                        exact_tasks = [
+                            task
+                            for task in self._load_tasks()
+                            if task.task_id == metadata.get("task_id")
+                            and self._canonical_ref(task)
+                            == metadata.get("canonical_task_cid")
+                        ]
+                        current_state_reason = state_file_repair_reason(
+                            self.state_path
+                        )
+                        current_state = PortalTaskState.load(self.state_path)
+                        registrations = self._virgin_transfer_registrations(
+                            require_active=False
+                        )
+                        claim_eligibility = (
+                            self._virgin_transfer_eligibility(
+                                exact_tasks[0],
+                                registrations,
+                                current_state=current_state,
+                            )
+                            if len(exact_tasks) == 1
+                            and current_state_reason
+                            in {"", "missing_state_file"}
+                            else {"eligible": False}
+                        )
+                    except (OSError, RuntimeError, TypeError, ValueError):
+                        exact_tasks = []
+                        registrations = {}
+                        claim_eligibility = {"eligible": False}
+                    if (
+                        grant is None
+                        or not self._virgin_transfer_record_valid(
+                            grant,
+                            id_field="grant_id",
+                        )
+                        or grant.get("schema")
+                        != VIRGIN_TASK_TRANSFER_GRANT_SCHEMA
+                        or grant.get("cohort_id")
+                        != self._virgin_transfer_cohort_id()
+                        or grant.get("grant_id")
+                        != transfer.get("grant_id")
+                        or grant.get("task_id")
+                        != metadata.get("task_id")
+                        or grant.get("canonical_task_cid")
+                        != metadata.get("canonical_task_cid")
+                        or grant.get("recipient_shard_index")
+                        != self.task_shard_index
+                        or grant.get("recipient_registration_id")
+                        != transfer.get("recipient_registration_id")
+                        or registration is None
+                        or not self._virgin_transfer_record_valid(
+                            registration,
+                            id_field="registration_id",
+                        )
+                        or registration.get("registration_id")
+                        != grant.get("recipient_registration_id")
+                        or len(exact_tasks) != 1
+                        or normalize_status(exact_tasks[0].status)
+                        == "completed"
+                        or len(registrations) != self.task_shard_count
+                        or claim_eligibility.get("eligible") is not True
+                    ):
+                        return False, "virgin_transfer_grant_invalid", grant
+                    return publish_claim_locked()
 
-        return publish_claim()
+        with serialized_lock_update(lock_path):
+            return publish_claim_locked()
 
     def _try_acquire_implementation_dispatch_intent(
         self,

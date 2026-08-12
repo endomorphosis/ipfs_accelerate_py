@@ -1603,6 +1603,23 @@ def test_idle_lane_virgin_transfer_requires_strict_sharding(
         load_configured_board(config_path, repo_root=repo)
 
 
+def test_idle_lane_virgin_transfer_requires_multiple_lanes(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["max_lanes"] = 1
+    payload["lanes"] = payload["lanes"][:1]
+    payload["idle_lane_work_stealing"] = "virgin-transfer"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(
+        scheduler_module.ConfiguredBoardError,
+        match="requires at least two lanes",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
 @pytest.mark.parametrize(
     "field",
     (

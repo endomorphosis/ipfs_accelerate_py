@@ -1800,6 +1800,10 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "idle_lane_work_stealing requires strict_task_sharding"
         )
+    if idle_lane_work_stealing and max_lanes <= 1:
+        raise ConfiguredBoardError(
+            "idle_lane_work_stealing requires at least two lanes"
+        )
     submodules = _safe_relative_list(
         payload.get("worktree_submodule_paths"),
         field="worktree_submodule_paths",
