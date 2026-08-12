@@ -67,126 +67,15 @@
   ],
   "protected_paths": [
     ".gitignore",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/datasets.json",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/kit.json",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-core-15-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-wide-36-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-cross-repo-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-migration-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-proof-cache-adapters-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-broad-safe-current-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-focused-current-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-unit-wide-current-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-agent-receipts-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-coordination-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-iroh-release-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-modern-wal-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-profile-d-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-certificate-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-reuse-bootstrap-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-release-receipt-20260812T181940.270567Z-2084970.log",
-    "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-reuse-capabilities-20260812T181940.270567Z-2084970.log",
-    "config/agent_supervisor_incremental_proof_sealer_scheduler.json",
-    "config/incremental_proof_sealer_baseline_suite_registry.json",
     "docs/architecture/INCREMENTAL_PROOF_SEALER_PLAN.md",
     "docs/architecture/incremental_proof_sealer.objectives.md",
     "docs/architecture/incremental_proof_sealer.todo.md",
-    "scripts/capture_incremental_proof_sealer_baselines.py",
-    "scripts/validate_incremental_proof_sealer_board.py"
+    "config/agent_supervisor_incremental_proof_sealer_scheduler.json",
+    "config/incremental_proof_sealer_baseline_suite_registry.json",
+    "scripts/validate_incremental_proof_sealer_board.py",
+    "scripts/capture_incremental_proof_sealer_baselines.py"
   ],
-  "operator_baseline_receipts": {
-    "IPS-001": {
-      "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
-      "planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
-      "receipt_digest": "sha256:d761d5b7684961c415138cad8a431bfb10095bec41e3ab10ff164ff575554f58",
-      "required_command_ids": [
-        "accelerate-proof-focused-core-15",
-        "accelerate-proof-focused-wide-36",
-        "accelerate-proof-reuse-migration",
-        "accelerate-proof-reuse-cross-repo"
-      ],
-      "retained_log_paths": [
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-core-15-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-focused-wide-36-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-migration-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/accelerate-proof-reuse-cross-repo-20260812T181940.270567Z-2084970.log"
-      ],
-      "source_revision": "9b61f64a4d732a450ce32ba0aa6f7042f8ce64c8",
-      "source_tree": "78c9c6c6a08711f53ff63fd6eb88ec5488955520",
-      "suite_definition_digests": {
-        "accelerate-proof-focused-core-15": "sha256:c6701b3552e88b61e11e86907ea24863fd233401bec1cfdcddb2d44874eb157f",
-        "accelerate-proof-focused-wide-36": "sha256:92e1f8df4d56363f6899b29c797d9d34013a859e1504a9e018897dbd48cc09fb",
-        "accelerate-proof-reuse-cross-repo": "sha256:0c1510628b48aab11c76287d9adbf942253bb269bd792507b4897bc4732e471b",
-        "accelerate-proof-reuse-migration": "sha256:ca91a14fa1a51f07b5c61846fe71f85a921c57c52d6d95e0654c11eaddab9d45"
-      }
-    },
-    "IPS-002": {
-      "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/datasets.json",
-      "planning_revision": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
-      "receipt_digest": "sha256:bcdd3a1dd729bd92d37db771947ba10fa61d15fe396358edf20d48cc7f981dab",
-      "required_command_ids": [
-        "datasets-zkp-focused-current",
-        "datasets-zkp-unit-wide-current",
-        "datasets-proof-cache-adapters",
-        "datasets-zkp-broad-safe-current"
-      ],
-      "retained_log_paths": [
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-focused-current-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-unit-wide-current-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-proof-cache-adapters-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/datasets-zkp-broad-safe-current-20260812T181940.270567Z-2084970.log"
-      ],
-      "source_revision": "a99e1aff41efa20ebc0f5068cc4c67c9a8d9843c",
-      "source_tree": "e6cdae017fbc84388f96743460b4dbf062d15ee3",
-      "suite_definition_digests": {
-        "datasets-proof-cache-adapters": "sha256:a726bc186495c05852518d2d4036920f7c94c5f94fd339b10350eaaca3ab57bc",
-        "datasets-zkp-broad-safe-current": "sha256:bb2b89fd5e717ea8cc7a977f7a2e26f958151e1e1a1ffa14365c97c4cb387802",
-        "datasets-zkp-focused-current": "sha256:698e8b10542034fe7d993371efcf1479edfd1c09a06d94610215702a9eda4fa4",
-        "datasets-zkp-unit-wide-current": "sha256:04a74051a55e1fc36eaa3b1e12a41fc58cb8e04fc27938b8f4f89af7bd9dad02"
-      }
-    },
-    "IPS-003": {
-      "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/kit.json",
-      "planning_revision": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
-      "receipt_digest": "sha256:40d8538a69e505ee7625c5a9fd9c6891c17fe6086b605bd283fe68c7ca14c196",
-      "required_command_ids": [
-        "kit-proof-certificate",
-        "kit-reuse-capabilities",
-        "kit-profile-d",
-        "kit-coordination",
-        "kit-modern-wal",
-        "kit-proof-reuse-bootstrap",
-        "kit-agent-receipts",
-        "kit-iroh-release",
-        "kit-release-receipt"
-      ],
-      "retained_log_paths": [
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-certificate-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-reuse-capabilities-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-profile-d-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-coordination-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-modern-wal-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-proof-reuse-bootstrap-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-agent-receipts-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-iroh-release-20260812T181940.270567Z-2084970.log",
-        "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/logs/kit-release-receipt-20260812T181940.270567Z-2084970.log"
-      ],
-      "source_revision": "b2c8e625b184c41fa865d906e0037915e3fb9179",
-      "source_tree": "d3dd2f1e5984124e1dfe94e9e5f3cfeb828b570e",
-      "suite_definition_digests": {
-        "kit-agent-receipts": "sha256:8d7942d828d7e82ffaf202bb118274896569bda983e72b44c184487e19b45a0c",
-        "kit-coordination": "sha256:f193fe07b5ba3109fd191b60c2e0fa0c09abd4fc211562ffb65f3585cc549d91",
-        "kit-iroh-release": "sha256:ddb1e17b9fd03e01e2a268198cae7ce960fa209fb92c477f406fff5fabe6725d",
-        "kit-modern-wal": "sha256:ecdc91c4ef4866b8f983417559dc0cb8baa92715f78ecab3bd846ae1d0931ee9",
-        "kit-profile-d": "sha256:3dca13e6aeaf8419e11f774d5c25c373143ffcfd26644ac8205a850e9efb727f",
-        "kit-proof-certificate": "sha256:876154cb523cb321c9caac891e63bd0073d0a8de3251f8399e6165be1dbb2e07",
-        "kit-proof-reuse-bootstrap": "sha256:59797fdea072393b1d45ba502523c1ab8c29d7a37db55ed860d8eaa3d2722915",
-        "kit-release-receipt": "sha256:0b221ff9296415784fdea1716fc02fb5a26f203eca209eb74300d96f6143161d",
-        "kit-reuse-capabilities": "sha256:437a313abdfdf2b6b7d24f925c85daf5aa84f8243f0750f388312344fa9daae3"
-      }
-    }
-  },
+  "operator_baseline_receipts": {},
   "runtime_paths": {
     "root": "data/agent_supervisor/incremental_proof_sealer",
     "state": "data/agent_supervisor/incremental_proof_sealer/state",

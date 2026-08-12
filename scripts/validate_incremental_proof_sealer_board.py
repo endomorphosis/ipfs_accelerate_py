@@ -2450,6 +2450,68 @@ def _exact_inventory_candidate(
     )
 
 
+def _admitted_inventory_candidate(
+    *,
+    repository: Path,
+    parent_revision: str,
+    candidate_revision: str,
+    outputs: set[str],
+) -> bool:
+    """True when candidate is inventory-output-only from an admitted task-start base.
+
+    Concurrent sibling inventory merges may advance first-parent history after the
+    recorded ``inventory_worktree_parent_revision``. Admit a direct output-only
+    candidate whose actual parent is that recorded parent, or a first-parent
+    descendant of it that does not rewrite the inventory outputs.
+    """
+
+    if _exact_inventory_candidate(
+        repository=repository,
+        parent_revision=parent_revision,
+        candidate_revision=candidate_revision,
+        outputs=outputs,
+    ):
+        return True
+    parents = _commit_parent_tokens(repository, candidate_revision)
+    if len(parents) != 1:
+        return False
+    base = parents[0]
+    if base == parent_revision:
+        return False
+    if _commit_changed_paths(repository, base, candidate_revision) != outputs:
+        return False
+    if not all(
+        _regular_blob_at_revision(repository, candidate_revision, relative)
+        for relative in outputs
+    ):
+        return False
+    if (
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            parent_revision,
+            base,
+            cwd=repository,
+        ).returncode
+        != 0
+    ):
+        return False
+    if (
+        _git(
+            "diff",
+            "--quiet",
+            parent_revision,
+            base,
+            "--",
+            *sorted(outputs),
+            cwd=repository,
+        ).returncode
+        != 0
+    ):
+        return False
+    return True
+
+
 def _paths_have_identical_blobs(
     *,
     repository: Path,
@@ -2696,7 +2758,7 @@ def _validate_accelerate_inventory_lifecycle(
             != 0
         ):
             continue
-        if not _exact_inventory_candidate(
+        if not _admitted_inventory_candidate(
             repository=REPO_ROOT,
             parent_revision=parent_revision,
             candidate_revision=candidate,

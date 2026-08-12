@@ -476,6 +476,64 @@ def test_accelerate_inventory_accepts_candidate_no_ff_merge_and_status_commit(
     assert errors == []
 
 
+def test_accelerate_inventory_admits_candidate_from_concurrent_first_parent_tip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Candidate may fork after concurrent non-inventory first-parent advances.
+
+    Inventory records the task-start parent, but a sibling merge/status can land
+    first. The inventory candidate is then a direct child of that later tip while
+    inventory outputs remain unchanged since the recorded parent.
+    """
+
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "accelerate-concurrent-tip"
+    parent, _ = _init_repository(
+        root,
+        {
+            taskboard: _taskboard_text_with_inventory_todos(),
+            "source.py": "captured\n",
+        },
+    )
+    # Concurrent sibling advances first-parent without touching inventory outputs.
+    sibling_completion = _complete_task(root, "IPS-002")
+    target = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "candidate")
+    for relative in gate.ACCELERATE_INVENTORY_OUTPUTS:
+        _write(root / relative, "{}\n" if relative.endswith(".json") else "inventory\n")
+    candidate, _ = _commit(root, "IPS-001 inventory candidate")
+    assert _git(root, "rev-parse", "HEAD^") == sibling_completion
+    _git(root, "checkout", "-q", target)
+    _git(root, "merge", "-q", "--no-ff", "candidate", "-m", "integrate IPS-001")
+    completion = _complete_task(root, "IPS-001")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+
+    gate._validate_accelerate_inventory_lifecycle(
+        task_id="IPS-001",
+        parent_revision=parent,
+        current_revision=completion,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+        require_published=True,
+        errors=errors,
+    )
+
+    assert errors == []
+    assert not gate._exact_inventory_candidate(
+        repository=root,
+        parent_revision=parent,
+        candidate_revision=candidate,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+    )
+    assert gate._admitted_inventory_candidate(
+        repository=root,
+        parent_revision=parent,
+        candidate_revision=candidate,
+        outputs=set(gate.ACCELERATE_INVENTORY_OUTPUTS),
+    )
+
+
 @pytest.mark.parametrize(
     ("task_id", "submodule"),
     (("IPS-002", "ipfs_datasets_py"), ("IPS-003", "ipfs_kit_py")),
