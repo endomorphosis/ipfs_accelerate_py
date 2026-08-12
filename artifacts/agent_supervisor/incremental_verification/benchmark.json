@@ -1,6 +1,6 @@
 {
   "authoritative": false,
-  "benchmark_duration_ms": 118,
+  "benchmark_duration_ms": 137,
   "cases": [
     {
       "change_kind": "config_edge",
@@ -2167,12 +2167,12 @@
       "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
       "metrics_digest": "baguqeeralpl6umixxwvdhbeqeeoya7ogh2iitepabzjmgjbd4zkksn4w3viq",
       "policy_id": "policy:ivp-incremental-verification-benchmark@1",
-      "tree_id": "fd673b41f60f60a293626c8ea41e71165a7dfc51"
+      "source_snapshot_id": "sha256:70cd5234f119946c8b2793bb7f9f1837fc60facb10df2822f6e0b635824bcff4"
     },
-    "commitment_cid": "baguqeerartqvnkudx4krvikljk2fi44s5e6j7dqbfia2i5pgwysynzzy4p7a",
+    "commitment_cid": "baguqeeraumgfjb33trsn4wug2vsep4brqqwtcw47yuffqtl675yrjnhluqra",
     "deterministic": true
   },
-  "content_id": "baguqeerauulhf3rp57brluxm5gdvnlpckg6trrpkxryuhi42bfxyj64bwneq",
+  "content_id": "baguqeeraizf3put456mfruwtfnqspvm2bwb6aryhoptacbpt7usdbyjtk7zq",
   "corpus": {
     "case_count": 20,
     "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
@@ -2183,7 +2183,7 @@
     "measured_count": 15,
     "measurement_status": "measured",
     "not_measured_count": 2,
-    "path": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-c3ce19eb7978-ad0ce25a7572/test/fixtures/incremental_verification/corpus_manifest.json",
+    "path": "test/fixtures/incremental_verification/corpus_manifest.json",
     "present": true,
     "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-selection-corpus@1",
     "selection_measurement_status": "measured",
@@ -2198,7 +2198,7 @@
     "target": "unaffected_cross_tree_reuse"
   },
   "effective_environment": {
-    "cwd": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-c3ce19eb7978-ad0ce25a7572",
+    "cwd": ".",
     "env_markers": {
       "CI": "",
       "GITHUB_ACTIONS": ""
@@ -2210,7 +2210,7 @@
     "python_version": "3.12.3",
     "system": "Linux"
   },
-  "evidence": "ivp/benchmark@1",
+  "evidence": "ivp/benchmark@2",
   "goal_id": "IVP-G090",
   "historical_preservation": {
     "historical_present": true,
@@ -2218,7 +2218,7 @@
     "old_key_reusable": true,
     "tombstones": 0
   },
-  "interface": "IncrementalVerificationBenchmark@1",
+  "interface": "IncrementalVerificationBenchmark@2",
   "measurement_schema": {
     "counterexample_byte_bound": 8192,
     "fields": [
@@ -2299,8 +2299,8 @@
       "label": "estimated",
       "paired_cache": {
         "basis": "paired_cold_hot",
-        "cold_lookup_ms": 0.364661,
-        "hot_lookup_ms": 13.15158,
+        "cold_lookup_ms": 0.390643,
+        "hot_lookup_ms": 12.487467,
         "label": "paired",
         "sample_count": 1,
         "saved_ms": 0.0
@@ -2387,24 +2387,25 @@
       "tokens_saved_total": 19834
     },
     "wall_samples": {
-      "max_ms": 1.341776,
-      "mean_ms": 1.296079,
-      "median_ms": 1.285312,
-      "min_ms": 1.274399,
-      "p95_ms": 1.341776,
+      "max_ms": 1.35396,
+      "mean_ms": 1.307051,
+      "median_ms": 1.313576,
+      "min_ms": 1.27116,
+      "p95_ms": 1.35396,
       "role": "observational",
       "sample_count": 5,
       "samples_ms": [
-        1.274399,
-        1.276719,
-        1.285312,
-        1.302191,
-        1.341776
+        1.27116,
+        1.282087,
+        1.313576,
+        1.314472,
+        1.35396
       ],
       "tolerance_ms": 1.0,
       "tolerance_ratio": 0.35
     }
   },
+  "observed_head": "eb8e2a2f4402affa2b2ee2b30ca17d94ceab88c0",
   "policy": {
     "performance_cannot_weaken_correctness": true,
     "policy_id": "policy:ivp-incremental-verification-benchmark@1",
@@ -2457,8 +2458,8 @@
       "z3"
     ]
   },
-  "repository_root": "/home/barberb/.local/state/ipfs_accelerate_py/incremental-verification-planner-v1/main-integration/data/agent_supervisor/incremental_verification_planner/worktrees/workspace-c3ce19eb7978-ad0ce25a7572",
-  "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@1",
+  "repository_root": ".",
+  "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
   "selection_summary": {
     "authoritative": false,
     "corpus_id": "ivp-semantic-capsule-controlled-v1",
@@ -2496,6 +2497,9 @@
     "total_false_negatives": 1,
     "total_false_positives": 7
   },
+  "source_snapshot_domain": "ivp-source-snapshot@1",
+  "source_snapshot_id": "sha256:70cd5234f119946c8b2793bb7f9f1837fc60facb10df2822f6e0b635824bcff4",
+  "source_snapshot_schema": "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1",
   "status": "red",
   "target_misses": [
     {
@@ -2550,6 +2554,5 @@
     }
   },
   "task_id": "IVP-017",
-  "tree_id": "fd673b41f60f60a293626c8ea41e71165a7dfc51",
   "zero_stale_simulated_accepted": true
 }
