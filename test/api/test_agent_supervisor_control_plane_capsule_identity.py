@@ -619,6 +619,26 @@ def test_real_isolated_sealed_capsule_imports_control_plane_and_mints_cids(
         )
 
 
+def test_real_sealed_capsule_starts_the_provider_runner(tmp_path: Path) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    pin = _real_materialized_pin(source, tmp_path / "capsules")
+    sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
+    completed = subprocess.run(
+        [sys.executable, "-I", sealed.executable_path, "--help"],
+        pass_fds=(sealed.descriptor,),
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    try:
+        assert completed.returncode == 0, completed.stderr
+        assert "usage:" in completed.stdout.lower()
+        assert "grok" in completed.stdout.lower()
+    finally:
+        os.close(sealed.descriptor)
+
+
 def test_real_materializer_denies_a_selected_gitlink(tmp_path: Path) -> None:
     source = _clean_control_plane_source(tmp_path / "source")
     _replace_selected_file_with_gitlink(

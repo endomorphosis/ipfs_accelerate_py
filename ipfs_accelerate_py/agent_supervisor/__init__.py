@@ -1807,66 +1807,16 @@ _LAZY_DOMAIN_EXPORT_ALIASES = {
     "normalize_formal_unsat_core": "normalize_unsat_core",
 }
 
-# Load self_improvement_completion without executing self_improvement/__init__.py.
-# That package __init__ still re-exports the heavy flat self_improvement.py, which
-# pulls todo_daemon.llm -> optional ipfs_datasets_py onto cold import (ASREF-G090
-# provider-free package import gate). Dual-copied ownership remains under
-# self_improvement/; this loader only avoids the temporary re-export side effect.
-def _load_self_improvement_completion_cold():
-    import importlib.util
-    from pathlib import Path
+from .self_improvement.self_improvement_completion import (
+    SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
+    SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
+    SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,
+    SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION,
+    SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS,
+    SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
+    evaluate_self_improvement_root_completion,
+)
 
-    package_name = f"{__name__}.self_improvement"
-    canonical = f"{package_name}.self_improvement_completion"
-    # Prefer a fully imported package module when the package is already live.
-    existing = _sys.modules.get(canonical)
-    if existing is not None and getattr(existing, "__file__", None):
-        return existing
-    cold_name = f"{__name__}._self_improvement_completion_cold"
-    existing_cold = _sys.modules.get(cold_name)
-    if existing_cold is not None:
-        return existing_cold
-    path = (
-        Path(__file__).resolve().parent
-        / "self_improvement"
-        / "self_improvement_completion.py"
-    )
-    # Load under an isolated module name so we never leave a stub
-    # self_improvement package in sys.modules (that would block the real package
-    # __init__ later). Relative imports resolve via __package__ alone.
-    spec = importlib.util.spec_from_file_location(cold_name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load self_improvement_completion from {path}")
-    module = importlib.util.module_from_spec(spec)
-    module.__package__ = package_name
-    _sys.modules[cold_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_self_improvement_completion = _load_self_improvement_completion_cold()
-SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA
-)
-SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS
-)
-SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID
-)
-SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION
-)
-SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS
-)
-SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
-)
-evaluate_self_improvement_root_completion = (
-    _self_improvement_completion.evaluate_self_improvement_root_completion
-)
-del _self_improvement_completion
 __all__ = [
     "RESOURCE_ADMISSION_EVENT_TYPES",
     "RESOURCE_ADMISSION_METRICS_SCHEMA",
