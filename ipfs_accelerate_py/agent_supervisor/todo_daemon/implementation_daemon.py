@@ -24506,6 +24506,21 @@ class PortalImplementationDaemon:
                 result["merged"] = False
                 result["reason"] = "merge_cleanup_failed"
                 result["returncode"] = 1
+            elif (
+                str(task.task_id) in {"IPS-001", "IPS-002", "IPS-003"}
+                and not self._inventory_task_passes_published_gate(
+                    str(task.task_id)
+                )
+            ):
+                # Historical inventory merges may still look "already merged"
+                # after a capture-epoch reopen. Do not force-complete until the
+                # published gate accepts the bound inventory outputs.
+                result["merged"] = False
+                result["already_merged"] = False
+                result["completion_skipped"] = True
+                result["reason"] = "inventory_published_gate_not_satisfied"
+                result["returncode"] = 0
+                result["retryable"] = True
             else:
                 completion_daemon = self
                 request_todo_path = Path(str(metadata.get("todo_path") or self.todo_path))
@@ -51187,6 +51202,24 @@ class PortalImplementationDaemon:
             task_ids.update(bound_task_ids)
         return self._filter_inventory_merges_still_valid(task_ids)
 
+    def _inventory_task_passes_published_gate(self, task_id: str) -> bool:
+        """True when an inventory task still passes the published artifact gate."""
+
+        if task_id not in {"IPS-001", "IPS-002", "IPS-003"}:
+            return True
+        try:
+            from scripts import validate_incremental_proof_sealer_board as ips_gate
+        except Exception:
+            return False
+        try:
+            result = ips_gate.validate_artifact(
+                task_id,
+                require_published=True,
+            )
+        except Exception:
+            return False
+        return isinstance(result, dict) and result.get("valid") is True
+
     def _filter_inventory_merges_still_valid(
         self,
         task_ids: set[str],
@@ -51201,24 +51234,12 @@ class PortalImplementationDaemon:
         inventory_tasks = {"IPS-001", "IPS-002", "IPS-003"}
         if not task_ids.intersection(inventory_tasks):
             return task_ids
-        try:
-            from scripts import validate_incremental_proof_sealer_board as ips_gate
-        except Exception:
-            # Fail closed: do not re-assert inventory completions without a gate.
-            return {task_id for task_id in task_ids if task_id not in inventory_tasks}
         kept: set[str] = set()
         for task_id in task_ids:
             if task_id not in inventory_tasks:
                 kept.add(task_id)
                 continue
-            try:
-                result = ips_gate.validate_artifact(
-                    task_id,
-                    require_published=True,
-                )
-            except Exception:
-                continue
-            if isinstance(result, dict) and result.get("valid") is True:
+            if self._inventory_task_passes_published_gate(task_id):
                 kept.add(task_id)
         return kept
 
