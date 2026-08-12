@@ -14099,6 +14099,13 @@ class PortalImplementationDaemon:
                 )
             )
         }
+        # Fresh capture epochs reopen inventory tasks on the board while old
+        # shared merge completions still advertise those IDs. Drop inventory
+        # completions that no longer pass the published gate so reopen can
+        # make them ready again instead of staying latched completed.
+        shared_completed_task_ids = self._filter_inventory_merges_still_valid(
+            shared_completed_task_ids
+        )
         shared_active_merge_task_ids = {
             task.task_id
             for task in tasks
@@ -42484,6 +42491,72 @@ class PortalImplementationDaemon:
                 return fields[2]
         return ""
 
+    def _inventory_only_commit_range(
+        self,
+        source: Path,
+        base_commit: str,
+        tip_commit: str,
+    ) -> tuple[bool, list[str], str]:
+        """Return whether tip is a linear inventory-document-only range above base."""
+
+        inventory_outputs = {
+            "docs/architecture/incremental_proof_sealer_inventory.json",
+            "docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md",
+        }
+        range_result = subprocess.run(
+            (
+                "git",
+                "rev-list",
+                "--reverse",
+                f"{base_commit}..{tip_commit}",
+            ),
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if range_result.returncode != 0:
+            return False, [], "cannot_enumerate_tip_range"
+        tip_commits = [line for line in range_result.stdout.splitlines() if line]
+        if not tip_commits:
+            return False, [], "empty_tip_range"
+        for commit in tip_commits:
+            parents_result = subprocess.run(
+                ("git", "rev-list", "--parents", "-n", "1", commit),
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if parents_result.returncode != 0:
+                return False, tip_commits, "cannot_resolve_tip_parents"
+            tokens = parents_result.stdout.strip().split()
+            if len(tokens) != 2:
+                return False, tip_commits, "non_linear_or_merge_in_tip"
+            parent = tokens[1]
+            changed_result = subprocess.run(
+                (
+                    "git",
+                    "diff",
+                    "--name-only",
+                    "--no-renames",
+                    parent,
+                    commit,
+                ),
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if changed_result.returncode != 0:
+                return False, tip_commits, "cannot_inspect_tip_paths"
+            changed = {
+                line for line in changed_result.stdout.splitlines() if line
+            }
+            if not changed or not changed <= inventory_outputs:
+                return False, tip_commits, "tip_has_non_inventory_paths"
+        return True, tip_commits, "inventory_only"
+
     def _rebind_competing_inventory_submodule_tip(
         self,
         *,
@@ -42498,9 +42571,10 @@ class PortalImplementationDaemon:
 
         Concurrent inventory races can advance a nested default/integration tip
         to an inventory-document rewrite that never lands on control first-parent
-        history. When that tip is a pure inventory-output range above
-        ``target_base_commit``, compare-and-swap the integration ref back so the
-        intended branch can merge instead of latching ``submodule_target_ref_drift``.
+        history. When that tip is a pure inventory-output range (either above
+        ``target_base_commit`` or a sibling inventory tip from a shared base),
+        compare-and-swap the integration ref back so the intended branch can
+        merge instead of latching ``submodule_target_ref_drift``.
         """
 
         previous = {
@@ -42518,80 +42592,41 @@ class PortalImplementationDaemon:
         if current_ref == target_base_commit:
             previous["reason"] = "already_at_target"
             return previous
-        # Only reset tips that strictly descend from the authoritative target.
-        if not self._git_ref_is_ancestor_in_repo(
+
+        tip_commits: list[str] = []
+        reset_reason = "inventory_only_competing_tip_reset"
+        if self._git_ref_is_ancestor_in_repo(
             source, target_base_commit, current_ref
         ):
-            previous["reason"] = "current_does_not_descend_from_target"
-            return previous
-
-        range_result = subprocess.run(
-            (
-                "git",
-                "rev-list",
-                "--reverse",
-                f"{target_base_commit}..{current_ref}",
-            ),
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if range_result.returncode != 0:
-            previous["reason"] = "cannot_enumerate_tip_range"
-            previous["stderr"] = range_result.stderr[-2000:]
-            return previous
-        tip_commits = [line for line in range_result.stdout.splitlines() if line]
-        if not tip_commits:
-            previous["reason"] = "empty_tip_range"
-            return previous
-
-        inventory_outputs = {
-            "docs/architecture/incremental_proof_sealer_inventory.json",
-            "docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md",
-        }
-        for commit in tip_commits:
-            parents_result = subprocess.run(
-                ("git", "rev-list", "--parents", "-n", "1", commit),
+            ok, tip_commits, detail = self._inventory_only_commit_range(
+                source, target_base_commit, current_ref
+            )
+            if not ok:
+                previous["reason"] = detail
+                return previous
+        else:
+            # Sibling competing tip: both sides fork from a shared base and the
+            # current tip is inventory-only above that base.
+            merge_base = subprocess.run(
+                ("git", "merge-base", target_base_commit, current_ref),
                 cwd=source,
                 text=True,
                 capture_output=True,
                 check=False,
             )
-            if parents_result.returncode != 0:
-                previous["reason"] = "cannot_resolve_tip_parents"
+            if merge_base.returncode != 0 or not merge_base.stdout.strip():
+                previous["reason"] = "current_does_not_descend_from_target"
                 return previous
-            tokens = parents_result.stdout.strip().split()
-            if len(tokens) != 2:
-                previous["reason"] = "non_linear_or_merge_in_tip"
-                previous["commit"] = commit
-                return previous
-            parent = tokens[1]
-            changed_result = subprocess.run(
-                (
-                    "git",
-                    "diff",
-                    "--name-only",
-                    "--no-renames",
-                    parent,
-                    commit,
-                ),
-                cwd=source,
-                text=True,
-                capture_output=True,
-                check=False,
+            base = merge_base.stdout.strip()
+            ok, tip_commits, detail = self._inventory_only_commit_range(
+                source, base, current_ref
             )
-            if changed_result.returncode != 0:
-                previous["reason"] = "cannot_inspect_tip_paths"
+            if not ok:
+                previous["reason"] = detail
+                previous["merge_base"] = base
                 return previous
-            changed = {
-                line for line in changed_result.stdout.splitlines() if line
-            }
-            if not changed or not changed <= inventory_outputs:
-                previous["reason"] = "tip_has_non_inventory_paths"
-                previous["commit"] = commit
-                previous["changed_paths"] = sorted(changed)
-                return previous
+            reset_reason = "sibling_inventory_only_competing_tip_reset"
+            previous["merge_base"] = base
 
         cas = subprocess.run(
             (
@@ -42612,13 +42647,14 @@ class PortalImplementationDaemon:
             return previous
         return {
             "rebound": True,
-            "reason": "inventory_only_competing_tip_reset",
+            "reason": reset_reason,
             "previous_ref": current_ref,
             "integration_ref_commit": target_base_commit,
             "target_base_commit": target_base_commit,
             "branch_commit": branch_commit,
             "target_is_behind": bool(target_is_behind),
             "reset_commits": tip_commits,
+            "merge_base": previous.get("merge_base", ""),
         }
 
     def _merge_submodule_branch_to_target_ref(
