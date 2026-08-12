@@ -620,7 +620,7 @@ configured-board dispatch input.
 
 ## IVP-019 Freeze public exports and run the terminal release fan-in
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
