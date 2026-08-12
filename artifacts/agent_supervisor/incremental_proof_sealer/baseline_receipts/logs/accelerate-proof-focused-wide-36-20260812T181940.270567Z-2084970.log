@@ -1,0 +1,1153 @@
+PLUGIN registered: <_pytest.config.PytestPluginManager object at 0xf7c4bb21e090>
+PLUGIN registered: <_pytest.config.Config object at 0xf7c4bb1454f0>
+PLUGIN registered: <module '_pytest.mark' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/mark/__init__.py'>
+PLUGIN registered: <module '_pytest.main' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py'>
+PLUGIN registered: <module '_pytest.runner' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/runner.py'>
+PLUGIN registered: <module '_pytest.fixtures' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/fixtures.py'>
+PLUGIN registered: <module '_pytest.helpconfig' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/helpconfig.py'>
+PLUGIN registered: <module '_pytest.python' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/python.py'>
+PLUGIN registered: <module '_pytest.terminal' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/terminal.py'>
+PLUGIN registered: <module '_pytest.debugging' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/debugging.py'>
+PLUGIN registered: <module '_pytest.unittest' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/unittest.py'>
+PLUGIN registered: <module '_pytest.capture' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/capture.py'>
+PLUGIN registered: <module '_pytest.skipping' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/skipping.py'>
+PLUGIN registered: <module '_pytest.legacypath' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/legacypath.py'>
+PLUGIN registered: <module '_pytest.tmpdir' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/tmpdir.py'>
+PLUGIN registered: <module '_pytest.monkeypatch' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/monkeypatch.py'>
+PLUGIN registered: <module '_pytest.recwarn' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/recwarn.py'>
+PLUGIN registered: <module '_pytest.pastebin' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/pastebin.py'>
+PLUGIN registered: <module '_pytest.assertion' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/__init__.py'>
+PLUGIN registered: <module '_pytest.junitxml' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/junitxml.py'>
+PLUGIN registered: <module '_pytest.doctest' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/doctest.py'>
+PLUGIN registered: <module '_pytest.cacheprovider' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/cacheprovider.py'>
+PLUGIN registered: <module '_pytest.setuponly' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/setuponly.py'>
+PLUGIN registered: <module '_pytest.setupplan' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/setupplan.py'>
+PLUGIN registered: <module '_pytest.stepwise' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/stepwise.py'>
+PLUGIN registered: <module '_pytest.unraisableexception' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/unraisableexception.py'>
+PLUGIN registered: <module '_pytest.threadexception' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/threadexception.py'>
+PLUGIN registered: <module '_pytest.warnings' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/warnings.py'>
+PLUGIN registered: <module '_pytest.logging' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/logging.py'>
+PLUGIN registered: <module '_pytest.reports' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/reports.py'>
+PLUGIN registered: <module '_pytest.faulthandler' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/faulthandler.py'>
+PLUGIN registered: <module '_pytest.subtests' from '/home/barberb/.local/lib/python3.12/site-packages/_pytest/subtests.py'>
+PLUGIN registered: <module 'pytest_mock' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py'>
+PLUGIN registered: <module 'xdist.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py'>
+PLUGIN registered: <module 'xdist.looponfail' from '/home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py'>
+PLUGIN registered: <module 'pytest_benchmark.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py'>
+PLUGIN registered: <module 'pytest_cov.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py'>
+PLUGIN registered: <module 'pytest_base_url.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py'>
+PLUGIN registered: <module 'pytest_asyncio.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py'>
+PLUGIN registered: <module 'pytest_trio.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py'>
+PLUGIN registered: <module 'typeguard._pytest_plugin' from '/home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py'>
+PLUGIN registered: <module 'pytest_env.plugin' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py'>
+PLUGIN registered: <module '_hypothesis_pytestplugin' from '/home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py'>
+PLUGIN registered: <module 'pytest_playwright.pytest_playwright' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py'>
+PLUGIN registered: <module 'pytest_timeout' from '/home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py'>
+PLUGIN registered: <module 'anyio.pytest_plugin' from '/home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py'>
+PLUGIN registered: <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=6 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> err=<FDCapture 2 oldfd=7 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=8 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> in_=<FDCapture 0 oldfd=3 _state='started' tmpfile=<_io.TextIOWrapper name='/dev/null' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+PLUGIN registered: <module 'source.test.conftest' from '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/conftest.py'>
+PLUGIN registered: <module 'source.test.api.conftest' from '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/conftest.py'>
+PLUGIN registered: <Session  exitstatus=<ExitCode.OK: 0> testsfailed=0 testscollected=0>
+PLUGIN registered: <_pytest.cacheprovider.LFPlugin object at 0xf7c3d038eab0>
+PLUGIN registered: <_pytest.cacheprovider.NFPlugin object at 0xf7c3d09761e0>
+PLUGIN registered: <class '_pytest.legacypath.LegacyTmpdirPlugin'>
+PLUGIN registered: <_pytest.terminal.TerminalReporter object at 0xf7c3d039d0a0>
+PLUGIN registered: <_pytest.logging.LoggingPlugin object at 0xf7c3d03955e0>
+PLUGIN registered: <pytest_benchmark.session.BenchmarkSession object at 0xf7c3d0e75dc0>
+PLUGIN registered: <_pytest.fixtures.FixtureManager object at 0xf7c3d0c4c470>
+================================================= test session starts ==================================================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3.12
+using: pytest-9.1.1
+registered third-party plugins:
+  pytest-mock-3.15.1 at /home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py
+  pytest-xdist-3.8.0 at /home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py
+  pytest-xdist-3.8.0 at /home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py
+  pytest-benchmark-5.2.3 at /home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py
+  pytest-cov-7.1.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py
+  pytest-base-url-2.1.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py
+  pytest-asyncio-1.3.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py
+  pytest-trio-0.8.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py
+  typeguard-4.5.2 at /home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py
+  pytest-env-1.7.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py
+  hypothesis-6.152.1 at /home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py
+  pytest-playwright-0.8.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py
+  pytest-timeout-2.4.0 at /home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py
+  anyio-4.14.2 at /home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py
+active plugins:
+    272424325210256     : <_pytest.config.PytestPluginManager object at 0xf7c4bb21e090>
+    pytestconfig        : <_pytest.config.Config object at 0xf7c4bb1454f0>
+    mark                : /home/barberb/.local/lib/python3.12/site-packages/_pytest/mark/__init__.py
+    main                : /home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py
+    runner              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/runner.py
+    fixtures            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/fixtures.py
+    helpconfig          : /home/barberb/.local/lib/python3.12/site-packages/_pytest/helpconfig.py
+    python              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/python.py
+    terminal            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/terminal.py
+    debugging           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/debugging.py
+    unittest            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/unittest.py
+    capture             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/capture.py
+    skipping            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/skipping.py
+    legacypath          : /home/barberb/.local/lib/python3.12/site-packages/_pytest/legacypath.py
+    tmpdir              : /home/barberb/.local/lib/python3.12/site-packages/_pytest/tmpdir.py
+    monkeypatch         : /home/barberb/.local/lib/python3.12/site-packages/_pytest/monkeypatch.py
+    recwarn             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/recwarn.py
+    pastebin            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/pastebin.py
+    assertion           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/__init__.py
+    junitxml            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/junitxml.py
+    doctest             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/doctest.py
+    cacheprovider       : /home/barberb/.local/lib/python3.12/site-packages/_pytest/cacheprovider.py
+    setuponly           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/setuponly.py
+    setupplan           : /home/barberb/.local/lib/python3.12/site-packages/_pytest/setupplan.py
+    stepwise            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/stepwise.py
+    unraisableexception : /home/barberb/.local/lib/python3.12/site-packages/_pytest/unraisableexception.py
+    threadexception     : /home/barberb/.local/lib/python3.12/site-packages/_pytest/threadexception.py
+    warnings            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/warnings.py
+    logging             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/logging.py
+    reports             : /home/barberb/.local/lib/python3.12/site-packages/_pytest/reports.py
+    faulthandler        : /home/barberb/.local/lib/python3.12/site-packages/_pytest/faulthandler.py
+    subtests            : /home/barberb/.local/lib/python3.12/site-packages/_pytest/subtests.py
+    pytest_mock         : /home/barberb/.local/lib/python3.12/site-packages/pytest_mock/__init__.py
+    xdist               : /home/barberb/.local/lib/python3.12/site-packages/xdist/plugin.py
+    xdist.looponfail    : /home/barberb/.local/lib/python3.12/site-packages/xdist/looponfail.py
+    benchmark           : /home/barberb/.local/lib/python3.12/site-packages/pytest_benchmark/plugin.py
+    pytest_cov          : /home/barberb/.local/lib/python3.12/site-packages/pytest_cov/plugin.py
+    base_url            : /home/barberb/.local/lib/python3.12/site-packages/pytest_base_url/plugin.py
+    asyncio             : /home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py
+    trio                : /home/barberb/.local/lib/python3.12/site-packages/pytest_trio/plugin.py
+    typeguard           : /home/barberb/.local/lib/python3.12/site-packages/typeguard/_pytest_plugin.py
+    env                 : /home/barberb/.local/lib/python3.12/site-packages/pytest_env/plugin.py
+    hypothesispytest    : /home/barberb/.local/lib/python3.12/site-packages/_hypothesis_pytestplugin.py
+    playwright          : /home/barberb/.local/lib/python3.12/site-packages/pytest_playwright/pytest_playwright.py
+    timeout             : /home/barberb/.local/lib/python3.12/site-packages/pytest_timeout.py
+    anyio               : /home/barberb/.local/lib/python3.12/site-packages/anyio/pytest_plugin.py
+    capturemanager      : <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=6 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> err=<FDCapture 2 oldfd=7 _state='suspended' tmpfile=<_io.TextIOWrapper name="<_io.FileIO name=8 mode='rb+' closefd=True>" mode='r+' encoding='utf-8'>> in_=<FDCapture 0 oldfd=3 _state='started' tmpfile=<_io.TextIOWrapper name='/dev/null' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+    /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/conftest.py: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/conftest.py
+    /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/conftest.py: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/conftest.py
+    session             : <Session  exitstatus=<ExitCode.OK: 0> testsfailed=0 testscollected=0>
+    lfplugin            : <_pytest.cacheprovider.LFPlugin object at 0xf7c3d038eab0>
+    nfplugin            : <_pytest.cacheprovider.NFPlugin object at 0xf7c3d09761e0>
+    legacypath-tmpdir   : <class '_pytest.legacypath.LegacyTmpdirPlugin'>
+    terminalreporter    : <_pytest.terminal.TerminalReporter object at 0xf7c3d039d0a0>
+    logging-plugin      : <_pytest.logging.LoggingPlugin object at 0xf7c3d03955e0>
+    pytest-benchmark    : <pytest_benchmark.session.BenchmarkSession object at 0xf7c3d0e75dc0>
+    funcmanage          : <_pytest.fixtures.FixtureManager object at 0xf7c3d0c4c470>
+cachedir: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+hypothesis profile 'default'
+rootdir: /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 732 items / 2 deselected / 730 selected
+
+test/api/test_agent_supervisor_provekit_setup.py::test_scaev180proofready_shared_with_solver_readiness PASSED    [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_absent_cli_or_artifacts_emits_typed_unavailable PASSED    [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_identities_are_content_addressed_when_configured PASSED   [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_mandatory_self_tests_gate_production_eligibility PASSED   [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_incomplete_surfaces_stay_non_production PASSED            [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_simulated_provekit_is_never_attested_or_production_eligible PASSED [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_attestation_requires_approved_kernel_verified_receipt_predicate PASSED [  0%]
+test/api/test_agent_supervisor_provekit_setup.py::test_env_overrides_discover_executable_and_artifacts PASSED    [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_which_discovery_for_provekit_cli PASSED                   [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_setup_report_envelope_and_json_stability PASSED           [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_self_test_exception_is_fail_closed PASSED                 [  1%]
+test/api/test_agent_supervisor_provekit_setup.py::test_non_eligible_setup_blocks_attestation PASSED              [  1%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_evidence_term_and_interface_are_stable PASSED [  1%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_require_zk_backend_selection_authorized_for_datasets_use_case PASSED [  1%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_setup_identity_binds_executable_and_artifacts PASSED [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_probe_unavailable_without_binaries_is_typed_and_non_authoritative PASSED [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_self_tests_gate_production_eligibility PASSED [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_cryptographic_attestation_is_authoritative PASSED [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_verifier_rejection_is_non_authoritative PASSED [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_unverified_receipt_cannot_attest PASSED     [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_unsupported_predicate_is_not_applicable PASSED [  2%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_unavailable_backend_emits_typed_status PASSED [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_simulated_backend_never_satisfies_attested PASSED [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_failed_self_tests_block_real_zk_claims PASSED [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_witness_cannot_enter_public_artifacts PASSED [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_prover_failure_does_not_fall_back_to_simulation PASSED [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_groth16_family_path PASSED                  [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_registry_probe_is_boolean PASSED            [  3%]
+test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py::test_result_to_cache_record_is_public PASSED     [  3%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_public_inputs_bind_all_canonical_commitments PASSED [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_every_public_commitment_changes_identity PASSED     [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_public_inputs_reject_wrong_codec_version PASSED     [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_encode_public_input_vector_rejects_missing_or_extra_keys PASSED [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_validity_non_claims_are_normative PASSED      [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_supported_transition_table_is_complete_and_deterministic PASSED [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_canonical_trace_follows_supported_transitions PASSED [  4%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_reordered_steps PASSED                [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_omitted_steps PASSED                  [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_illegal_single_transition PASSED      [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_trace_rejects_forged_result_binding PASSED          [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_is_non_authoritative_and_non_semantic PASSED [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_vfs_g080_evidence_terms_are_published_on_statement_and_receipt PASSED [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_objective_validation_repair_evidence_term_discoverable PASSED [  5%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_vfs_g080_acceptance_shadow_and_non_semantic_authority PASSED [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_rejects_forged_evidence_identity PASSED   [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_receipt_rejects_forged_evidence_identity PASSED     [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_rejects_semantic_proof_flag PASSED        [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_shadow_envelope_is_non_authoritative PASSED         [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[forest_commitment] PASSED [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[inventory_commitment] PASSED [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[contract_commitment] PASSED [  6%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[call_slice_commitment] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[assumptions_commitment] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[result_commitment] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[circuit_id] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[proving_key_id] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[verifying_key_id] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[ceremony_id] PASSED [  7%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[analyzer_version] PASSED [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[resolver_version] PASSED [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[translator_version] PASSED [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_public_input_field_is_rejected_on_load[prover_version] PASSED [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_statement_identity_is_rejected PASSED      [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_tampered_statement_digest_is_rejected PASSED        [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_envelope_cannot_assert_authority PASSED             [  8%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_cannot_assert_authority PASSED            [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_receipt_rejects_mismatched_key_or_circuit_pins PASSED [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_verification_receipt_replays_against_exact_inputs PASSED [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_drifted_public_inputs PASSED         [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_stale_verifying_key PASSED           [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_wrong_circuit_or_ceremony PASSED     [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_codec_version_drift PASSED           [  9%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_replay_rejects_stale_proving_key_via_public_input_digest PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_shadow_verified_receipt_is_still_non_authoritative PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_private_witness_is_redacted_non_mapping_and_non_serializable PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_proving_callback_can_use_read_only_witness_without_publication PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_witness_fields_are_absent_from_logs_context_and_public_artifacts PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_reject_private_witness_from_public_payload PASSED   [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_witness_policy_requires_redaction_and_limits_fields PASSED [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_contract_version_is_pinned_in_payloads PASSED       [ 10%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_version_fields_are_bound_in_public_inputs PASSED    [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_receipt_rejects_codec_version_mismatch_on_construction PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[model_proved] PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[model_disproved] PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[runtime_witnessed] PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[observed_syntax] PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_zk_trace_cannot_be_promoted_to_semantic_claims[resolved_static] PASSED [ 11%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[observed_syntax] PASSED [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[resolved_static] PASSED [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[model_proved] PASSED [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_other_claims_cannot_be_promoted_to_zk_trace[runtime_witnessed] PASSED [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_statement_rejects_non_zk_claim_level PASSED         [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_general_claim_promotion_still_rejects_cross_level PASSED [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp.py::test_prepare_round_trip_binds_trace_and_public_inputs PASSED [ 12%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_default_probe_is_shadow_only_and_non_authoritative PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_probe_covers_every_required_dimension PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_production_fixture_is_eligible_and_round_trips PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_simulated_defaults_fail_closed PASSED   [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_knowledge_graph_fail_open_fails_closed PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_placeholder_field_encoding_fails_closed PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_v1_nonzero_only_circuit_fails_closed PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_incompatible_tdfol_only_circuit_fails_closed PASSED [ 13%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_unversioned_and_missing_artifacts_fail_closed PASSED [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_stale_capability_fails_closed PASSED    [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_bn254_field_encoding_is_deterministic PASSED [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_simulated_proof_layout_is_detected PASSED [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_deterministic_proof_receipt_identity PASSED [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_independent_replay_against_exact_pins PASSED [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_corrupted_proof_is_rejected PASSED      [ 14%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_corrupted_key_is_rejected PASSED        [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_corrupted_public_input_is_rejected PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_cryptographic_without_callback_fails_closed PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_production_record_requires_eligible_capability_and_callback PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_capability_loss_invalidates_prior_authority PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_capability_loss_when_probe_degrades PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_shadow_only_rollout_never_authoritative PASSED [ 15%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_cryptographic_without_capability_binding_is_non_authoritative PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_cancellation_fails_closed PASSED        [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_bounds_probe_rejects_overflow PASSED    [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_authoritative_receipt_does_not_promote_semantic_claims PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_forged_authoritative_flag_on_shadow_receipt_is_rejected PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_vfs_g081_capability_conformance_evidence_discoverable PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_proof_system_substitution_fails_closed PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_simulated_proof_under_cryptographic_path_fails_closed PASSED [ 16%]
+test/api/test_agent_supervisor_program_analysis_zkp_conformance.py::test_forged_capability_conformance_identity_is_rejected PASSED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_priorities_expose_critical_path_and_downstream_unlocks PASSED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_dependency_order_and_bounded_independent_stage_overlap FAILED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_stage_and_resource_class_limits_refine_global_parallelism FAILED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_preparation_failure_releases_entire_admission_batch PASSED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_conclusive_portfolio_receipt_cancels_redundant_attempt PASSED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_unsupported_and_failed_dependencies_propagate_explicitly PASSED [ 17%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_restart_restores_plan_attempts_receipts_and_does_not_reexecute PASSED [ 18%]
+test/api/test_agent_supervisor_proof_scheduler.py::test_restart_requeues_an_expired_fenced_lease PASSED          [ 18%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_canonical_resource_classes_distinguish_every_proof_work_type PASSED [ 18%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_cpu_model_and_artifact_pools_are_independent_and_leases_are_reclaimable PASSED [ 18%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_supervisor_lease_budget_accounts_aggregate_process_memory_disk_and_provider_use PASSED [ 18%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host0-provider0-requirement0-host_cpu_high_watermark] PASSED [ 18%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host1-provider1-requirement1-host_memory_headroom] PASSED [ 18%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host2-provider2-requirement2-host_disk_headroom] PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host3-provider3-requirement3-provider_quota] PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host4-provider4-requirement4-provider_context] PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host5-provider5-requirement5-provider_token_budget] PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_live_host_and_provider_backpressure_remains_authoritative[host6-provider6-requirement6-provider_latency] PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_propagates_one_budget_to_portfolio_and_kernel_children PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_model_concurrency_is_separate_from_cpu_proof_concurrency PASSED [ 19%]
+test/api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_waits_for_provider_capacity_before_claiming PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_adaptive_stage_capacity_contracts_before_the_hard_host_gate PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_adaptive_admission_round_robins_stages_and_exports_lane_metrics PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_resource_pool_splits_validation_from_proof_solver_classes PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_resource_pools_expose_fair_order_and_backpressure PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_six_stage_profiles_and_git_aliases_are_explicit_and_deterministic PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_gpu_provider_and_disk_pressure_only_block_relevant_stages PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_queue_depth_merge_age_and_active_leases_are_capacity_signals PASSED [ 20%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_hysteresis_and_resource_loss_recovery_are_sample_deterministic PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_critical_path_wins_but_aged_merge_work_cannot_starve PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_cancellation_releases_lease_and_capacity_for_the_next_lane PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_aggregate_gpu_memory_and_active_slots_never_overadmit PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_resource_backpressure_event_projection_is_latest_and_taskless PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_generic_stage_events_are_not_resource_admission_observations PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_content_addressed_benchmark_receipt_is_fail_closed_and_rebinds PASSED [ 21%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_benchmark_runner_proves_two_x_without_duplicates_or_overcommit PASSED [ 22%]
+test/api/test_agent_supervisor_adaptive_resources.py::test_benchmark_rejects_duplicates_incomplete_acceptance_and_overcommit PASSED [ 22%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_resource_taxonomy_covers_every_formal_execution_family PASSED [ 22%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_one_root_lease_accounts_process_thread_memory_disk_model_and_quota PASSED [ 22%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_ref258_supervisor_budget_adapts_into_the_shared_prover_lease PASSED [ 22%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_child_limits_prevent_native_and_jvm_nested_pool_expansion PASSED [ 22%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_serial_and_bundle_supervisors_share_the_same_live_capacity PASSED [ 22%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_dependency_closed_slices_do_not_let_a_late_blocked_member_idle_ready_work PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_failed_dependency_blocks_only_its_lane_while_independent_lane_completes PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_bundle_width_never_exceeds_shared_process_or_thread_capacity PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_adaptive_width_contracts_under_pressure_and_values_critical_work PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_exact_deterministic_cache_hit_bypasses_execution_and_host_pressure PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_timeout_terminates_process_group_releases_capacity_and_bounds_diagnostics PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_root_cancellation_terminates_running_command_and_returns_partial_receipt PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_provider_and_model_capacity_are_reclaimed_after_inference PASSED [ 23%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_provider_telemetry_quota_is_reserved_cumulatively PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_wall_time_is_one_root_deadline_not_a_fresh_timeout_per_child PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_invalid_or_nondeterministic_cache_claims_fail_closed PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_resources.py::test_manager_closes_root_and_releases_all_outstanding_grants PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[finite_constraint-expected0] PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[state_machine-expected1] PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[authorization-expected2] PASSED [ 24%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[protocol-expected3] PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[hyperproperty-expected4] PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[runtime_trace-expected5] PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_routes_each_property_to_its_semantic_portfolio[kernel_check-expected6] PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_dcec_tdfol_and_hammer_form_staged_reconstruction_portfolio PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_code_obligation_requires_explicit_reviewed_property_classification PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_model_checking_authority_can_prove_but_candidate_cannot_self_promote PASSED [ 25%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_hammer_receives_domain_results_and_kernel_reconstruction_is_authority PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[raw0-unknown-inconclusive] PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[raw1-unsupported-unsupported] PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[raw2-timeout-inconclusive] PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_unknown_unsupported_timeout_and_malformed_fail_closed[not a typed result-malformed-error] PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_authority_disagreement_fails_closed_and_retains_both_attempts PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_conclusive_counterexample_cancels_redundant_stages_and_retains_all PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_strict_output_rejects_unknown_fields_and_oversized_evidence PASSED [ 26%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_matrix_and_legacy_conformance_gates_fail_closed_before_execution PASSED [ 27%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_conclusive_candidate_counterexample_stops_reconstruction PASSED [ 27%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_kernel_required_code_obligation_adds_reconstruction_authorities PASSED [ 27%]
+test/api/test_agent_supervisor_multi_prover_router.py::test_result_is_canonical_and_retains_plan_order PASSED    [ 27%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_obligation_has_canonical_json_round_trip_and_content_identity PASSED [ 27%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_all_primary_contracts_have_stable_ids_and_round_trip PASSED [ 27%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_plan_rejects_unknown_dependencies_and_cycles PASSED [ 27%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_receipt_binds_every_trust_relevant_input PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_candidate_sources_cannot_become_kernel_verified[llm_output-llm] PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_candidate_sources_cannot_become_kernel_verified[atp_candidate-atp] PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_candidate_sources_cannot_become_kernel_verified[smt_candidate-smt] PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_provider_claims_are_audited_but_never_authoritative PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_independent_exact_kernel_evidence_derives_kernel_assurance PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_attestation_requires_kernel_receipt_and_real_independent_verification PASSED [ 28%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_stale_cache_evidence_cannot_satisfy_kernel_or_attested_assurance PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_contracts.py::test_canonical_contracts_reject_floats_and_forged_content_ids PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_key_binds_every_semantic_execution_and_candidate_input PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_key_binds_every_route_aware_reuse_dimension PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_untrusted_drafts_are_physically_and_logically_separate_from_receipts PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_explicit_draft_context_bindings_must_match_the_route_aware_key PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim0] PASSED [ 29%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim1] PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim2] PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim3] PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim4] PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_cache_rejects_nested_authority_and_completion_claims[claim5] PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_ttl_size_bound_and_corruption_fail_closed PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_only_current_receipts_meeting_requested_assurance_are_hits PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_maximum_age_is_stric_even_before_entry_ttl PASSED [ 30%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_partial_solver_only_and_simulated_attestation_are_not_stored PASSED [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_malformed_and_binding_poisoned_entries_have_reason_codes PASSED [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_mismatched_receipt_binding_is_rejected_before_persistence PASSED [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_threads PASSED      [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_single_flight_uses_the_route_aware_namespace PASSED [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_draft_single_flight_rejects_authority_before_publishing PASSED [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_heartbeats_long_running_leader PASSED [ 31%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes PASSED    [ 32%]
+test/api/test_agent_supervisor_formal_verification_cache.py::test_expired_lease_is_fenced_and_can_be_taken_over PASSED [ 32%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_report_is_versioned_and_covers_every_formal_logic_provider PASSED [ 32%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_each_health_dimension_is_serialized_separately PASSED [ 32%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_missing_optional_packages_models_bindings_and_binaries_are_explicit PASSED [ 32%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_core_provider_degrades_when_only_optional_nlp_health_is_missing PASSED [ 32%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_python_discovery_failures_do_not_escape_or_import_providers PASSED [ 32%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_default_dotted_package_discovery_does_not_execute_parent_packages PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_default_discovery_resolves_nested_source_package_without_importing_wrapper PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_default_discovery_traverses_nested_namespace_packages_without_importing PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_leanstral_route_is_discoverable_through_accelerator_source_wrapper PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_probe_is_cached_until_forced_or_ttl_expires PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_probe_check_budget_bounds_discovery_work PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_probe_wall_clock_budget_bounds_stalled_discovery PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_capability_availability_never_becomes_proof_success PASSED [ 33%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_zkp_backend_health_requires_executable_and_circuit_artifacts PASSED [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_probe_limits_fail_fast PASSED   [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_leanstral_surfaces_are_independent_routing_capabilities PASSED [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_configured_local_model_does_not_depend_on_kernel_or_codec PASSED [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_effective_context_limit_uses_smallest_authority_and_reserves PASSED [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_effective_context_limit_is_unknown_or_exhausted_not_unlimited PASSED [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_context_limit_is_attached_to_route_health_and_can_fail_route PASSED [ 34%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_inference_canary_is_opt_in_and_never_runs_by_default PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_enabled_inference_canary_receives_only_bounded_health_request PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_inference_canary_has_independent_timeout_and_response_bound PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_callback_result_cannot_evade_canary_bounds_or_claim_verification PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result0-input_tokens] PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result1-output_tokens] PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result2-input_tokens] PASSED [ 35%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_canary_reported_token_use_cannot_exceed_request_bounds[callback_result3-output_tokens] PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs0-positive integer] PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs1-positive integer] PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs2-object or integer] PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs3-non-negative integer] PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_capabilities.py::test_invalid_context_limit_metadata_fails_closed[kwargs4-non-negative integer] PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_operation_capability_is_versioned_deterministic_and_not_proof_evidence PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_request_response_envelopes_are_correlated_and_fail_closed PASSED [ 36%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_all_protocol_operations_execute_in_process_without_promoting_status PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_in_process_timeout_cancellation_network_and_malformed_fail_explicitly PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_subprocess_protocol_round_trip_and_all_failure_classes PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_subprocess_cancellation_and_declared_network_policy PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_stdio_server_emits_protocol_response_and_rejects_bad_requests PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_provider.py::test_missing_provider_is_normal_and_does_not_import_ipfs_datasets_py PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_policy_maps_path_ast_risk_and_invariant_to_assurance_and_fallback PASSED [ 37%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_overlapping_rules_merge_conservatively_and_cannot_weaken_fallback PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonblocking_modes_report_failure_without_blocking[disabled] PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonblocking_modes_report_failure_without_blocking[shadow] PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_canary_only_blocks_configured_or_deterministically_selected_paths PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[unsupported] PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[unavailable] PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[timed_out] PASSED [ 38%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[inconclusive] PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[error] PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_nonproof_results_never_silently_satisfy_enforcement[missing] PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_proved_result_requires_durable_receipt_and_required_assurance PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_unsupported_can_only_use_an_explicit_complete_fallback PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_override_requires_bounded_actor_reason_tree_policy_and_expiration PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_expired_wrong_tree_and_out_of_scope_overrides_fail_closed PASSED [ 39%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_override_receipt_is_canonical_content_addressed_and_durable PASSED [ 40%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_rollout_promotion_is_adjacent_evidence_gated_and_content_addressed PASSED [ 40%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_rollout_rollback_is_explicit_and_does_not_need_success_evidence PASSED [ 40%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_policy_and_selection_round_trip_with_deterministic_identities PASSED [ 40%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_baseline_policy_protects_only_modeled_high_risk_changes PASSED [ 40%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_unsafe_paths_and_accidental_global_rules_are_rejected PASSED [ 40%]
+test/api/test_agent_supervisor_formal_verification_policy.py::test_path_globs_do_not_let_single_star_cross_directories PASSED [ 40%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_threat_model_names_required_roles_and_insufficiency PASSED [ 40%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_policy_records_not_applicable_without_blocking_core_cbp PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_backend_selection_requires_approved_use_case_decision PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_simulated_attestation_cannot_satisfy_attested PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_public_inputs_bind_property_repo_tree_obligation_toolchain_policy_kernel PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_private_witnesses_rejected_from_public_receipts_and_cache_entries PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_real_attestation_reverify_and_fail_closed_on_drift PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_persisted_record_rejects_non_authoritative_and_simulated_paths PASSED [ 41%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_threat_model_and_policy_docs_cross_link_and_name_cache_boundary PASSED [ 42%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_cbp_public_bindings_appear_in_authoritative_attestation_evidence PASSED [ 42%]
+test/api/test_agent_supervisor_code_proof_attestation_policy.py::test_module_exports_policy_surface_for_supervisor_integration PASSED [ 42%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_mint_content_identity_stable_cidv1_profile PASSED [ 42%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_retained_canonical_bytes_decode_and_rehash PASSED [ 42%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_retained_bytes_claimed_cid_mismatch_fails PASSED [ 42%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_content_identity_rejects_digest_mismatch PASSED  [ 42%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_reject_pseudo_cid_forms PASSED                   [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_stable_and_profile PASSED   [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_from_contract_instance PASSED [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_normalizes_node_id PASSED   [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_parameter_non_reusable_retains_cid PASSED [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_malformed_is_non_reusable PASSED [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_missing_cid_support_non_reusable PASSED [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_locator_incompatible_cid_support_non_reusable PASSED [ 43%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_test_execution_key_stable_and_profile PASSED [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_any_bound_change_changes_execution_cid PASSED    [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_execution_key_from_contract_instance PASSED [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_execution_key_eligibility_non_reusable_still_has_cid PASSED [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_execution_key_missing_cid_support_non_reusable PASSED [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compile_execution_key_malformed_non_reusable PASSED [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compiler_interface_and_probe_available PASSED    [ 44%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compiled_artifacts_to_dict_shape PASSED          [ 45%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_normalize_pytest_node_id PASSED                  [ 45%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_key_order_does_not_affect_execution_cid PASSED   [ 45%]
+test/api/test_agent_supervisor_test_execution_identity.py::test_compiled_types_are_not_collected_as_tests PASSED [ 45%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_known_vectors_match_three_independent_providers[nested-ascii] PASSED [ 45%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_known_vectors_match_three_independent_providers[utf8-unicode] PASSED [ 45%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_profile_differences_are_typed_contradictions_and_rejected[version] PASSED [ 45%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_profile_differences_are_typed_contradictions_and_rejected[base] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_profile_differences_are_typed_contradictions_and_rejected[codec] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_profile_differences_are_typed_contradictions_and_rejected[digest] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[cid:not-a-cid] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[sha256:deadbeef] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[tree:sha256:111] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[repo:fixture] PASSED [ 46%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[BAGAAQEERA] PASSED [ 47%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_legacy_kit_hashes_are_never_admitted_as_cids[] PASSED [ 47%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_malformed_multihash_lengths_are_rejected[32-31] PASSED [ 47%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_malformed_multihash_lengths_are_rejected[31-32] PASSED [ 47%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_strict_dag_json_vectors_reject_coercion[non-finite] PASSED [ 47%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_strict_dag_json_vectors_reject_coercion[non-string-key] PASSED [ 47%]
+test/api/test_agent_supervisor_test_execution_identity_vectors.py::test_strict_dag_json_vectors_reject_coercion[unsupported-type] PASSED [ 47%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_document_pins_versioned_statement_and_binary_decision PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_non_negotiable_doctrine_is_explicit[zk proves possession of the exact trusted pass receipt] PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_non_negotiable_doctrine_is_explicit[ast similarity never means pass] PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_non_negotiable_doctrine_is_explicit[a cid only identifies bytes] PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_non_negotiable_doctrine_is_explicit[simulated zk never skips] PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_non_negotiable_doctrine_is_explicit[every uncertainty executes the test] PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_zk_claim_is_receipt_possession_not_changed_code_correctness PASSED [ 48%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_ast_traces_and_cids_have_no_pass_authority PASSED [ 49%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_skip_requires_the_complete_conjunctive_authority_chain PASSED [ 49%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_simulated_zk_is_permanently_non_authoritative PASSED [ 49%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_every_named_uncertainty_and_attack_fails_to_run PASSED [ 49%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_public_inputs_prevent_replay_substitution_and_key_confusion PASSED [ 49%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_private_witness_is_excluded_from_every_public_boundary PASSED [ 49%]
+test/api/test_agent_supervisor_test_proof_reuse_doctrine.py::test_decision_procedure_has_no_unknown_to_skip_transition PASSED [ 49%]
+test/api/test_proof_reuse_activation_contracts.py::test_contract_distinguishes_six_artifact_roles PASSED         [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_round_trips_and_deterministic_identities PASSED          [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_content_addressed_boundary_requires_canonical_bytes_and_rehash PASSED [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_every_activation_artifact_is_content_addressed PASSED    [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_skip_requires_current_ast_static_runtime_environment_policy_match PASSED [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_current_context_rejects_historical_trace_relabel PASSED  [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_simulated_certificate_never_skips PASSED                 [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_post_pass_runtime_observation_forbids_duplicate_test_call PASSED [ 50%]
+test/api/test_proof_reuse_activation_contracts.py::test_optional_capability_faults_map_to_run_or_deferred_without_collection_failure[missing] PASSED [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_optional_capability_faults_map_to_run_or_deferred_without_collection_failure[malformed] PASSED [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_optional_capability_faults_map_to_run_or_deferred_without_collection_failure[incompatible] PASSED [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_optional_capability_faults_map_to_run_or_deferred_without_collection_failure[timed_out] PASSED [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_optional_capability_faults_map_to_run_or_deferred_without_collection_failure[exceptional] PASSED [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_disposition_never_allows_collection_failed_true PASSED   [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_skip_disposition_requires_certificate_and_receipt PASSED [ 51%]
+test/api/test_proof_reuse_activation_contracts.py::test_sealed_activation_contract_authority_sequence_and_gates PASSED [ 52%]
+test/api/test_proof_reuse_activation_contracts.py::test_private_material_rejected_from_public_artifacts PASSED   [ 52%]
+test/api/test_proof_reuse_activation_contracts.py::test_versionless_and_unknown_fields_fail_closed PASSED        [ 52%]
+test/api/test_proof_reuse_activation_contracts.py::test_evaluate_skip_admission_rejects_rehash_mismatch_without_raising PASSED [ 52%]
+test/api/test_proof_reuse_receipt.py::test_required_deferred_pins_match_v2_set PASSED                            [ 52%]
+test/api/test_proof_reuse_receipt.py::test_public_deferred_mapping_strips_private_and_keeps_pins PASSED          [ 52%]
+test/api/test_proof_reuse_receipt.py::test_public_deferred_mapping_rejects_oversized_retained_hex PASSED         [ 52%]
+test/api/test_proof_reuse_receipt.py::test_public_deferred_mapping_rejects_oversized_required_pin PASSED         [ 53%]
+test/api/test_proof_reuse_receipt.py::test_public_deferred_mapping_rejects_malformed_hex PASSED                  [ 53%]
+test/api/test_proof_reuse_receipt.py::test_deferred_envelope_from_mapping_and_completeness PASSED                [ 53%]
+test/api/test_proof_reuse_receipt.py::test_from_admitted_receipt_ignores_certificate_fill_in PASSED              [ 53%]
+test/api/test_proof_reuse_receipt.py::test_from_admitted_receipt_accepts_controller_owned_extras PASSED          [ 53%]
+test/api/test_proof_reuse_receipt.py::test_from_admitted_receipt_rejects_oversized_retained_bytes PASSED         [ 53%]
+test/api/test_proof_reuse_receipt.py::test_reconstruct_deferred_request_rehashes_and_ignores_certificate PASSED  [ 53%]
+test/api/test_proof_reuse_receipt.py::test_reconstruct_deferred_request_rejects_oversized_retained PASSED        [ 53%]
+test/api/test_proof_reuse_receipt.py::test_reconstruct_controller_context_from_receipt_public PASSED             [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_report_symbols_and_schema_are_stable PASSED         [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_live_report_derives_from_composed_default_services PASSED [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_report_never_installs_or_proves PASSED              [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_native_groth16_separated_from_test_certificate_authority PASSED [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_knowledge_of_axioms_never_satisfies_certificate_even_with_keys PASSED [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_hostile_self_pinned_v4_manifest_cannot_mark_certificate_ready PASSED [ 54%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_report_round_trip_dict PASSED                       [ 55%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_live_inventory_differs_from_cold_hardcoded_plan PASSED [ 55%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_probe_live_typed_services_without_services_is_fail_closed PASSED [ 55%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_module_exports_remain_import_safe PASSED            [ 55%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_activation_gap_when_reviewed_keys_absent PASSED     [ 55%]
+test/api/test_proof_reuse_runtime_activation_report.py::test_unmanifested_native_binary_cannot_satisfy_certificate_authority PASSED [ 55%]
+test/api/test_proof_reuse_controller_issuance.py::test_artifact_bindings_interface_and_unready PASSED            [ 55%]
+test/api/test_proof_reuse_controller_issuance.py::test_arbitrary_v4_key_bytes_are_never_provenance PASSED        [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_test_only_reviewed_manifest_binds_keys_provider_and_ptr151_native FAILED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_controller_transaction_retains_then_defers_positive_v4_publication PASSED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_self_asserted_bindings_and_fake_verifier_never_reach_candidate_store PASSED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_flush_retains_receipt_without_positive_v4_authority PASSED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_flush_deferred_retains_receipt_without_skip_authority PASSED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_structural_certificate_without_artifact_provenance_never_indexes PASSED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_pending_positive_v4_never_probes_candidate_store_or_fences_controller PASSED [ 56%]
+test/api/test_proof_reuse_controller_issuance.py::test_put_candidate_once_does_not_retry_internal_type_error PASSED [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_put_candidate_once_rejects_untyped_truthy_result PASSED   [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_mismatched_artifact_provenance_returns_deferred PASSED    [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_controller_v2_context_interface_never_grants_authority PASSED [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_injected_verifier_and_self_claim_cannot_authorize_put_candidate PASSED [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_put_candidate_exactly_once_after_verified PASSED          [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_workers_serialize_no_witness_or_private_material PASSED   [ 57%]
+test/api/test_proof_reuse_controller_issuance.py::test_transaction_interface_constant PASSED                     [ 58%]
+test/api/test_proof_reuse_controller_issuance.py::test_crash_may_retain_non_authoritative_candidate_for_retry PASSED [ 58%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_controller_owned_context_interface_and_no_publication_authority PASSED [ 58%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_required_pins_are_exactly_the_v2_set PASSED     [ 58%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_incomplete_context_reports_missing_pins PASSED  [ 58%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_certificate_cannot_fill_missing_expected_pins PASSED [ 58%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_oversized_retained_bytes_are_rejected_not_truncated PASSED [ 58%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_malformed_retained_hex_is_rejected PASSED       [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_rehash_before_use_records_byte_cids PASSED      [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_stale_or_substituted_pin_rejected_by_admit PASSED [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_round_trip_public_mapping_preserves_pins_and_bytes PASSED [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_candidate_publication_envelope_projects_retained_components PASSED [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_from_candidate_publication_admits_complete_pins PASSED [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_serial_and_direct_reconstruction_share_contract PASSED [ 59%]
+test/api/test_proof_reuse_candidate_publication_context.py::test_empty_source_and_unsupported_types_fail_closed PASSED [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_enabled_modes_attach_canonical_seed_and_stable_locator[read] PASSED [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_enabled_modes_attach_canonical_seed_and_stable_locator[write] PASSED [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_enabled_modes_attach_canonical_seed_and_stable_locator[readwrite] PASSED [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_parameterized_node_binds_exact_parameter_value_cid PASSED [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_collection_never_invokes_fixtures_or_test_body PASSED [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_explicit_injected_identity_remains_override PASSED   [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_manual_locator_without_seed_is_override PASSED       [ 60%]
+test/api/test_proof_reuse_locator_first_collection.py::test_incomplete_static_facts_attach_no_lookup_authority PASSED [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_exceptional_factory_fails_open PASSED                [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_off_mode_retains_cold_import_and_no_seed PASSED      [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_seed_is_stable_for_identical_static_inputs PASSED    [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_build_seed_from_static_identity_projection PASSED    [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_locator_first_assembler_interface PASSED             [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_full_assembly_without_runtime_does_not_attach_execution_key PASSED [ 61%]
+test/api/test_proof_reuse_locator_first_collection.py::test_plugin_collection_attaches_seed_in_read_mode PASSED  [ 62%]
+test/api/test_proof_reuse_locator_first_collection.py::test_plugin_off_mode_is_inert PASSED                      [ 62%]
+test/api/test_proof_reuse_locator_first_collection.py::test_missing_factory_fails_open_without_lookup PASSED     [ 62%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_public_interfaces_and_symbols_are_stable PASSED         [ 62%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_default_current_context_provider_rebuilds_without_fixtures PASSED [ 62%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_provider_absence_and_incomplete_identity_return_none PASSED [ 62%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_provider_rejects_fixture_or_body_side_effects PASSED    [ 62%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_warm_lookup_starts_with_locator_and_item_only PASSED    [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_dedicated_candidate_store_returns_retained_bytes_and_rehashes PASSED [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_revalidation_alone_never_skips PASSED                   [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_changed_runtime_frontier_returns_run PASSED             [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_identity_mismatch_returns_run PASSED                    [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_candidate_miss_returns_run PASSED                       [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_store_corruption_returns_run PASSED                     [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_provider_absence_returns_run PASSED                     [ 63%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_timeout_returns_run PASSED                              [ 64%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_exception_fail_open_to_run PASSED                       [ 64%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_exact_match_then_proof_cache_hit_is_only_skip PASSED    [ 64%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_provided_execution_key_must_match_candidate PASSED      [ 64%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_revalidated_request_and_batch_lookup PASSED             [ 64%]
+test/api/test_proof_reuse_two_stage_warm_lookup.py::test_legacy_proof_reuse_lookup_still_works_without_two_stage PASSED [ 64%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_public_interfaces_and_symbols_are_stable PASSED          [ 64%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_lookup_starts_from_stable_locator_only PASSED            [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_locator_object_with_locator_cid_is_accepted PASSED       [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_retained_file_dependency_is_freshly_resolved_and_content_addressed PASSED [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_changed_file_dependency_returns_run PASSED               [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_unresolvable_file_dependency_returns_run PASSED          [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_uncontrolled_subprocess_fact_returns_run PASSED          [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_incomplete_runtime_trace_returns_run PASSED              [ 65%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_all_identity_dimensions_must_match_for_proceed PASSED    [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_fixture_hook_parameter_component_mismatch_returns_run PASSED [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_external_snapshot_mismatch_returns_run PASSED            [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_historical_current_context_is_rejected PASSED            [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_compare_candidate_to_current_never_authorizes_skip PASSED [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_verified_unchanged_context_proceeds_without_fixtures_or_body PASSED [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_normal_miss_executes_lifecycle_exactly_once_and_captures PASSED [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_duplicate_setup_call_teardown_is_rejected PASSED         [ 66%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_capture_without_full_lifecycle_is_rejected PASSED        [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_miss_path_via_revalidator_factory_and_store PASSED       [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_store_lookup_rehash_and_identity_match_round_trip PASSED [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_component_integrity_failure_returns_run PASSED           [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_missing_current_context_returns_run PASSED               [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_empty_complete_frontier_with_matching_identities_proceeds PASSED [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_environment_fact_fresh_resolution PASSED                 [ 67%]
+test/api/test_proof_reuse_runtime_revalidation.py::test_result_to_dict_is_json_safe_and_non_authoritative PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[plugin_absent] PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[plugin_disabled] PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[cache_absent] PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[cache_unreachable] PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[cache_read_only] PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[locator_miss] PASSED [ 68%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[candidate_corrupt] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[candidate_oversized] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[candidate_path_escape] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[multiformats_or_cid_missing] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[datasets_zk_missing] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[datasets_zk_incompatible] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[groth16_issuer_missing] PASSED [ 69%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[provekit_issuer_missing] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[local_verifier_missing] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[verifier_key_missing] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[verifier_circuit_missing] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[simulated_proof] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[expired_certificate] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[revoked_issuer] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[wrong_issuer] PASSED [ 70%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[wrong_policy] PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[incomplete_trace] PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[changed_trace] PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[xdist_coordination_failure] PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_each_degradation_reason_is_bounded_and_executes_real_test[unexpected_exception] PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_matrix_population_covers_every_planned_degradation_row PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_capability_probe_reports_all_missing_providers_without_side_effects PASSED [ 71%]
+test/api/test_proof_reuse_degradation_matrix.py::test_cache_lookup_degradation_executes_real_test[locator-miss] PASSED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_cache_lookup_degradation_executes_real_test[cache-unreachable] PASSED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[plugin-absent] FAILED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-off] FAILED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-shadow] FAILED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-read] FAILED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-write] FAILED [ 72%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-readwrite] FAILED [ 73%]
+test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[required-audit] FAILED [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_lifecycle_starts_before_setup_and_stops_after_teardown PASSED [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_lifecycle_never_invokes_body_twice PASSED               [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_duplicate_phase_notes_disqualify_authority PASSED       [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_tracing_faults_never_raise_into_caller PASSED           [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_attach_runtime_lifecycle_is_idempotent PASSED           [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_complete_trace_bound_into_newly_compiled_final_key PASSED [ 73%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_receipt_binds_final_key_and_trace PASSED                [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_candidate_retains_descriptor_and_required_components PASSED [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_non_pass_phases_publish_nothing_authoritative[skipped-passed-passed-skip] PASSED [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_non_pass_phases_publish_nothing_authoritative[passed-skipped-passed-skip] PASSED [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_non_pass_phases_publish_nothing_authoritative[passed-failed-passed-fail] PASSED [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_non_pass_phases_publish_nothing_authoritative[passed-passed-failed-teardown_failure] PASSED [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_xfailed_trace_publishes_nothing PASSED                  [ 74%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_bad_traces_publish_nothing_authoritative[<lambda>-incomplete_trace] PASSED [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_bad_traces_publish_nothing_authoritative[<lambda>-overflowed_trace] PASSED [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_bad_traces_publish_nothing_authoritative[<lambda>-exceptional_trace] PASSED [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_bad_traces_publish_nothing_authoritative[<lambda>-uncontrolled_trace] PASSED [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_evaluate_complete_pass_rejects_overflow_and_exceptional PASSED [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_incomplete_phases_publish_nothing PASSED                [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_assemble_rejects_receipt_key_mismatch PASSED            [ 75%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_build_completed_identity_rejects_incomplete_trace PASSED [ 76%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_plugin_composition_attaches_lifecycle_for_write_mode PASSED [ 76%]
+test/api/test_proof_reuse_cold_pass_publication.py::test_finalize_receipt_requires_runtime_trace_when_requested PASSED [ 76%]
+test/api/test_proof_reuse_default_identity_services.py::test_enabled_modes_obtain_forest_locator_and_static_components[read] PASSED [ 76%]
+test/api/test_proof_reuse_default_identity_services.py::test_enabled_modes_obtain_forest_locator_and_static_components[write] PASSED [ 76%]
+test/api/test_proof_reuse_default_identity_services.py::test_enabled_modes_obtain_forest_locator_and_static_components[readwrite] PASSED [ 76%]
+test/api/test_proof_reuse_default_identity_services.py::test_session_memoizes_expensive_stable_inputs PASSED     [ 76%]
+test/api/test_proof_reuse_default_identity_services.py::test_dirty_overlay_invalidates_forest_identity PASSED    [ 76%]
+test/api/test_proof_reuse_default_identity_services.py::test_source_change_invalidates_ast_index_and_static_identity PASSED [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_explicit_injections_override_defaults PASSED        [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_off_mode_imports_no_optional_provider PASSED        [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_unavailable_and_exceptional_components_fail_open PASSED [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_services_bundle_wires_session_providers PASSED      [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_analysis_ast_index_provider_interface_and_memoization PASSED [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_factory_interfaces_and_off_mode_static_identity PASSED [ 77%]
+test/api/test_proof_reuse_default_identity_services.py::test_component_inventory_matches_item_fixtures PASSED    [ 78%]
+test/api/test_proof_reuse_default_identity_services.py::test_cold_module_import_is_inert PASSED                  [ 78%]
+test/api/test_proof_reuse_default_identity_services.py::test_build_default_identity_services_idempotent_per_factory PASSED [ 78%]
+test/api/test_proof_reuse_default_runtime_services.py::test_reviewed_datasets_revision_advances_to_ptr151_native_release PASSED [ 78%]
+test/api/test_proof_reuse_default_runtime_services.py::test_compose_defaults_separates_candidate_and_certificate_stores PASSED [ 78%]
+test/api/test_proof_reuse_default_runtime_services.py::test_compose_defaults_builds_two_stage_lookup_and_revalidator PASSED [ 78%]
+test/api/test_proof_reuse_default_runtime_services.py::test_collection_and_lookup_never_build_or_prove PASSED    [ 78%]
+test/api/test_proof_reuse_default_runtime_services.py::test_lazy_issuer_does_not_import_datasets_until_issue PASSED [ 79%]
+test/api/test_proof_reuse_default_runtime_services.py::test_lazy_issuer_ptr155_gate_starts_no_provider_or_native_process PASSED [ 79%]
+test/api/test_proof_reuse_default_runtime_services.py::test_lazy_issuer_skips_native_build_without_explicit_policy PASSED [ 79%]
+test/api/test_proof_reuse_default_runtime_services.py::test_generic_native_binary_alone_is_non_authoritative PASSED [ 79%]
+test/api/test_proof_reuse_default_runtime_services.py::test_explicit_injected_services_still_win PASSED          [ 79%]
+test/api/test_proof_reuse_default_runtime_services.py::test_module_import_is_inert_without_optional_providers PASSED [ 79%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[forged_receipt] PASSED [ 79%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[forged_proof] PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[forged_claimed_cids] PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[noncanonical_receipt] PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[partial_certificate] PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[private_metadata] PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_hostile_artifacts_never_authorize_skip[oversized_artifact] PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_serialized_authority_flags_and_failure_details_are_non_authoritative PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_path_escape_and_symlink_artifacts_cannot_escape_store_root PASSED [ 80%]
+test/api/test_proof_reuse_security_concurrency.py::test_incomplete_publications_and_poisoned_indexes_remain_invisible PASSED [ 81%]
+test/api/test_proof_reuse_security_concurrency.py::test_worker_crash_restart_preserves_immutable_authority_and_recovers_fence PASSED [ 81%]
+test/api/test_proof_reuse_security_concurrency.py::test_concurrent_process_publishers_never_create_mixed_authority PASSED [ 81%]
+test/api/test_proof_reuse_security_concurrency.py::test_revocation_wins_replay_and_inflight_admission_races PASSED [ 81%]
+test/api/test_proof_reuse_security_concurrency.py::test_ptr142_publication_intents_never_carry_private_or_partial_authority PASSED [ 81%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_corpus_covers_required_evidence_categories PASSED      [ 81%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_baseline_warm_context_authorizes_exact_skip PASSED     [ 81%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[test_module] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[test_function] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[test_ast] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[import_static_trace] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[indirect_dependency] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[fixture_definition] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[conftest_closure] PASSED [ 82%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[hook_plugin] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[parameter_source] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[dependency_lock] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[installed_distributions] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[environment] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[hardware_capability] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[external_data_snapshot] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[dynamic_import_frontier] PASSED [ 83%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[dynamic_import_non_reusable] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[dirty_overlay] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[git_tree] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[repository_forest] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[config] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[policy_binding] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[tracer_schema] PASSED [ 84%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[circuit] PASSED [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[verifying_key] PASSED [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_each_mutation_changes_context_and_executes[policy_requirements] PASSED [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_population_authoritative_stale_skip_count_is_zero PASSED [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_unrelated_locator_index_candidates_cannot_override_current_identity PASSED [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_lookup_plugin_path_rejects_stale_index_hint_after_mutation PASSED [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_metrics_record_executions_without_stale_skips PASSED   [ 85%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_assert_no_stale_proof_skip_rejects_skip_decision PASSED [ 86%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_ptr142_activation_closeout_categories_are_covered_by_corpus_or_e2e PASSED [ 86%]
+test/api/test_proof_reuse_invalidation_mutations.py::test_sequential_proof_reuse_off_reports_zero_false_skips_for_population PASSED [ 86%]
+test/api/test_proof_reuse_issued_material_retention.py::test_proof_bearing_material_interface_and_no_skip_authority PASSED [ 86%]
+test/api/test_proof_reuse_issued_material_retention.py::test_deferred_disposition_has_no_authority PASSED        [ 86%]
+test/api/test_proof_reuse_issued_material_retention.py::test_redact_private_material_fields_strips_secrets PASSED [ 86%]
+test/api/test_proof_reuse_issued_material_retention.py::test_admit_rejects_private_material_and_oversized_certificate PASSED [ 86%]
+test/api/test_proof_reuse_issued_material_retention.py::test_admit_rejects_provenance_mismatch_and_incomplete PASSED [ 86%]
+test/api/test_proof_reuse_issued_material_retention.py::test_allowlisted_child_env_excludes_loader_injection_and_overwrites_root PASSED [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_immutable_session_revalidates_and_detects_replacement PASSED [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_immutable_session_rejects_digest_mismatch_at_bind PASSED [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_issue_remains_publication_deferred_without_provider_construction PASSED [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_issue_material_defers_without_provenance_and_retains_pass PASSED [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_issue_material_defers_on_post_binding_binary_replacement PASSED [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_issue_material_hardens_provider_child_env PASSED    [ 87%]
+test/api/test_proof_reuse_issued_material_retention.py::test_issue_material_rejects_malformed_provider_output PASSED [ 88%]
+test/api/test_proof_reuse_issued_material_retention.py::test_cold_import_of_services_is_inert PASSED             [ 88%]
+test/api/test_proof_reuse_setup_provisioning.py::test_setup_and_project_publish_explicit_commands_and_nltk_metadata FAILED [ 88%]
+test/api/test_proof_reuse_setup_provisioning.py::test_setup_optional_metadata_is_safe_without_toml_parser FAILED [ 88%]
+test/api/test_proof_reuse_setup_provisioning.py::test_legacy_setup_torch_install_is_inert_unless_explicitly_enabled[None] PASSED [ 88%]
+test/api/test_proof_reuse_setup_provisioning.py::test_legacy_setup_torch_install_is_inert_unless_explicitly_enabled[] PASSED [ 88%]
+test/api/test_proof_reuse_setup_provisioning.py::test_legacy_setup_torch_install_is_inert_unless_explicitly_enabled[0] PASSED [ 88%]
+test/api/test_proof_reuse_setup_provisioning.py::test_legacy_setup_torch_install_is_inert_unless_explicitly_enabled[false] PASSED [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_legacy_setup_torch_install_is_inert_unless_explicitly_enabled[invalid] PASSED [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_setup_command_delegates_without_implementing_install_policy FAILED [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_setup_command_can_require_ready FAILED                     [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_default_requests_both_capabilities_without_bypassing_consent PASSED [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_pre_reviewed_python_floor_is_typed_without_runtime_import[runtime_version0] PASSED [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_pre_reviewed_python_floor_is_typed_without_runtime_import[runtime_version1] PASSED [ 89%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_pre_reviewed_python_floor_is_typed_without_runtime_import[runtime_version2] PASSED [ 90%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_pre_reviewed_python_floor_isolated_import_stays_cold PASSED [ 90%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_selection_and_require_ready_are_typed_and_bounded PASSED [ 90%]
+test/api/test_proof_reuse_setup_provisioning.py::test_cli_optional_boundary_exception_never_escapes PASSED       [ 90%]
+test/api/test_proof_reuse_setup_provisioning.py::test_importing_setup_does_not_import_or_run_provisioning_cli PASSED [ 90%]
+test/api/test_proof_reuse_service_injection.py::test_off_mode_never_resolves_or_installs_services PASSED         [ 90%]
+test/api/test_proof_reuse_service_injection.py::test_service_module_load_has_no_install_network_or_cache_side_effect PASSED [ 90%]
+test/api/test_proof_reuse_service_injection.py::test_missing_allowlisted_dependency_is_installed_only_once[multiformats] PASSED [ 90%]
+test/api/test_proof_reuse_service_injection.py::test_missing_allowlisted_dependency_is_installed_only_once[jsonschema] PASSED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_pip_installer_rejects_non_allowlisted_package_without_process PASSED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_auto_install_defaults_on_with_explicit_fail_closed_opt_out PASSED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_dependency_plan_is_cold_complete_and_source_introspectable PASSED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_datasets_lazy_install_uses_reviewed_sibling_without_dependencies FAILED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_datasets_lazy_install_prefers_valid_configured_local_source FAILED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_unversioned_configured_datasets_source_runs_no_process FAILED [ 91%]
+test/api/test_proof_reuse_service_injection.py::test_invalid_configured_datasets_source_runs_no_process PASSED   [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_tampered_configured_datasets_verifier_runs_no_process PASSED [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_failed_pip_install_is_memoized_without_retry FAILED         [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_disabled_or_invalid_policy_constructs_no_installer[0] PASSED [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_disabled_or_invalid_policy_constructs_no_installer[invalid] PASSED [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_xdist_worker_never_constructs_default_installer PASSED      [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_plugin_default_installer_honors_package_policy_and_strict_lock[0-False] PASSED [ 92%]
+test/api/test_proof_reuse_service_injection.py::test_plugin_default_installer_honors_package_policy_and_strict_lock[1-True] PASSED [ 93%]
+test/api/test_proof_reuse_service_injection.py::test_install_failure_leaves_services_unavailable_and_cache_untouched PASSED [ 93%]
+test/api/test_proof_reuse_service_injection.py::test_pytest_configure_defers_services_until_exact_identity_lookup PASSED [ 93%]
+test/api/test_proof_reuse_service_injection.py::test_pytest_configure_failure_injects_no_partial_services PASSED [ 93%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_dependency_plan_keeps_capability_layers_distinct_and_pure PASSED [ 93%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_current_reviewed_datasets_revision_is_accepted_exactly FAILED [ 93%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_installs_and_reuses_in_fresh_interpreters FAILED [ 93%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[extra_dist_info] FAILED [ 93%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[extra_top_level_file] FAILED [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[extra_authority_directory] FAILED [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[tampered_file] FAILED [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[symlinked_file] FAILED [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_oversize_file_before_open FAILED   [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_preloaded_in_memory_authority_module FAILED [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_generic_pip_install_uses_private_target_and_rejects_shadow_or_tamper FAILED [ 94%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_generic_private_target_rejects_world_writable_nonsticky_ancestor PASSED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_generic_private_target_rejects_preloaded_transitive_shadow PASSED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_generic_private_target_concurrent_publication_reuses_one_tree FAILED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_generic_tree_digest_rejects_leaf_replaced_between_lstat_and_open PASSED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_generic_tree_digest_rejects_oversize_file_before_open PASSED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_instrumented_private_installer_result_validates_every_field[invalid_result0] PASSED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_instrumented_private_installer_result_validates_every_field[invalid_result1] PASSED [ 95%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_instrumented_private_installer_result_validates_every_field[invalid_result2] PASSED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_instrumented_private_installer_result_validates_every_field[invalid_result3] PASSED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_private_pip_diagnostics_keep_only_bounded_head_and_tail FAILED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_native_capability_probe_rejects_path_substitution PASSED    [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_arbitrary_preloaded_verifier_is_not_replaced_or_installed PASSED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_datasets_verifier_python_floor_starts_no_process_or_provisioning PASSED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_invalid_nltk_resource_never_imports_or_starts_process PASSED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_missing_nltk_data_requires_resource_specific_consent PASSED [ 96%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_nltk_download_root_rejects_configured_leaf_symlink PASSED   [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_python_install_fence_unavailable_fails_closed_without_pip PASSED [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_python_install_fence_uses_bounded_timeout PASSED            [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_python_install_fence_rejects_hostile_lock_symlink PASSED    [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_windows_provision_fence_contention_times_out_without_install PASSED [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_windows_provision_fence_acquires_and_unlocks PASSED         [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_nltk_first_use_download_is_allowlisted_locked_and_bounded PASSED [ 97%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_failed_nltk_attempt_is_memoized_and_root_lock_is_shared PASSED [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_native_source_digest_validation_rejects_modified_rust_input FAILED [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_installed_wheel_backend_source_is_discovered_without_package_import FAILED [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_installed_wheel_backend_source_tamper_fails_closed FAILED   [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_native_build_needs_separate_consent_and_never_runs_setup FAILED [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_isolated_cargo_environment_keeps_available_toolchain_functional PASSED [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_native_build_receipt_is_reused_and_tamper_detected FAILED   [ 98%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_foreign_bundled_binary_is_diagnostic_not_native_fallback FAILED [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_ptr151_bundled_release_manifest_and_v4_capability_are_both_required FAILED [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_endpoint_keys_circuit_and_native_are_independent PASSED     [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_runtime_requires_circuit_key_version_match_and_native_proving_key PASSED [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_endpoint_parser_rejects_ambiguous_input[ https://prover.example/v1] PASSED [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_endpoint_parser_rejects_ambiguous_input[https://prover.example/v1 ] PASSED [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_endpoint_parser_rejects_ambiguous_input[https://prover.example\\@attacker.invalid/v1] PASSED [ 99%]
+test/api/test_proof_reuse_lazy_provisioning.py::test_endpoint_parser_rejects_ambiguous_input[https://prover.example/line\nbreak] PASSED [100%]
+
+======================================================= FAILURES =======================================================
+E   KeyError: 'cpu-general'
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py:2732: KeyError: 'cpu-general'
+E   KeyError: 'cpu-general'
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py:2732: KeyError: 'cpu-general'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/bin/linux-aarch64/groth16'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/bin/linux-aarch64/groth16'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e0/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e0/executed.marker'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e1/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e1/executed.marker'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e2/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e2/executed.marker'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e3/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e3/executed.marker'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e4/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e4/executed.marker'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e5/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e5/executed.marker'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e6/executed.marker'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e6/executed.marker'
+E   assert 'nltk>=3.8.1,<4' in ['anyio>=4.0.0', 'aiohttp>=3.8.1', 'duckdb>=0.7.0', 'ipfshttpclient>=0.8.0a2', 'websockets==10.4; python_version < "3.10"', 'websockets>=15.0.1; python_version >= "3.10"', 'pyarrow>=14.0.0', 'torch>=2.1', 'transformers>=4.46', 'urllib3>=2.5.0,<3.0.0', 'requests>=2.28.0', 'cryptography>=41.0.0', 'fastmcp==2.14.7; python_version >= "3.10"', 'fastapi>=0.110.0,<1.0.0', 'uvicorn>=0.27.0,<0.35.0; python_version < "3.10"', 'uvicorn>=0.35.0,<1.0.0; python_version >= "3.10"', 'flask>=3.0.0', 'flask-cors>=4.0.0', 'werkzeug>=3.0.0', 'PyGithub>=2.3.0', 'z3-solver>=4.13.4.0,<=4.15.4.0', 'cvc5==1.3.3', 'mypy>=1.8.0,<2.0.0', 'ruff>=0.12.0,<1.0.0', 'tqdm>=4.64.0', 'numpy>=1.23.0', 'packaging>=23.2', 'toml>=0.10.2', 'multiformats>=0.3.0', 'pymultihash>=0.8.2']
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_setup_provisioning.py:89: assert 'nltk>=3.8.1,<4' in ['anyio>=4.0.0', 'aiohttp>=3.8.1', 'duckdb>=0.7.0', 'ipfshttpclient>=0.8.0a2', 'websockets==10.4; python_version < "3.10"', 'websockets>=15.0.1; python_version >= "3.10"', 'pyarrow>=14.0.0', 'torch>=2.1', 'transformers>=4.46', 'urllib3>=2.5.0,<3.0.0', 'requests>=2.28.0', 'cryptography>=41.0.0', 'fastmcp==2.14.7; python_version >= "3.10"', 'fastapi>=0.110.0,<1.0.0', 'uvicorn>=0.27.0,<0.35.0; python_version < "3.10"', 'uvicorn>=0.35.0,<1.0.0; python_version >= "3.10"', 'flask>=3.0.0', 'flask-cors>=4.0.0', 'werkzeug>=3.0.0', 'PyGithub>=2.3.0', 'z3-solver>=4.13.4.0,<=4.15.4.0', 'cvc5==1.3.3', 'mypy>=1.8.0,<2.0.0', 'ruff>=0.12.0,<1.0.0', 'tqdm>=4.64.0', 'numpy>=1.23.0', 'packaging>=23.2', 'toml>=0.10.2', 'multiformats>=0.3.0', 'pymultihash>=0.8.2']
+E   ImportError: blocked tomllib
+
+During handling of the above exception, another exception occurred:
+E   ImportError: blocked tomli
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_setup_provisioning.py:112: ImportError: blocked tomli
+E   KeyError: 'proof_reuse_provision'
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_setup_provisioning.py:155: KeyError: 'proof_reuse_provision'
+E   KeyError: 'proof_reuse_provision'
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_setup_provisioning.py:175: KeyError: 'proof_reuse_provision'
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cc3119a0>.install
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_service_injection.py:433: AssertionError: assert False is True
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cc310f50>.install
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_service_injection.py:470: AssertionError: assert False is True
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/logic/zkp/test_execution_certificate.py'
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/logic/zkp/test_execution_certificate.py'
+E   assert 0 == 1
+     +  where 0 = len([])
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_service_injection.py:559: assert 0 == 1
+E   AssertionError: assert None == PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets')
+     +  where PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets') = resolve()
+     +    where resolve = PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets').resolve
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:188: AssertionError: assert None == PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets')
+E   AssertionError: Traceback (most recent call last):
+        File "<string>", line 31, in <module>
+      AttributeError: module 'ipfs_datasets_py' has no attribute '__version__'
+      
+    assert 1 == 0
+     +  where 1 = CompletedProcess(args=('/usr/bin/python3.12', '-c', '\nimport json\nimport os\nimport sys\nfrom ipfs_accelerate_py.testing.proof_reuse.services import (\n    AllowlistedPipInstaller,\n    DATASETS_VERIFIER_DEPENDENCY,\n)\n\ndef forbidden(*args, **kwargs):\n    raise AssertionError(f"unexpected package process: {args!r} {kwargs!r}")\n\ninstaller = AllowlistedPipInstaller(runner=forbidden)\nif os.environ.get("PROOF_REUSE_TEST_FORBID_REVIEWED_SOURCE") == "1":\n    installer.validated_local_datasets_source = forbidden\n    installer._git_object_output = forbidden\ninstalled = installer.install(DATASETS_VERIFIER_DEPENDENCY)\nimport ipfs_datasets_py as datasets_root\nfrom ipfs_datasets_py import dependency_catalog\nfrom ipfs_datasets_py.logic.zkp import test_execution_certificate as verifier\nresult = verifier.verify_test_execution_certificate({}, None)\nprint(json.dumps({\n    "installed": installed,\n    "module": verifier.__file__,\n    "provenance": installer.validate_module_provenance(\n        DATASETS_VERIFIER_DEPENDENCY, verifier\n    ),\n    "status": result.status.value,\n    "reason": result.reason.value,\n    "authority": result.authority.value,\n    "root_version": datasets_root.__version__,\n    "root_initialize": callable(datasets_root.initialize),\n    "root_lazy_installer": type(datasets_root.installer).__name__,\n    "coexisting_module": dependency_catalog.__file__,\n    "heavy": sorted(\n        name for name in sys.modules\n        if name.split(".", 1)[0] in {\n            "beartype", "nltk", "pytest", "torch", "transformers"\n        }\n    ),\n}))\n'), returncode=1, stdout='', stderr='Traceback (most recent call last):\n  File "<string>", line 31, in <module>\nAttributeError: module \'ipfs_datasets_py\' has no attribute \'__version__\'\n').returncode
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:268: AssertionError: Traceback (most recent call last):
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd414dd0>.install
+     +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:330: AssertionError: assert False is True
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd413e00>.install
+     +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:330: AssertionError: assert False is True
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cc310470>.install
+     +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:330: AssertionError: assert False is True
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd4148c0>.install
+     +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:330: AssertionError: assert False is True
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c1b63158e0>.install
+     +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:330: AssertionError: assert False is True
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd4112b0>.install
+     +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:373: AssertionError: assert False is True
+E   AssertionError: assert {'installed': False, 'preflight': False, 'activated': False, 'provenance': False} == {'installed': True, 'preflight': False, 'activated': True, 'provenance': False}
+      
+      Common items:
+      {'preflight': False, 'provenance': False}
+      Differing items:
+      {'installed': False} != {'installed': True}
+      {'activated': False} != {'activated': True}
+      
+      Full diff:
+        {
+      -     'installed': True,
+      ?                  ^^^
+      +     'installed': False,
+      ?                  ^^^^
+            'preflight': False,
+      -     'activated': True,
+      ?                  ^^^
+      +     'activated': False,
+      ?                  ^^^^
+            'provenance': False,
+        }
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:452: AssertionError: assert {'installed': False, 'preflight': False, 'activated': False, 'provenance': False} == {'installed': True, 'preflight': False, 'activated': True, 'provenance': False}
+E   AssertionError: assert False is True
+     +  where False = install(ProofReuseDependency(module_name='multiformats', distribution='multiformats>=0.3,<1', required_symbols=('CID', 'multihash'), unavailable_reason='cid_provider_unavailable', pip_options=(), install_environment=(), packaging_source='requirements-proof-reuse.txt'))
+     +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3d025f200>.install
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:492: AssertionError: assert False is True
+E   assert (False, False) == (True, True)
+      
+      At index 0 diff: False != True
+      
+      Full diff:
+        (
+      -     True,
+      -     True,
+      +     False,
+      +     False,
+        )
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:613: assert (False, False) == (True, True)
+E   assert None == 1
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:733: assert None == 1
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+/usr/lib/python3.12/shutil.py:260: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+/usr/lib/python3.12/shutil.py:260: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+/usr/lib/python3.12/shutil.py:260: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+E   AssertionError: assert False is True
+     +  where False = ProofReuseCapabilityResolution(available=False, reason_code='groth16_source_invalid', capability='groth16_native', module_name='', distribution='', installed=False, module=None, diagnostics={'immutable_source_snapshot': False, 'native_platform': 'linux-aarch64', 'reviewed_bundled_platforms': [], 'foreign_bundled_platforms': [], 'foreign_binary_execution_attempted': False, 'native_build_required': True, 'reviewed_bundled_supported_circuit_versions': [1, 2, 3, 4], 'backend_source_kind': 'unavailable', 'required_circuit_version': 4, 'previous_native_build_receipt_status': 'absent', 'provision_attempted': True}, capability_kind='cargo_native_build', fallback_action='DEFERRED').available
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:1305: AssertionError: assert False is True
+E   FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/artifacts/v2/proving_key.bin'
+/usr/lib/python3.12/shutil.py:260: FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/artifacts/v2/proving_key.bin'
+E   AssertionError: assert 'groth16_source_invalid' == 'groth16_build_disabled'
+      
+      - groth16_build_disabled
+      + groth16_source_invalid
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:1538: AssertionError: assert 'groth16_source_invalid' == 'groth16_build_disabled'
+E   AssertionError: assert False is True
+     +  where False = ProofReuseCapabilityResolution(available=False, reason_code='groth16_source_invalid', capability='groth16_native', module_name='', distribution='', installed=False, module=None, diagnostics={}, capability_kind='cargo_native_build', fallback_action='DEFERRED').available
+/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/test/api/test_proof_reuse_lazy_provisioning.py:1562: AssertionError: assert False is True
+=================================================== warnings summary ===================================================
+ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py:16
+  /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/source/ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py:16: DeprecationWarning: __package__ != __spec__.parent
+    from ..objectives.goal_completion import (
+
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_proof_reuse_security_concurrency.py::test_worker_crash_restart_preserves_immutable_authority_and_recovers_fence
+api/test_proof_reuse_security_concurrency.py::test_concurrent_process_publishers_never_create_mixed_authority
+api/test_proof_reuse_security_concurrency.py::test_concurrent_process_publishers_never_create_mixed_authority
+api/test_proof_reuse_security_concurrency.py::test_concurrent_process_publishers_never_create_mixed_authority
+api/test_proof_reuse_security_concurrency.py::test_concurrent_process_publishers_never_create_mixed_authority
+  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2212584) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================================= slowest 10 durations =================================================
+1.54s call     api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_heartbeats_long_running_leader
+1.05s call     api/test_agent_supervisor_proof_resource_scheduler.py::test_model_concurrency_is_separate_from_cpu_proof_concurrency
+0.96s call     api/test_agent_supervisor_proof_scheduler.py::test_conclusive_portfolio_receipt_cancels_redundant_attempt
+0.95s call     api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_waits_for_provider_capacity_before_claiming
+0.92s call     api/test_agent_supervisor_proof_scheduler.py::test_restart_restores_plan_attempts_receipts_and_does_not_reexecute
+0.90s call     api/test_agent_supervisor_proof_resource_scheduler.py::test_proof_scheduler_propagates_one_budget_to_portfolio_and_kernel_children
+0.90s call     api/test_agent_supervisor_proof_scheduler.py::test_restart_requeues_an_expired_fenced_lease
+0.79s call     api/test_agent_supervisor_proof_scheduler.py::test_dependency_order_and_bounded_independent_stage_overlap
+0.76s call     api/test_agent_supervisor_proof_scheduler.py::test_unsupported_and_failed_dependencies_propagate_explicitly
+0.69s call     api/test_agent_supervisor_formal_verification_provider.py::test_subprocess_protocol_round_trip_and_all_failure_classes
+=============================================== short test summary info ================================================
+FAILED test/api/test_agent_supervisor_proof_scheduler.py::test_dependency_order_and_bounded_independent_stage_overlap - KeyError: 'cpu-general'
+FAILED test/api/test_agent_supervisor_proof_scheduler.py::test_stage_and_resource_class_limits_refine_global_parallelism - KeyError: 'cpu-general'
+FAILED test/api/test_proof_reuse_controller_issuance.py::test_test_only_reviewed_manifest_binds_keys_provider_and_ptr151_native - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/bin/linux-aarch64/groth16'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[plugin-absent] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e0/executed.marker'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-off] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e1/executed.marker'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-shadow] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e2/executed.marker'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-read] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e3/executed.marker'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-write] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e4/executed.marker'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[mode-readwrite] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e5/executed.marker'
+FAILED test/api/test_proof_reuse_degradation_matrix.py::test_pytest_startup_and_real_execution_survive_missing_optional_providers[required-audit] - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/accelerate-proof-focused-wide-36/pytest/test_pytest_startup_and_real_e6/executed.marker'
+FAILED test/api/test_proof_reuse_setup_provisioning.py::test_setup_and_project_publish_explicit_commands_and_nltk_metadata - assert 'nltk>=3.8.1,<4' in ['anyio>=4.0.0', 'aiohttp>=3.8.1', 'duckdb>=0.7.0', 'ipfshttpclient>=0.8.0a2', 'websockets==10.4; python_version < "3.10"', 'websockets>=15.0.1; python_version >= "3.10"', 'pyarrow>=14.0.0', 'torch>=2.1', 'transformers>=4.46', 'urllib3>=2.5.0,<3.0.0', 'requests>=2.28.0', 'cryptography>=41.0.0', 'fastmcp==2.14.7; python_version >= "3.10"', 'fastapi>=0.110.0,<1.0.0', 'uvicorn>=0.27.0,<0.35.0; python_version < "3.10"', 'uvicorn>=0.35.0,<1.0.0; python_version >= "3.10"', 'flask>=3.0.0', 'flask-cors>=4.0.0', 'werkzeug>=3.0.0', 'PyGithub>=2.3.0', 'z3-solver>=4.13.4.0,<=4.15.4.0', 'cvc5==1.3.3', 'mypy>=1.8.0,<2.0.0', 'ruff>=0.12.0,<1.0.0', 'tqdm>=4.64.0', 'numpy>=1.23.0', 'packaging>=23.2', 'toml>=0.10.2', 'multiformats>=0.3.0', 'pymultihash>=0.8.2']
+FAILED test/api/test_proof_reuse_setup_provisioning.py::test_setup_optional_metadata_is_safe_without_toml_parser - ImportError: blocked tomli
+FAILED test/api/test_proof_reuse_setup_provisioning.py::test_setup_command_delegates_without_implementing_install_policy - KeyError: 'proof_reuse_provision'
+FAILED test/api/test_proof_reuse_setup_provisioning.py::test_setup_command_can_require_ready - KeyError: 'proof_reuse_provision'
+FAILED test/api/test_proof_reuse_service_injection.py::test_datasets_lazy_install_uses_reviewed_sibling_without_dependencies - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cc3119a0>.install
+FAILED test/api/test_proof_reuse_service_injection.py::test_datasets_lazy_install_prefers_valid_configured_local_source - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cc310f50>.install
+FAILED test/api/test_proof_reuse_service_injection.py::test_unversioned_configured_datasets_source_runs_no_process - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/logic/zkp/test_execution_certificate.py'
+FAILED test/api/test_proof_reuse_service_injection.py::test_failed_pip_install_is_memoized_without_retry - assert 0 == 1
+ +  where 0 = len([])
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_current_reviewed_datasets_revision_is_accepted_exactly - AssertionError: assert None == PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets')
+ +  where PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets') = resolve()
+ +    where resolve = PosixPath('/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets').resolve
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_installs_and_reuses_in_fresh_interpreters - AssertionError: Traceback (most recent call last):
+    File "<string>", line 31, in <module>
+  AttributeError: module 'ipfs_datasets_py' has no attribute '__version__'
+  
+assert 1 == 0
+ +  where 1 = CompletedProcess(args=('/usr/bin/python3.12', '-c', '\nimport json\nimport os\nimport sys\nfrom ipfs_accelerate_py.testing.proof_reuse.services import (\n    AllowlistedPipInstaller,\n    DATASETS_VERIFIER_DEPENDENCY,\n)\n\ndef forbidden(*args, **kwargs):\n    raise AssertionError(f"unexpected package process: {args!r} {kwargs!r}")\n\ninstaller = AllowlistedPipInstaller(runner=forbidden)\nif os.environ.get("PROOF_REUSE_TEST_FORBID_REVIEWED_SOURCE") == "1":\n    installer.validated_local_datasets_source = forbidden\n    installer._git_object_output = forbidden\ninstalled = installer.install(DATASETS_VERIFIER_DEPENDENCY)\nimport ipfs_datasets_py as datasets_root\nfrom ipfs_datasets_py import dependency_catalog\nfrom ipfs_datasets_py.logic.zkp import test_execution_certificate as verifier\nresult = verifier.verify_test_execution_certificate({}, None)\nprint(json.dumps({\n    "installed": installed,\n    "module": verifier.__file__,\n    "provenance": installer.validate_module_provenance(\n        DATASETS_VERIFIER_DEPENDENCY, verifier\n    ),\n    "status": result.status.value,\n    "reason": result.reason.value,\n    "authority": result.authority.value,\n    "root_version": datasets_root.__version__,\n    "root_initialize": callable(datasets_root.initialize),\n    "root_lazy_installer": type(datasets_root.installer).__name__,\n    "coexisting_module": dependency_catalog.__file__,\n    "heavy": sorted(\n        name for name in sys.modules\n        if name.split(".", 1)[0] in {\n            "beartype", "nltk", "pytest", "torch", "transformers"\n        }\n    ),\n}))\n'), returncode=1, stdout='', stderr='Traceback (most recent call last):\n  File "<string>", line 31, in <module>\nAttributeError: module \'ipfs_datasets_py\' has no attribute \'__version__\'\n').returncode
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[extra_dist_info] - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd414dd0>.install
+ +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[extra_top_level_file] - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd413e00>.install
+ +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[extra_authority_directory] - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cc310470>.install
+ +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[tampered_file] - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd4148c0>.install
+ +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_every_closed_set_mutation[symlinked_file] - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c1b63158e0>.install
+ +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_oversize_file_before_open - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3cd4112b0>.install
+ +    and   ProofReuseDependency(module_name='ipfs_datasets_py.logic.zkp.test_execution_certificate', distribution='ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc', required_symbols=('verify_test_execution_certificate',), unavailable_reason='certificate_provider_unavailable', pip_options=(), install_environment=(), packaging_source='private_exact_git_blob_snapshot_cas') = lazy_module.DATASETS_VERIFIER_DEPENDENCY
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_snapshot_rejects_preloaded_in_memory_authority_module - AssertionError: assert {'installed': False, 'preflight': False, 'activated': False, 'provenance': False} == {'installed': True, 'preflight': False, 'activated': True, 'provenance': False}
+  
+  Common items:
+  {'preflight': False, 'provenance': False}
+  Differing items:
+  {'installed': False} != {'installed': True}
+  {'activated': False} != {'activated': True}
+  
+  Full diff:
+    {
+  -     'installed': True,
+  ?                  ^^^
+  +     'installed': False,
+  ?                  ^^^^
+        'preflight': False,
+  -     'activated': True,
+  ?                  ^^^
+  +     'activated': False,
+  ?                  ^^^^
+        'provenance': False,
+    }
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_generic_pip_install_uses_private_target_and_rejects_shadow_or_tamper - AssertionError: assert False is True
+ +  where False = install(ProofReuseDependency(module_name='multiformats', distribution='multiformats>=0.3,<1', required_symbols=('CID', 'multihash'), unavailable_reason='cid_provider_unavailable', pip_options=(), install_environment=(), packaging_source='requirements-proof-reuse.txt'))
+ +    where install = <ipfs_accelerate_py.testing.proof_reuse.services.AllowlistedPipInstaller object at 0xf7c3d025f200>.install
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_generic_private_target_concurrent_publication_reuses_one_tree - assert (False, False) == (True, True)
+  
+  At index 0 diff: False != True
+  
+  Full diff:
+    (
+  -     True,
+  -     True,
+  +     False,
+  +     False,
+    )
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_private_pip_diagnostics_keep_only_bounded_head_and_tail - assert None == 1
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_native_source_digest_validation_rejects_modified_rust_input - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_installed_wheel_backend_source_is_discovered_without_package_import - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_installed_wheel_backend_source_tamper_fails_closed - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml'
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_native_build_needs_separate_consent_and_never_runs_setup - AssertionError: assert False is True
+ +  where False = ProofReuseCapabilityResolution(available=False, reason_code='groth16_source_invalid', capability='groth16_native', module_name='', distribution='', installed=False, module=None, diagnostics={'immutable_source_snapshot': False, 'native_platform': 'linux-aarch64', 'reviewed_bundled_platforms': [], 'foreign_bundled_platforms': [], 'foreign_binary_execution_attempted': False, 'native_build_required': True, 'reviewed_bundled_supported_circuit_versions': [1, 2, 3, 4], 'backend_source_kind': 'unavailable', 'required_circuit_version': 4, 'previous_native_build_receipt_status': 'absent', 'provision_attempted': True}, capability_kind='cargo_native_build', fallback_action='DEFERRED').available
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_native_build_receipt_is_reused_and_tamper_detected - FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/work/20260812T181940.270567Z-2084970/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/artifacts/v2/proving_key.bin'
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_foreign_bundled_binary_is_diagnostic_not_native_fallback - AssertionError: assert 'groth16_source_invalid' == 'groth16_build_disabled'
+  
+  - groth16_build_disabled
+  + groth16_source_invalid
+FAILED test/api/test_proof_reuse_lazy_provisioning.py::test_ptr151_bundled_release_manifest_and_v4_capability_are_both_required - AssertionError: assert False is True
+ +  where False = ProofReuseCapabilityResolution(available=False, reason_code='groth16_source_invalid', capability='groth16_native', module_name='', distribution='', installed=False, module=None, diagnostics={}, capability_kind='cargo_native_build', fallback_action='DEFERRED').available
+============================== 37 failed, 693 passed, 2 deselected, 10 warnings in 31.60s ==============================
