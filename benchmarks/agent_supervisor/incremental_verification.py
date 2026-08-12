@@ -41,10 +41,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-if str(_PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PACKAGE_ROOT))
-
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
     AuthorityMode,
     LocalLocator,
