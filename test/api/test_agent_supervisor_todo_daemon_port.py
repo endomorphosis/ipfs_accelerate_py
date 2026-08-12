@@ -35041,7 +35041,10 @@ def test_implementation_daemon_charges_typed_deferral_after_provider_dispatch(
         },
     )
 
-    def dispatched_deferral(*_args, **_kwargs):
+    def dispatched_deferral(*_args, **kwargs):
+        on_started = kwargs.get("on_started")
+        assert callable(on_started)
+        on_started(object())
         raise ImplementationRetryDeferred(
             "provider-side typed failure",
             backoff_seconds=300,
