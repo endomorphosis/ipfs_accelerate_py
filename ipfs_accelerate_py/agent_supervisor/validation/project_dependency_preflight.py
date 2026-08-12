@@ -2,13 +2,16 @@
 
 The preflight is deliberately detection-only.  Importing this module performs
 no subprocess, package-manager, network, or filesystem mutation.  At explicit
-call time it reads only static PEP-621 dependency declarations and evaluates
-them in the same approved, sealed Python environment used by authoritative
-validation.
+call time it reads static PEP-621 declarations or a narrowly scoped, declarative
+supervisor contract and evaluates them in the same approved, sealed Python
+environment used by authoritative validation.  Scoped contracts may attest a
+literal ``setup.py`` extra without executing setup code; they never replace
+ordinary project-wide dependency metadata.
 """
 
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.metadata
@@ -47,6 +50,9 @@ PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA = (
 PROJECT_DEPENDENCY_PROBE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-probe@1"
 )
+SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@1"
+)
 PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS = 300
 PROJECT_DEPENDENCY_PREFLIGHT_MAX_BACKOFF_SECONDS = 1800
 MAX_PYPROJECT_BYTES = 2 * 1024 * 1024
@@ -73,6 +79,25 @@ PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "dev",
 )
 PYTEST_COMMAND_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])pytest(?=$|[\s;&|])")
+_LOWER_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+_SCOPED_CONTRACT_FIELDS = frozenset(
+    {
+        "schema",
+        "authority",
+        "requires-python",
+        "covered-pytest-target",
+        "covered-pytest-target-sha256",
+        "requirements",
+    }
+)
+_SCOPED_CONTRACT_AUTHORITY_FIELDS = frozenset(
+    {
+        "file",
+        "sha256",
+        "extra",
+        "extra-requirements-sha256",
+    }
+)
 _DEFAULT_VERSION_GETTER = importlib.metadata.version
 _DEFAULT_REQUIRES_GETTER = object()
 _PROBE_ARGV_BOOTSTRAP = (
@@ -410,6 +435,291 @@ def _setuptools_file_backed_dependencies(
     )
 
 
+def _scoped_dependency_contract_configuration(
+    parsed: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Return the closed supervisor-only dependency contract when declared."""
+
+    tool = parsed.get("tool")
+    if not isinstance(tool, Mapping):
+        return None
+    namespace = tool.get("ipfs-accelerate-agent-supervisor")
+    if namespace is None:
+        return None
+    if not isinstance(namespace, Mapping):
+        raise ValueError("agent-supervisor tool namespace must be a table")
+    contract = namespace.get("project-dependency-preflight")
+    if contract is None:
+        return None
+    if not isinstance(contract, Mapping):
+        raise ValueError("scoped dependency contract must be a table")
+    if set(contract) != _SCOPED_CONTRACT_FIELDS:
+        raise ValueError("scoped dependency contract fields are not closed")
+    return contract
+
+
+def _setup_extra_literal_requirements(
+    payload: bytes,
+    *,
+    extra: str,
+) -> list[str]:
+    """Read one literal ``setup(..., extras_require={...})`` value via AST.
+
+    Setup code is never imported or executed.  Dynamic keys, dictionary
+    expansion, multiple setup calls, and computed entries all fail closed.
+    """
+
+    try:
+        source = payload.decode("utf-8")
+        tree = ast.parse(source, filename="setup.py", mode="exec")
+    except (SyntaxError, UnicodeError) as exc:
+        raise ValueError("setup.py authority is not static UTF-8 Python") from exc
+    setup_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "setup"
+    ]
+    if len(setup_calls) != 1:
+        raise ValueError("setup.py authority must contain exactly one setup call")
+    setup_call = setup_calls[0]
+    if any(keyword.arg is None for keyword in setup_call.keywords):
+        raise ValueError("setup.py authority cannot expand setup keyword arguments")
+    extras_values = [
+        keyword.value
+        for keyword in setup_call.keywords
+        if keyword.arg == "extras_require"
+    ]
+    if len(extras_values) != 1 or not isinstance(extras_values[0], ast.Dict):
+        raise ValueError("setup.py extras_require authority must be one literal mapping")
+    extras = extras_values[0]
+    literal_keys: list[str] = []
+    selected_values: list[ast.expr] = []
+    for index, key in enumerate(extras.keys):
+        value = extras.values[index]
+        if not (
+            isinstance(key, ast.Constant)
+            and type(key.value) is str
+            and key.value
+        ):
+            raise ValueError("setup.py extras_require keys must be literal strings")
+        literal_keys.append(key.value)
+        if key.value == extra:
+            selected_values.append(value)
+    if len(literal_keys) != len(set(literal_keys)):
+        raise ValueError("setup.py extras_require contains duplicate keys")
+    if len(selected_values) != 1 or not isinstance(selected_values[0], ast.List):
+        raise ValueError("setup.py selected extra must be one literal list")
+    requirements: list[str] = []
+    for element in selected_values[0].elts:
+        if not (
+            isinstance(element, ast.Constant)
+            and type(element.value) is str
+            and element.value.strip() == element.value
+            and element.value
+        ):
+            raise ValueError("setup.py selected extra entries must be literal strings")
+        requirements.append(element.value)
+    if not requirements or len(requirements) != len(set(requirements)):
+        raise ValueError("setup.py selected extra must be nonempty and unique")
+    return requirements
+
+
+def _command_is_exact_scoped_pytest_target(
+    command: str,
+    *,
+    relative_root: str,
+    target: str,
+) -> bool:
+    """Match the sole command grammar admitted by a scoped contract.
+
+    The exact grammar intentionally leaves no room for node selectors, a
+    second path, plugins, ``-k`` expressions, shell suffixes, environment
+    overrides, or alternate runners.
+    """
+
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        return False
+    expected = ["python3", "-m", "pytest", target, "-q"]
+    if relative_root:
+        expected = ["cd", relative_root, "&&", *expected]
+    return tokens == expected
+
+
+def _scoped_setup_extra_dependencies(
+    parsed: Mapping[str, Any],
+    project: Mapping[str, Any],
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+    relative_root: str,
+    validation_commands: Sequence[str],
+) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
+    """Resolve one exact-target setup-extra contract without executing setup."""
+
+    contract = _scoped_dependency_contract_configuration(parsed)
+    if contract is None:
+        raise ValueError("scoped dependency contract is unavailable")
+    if contract.get("schema") != SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA:
+        raise ValueError("scoped dependency contract schema is unsupported")
+
+    authority = contract.get("authority")
+    if not isinstance(authority, Mapping) or set(authority) != (
+        _SCOPED_CONTRACT_AUTHORITY_FIELDS
+    ):
+        raise ValueError("scoped dependency authority fields are not closed")
+    if authority.get("file") != "setup.py" or authority.get("extra") != "test":
+        raise ValueError("scoped dependency authority is unsupported")
+    authority_sha256 = authority.get("sha256")
+    extra_requirements_sha256 = authority.get("extra-requirements-sha256")
+    if not (
+        type(authority_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(authority_sha256)
+        and type(extra_requirements_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(extra_requirements_sha256)
+    ):
+        raise ValueError("scoped dependency authority digests are invalid")
+
+    requires_python = contract.get("requires-python")
+    if type(requires_python) is not str or requires_python != project.get(
+        "requires-python"
+    ):
+        raise ValueError("scoped dependency interpreter contract drifted")
+
+    target = contract.get("covered-pytest-target")
+    if type(target) is not str:
+        raise ValueError("scoped dependency pytest target must be a string")
+    target_sha256 = contract.get("covered-pytest-target-sha256")
+    if not (
+        type(target_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(target_sha256)
+    ):
+        raise ValueError("scoped dependency pytest target digest is invalid")
+    target_path = PurePosixPath(target)
+    if (
+        not target
+        or "\\" in target
+        or target_path.is_absolute()
+        or ".." in target_path.parts
+        or target_path.as_posix() != target
+        or not target.startswith("tests/")
+        or not target.endswith(".py")
+        or "::" in target
+    ):
+        raise ValueError("scoped dependency pytest target is unsafe")
+    if len(validation_commands) != 1 or not _command_is_exact_scoped_pytest_target(
+        validation_commands[0],
+        relative_root=relative_root,
+        target=target,
+    ):
+        raise ValueError("validation command is outside scoped dependency contract")
+
+    target_file, target_payload = _read_bounded_contained_regular_file(
+        project_root,
+        project_root / target,
+        maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+        expected_containment_root_snapshot=expected_project_root_snapshot,
+    )
+    observed_target_sha256 = hashlib.sha256(target_payload).hexdigest()
+    if observed_target_sha256 != target_sha256:
+        raise ValueError("scoped dependency pytest target digest drifted")
+
+    requirements = contract.get("requirements")
+    if not (
+        type(requirements) is list
+        and requirements
+        and all(
+            type(requirement) is str
+            and requirement
+            and requirement.strip() == requirement
+            for requirement in requirements
+        )
+        and len(requirements) == len(set(requirements))
+    ):
+        raise ValueError("scoped dependency requirements must be nonempty and unique")
+
+    # A malformed setuptools file declaration cannot be bypassed by adding a
+    # second supervisor-only source.  This contract is only for setup.py-backed
+    # projects that have no declarative setuptools dependency file.
+    tool = parsed.get("tool")
+    setuptools = tool.get("setuptools") if isinstance(tool, Mapping) else None
+    if setuptools is not None and not isinstance(setuptools, Mapping):
+        raise ValueError("tool.setuptools must be a table")
+    dynamic = setuptools.get("dynamic") if isinstance(setuptools, Mapping) else None
+    if dynamic is not None and not isinstance(dynamic, Mapping):
+        raise ValueError("tool.setuptools.dynamic must be a table")
+    if isinstance(dynamic, Mapping) and "dependencies" in dynamic:
+        raise ValueError("scoped and setuptools dependency sources conflict")
+
+    setup_path, setup_payload = _read_bounded_contained_regular_file(
+        project_root,
+        project_root / "setup.py",
+        maximum_bytes=(
+            MAX_DEPENDENCY_MANIFEST_BYTES - len(target_payload)
+        ),
+        expected_containment_root_snapshot=expected_project_root_snapshot,
+    )
+    observed_setup_sha256 = hashlib.sha256(setup_payload).hexdigest()
+    if observed_setup_sha256 != authority_sha256:
+        raise ValueError("setup.py authority digest drifted")
+    authority_requirements = _setup_extra_literal_requirements(
+        setup_payload,
+        extra="test",
+    )
+    if _content_sha256(authority_requirements) != extra_requirements_sha256:
+        raise ValueError("setup.py extra authority digest drifted")
+
+    authority_positions = {
+        requirement: index for index, requirement in enumerate(authority_requirements)
+    }
+    try:
+        selected_positions = [
+            authority_positions[requirement] for requirement in requirements
+        ]
+    except KeyError as exc:
+        raise ValueError(
+            "scoped dependency requirements are not an exact authority subset"
+        ) from exc
+    if selected_positions != sorted(selected_positions):
+        raise ValueError("scoped dependency authority subset order drifted")
+    pytest_requirements = [
+        requirement
+        for requirement in requirements
+        if re.match(r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", requirement)
+    ]
+    if not pytest_requirements:
+        raise ValueError("scoped pytest dependency contract omits pytest")
+    if not any(";" not in requirement for requirement in pytest_requirements):
+        raise ValueError("scoped pytest runner requirement cannot have a marker")
+
+    return (
+        list(requirements),
+        [
+            {
+                "path": setup_path.relative_to(project_root).as_posix(),
+                "sha256": observed_setup_sha256,
+                "bytes": len(setup_payload),
+            },
+            {
+                "path": target_file.relative_to(project_root).as_posix(),
+                "sha256": observed_target_sha256,
+                "bytes": len(target_payload),
+            },
+        ],
+        {
+            "dependency_contract_schema": (
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA
+            ),
+            "scoped_validation_target_sha256": hashlib.sha256(
+                target.encode("utf-8")
+            ).hexdigest(),
+            "setup_extra_requirements_sha256": extra_requirements_sha256,
+        },
+    )
+
+
 def _pytest_validation_dependencies(
     parsed: Mapping[str, Any],
     project: Mapping[str, Any],
@@ -559,8 +869,9 @@ def _bounded_static_project(
     relative_root: str,
     *,
     pytest_invoked: bool = False,
+    validation_commands: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Read one safe project root and return its static PEP-621 contract."""
+    """Read one safe project root and return its static dependency contract."""
 
     workspace = workspace_path.resolve(strict=True)
     candidate = workspace / relative_root
@@ -762,6 +1073,8 @@ def _bounded_static_project(
     dependencies = project.get("dependencies")
     dependency_source = "pep621_static"
     dependency_manifests: list[dict[str, Any]] = []
+    scoped_contract_metadata: dict[str, Any] = {}
+    scoped_contract_selected = False
     if "dependencies" in dynamic:
         if dependencies is not None:
             return {
@@ -778,17 +1091,34 @@ def _bounded_static_project(
                 project_root,
                 project_root_snapshot,
             )
-        except (OSError, UnicodeError, ValueError) as exc:
-            return {
-                "root": relative_root,
-                "project_name_sha256": _project_name_sha256(project),
-                "applicable": True,
-                "passed": False,
-                "reason": "dynamic_dependencies_unresolved",
-                "pyproject_sha256": pyproject_sha256,
-                "error_type": type(exc).__name__,
-            }
-        dependency_source = "setuptools_dynamic_file"
+        except (OSError, UnicodeError, ValueError):
+            try:
+                (
+                    dependencies,
+                    dependency_manifests,
+                    scoped_contract_metadata,
+                ) = _scoped_setup_extra_dependencies(
+                    parsed,
+                    project,
+                    project_root,
+                    project_root_snapshot,
+                    relative_root,
+                    validation_commands,
+                )
+            except (OSError, UnicodeError, ValueError) as exc:
+                return {
+                    "root": relative_root,
+                    "project_name_sha256": _project_name_sha256(project),
+                    "applicable": True,
+                    "passed": False,
+                    "reason": "dynamic_dependencies_unresolved",
+                    "pyproject_sha256": pyproject_sha256,
+                    "error_type": type(exc).__name__,
+                }
+            dependency_source = "agent_supervisor_scoped_setup_extra"
+            scoped_contract_selected = True
+        else:
+            dependency_source = "setuptools_dynamic_file"
     elif dependencies is None:
         dependencies = []
     if not isinstance(dependencies, list) or not all(
@@ -802,40 +1132,52 @@ def _bounded_static_project(
             "reason": "pep621_dependencies_must_be_static_strings",
             "pyproject_sha256": pyproject_sha256,
         }
-    requirement_marker_extras = [""] * len(dependencies)
-    try:
-        (
-            validation_dependencies,
-            validation_marker_extras,
-            selected_extras,
-            validation_manifests,
-            validation_dependency_source,
-        ) = _pytest_validation_dependencies(
-            parsed,
-            project,
-            project_root,
-            project_root_snapshot,
-            dynamic,
-            pytest_invoked=pytest_invoked,
-            maximum_manifest_bytes=(
-                MAX_DEPENDENCY_MANIFEST_BYTES
-                - sum(int(manifest.get("bytes") or 0) for manifest in dependency_manifests)
-            ),
-            maximum_manifest_files=(
-                MAX_DEPENDENCY_MANIFEST_FILES
-                - len(dependency_manifests)
-            ),
-        )
-    except (OSError, ValueError) as exc:
-        return {
-            "root": relative_root,
-            "project_name_sha256": _project_name_sha256(project),
-            "applicable": True,
-            "passed": False,
-            "reason": "validation_dependencies_unresolved",
-            "pyproject_sha256": pyproject_sha256,
-            "error_type": type(exc).__name__,
-        }
+    requirement_marker_extras = [
+        "test" if scoped_contract_selected else ""
+    ] * len(dependencies)
+    if scoped_contract_selected:
+        validation_dependencies: list[str] = []
+        validation_marker_extras: list[str] = []
+        selected_extras = ["test"]
+        validation_manifests: list[dict[str, Any]] = []
+        validation_dependency_source = "scoped_dependency_contract"
+    else:
+        try:
+            (
+                validation_dependencies,
+                validation_marker_extras,
+                selected_extras,
+                validation_manifests,
+                validation_dependency_source,
+            ) = _pytest_validation_dependencies(
+                parsed,
+                project,
+                project_root,
+                project_root_snapshot,
+                dynamic,
+                pytest_invoked=pytest_invoked,
+                maximum_manifest_bytes=(
+                    MAX_DEPENDENCY_MANIFEST_BYTES
+                    - sum(
+                        int(manifest.get("bytes") or 0)
+                        for manifest in dependency_manifests
+                    )
+                ),
+                maximum_manifest_files=(
+                    MAX_DEPENDENCY_MANIFEST_FILES
+                    - len(dependency_manifests)
+                ),
+            )
+        except (OSError, ValueError) as exc:
+            return {
+                "root": relative_root,
+                "project_name_sha256": _project_name_sha256(project),
+                "applicable": True,
+                "passed": False,
+                "reason": "validation_dependencies_unresolved",
+                "pyproject_sha256": pyproject_sha256,
+                "error_type": type(exc).__name__,
+            }
     dependencies = [*dependencies, *validation_dependencies]
     requirement_marker_extras.extend(validation_marker_extras)
     dependency_manifests.extend(validation_manifests)
@@ -895,6 +1237,7 @@ def _bounded_static_project(
         "dependency_manifests": dependency_manifests,
         "pytest_invoked": pytest_invoked,
         "selected_validation_extras": selected_extras,
+        **scoped_contract_metadata,
     }
 
 
@@ -1924,11 +2267,12 @@ def _preflight_validation_project_dependencies(
     environment: Mapping[str, object] | None = None,
     probe_runner: Callable[..., dict[str, Any]] = _run_dependency_probe,
 ) -> dict[str, Any]:
-    """Compare static PEP-621 requirements with the approved interpreter."""
+    """Compare static project requirements with the approved interpreter."""
 
     workspace = Path(workspace_path)
     validation_roots: list[str] = []
     project_roots: list[str] = []
+    project_validation_commands: dict[str, list[str]] = {}
     pytest_roots: set[str] = set()
     dependency_neutral_commands: list[dict[str, Any]] = []
     invalid_commands: list[dict[str, Any]] = []
@@ -1961,6 +2305,7 @@ def _preflight_validation_project_dependencies(
             continue
         if root not in project_roots:
             project_roots.append(root)
+        project_validation_commands.setdefault(root, []).append(command_text)
         if _validation_command_invokes_pytest(command_text):
             pytest_roots.add(root)
 
@@ -1969,6 +2314,7 @@ def _preflight_validation_project_dependencies(
             workspace,
             relative_root,
             pytest_invoked=relative_root in pytest_roots,
+            validation_commands=project_validation_commands.get(relative_root, ()),
         )
         for relative_root in project_roots
     ]
