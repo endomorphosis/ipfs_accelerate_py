@@ -1056,6 +1056,7 @@ def test_validated_no_change_guard_rejects_disappeared_candidate() -> None:
                 ]
             }
         },
+        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is False
@@ -1073,10 +1074,44 @@ def test_validated_no_change_guard_accepts_exact_unchanged_baseline() -> None:
         expected_branch="implementation/task-attempt-1",
         current_branch="implementation/task-attempt-1",
         validation_result={"selection": {"changed_files": []}},
+        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is True
     assert guard["reasons"] == []
+
+
+def test_no_change_policy_gate_is_universal_across_execution_modes() -> None:
+    def task(mode: str | None) -> PortalTask:
+        metadata = {"Provider role": "deterministic-only"}
+        if mode is not None:
+            metadata["No-change completion"] = mode
+        return PortalTask(
+            task_id="AUTO-DETERMINISTIC",
+            title="Run a typed local validation",
+            status="todo",
+            completion="auto",
+            priority="P0",
+            track="ops",
+            metadata=metadata,
+        )
+
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task("allowed"),
+        deterministic_only=True,
+    ) is True
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task(None),
+        deterministic_only=True,
+    ) is True
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task("forbidden"),
+        deterministic_only=True,
+    ) is True
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task("allowed"),
+        deterministic_only=False,
+    ) is True
 
 
 def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(

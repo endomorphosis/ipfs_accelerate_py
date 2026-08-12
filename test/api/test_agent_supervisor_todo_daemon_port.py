@@ -18664,9 +18664,57 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     assert events[-1]["type"] == "daemon_pass"
 
 
-def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposal(
+@pytest.mark.parametrize(
+    ("completion_mode", "gate_tamper", "expected_completion"),
+    [
+        pytest.param(None, "", False, id="absent-opt-in"),
+        pytest.param("forbidden", "", False, id="forbidden"),
+        pytest.param("allowed", "", True, id="allowed"),
+        pytest.param("allowed", "forge", False, id="forged-gate"),
+        pytest.param(
+            "allowed",
+            "drop",
+            False,
+            id="dropped-gate-final-boundary",
+        ),
+        pytest.param(
+            "allowed",
+            "corrupt",
+            False,
+            id="corrupt-gate-final-boundary",
+        ),
+        pytest.param(
+            "allowed",
+            "late-declared-mutation",
+            False,
+            id="late-declared-mutation-final-boundary",
+        ),
+        pytest.param(
+            "allowed",
+            "late-undeclared-mutation",
+            False,
+            id="late-undeclared-mutation-final-boundary",
+        ),
+        pytest.param(
+            "allowed",
+            "late-declared-mutation-drop-binding",
+            False,
+            id="late-mutation-dropped-binding-final-boundary",
+        ),
+        pytest.param(
+            "allowed",
+            "late-mutation-erase-all-authority",
+            False,
+            id="late-mutation-total-authority-loss-final-boundary",
+        ),
+    ],
+)
+def test_non_ephemeral_provider_no_change_completion_requires_opt_in(
     tmp_path,
     monkeypatch,
+    completion_mode,
+    gate_tamper,
+    expected_completion,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -18689,6 +18737,7 @@ def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposa
         implement=True,
         implementation_command="fake-agent",
         use_ephemeral_worktree=False,
+        worktree_root=repo,
         worktree_submodule_paths=[],
     )
     task = PortalTask(
@@ -18701,6 +18750,11 @@ def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposa
         outputs=["README.md"],
         validation=["python --version"],
         acceptance="The tracked baseline already satisfies the contract.",
+        metadata=(
+            {}
+            if completion_mode is None
+            else {"No-change completion": completion_mode}
+        ),
     )
     durable_completion = {
         "updated": True,
@@ -18752,25 +18806,158 @@ def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposa
         "_completion_publication_intent",
         lambda *_args, **_kwargs: {"task_id": task.task_id},
     )
+    completion_calls: list[str] = []
+
+    def complete_task(*_args, **_kwargs):
+        completion_calls.append(task.task_id)
+        return durable_completion
+
     monkeypatch.setattr(
         daemon,
         "_mark_task_or_bundle_completed_in_todo",
-        lambda *_args, **_kwargs: durable_completion,
+        complete_task,
     )
     monkeypatch.setattr(
         daemon,
         "_record_task_queue_outcome",
         lambda *_args, **_kwargs: None,
     )
+    if gate_tamper:
+        real_validation = daemon._run_validation_with_candidate_binding
+
+        def tamper_with_no_change_gate(*args, **kwargs):
+            validation = real_validation(*args, **kwargs)
+            if gate_tamper == "drop":
+                validation.pop("no_change_policy_gate", None)
+            elif gate_tamper == "corrupt":
+                validation["no_change_policy_gate"] = ["not", "a", "gate"]
+            elif gate_tamper == "late-declared-mutation":
+                (repo / "README.md").write_text(
+                    "late declared mutation\n",
+                    encoding="utf-8",
+                )
+            elif gate_tamper == "late-undeclared-mutation":
+                (repo / "UNDECLARED.txt").write_text(
+                    "late undeclared mutation\n",
+                    encoding="utf-8",
+                )
+            elif gate_tamper == "late-declared-mutation-drop-binding":
+                validation.pop("candidate_binding", None)
+                (repo / "README.md").write_text(
+                    "late declared mutation with dropped binding\n",
+                    encoding="utf-8",
+                )
+            elif gate_tamper == "late-mutation-erase-all-authority":
+                validation.pop("candidate_binding", None)
+                validation.pop("proposal_gate", None)
+                validation.pop("no_change_policy_gate", None)
+                daemon._implementation_no_change_policy_gates.clear()
+                (repo / "README.md").write_text(
+                    "late mutation after total authority erasure\n",
+                    encoding="utf-8",
+                )
+            else:
+                forged_gate = dict(validation["no_change_policy_gate"])
+                forged_gate["task_id"] = "FORGED-TASK"
+                forged_gate.pop("gate_id", None)
+                forged_gate["gate_id"] = (
+                    implementation_daemon_module.content_identity(
+                        forged_gate
+                    )
+                )
+                validation["no_change_policy_gate"] = forged_gate
+            return validation
+
+        monkeypatch.setattr(
+            daemon,
+            "_run_validation_with_candidate_binding",
+            tamper_with_no_change_gate,
+        )
 
     result = daemon._run_implementation(task, TodoTaskState())
 
-    assert result["returncode"] == 0
-    assert result["validation_result"]["proposal_gate"]["accepted"] is False
-    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
-    assert result["validation_result"]["no_change_guard"]["allowed"] is True
-    assert result["validation_result"]["candidate_binding"]["verified"] is True
-    assert result["todo_update_result"] == durable_completion
+    assert (result["returncode"] == 0) is expected_completion
+    if gate_tamper == "late-mutation-erase-all-authority":
+        assert "proposal_gate" not in result["validation_result"]
+    else:
+        assert result["validation_result"]["proposal_gate"][
+            "accepted"
+        ] is False
+    if gate_tamper in {"drop", "late-mutation-erase-all-authority"}:
+        assert "no_change_policy_gate" not in result["validation_result"]
+    elif gate_tamper == "corrupt":
+        assert result["validation_result"]["no_change_policy_gate"] == [
+            "not",
+            "a",
+            "gate",
+        ]
+    else:
+        assert result["validation_result"]["no_change_policy_gate"][
+            "accepted"
+        ] is (completion_mode == "allowed")
+    if expected_completion:
+        assert result["validation_result"]["no_change_guard"]["allowed"] is True
+        assert result["validation_result"]["candidate_binding"]["verified"] is True
+        assert result["todo_update_result"] == durable_completion
+        assert completion_calls == [task.task_id]
+    else:
+        if gate_tamper.startswith("late-"):
+            direct_state = result["validation_result"][
+                "direct_candidate_state"
+            ]
+            if gate_tamper == "late-mutation-erase-all-authority":
+                assert result["validation_result"]["reason"] == (
+                    "direct_candidate_authority_missing"
+                )
+                assert direct_state["validation_attempted_no_change"] is False
+                authority = result["validation_result"][
+                    "direct_candidate_authority"
+                ]
+                assert not any(authority.values())
+                assert "no_change_guard" not in result["validation_result"]
+                assert "todo_update_result" not in result
+                assert completion_calls == []
+                assert result["attempt_consumed"] is True
+                return
+            assert result["validation_result"]["reason"] == (
+                "direct_candidate_changed_after_no_change_validation"
+            )
+            assert direct_state["validation_attempted_no_change"] is True
+            assert direct_state["validation_bound_no_change"] is (
+                gate_tamper != "late-declared-mutation-drop-binding"
+            )
+            guard = result["validation_result"]["no_change_guard"]
+            assert guard["allowed"] is False
+            assert "candidate_changed_after_no_change_validation" in guard[
+                "reasons"
+            ]
+            if gate_tamper == "late-declared-mutation-drop-binding":
+                assert "no_change_candidate_binding_missing" in guard[
+                    "reasons"
+                ]
+        elif gate_tamper:
+            assert result["validation_result"]["reason"] == (
+                "validated_no_change_guard_failed"
+            )
+            assert result["validation_result"]["no_change_guard"][
+                "allowed"
+            ] is False
+            reasons = result["validation_result"]["no_change_guard"][
+                "reasons"
+            ]
+            if gate_tamper == "forge":
+                assert "no_change_policy_gate_not_issued_for_attempt" in (
+                    reasons
+                )
+            else:
+                assert "no_change_policy_gate_missing" in reasons
+        else:
+            assert result["validation_result"]["reason"] == (
+                "no_change_completion_not_allowed"
+            )
+            assert "no_change_guard" not in result["validation_result"]
+        assert "todo_update_result" not in result
+        assert completion_calls == []
     assert result["attempt_consumed"] is True
 
 
@@ -18795,6 +18982,7 @@ def test_non_ephemeral_retry_repair_does_not_probe_shared_checkout(
         strategy_path=state_dir / "strategy.json",
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
+        worktree_root=repo,
         task_header_prefix="## ACCEL-",
         implement=True,
         implementation_command="fake-agent",
@@ -18815,6 +19003,7 @@ def test_non_ephemeral_retry_repair_does_not_probe_shared_checkout(
             "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
             "Retry repair source": "ACCEL-001",
             "Retry failure kind": "implementation",
+            "No-change completion": "allowed",
         },
     )
     durable_completion = {
@@ -18887,7 +19076,6 @@ def test_non_ephemeral_retry_repair_does_not_probe_shared_checkout(
     result = daemon._run_implementation(task, TodoTaskState())
 
     assert result["returncode"] == 0
-    assert result["provider_dispatched"] is True
     assert provider_calls == [True]
     assert result["validation_result"]["candidate_binding"]["verified"] is True
     assert result["validation_result"]["no_change_guard"]["allowed"] is True
@@ -19051,6 +19239,7 @@ def test_ephemeral_provider_completes_already_satisfied_task_without_proposal(
         outputs=["README.md"],
         validation=["python --version"],
         acceptance="The tracked baseline already satisfies the contract.",
+        metadata={"No-change completion": "allowed"},
     )
     durable_completion = {
         "updated": True,
@@ -19116,6 +19305,388 @@ def test_ephemeral_provider_completes_already_satisfied_task_without_proposal(
     assert result["validation_result"]["candidate_binding"]["verified"] is True
     assert result["board_completion"]["complete"] is True
     assert result["todo_update_result"] == durable_completion
+
+
+@pytest.mark.parametrize(
+    ("timeout_salvage", "mutation_path"),
+    [
+        pytest.param(False, "README.md", id="normal-declared"),
+        pytest.param(False, "UNDECLARED.txt", id="normal-undeclared"),
+        pytest.param(True, "README.md", id="timeout-declared"),
+        pytest.param(True, "UNDECLARED.txt", id="timeout-undeclared"),
+    ],
+)
+def test_isolated_final_fence_mutation_never_reaches_commit_or_enqueue(
+    tmp_path: Path,
+    monkeypatch,
+    timeout_salvage: bool,
+    mutation_path: str,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-HANDOFF",
+        title="Reject a late isolated candidate mutation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Only the exact validated candidate may reach commit.",
+        metadata={"No-change completion": "allowed"},
+    )
+    commit_calls: list[str] = []
+    target_fence_reason = (
+        "timeout_salvage_validation_unchanged"
+        if timeout_salvage
+        else "post_validation_check_unchanged"
+    )
+
+    def provider(command, **_kwargs):
+        if timeout_salvage:
+            raise subprocess.TimeoutExpired(command, timeout=0.1)
+        return subprocess.CompletedProcess(command, 0)
+
+    def mutate_from_final_fence(**kwargs):
+        if kwargs["reason"] == target_fence_reason:
+            target = Path(kwargs["workspace_path"]) / mutation_path
+            target.write_text("late mutation\n", encoding="utf-8")
+        return {}
+
+    real_commit = daemon._commit_worktree_changes
+
+    def record_commit(*args, **kwargs):
+        commit_calls.append("commit")
+        return real_commit(*args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        mutate_from_final_fence,
+    )
+    monkeypatch.setattr(daemon, "_commit_worktree_changes", record_commit)
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_validated_worktree",
+        lambda **_kwargs: pytest.fail(
+            "a changed validated candidate must never be enqueued"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a changed validated candidate must never complete the task"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the existing implementation",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] == (
+        "validated_candidate_changed_before_commit"
+    )
+    guard = result["validation_result"]["candidate_handoff"]["pre_commit"]
+    assert guard["allowed"] is False
+    assert "candidate_fingerprint_changed" in guard["reasons"]
+    assert "candidate_workspace_changed_after_validation" in guard["reasons"]
+    assert result["commit_result"]["committed"] is False
+    assert result["merge_result"].get("queued") is not True
+    assert result["board_completion"]["complete"] is False
+    assert commit_calls == []
+    if timeout_salvage:
+        assert result["timeout_result"]["salvaged"] is False
+        assert result["timeout_result"]["reason"] == (
+            "validated_candidate_changed_before_commit"
+        )
+
+
+@pytest.mark.parametrize("timeout_salvage", [False, True])
+def test_isolated_changed_candidate_drift_after_commit_never_enqueues(
+    tmp_path: Path,
+    monkeypatch,
+    timeout_salvage: bool,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-COMMIT-HANDOFF",
+        title="Reject changed candidate drift after commit",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Only the exact validated changed candidate may enqueue.",
+    )
+
+    def provider(command, **kwargs):
+        (Path(kwargs["cwd"]) / "README.md").write_text(
+            "validated candidate\n",
+            encoding="utf-8",
+        )
+        if timeout_salvage:
+            raise subprocess.TimeoutExpired(command, timeout=0.1)
+        return subprocess.CompletedProcess(command, 0)
+
+    real_commit = daemon._commit_worktree_changes
+
+    def commit_then_mutate(*args, **kwargs):
+        committed = real_commit(*args, **kwargs)
+        assert committed["committed"] is True
+        (Path(args[0]) / "README.md").write_text(
+            "mutation after commit\n",
+            encoding="utf-8",
+        )
+        return committed
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        commit_then_mutate,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_validated_worktree",
+        lambda **_kwargs: pytest.fail(
+            "a commit that drifted from validation must never be enqueued"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a commit that drifted from validation must never complete"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement the declared candidate",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] == (
+        "validated_commit_handoff_not_bound"
+    )
+    guard = result["validation_result"]["candidate_handoff"]["post_commit"]
+    assert guard["allowed"] is False
+    assert "candidate_fingerprint_changed" in guard["reasons"]
+    assert "committed_candidate_worktree_not_clean" in guard["reasons"]
+    assert result["commit_result"]["committed"] is True
+    assert result["merge_result"].get("queued") is not True
+    assert result["board_completion"]["complete"] is False
+    if timeout_salvage:
+        assert result["timeout_result"]["salvaged"] is False
+        assert result["timeout_result"]["reason"] == (
+            "validated_commit_handoff_not_bound"
+        )
+
+
+@pytest.mark.parametrize("completion_mode", [None, "forbidden", "Allowed"])
+def test_ephemeral_zero_diff_pending_task_cannot_complete_without_opt_in(
+    tmp_path,
+    monkeypatch,
+    completion_mode,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("existing output\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-PENDING",
+        title="Do not close pending implementation work on a zero diff",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="implementation",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="A passing inherited test is not implementation evidence.",
+        metadata=(
+            {}
+            if completion_mode is None
+            else {"No-change completion": completion_mode}
+        ),
+    )
+    completion_calls: list[str] = []
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: completion_calls.append("completed") or {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the existing implementation",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] == (
+        "no_change_completion_not_allowed"
+    )
+    assert result["validation_result"]["no_change_policy_gate"][
+        "accepted"
+    ] is False
+    assert result["validation_result"]["no_change_policy_gate"][
+        "completion_mode"
+    ] == (completion_mode or "")
+    assert result["board_completion"]["complete"] is False
+    assert completion_calls == []
+    assert "todo_update_result" not in result
 
 
 def test_ephemeral_retry_repair_proves_satisfaction_before_provider_dispatch(
@@ -19727,11 +20298,27 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     )
     monkeypatch.setattr(
         daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
         "_restore_and_verify_post_validation_candidate",
         lambda *_args, validation_result, **_kwargs: (
             validation_order.append("restore_then_bind")
             or dict(validation_result)
         ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, phase, **_kwargs: {
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+        },
     )
     monkeypatch.setattr(
         daemon,
@@ -19883,6 +20470,15 @@ def test_integrated_merge_reuses_durable_completion_with_float_validation(
     )
     monkeypatch.setattr(
         daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, phase, **_kwargs: {
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
         "_commit_worktree_changes",
         lambda *_args, **_kwargs: {
             "committed": True,
@@ -20021,6 +20617,13 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     )
     monkeypatch.setattr(
         daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
         "_implementation_protected_path_violation",
         lambda **_kwargs: (
             validation_order.append("protected_check") or {}
@@ -20040,6 +20643,15 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
             validation_order.append("restore_then_bind")
             or dict(validation_result)
         ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, phase, **_kwargs: {
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+        },
     )
     monkeypatch.setattr(
         daemon,
@@ -20118,6 +20730,7 @@ def test_timeout_salvage_completes_already_satisfied_task_without_proposal(
         outputs=["README.md"],
         validation=["python --version"],
         acceptance="The unchanged baseline remains valid after timeout.",
+        metadata={"No-change completion": "allowed"},
     )
     durable_completion = {
         "updated": True,
@@ -34690,6 +35303,7 @@ def test_non_ephemeral_implementation_defers_dependency_drift_without_provider_o
         implement=True,
         implementation_command="provider-must-not-run",
         use_ephemeral_worktree=False,
+        worktree_root=repo,
     )
     task = PortalTask(
         task_id="ACCEL-001",
@@ -35341,6 +35955,110 @@ def test_terminal_board_drain_ignores_a_stale_completed_projection(tmp_path):
     assert fields["task_state_fresh"] is False
     assert fields["terminal_quiescent"] is False
 
+@pytest.mark.parametrize("mutate_after_commit", [False, True])
+def test_changed_candidate_commit_tree_and_status_remain_validation_bound(
+    tmp_path: Path,
+    mutate_after_commit: bool,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch = "implementation/candidate-handoff"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "README.md").write_text("validated candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-HANDOFF",
+        title="Bind one changed candidate through commit",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The committed tree is the exact validated source diff.",
+    )
+    entries, _expansions = daemon._collect_proposal_candidate_diff(
+        repo,
+        baseline_ref=baseline,
+        scope_paths=("README.md",),
+        task=task,
+    )
+    fingerprint = daemon._proposal_candidate_fingerprint(entries)
+    validation_result = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "candidate_binding": {
+            "verified": True,
+            "expected_fingerprint": fingerprint,
+            "current_fingerprint": fingerprint,
+            "validated_workspace": daemon._candidate_workspace_identity(repo),
+        },
+    }
+
+    pre_commit = daemon._validated_candidate_handoff_guard(
+        repo,
+        task,
+        attempt=1,
+        baseline_ref=baseline,
+        expected_branch=branch,
+        validation_result=validation_result,
+        phase="pre_commit",
+    )
+    assert pre_commit["allowed"] is True
+    commit_result = daemon._commit_worktree_changes(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+    assert commit_result["committed"] is True
+    implementation_commit = str(commit_result["commit"])
+    if mutate_after_commit:
+        (repo / "README.md").write_text(
+            "mutation after commit\n",
+            encoding="utf-8",
+        )
+
+    post_commit = daemon._validated_candidate_handoff_guard(
+        repo,
+        task,
+        attempt=1,
+        baseline_ref=baseline,
+        expected_branch=branch,
+        validation_result=validation_result,
+        phase="post_commit",
+        implementation_commit=implementation_commit,
+    )
+
+    assert post_commit["allowed"] is (not mutate_after_commit)
+    assert post_commit["implementation_commit"] == implementation_commit
+    assert post_commit["final_tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+    if mutate_after_commit:
+        assert "candidate_fingerprint_changed" in post_commit["reasons"]
+        assert "committed_candidate_worktree_not_clean" in post_commit["reasons"]
+    else:
+        assert post_commit["current_fingerprint"] == fingerprint
+        assert post_commit["workspace_after"]["status_clean"] is True
+        assert post_commit["reasons"] == []
+
+
 def test_clean_already_satisfied_candidate_runs_declared_validation(
     tmp_path: Path,
     monkeypatch,
@@ -35374,6 +36092,7 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
         outputs=["README.md"],
         validation=["python -m pytest"],
         acceptance="Declared validation proves the existing implementation.",
+        metadata={"No-change completion": "allowed"},
     )
     calls: list[dict[str, object]] = []
 
@@ -35510,6 +36229,7 @@ def test_clean_candidate_accepts_tracked_output_inside_managed_submodule(
         outputs=["child/report.json"],
         validation=["python -m pytest"],
         acceptance="The managed child output is present at the parent baseline.",
+        metadata={"No-change completion": "allowed"},
     )
     validation_calls: list[dict[str, object]] = []
 
@@ -35586,6 +36306,7 @@ def test_clean_candidate_policy_rejects_unsafe_command_before_dispatch(
         outputs=["README.md"],
         validation=["python -c 'print(unsafe)'"],
         acceptance="The no-change policy rejects eval-form commands.",
+        metadata={"No-change completion": "allowed"},
     )
     monkeypatch.setattr(
         daemon,
@@ -35646,6 +36367,7 @@ def test_clean_candidate_policy_fails_closed_on_second_collection_error(
         outputs=["README.md"],
         validation=["python --version"],
         acceptance="Every policy-bound candidate collection succeeds.",
+        metadata={"No-change completion": "allowed"},
     )
     collect = daemon._collect_proposal_candidate_diff
     collection_calls = 0
@@ -35720,6 +36442,7 @@ def test_no_change_completion_guard_rejects_self_consistent_unissued_gate(
         outputs=["README.md"],
         validation=["python --version"],
         acceptance="Only this daemon attempt can issue completion authority.",
+        metadata={"No-change completion": "allowed"},
     )
     monkeypatch.setattr(
         daemon,
@@ -35771,6 +36494,210 @@ def test_no_change_completion_guard_rejects_self_consistent_unissued_gate(
 
     assert guard["allowed"] is False
     assert "no_change_policy_gate_not_issued_for_attempt" in guard["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("completion_mode", "expected_allowed"),
+    [(None, False), ("forbidden", False), ("allowed", True)],
+)
+def test_deterministic_no_change_requires_and_consumes_issued_gate(
+    tmp_path: Path,
+    completion_mode: str | None,
+    expected_allowed: bool,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    metadata = {"Provider role": "deterministic-only"}
+    if completion_mode is not None:
+        metadata["No-change completion"] = completion_mode
+    task = PortalTask(
+        task_id="AUTO-DETERMINISTIC",
+        title="Prove one deterministic no-change result",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="A typed execution receipt cannot replace no-change authority.",
+        metadata=metadata,
+    )
+
+    admitted = daemon._admit_deterministic_validation_materialization(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=TodoTaskState(),
+        baseline_ref=baseline,
+        materialization_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "task_execution_receipt_id": "typed-execution-receipt",
+        },
+    )
+
+    assert admitted["passed"] is expected_allowed
+    assert admitted["no_change_policy_gate"]["accepted"] is expected_allowed
+    if not expected_allowed:
+        assert admitted["reason"] == "no_change_completion_not_allowed"
+        return
+
+    issued_gate = daemon._take_issued_no_change_policy_gate(admitted)
+    assert issued_gate == admitted["no_change_policy_gate"]
+    guard = daemon._validated_no_change_completion_guard(
+        baseline_ref=baseline,
+        current_head=baseline,
+        expected_branch="main",
+        current_branch="main",
+        validation_result=admitted,
+        expected_task_id=task.task_id,
+        expected_task_cid=daemon._canonical_ref(task),
+        authoritative_no_change_policy_gate=issued_gate,
+    )
+    assert guard["allowed"] is True
+    assert daemon._take_issued_no_change_policy_gate(admitted) is None
+
+
+@pytest.mark.parametrize(
+    ("completion_mode", "expected_completion"),
+    [(None, False), ("forbidden", False), ("allowed", True)],
+)
+def test_isolated_deterministic_no_change_uses_universal_completion_gate(
+    tmp_path: Path,
+    monkeypatch,
+    completion_mode: str | None,
+    expected_completion: bool,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    metadata = {"Provider role": "deterministic-only"}
+    if completion_mode is not None:
+        metadata["No-change completion"] = completion_mode
+    task = PortalTask(
+        task_id="AUTO-DETERMINISTIC",
+        title="Run one isolated deterministic no-change attempt",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Only universal no-change authority may close the task.",
+        metadata=metadata,
+    )
+    completion_calls: list[str] = []
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "deterministic-only execution must not dispatch a provider"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: (
+            completion_calls.append(task.task_id)
+            or {
+                "updated": True,
+                "durable": True,
+                "completion_publication": {"published": True},
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="",
+    )
+
+    assert (result["returncode"] == 0) is expected_completion
+    assert result["board_completion"]["complete"] is expected_completion
+    if expected_completion:
+        assert result["commit_result"]["reason"] == "no_changes"
+        assert result["commit_result"]["no_change_guard"]["allowed"] is True
+        assert result["validation_result"]["no_change_policy_gate"][
+            "accepted"
+        ] is True
+        assert completion_calls == [task.task_id]
+    else:
+        assert result["validation_result"]["reason"] == (
+            "no_change_completion_not_allowed"
+        )
+        assert completion_calls == []
 
 
 def test_rejected_empty_proposal_short_circuits_before_declared_graph(
