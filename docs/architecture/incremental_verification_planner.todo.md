@@ -650,7 +650,7 @@ empty for every task because it is not a configured-board dispatch input.
 
 ## IVP-020 Resolve validation retry-budget failure for IVP-019
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
