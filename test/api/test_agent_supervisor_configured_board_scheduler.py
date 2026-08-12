@@ -1562,6 +1562,47 @@ def test_disabled_guardrails_project_to_existing_supervisor_flags(
     assert common.count("--no-reconciliation-guardrail") == 1
 
 
+def test_idle_lane_virgin_transfer_loads_and_propagates_to_supervisors(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["idle_lane_work_stealing"] = "virgin-transfer"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260812T000000Z",
+    )
+    common = _common_args(plan)
+
+    assert board.strict_task_sharding is True
+    assert board.idle_lane_work_stealing == "virgin-transfer"
+    assert common.count("--idle-lane-work-stealing") == 1
+    option = common.index("--idle-lane-work-stealing")
+    assert common[option + 1] == "virgin-transfer"
+    assert plan["effective_idle_lane_work_stealing"] == "virgin-transfer"
+
+
+def test_idle_lane_virgin_transfer_requires_strict_sharding(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["strict_task_sharding"] = False
+    payload["idle_lane_work_stealing"] = "virgin-transfer"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(
+        scheduler_module.ConfiguredBoardError,
+        match="requires strict_task_sharding",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
 @pytest.mark.parametrize(
     "field",
     (

@@ -118,6 +118,7 @@ from .implementation_daemon import (
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
     IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
     IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+    IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
     PortalTask,
@@ -1956,6 +1957,7 @@ class PortalSupervisorConfig:
     task_shard_count: int = 1
     task_shard_index: int = 0
     strict_task_sharding: bool = False
+    idle_lane_work_stealing: str = ""
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -2152,6 +2154,22 @@ class PortalSupervisorConfig:
             raise ValueError(
                 "manual completion authority revalidation-only mode requires "
                 "implementation execution to be enabled"
+            )
+        stealing_mode = str(self.idle_lane_work_stealing or "").strip().lower()
+        if stealing_mode not in {"", IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER}:
+            raise ValueError(
+                "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+            )
+        self.idle_lane_work_stealing = stealing_mode
+        if stealing_mode and (
+            not self.strict_task_sharding or self.task_shard_count <= 1
+        ):
+            raise ValueError(
+                "idle-lane work stealing requires strict multi-lane sharding"
+            )
+        if stealing_mode and self.plan_bound_dispatch:
+            raise PlanBoundDispatchError(
+                "plan-bound slices forbid idle-lane work stealing"
             )
 
 
@@ -14426,6 +14444,16 @@ class PortalImplementationSupervisor:
         )
         if self.config.strict_task_sharding and not self.config.plan_bound_dispatch:
             command.append("--strict-task-sharding")
+        if (
+            self.config.idle_lane_work_stealing
+            and not self.config.plan_bound_dispatch
+        ):
+            command.extend(
+                [
+                    "--idle-lane-work-stealing",
+                    self.config.idle_lane_work_stealing,
+                ]
+            )
         for path in self.config.external_reservation_manifest_paths:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
@@ -15258,6 +15286,15 @@ class PortalImplementationSupervisor:
                 if token == option
             }
 
+        expected_work_stealing = (
+            {self.config.idle_lane_work_stealing}
+            if self.config.idle_lane_work_stealing
+            and not self.config.plan_bound_dispatch
+            else set()
+        )
+        if option_values("--idle-lane-work-stealing") != expected_work_stealing:
+            return False
+
         if option_values("--task-shard-count") != {
             str(
                 1
@@ -15706,6 +15743,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Keep the managed daemon within its deterministic task shard when that "
             "shard has no ready work; disables cross-shard ready-task fallback."
+        ),
+    )
+    parser.add_argument(
+        "--idle-lane-work-stealing",
+        choices=[IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER],
+        default="",
+        help=(
+            "Allow strict lanes to accept home-lane-authorized, exact-revision "
+            "virgin task transfers."
         ),
     )
     parser.add_argument(
@@ -16382,6 +16428,9 @@ def supervisor_config_from_args(
         task_shard_index=args.task_shard_index,
         strict_task_sharding=bool(
             getattr(args, "strict_task_sharding", False)
+        ),
+        idle_lane_work_stealing=str(
+            getattr(args, "idle_lane_work_stealing", "") or ""
         ),
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()

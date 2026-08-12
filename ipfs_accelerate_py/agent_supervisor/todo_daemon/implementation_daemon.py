@@ -149,6 +149,7 @@ from ..runtime.event_log import (
     event_log_sources,
     latest_event_cursor,
     read_jsonl_events,
+    read_jsonl_event_sources,
     repair_jsonl_event_log,
     unique_backup_path,
 )
@@ -413,6 +414,22 @@ WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
 WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
+IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER = "virgin-transfer"
+IDLE_LANE_WORK_STEALING_MODES = frozenset(
+    {"", IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER}
+)
+VIRGIN_TASK_TRANSFER_DIRNAME = "implementation-virgin-task-transfers"
+VIRGIN_TASK_TRANSFER_REGISTRATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "virgin-task-transfer-lane-registration@1"
+)
+VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.virgin-task-transfer-request@1"
+)
+VIRGIN_TASK_TRANSFER_GRANT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.virgin-task-transfer-grant@1"
+)
+VIRGIN_TASK_TRANSFER_MAX_RECORD_BYTES = 512 * 1024
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
@@ -4413,6 +4430,7 @@ class PortalImplementationDaemon:
         task_shard_count: int = 1,
         task_shard_index: int = 0,
         strict_task_sharding: bool = False,
+        idle_lane_work_stealing: str = "",
         merge_queue: MergeQueue | None = None,
         merge_queue_dir: Path | None = None,
         validation_scheduler: ValidationScheduler | None = None,
@@ -4815,6 +4833,22 @@ class PortalImplementationDaemon:
         if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
             raise ValueError("task_shard_index must be in range [0, task_shard_count)")
         self.strict_task_sharding = bool(strict_task_sharding)
+        self.idle_lane_work_stealing = str(
+            idle_lane_work_stealing or ""
+        ).strip().lower()
+        if self.idle_lane_work_stealing not in IDLE_LANE_WORK_STEALING_MODES:
+            raise ValueError(
+                "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+            )
+        if self.idle_lane_work_stealing and not self.strict_task_sharding:
+            raise ValueError(
+                "idle-lane work stealing requires strict task sharding"
+            )
+        if self.idle_lane_work_stealing and self.task_shard_count <= 1:
+            raise ValueError(
+                "idle-lane work stealing requires at least two task shards"
+            )
+        self._active_virgin_transfer_grants: dict[str, dict[str, Any]] = {}
         self.maintenance_interval_seconds = max(
             0.0,
             _env_float(
@@ -10680,6 +10714,14 @@ class PortalImplementationDaemon:
                 representative[key] = task
         return {task.task_id for task in representative.values()}
 
+    def _task_home_shard_index(self, task_id: str) -> int:
+        """Return the deterministic hash-home lane for ``task_id``."""
+
+        if self.task_shard_count <= 1:
+            return 0
+        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % self.task_shard_count
+
     def _task_belongs_to_shard(self, task_id: str) -> bool:
         """Return whether this daemon lane should implement ``task_id``.
 
@@ -10688,10 +10730,1240 @@ class PortalImplementationDaemon:
         same lane under strict sharding and leave sibling lanes idle forever.
         """
 
-        if self.task_shard_count <= 1:
+        return self._task_home_shard_index(task_id) == self.task_shard_index
+
+    def _virgin_transfer_cohort_id(self) -> str:
+        try:
+            board_path = self.todo_path.resolve(strict=False)
+            try:
+                board_name = board_path.relative_to(self.repo_root).as_posix()
+            except ValueError:
+                board_name = str(board_path)
+        except (OSError, RuntimeError, ValueError):
+            board_name = str(self.todo_path)
+        return content_identity(
+            {
+                "kind": "virgin-task-transfer-cohort",
+                "repository_id": self.merge_target_repository_id,
+                "taskboard": board_name,
+                "task_header_prefix": self.task_header_prefix,
+                "task_shard_count": self.task_shard_count,
+                "strict_task_sharding": self.strict_task_sharding,
+                "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            }
+        )
+
+    def _virgin_transfer_root(self) -> Path:
+        cohort_digest = hashlib.sha256(
+            self._virgin_transfer_cohort_id().encode("utf-8")
+        ).hexdigest()[:24]
+        return (
+            checkout_mutation_lock_path(
+                self.repo_root,
+                lock_name=VIRGIN_TASK_TRANSFER_DIRNAME,
+            )
+            / f"cohort-{cohort_digest}"
+        )
+
+    def _ensure_private_virgin_transfer_authority(
+        self,
+        *,
+        create: bool,
+    ) -> None:
+        """Require a same-owner, no-follow private authority hierarchy."""
+
+        root = self._virgin_transfer_root()
+        authority_root = root.parent
+        common_dir = authority_root.parent
+        try:
+            common_info = os.lstat(common_dir)
+        except OSError as exc:
+            raise RuntimeError(
+                "virgin transfer Git common directory is unavailable"
+            ) from exc
+        if (
+            stat_module.S_ISLNK(common_info.st_mode)
+            or not stat_module.S_ISDIR(common_info.st_mode)
+            or (
+                hasattr(os, "geteuid")
+                and common_info.st_uid != os.geteuid()
+            )
+            or stat_module.S_IMODE(common_info.st_mode) & 0o022
+        ):
+            raise RuntimeError(
+                "virgin transfer Git common directory is not private authority"
+            )
+
+        for directory in (
+            authority_root,
+            root,
+            root / "registrations",
+            root / "requests",
+            root / "grants",
+        ):
+            if create:
+                try:
+                    os.mkdir(directory, 0o700)
+                except FileExistsError:
+                    pass
+                except OSError as exc:
+                    raise RuntimeError(
+                        "cannot create virgin transfer authority directory"
+                    ) from exc
+            try:
+                info = os.lstat(directory)
+            except OSError as exc:
+                raise RuntimeError(
+                    "virgin transfer authority directory is unavailable"
+                ) from exc
+            if (
+                stat_module.S_ISLNK(info.st_mode)
+                or not stat_module.S_ISDIR(info.st_mode)
+                or (
+                    hasattr(os, "geteuid")
+                    and info.st_uid != os.geteuid()
+                )
+                or stat_module.S_IMODE(info.st_mode) != 0o700
+            ):
+                raise RuntimeError(
+                    "virgin transfer authority directories must be owned 0700"
+                )
+
+    def _load_private_virgin_transfer_record(
+        self,
+        path: Path,
+    ) -> dict[str, Any] | None:
+        self._ensure_private_virgin_transfer_authority(create=False)
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise RuntimeError(
+                "virgin transfer record cannot be opened safely"
+            ) from exc
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or (
+                    hasattr(os, "geteuid")
+                    and before.st_uid != os.geteuid()
+                )
+                or stat_module.S_IMODE(before.st_mode) != 0o600
+                or before.st_size <= 0
+                or before.st_size > VIRGIN_TASK_TRANSFER_MAX_RECORD_BYTES
+            ):
+                raise RuntimeError(
+                    "virgin transfer records must be owned 0600 regular files"
+                )
+            raw = b""
+            while len(raw) <= VIRGIN_TASK_TRANSFER_MAX_RECORD_BYTES:
+                chunk = os.read(
+                    descriptor,
+                    min(
+                        65_536,
+                        VIRGIN_TASK_TRANSFER_MAX_RECORD_BYTES + 1 - len(raw),
+                    ),
+                )
+                if not chunk:
+                    break
+                raw += chunk
+            after = os.fstat(descriptor)
+            if (
+                len(raw) != before.st_size
+                or len(raw) > VIRGIN_TASK_TRANSFER_MAX_RECORD_BYTES
+                or (before.st_dev, before.st_ino, before.st_size)
+                != (after.st_dev, after.st_ino, after.st_size)
+            ):
+                raise RuntimeError(
+                    "virgin transfer record changed during read"
+                )
+        finally:
+            os.close(descriptor)
+
+        def unique_pairs(
+            pairs: Sequence[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate virgin transfer record key")
+                result[key] = value
+            return result
+
+        try:
+            payload = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=unique_pairs,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _write_private_virgin_transfer_record(
+        self,
+        path: Path,
+        payload: Mapping[str, Any],
+        *,
+        only_if_changed: bool = False,
+    ) -> bool:
+        self._ensure_private_virgin_transfer_authority(create=True)
+        rendered = (
+            json.dumps(dict(payload), indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        if len(rendered) > VIRGIN_TASK_TRANSFER_MAX_RECORD_BYTES:
+            raise RuntimeError("virgin transfer record exceeds size bound")
+        if only_if_changed:
+            current = self._load_private_virgin_transfer_record(path)
+            if current is not None and current == dict(payload):
+                return False
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        temporary = Path(temporary_name)
+        try:
+            os.fchmod(descriptor, 0o600)
+            offset = 0
+            while offset < len(rendered):
+                written = os.write(descriptor, rendered[offset:])
+                if written <= 0:
+                    raise OSError("short virgin transfer record write")
+                offset += written
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = -1
+            os.replace(temporary, path)
+            parent_descriptor = os.open(
+                path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(parent_descriptor)
+            finally:
+                os.close(parent_descriptor)
+            if self._load_private_virgin_transfer_record(path) != dict(
+                payload
+            ):
+                raise RuntimeError(
+                    "virgin transfer record publication did not verify"
+                )
             return True
-        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
-        return int(digest[:8], 16) % self.task_shard_count == self.task_shard_index
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _virgin_transfer_record_valid(
+        record: Mapping[str, Any],
+        *,
+        id_field: str,
+    ) -> bool:
+        record_id = str(record.get(id_field) or "")
+        body = dict(record)
+        body.pop(id_field, None)
+        return bool(record_id and record_id == content_identity(body))
+
+    def _virgin_transfer_registration_path(self, lane_index: int) -> Path:
+        return (
+            self._virgin_transfer_root()
+            / "registrations"
+            / f"lane-{int(lane_index):04d}.json"
+        )
+
+    def _virgin_transfer_task_token(self, task: PortalTask) -> str:
+        return hashlib.sha256(
+            self._canonical_ref(task).encode("utf-8")
+        ).hexdigest()[:32]
+
+    def _virgin_transfer_request_path(
+        self,
+        task: PortalTask,
+        requester_lane_index: int,
+    ) -> Path:
+        return (
+            self._virgin_transfer_root()
+            / "requests"
+            / (
+                f"task-{self._virgin_transfer_task_token(task)}-"
+                f"lane-{int(requester_lane_index):04d}.json"
+            )
+        )
+
+    def _virgin_transfer_grant_path(self, task: PortalTask) -> Path:
+        return self._virgin_transfer_grant_path_for_cid(
+            self._canonical_ref(task)
+        )
+
+    def _virgin_transfer_grant_path_for_cid(
+        self,
+        canonical_task_cid: str,
+    ) -> Path:
+        token = hashlib.sha256(
+            str(canonical_task_cid).encode("utf-8")
+        ).hexdigest()[:32]
+        return (
+            self._virgin_transfer_root()
+            / "grants"
+            / f"task-{token}.json"
+        )
+
+    def _publish_virgin_transfer_registration(self) -> dict[str, Any]:
+        self._ensure_private_virgin_transfer_authority(create=True)
+        body: dict[str, Any] = {
+            "schema": VIRGIN_TASK_TRANSFER_REGISTRATION_SCHEMA,
+            "cohort_id": self._virgin_transfer_cohort_id(),
+            "repository_id": self.merge_target_repository_id,
+            "task_shard_count": self.task_shard_count,
+            "task_shard_index": self.task_shard_index,
+            "strict_task_sharding": self.strict_task_sharding,
+            "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            "state_path": str(self.state_path.resolve()),
+            "events_path": str(self.events_path.resolve()),
+            "owner": current_process_birth().to_dict(),
+        }
+        record = {**body, "registration_id": content_identity(body)}
+        path = self._virgin_transfer_registration_path(
+            self.task_shard_index
+        )
+        with serialized_lock_update(path):
+            changed = self._write_private_virgin_transfer_record(
+                path,
+                record,
+                only_if_changed=True,
+            )
+        if changed:
+            self._record_event(
+                "virgin_task_transfer_lane_registered",
+                {
+                    "cohort_id": record["cohort_id"],
+                    "registration_id": record["registration_id"],
+                    "task_shard_count": self.task_shard_count,
+                    "task_shard_index": self.task_shard_index,
+                },
+            )
+        return record
+
+    def _virgin_transfer_registrations(
+        self,
+        *,
+        require_active: bool,
+    ) -> dict[int, dict[str, Any]]:
+        registrations: dict[int, dict[str, Any]] = {}
+        for lane_index in range(self.task_shard_count):
+            record = self._load_private_virgin_transfer_record(
+                self._virgin_transfer_registration_path(lane_index)
+            )
+            if record is None:
+                continue
+            try:
+                owner = ProcessBirthIdentity.from_dict(record.get("owner"))
+            except (TypeError, ValueError):
+                continue
+            if (
+                record.get("schema")
+                != VIRGIN_TASK_TRANSFER_REGISTRATION_SCHEMA
+                or not self._virgin_transfer_record_valid(
+                    record,
+                    id_field="registration_id",
+                )
+                or record.get("cohort_id")
+                != self._virgin_transfer_cohort_id()
+                or record.get("repository_id")
+                != self.merge_target_repository_id
+                or record.get("task_shard_count")
+                != self.task_shard_count
+                or record.get("task_shard_index") != lane_index
+                or record.get("strict_task_sharding") is not True
+                or record.get("idle_lane_work_stealing")
+                != IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+            ):
+                continue
+            if (
+                require_active
+                and owner_liveness(owner) is not OwnerLiveness.ALIVE
+            ):
+                continue
+            registrations[lane_index] = record
+        return registrations
+
+    def _active_virgin_transfer_registrations(
+        self,
+    ) -> dict[int, dict[str, Any]]:
+        return self._virgin_transfer_registrations(require_active=True)
+
+    def _valid_virgin_transfer_request(
+        self,
+        task: PortalTask,
+        requester_lane_index: int,
+        registrations: Mapping[int, Mapping[str, Any]],
+    ) -> dict[str, Any] | None:
+        record = self._load_private_virgin_transfer_record(
+            self._virgin_transfer_request_path(
+                task,
+                requester_lane_index,
+            )
+        )
+        registration = registrations.get(requester_lane_index)
+        identity = self._identity_for_task(task)
+        if (
+            record is None
+            or registration is None
+            or record.get("schema") != VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA
+            or not self._virgin_transfer_record_valid(
+                record,
+                id_field="request_id",
+            )
+            or record.get("cohort_id") != self._virgin_transfer_cohort_id()
+            or record.get("task_id") != task.task_id
+            or record.get("canonical_task_key")
+            != identity.canonical_task_key
+            or record.get("canonical_task_cid")
+            != identity.canonical_task_cid
+            or record.get("board_namespace") != identity.board_namespace
+            or record.get("home_shard_index")
+            != self._task_home_shard_index(task.task_id)
+            or record.get("requester_shard_index")
+            != requester_lane_index
+            or record.get("requester_registration_id")
+            != registration.get("registration_id")
+        ):
+            return None
+        return record
+
+    def _publish_virgin_transfer_request(
+        self,
+        task: PortalTask,
+        registration: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        identity = self._identity_for_task(task)
+        body: dict[str, Any] = {
+            "schema": VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+            "cohort_id": self._virgin_transfer_cohort_id(),
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "home_shard_index": self._task_home_shard_index(task.task_id),
+            "requester_shard_index": self.task_shard_index,
+            "requester_registration_id": str(
+                registration.get("registration_id") or ""
+            ),
+        }
+        record = {**body, "request_id": content_identity(body)}
+        path = self._virgin_transfer_request_path(
+            task,
+            self.task_shard_index,
+        )
+        with serialized_lock_update(path):
+            changed = self._write_private_virgin_transfer_record(
+                path,
+                record,
+                only_if_changed=True,
+            )
+        if changed:
+            self._record_event(
+                "virgin_task_transfer_requested",
+                {
+                    key: record[key]
+                    for key in (
+                        "request_id",
+                        "task_id",
+                        "canonical_task_cid",
+                        "home_shard_index",
+                        "requester_shard_index",
+                    )
+                },
+            )
+        return record, changed
+
+    def _clear_other_virgin_transfer_requests(
+        self,
+        *,
+        retain: Path | None = None,
+    ) -> None:
+        request_dir = self._virgin_transfer_root() / "requests"
+        pattern = f"task-*-lane-{self.task_shard_index:04d}.json"
+        for path in request_dir.glob(pattern):
+            if retain is not None and path == retain:
+                continue
+            try:
+                with serialized_lock_update(path):
+                    path.unlink(missing_ok=True)
+            except OSError:
+                # A stale request can only be granted while its exact live
+                # registration remains bound, so cleanup failure is safe.
+                continue
+
+    def _valid_virgin_transfer_grant(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any] | None:
+        record = self._load_private_virgin_transfer_record(
+            self._virgin_transfer_grant_path(task)
+        )
+        identity = self._identity_for_task(task)
+        request = record.get("request") if record is not None else None
+        if (
+            record is None
+            or record.get("schema") != VIRGIN_TASK_TRANSFER_GRANT_SCHEMA
+            or not self._virgin_transfer_record_valid(
+                record,
+                id_field="grant_id",
+            )
+            or record.get("cohort_id") != self._virgin_transfer_cohort_id()
+            or record.get("task_id") != task.task_id
+            or record.get("canonical_task_key")
+            != identity.canonical_task_key
+            or record.get("canonical_task_cid")
+            != identity.canonical_task_cid
+            or record.get("board_namespace") != identity.board_namespace
+            or record.get("home_shard_index")
+            != self._task_home_shard_index(task.task_id)
+            or not isinstance(record.get("recipient_shard_index"), int)
+            or isinstance(record.get("recipient_shard_index"), bool)
+            or not 0
+            <= int(record["recipient_shard_index"])
+            < self.task_shard_count
+            or record.get("recipient_shard_index")
+            == record.get("home_shard_index")
+            or not isinstance(request, Mapping)
+            or request.get("request_id") != record.get("request_id")
+            or not self._virgin_transfer_record_valid(
+                request,
+                id_field="request_id",
+            )
+            or request.get("requester_shard_index")
+            != record.get("recipient_shard_index")
+            or not str(record.get("recipient_registration_id") or "")
+            or request.get("requester_registration_id")
+            != record.get("recipient_registration_id")
+            or request.get("canonical_task_cid")
+            != identity.canonical_task_cid
+        ):
+            return None
+        return record
+
+    @staticmethod
+    def _event_matches_virgin_transfer_task(
+        event: Mapping[str, Any],
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+    ) -> bool:
+        event_task_id = str(event.get("task_id") or "")
+        event_task_cid = str(
+            event.get("canonical_task_cid")
+            or event.get("task_revision_cid")
+            or event.get("task_cid")
+            or ""
+        )
+        if event_task_id and event_task_id != task_id:
+            return False
+        if event_task_cid and event_task_cid != canonical_task_cid:
+            return False
+        return bool(event_task_id or event_task_cid)
+
+    def _virgin_transfer_eligibility(
+        self,
+        task: PortalTask,
+        registrations: Mapping[int, Mapping[str, Any]],
+        *,
+        current_state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Prove that an exact revision has never crossed an effect boundary."""
+
+        identity = self._identity_for_task(task)
+        reasons: list[str] = []
+        if len(registrations) != self.task_shard_count:
+            reasons.append("incomplete_lane_registration_set")
+        registration_ids: list[str] = []
+        event_paths: list[Path] = []
+        for lane_index in range(self.task_shard_count):
+            registration = registrations.get(lane_index)
+            if registration is None:
+                continue
+            registration_ids.append(
+                str(registration.get("registration_id") or "")
+            )
+            state_path = Path(str(registration.get("state_path") or ""))
+            events_path = Path(str(registration.get("events_path") or ""))
+            if events_path:
+                event_paths.append(events_path)
+            if lane_index == self.task_shard_index:
+                state = current_state
+            else:
+                payload = load_json_dict(state_path)
+                if payload is None and state_path.exists():
+                    reasons.append(f"lane_{lane_index}_state_unreadable")
+                    continue
+                state_reason = state_file_repair_reason(state_path)
+                if state_reason not in {"", "missing_state_file"}:
+                    reasons.append(
+                        f"lane_{lane_index}_state_{state_reason}"
+                    )
+                    continue
+                state = PortalTaskState.load(state_path)
+            if int(state.implementation_attempts.get(task.task_id, 0) or 0):
+                reasons.append(f"lane_{lane_index}_display_attempt_count_nonzero")
+            if int(
+                state.implementation_attempts_by_cid.get(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            ):
+                reasons.append(f"lane_{lane_index}_cid_attempt_count_nonzero")
+            for latch in state.protected_implementation_attempts.values():
+                if not isinstance(latch, Mapping):
+                    continue
+                if (
+                    latch.get("task_revision_cid")
+                    == identity.canonical_task_cid
+                    or latch.get("task_id") == task.task_id
+                ):
+                    reasons.append(f"lane_{lane_index}_protected_latch_present")
+                    break
+            provider_runner = state.active_provider_runner
+            if isinstance(provider_runner, Mapping) and (
+                provider_runner.get("task_revision_cid")
+                == identity.canonical_task_cid
+                or provider_runner.get("task_id") == task.task_id
+            ):
+                reasons.append(f"lane_{lane_index}_provider_runner_present")
+            state_dir = state_path.parent
+            for filename in (
+                IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
+                IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+            ):
+                fence = load_json_dict(state_dir / filename)
+                if fence is not None and (
+                    fence.get("canonical_task_cid")
+                    == identity.canonical_task_cid
+                    or fence.get("task_id") == task.task_id
+                ):
+                    reasons.append(f"lane_{lane_index}_protected_fence_present")
+
+        claim_paths = {
+            self._implementation_task_claim_path(
+                task.task_id,
+                canonical_task_cid=identity.canonical_task_cid,
+            ),
+            self._implementation_task_claim_path(task.task_id),
+        }
+        if any(path.exists() for path in claim_paths):
+            reasons.append("task_claim_record_present")
+
+        for record in self.worktree_lifecycle.iter_records():
+            if (
+                record.canonical_task_cid == identity.canonical_task_cid
+                or (
+                    not record.canonical_task_cid
+                    and record.task_id == task.task_id
+                )
+            ):
+                reasons.append("worktree_lifecycle_record_present")
+                break
+
+        if identity.canonical_task_cid in self._shared_merge_queue_task_cids(
+            "active_canonical_task_ids"
+        ) or identity.canonical_task_cid in self._shared_merge_queue_task_cids(
+            "completed_canonical_task_ids"
+        ):
+            reasons.append("shared_merge_record_present")
+
+        for event in read_jsonl_event_sources(
+            tuple(dict.fromkeys(event_paths)),
+            repair=False,
+            include_rotated=True,
+        ):
+            if not self._event_matches_virgin_transfer_task(
+                event,
+                task_id=task.task_id,
+                canonical_task_cid=identity.canonical_task_cid,
+            ):
+                continue
+            event_type = str(event.get("type") or "")
+            merge_result = event.get("merge_result")
+            if event_type == "protected_implementation_attempt_latched":
+                reasons.append("protected_latch_event_present")
+            if (
+                event.get("provider_dispatched") is True
+                or event.get("task_prompt_dispatched") is True
+                or event_type
+                in {
+                    "implementation_provider_started",
+                    "provider_runner_started",
+                    "provider_runner_birth",
+                }
+            ):
+                reasons.append("provider_dispatch_event_present")
+            if event.get("attempt_consumed") is True:
+                reasons.append("attempt_consumed_event_present")
+            if (
+                "merge" in event_type
+                or str(event.get("implementation_commit") or "")
+                or (
+                    isinstance(merge_result, Mapping)
+                    and any(
+                        merge_result.get(key)
+                        for key in ("attempted", "queued", "merged")
+                    )
+                )
+            ):
+                reasons.append("merge_event_present")
+
+        evidence_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "virgin-task-transfer-eligibility@1"
+            ),
+            "cohort_id": self._virgin_transfer_cohort_id(),
+            "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "registration_ids": sorted(registration_ids),
+            "eligible": not reasons,
+            "reasons": sorted(set(reasons)),
+        }
+        return {
+            **evidence_body,
+            "evidence_id": content_identity(evidence_body),
+        }
+
+    def _try_grant_virgin_transfer(
+        self,
+        task: PortalTask,
+        request: Mapping[str, Any],
+        registrations: Mapping[int, Mapping[str, Any]],
+        *,
+        current_state: PortalTaskState,
+    ) -> dict[str, Any] | None:
+        home_lane = self._task_home_shard_index(task.task_id)
+        if home_lane != self.task_shard_index:
+            return None
+        grant_path = self._virgin_transfer_grant_path(task)
+        with serialized_lock_update(grant_path):
+            if grant_path.exists():
+                return self._valid_virgin_transfer_grant(task)
+            eligibility = self._virgin_transfer_eligibility(
+                task,
+                registrations,
+                current_state=current_state,
+            )
+            if eligibility.get("eligible") is not True:
+                self._record_event(
+                    "virgin_task_transfer_rejected",
+                    {
+                        "task_id": task.task_id,
+                        "canonical_task_cid": self._canonical_ref(task),
+                        "request_id": str(request.get("request_id") or ""),
+                        "reasons": list(eligibility.get("reasons") or ()),
+                        "evidence_id": eligibility.get("evidence_id"),
+                    },
+                )
+                return None
+            identity = self._identity_for_task(task)
+            body: dict[str, Any] = {
+                "schema": VIRGIN_TASK_TRANSFER_GRANT_SCHEMA,
+                "cohort_id": self._virgin_transfer_cohort_id(),
+                "task_id": task.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "home_shard_index": home_lane,
+                "recipient_shard_index": int(
+                    request.get("requester_shard_index")
+                ),
+                "recipient_registration_id": str(
+                    request.get("requester_registration_id") or ""
+                ),
+                "request_id": str(request.get("request_id") or ""),
+                "request": dict(request),
+                "home_registration_id": str(
+                    registrations[home_lane].get("registration_id") or ""
+                ),
+                "eligibility": eligibility,
+                "issued_at": utc_now(),
+            }
+            grant = {**body, "grant_id": content_identity(body)}
+            self._write_private_virgin_transfer_record(grant_path, grant)
+        self._record_event(
+            "virgin_task_transfer_granted",
+            {
+                key: grant[key]
+                for key in (
+                    "grant_id",
+                    "request_id",
+                    "task_id",
+                    "canonical_task_cid",
+                    "home_shard_index",
+                    "recipient_shard_index",
+                )
+            },
+        )
+        return grant
+
+    def _virgin_transfer_grant_has_active_effect(
+        self,
+        grant: Mapping[str, Any],
+        registrations: Mapping[int, Mapping[str, Any]],
+    ) -> bool:
+        task_id = str(grant.get("task_id") or "")
+        task_cid = str(grant.get("canonical_task_cid") or "")
+        if not task_id or not task_cid:
+            return True
+        if any(
+            path.exists()
+            for path in (
+                self._implementation_task_claim_path(
+                    task_id,
+                    canonical_task_cid=task_cid,
+                ),
+                self._implementation_task_claim_path(task_id),
+            )
+        ):
+            return True
+        for record in self.worktree_lifecycle.iter_records():
+            if record.is_nonterminal and (
+                record.canonical_task_cid == task_cid
+                or (
+                    not record.canonical_task_cid
+                    and record.task_id == task_id
+                )
+            ):
+                return True
+        for registration in registrations.values():
+            state_path = Path(str(registration.get("state_path") or ""))
+            payload = load_json_dict(state_path)
+            if payload is None and state_path.exists():
+                return True
+            state_reason = state_file_repair_reason(state_path)
+            if state_reason not in {"", "missing_state_file"}:
+                # A malformed projection cannot prove that the grant is still
+                # effect-free, so retain it for explicit recovery.
+                return True
+            state = PortalTaskState.load(state_path)
+            if state.implementation_in_progress and (
+                state.active_task_cid == task_cid
+                or (
+                    not state.active_task_cid
+                    and state.active_task_id == task_id
+                )
+            ):
+                return True
+            provider = state.active_provider_runner
+            if isinstance(provider, Mapping) and (
+                provider.get("task_revision_cid") == task_cid
+                or provider.get("task_id") == task_id
+            ):
+                return True
+        return False
+
+    def _revoke_virgin_transfer_grant(
+        self,
+        path: Path,
+        grant: Mapping[str, Any],
+        registrations: Mapping[int, Mapping[str, Any]],
+        *,
+        reason: str,
+    ) -> bool:
+        grant_id = str(grant.get("grant_id") or "")
+        with serialized_lock_update(path):
+            current = self._load_private_virgin_transfer_record(path)
+            if (
+                current is None
+                or not grant_id
+                or current.get("grant_id") != grant_id
+                or not self._virgin_transfer_record_valid(
+                    current,
+                    id_field="grant_id",
+                )
+            ):
+                return False
+            # Claim publication takes this same grant update lock. Recheck
+            # under it so a recipient can never publish an effect between the
+            # cleanup proof and the unlink.
+            if self._virgin_transfer_grant_has_active_effect(
+                current,
+                registrations,
+            ):
+                return False
+            path.unlink(missing_ok=True)
+        self._record_event(
+            "virgin_task_transfer_revoked",
+            {
+                "grant_id": grant_id,
+                "task_id": str(grant.get("task_id") or ""),
+                "canonical_task_cid": str(
+                    grant.get("canonical_task_cid") or ""
+                ),
+                "home_shard_index": self.task_shard_index,
+                "recipient_shard_index": grant.get(
+                    "recipient_shard_index"
+                ),
+                "reason": reason,
+            },
+        )
+        return True
+
+    def _reconcile_virgin_transfer_grants(
+        self,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        current_state: PortalTaskState,
+    ) -> list[dict[str, Any]]:
+        """Retire terminal/stale assignments without crossing an effect."""
+
+        grants_dir = self._virgin_transfer_root() / "grants"
+        tasks_by_id = {task.task_id: task for task in tasks}
+        registrations = self._virgin_transfer_registrations(
+            require_active=False
+        )
+        if len(registrations) != self.task_shard_count:
+            # Cleanup is destructive. A missing lane projection makes
+            # effect-freedom unprovable, so retain the assignment.
+            return []
+        revoked: list[dict[str, Any]] = []
+        for path in sorted(grants_dir.glob("task-*.json")):
+            grant = self._load_private_virgin_transfer_record(path)
+            if (
+                grant is None
+                or grant.get("schema")
+                != VIRGIN_TASK_TRANSFER_GRANT_SCHEMA
+                or not self._virgin_transfer_record_valid(
+                    grant,
+                    id_field="grant_id",
+                )
+                or grant.get("cohort_id")
+                != self._virgin_transfer_cohort_id()
+                or grant.get("home_shard_index")
+                != self.task_shard_index
+                or self._task_home_shard_index(
+                    str(grant.get("task_id") or "")
+                )
+                != self.task_shard_index
+            ):
+                continue
+            task_id = str(grant.get("task_id") or "")
+            task_cid = str(grant.get("canonical_task_cid") or "")
+            current_task = tasks_by_id.get(task_id)
+            exact_revision = bool(
+                current_task is not None
+                and self._canonical_ref(current_task) == task_cid
+            )
+            reason = ""
+            if current_task is None:
+                reason = "task_removed"
+            elif not exact_revision:
+                reason = "task_revision_changed"
+            elif resolved_statuses.get(task_id) == "completed":
+                reason = "task_completed"
+            if reason:
+                if self._virgin_transfer_grant_has_active_effect(
+                    grant,
+                    registrations,
+                ):
+                    continue
+                if self._revoke_virgin_transfer_grant(
+                    path,
+                    grant,
+                    registrations,
+                    reason=reason,
+                ):
+                    revoked.append(
+                        {
+                            "grant_id": grant.get("grant_id"),
+                            "task_id": task_id,
+                            "reason": reason,
+                        }
+                    )
+                continue
+
+            recipient_value = grant.get("recipient_shard_index")
+            recipient_lane = (
+                int(recipient_value)
+                if isinstance(recipient_value, int)
+                and not isinstance(recipient_value, bool)
+                else -1
+            )
+            recipient = registrations.get(recipient_lane)
+            if recipient is None:
+                continue
+            expected_registration_id = str(
+                grant.get("recipient_registration_id")
+                or (
+                    grant.get("request", {}).get(
+                        "requester_registration_id"
+                    )
+                    if isinstance(grant.get("request"), Mapping)
+                    else ""
+                )
+                or ""
+            )
+            recipient_registration_changed = bool(
+                expected_registration_id
+                and recipient.get("registration_id")
+                != expected_registration_id
+            )
+            try:
+                recipient_owner = ProcessBirthIdentity.from_dict(
+                    recipient.get("owner")
+                )
+            except (TypeError, ValueError):
+                continue
+            recipient_dead = (
+                owner_liveness(recipient_owner) is OwnerLiveness.DEAD
+            )
+            if not recipient_dead and not recipient_registration_changed:
+                continue
+            assert current_task is not None
+            eligibility = self._virgin_transfer_eligibility(
+                current_task,
+                registrations,
+                current_state=current_state,
+            )
+            if eligibility.get("eligible") is not True:
+                continue
+            if self._revoke_virgin_transfer_grant(
+                path,
+                grant,
+                registrations,
+                reason=(
+                    "recipient_registration_changed_before_effect"
+                    if recipient_registration_changed
+                    else "recipient_dead_before_effect"
+                ),
+            ):
+                revoke_reason = (
+                    "recipient_registration_changed_before_effect"
+                    if recipient_registration_changed
+                    else "recipient_dead_before_effect"
+                )
+                revoked.append(
+                    {
+                        "grant_id": grant.get("grant_id"),
+                        "task_id": task_id,
+                        "reason": revoke_reason,
+                    }
+                )
+        return revoked
+
+    def _coordinate_virgin_task_transfers(
+        self,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        representative_task_ids: set[str],
+        active_task_claims: Mapping[str, Mapping[str, Any]],
+        resource_reserved_task_ids: set[str],
+        *,
+        current_state: PortalTaskState,
+    ) -> dict[str, Any]:
+        if (
+            self.idle_lane_work_stealing
+            != IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+        ):
+            self._active_virgin_transfer_grants = {}
+            return {
+                "mode": "",
+                "granted_to_lane_task_ids": [],
+                "granted_away_task_ids": [],
+                "request_task_id": "",
+            }
+
+        registration = self._publish_virgin_transfer_registration()
+        revoked_grants = self._reconcile_virgin_transfer_grants(
+            tasks,
+            resolved_statuses,
+            current_state=current_state,
+        )
+        registrations = self._active_virgin_transfer_registrations()
+        grants = {
+            task.task_id: grant
+            for task in tasks
+            if (grant := self._valid_virgin_transfer_grant(task)) is not None
+            and (
+                recipient_registration := registrations.get(
+                    int(grant["recipient_shard_index"])
+                )
+            )
+            is not None
+            and recipient_registration.get("registration_id")
+            == grant.get("recipient_registration_id")
+        }
+
+        def otherwise_selectable(task: PortalTask) -> bool:
+            return bool(
+                resolved_statuses.get(task.task_id) == "ready"
+                and task.task_id in representative_task_ids
+                and task.task_id not in active_task_claims
+                and task.task_id not in resource_reserved_task_ids
+            )
+
+        granted_to_lane = {
+            task_id
+            for task_id, grant in grants.items()
+            if grant.get("recipient_shard_index") == self.task_shard_index
+        }
+        granted_away = {
+            task_id
+            for task_id, grant in grants.items()
+            if grant.get("home_shard_index") == self.task_shard_index
+            and grant.get("recipient_shard_index") != self.task_shard_index
+        }
+        local_ready = [
+            task
+            for task in tasks
+            if otherwise_selectable(task)
+            and (
+                task.task_id in granted_to_lane
+                or (
+                    self._task_belongs_to_shard(task.task_id)
+                    and task.task_id not in granted_away
+                )
+            )
+        ]
+        requested_task: PortalTask | None = None
+        if not local_ready:
+            request_candidates = sorted(
+                (
+                    task
+                    for task in tasks
+                    if otherwise_selectable(task)
+                    and not self._task_belongs_to_shard(task.task_id)
+                    and task.task_id not in grants
+                ),
+                key=lambda item: (
+                    self._task_home_shard_index(item.task_id),
+                    item.task_id,
+                ),
+            )
+            if len(registrations) == self.task_shard_count:
+                # Do not let a lower-sorted task with prior effect history
+                # starve a later genuinely virgin task. The home lane repeats
+                # this proof under the serialized grant update; this
+                # requester-side pass is only safe candidate advancement.
+                request_candidates = [
+                    task
+                    for task in request_candidates
+                    if self._virgin_transfer_eligibility(
+                        task,
+                        registrations,
+                        current_state=current_state,
+                    ).get("eligible")
+                    is True
+                ]
+            if request_candidates:
+                requested_task = request_candidates[0]
+                self._publish_virgin_transfer_request(
+                    requested_task,
+                    registration,
+                )
+                self._clear_other_virgin_transfer_requests(
+                    retain=self._virgin_transfer_request_path(
+                        requested_task,
+                        self.task_shard_index,
+                    )
+                )
+            else:
+                self._clear_other_virgin_transfer_requests()
+        else:
+            self._clear_other_virgin_transfer_requests()
+
+        # A home lane keeps one ready task for itself. Only surplus home work
+        # can move, so transfer cannot reduce useful concurrency.
+        home_candidates = [
+            task
+            for task in tasks
+            if otherwise_selectable(task)
+            and self._task_belongs_to_shard(task.task_id)
+            and task.task_id not in grants
+        ]
+        grant_budget = max(0, len(home_candidates) - 1)
+        busy_recipients = {
+            int(grant["recipient_shard_index"])
+            for task_id, grant in grants.items()
+            if resolved_statuses.get(task_id) == "ready"
+        }
+        for task in sorted(home_candidates, key=lambda item: item.task_id):
+            if grant_budget <= 0:
+                break
+            requests = [
+                request
+                for lane_index in range(self.task_shard_count)
+                if lane_index != self.task_shard_index
+                and lane_index not in busy_recipients
+                and (
+                    request := self._valid_virgin_transfer_request(
+                        task,
+                        lane_index,
+                        registrations,
+                    )
+                )
+                is not None
+            ]
+            if not requests:
+                continue
+            request = min(
+                requests,
+                key=lambda item: int(item["requester_shard_index"]),
+            )
+            grant = self._try_grant_virgin_transfer(
+                task,
+                request,
+                registrations,
+                current_state=current_state,
+            )
+            if grant is None:
+                continue
+            grants[task.task_id] = grant
+            busy_recipients.add(int(grant["recipient_shard_index"]))
+            grant_budget -= 1
+
+        self._active_virgin_transfer_grants = {
+            self._canonical_ref(task): grant
+            for task in tasks
+            if (
+                (grant := grants.get(task.task_id)) is not None
+                and grant.get("recipient_shard_index")
+                == self.task_shard_index
+            )
+        }
+        granted_to_lane = {
+            task.task_id
+            for task in tasks
+            if self._canonical_ref(task)
+            in self._active_virgin_transfer_grants
+        }
+        granted_away = {
+            task_id
+            for task_id, grant in grants.items()
+            if grant.get("home_shard_index") == self.task_shard_index
+            and grant.get("recipient_shard_index") != self.task_shard_index
+        }
+        return {
+            "mode": self.idle_lane_work_stealing,
+            "cohort_id": self._virgin_transfer_cohort_id(),
+            "active_registration_count": len(registrations),
+            "required_registration_count": self.task_shard_count,
+            "granted_to_lane_task_ids": sorted(granted_to_lane),
+            "granted_away_task_ids": sorted(granted_away),
+            "request_task_id": (
+                requested_task.task_id if requested_task is not None else ""
+            ),
+            "revoked_grants": revoked_grants,
+        }
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -10809,6 +12081,22 @@ class PortalImplementationDaemon:
             ),
             *self.external_reservation_manifest_paths,
         ]
+        if (
+            self.idle_lane_work_stealing
+            == IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+        ):
+            # Registrations, requests, and grants are repository-shared lease
+            # inputs. A home-lane grant must wake its selected recipient, and
+            # a new request must wake the hash-home lane without polling.
+            transfer_root = self._virgin_transfer_root()
+            lease_paths.extend(
+                [
+                    transfer_root,
+                    transfer_root / "registrations",
+                    transfer_root / "requests",
+                    transfer_root / "grants",
+                ]
+            )
         policy_paths = [
             self.strategy_path,
             self._implementation_protected_active_snapshot_path(),
@@ -14198,6 +15486,28 @@ class PortalImplementationDaemon:
         external_task_reservations = self._external_task_reservations(tasks)
         for task_id, reservation in external_task_reservations.items():
             active_task_claims.setdefault(task_id, reservation)
+        virgin_transfer_coordination = (
+            self._coordinate_virgin_task_transfers(
+                execution_tasks,
+                resolved_statuses,
+                representative_task_ids,
+                active_task_claims,
+                resource_reserved_task_ids,
+                current_state=previous,
+            )
+        )
+        virgin_transfer_granted_to_lane = set(
+            virgin_transfer_coordination.get(
+                "granted_to_lane_task_ids",
+                (),
+            )
+        )
+        virgin_transfer_granted_away = set(
+            virgin_transfer_coordination.get(
+                "granted_away_task_ids",
+                (),
+            )
+        )
         selectable_tasks = [
             task
             for task in execution_tasks
@@ -14210,7 +15520,13 @@ class PortalImplementationDaemon:
                 )
                 and
                 task.task_id in representative_task_ids
-                and self._task_belongs_to_shard(task.task_id)
+                and (
+                    task.task_id in virgin_transfer_granted_to_lane
+                    or (
+                        self._task_belongs_to_shard(task.task_id)
+                        and task.task_id not in virgin_transfer_granted_away
+                    )
+                )
                 and task.task_id not in active_task_claims
                 and task.task_id not in resource_reserved_task_ids
             )
@@ -14664,6 +15980,7 @@ class PortalImplementationDaemon:
                         receipt["task_id"]
                         for receipt in completion_receipt_writes
                     ],
+                    "virgin_task_transfer": virgin_transfer_coordination,
                     "projection_delta_keys": sorted(projection_delta),
                 },
             )
@@ -14758,6 +16075,7 @@ class PortalImplementationDaemon:
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
             "shared_completed_task_ids": sorted(shared_completed_task_ids),
             "completion_receipt_writes": completion_receipt_writes,
+            "virgin_task_transfer": virgin_transfer_coordination,
             "downstream_unlock_counts": dict(sorted(unlock_counts.items())),
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
@@ -50859,6 +52177,26 @@ class PortalImplementationDaemon:
             "task_shard_index": self.task_shard_index,
             "lease_id": lease_id,
         }
+        virgin_transfer = self._active_virgin_transfer_grants.get(
+            identity.canonical_task_cid
+        )
+        if virgin_transfer is not None:
+            extra["virgin_task_transfer"] = {
+                key: virgin_transfer[key]
+                for key in (
+                    "schema",
+                    "grant_id",
+                    "request_id",
+                    "cohort_id",
+                    "task_id",
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "board_namespace",
+                    "home_shard_index",
+                    "recipient_shard_index",
+                    "recipient_registration_id",
+                )
+            }
         extra.update(compiled)
         metadata = checkout_lock_metadata(
             kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
@@ -53491,22 +54829,115 @@ class PortalImplementationDaemon:
     ) -> tuple[bool, str, dict[str, Any] | None]:
         """Publish a complete canonical-task claim under its update guard."""
 
-        with serialized_lock_update(lock_path):
-            lock_fd, reason, existing = self._try_acquire_lock(
-                lock_path,
-                lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-                owner_active=self._implementation_task_claim_owner_is_active,
+        def publish_claim() -> tuple[
+            bool,
+            str,
+            dict[str, Any] | None,
+        ]:
+            with serialized_lock_update(lock_path):
+                lock_fd, reason, existing = self._try_acquire_lock(
+                    lock_path,
+                    lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                    owner_active=(
+                        self._implementation_task_claim_owner_is_active
+                    ),
+                )
+                if lock_fd is None:
+                    return False, reason, existing
+                published = False
+                try:
+                    self._write_lock_metadata(lock_fd, metadata)
+                    published = True
+                finally:
+                    if not published:
+                        lock_path.unlink(missing_ok=True)
+                return True, reason, existing
+
+        transfer = metadata.get("virgin_task_transfer")
+        if transfer is not None:
+            if not isinstance(transfer, Mapping):
+                return False, "virgin_transfer_grant_invalid", None
+            canonical_task_cid = str(
+                transfer.get("canonical_task_cid") or ""
             )
-            if lock_fd is None:
-                return False, reason, existing
-            published = False
-            try:
-                self._write_lock_metadata(lock_fd, metadata)
-                published = True
-            finally:
-                if not published:
-                    lock_path.unlink(missing_ok=True)
-            return True, reason, existing
+            grant_path = self._virgin_transfer_grant_path_for_cid(
+                canonical_task_cid
+            )
+            # Cleanup takes this same lock and rechecks for a published task
+            # claim before unlinking. Holding it through claim publication
+            # closes the stale-selector TOCTOU window.
+            with serialized_lock_update(grant_path):
+                grant = self._load_private_virgin_transfer_record(grant_path)
+                registration = self._load_private_virgin_transfer_record(
+                    self._virgin_transfer_registration_path(
+                        self.task_shard_index
+                    )
+                )
+                try:
+                    exact_tasks = [
+                        task
+                        for task in self._load_tasks()
+                        if task.task_id == metadata.get("task_id")
+                        and self._canonical_ref(task)
+                        == metadata.get("canonical_task_cid")
+                    ]
+                    current_state_reason = state_file_repair_reason(
+                        self.state_path
+                    )
+                    current_state = PortalTaskState.load(self.state_path)
+                    registrations = self._virgin_transfer_registrations(
+                        require_active=False
+                    )
+                    claim_eligibility = (
+                        self._virgin_transfer_eligibility(
+                            exact_tasks[0],
+                            registrations,
+                            current_state=current_state,
+                        )
+                        if len(exact_tasks) == 1
+                        and current_state_reason
+                        in {"", "missing_state_file"}
+                        else {"eligible": False}
+                    )
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    exact_tasks = []
+                    registrations = {}
+                    claim_eligibility = {"eligible": False}
+                if (
+                    grant is None
+                    or not self._virgin_transfer_record_valid(
+                        grant,
+                        id_field="grant_id",
+                    )
+                    or grant.get("schema")
+                    != VIRGIN_TASK_TRANSFER_GRANT_SCHEMA
+                    or grant.get("cohort_id")
+                    != self._virgin_transfer_cohort_id()
+                    or grant.get("grant_id") != transfer.get("grant_id")
+                    or grant.get("task_id") != metadata.get("task_id")
+                    or grant.get("canonical_task_cid")
+                    != metadata.get("canonical_task_cid")
+                    or grant.get("recipient_shard_index")
+                    != self.task_shard_index
+                    or grant.get("recipient_registration_id")
+                    != transfer.get("recipient_registration_id")
+                    or registration is None
+                    or not self._virgin_transfer_record_valid(
+                        registration,
+                        id_field="registration_id",
+                    )
+                    or registration.get("registration_id")
+                    != grant.get("recipient_registration_id")
+                    or len(exact_tasks) != 1
+                    or normalize_status(exact_tasks[0].status)
+                    == "completed"
+                    or len(registrations) != self.task_shard_count
+                    or claim_eligibility.get("eligible") is not True
+                ):
+                    return False, "virgin_transfer_grant_invalid", grant
+                return publish_claim()
+
+        return publish_claim()
 
     def _try_acquire_implementation_dispatch_intent(
         self,
@@ -62273,6 +63704,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--idle-lane-work-stealing",
+        choices=[IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER],
+        default="",
+        help=(
+            "Opt-in strict-shard idle-lane handoff protocol. 'virgin-transfer' "
+            "permits the hash-home lane to assign an exact never-attempted "
+            "task revision to one idle peer through a durable request/grant."
+        ),
+    )
+    parser.add_argument(
         "--daemon-hook-timeout-seconds",
         type=float,
         default=None,
@@ -62582,6 +64023,7 @@ def main(argv: list[str] | None = None) -> None:
             task_shard_count=args.task_shard_count,
             task_shard_index=args.task_shard_index,
             strict_task_sharding=args.strict_task_sharding,
+            idle_lane_work_stealing=args.idle_lane_work_stealing,
             validation_max_workers=args.validation_max_workers,
             validation_resource_budget=args.validation_resource_budget,
             maintenance_interval_seconds=args.maintenance_interval_seconds,

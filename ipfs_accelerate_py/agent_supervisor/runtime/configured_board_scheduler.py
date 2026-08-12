@@ -1625,6 +1625,7 @@ class ConfiguredBoard:
     merge_target_branch: str
     max_lanes: int
     strict_task_sharding: bool
+    idle_lane_work_stealing: str
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
@@ -1788,6 +1789,17 @@ def load_configured_board(
     strict_task_sharding = payload.get("strict_task_sharding")
     if not isinstance(strict_task_sharding, bool):
         raise ConfiguredBoardError("strict_task_sharding must be boolean")
+    idle_lane_work_stealing = str(
+        payload.get("idle_lane_work_stealing") or ""
+    ).strip().lower()
+    if idle_lane_work_stealing not in {"", "virgin-transfer"}:
+        raise ConfiguredBoardError(
+            "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+        )
+    if idle_lane_work_stealing and not strict_task_sharding:
+        raise ConfiguredBoardError(
+            "idle_lane_work_stealing requires strict_task_sharding"
+        )
     submodules = _safe_relative_list(
         payload.get("worktree_submodule_paths"),
         field="worktree_submodule_paths",
@@ -1984,6 +1996,7 @@ def load_configured_board(
         merge_target_branch=merge_target_branch,
         max_lanes=max_lanes,
         strict_task_sharding=strict_task_sharding,
+        idle_lane_work_stealing=idle_lane_work_stealing,
         worktree_submodule_paths=submodules,
         protected_paths=protected,
         runtime_paths=runtime_paths,
@@ -2422,6 +2435,10 @@ def configured_board_common_args(
     # strict fallback policy must both be disabled for that child.
     if board.strict_task_sharding and not _plan_bound_profile(board):
         args.append("--strict-task-sharding")
+    if board.idle_lane_work_stealing and not _plan_bound_profile(board):
+        args.extend(
+            ["--idle-lane-work-stealing", board.idle_lane_work_stealing]
+        )
     for relative in board.worktree_submodule_paths:
         args.extend(["--worktree-submodule-path", relative])
     for relative in board.protected_paths:
@@ -2597,6 +2614,13 @@ def configured_board_launch_plan(
         runner_args.append(
             "--implementation-supervisor-strict-task-sharding"
         )
+    if board.idle_lane_work_stealing and not plan_bound:
+        runner_args.extend(
+            [
+                "--implementation-supervisor-idle-lane-work-stealing",
+                board.idle_lane_work_stealing,
+            ]
+        )
     if plan_bound or board.payload.get("exit_when_all_tracks_terminal") is True:
         runner_args.append("--exit-when-all-tracks-terminal")
 
@@ -2629,8 +2653,12 @@ def configured_board_launch_plan(
         "lanes": board.max_lanes,
         "admitted_lanes": len(plan_bound_children) if plan_bound else board.max_lanes,
         "strict_task_sharding": board.strict_task_sharding,
+        "idle_lane_work_stealing": board.idle_lane_work_stealing,
         "effective_strict_task_sharding": (
             board.strict_task_sharding if not plan_bound else False
+        ),
+        "effective_idle_lane_work_stealing": (
+            board.idle_lane_work_stealing if not plan_bound else ""
         ),
         "plan_bound_dispatch": plan_bound,
         "active_plan_revision_cid": (

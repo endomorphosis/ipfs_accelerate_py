@@ -1313,6 +1313,9 @@ def build_portal_implementation_daemon_from_args(
         strict_task_sharding=bool(
             getattr(parsed, "strict_task_sharding", False)
         ),
+        idle_lane_work_stealing=str(
+            getattr(parsed, "idle_lane_work_stealing", "") or ""
+        ),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
